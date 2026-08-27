@@ -1,0 +1,14 @@
+.dart_tool/
+.packages
+build/
+*.g.dart
+*.freezed.dart
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/Pods/
+android/local.properties
+*.jks
+*.keystore
+.env
+.env.*
+.claude/settings.local.json
