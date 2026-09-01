@@ -65,6 +65,8 @@ docker compose -f compose.dev.yml run --rm flutter dart run build_runner build  
 docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 ```
 
+- `build/` y `android/.gradle` viven en volúmenes Linux (D8/dex falla sobre el bind mount de Windows). Para sacar el APK al host:
+  `docker run --rm -v front-colportores-mobile_build_out:/b -v "$PWD":/out alpine cp /b/app/outputs/flutter-apk/app-debug.apk /out/`
 - `*.g.dart` **no se commitea**: se genera con `build_runner` (CI lo hace en cada corrida).
 - `dart format` usa 100 columnas (`formatter.page_width` en `analysis_options.yaml`).
 - Para correr en un teléfono o emulador se usa `flutter run` desde el host: el contenedor no ve USB ni emuladores de Windows. Cuenta demo mientras no hay backend: `demo@colportores.app` / `demo1234`.
