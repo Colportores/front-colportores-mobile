@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Entorno de desarrollo de front-colportores-mobile (Flutter).
+# Trae Flutter + Dart + Android SDK; no hace falta nada en el host salvo Docker.
+#
+#   docker compose -f compose.dev.yml build
+#   docker compose -f compose.dev.yml run --rm flutter flutter pub get
+#   docker compose -f compose.dev.yml run --rm flutter flutter test
+#   docker compose -f compose.dev.yml run --rm flutter dart run build_runner build
+#
+# La imagen de cirruslabs se publica por versión; subirla = subir Flutter en todo el equipo y en CI
+# (ver .github/workflows/ci.yml → flutter-version).
+
+FROM ghcr.io/cirruslabs/flutter:3.44.0
+
+# Caches de pub y gradle en volúmenes (compose.dev.yml) para no rebajar todo en cada contenedor.
+ENV PUB_CACHE=/pub-cache \
+    GRADLE_USER_HOME=/gradle-cache \
+    CI=true
+
+RUN flutter config --no-analytics --no-cli-animations \
+  && dart --disable-analytics \
+  && git config --global --add safe.directory '*'
+
+WORKDIR /app
+CMD ["flutter", "test"]

@@ -1,0 +1,19 @@
+# Desarrollo local vía Docker. Ver README.md § Desarrollo.
+#
+# Cubre todo lo que no necesita un dispositivo: pub get, analyze, format, tests, build_runner,
+# build de APK. Para correr en un teléfono/emulador se usa `flutter run` desde el host contra
+# el mismo código (o adb sobre la red) — un contenedor Linux no ve el USB ni el emulador de Windows.
+services:
+  flutter:
+    build:
+      context: .
+      dockerfile: dockerfile.dev
+    volumes:
+      - .:/app
+      - pub_cache:/pub-cache
+      - gradle_cache:/gradle-cache
+    working_dir: /app
+
+volumes:
+  pub_cache:
+  gradle_cache:
