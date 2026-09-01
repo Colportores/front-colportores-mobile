@@ -1,0 +1,38 @@
+import '../models/sesion_model.dart';
+
+/// Origen remoto de autenticación. La implementación real envuelve `supabase_flutter`
+/// (Sprint 3, HU-AUTH-003); hasta entonces se usa [AuthRemoteDataSourceEnMemoria].
+///
+/// Los data sources **sí lanzan excepciones** ([AuthRemoteException]); es el repositorio quien las
+/// traduce a `Failure`. Así el dominio nunca ve una excepción de infraestructura.
+abstract interface class AuthRemoteDataSource {
+  Future<SesionModel> iniciarSesion({required String email, required String password});
+
+  Future<void> cerrarSesion(String accessToken);
+}
+
+/// Excepciones tipadas del origen remoto. Sin PII en [toString].
+sealed class AuthRemoteException implements Exception {
+  const AuthRemoteException();
+}
+
+final class CredencialesInvalidasException extends AuthRemoteException {
+  const CredencialesInvalidasException();
+}
+
+final class CuentaPendienteException extends AuthRemoteException {
+  const CuentaPendienteException();
+}
+
+final class SinConexionException extends AuthRemoteException {
+  const SinConexionException();
+}
+
+final class ServidorException extends AuthRemoteException {
+  const ServidorException({this.status});
+
+  final int? status;
+
+  @override
+  String toString() => 'ServidorException(status: $status)';
+}
