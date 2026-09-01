@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 
 echo "▶ pub get";        flutter pub get
 echo "▶ build_runner";   dart run build_runner build
-echo "▶ format";         dart format --output=none --set-exit-if-changed lib test
+# Solo archivos versionados: excluye *.g.dart (generado, formato propio del generador).
+echo "▶ format";         git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
 echo "▶ analyze";        flutter analyze --fatal-infos
 echo "▶ custom_lint";    dart run custom_lint --fatal-infos
 echo "▶ test";           flutter test --coverage

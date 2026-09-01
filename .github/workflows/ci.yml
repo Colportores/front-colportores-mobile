@@ -34,7 +34,10 @@ jobs:
       # *.g.dart no se commitea (.gitignore): se genera en cada corrida.
       - run: dart run build_runner build
 
-      - run: dart format --output=none --set-exit-if-changed lib test
+      # Solo archivos versionados: excluye *.g.dart (generado, formato propio del generador).
+      - name: dart format (archivos versionados)
+        run: git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
+
       - run: flutter analyze --fatal-infos
       - run: dart run custom_lint --fatal-infos
       - run: flutter test --coverage
