@@ -1,3 +1,4 @@
+# --- organización (plantilla gitignore-flutter) ---
 .dart_tool/
 .packages
 build/
@@ -12,3 +13,32 @@ android/local.properties
 .env
 .env.*
 .claude/settings.local.json
+
+# --- Flutter / Dart ---
+.pub-cache/
+.pub/
+coverage/
+**/doc/api/
+.fvm/
+*.iml
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --- Android ---
+android/.gradle/
+android/captures/
+android/**/GeneratedPluginRegistrant.java
+android/key.properties
+
+# --- iOS ---
+ios/.symlinks/
+ios/Flutter/.last_build_id
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Runner/GeneratedPluginRegistrant.*
+**/ios/**/xcuserdata/
+**/ios/**/*.moved-aside
+**/ios/**/DerivedData/

@@ -1,0 +1,39 @@
+import '../../domain/entities/sesion.dart';
+
+/// DTO de [Sesion]: la entidad más (de)serialización. Es lo único que cruza hacia los data sources.
+///
+/// Ojo con Equatable: compara también el `runtimeType`, así que un `SesionModel` **no es igual**
+/// a una `Sesion` con los mismos datos. Los repositorios devuelven al dominio [toEntity], nunca
+/// el modelo.
+final class SesionModel extends Sesion {
+  const SesionModel({
+    required super.usuarioId,
+    required super.email,
+    required super.accessToken,
+    required super.expiraEn,
+  });
+
+  factory SesionModel.fromEntity(Sesion sesion) => SesionModel(
+    usuarioId: sesion.usuarioId,
+    email: sesion.email,
+    accessToken: sesion.accessToken,
+    expiraEn: sesion.expiraEn,
+  );
+
+  factory SesionModel.fromJson(Map<String, Object?> json) => SesionModel(
+    usuarioId: json['usuario_id']! as String,
+    email: json['email']! as String,
+    accessToken: json['access_token']! as String,
+    expiraEn: DateTime.parse(json['expira_en']! as String).toUtc(),
+  );
+
+  Sesion toEntity() =>
+      Sesion(usuarioId: usuarioId, email: email, accessToken: accessToken, expiraEn: expiraEn);
+
+  Map<String, Object?> toJson() => {
+    'usuario_id': usuarioId,
+    'email': email,
+    'access_token': accessToken,
+    'expira_en': expiraEn.toUtc().toIso8601String(),
+  };
+}

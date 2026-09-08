@@ -1,0 +1,45 @@
+# Reglas de análisis. Se aplican en CI con `flutter analyze --fatal-infos` y `dart run custom_lint`.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  plugins:
+    - custom_lint
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # Lo que el CLAUDE.md del proyecto prohíbe pasa a ser error, no aviso.
+    avoid_dynamic_calls: error
+    always_declare_return_types: error
+    unawaited_futures: error
+    discarded_futures: error
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - build/**
+
+# Línea de 100 (convenciones §4.3). `dart format` lo lee de acá.
+formatter:
+  page_width: 100
+
+linter:
+  rules:
+    # Estilo del proyecto (convenciones §4)
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_print                    # los logs pasan por AppLogger
+    - directives_ordering            # SDK → packages → propios
+    - prefer_const_constructors
+    - prefer_const_constructors_in_immutables
+    - prefer_const_declarations
+    - prefer_const_literals_to_create_immutables
+    - prefer_final_locals
+    - prefer_single_quotes
+    - require_trailing_commas
+    - sort_pub_dependencies
+    - unawaited_futures
+    - discarded_futures
+    - use_super_parameters
+    - avoid_relative_lib_imports
+    - public_member_api_docs: false
