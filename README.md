@@ -24,7 +24,13 @@ lib/
 ├── core/
 │   ├── error/failure.dart     ← sealed Failure (Either<Failure, T> en todo use case)
 │   ├── usecases/use_case.dart ← UseCase<T, Params>, StreamUseCase, NoParams
-│   └── logging/app_logger.dart← [NIVEL][MÓDULO][OPERACIÓN] mensaje — {json}
+│   ├── logging/app_logger.dart← [NIVEL][MÓDULO][OPERACIÓN] mensaje — {json}
+│   └── secure_storage/        ← Keystore/Keychain: custodia de la sal de cifrado (ADR-003)
+│       ├── almacen_seguro.dart          (puerto + ClaveSegura: el inventario de secretos)
+│       ├── almacen_seguro_keystore.dart (único archivo que conoce flutter_secure_storage)
+│       ├── custodia_clave_db.dart       (sal de 256 bits + marca de DB inicializada)
+│       ├── clave_db.dart                (ClaveDb y ProveedorClaveDb: lo que consume la DB)
+│       └── fakes/…_en_memoria.dart      (para desarrollo y tests)
 └── features/auth/
     ├── domain/                ← Dart puro
     │   ├── entities/sesion.dart
@@ -80,7 +86,9 @@ docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 
 Los datos personales de clientes (`persona.nombre`, `persona.apellido`, `persona.telefono`, `nota.texto`) son **local-only**: viven solo en el dispositivo del colportor y nunca llegan al cloud, por la Ley 18.331 de Uruguay. Ver [`02-restricciones.md`](https://github.com/Colportores/docs-organizacion/blob/main/docs/02-restricciones.md).
 
-Este repositorio es **el único lugar del sistema donde esos datos existen**. La base local se abre con SQLCipher y la clave vive en `secure_storage`; las tablas `persona` y `nota` nunca se sincronizan.
+Este repositorio es **el único lugar del sistema donde esos datos existen**. La base local se abre con SQLCipher y las tablas `persona` y `nota` nunca se sincronizan.
+
+La clave de esa base **no se guarda en ningún lado**: se deriva con Argon2id de la contraseña del usuario y de una sal aleatoria de 256 bits, y esa sal —no la clave— es lo que vive en Keystore/Keychain ([ADR-003](https://github.com/Colportores/docs-organizacion/blob/main/docs/decisiones/ADR-003-backup-y-cifrado.md)). La custodia de la sal es `core/secure_storage/`; la derivación llega con HU-AUTH-009.
 
 ## Licencia
 

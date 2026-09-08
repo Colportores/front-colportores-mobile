@@ -1,0 +1,69 @@
+/// Inventario de secretos que la app guarda en el almacén seguro del dispositivo.
+///
+/// El enum es cerrado a propósito: agregar un secreto obliga a declararlo acá, así el inventario
+/// completo de lo que la app guarda en Keystore/Keychain se lee de un solo lugar.
+///
+/// El [id] es el nombre real con el que el secreto queda escrito en el dispositivo. **Cambiarlo
+/// deja huérfano lo ya guardado** en los equipos que lo tienen: para la sal eso significa una DB
+/// local que ya no se puede abrir.
+enum ClaveSegura {
+  /// Sal aleatoria de 256 bits con la que se deriva la clave de la DB local
+  /// ([ADR-003], R-AU03). No es la clave: es el ingrediente público de la derivación.
+  salDb('db_salt'),
+
+  /// Marca de que la DB local ya se creó y migró en este dispositivo (HU-AUTH-009).
+  dbInicializada('db_initialized');
+
+  const ClaveSegura(this.id);
+
+  /// Nombre con el que el secreto se escribe en el almacén del dispositivo.
+  final String id;
+}
+
+/// Almacén seguro del dispositivo: Android Keystore / iOS Keychain (§8.2.1).
+///
+/// Es el **único** lugar donde la app guarda material secreto, y guarda lo mínimo: la sal con la
+/// que se deriva la clave de la DB, no la clave (ADR-003). La clave nunca toca el disco.
+///
+/// Puerto en Dart puro; la implementación que conoce el plugin es `AlmacenSeguroKeystore` y la de
+/// tests es `AlmacenSeguroEnMemoria`. Igual que los data sources de auth, **el almacén lanza
+/// excepciones** ([AlmacenSeguroException]) y es su consumidor quien las traduce a `Failure`.
+abstract interface class AlmacenSeguro {
+  /// Valor guardado para [clave], o `null` si nunca se escribió.
+  Future<String?> leer(ClaveSegura clave);
+
+  /// Guarda [valor] para [clave], reemplazando lo que hubiera.
+  Future<void> escribir(ClaveSegura clave, String valor);
+
+  /// Borra [clave]. Si no existía, no hace nada.
+  Future<void> borrar(ClaveSegura clave);
+
+  /// Borra **todo** el contenido del almacén de la app (HU-AUTH-010, derecho al borrado).
+  Future<void> borrarTodo();
+}
+
+/// Falla del almacén seguro del dispositivo: Keystore/Keychain ausente, bloqueado o roto.
+///
+/// No distingue todavía entre "este dispositivo no tiene almacenamiento seguro robusto" y "falló
+/// una escritura puntual". Esa clasificación —y qué hace la app con cada una— es el Supuesto S10,
+/// que se cierra en HU-AUTH-009 junto con el flujo de consentimiento explícito.
+///
+/// [toString] nunca incluye el valor guardado: solo la operación y el nombre de la clave.
+final class AlmacenSeguroException implements Exception {
+  const AlmacenSeguroException({required this.operacion, this.clave, this.causa});
+
+  /// Operación que falló: `leer`, `escribir`, `borrar` o `borrarTodo`.
+  final String operacion;
+
+  /// Clave involucrada, o `null` en las operaciones que no apuntan a una sola.
+  final ClaveSegura? clave;
+
+  /// Error original de la plataforma. Va a logs, nunca al usuario.
+  final Object? causa;
+
+  @override
+  String toString() {
+    final sufijo = clave == null ? '' : ', ${clave!.name}';
+    return 'AlmacenSeguroException($operacion$sufijo)';
+  }
+}
