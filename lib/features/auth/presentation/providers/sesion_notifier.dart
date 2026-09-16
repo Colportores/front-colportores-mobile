@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/sesion.dart';
@@ -40,8 +41,11 @@ class SesionNotifier extends _$SesionNotifier {
     );
   }
 
+  /// Invalida la sesión y cierra la DB local: la clave de cifrado se destruye acá (HU-AUTH-006,
+  /// ADR-003 — vive solo mientras la sesión está activa). El borrado de datos es HU-AUTH-010.
   Future<void> cerrarSesion() async {
     await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
+    await ref.read(dbLocalProvider.notifier).cerrar();
     state = const AsyncData(null);
   }
 }

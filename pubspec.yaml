@@ -7,8 +7,8 @@ environment:
   sdk: ^3.12.0
   flutter: ">=3.44.0"
 
-# Stack según ADR-007. Las dependencias de DB (drift, sqlcipher), mapa, GPS y Supabase se agregan
-# en el sprint que las introduce (S2 DB cifrada, S3 auth real, S5 mapa) — no antes.
+# Stack según ADR-007. Las dependencias de mapa, GPS y Supabase se agregan en el sprint que las
+# introduce (S3 auth real, S5 mapa) — no antes.
 #
 # Nota: ADR-007 dice "Riverpod 2.x". Con Dart 3.12 la línea 2.x ya no resuelve junto a
 # `test`/`custom_lint` (analyzer ≥ 8), así que se adopta Riverpod 3.x (misma API de codegen,
@@ -19,15 +19,29 @@ environment:
 # 3.44), así que el job `build-android` falla. Subir a 11 implica subir el compileSdk del
 # proyecto — decisión de infra aparte, no de este wrapper. La API que usa
 # `core/secure_storage/` (read/write/delete/deleteAll) es la misma en las dos líneas.
+# Nota: `drift_dev` (codegen de tablas) **todavía no está**. Toda versión que sirva con `drift`
+# ≥ 2.32 (la línea que empaqueta SQLCipher vía hooks de `package:sqlite3`) exige analyzer ≥ 10, y
+# `custom_lint` 0.8.1 —que corre riverpod_lint en CI— quedó en analyzer ^8 sin versiones nuevas.
+# Mientras la DB no tiene tablas (#6) no hace falta: `AppDatabase` es un `GeneratedDatabase`
+# escrito a mano, idéntico a lo que generaría drift_dev para un `@DriftDatabase()` vacío. Antes de
+# la primera tabla (#8) hay que resolver el tooling: migrar riverpod_lint al plugin nativo del
+# analyzer (Dart ≥ 3.10; en Dart 3.12 `dart analyze` se cuelga con el plugin y `flutter analyze`
+# no reporta sus reglas — verificado en Docker) o pinear la DB a drift 2.31 + sqlcipher_flutter_libs
+# 0.6 (EOL). Decisión de Cristian, registrada en el issue #6.
 dependencies:
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
+  drift: ^2.34.1            # DB local (ADR-007); cifrada con SQLCipher (ADR-003) — ver `hooks` abajo
+  drift_flutter: ^0.3.1     # driftDatabase(): archivo, isolate de fondo y temp dir de sqlite en Android
   equatable: ^2.1.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.1.0  # estado / DI
   flutter_secure_storage: ^10.3.1  # Keystore/Keychain: sal de cifrado (ADR-003) — ver nota arriba
   logger: ^2.7.0            # [NIVEL][MÓDULO][OPERACIÓN] (convenciones §7)
+  path: ^1.9.1
+  path_provider: ^2.1.6     # directorio de la DB local (core/database)
   riverpod_annotation: ^4.0.0
+  sqlite3: ^3.5.2           # solo para `PRAGMA key` en el setup de la conexión (core/database)
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
 
 dev_dependencies:
@@ -69,3 +83,13 @@ flutter:
       fonts:
         - asset: assets/fonts/JetBrainsMono.ttf
           weight: 500
+# SQLCipher (ADR-003). `package:sqlite3` 3.x empaqueta SQLite con hooks de Dart y baja, según este
+# `source`, el binario precompilado de cada plataforma desde sus releases de GitHub (verificado por
+# sha256). `sqlcipher` = SQLCipher community edition, que es lo que fija ADR-003/ADR-007; el paquete
+# `sqlcipher_flutter_libs` que nombran esos ADR está EOL (0.7.0+eol, "no longer does anything") y
+# este es su reemplazo oficial. Drift hoy recomienda `sqlite3mc` (SQLite3MultipleCiphers) para apps
+# nuevas — cambiar de librería de cifrado es una decisión de ADR, no de este archivo.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
