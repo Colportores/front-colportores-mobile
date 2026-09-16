@@ -45,6 +45,15 @@ final class CustodiaClaveDb {
   /// Lanza `StateError` si el dispositivo ya está marcado como inicializado: pisar esa sal deja
   /// la DB existente imposible de abrir. Para rehacer el dispositivo desde cero hay que pasar
   /// primero por [olvidar], que es el camino explícito y destructivo.
+  ///
+  /// Ese `StateError` es un `Error`, no una `Exception`: un `on Exception` no lo atrapa y no
+  /// corresponde traducirlo a `Failure`. Significa que el consumidor tomó el camino "dispositivo
+  /// nuevo" con la marca puesta, y eso pasa de verdad en iOS: el Keychain sobrevive a la
+  /// desinstalación, así que tras reinstalar hay marca y sal pero **no hay archivo de DB**. Ver
+  /// [dbInicializada] para lo que tiene que hacer el consumidor antes de llegar acá.
+  ///
+  /// Propaga [MarcaInicializacionCorruptaException] si la marca no se puede interpretar: la
+  /// guarda no se desactiva sola por un valor basura.
   Future<Uint8List> generarSal() async {
     if (await dbInicializada()) {
       throw StateError(
@@ -60,8 +69,24 @@ final class CustodiaClaveDb {
   }
 
   /// Si este dispositivo ya completó la creación de la DB local (HU-AUTH-009).
-  Future<bool> dbInicializada() async =>
-      await _almacen.leer(ClaveSegura.dbInicializada) == _marcaInicializada;
+  ///
+  /// Es la marca del almacén seguro, **no** la existencia del archivo SQLCipher, y las dos cosas
+  /// se desincronizan en iOS: el Keychain sobrevive a la desinstalación de la app, el archivo no.
+  /// Tras reinstalar, esto devuelve `true` con una DB que ya no existe. Quien abra la DB (#6/#27)
+  /// tiene que reconciliar marca contra archivo antes de decidir el flujo: marca puesta sin
+  /// archivo = llamar a [olvidar] y recién ahí tratar el equipo como dispositivo nuevo. Si se
+  /// saltea ese paso, [generarSal] lanza `StateError` en cada intento.
+  ///
+  /// Lanza [MarcaInicializacionCorruptaException] si lo guardado no es la marca esperada, con la
+  /// misma política estricta que [leerSal] aplica a la sal: un valor basura no se interpreta como
+  /// "no inicializado", porque eso desactivaría la guarda de [generarSal] y permitiría pisar la
+  /// sal de una DB viva. La salida es [olvidar], que no lee la marca.
+  Future<bool> dbInicializada() async {
+    final guardada = await _almacen.leer(ClaveSegura.dbInicializada);
+    if (guardada == null) return false;
+    if (guardada == _marcaInicializada) return true;
+    throw const MarcaInicializacionCorruptaException('no es la marca esperada');
+  }
 
   /// Marca el dispositivo como inicializado. Se llama **al final** del flujo de HU-AUTH-009, con
   /// la DB ya creada y migrada: antes de eso la marca mentiría sobre una DB a medio hacer.
@@ -70,14 +95,18 @@ final class CustodiaClaveDb {
     _log.info(LogModulo.db, 'DB_INICIALIZADA', 'dispositivo marcado como inicializado');
   }
 
-  /// Olvida la sal y la marca de inicialización.
+  /// Olvida la marca de inicialización y la sal, **en ese orden**.
   ///
   /// Es **destructivo**: sin la sal, la DB local que quedó en disco no se puede volver a abrir.
   /// Lo usan el borrado de datos (HU-AUTH-010) y la limpieza de una inicialización que quedó a
   /// mitad de camino. Borrar el archivo de la DB es responsabilidad de quien la creó.
+  ///
+  /// El orden importa por si el segundo borrado falla o la app muere entre los dos: queda "sal +
+  /// sin marca", que [generarSal] pisa sin problema. Al revés quedaría "sin sal + marca puesta",
+  /// y de ahí no se sale: [leerSal] dice dispositivo nuevo y [generarSal] lanza `StateError`.
   Future<void> olvidar() async {
-    await _almacen.borrar(ClaveSegura.salDb);
     await _almacen.borrar(ClaveSegura.dbInicializada);
+    await _almacen.borrar(ClaveSegura.salDb);
     _log.warn(LogModulo.db, 'SAL_OLVIDADA', 'sal y marca de inicialización borradas');
   }
 
@@ -109,4 +138,17 @@ final class SalCorruptaException implements Exception {
 
   @override
   String toString() => 'SalCorruptaException($motivo)';
+}
+
+/// Lo guardado como marca de inicialización no es la marca esperada: el almacén se corrompió o
+/// alguien escribió esa clave por afuera. Misma política que [SalCorruptaException].
+///
+/// [toString] describe el motivo pero **nunca** incluye el valor leído.
+final class MarcaInicializacionCorruptaException implements Exception {
+  const MarcaInicializacionCorruptaException(this.motivo);
+
+  final String motivo;
+
+  @override
+  String toString() => 'MarcaInicializacionCorruptaException($motivo)';
 }

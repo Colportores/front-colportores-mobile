@@ -22,8 +22,11 @@ enum ClaveSegura {
 
 /// Almacén seguro del dispositivo: Android Keystore / iOS Keychain (§8.2.1).
 ///
-/// Es el **único** lugar donde la app guarda material secreto, y guarda lo mínimo: la sal con la
-/// que se deriva la clave de la DB, no la clave (ADR-003). La clave nunca toca el disco.
+/// Es el **único** lugar donde la app guarda material secreto, y todo lo que guarda está
+/// inventariado en [ClaveSegura]: hoy la sal con la que se deriva la clave de la DB y la marca de
+/// inicialización; la sesión de auth (el JWT) también va a vivir acá cuando `AuthLocalDataSource`
+/// tenga implementación real. Lo que **nunca** guarda es la clave de la DB: se deriva de la sal y
+/// no toca el disco (ADR-003).
 ///
 /// Puerto en Dart puro; la implementación que conoce el plugin es `AlmacenSeguroKeystore` y la de
 /// tests es `AlmacenSeguroEnMemoria`. Igual que los data sources de auth, **el almacén lanza
@@ -38,7 +41,9 @@ abstract interface class AlmacenSeguro {
   /// Borra [clave]. Si no existía, no hace nada.
   Future<void> borrar(ClaveSegura clave);
 
-  /// Borra **todo** el contenido del almacén de la app (HU-AUTH-010, derecho al borrado).
+  /// Borra **todo** lo que este almacén custodia para la app —cada [ClaveSegura], no solo la sal:
+  /// también la marca de inicialización y, cuando esté, la sesión de auth— (HU-AUTH-010, derecho
+  /// al borrado). Para borrar un solo secreto está [borrar].
   Future<void> borrarTodo();
 }
 

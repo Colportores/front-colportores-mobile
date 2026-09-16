@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'almacen_seguro.dart';
@@ -30,11 +31,32 @@ import 'almacen_seguro.dart';
 /// `synchronizable` sí queda en `false` (el default del plugin) y no hay motivo para moverlo: la
 /// sal **debe ser distinta por dispositivo** (HU-AUTH-009), o sea que no puede sincronizar por
 /// iCloud Keychain.
+///
+/// Los cuatro valores de arriba los fija un test contra [opcionesAndroid] y [opcionesIos]: quien
+/// resuelva S10 tiene que actualizar esta doc junto con el código, no puede cambiar uno solo.
+///
+/// ## Android: Auto Backup deshabilitado
+///
+/// En Android el plugin guarda el ciphertext en SharedPreferences y la clave que lo envuelve en
+/// el Keystore. Auto Backup respalda lo primero y no lo segundo, así que tras un restore en otro
+/// equipo `read` falla y —con `resetOnError` en `true`— devuelve `null` como si la sal nunca
+/// hubiera existido. Por eso el manifest lleva `android:allowBackup="false"` y
+/// `android:dataExtractionRules` (README del plugin, "Disabling Auto Backup"); no quitarlos.
 final class AlmacenSeguroKeystore implements AlmacenSeguro {
   AlmacenSeguroKeystore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
+
+  /// Opciones de Android con las que este adaptador habla con el plugin. Solo para que los tests
+  /// verifiquen las que enumera la doc de la clase; producción no las necesita.
+  @visibleForTesting
+  AndroidOptions get opcionesAndroid => _storage.aOptions;
+
+  /// Opciones de iOS con las que este adaptador habla con el plugin. Mismo uso que
+  /// [opcionesAndroid].
+  @visibleForTesting
+  IOSOptions get opcionesIos => _storage.iOptions;
 
   @override
   Future<String?> leer(ClaveSegura clave) =>

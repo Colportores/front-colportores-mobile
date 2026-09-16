@@ -12,7 +12,9 @@ import 'dart:typed_data';
 ///
 /// **Se queda con el buffer que recibe, no lo copia**: es a propósito, porque [destruir] tiene que
 /// poder pisar el original. Una copia defensiva dejaría los bytes de quien lo construyó vivos en
-/// memoria después de cerrar sesión.
+/// memoria después de cerrar sesión. Por lo mismo el buffer **tiene que ser mutable**: una vista
+/// inmutable (`Uint8List.asUnmodifiableView()`) compila pero no se puede destruir, y el
+/// constructor la rechaza con `ArgumentError` antes de que la clave llegue a usarse.
 final class ClaveDb {
   ClaveDb(Uint8List bytes) : _bytes = bytes {
     if (bytes.length != bytesEsperados) {
@@ -20,6 +22,16 @@ final class ClaveDb {
         bytes.length,
         'bytes',
         'la clave de la DB debe tener $bytesEsperados bytes (AES-256)',
+      );
+    }
+    try {
+      // Prueba de escritura que no cambia nada: una vista inmutable lanza acá, no en destruir().
+      bytes[0] = bytes[0];
+    } on UnsupportedError {
+      // Sin el valor a propósito: el mensaje del error no puede llevar los bytes de la clave.
+      throw ArgumentError(
+        'la clave de la DB necesita un buffer mutable: destruir() tiene que poder sobrescribirlo',
+        'bytes',
       );
     }
   }
@@ -46,9 +58,13 @@ final class ClaveDb {
   /// Es **best-effort**: el recolector de la VM pudo haber copiado el buffer antes, así que esto
   /// achica la ventana pero no garantiza que la clave desaparezca de la RAM. Llamarlo dos veces
   /// es inofensivo.
+  ///
+  /// La marca se pone **antes** de sobrescribir: si el borrado fallara por lo que fuera, la clave
+  /// queda inaccesible por [bytes] igual (falla cerrado), no viva detrás de un `destruida` en
+  /// `false`.
   void destruir() {
-    _bytes.fillRange(0, _bytes.length, 0);
     _destruida = true;
+    _bytes.fillRange(0, _bytes.length, 0);
   }
 
   @override
