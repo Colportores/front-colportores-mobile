@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/theme/tema_colportaje.dart';
 import 'features/auth/presentation/pages/inicio_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
@@ -16,7 +17,9 @@ class ColportoresApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'Colportores',
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF1B5E20), useMaterial3: true),
+      theme: temaClaro(),
+      darkTheme: temaOscuro(),
+      themeMode: ThemeMode.system,
       home: sesion.when(
         loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, _) => const LoginPage(),
