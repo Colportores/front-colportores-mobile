@@ -5,6 +5,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
+import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 
 part 'sesion_notifier.g.dart';
@@ -27,6 +28,41 @@ class SesionNotifier extends _$SesionNotifier {
     state = const AsyncLoading();
     final resultado = await ref.read(iniciarSesionUseCaseProvider)(
       IniciarSesionParams(email: email, password: password),
+    );
+
+    return resultado.fold(
+      (failure) {
+        state = const AsyncData(null);
+        return failure;
+      },
+      (sesion) {
+        state = AsyncData(sesion);
+        return null;
+      },
+    );
+  }
+
+  /// Registra una cuenta nueva y, si sale bien, deja la sesión iniciada (HU-AUTH-001, versión
+  /// mockeada — ver dartdoc de [RegistrarUsuarioUseCase] sobre qué puede cambiar con Supabase
+  /// Auth real). Devuelve el [Failure] si falló o `null` si se registró.
+  Future<Failure?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+    required bool aceptaTerminos,
+  }) async {
+    state = const AsyncLoading();
+    final resultado = await ref.read(registrarUsuarioUseCaseProvider)(
+      RegistrarUsuarioParams(
+        nombre: nombre,
+        apellido: apellido,
+        cedula: cedula,
+        email: email,
+        password: password,
+        aceptaTerminos: aceptaTerminos,
+      ),
     );
 
     return resultado.fold(

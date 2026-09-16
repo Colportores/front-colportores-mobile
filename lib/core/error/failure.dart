@@ -51,6 +51,12 @@ final class FailureCuentaPendiente extends Failure {
       );
 }
 
+/// Ya existe una cuenta con ese correo (HU-AUTH-001).
+final class FailureEmailYaRegistrado extends Failure {
+  const FailureEmailYaRegistrado()
+    : super(mensaje: 'Ya existe una cuenta con ese correo.', codigo: 'AUTH_EMAIL_DUPLICADO');
+}
+
 /// No hay red o el servidor no respondió. La operación puede reintentarse.
 final class FailureSinConexion extends Failure {
   const FailureSinConexion()

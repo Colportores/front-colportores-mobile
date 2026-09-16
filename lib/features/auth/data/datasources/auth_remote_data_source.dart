@@ -8,6 +8,17 @@ import '../models/sesion_model.dart';
 abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesion({required String email, required String password});
 
+  /// Supabase Auth `signUp` — pendiente, hoy solo fake (HU-AUTH-001, ver issue #14). Deja la
+  /// sesión iniciada; con Supabase real puede requerir verificación de email primero
+  /// (HU-AUTH-002, no decidido).
+  Future<SesionModel> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  });
+
   Future<void> cerrarSesion(String accessToken);
 }
 
@@ -22,6 +33,11 @@ final class CredencialesInvalidasException extends AuthRemoteException {
 
 final class CuentaPendienteException extends AuthRemoteException {
   const CuentaPendienteException();
+}
+
+/// Ya existe una cuenta con ese email (HU-AUTH-001).
+final class EmailYaRegistradoException extends AuthRemoteException {
+  const EmailYaRegistradoException();
 }
 
 final class SinConexionException extends AuthRemoteException {

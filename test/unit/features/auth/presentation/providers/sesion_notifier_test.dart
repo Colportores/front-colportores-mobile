@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -78,5 +79,59 @@ void main() {
       expect(container.read(dbLocalProvider), isNull);
       expect(helper.abierta, isFalse);
     });
+  });
+
+  group('SesionNotifier.registrar', () {
+    ProviderContainer construirContainer(AuthRemoteDataSourceEnMemoria remote) => ProviderContainer(
+      overrides: [
+        authRemoteDataSourceProvider.overrideWithValue(remote),
+        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      ],
+    );
+
+    test('dado un email nuevo, cuando registra, deja la sesión iniciada', () async {
+      final container = construirContainer(AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .registrar(
+            nombre: 'Ana',
+            apellido: 'Pérez',
+            cedula: '12345678',
+            email: 'ana@example.com',
+            password: 'Secreto123',
+            aceptaTerminos: true,
+          );
+
+      expect(falla, isNull);
+      expect(container.read(sesionProvider).value?.email, 'ana@example.com');
+    });
+
+    test(
+      'dado un email ya registrado, cuando registra, deja el Failure y no inicia sesión',
+      () async {
+        final container = construirContainer(
+          AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'Secreto123'}),
+        );
+        addTearDown(container.dispose);
+        await container.read(sesionProvider.future);
+
+        final falla = await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345678',
+              email: 'ana@example.com',
+              password: 'OtraSecreta1',
+              aceptaTerminos: true,
+            );
+
+        expect(falla, isA<FailureEmailYaRegistrado>());
+        expect(container.read(sesionProvider).value, isNull);
+      },
+    );
   });
 }

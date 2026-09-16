@@ -23,6 +23,24 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   }
 
   @override
+  Future<SesionModel> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    return _interno.registrar(
+      nombre: nombre,
+      apellido: apellido,
+      cedula: cedula,
+      email: email,
+      password: password,
+    );
+  }
+
+  @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
 }
 
