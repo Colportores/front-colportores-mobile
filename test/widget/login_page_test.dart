@@ -24,7 +24,7 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> registrar({
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,

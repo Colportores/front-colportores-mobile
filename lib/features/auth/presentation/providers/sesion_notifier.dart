@@ -1,8 +1,10 @@
+import 'package:dartz/dartz.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
@@ -60,10 +62,12 @@ class SesionNotifier extends _$SesionNotifier {
     );
   }
 
-  /// Registra una cuenta nueva y, si sale bien, deja la sesión iniciada (HU-AUTH-001, versión
-  /// mockeada — ver dartdoc de [RegistrarUsuarioUseCase] sobre qué puede cambiar con Supabase
-  /// Auth real). Devuelve el [Failure] si falló o `null` si se registró.
-  Future<Failure?> registrar({
+  /// Registra una cuenta nueva (HU-AUTH-001/002, ver dartdoc de [RegistrarUsuarioUseCase]).
+  ///
+  /// A diferencia de [iniciarSesion], devuelve el `Either` completo en vez de solo el [Failure]:
+  /// la página necesita distinguir error / éxito con sesión / éxito con verificación pendiente
+  /// (sesión `null`), no solo si falló.
+  Future<Either<Failure, ResultadoRegistro>> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -86,11 +90,11 @@ class SesionNotifier extends _$SesionNotifier {
     return resultado.fold(
       (failure) {
         state = const AsyncData(null);
-        return failure;
+        return Left(failure);
       },
-      (sesion) {
-        state = AsyncData(sesion);
-        return null;
+      (r) {
+        state = AsyncData(r.sesion);
+        return Right(r);
       },
     );
   }

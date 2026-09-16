@@ -40,9 +40,9 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   final Duration esperaOAuth;
 
   static const String _mensajeEmailNoConfirmado =
-      'Tenés que confirmar tu email antes de entrar. Revisá tu casilla';
-  static const String _mensajeRegistroSinSesion =
-      'Te enviamos un email para confirmar la cuenta. Después iniciá sesión';
+      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
+  static const String _mensajeDemasiadosIntentos =
+      'Demasiados intentos. Esperá unos minutos y volvé a probar.';
   static const String _mensajeGoogleNoCompletado =
       'No se completó el ingreso con Google. Probá de nuevo';
 
@@ -57,7 +57,7 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> registrar({
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -69,6 +69,9 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
         email: email,
         password: password,
         data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
+        // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
+        // no al Site URL (localhost:3000 por default). Ver README § Supabase para el dashboard.
+        emailRedirectTo: ConfigSupabase.redirectOAuth,
       ),
     );
     final sesion = respuesta.session;
@@ -79,10 +82,10 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     final identidades = respuesta.user?.identities;
     if (identidades != null && identidades.isEmpty) throw const EmailYaRegistradoException();
 
-    // Verificación de email: HU-AUTH-002 no está decidida. Mientras tanto se informa y no se
-    // deja la sesión iniciada.
-    _log.warn(LogModulo.auth, 'REGISTRO_SIN_SESION', 'signUp sin sesión: requiere confirmar email');
-    throw const ServidorException(status: 200, mensaje: _mensajeRegistroSinSesion);
+    // Verificación de email (HU-AUTH-002): con "Confirm email" activo, signUp no deja sesión
+    // iniciada. No es un error — la cuenta se creó, falta que el usuario confirme el correo.
+    _log.info(LogModulo.auth, 'REGISTRO_PENDIENTE', 'signUp sin sesión: requiere confirmar email');
+    return null;
   }
 
   @override
@@ -175,6 +178,11 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
       case 'email_not_confirmed':
         _log.warn(LogModulo.auth, 'EMAIL_NO_CONFIRMADO', 'login con email sin confirmar');
         return ServidorException(status: status, mensaje: _mensajeEmailNoConfirmado);
+      case 'weak_password':
+        return const PasswordDebilException();
+      case 'over_email_send_rate_limit' || 'over_request_rate_limit':
+        _log.warn(LogModulo.auth, 'RATE_LIMIT', 'límite de intentos/emails de Supabase alcanzado');
+        return ServidorException(status: status, mensaje: _mensajeDemasiadosIntentos);
     }
 
     // Versiones de GoTrue sin `error_code`: se cae al texto, que es estable desde hace años.
@@ -184,11 +192,18 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     if (status == 422 && mensaje.contains('already registered')) {
       return const EmailYaRegistradoException();
     }
+    // El free tier de Supabase sin SMTP propio manda como máximo ~2 emails por hora: sin `code`
+    // (Edge Functions / gateways viejos) el 429 es la única pista.
+    if (status == 429) {
+      return ServidorException(status: status, mensaje: _mensajeDemasiadosIntentos);
+    }
 
+    // `signup_disabled`, `validation_failed`, `bad_json` u otro código sin caso propio: no hay
+    // texto lindo para inventar, así que se muestra el de Supabase (nunca lleva PII).
     _log.warn(LogModulo.auth, 'AUTH_ERROR', 'error de Supabase Auth sin traducción', {
       'status': status,
       'code': e.code,
     });
-    return ServidorException(status: status);
+    return ServidorException(status: status, mensaje: e.message);
   }
 }

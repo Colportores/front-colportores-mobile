@@ -1,11 +1,43 @@
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _app({required AuthRemoteDataSourceEnMemoria remote}) => ProviderScope(
+/// Remoto que lanza una excepción fija en `iniciarSesion` — para ver el banner de "email sin
+/// confirmar" sin depender de Supabase real (eso ya lo cubre el test unitario del data source).
+final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
+  _RemoteQueLanzaAlIniciar(this.excepcion);
+
+  final AuthRemoteException excepcion;
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async =>
+      throw excepcion;
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async => null;
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+}
+
+Widget _app({required AuthRemoteDataSource remote}) => ProviderScope(
   overrides: [
     authRemoteDataSourceProvider.overrideWithValue(remote),
     authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
@@ -82,6 +114,61 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+    });
+
+    testWidgets('cuando el email no está confirmado, muestra el aviso de verificar', (
+      tester,
+    ) async {
+      final remote = _RemoteQueLanzaAlIniciar(
+        const ServidorException(
+          mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
+        ),
+      );
+      await tester.pumpWidget(_app(remote: remote));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(find.byKey(const Key('login_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('verificar tu correo'), findsOneWidget);
+    });
+
+    testWidgets('cuando el registro requiere verificar el email, vuelve al login con los campos '
+        'precargados y el aviso', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        requiereVerificacionAlRegistrar: true,
+      );
+      await tester.pumpWidget(_app(remote: remote));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('login_ir_a_registro')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('registro_nombre')), 'Lucía');
+      await tester.enterText(find.byKey(const Key('registro_apellido')), 'Silva');
+      await tester.enterText(find.byKey(const Key('registro_cedula')), '4812309-2');
+      await tester.enterText(find.byKey(const Key('registro_email')), 'lucia.silva@correo.com');
+      await tester.enterText(find.byKey(const Key('registro_password')), 'Secreto123');
+      await tester.tap(find.byKey(const Key('registro_terminos')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.pumpAndSettle();
+
+      // Volvió al login (no llegó a "Cuenta creada" ni a la pantalla de inicio).
+      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+      expect(find.byKey(const Key('login_banner_verificacion')), findsOneWidget);
+      expect(find.textContaining('lucia.silva@correo.com'), findsWidgets);
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('login_password'))).controller?.text,
+        'Secreto123',
+      );
     });
   });
 }

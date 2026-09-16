@@ -135,7 +135,7 @@ void main() {
       addTearDown(container.dispose);
       await container.read(sesionProvider.future);
 
-      final falla = await container
+      final resultado = await container
           .read(sesionProvider.notifier)
           .registrar(
             nombre: 'Ana',
@@ -146,7 +146,11 @@ void main() {
             aceptaTerminos: true,
           );
 
-      expect(falla, isNull);
+      expect(resultado.isRight(), isTrue);
+      expect(
+        resultado.getOrElse(() => throw StateError('esperaba Right')).requiereVerificacion,
+        isFalse,
+      );
       expect(container.read(sesionProvider).value?.email, 'ana@example.com');
     });
 
@@ -159,7 +163,7 @@ void main() {
         addTearDown(container.dispose);
         await container.read(sesionProvider.future);
 
-        final falla = await container
+        final resultado = await container
             .read(sesionProvider.notifier)
             .registrar(
               nombre: 'Ana',
@@ -170,9 +174,36 @@ void main() {
               aceptaTerminos: true,
             );
 
-        expect(falla, isA<FailureEmailYaRegistrado>());
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureEmailYaRegistrado>());
         expect(container.read(sesionProvider).value, isNull);
       },
     );
+
+    test('dado que falta verificar el email, cuando registra, no deja sesión iniciada', () async {
+      final container = construirContainer(
+        AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        ),
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+
+      final resultado = await container
+          .read(sesionProvider.notifier)
+          .registrar(
+            nombre: 'Ana',
+            apellido: 'Pérez',
+            cedula: '12345678',
+            email: 'ana@example.com',
+            password: 'Secreto123',
+            aceptaTerminos: true,
+          );
+
+      expect(resultado.isRight(), isTrue);
+      final r = resultado.getOrElse(() => throw StateError('esperaba Right'));
+      expect(r.requiereVerificacion, isTrue);
+      expect(container.read(sesionProvider).value, isNull);
+    });
   });
 }

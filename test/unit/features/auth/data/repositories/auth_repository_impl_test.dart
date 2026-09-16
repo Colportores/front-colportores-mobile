@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:dartz/dartz.dart';
@@ -20,7 +21,7 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> registrar({
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -70,13 +71,43 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
       throw UnimplementedError();
 
   @override
-  Future<SesionModel> registrar({
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
     required String email,
     required String password,
   }) => throw UnimplementedError();
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+}
+
+/// Remoto que devuelve una única excepción fija en `registrar` — para probar cómo el repositorio
+/// traduce casos que el fake en memoria no modela (p. ej. contraseña débil).
+final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
+  _RemoteQueLanzaEnRegistrar(this.excepcion);
+
+  final AuthRemoteException excepcion;
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async => throw excepcion;
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
@@ -164,7 +195,9 @@ void main() {
         );
 
         expect(resultado.isRight(), isTrue);
-        final sesion = resultado.getOrElse(() => throw StateError('esperaba Right'));
+        final r = resultado.getOrElse(() => throw StateError('esperaba Right'));
+        expect(r.requiereVerificacion, isFalse);
+        final sesion = r.sesion!;
         expect(sesion.runtimeType, Sesion, reason: 'el dominio recibe entidades, no modelos');
         expect(sesion.email, 'bruno@example.com');
         expect((await local.leerSesion())?.toEntity(), sesion);
@@ -208,7 +241,7 @@ void main() {
           password: 'OtraSecreta1',
         );
 
-        expect(resultado, const Left<Failure, Sesion>(FailureEmailYaRegistrado()));
+        expect(resultado, const Left<Failure, ResultadoRegistro>(FailureEmailYaRegistrado()));
         expect(await local.leerSesion(), isNull);
       });
     });
@@ -225,7 +258,61 @@ void main() {
           password: 'Secreto123',
         );
 
-        expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
+        expect(resultado, const Left<Failure, ResultadoRegistro>(FailureSinConexion()));
+      });
+    });
+
+    group('dado que falta verificar el email (Confirm email activo)', () {
+      test('cuando registra, devuelve ResultadoRegistro sin sesión y no persiste', () async {
+        final remotePendiente = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        final repositoryPendiente = AuthRepositoryImpl(
+          remotePendiente,
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repositoryPendiente.registrar(
+          nombre: 'Bruno',
+          apellido: 'Díaz',
+          cedula: '12345678',
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
+
+        expect(resultado.isRight(), isTrue);
+        final r = resultado.getOrElse(() => throw StateError('esperaba Right'));
+        expect(r.requiereVerificacion, isTrue);
+        expect(r.sesion, isNull);
+        expect(r.email, 'bruno@example.com');
+        expect(await local.leerSesion(), isNull);
+      });
+    });
+
+    group('dado que la contraseña es débil', () {
+      test('cuando registra, devuelve FailureValidacion con el error en password', () async {
+        final repositorioRoto = AuthRepositoryImpl(
+          _RemoteQueLanzaEnRegistrar(const PasswordDebilException()),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repositorioRoto.registrar(
+          nombre: 'Bruno',
+          apellido: 'Díaz',
+          cedula: '12345678',
+          email: 'bruno@example.com',
+          password: 'debil',
+        );
+
+        expect(
+          resultado,
+          const Left<Failure, ResultadoRegistro>(
+            FailureValidacion(campos: {'password': 'La contraseña es demasiado débil.'}),
+          ),
+        );
       });
     });
 

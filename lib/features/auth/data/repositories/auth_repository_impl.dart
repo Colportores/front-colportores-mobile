@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_data_source.dart';
@@ -46,7 +47,7 @@ final class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Either<Failure, Sesion>> registrar({
+  Future<Either<Failure, ResultadoRegistro>> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -61,9 +62,13 @@ final class AuthRepositoryImpl implements AuthRepository {
         email: email,
         password: password,
       );
+      if (sesion == null) {
+        _log.info(LogModulo.auth, 'REGISTRO_PENDIENTE', 'registro OK, falta verificar el email');
+        return Right(ResultadoRegistro(sesion: null, email: email));
+      }
       await _local.guardarSesion(sesion);
       _log.info(LogModulo.auth, 'REGISTRO_OK', 'registro exitoso', {'user_id': sesion.usuarioId});
-      return Right(sesion.toEntity());
+      return Right(ResultadoRegistro(sesion: sesion.toEntity(), email: email));
     } on AuthRemoteException catch (e) {
       final failure = _traducir(e);
       _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {'codigo': failure.codigo});
@@ -162,6 +167,9 @@ final class AuthRepositoryImpl implements AuthRepository {
     CuentaPendienteException() => const FailureCuentaPendiente(),
     EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
+    PasswordDebilException() => const FailureValidacion(
+      campos: {'password': 'La contraseña es demasiado débil.'},
+    ),
     ServidorException(:final status, :final mensaje) =>
       mensaje == null
           ? FailureServidor(status: status)

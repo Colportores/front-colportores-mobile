@@ -1,5 +1,6 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/registrar_usuario_use_case.dart';
@@ -34,7 +35,7 @@ void main() {
     useCase = RegistrarUsuarioUseCase(repository);
   });
 
-  void stubRepositorio(Either<Failure, Sesion> resultado) {
+  void stubRepositorio(Either<Failure, ResultadoRegistro> resultado) {
     when(
       () => repository.registrar(
         nombre: any(named: 'nombre'),
@@ -49,7 +50,8 @@ void main() {
   group('RegistrarUsuarioUseCase', () {
     group('dado que los datos son válidos', () {
       test('cuando registra, delega en el repositorio con email y cédula normalizados', () async {
-        stubRepositorio(Right(sesion));
+        final resultadoRegistro = ResultadoRegistro(sesion: sesion, email: sesion.email);
+        stubRepositorio(Right(resultadoRegistro));
 
         final resultado = await useCase(
           const RegistrarUsuarioParams(
@@ -62,7 +64,7 @@ void main() {
           ),
         );
 
-        expect(resultado, Right<Failure, Sesion>(sesion));
+        expect(resultado, Right<Failure, ResultadoRegistro>(resultadoRegistro));
         verify(
           () => repository.registrar(
             nombre: 'Ana',
@@ -79,7 +81,7 @@ void main() {
 
         final resultado = await useCase(datosValidos);
 
-        expect(resultado, const Left<Failure, Sesion>(FailureEmailYaRegistrado()));
+        expect(resultado, const Left<Failure, ResultadoRegistro>(FailureEmailYaRegistrado()));
       });
     });
 

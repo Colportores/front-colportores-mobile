@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/config/config_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source_supabase.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -160,7 +161,70 @@ void main() {
           isA<ServidorException>().having(
             (e) => e.mensaje,
             'mensaje',
-            contains('confirmar tu email'),
+            contains('verificar tu correo'),
+          ),
+        ),
+      );
+    });
+
+    test('dado que la contraseña es débil, lanza PasswordDebilException', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(const AuthApiException('Password is too weak', code: 'weak_password'));
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+        throwsA(isA<PasswordDebilException>()),
+      );
+    });
+
+    test(
+      'dado el límite de emails/intentos de Supabase (429), lanza ServidorException con mensaje',
+      () {
+        when(
+          () => auth.signInWithPassword(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        ).thenThrow(
+          const AuthApiException(
+            'Email rate limit exceeded',
+            statusCode: '429',
+            code: 'over_email_send_rate_limit',
+          ),
+        );
+
+        expect(
+          () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+          throwsA(
+            isA<ServidorException>().having(
+              (e) => e.mensaje,
+              'mensaje',
+              contains('Demasiados intentos'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('dado un 429 sin error_code, también avisa el límite de intentos', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(const AuthApiException('Too Many Requests', statusCode: '429'));
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
           ),
         ),
       );
@@ -180,7 +244,8 @@ void main() {
       );
     });
 
-    test('dado un error de Supabase sin traducción, lanza ServidorException con el status', () {
+    test('dado un error de Supabase sin traducción, lanza ServidorException con el status y el '
+        'mensaje de Supabase (p. ej. signup_disabled, validation_failed, bad_json)', () {
       when(
         () => auth.signInWithPassword(
           email: any(named: 'email'),
@@ -190,7 +255,11 @@ void main() {
 
       expect(
         () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
-        throwsA(isA<ServidorException>().having((e) => e.status, 'status', 500)),
+        throwsA(
+          isA<ServidorException>()
+              .having((e) => e.status, 'status', 500)
+              .having((e) => e.mensaje, 'mensaje', 'boom'),
+        ),
       );
     });
 
@@ -210,7 +279,7 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.registrar', () {
-    Future<void> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
+    Future<SesionModel?> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
       nombre: 'Ana',
       apellido: 'Pérez',
       cedula: '12345678',
@@ -218,28 +287,27 @@ void main() {
       password: 'secreto123',
     );
 
-    test(
-      'dado un email nuevo, cuando registra, manda el perfil en user_metadata y devuelve la sesión',
-      () async {
-        when(
-          () => auth.signUp(
-            email: 'ana@example.com',
-            password: 'secreto123',
-            data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
-          ),
-        ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
-
-        final sesion = await dataSource().registrar(
-          nombre: 'Ana',
-          apellido: 'Pérez',
-          cedula: '12345678',
+    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo, y devuelve '
+        'la sesión', () async {
+      when(
+        () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
-        );
+          data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
 
-        expect(sesion.usuarioId, usuarioId);
-      },
-    );
+      final sesion = await dataSource().registrar(
+        nombre: 'Ana',
+        apellido: 'Pérez',
+        cedula: '12345678',
+        email: 'ana@example.com',
+        password: 'secreto123',
+      );
+
+      expect(sesion?.usuarioId, usuarioId);
+    });
 
     test('dado un email ya registrado (error_code), lanza EmailYaRegistradoException', () {
       when(
@@ -247,6 +315,7 @@ void main() {
           email: any(named: 'email'),
           password: any(named: 'password'),
           data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
         ),
       ).thenThrow(
         const AuthApiException(
@@ -268,6 +337,7 @@ void main() {
             email: any(named: 'email'),
             password: any(named: 'password'),
             data: any(named: 'data'),
+            emailRedirectTo: any(named: 'emailRedirectTo'),
           ),
         ).thenAnswer((_) async => respuestaCon(user: user));
 
@@ -276,23 +346,19 @@ void main() {
     );
 
     test(
-      'dado que hace falta confirmar el email (sin sesión), lanza ServidorException con mensaje',
-      () {
+      'dado que hace falta confirmar el email (sin sesión), devuelve null — no es un error',
+      () async {
         final user = _FakeUser(id: usuarioId);
         when(
           () => auth.signUp(
             email: any(named: 'email'),
             password: any(named: 'password'),
             data: any(named: 'data'),
+            emailRedirectTo: any(named: 'emailRedirectTo'),
           ),
         ).thenAnswer((_) async => respuestaCon(user: user));
 
-        expect(
-          () => registrar(dataSource()),
-          throwsA(
-            isA<ServidorException>().having((e) => e.mensaje, 'mensaje', contains('confirmar')),
-          ),
-        );
+        expect(await registrar(dataSource()), isNull);
       },
     );
   });

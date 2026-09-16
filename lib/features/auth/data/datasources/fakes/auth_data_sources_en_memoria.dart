@@ -13,6 +13,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required Map<String, String> credenciales,
     this.simularSinConexion = false,
     this.cuentasPendientes = const {},
+    this.requiereVerificacionAlRegistrar = false,
     DateTime Function()? ahora,
   }) : _credenciales = Map.of(credenciales),
        _ahora = ahora ?? DateTime.now;
@@ -26,6 +27,10 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   final Map<String, String> _credenciales;
   final Set<String> cuentasPendientes;
   final DateTime Function() _ahora;
+
+  /// Si es `true`, `registrar` crea la cuenta pero devuelve `null` en vez de sesión — simula
+  /// Supabase con "Confirm email" activo (HU-AUTH-002), para poder probar ese flujo sin backend.
+  final bool requiereVerificacionAlRegistrar;
 
   /// Perfiles registrados en este fake (HU-AUTH-001). Solo en memoria: la persistencia local
   /// del perfil depende de la DB cifrada (#6, bloqueado) y no está implementada.
@@ -53,7 +58,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> registrar({
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -72,6 +77,8 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       cedula: cedula,
       email: email,
     );
+
+    if (requiereVerificacionAlRegistrar) return null;
 
     return SesionModel(
       usuarioId: usuarioId,

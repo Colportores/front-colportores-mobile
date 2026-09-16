@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
+import '../entities/resultado_registro.dart';
 import '../entities/sesion.dart';
 
 /// Contrato del repositorio de autenticación. Interfaz en `domain`; implementación en `data`
@@ -10,9 +11,9 @@ abstract interface class AuthRepository {
   /// Inicia sesión y deja la sesión persistida en el dispositivo.
   Future<Either<Failure, Sesion>> iniciarSesion({required String email, required String password});
 
-  /// Registra una cuenta nueva y deja la sesión iniciada (HU-AUTH-001, versión mockeada — ver
-  /// dartdoc de `RegistrarUsuarioUseCase` sobre qué puede cambiar con Supabase Auth real).
-  Future<Either<Failure, Sesion>> registrar({
+  /// Registra una cuenta nueva. Deja la sesión iniciada si Supabase la devuelve, o `null` en
+  /// [ResultadoRegistro.sesion] si falta confirmar el email (HU-AUTH-001/002).
+  Future<Either<Failure, ResultadoRegistro>> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
