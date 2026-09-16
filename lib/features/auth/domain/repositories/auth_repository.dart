@@ -10,6 +10,16 @@ abstract interface class AuthRepository {
   /// Inicia sesión y deja la sesión persistida en el dispositivo.
   Future<Either<Failure, Sesion>> iniciarSesion({required String email, required String password});
 
+  /// Registra una cuenta nueva y deja la sesión iniciada (HU-AUTH-001, versión mockeada — ver
+  /// dartdoc de `RegistrarUsuarioUseCase` sobre qué puede cambiar con Supabase Auth real).
+  Future<Either<Failure, Sesion>> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  });
+
   /// Sesión guardada en el dispositivo, o `null` si nunca hubo login o se cerró.
   Future<Either<Failure, Sesion?>> sesionActual();
 

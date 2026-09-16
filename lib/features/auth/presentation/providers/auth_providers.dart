@@ -7,6 +7,7 @@ import '../../domain/repositories/auth_repository.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
+import '../../domain/usecases/registrar_usuario_use_case.dart';
 
 part 'auth_providers.g.dart';
 
@@ -33,6 +34,10 @@ AuthRepository authRepository(Ref ref) => AuthRepositoryImpl(
 @riverpod
 IniciarSesionUseCase iniciarSesionUseCase(Ref ref) =>
     IniciarSesionUseCase(ref.watch(authRepositoryProvider));
+
+@riverpod
+RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
+    RegistrarUsuarioUseCase(ref.watch(authRepositoryProvider));
 
 @riverpod
 ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>

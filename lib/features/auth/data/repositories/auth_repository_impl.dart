@@ -45,6 +45,35 @@ final class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, Sesion>> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final sesion = await _remote.registrar(
+        nombre: nombre,
+        apellido: apellido,
+        cedula: cedula,
+        email: email,
+        password: password,
+      );
+      await _local.guardarSesion(sesion);
+      _log.info(LogModulo.auth, 'REGISTRO_OK', 'registro exitoso', {'user_id': sesion.usuarioId});
+      return Right(sesion.toEntity());
+    } on AuthRemoteException catch (e) {
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {'codigo': failure.codigo});
+      return Left(failure);
+    } on Object catch (e, st) {
+      _log.error(LogModulo.auth, 'REGISTRO_FAIL', 'error inesperado en registro', const {}, e, st);
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
   Future<Either<Failure, Sesion?>> sesionActual() async {
     try {
       final sesion = await _local.leerSesion();
@@ -82,6 +111,7 @@ final class AuthRepositoryImpl implements AuthRepository {
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
     CuentaPendienteException() => const FailureCuentaPendiente(),
+    EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
     ServidorException(:final status) => FailureServidor(status: status),
   };

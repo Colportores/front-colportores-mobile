@@ -1,3 +1,4 @@
+import '../../../domain/entities/usuario.dart';
 import '../../models/sesion_model.dart';
 import '../auth_local_data_source.dart';
 import '../auth_remote_data_source.dart';
@@ -13,16 +14,24 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     this.simularSinConexion = false,
     this.cuentasPendientes = const {},
     DateTime Function()? ahora,
-  }) : _credenciales = Map.unmodifiable(credenciales),
+  }) : _credenciales = Map.of(credenciales),
        _ahora = ahora ?? DateTime.now;
 
   /// Cuenta de demo para correr la app sin backend.
   factory AuthRemoteDataSourceEnMemoria.demo() =>
       AuthRemoteDataSourceEnMemoria(credenciales: const {'demo@colportores.app': 'demo1234'});
 
+  /// Mutable a propósito: `registrar` agrega credenciales nuevas para que la demo pueda
+  /// registrarse y loguearse a continuación.
   final Map<String, String> _credenciales;
   final Set<String> cuentasPendientes;
   final DateTime Function() _ahora;
+
+  /// Perfiles registrados en este fake (HU-AUTH-001). Solo en memoria: la persistencia local
+  /// del perfil depende de la DB cifrada (#6, bloqueado) y no está implementada.
+  final Map<String, Usuario> _usuarios = {};
+
+  Map<String, Usuario> get usuariosRegistrados => Map.unmodifiable(_usuarios);
 
   /// Si es `true`, toda llamada lanza [SinConexionException].
   bool simularSinConexion;
@@ -37,6 +46,35 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
 
     return SesionModel(
       usuarioId: _uuidDesde(email),
+      email: email,
+      accessToken: 'token-en-memoria-${email.hashCode}',
+      expiraEn: _ahora().add(const Duration(hours: 1)),
+    );
+  }
+
+  @override
+  Future<SesionModel> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
+
+    _credenciales[email] = password;
+    final usuarioId = _uuidDesde(email);
+    _usuarios[email] = Usuario(
+      id: usuarioId,
+      nombre: nombre,
+      apellido: apellido,
+      cedula: cedula,
+      email: email,
+    );
+
+    return SesionModel(
+      usuarioId: usuarioId,
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
       expiraEn: _ahora().add(const Duration(hours: 1)),
