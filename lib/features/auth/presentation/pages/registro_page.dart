@@ -96,6 +96,29 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     });
   }
 
+  /// Con Supabase, OAuth registra e inicia sesión en un solo paso: mismo flujo que en login.
+  Future<void> _registrarConGoogle() async {
+    setState(() {
+      _enviando = true;
+      _erroresCampo = const {};
+      _errorGeneral = null;
+    });
+
+    final failure = await ref.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+    if (!mounted) return;
+
+    if (failure == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+
+    setState(() {
+      _enviando = false;
+      _errorGeneral = failure.mensaje;
+    });
+  }
+
   void _proximamente() {
     ScaffoldMessenger.of(
       context,
@@ -300,10 +323,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                               etiqueta: 'Google',
                               glifo: 'G',
                               colorGlifo: colores.googleAzul,
-                              onPressed: () {
-                                // TODO: alta de OAuth con Google — todavía sin HU asignada.
-                                _proximamente();
-                              },
+                              onPressed: _enviando ? null : _registrarConGoogle,
                             ),
                           ),
                           if (mostrarApple) ...[
@@ -472,7 +492,9 @@ class _BotonProveedor extends StatelessWidget {
   final String etiqueta;
   final String glifo;
   final Color? colorGlifo;
-  final VoidCallback onPressed;
+
+  /// `null` deshabilita el botón (mientras hay un ingreso en curso).
+  final VoidCallback? onPressed;
   final bool fondoNegro;
 
   @override

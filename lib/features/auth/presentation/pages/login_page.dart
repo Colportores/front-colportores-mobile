@@ -68,6 +68,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
   }
 
+  Future<void> _entrarConGoogle() async {
+    setState(() {
+      _enviando = true;
+      _erroresCampo = const {};
+      _errorGeneral = null;
+    });
+
+    final failure = await ref.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+    if (!mounted) return;
+    setState(() {
+      _enviando = false;
+      _errorGeneral = failure?.mensaje;
+    });
+  }
+
   void _proximamente() {
     ScaffoldMessenger.of(
       context,
@@ -197,10 +213,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         etiqueta: 'Continuar con Google',
                         glifo: 'G',
                         colorGlifo: colores.googleAzul,
-                        onPressed: () {
-                          // TODO: alta de OAuth con Google — todavía sin HU asignada.
-                          _proximamente();
-                        },
+                        onPressed: _enviando ? null : _entrarConGoogle,
                       ),
                       if (mostrarApple) ...[
                         const SizedBox(height: 12),
@@ -437,7 +450,9 @@ class _BotonProveedor extends StatelessWidget {
   final String etiqueta;
   final String glifo;
   final Color? colorGlifo;
-  final VoidCallback onPressed;
+
+  /// `null` deshabilita el botón (mientras hay un ingreso en curso).
+  final VoidCallback? onPressed;
   final bool fondoNegro;
 
   @override

@@ -6,6 +6,7 @@ import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_data_source.dart';
 import '../datasources/auth_remote_data_source.dart';
+import '../models/sesion_model.dart';
 
 /// Implementación de [AuthRepository]. Plantilla de referencia para los repositorios del proyecto:
 ///
@@ -74,10 +75,58 @@ final class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, Sesion>> iniciarSesionConGoogle() async {
+    try {
+      final sesion = await _remote.iniciarSesionConGoogle();
+      await _local.guardarSesion(sesion);
+      _log.info(LogModulo.auth, 'LOGIN_GOOGLE_OK', 'login con Google exitoso', {
+        'user_id': sesion.usuarioId,
+      });
+      return Right(sesion.toEntity());
+    } on AuthRemoteException catch (e) {
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'LOGIN_GOOGLE_FAIL', 'login con Google rechazado', {
+        'codigo': failure.codigo,
+      });
+      return Left(failure);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'LOGIN_GOOGLE_FAIL',
+        'error inesperado en Google',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
   Future<Either<Failure, Sesion?>> sesionActual() async {
     try {
-      final sesion = await _local.leerSesion();
-      return Right(sesion?.toEntity());
+      final local = await _local.leerSesion();
+      if (local != null) return Right(local.toEntity());
+
+      // Sin sesión local (p. ej. tras reiniciar la app): el proveedor puede tenerla persistida
+      // por su cuenta (supabase_flutter). Si no se puede consultar (sin red y token vencido),
+      // se arranca deslogueado; la política de "sliding session" offline es HU-AUTH-006.
+      final SesionModel? remota;
+      try {
+        remota = await _remote.obtenerSesionActual();
+      } on AuthRemoteException catch (e) {
+        _log.warn(LogModulo.auth, 'SESION_RESTAURAR_FAIL', 'no se pudo restaurar la sesión', {
+          'codigo': _traducir(e).codigo,
+        });
+        return const Right(null);
+      }
+      if (remota == null) return const Right(null);
+
+      await _local.guardarSesion(remota);
+      _log.info(LogModulo.auth, 'SESION_RESTAURADA', 'sesión restaurada del proveedor', {
+        'user_id': remota.usuarioId,
+      });
+      return Right(remota.toEntity());
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'SESION_LEER_FAIL', 'no se pudo leer la sesión', const {}, e, st);
       return Left(FailureInesperado(causa: e));
@@ -113,6 +162,9 @@ final class AuthRepositoryImpl implements AuthRepository {
     CuentaPendienteException() => const FailureCuentaPendiente(),
     EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
-    ServidorException(:final status) => FailureServidor(status: status),
+    ServidorException(:final status, :final mensaje) =>
+      mensaje == null
+          ? FailureServidor(status: status)
+          : FailureServidor(status: status, mensaje: mensaje),
   };
 }

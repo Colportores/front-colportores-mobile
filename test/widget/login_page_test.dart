@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,15 @@ class _RemoteConDemora implements AuthRemoteDataSource {
       password: password,
     );
   }
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    return _interno.iniciarSesionConGoogle();
+  }
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() => _interno.obtenerSesionActual();
 
   @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
@@ -93,16 +103,39 @@ void main() {
       expect(find.text('Continuar con Apple'), findsNothing);
     });
 
-    testWidgets('tocar "Continuar con Google" avisa que no está disponible todavía', (
-      tester,
-    ) async {
+    testWidgets('tocar "Continuar con Google" inicia sesión con el proveedor', (tester) async {
       await tester.pumpWidget(_pagina());
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Continuar con Google'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Disponible próximamente'), findsOneWidget);
+      final container = ProviderScope.containerOf(tester.element(find.byType(LoginPage)));
+      expect(
+        container.read(sesionProvider).value?.email,
+        AuthRemoteDataSourceEnMemoria.emailGoogle,
+      );
+      expect(find.text('Disponible próximamente'), findsNothing);
+    });
+
+    testWidgets('si Google falla, muestra el mensaje del Failure', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRemoteDataSourceProvider.overrideWithValue(
+              AuthRemoteDataSourceEnMemoria(credenciales: const {}, simularSinConexion: true),
+            ),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          ],
+          child: MaterialApp(theme: temaClaro(), home: const LoginPage(mostrarApple: false)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Continuar con Google'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Sin conexión'), findsOneWidget);
     });
 
     testWidgets('Entrar se deshabilita y muestra spinner mientras iniciarSesion no resolvió', (

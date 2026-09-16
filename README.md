@@ -82,12 +82,27 @@ docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 - **SQLCipher** lo empaqueta `package:sqlite3` con [hooks](https://pub.dev/documentation/sqlite3/latest/topics/hook-topic.html) (`hooks.user_defines.sqlite3.source: sqlcipher` en `pubspec.yaml`): en el primer build o `flutter test` baja el binario precompilado de la plataforma desde los releases de GitHub del paquete (verificado por sha256) a `.dart_tool/hooks_runner/`. Hace falta red esa primera vez; no hay nada que instalar en el host ni en la imagen (en Linux linkea el `libcrypto.so.3` que Ubuntu ya trae). Los tests de `core/database` corren contra ese SQLCipher real, no contra un fake.
 - **`drift_dev` todavía no está** (ver nota en `pubspec.yaml`): no resuelve junto a `custom_lint`. Mientras la DB no tiene tablas no hace falta; hay que destrabarlo antes de la primera tabla (#8).
 - `dart format` usa 100 columnas (`formatter.page_width` en `analysis_options.yaml`).
-- Para correr en un teléfono o emulador se usa `flutter run` desde el host: el contenedor no ve USB ni emuladores de Windows. Cuenta demo mientras no hay backend: `demo@colportores.app` / `demo1234`.
+- Para correr en un teléfono o emulador se usa `flutter run` desde el host: el contenedor no ve USB ni emuladores de Windows. Sin Supabase configurado la app usa fakes en memoria: cuenta demo `demo@colportores.app` / `demo1234` (y "Continuar con Google" entra como `google@colportores.app`).
+
+### Supabase (auth real)
+
+La app se autentica contra Supabase Auth (ADR-016) cuando se compila con `SUPABASE_URL` y `SUPABASE_ANON_KEY` (`lib/core/config/config_supabase.dart`; sirve la anon key legacy o la publishable key nueva); si falta alguno, cae a los fakes en memoria, así los tests y CI no dependen de un proyecto. La anon key es pública, pero no se versiona: cambia por entorno.
+
+```sh
+cp .env.json.example .env.json          # gitignored; completar con los valores del proyecto
+flutter run --dart-define-from-file=.env.json
+# o, sin archivo:
+flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUPABASE_ANON_KEY=eyJ...
+```
+
+- Google entra por OAuth en el navegador del sistema y vuelve por el deep link `io.supabase.colportores://login-callback/` (intent-filter en `AndroidManifest.xml`); esa URL tiene que estar allowlisteada en Supabase → Authentication → URL Configuration → Redirect URLs. Apple/iOS quedan desactivados por ahora.
+- `scripts/check_auth_providers.sh` verifica contra `/auth/v1/settings` que el proyecto tenga email y Google activos y Apple apagado; en CI lee las variables de repo `SUPABASE_URL` / `SUPABASE_ANON_KEY` (`gh variable set …`) y con ellas el job del APK sale ya configurado.
+- La sesión la persiste `supabase_flutter` (SharedPreferences por default). Pasarla a `flutter_secure_storage` (`Supabase.initialize(authOptions: FlutterAuthClientOptions(localStorage: …))`) está pendiente de decisión (ADR-003).
 - Umbrales de cobertura (`scripts/coverage_check.sh`): total ≥ 70%, dominio ≥ 90%.
 
 ## CI
 
-`ci.yml` (PR y push a `develop`/`staging`/`production`): `build_runner`, `dart format --set-exit-if-changed`, `flutter analyze --fatal-infos`, `custom_lint` (reglas de Riverpod), `flutter test --coverage` con umbrales, y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
+`ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `flutter analyze --fatal-infos`, `custom_lint` (reglas de Riverpod), `flutter test --coverage` con umbrales, el smoke test de proveedores de Supabase Auth (omitido si no hay variables), y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
 
 ## Privacidad
 
