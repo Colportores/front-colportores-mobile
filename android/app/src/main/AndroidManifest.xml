@@ -1,8 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
+         1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin
+            guarda el ciphertext en SharedPreferences —que Auto Backup sube a Drive— y la clave
+            que lo envuelve en el Keystore, que no se respalda. Tras un restore en otro equipo la
+            lectura falla ("Failed to unwrap key") y, con resetOnError=true, la sal se devuelve
+            como null en silencio.
+         2. La DB SQLCipher con persona/nota es local-only (02-restricciones.md, R-PV-02): nunca
+            sale del dispositivo. La única vía para moverla a otro equipo es el backup E2E con la
+            contraseña del usuario (ADR-003), no el backup de Android.
+         allowBackup="false" cubre cloud en todas las API; dataExtractionRules cubre además la
+         transferencia dispositivo-a-dispositivo en API 31+, donde allowBackup no alcanza en
+         todos los fabricantes. -->
     <application
         android:label="colportores_mobile"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

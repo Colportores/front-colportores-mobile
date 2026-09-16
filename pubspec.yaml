@@ -13,12 +13,19 @@ environment:
 # Nota: ADR-007 dice "Riverpod 2.x". Con Dart 3.12 la línea 2.x ya no resuelve junto a
 # `test`/`custom_lint` (analyzer ≥ 8), así que se adopta Riverpod 3.x (misma API de codegen,
 # `Ref` unificado, el generador quita el sufijo `Notifier`). Pendiente: nota en ADR-007.
+#
+# Nota: `flutter_secure_storage` queda en la línea 10.x a propósito. La 11.0.0 compila contra
+# Android SDK 37 y el proyecto compila contra la 36 (`flutter.compileSdkVersion` de Flutter
+# 3.44), así que el job `build-android` falla. Subir a 11 implica subir el compileSdk del
+# proyecto — decisión de infra aparte, no de este wrapper. La API que usa
+# `core/secure_storage/` (read/write/delete/deleteAll) es la misma en las dos líneas.
 dependencies:
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
   equatable: ^2.1.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.1.0  # estado / DI
+  flutter_secure_storage: ^10.3.1  # Keystore/Keychain: sal de cifrado (ADR-003) — ver nota arriba
   logger: ^2.7.0            # [NIVEL][MÓDULO][OPERACIÓN] (convenciones §7)
   riverpod_annotation: ^4.0.0
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
