@@ -9,10 +9,11 @@ import '../models/sesion_model.dart';
 abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesion({required String email, required String password});
 
-  /// Supabase Auth `signUp` — pendiente, hoy solo fake (HU-AUTH-001, ver issue #14). Deja la
-  /// sesión iniciada; con Supabase real puede requerir verificación de email primero
-  /// (HU-AUTH-002, no decidido).
-  Future<SesionModel> registrar({
+  /// Supabase Auth `signUp` (HU-AUTH-001/002). Devuelve la sesión si Supabase la deja iniciada,
+  /// o `null` si la cuenta se creó pero falta confirmar el email ("Confirm email" activo) — eso
+  /// **no** es un error, el fake en memoria no tiene ese paso intermedio y siempre devuelve
+  /// sesión.
+  Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
@@ -53,6 +54,11 @@ final class EmailYaRegistradoException extends AuthRemoteException {
 
 final class SinConexionException extends AuthRemoteException {
   const SinConexionException();
+}
+
+/// La contraseña no cumple la política de Supabase Auth (`weak_password`).
+final class PasswordDebilException extends AuthRemoteException {
+  const PasswordDebilException();
 }
 
 /// Error del proveedor sin traducción propia. [mensaje], si viene, reemplaza el texto genérico

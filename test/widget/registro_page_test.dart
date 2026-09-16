@@ -1,5 +1,7 @@
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -7,10 +9,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Remoto que lanza una excepción fija en `registrar` — para ver el banner del límite de
+/// intentos/emails de Supabase sin depender del backend real.
+final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
+  _RemoteQueLanzaAlRegistrar(this.excepcion);
+
+  final AuthRemoteException excepcion;
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async => throw excepcion;
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async => null;
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+}
+
 /// [RegistroPage] aislada (sin [ColportoresApp]): igual criterio que `login_page_test.dart` —
 /// cubre diseño/tema/validación/proveedores. El caso feliz necesita, además, una pantalla debajo
 /// en la pila para poder comprobar que `popUntil((r) => r.isFirst)` cierra el registro.
-Widget _pagina({ThemeData? tema, bool? mostrarApple, AuthRemoteDataSourceEnMemoria? remote}) =>
+Widget _pagina({ThemeData? tema, bool? mostrarApple, AuthRemoteDataSource? remote}) =>
     ProviderScope(
       overrides: [
         authRemoteDataSourceProvider.overrideWithValue(
@@ -156,6 +188,28 @@ void main() {
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
       expect(find.text('Ya existe una cuenta con ese correo.'), findsOneWidget);
+    });
+
+    testWidgets('demasiados intentos (rate limit de Supabase) muestra el banner general', (
+      tester,
+    ) async {
+      final remote = _RemoteQueLanzaAlRegistrar(
+        const ServidorException(
+          mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+        ),
+      );
+      await tester.pumpWidget(_pagina(remote: remote));
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
+      expect(
+        find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'),
+        findsOneWidget,
+      );
     });
   });
 

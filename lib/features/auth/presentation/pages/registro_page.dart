@@ -15,9 +15,10 @@ import '../providers/sesion_notifier.dart';
 /// muestra los mensajes por campo o un banner general, igual que [LoginPage]. Todo lo visual sale
 /// de `Theme.of(context)`.
 ///
-/// Pendiente (no decidido, ver PR): la "navegación a verificación de email" del issue —
-/// HU-AUTH-002 todavía no tiene diseño y hoy, con el fake en memoria, el registro deja la sesión
-/// iniciada directamente.
+/// Si el registro queda pendiente de verificar el email (HU-AUTH-002), hace `pop` con
+/// [RegistroPendiente] en vez de cerrar hasta el fondo de la pila — [LoginPage] lo usa para
+/// precargar el formulario y mostrar el aviso. La pantalla de espera/reenvío (#19) queda
+/// pendiente: no hay diseño para eso todavía.
 class RegistroPage extends ConsumerStatefulWidget {
   const RegistroPage({super.key, this.mostrarApple});
 
@@ -66,34 +67,45 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
       _errorGeneral = null;
     });
 
-    final failure = await ref
+    final email = _email.text;
+    final password = _password.text;
+
+    final resultado = await ref
         .read(sesionProvider.notifier)
         .registrar(
           nombre: _nombre.text,
           apellido: _apellido.text,
           cedula: _cedula.text,
-          email: _email.text,
-          password: _password.text,
+          email: email,
+          password: password,
           aceptaTerminos: _aceptaTerminos,
         );
 
     if (!mounted) return;
 
-    if (failure == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cuenta creada')));
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
-
-    setState(() {
-      _enviando = false;
-      switch (failure) {
-        case FailureValidacion(:final campos):
-          _erroresCampo = campos;
-        case Failure(:final mensaje):
-          _errorGeneral = mensaje;
-      }
-    });
+    resultado.fold(
+      (failure) {
+        setState(() {
+          _enviando = false;
+          switch (failure) {
+            case FailureValidacion(:final campos):
+              _erroresCampo = campos;
+            case Failure(:final mensaje):
+              _errorGeneral = mensaje;
+          }
+        });
+      },
+      (r) {
+        if (r.requiereVerificacion) {
+          // r.email es el normalizado por el use case (trim + minúsculas), no lo que haya
+          // tecleado el usuario.
+          Navigator.of(context).pop(RegistroPendiente(email: r.email, password: password));
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cuenta creada')));
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      },
+    );
   }
 
   /// Con Supabase, OAuth registra e inicia sesión en un solo paso: mismo flujo que en login.
@@ -525,4 +537,13 @@ class _BotonProveedor extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lo que [RegistroPage] devuelve al hacer `pop` cuando el registro quedó pendiente de verificar
+/// el email — [LoginPage] usa esto para precargar el formulario y mostrar el aviso.
+final class RegistroPendiente {
+  const RegistroPendiente({required this.email, required this.password});
+
+  final String email;
+  final String password;
 }

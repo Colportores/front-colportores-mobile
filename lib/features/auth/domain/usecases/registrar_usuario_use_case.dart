@@ -3,7 +3,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
-import '../entities/sesion.dart';
+import '../entities/resultado_registro.dart';
 import '../repositories/auth_repository.dart';
 
 /// Parámetros de [RegistrarUsuarioUseCase].
@@ -28,22 +28,18 @@ final class RegistrarUsuarioParams extends Equatable {
   List<Object?> get props => [nombre, apellido, cedula, email, password, aceptaTerminos];
 }
 
-/// HU-AUTH-001 — Registro de cuenta (versión mockeada de hoy, ver issue #14).
+/// HU-AUTH-001/002 — Registro de cuenta.
 ///
 /// 1. Valida la entrada y devuelve `Left(FailureValidacion)` con el detalle por campo (mismo
 ///    formato que [IniciarSesionUseCase]).
 /// 2. Normaliza (nombre/apellido sin espacios, email en minúsculas, cédula a solo dígitos).
-/// 3. Delega en el repositorio, que hoy registra contra el fake en memoria y deja la sesión
-///    iniciada directamente.
+/// 3. Delega en el repositorio. Con Supabase Auth real y "Confirm email" activo, `signUp` no deja
+///    la sesión iniciada: el [ResultadoRegistro] vuelve con `sesion: null`
+///    (`requiereVerificacion == true`) y la UI tiene que ofrecer verificar antes de entrar. El
+///    fake en memoria no tiene ese paso y deja la sesión iniciada directamente.
 ///
-/// Pendiente para las corridas con Supabase real (Opus): `signUp` de Supabase Auth exige
-/// verificar el email antes de habilitar la cuenta (HU-AUTH-002); cuando eso llegue, este caso de
-/// uso puede dejar de devolver una `Sesion` iniciada (quizás una cuenta pendiente, como ya existe
-/// [FailureCuentaPendiente] para login). No decidido — no está documentado, queda para esa
-/// corrida.
-///
-/// El dígito verificador de la cédula uruguaya tampoco está documentado: no se valida acá.
-final class RegistrarUsuarioUseCase implements UseCase<Sesion, RegistrarUsuarioParams> {
+/// El dígito verificador de la cédula uruguaya no está documentado: no se valida acá.
+final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, RegistrarUsuarioParams> {
   const RegistrarUsuarioUseCase(this._repository);
 
   final AuthRepository _repository;
@@ -54,7 +50,7 @@ final class RegistrarUsuarioUseCase implements UseCase<Sesion, RegistrarUsuarioP
   static final RegExp _cedulaNormalizadaRegExp = RegExp(r'^\d{7,8}$');
 
   @override
-  Future<Either<Failure, Sesion>> call(RegistrarUsuarioParams params) async {
+  Future<Either<Failure, ResultadoRegistro>> call(RegistrarUsuarioParams params) async {
     final nombre = params.nombre.trim();
     final apellido = params.apellido.trim();
     final email = params.email.trim().toLowerCase();

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/config/config_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source_supabase.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,7 +17,7 @@ class _MockGoTrueClient extends Mock implements GoTrueClient {}
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
 class _FakeUser extends Fake implements User {
-  _FakeUser({required this.id, this.email, this.identities});
+  _FakeUser({required this.id, this.email, this.identities, this.appMetadata = const {}});
 
   @override
   final String id;
@@ -24,6 +25,8 @@ class _FakeUser extends Fake implements User {
   final String? email;
   @override
   final List<UserIdentity>? identities;
+  @override
+  final Map<String, dynamic> appMetadata;
 }
 
 class _FakeSession extends Fake implements Session {
@@ -58,8 +61,11 @@ void main() {
     bool vencida = false,
     String? email = 'ana@example.com',
     String accessToken = 'jwt',
+    // Las sesiones de este helper representan, salvo que se diga lo contrario, un login con
+    // Google (es el único flujo que las consume vía onAuthStateChange en estos tests).
+    String proveedor = 'google',
   }) => _FakeSession(
-    user: _FakeUser(id: usuarioId, email: email),
+    user: _FakeUser(id: usuarioId, email: email, appMetadata: {'provider': proveedor}),
     accessToken: accessToken,
     expiresAt: expiraEnSegundos,
     isExpired: vencida,
@@ -160,7 +166,70 @@ void main() {
           isA<ServidorException>().having(
             (e) => e.mensaje,
             'mensaje',
-            contains('confirmar tu email'),
+            contains('verificar tu correo'),
+          ),
+        ),
+      );
+    });
+
+    test('dado que la contraseña es débil, lanza PasswordDebilException', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(const AuthApiException('Password is too weak', code: 'weak_password'));
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+        throwsA(isA<PasswordDebilException>()),
+      );
+    });
+
+    test(
+      'dado el límite de emails/intentos de Supabase (429), lanza ServidorException con mensaje',
+      () {
+        when(
+          () => auth.signInWithPassword(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        ).thenThrow(
+          const AuthApiException(
+            'Email rate limit exceeded',
+            statusCode: '429',
+            code: 'over_email_send_rate_limit',
+          ),
+        );
+
+        expect(
+          () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+          throwsA(
+            isA<ServidorException>().having(
+              (e) => e.mensaje,
+              'mensaje',
+              contains('Demasiados intentos'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('dado un 429 sin error_code, también avisa el límite de intentos', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(const AuthApiException('Too Many Requests', statusCode: '429'));
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
           ),
         ),
       );
@@ -180,17 +249,34 @@ void main() {
       );
     });
 
-    test('dado un error de Supabase sin traducción, lanza ServidorException con el status', () {
+    test('dado un error de Supabase sin traducción, lanza ServidorException con el status y un '
+        'mensaje genérico con el código — nunca el texto crudo de Supabase (puede llevar PII), '
+        'para signup_disabled, validation_failed, bad_json, etc.', () {
       when(
         () => auth.signInWithPassword(
           email: any(named: 'email'),
           password: any(named: 'password'),
         ),
-      ).thenThrow(const AuthApiException('boom', statusCode: '500', code: 'unexpected_failure'));
+      ).thenThrow(
+        const AuthApiException(
+          'boom con datos del usuario',
+          statusCode: '500',
+          code: 'unexpected_failure',
+        ),
+      );
 
       expect(
         () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
-        throwsA(isA<ServidorException>().having((e) => e.status, 'status', 500)),
+        throwsA(
+          isA<ServidorException>()
+              .having((e) => e.status, 'status', 500)
+              .having(
+                (e) => e.mensaje,
+                'mensaje',
+                'No se pudo completar la operación (unexpected_failure).',
+              )
+              .having((e) => e.mensaje, 'mensaje', isNot(contains('boom con datos del usuario'))),
+        ),
       );
     });
 
@@ -210,7 +296,7 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.registrar', () {
-    Future<void> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
+    Future<SesionModel?> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
       nombre: 'Ana',
       apellido: 'Pérez',
       cedula: '12345678',
@@ -218,28 +304,27 @@ void main() {
       password: 'secreto123',
     );
 
-    test(
-      'dado un email nuevo, cuando registra, manda el perfil en user_metadata y devuelve la sesión',
-      () async {
-        when(
-          () => auth.signUp(
-            email: 'ana@example.com',
-            password: 'secreto123',
-            data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
-          ),
-        ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
-
-        final sesion = await dataSource().registrar(
-          nombre: 'Ana',
-          apellido: 'Pérez',
-          cedula: '12345678',
+    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo, y devuelve '
+        'la sesión', () async {
+      when(
+        () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
-        );
+          data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
 
-        expect(sesion.usuarioId, usuarioId);
-      },
-    );
+      final sesion = await dataSource().registrar(
+        nombre: 'Ana',
+        apellido: 'Pérez',
+        cedula: '12345678',
+        email: 'ana@example.com',
+        password: 'secreto123',
+      );
+
+      expect(sesion?.usuarioId, usuarioId);
+    });
 
     test('dado un email ya registrado (error_code), lanza EmailYaRegistradoException', () {
       when(
@@ -247,6 +332,7 @@ void main() {
           email: any(named: 'email'),
           password: any(named: 'password'),
           data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
         ),
       ).thenThrow(
         const AuthApiException(
@@ -268,6 +354,7 @@ void main() {
             email: any(named: 'email'),
             password: any(named: 'password'),
             data: any(named: 'data'),
+            emailRedirectTo: any(named: 'emailRedirectTo'),
           ),
         ).thenAnswer((_) async => respuestaCon(user: user));
 
@@ -276,23 +363,19 @@ void main() {
     );
 
     test(
-      'dado que hace falta confirmar el email (sin sesión), lanza ServidorException con mensaje',
-      () {
+      'dado que hace falta confirmar el email (sin sesión), devuelve null — no es un error',
+      () async {
         final user = _FakeUser(id: usuarioId);
         when(
           () => auth.signUp(
             email: any(named: 'email'),
             password: any(named: 'password'),
             data: any(named: 'data'),
+            emailRedirectTo: any(named: 'emailRedirectTo'),
           ),
         ).thenAnswer((_) async => respuestaCon(user: user));
 
-        expect(
-          () => registrar(dataSource()),
-          throwsA(
-            isA<ServidorException>().having((e) => e.mensaje, 'mensaje', contains('confirmar')),
-          ),
-        );
+        expect(await registrar(dataSource()), isNull);
       },
     );
   });
@@ -417,6 +500,29 @@ void main() {
         expect(cambios.hasListener, isFalse);
       },
     );
+
+    test('ignora un signedIn de otro proveedor (p. ej. confirmar email, mismo redirect) y sigue '
+        'esperando al de Google', () async {
+      final ds = dataSource(
+        lanzarOAuth: (_, _) async {
+          // Mismo redirect que Google: llega primero el signedIn de confirmar el email, y
+          // recién después el de Google — no hay que resolver con el primero.
+          scheduleMicrotask(
+            () => cambios.add(
+              AuthState(AuthChangeEvent.signedIn, sesionSupabase(proveedor: 'email')),
+            ),
+          );
+          Future<void>.delayed(const Duration(milliseconds: 10), () {
+            cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+          });
+          return true;
+        },
+      );
+
+      final sesion = await ds.iniciarSesionConGoogle();
+
+      expect(sesion.usuarioId, usuarioId);
+    });
 
     test('dado que no se pudo abrir el navegador (false), lanza ServidorException', () {
       final ds = dataSource(lanzarOAuth: (_, _) async => false);
