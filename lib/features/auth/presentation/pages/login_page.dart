@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/sesion_notifier.dart';
+import 'registro_page.dart';
 
 /// Pantalla de inicio de sesión (HU-AUTH-003), diseño "Login Colportor".
 ///
@@ -238,10 +239,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 8),
                       Center(
                         child: TextButton(
-                          onPressed: () {
-                            // TODO(HU-AUTH-001): registro de usuario nuevo.
-                            _proximamente();
-                          },
+                          key: const Key('login_ir_a_registro'),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => RegistroPage(mostrarApple: widget.mostrarApple),
+                            ),
+                          ),
                           child: Text(
                             '¿No tenés cuenta? Registrate',
                             style: theme.textTheme.bodyMedium?.copyWith(
