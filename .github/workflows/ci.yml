@@ -4,7 +4,8 @@ on:
   push:
     branches: [develop, staging, production]
   pull_request:
-    branches: [develop, staging, production]
+    # feature/**: los PR apilados (feature/x → feature/y) también corren CI.
+    branches: [develop, staging, production, "feature/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -45,6 +46,13 @@ jobs:
       - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)
         run: bash scripts/coverage_check.sh
 
+      # Variables de repo (no secrets: la anon key es pública). Sin ellas el paso se omite.
+      - name: Proveedores de Supabase Auth (email + google, sin apple)
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        run: bash scripts/check_auth_providers.sh
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -73,7 +81,12 @@ jobs:
 
       - run: flutter pub get
       - run: dart run build_runner build
-      - run: flutter build apk --debug
+
+      # Con las variables cargadas el APK sale apuntando a Supabase; sin ellas, con los fakes.
+      - run: >-
+          flutter build apk --debug
+          --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
 
       - uses: actions/upload-artifact@v4
         with:

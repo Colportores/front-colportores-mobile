@@ -42,3 +42,6 @@ ios/Runner/GeneratedPluginRegistrant.*
 **/ios/**/xcuserdata/
 **/ios/**/*.moved-aside
 **/ios/**/DerivedData/
+
+# --- Supabase (README § Desarrollo): .env.json lleva SUPABASE_URL/SUPABASE_ANON_KEY (gitignored por .env.*); el .example sí se versiona ---
+!.env.json.example

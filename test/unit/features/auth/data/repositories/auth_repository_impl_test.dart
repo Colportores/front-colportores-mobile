@@ -31,9 +31,55 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   }
 
   @override
+  Future<SesionModel> iniciarSesionConGoogle() async => throw Exception('boom');
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
+
+  @override
   Future<void> cerrarSesion(String accessToken) {
     throw UnimplementedError();
   }
+}
+
+/// Remoto que "recuerda" una sesión persistida por el proveedor (como supabase_flutter tras
+/// reiniciar la app), o que falla al consultarla.
+final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
+  _RemoteConSesionRecordada({this.recordada, this.falla});
+
+  final SesionModel? recordada;
+  final AuthRemoteException? falla;
+  final AuthRemoteDataSourceEnMemoria _interno = AuthRemoteDataSourceEnMemoria(
+    credenciales: const {},
+  );
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async {
+    if (falla != null) throw falla!;
+    return recordada;
+  }
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() {
+    if (falla != null) throw falla!;
+    return _interno.iniciarSesionConGoogle();
+  }
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SesionModel> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 }
 
 void main() {
@@ -206,9 +252,102 @@ void main() {
     });
   });
 
+  group('AuthRepositoryImpl.iniciarSesionConGoogle', () {
+    test('cuando el proveedor entra, devuelve la Sesion y la persiste localmente', () async {
+      final resultado = await repository.iniciarSesionConGoogle();
+
+      expect(resultado.isRight(), isTrue);
+      final sesion = resultado.getOrElse(() => throw StateError('Left'));
+      expect(sesion, isA<Sesion>().having((s) => s.runtimeType, 'tipo', Sesion));
+      expect(sesion.email, AuthRemoteDataSourceEnMemoria.emailGoogle);
+      expect(remote.llamadasIniciarSesionConGoogle, 1);
+      expect(await local.leerSesion(), SesionModel.fromEntity(sesion));
+    });
+
+    test('cuando no hay conexión, devuelve FailureSinConexion y no persiste nada', () async {
+      remote.simularSinConexion = true;
+
+      final resultado = await repository.iniciarSesionConGoogle();
+
+      expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
+      expect(await local.leerSesion(), isNull);
+    });
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.iniciarSesionConGoogle();
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+
+    test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.iniciarSesionConGoogle();
+
+      expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
+    });
+  });
+
   group('AuthRepositoryImpl.sesionActual', () {
     test('cuando no hubo login, devuelve Right(null)', () async {
       expect(await repository.sesionActual(), const Right<Failure, Sesion?>(null));
+    });
+
+    test(
+      'sin sesión local pero con una recordada por el proveedor, la restaura y la persiste',
+      () async {
+        final recordada = SesionModel(
+          usuarioId: '01920000-0000-7000-8000-000000000009',
+          email: 'ana@example.com',
+          accessToken: 'jwt-restaurado',
+          expiraEn: DateTime.utc(2026, 9, 1, 13),
+        );
+        final repo = AuthRepositoryImpl(
+          _RemoteConSesionRecordada(recordada: recordada),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.sesionActual();
+
+        expect(resultado.getOrElse(() => null), recordada.toEntity());
+        expect(await local.leerSesion(), recordada);
+      },
+    );
+
+    test(
+      'si el proveedor no puede restaurarla (sin red), arranca deslogueado sin Failure',
+      () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteConSesionRecordada(falla: const SinConexionException()),
+          local,
+          logger: loggerMudo(),
+        );
+
+        expect(await repo.sesionActual(), const Right<Failure, Sesion?>(null));
+      },
+    );
+
+    test('si leer la sesión explota, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.sesionActual();
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
 
     test('cuando hubo login, devuelve la sesión guardada', () async {

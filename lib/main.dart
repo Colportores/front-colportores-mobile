@@ -1,23 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/config/config_supabase.dart';
 import 'core/database/database_helper.dart';
 import 'core/database/database_providers.dart';
+import 'core/logging/app_logger.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (ConfigSupabase.configurada) {
+    // Supabase Auth real (HU-AUTH-003). La sesión la persiste supabase_flutter por su cuenta
+    // (SharedPreferences por default); moverla a secure_storage con
+    // `authOptions: FlutterAuthClientOptions(localStorage: …)` es decisión pendiente (ADR-003).
+    // `publishableKey` acepta tanto la anon key legacy (JWT `eyJ…`) como las nuevas
+    // `sb_publishable_…`; las dos viajan como header `apikey`.
+    await Supabase.initialize(url: ConfigSupabase.url, publishableKey: ConfigSupabase.anonKey);
+  } else {
+    AppLogger.instance.info(
+      LogModulo.auth,
+      'CONFIG',
+      'Supabase no configurado: usando fakes en memoria',
+    );
+  }
+
   runApp(
     ProviderScope(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
-      // Sprint 1: todo en memoria (cuenta demo@colportores.app / demo1234).
-      // Sprint 2: AuthLocalDataSource sobre secure_storage. Sprint 3: AuthRemoteDataSource sobre Supabase.
+      // AuthRemoteDataSource: lo elige `authRemoteDataSourceProvider` según `ConfigSupabase`
+      // (Supabase real o fake con la cuenta demo@colportores.app / demo1234).
+      // Sprint 2: AuthLocalDataSource sobre secure_storage (pendiente; hoy en memoria).
       overrides: [
-        authRemoteDataSourceProvider.overrideWithValue(AuthRemoteDataSourceEnMemoria.demo()),
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
         // Keystore/Keychain reales. Construirlo no toca la plataforma: recién en la primera
         // lectura o escritura se cruza al canal nativo.

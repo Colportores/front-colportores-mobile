@@ -81,6 +81,27 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     );
   }
 
+  /// Cuenta fija con la que "entra" Google en la demo (no hay navegador ni deep link acá).
+  static const String emailGoogle = 'google@colportores.app';
+
+  int llamadasIniciarSesionConGoogle = 0;
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() async {
+    if (simularSinConexion) throw const SinConexionException();
+    llamadasIniciarSesionConGoogle++;
+    return SesionModel(
+      usuarioId: _uuidDesde(emailGoogle),
+      email: emailGoogle,
+      accessToken: 'token-google-en-memoria',
+      expiraEn: _ahora().add(const Duration(hours: 1)),
+    );
+  }
+
+  /// El fake no persiste nada entre reinicios: la sesión "recordada" es siempre `null`.
+  @override
+  Future<SesionModel?> obtenerSesionActual() async => null;
+
   @override
   Future<void> cerrarSesion(String accessToken) async {
     if (simularSinConexion) throw const SinConexionException();

@@ -63,10 +63,12 @@ final class FailureSinConexion extends Failure {
     : super(mensaje: 'Sin conexión. Reintentá cuando tengas señal', codigo: 'NET_SIN_CONEXION');
 }
 
-/// El servidor respondió con error (5xx, contrato roto, etc.).
+/// El servidor respondió con error (5xx, contrato roto, etc.). [mensaje] se puede reemplazar
+/// cuando el origen sabe qué decirle al usuario (p. ej. "confirmá tu email"), igual que en
+/// [FailureValidacion]; el código no cambia.
 final class FailureServidor extends Failure {
-  const FailureServidor({this.status})
-    : super(mensaje: 'El servidor no pudo procesar la solicitud', codigo: 'NET_SERVIDOR');
+  const FailureServidor({this.status, super.mensaje = 'El servidor no pudo procesar la solicitud'})
+    : super(codigo: 'NET_SERVIDOR');
 
   final int? status;
 
