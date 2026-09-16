@@ -94,7 +94,14 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     final completer = Completer<Session>();
     final suscripcion = _auth.onAuthStateChange.listen((estado) {
       final sesion = estado.session;
-      if (estado.event == AuthChangeEvent.signedIn && sesion != null && !completer.isCompleted) {
+      // El link de verificación de email usa el mismo redirect que Google (ConfigSupabase.
+      // redirectOAuth): un signedIn disparado por confirmar el correo no es un login con Google,
+      // así que hay que exigir que el proveedor de la sesión sea efectivamente `google`.
+      final esGoogle = sesion?.user.appMetadata['provider'] == 'google';
+      if (estado.event == AuthChangeEvent.signedIn &&
+          sesion != null &&
+          esGoogle &&
+          !completer.isCompleted) {
         completer.complete(sesion);
       }
     });
@@ -170,6 +177,10 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
 
     final status = int.tryParse(e.statusCode ?? '');
     final mensaje = e.message.toLowerCase();
+    // Estos strings son los error codes que devuelve el servidor de Supabase Auth (lista oficial
+    // en su documentación), no el enum `ErrorCode` de gotrue-dart — el cliente no los tipa a
+    // todos, así que se comparan por `code` crudo. El fallback por status+texto de abajo cubre
+    // los GoTrue viejos que ni siquiera mandan `code`.
     switch (e.code) {
       case 'invalid_credentials':
         return const CredencialesInvalidasException();
@@ -199,11 +210,16 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     }
 
     // `signup_disabled`, `validation_failed`, `bad_json` u otro código sin caso propio: no hay
-    // texto lindo para inventar, así que se muestra el de Supabase (nunca lleva PII).
+    // texto lindo para inventar, pero tampoco se puede mandar `e.message` de Supabase tal cual a
+    // la UI — no está garantizado que no lleve datos del usuario (convención §7.5, "ningún
+    // Failure lleva PII"). Se muestra solo el código, que sí es seguro.
     _log.warn(LogModulo.auth, 'AUTH_ERROR', 'error de Supabase Auth sin traducción', {
       'status': status,
       'code': e.code,
     });
-    return ServidorException(status: status, mensaje: e.message);
+    return ServidorException(
+      status: status,
+      mensaje: 'No se pudo completar la operación (${e.code ?? 'desconocido'}).',
+    );
   }
 }

@@ -17,7 +17,7 @@ class _MockGoTrueClient extends Mock implements GoTrueClient {}
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
 class _FakeUser extends Fake implements User {
-  _FakeUser({required this.id, this.email, this.identities});
+  _FakeUser({required this.id, this.email, this.identities, this.appMetadata = const {}});
 
   @override
   final String id;
@@ -25,6 +25,8 @@ class _FakeUser extends Fake implements User {
   final String? email;
   @override
   final List<UserIdentity>? identities;
+  @override
+  final Map<String, dynamic> appMetadata;
 }
 
 class _FakeSession extends Fake implements Session {
@@ -59,8 +61,11 @@ void main() {
     bool vencida = false,
     String? email = 'ana@example.com',
     String accessToken = 'jwt',
+    // Las sesiones de este helper representan, salvo que se diga lo contrario, un login con
+    // Google (es el único flujo que las consume vía onAuthStateChange en estos tests).
+    String proveedor = 'google',
   }) => _FakeSession(
-    user: _FakeUser(id: usuarioId, email: email),
+    user: _FakeUser(id: usuarioId, email: email, appMetadata: {'provider': proveedor}),
     accessToken: accessToken,
     expiresAt: expiraEnSegundos,
     isExpired: vencida,
@@ -244,21 +249,33 @@ void main() {
       );
     });
 
-    test('dado un error de Supabase sin traducción, lanza ServidorException con el status y el '
-        'mensaje de Supabase (p. ej. signup_disabled, validation_failed, bad_json)', () {
+    test('dado un error de Supabase sin traducción, lanza ServidorException con el status y un '
+        'mensaje genérico con el código — nunca el texto crudo de Supabase (puede llevar PII), '
+        'para signup_disabled, validation_failed, bad_json, etc.', () {
       when(
         () => auth.signInWithPassword(
           email: any(named: 'email'),
           password: any(named: 'password'),
         ),
-      ).thenThrow(const AuthApiException('boom', statusCode: '500', code: 'unexpected_failure'));
+      ).thenThrow(
+        const AuthApiException(
+          'boom con datos del usuario',
+          statusCode: '500',
+          code: 'unexpected_failure',
+        ),
+      );
 
       expect(
         () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
         throwsA(
           isA<ServidorException>()
               .having((e) => e.status, 'status', 500)
-              .having((e) => e.mensaje, 'mensaje', 'boom'),
+              .having(
+                (e) => e.mensaje,
+                'mensaje',
+                'No se pudo completar la operación (unexpected_failure).',
+              )
+              .having((e) => e.mensaje, 'mensaje', isNot(contains('boom con datos del usuario'))),
         ),
       );
     });
@@ -483,6 +500,29 @@ void main() {
         expect(cambios.hasListener, isFalse);
       },
     );
+
+    test('ignora un signedIn de otro proveedor (p. ej. confirmar email, mismo redirect) y sigue '
+        'esperando al de Google', () async {
+      final ds = dataSource(
+        lanzarOAuth: (_, _) async {
+          // Mismo redirect que Google: llega primero el signedIn de confirmar el email, y
+          // recién después el de Google — no hay que resolver con el primero.
+          scheduleMicrotask(
+            () => cambios.add(
+              AuthState(AuthChangeEvent.signedIn, sesionSupabase(proveedor: 'email')),
+            ),
+          );
+          Future<void>.delayed(const Duration(milliseconds: 10), () {
+            cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+          });
+          return true;
+        },
+      );
+
+      final sesion = await ds.iniciarSesionConGoogle();
+
+      expect(sesion.usuarioId, usuarioId);
+    });
 
     test('dado que no se pudo abrir el navegador (false), lanza ServidorException', () {
       final ds = dataSource(lanzarOAuth: (_, _) async => false);

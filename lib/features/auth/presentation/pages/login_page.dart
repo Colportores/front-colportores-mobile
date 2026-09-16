@@ -277,6 +277,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               _email.text = pendiente.email;
                               _password.text = pendiente.password;
                               _emailPendienteVerificacion = pendiente.email;
+                              // Un login fallido antes de ir a registrarse no debería quedar
+                              // marcado en rojo junto al banner nuevo (no es un error).
+                              _errorGeneral = null;
+                              _erroresCampo = const {};
                             });
                           },
                           child: Text(

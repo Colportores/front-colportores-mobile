@@ -97,7 +97,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
       },
       (r) {
         if (r.requiereVerificacion) {
-          Navigator.of(context).pop(RegistroPendiente(email: email, password: password));
+          // r.email es el normalizado por el use case (trim + minúsculas), no lo que haya
+          // tecleado el usuario.
+          Navigator.of(context).pop(RegistroPendiente(email: r.email, password: password));
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cuenta creada')));

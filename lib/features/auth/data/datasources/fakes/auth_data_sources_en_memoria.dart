@@ -43,11 +43,23 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
 
   int llamadasCerrarSesion = 0;
 
+  /// Cuentas registradas con `requiereVerificacionAlRegistrar` que todavía no confirmaron el
+  /// email — [confirmarEmail] las saca de acá.
+  final Set<String> _pendientesDeVerificar = {};
+
+  static const String _mensajeEmailNoConfirmado =
+      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
+
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) async {
     if (simularSinConexion) throw const SinConexionException();
     if (cuentasPendientes.contains(email)) throw const CuentaPendienteException();
     if (_credenciales[email] != password) throw const CredencialesInvalidasException();
+    // El orden importa: como en Supabase real, una contraseña incorrecta da credenciales
+    // inválidas primero — recién con la contraseña bien se ve si falta confirmar el email.
+    if (_pendientesDeVerificar.contains(email)) {
+      throw const ServidorException(mensaje: _mensajeEmailNoConfirmado);
+    }
 
     return SesionModel(
       usuarioId: _uuidDesde(email),
@@ -78,7 +90,10 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       email: email,
     );
 
-    if (requiereVerificacionAlRegistrar) return null;
+    if (requiereVerificacionAlRegistrar) {
+      _pendientesDeVerificar.add(email);
+      return null;
+    }
 
     return SesionModel(
       usuarioId: usuarioId,
@@ -114,6 +129,11 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     if (simularSinConexion) throw const SinConexionException();
     llamadasCerrarSesion++;
   }
+
+  /// Simula que el usuario tocó el link de verificación del correo: [iniciarSesion] deja de
+  /// lanzar el "falta confirmar" para esta cuenta. Sin efecto si no se registró con
+  /// `requiereVerificacionAlRegistrar`.
+  void confirmarEmail(String email) => _pendientesDeVerificar.remove(email);
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

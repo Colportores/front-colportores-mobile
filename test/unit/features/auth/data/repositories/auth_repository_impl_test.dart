@@ -289,6 +289,47 @@ void main() {
         expect(r.email, 'bruno@example.com');
         expect(await local.leerSesion(), isNull);
       });
+
+      test('cuando intenta entrar antes de confirmar, devuelve FailureServidor; después de '
+          'confirmarEmail, entra normal', () async {
+        final remotePendiente = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        final repositoryPendiente = AuthRepositoryImpl(
+          remotePendiente,
+          local,
+          logger: loggerMudo(),
+        );
+        await repositoryPendiente.registrar(
+          nombre: 'Bruno',
+          apellido: 'Díaz',
+          cedula: '12345678',
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
+
+        final antes = await repositoryPendiente.iniciarSesion(
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
+        expect(
+          antes,
+          const Left<Failure, Sesion>(
+            FailureServidor(
+              mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
+            ),
+          ),
+        );
+
+        remotePendiente.confirmarEmail('bruno@example.com');
+
+        final despues = await repositoryPendiente.iniciarSesion(
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
+        expect(despues.isRight(), isTrue);
+      });
     });
 
     group('dado que la contraseña es débil', () {
