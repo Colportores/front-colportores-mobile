@@ -20,6 +20,10 @@ abstract interface class AuthRepository {
     required String password,
   });
 
+  /// Inicia sesión con Google (OAuth por navegador; registra la cuenta si es el primer ingreso)
+  /// y deja la sesión persistida en el dispositivo.
+  Future<Either<Failure, Sesion>> iniciarSesionConGoogle();
+
   /// Sesión guardada en el dispositivo, o `null` si nunca hubo login o se cerró.
   Future<Either<Failure, Sesion?>> sesionActual();
 

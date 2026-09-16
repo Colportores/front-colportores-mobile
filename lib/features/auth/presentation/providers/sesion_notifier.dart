@@ -42,6 +42,24 @@ class SesionNotifier extends _$SesionNotifier {
     );
   }
 
+  /// Ingreso con Google (HU-AUTH-003): abre el navegador y espera el deep link de vuelta.
+  /// Mismo contrato que [iniciarSesion]: el [Failure] si falló o `null` si entró.
+  Future<Failure?> iniciarSesionConGoogle() async {
+    state = const AsyncLoading();
+    final resultado = await ref.read(iniciarSesionConGoogleUseCaseProvider)(const NoParams());
+
+    return resultado.fold(
+      (failure) {
+        state = const AsyncData(null);
+        return failure;
+      },
+      (sesion) {
+        state = AsyncData(sesion);
+        return null;
+      },
+    );
+  }
+
   /// Registra una cuenta nueva y, si sale bien, deja la sesión iniciada (HU-AUTH-001, versión
   /// mockeada — ver dartdoc de [RegistrarUsuarioUseCase] sobre qué puede cambiar con Supabase
   /// Auth real). Devuelve el [Failure] si falló o `null` si se registró.

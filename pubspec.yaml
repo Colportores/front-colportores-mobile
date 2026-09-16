@@ -7,8 +7,8 @@ environment:
   sdk: ^3.12.0
   flutter: ">=3.44.0"
 
-# Stack según ADR-007. Las dependencias de mapa, GPS y Supabase se agregan en el sprint que las
-# introduce (S3 auth real, S5 mapa) — no antes.
+# Stack según ADR-007. Las dependencias de mapa y GPS se agregan en el sprint que las introduce
+# (S5 mapa) — no antes. Supabase entró en S3 (auth real, #22).
 #
 # Nota: ADR-007 dice "Riverpod 2.x". Con Dart 3.12 la línea 2.x ya no resuelve junto a
 # `test`/`custom_lint` (analyzer ≥ 8), así que se adopta Riverpod 3.x (misma API de codegen,
@@ -42,6 +42,7 @@ dependencies:
   path_provider: ^2.1.6     # directorio de la DB local (core/database)
   riverpod_annotation: ^4.0.0
   sqlite3: ^3.5.2           # solo para `PRAGMA key` en el setup de la conexión (core/database)
+  supabase_flutter: ^2.17.2 # Supabase Auth (ADR-016, HU-AUTH-003); trae app_links (deep link OAuth)
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
 
 dev_dependencies:

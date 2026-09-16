@@ -81,6 +81,47 @@ void main() {
     });
   });
 
+  group('SesionNotifier.iniciarSesionConGoogle', () {
+    test('cuando el proveedor entra, deja la sesión iniciada', () async {
+      final container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(
+            AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+          ),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+
+      final falla = await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+      expect(falla, isNull);
+      expect(
+        container.read(sesionProvider).value?.email,
+        AuthRemoteDataSourceEnMemoria.emailGoogle,
+      );
+    });
+
+    test('cuando falla (sin red), deja el Failure y sigue deslogueado', () async {
+      final container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(
+            AuthRemoteDataSourceEnMemoria(credenciales: const {}, simularSinConexion: true),
+          ),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+
+      final falla = await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+      expect(falla, isA<FailureSinConexion>());
+      expect(container.read(sesionProvider).value, isNull);
+    });
+  });
+
   group('SesionNotifier.registrar', () {
     ProviderContainer construirContainer(AuthRemoteDataSourceEnMemoria remote) => ProviderContainer(
       overrides: [

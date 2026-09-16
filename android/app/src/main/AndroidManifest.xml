@@ -38,6 +38,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Deep link de vuelta del OAuth por navegador (Google, HU-AUTH-003). Lo captura
+                 app_links (viene con supabase_flutter) y supabase_flutter completa la sesión.
+                 La MISMA URL —io.supabase.colportores://login-callback/— tiene que estar en
+                 ConfigSupabase.redirectOAuth y en el dashboard de Supabase:
+                 Authentication → URL Configuration → Redirect URLs. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.supabase.colportores" android:host="login-callback"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

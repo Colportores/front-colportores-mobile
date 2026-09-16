@@ -1,0 +1,194 @@
+import 'dart:async';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../../core/config/config_supabase.dart';
+import '../../../../core/logging/app_logger.dart';
+import '../models/sesion_model.dart';
+import 'auth_remote_data_source.dart';
+
+/// Lanza el flujo OAuth por navegador y devuelve `true` si se pudo abrir. Es una costura para
+/// los tests: `signInWithOAuth` es una *extensión* de `supabase_flutter` sobre [GoTrueClient]
+/// (dispatch estático), así que no se puede mockear como el resto del cliente.
+typedef LanzadorOAuth = Future<bool> Function(OAuthProvider proveedor, String redirectTo);
+
+/// [AuthRemoteDataSource] real sobre Supabase Auth (HU-AUTH-003, ADR-016).
+///
+/// - Email/contraseña: `signInWithPassword` / `signUp` (con nombre, apellido y cédula en
+///   `user_metadata`, que es lo que el BFF lee para crear `public.usuario`).
+/// - Google: `signInWithOAuth` abre el navegador del sistema; Supabase vuelve a la app por el
+///   deep link [ConfigSupabase.redirectOAuth] y `supabase_flutter` (app_links) completa la sesión,
+///   que se observa por [GoTrueClient.onAuthStateChange].
+/// - La sesión la persiste `supabase_flutter` (hoy en SharedPreferences; pasarla a
+///   secure_storage vía `FlutterAuthClientOptions.localStorage` es decisión pendiente, ADR-003).
+///
+/// Traduce [AuthException] a [AuthRemoteException]; el repositorio las convierte en `Failure`.
+/// Nunca loguea email ni tokens (convenciones §7.5).
+final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
+  AuthRemoteDataSourceSupabase(
+    this._auth, {
+    this._lanzarOAuth,
+    this.esperaOAuth = const Duration(minutes: 2),
+    AppLogger? logger,
+  }) : _log = logger ?? AppLogger.instance;
+
+  final GoTrueClient _auth;
+  final LanzadorOAuth? _lanzarOAuth;
+  final AppLogger _log;
+
+  /// Cuánto se espera a que el usuario vuelva del navegador antes de darlo por abandonado.
+  final Duration esperaOAuth;
+
+  static const String _mensajeEmailNoConfirmado =
+      'Tenés que confirmar tu email antes de entrar. Revisá tu casilla';
+  static const String _mensajeRegistroSinSesion =
+      'Te enviamos un email para confirmar la cuenta. Después iniciá sesión';
+  static const String _mensajeGoogleNoCompletado =
+      'No se completó el ingreso con Google. Probá de nuevo';
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    final respuesta = await _traduciendo(
+      () => _auth.signInWithPassword(email: email, password: password),
+    );
+    final sesion = respuesta.session;
+    if (sesion == null) throw const ServidorException(status: 200);
+    return _aModelo(sesion);
+  }
+
+  @override
+  Future<SesionModel> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) async {
+    final respuesta = await _traduciendo(
+      () => _auth.signUp(
+        email: email,
+        password: password,
+        data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
+      ),
+    );
+    final sesion = respuesta.session;
+    if (sesion != null) return _aModelo(sesion);
+
+    // Sin sesión: o el email ya existía (con "confirmar email" activo Supabase no lo dice para
+    // no filtrar cuentas: devuelve un usuario sin identidades) o falta confirmar el email.
+    final identidades = respuesta.user?.identities;
+    if (identidades != null && identidades.isEmpty) throw const EmailYaRegistradoException();
+
+    // Verificación de email: HU-AUTH-002 no está decidida. Mientras tanto se informa y no se
+    // deja la sesión iniciada.
+    _log.warn(LogModulo.auth, 'REGISTRO_SIN_SESION', 'signUp sin sesión: requiere confirmar email');
+    throw const ServidorException(status: 200, mensaje: _mensajeRegistroSinSesion);
+  }
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() async {
+    // Suscribirse antes de lanzar el navegador: el deep link puede volver muy rápido.
+    final completer = Completer<Session>();
+    final suscripcion = _auth.onAuthStateChange.listen((estado) {
+      final sesion = estado.session;
+      if (estado.event == AuthChangeEvent.signedIn && sesion != null && !completer.isCompleted) {
+        completer.complete(sesion);
+      }
+    });
+
+    try {
+      final lanzar = _lanzarOAuth ?? _lanzarOAuthReal;
+      final abierto = await _traduciendo(
+        () => lanzar(OAuthProvider.google, ConfigSupabase.redirectOAuth),
+      );
+      if (!abierto) {
+        _log.warn(LogModulo.auth, 'OAUTH_SIN_NAVEGADOR', 'no se pudo abrir el navegador');
+        throw const ServidorException(mensaje: _mensajeGoogleNoCompletado);
+      }
+
+      final sesion = await completer.future.timeout(esperaOAuth);
+      return _aModelo(sesion);
+    } on TimeoutException {
+      _log.warn(LogModulo.auth, 'OAUTH_TIMEOUT', 'el usuario no volvió del navegador', {
+        'segundos': esperaOAuth.inSeconds,
+      });
+      throw const ServidorException(mensaje: _mensajeGoogleNoCompletado);
+    } finally {
+      await suscripcion.cancel();
+    }
+  }
+
+  Future<bool> _lanzarOAuthReal(OAuthProvider proveedor, String redirectTo) =>
+      _auth.signInWithOAuth(
+        proveedor,
+        redirectTo: redirectTo,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async {
+    final actual = _auth.currentSession;
+    if (actual == null) return null;
+    if (!actual.isExpired) return _aModelo(actual);
+
+    final refrescada = await _traduciendo(() => _auth.refreshSession());
+    final sesion = refrescada.session;
+    return sesion == null ? null : _aModelo(sesion);
+  }
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => _traduciendo(() => _auth.signOut());
+
+  static SesionModel _aModelo(Session sesion) {
+    final expiraEnSegundos = sesion.expiresAt;
+    final expiraEn = expiraEnSegundos != null
+        ? DateTime.fromMillisecondsSinceEpoch(expiraEnSegundos * 1000, isUtc: true)
+        : DateTime.now().toUtc().add(Duration(seconds: sesion.expiresIn ?? 3600));
+    return SesionModel(
+      usuarioId: sesion.user.id,
+      email: sesion.user.email ?? '',
+      accessToken: sesion.accessToken,
+      expiraEn: expiraEn,
+    );
+  }
+
+  /// Ejecuta [accion] y traduce toda [AuthException] a la [AuthRemoteException] equivalente.
+  /// Cualquier otra excepción sube tal cual (el repositorio la convierte en `FailureInesperado`).
+  Future<T> _traduciendo<T>(Future<T> Function() accion) async {
+    try {
+      return await accion();
+    } on AuthException catch (e) {
+      throw _traducir(e);
+    }
+  }
+
+  AuthRemoteException _traducir(AuthException e) {
+    if (e is AuthRetryableFetchException) return const SinConexionException();
+
+    final status = int.tryParse(e.statusCode ?? '');
+    final mensaje = e.message.toLowerCase();
+    switch (e.code) {
+      case 'invalid_credentials':
+        return const CredencialesInvalidasException();
+      case 'user_already_exists' || 'email_exists':
+        return const EmailYaRegistradoException();
+      case 'email_not_confirmed':
+        _log.warn(LogModulo.auth, 'EMAIL_NO_CONFIRMADO', 'login con email sin confirmar');
+        return ServidorException(status: status, mensaje: _mensajeEmailNoConfirmado);
+    }
+
+    // Versiones de GoTrue sin `error_code`: se cae al texto, que es estable desde hace años.
+    if (status == 400 && mensaje.contains('invalid login credentials')) {
+      return const CredencialesInvalidasException();
+    }
+    if (status == 422 && mensaje.contains('already registered')) {
+      return const EmailYaRegistradoException();
+    }
+
+    _log.warn(LogModulo.auth, 'AUTH_ERROR', 'error de Supabase Auth sin traducción', {
+      'status': status,
+      'code': e.code,
+    });
+    return ServidorException(status: status);
+  }
+}
