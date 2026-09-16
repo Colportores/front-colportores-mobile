@@ -113,8 +113,28 @@ void main() {
       });
     });
 
-    test('cuando no se le inyecta plugin, usa el FlutterSecureStorage real', () {
-      expect(AlmacenSeguroKeystore(), isA<AlmacenSeguro>());
+    group('dado que no se le inyecta plugin', () {
+      // Fija los valores que enumera la doc del adaptador. Son decisiones abiertas (S10): si
+      // alguien las cambia, este test lo obliga a actualizar la doc junto con el código.
+      late AlmacenSeguroKeystore porDefecto;
+
+      setUp(() => porDefecto = AlmacenSeguroKeystore());
+
+      test('cuando arma las opciones de Android, deja resetOnError en true', () {
+        expect(porDefecto.opcionesAndroid.toMap()['resetOnError'], 'true');
+      });
+
+      test('cuando arma las opciones de Android, deja encryptedSharedPreferences en false', () {
+        expect(porDefecto.opcionesAndroid.toMap()['encryptedSharedPreferences'], 'false');
+      });
+
+      test('cuando arma las opciones de iOS, deja accessibility en unlocked', () {
+        expect(porDefecto.opcionesIos.accessibility, KeychainAccessibility.unlocked);
+      });
+
+      test('cuando arma las opciones de iOS, no sincroniza por iCloud Keychain', () {
+        expect(porDefecto.opcionesIos.synchronizable, isFalse);
+      });
     });
   });
 }

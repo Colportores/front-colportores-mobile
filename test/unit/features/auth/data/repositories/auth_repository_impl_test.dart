@@ -1,15 +1,12 @@
 // Test de la capa data: Dart puro, con los data sources en memoria.
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:dartz/dartz.dart';
-import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
-/// Logger mudo para no ensuciar la salida de los tests.
-AppLogger _loggerMudo() => AppLogger(logger: Logger(level: Level.off));
+import '../../../../../helpers/logger_mudo.dart';
 
 void main() {
   late AuthRemoteDataSourceEnMemoria remote;
@@ -23,7 +20,7 @@ void main() {
       ahora: () => DateTime.utc(2026, 9, 1, 12),
     );
     local = AuthLocalDataSourceEnMemoria();
-    repository = AuthRepositoryImpl(remote, local, logger: _loggerMudo());
+    repository = AuthRepositoryImpl(remote, local, logger: loggerMudo());
   });
 
   group('AuthRepositoryImpl.iniciarSesion', () {

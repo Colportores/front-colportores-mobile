@@ -9,10 +9,15 @@ Uint8List _bytes(int largo) => Uint8List.fromList(List<int>.filled(largo, 7));
 void main() {
   group('ClaveDb', () {
     group('dado que la clave tiene el largo de AES-256', () {
-      test('cuando se construye, conserva los 32 bytes', () {
+      test('cuando se construye, conserva los 32 bytes tal cual', () {
         final clave = ClaveDb(_bytes(ClaveDb.bytesEsperados));
 
         expect(clave.bytes, hasLength(32));
+        expect(
+          clave.bytes.every((b) => b == 7),
+          isTrue,
+          reason: 'la prueba de escritura no altera',
+        );
         expect(clave.destruida, isFalse);
       });
     });
@@ -24,6 +29,31 @@ void main() {
 
       test('cuando se construye con más bytes, lanza ArgumentError', () {
         expect(() => ClaveDb(_bytes(64)), throwsA(isA<ArgumentError>()));
+      });
+    });
+
+    group('dado que el buffer es una vista inmutable', () {
+      // Compila igual que un Uint8List común, pero destruir() no podría sobrescribirlo y la
+      // clave quedaría viva detrás de un `destruida` en false.
+      late Uint8List inmutable;
+
+      setUp(() => inmutable = _bytes(ClaveDb.bytesEsperados).asUnmodifiableView());
+
+      test('cuando se construye, lanza ArgumentError sin llegar a usarse', () {
+        expect(() => ClaveDb(inmutable), throwsA(isA<ArgumentError>()));
+      });
+
+      test('cuando se rechaza, el mensaje del error no incluye los bytes', () {
+        expect(
+          () => ClaveDb(inmutable),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.toString(),
+              'toString',
+              allOf(isNot(contains('7')), isNot(contains('['))),
+            ),
+          ),
+        );
       });
     });
 

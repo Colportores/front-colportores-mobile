@@ -1,15 +1,38 @@
 // Test de la custodia de la sal: Dart puro, con el almacén seguro en memoria.
 import 'dart:convert';
 
-import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
-import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
-/// Logger mudo para no ensuciar la salida de los tests.
-AppLogger _loggerMudo() => AppLogger(logger: Logger(level: Level.off));
+import '../../../helpers/logger_mudo.dart';
+
+/// Almacén que falla al borrar una clave puntual y deja el resto en el almacén interno. Simula el
+/// Keystore muriéndose a mitad de `olvidar()`, para ver con qué estado queda el dispositivo.
+final class _AlmacenQueFallaAlBorrar implements AlmacenSeguro {
+  _AlmacenQueFallaAlBorrar(this._interno, {required this.fallaEn});
+
+  final AlmacenSeguroEnMemoria _interno;
+  final ClaveSegura fallaEn;
+
+  @override
+  Future<String?> leer(ClaveSegura clave) => _interno.leer(clave);
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) => _interno.escribir(clave, valor);
+
+  @override
+  Future<void> borrar(ClaveSegura clave) {
+    if (clave == fallaEn) {
+      throw AlmacenSeguroException(operacion: 'borrar', clave: clave);
+    }
+    return _interno.borrar(clave);
+  }
+
+  @override
+  Future<void> borrarTodo() => _interno.borrarTodo();
+}
 
 void main() {
   late AlmacenSeguroEnMemoria almacen;
@@ -17,7 +40,7 @@ void main() {
 
   setUp(() {
     almacen = AlmacenSeguroEnMemoria();
-    custodia = CustodiaClaveDb(almacen, logger: _loggerMudo());
+    custodia = CustodiaClaveDb(almacen, logger: loggerMudo());
   });
 
   group('CustodiaClaveDb.leerSal', () {
@@ -112,10 +135,35 @@ void main() {
       expect(await custodia.dbInicializada(), isTrue);
     });
 
-    test('cuando la marca guardada no es la esperada, no cuenta como inicializado', () async {
-      await almacen.escribir(ClaveSegura.dbInicializada, 'cualquier cosa');
+    group('dado que la marca guardada no es la esperada', () {
+      setUp(() async {
+        await almacen.escribir(ClaveSegura.dbInicializada, 'cualquier cosa');
+      });
 
-      expect(await custodia.dbInicializada(), isFalse);
+      test('cuando se consulta, lanza MarcaInicializacionCorruptaException', () async {
+        await expectLater(
+          custodia.dbInicializada(),
+          throwsA(isA<MarcaInicializacionCorruptaException>()),
+        );
+      });
+
+      test(
+        'cuando se intenta generar una sal, la guarda no se desactiva: lanza y no escribe',
+        () async {
+          await expectLater(
+            custodia.generarSal(),
+            throwsA(isA<MarcaInicializacionCorruptaException>()),
+          );
+          expect(almacen.contenido.containsKey(ClaveSegura.salDb), isFalse);
+        },
+      );
+
+      test('cuando se olvida, se sale del estado corrupto sin leer la marca', () async {
+        await custodia.olvidar();
+
+        expect(await custodia.dbInicializada(), isFalse);
+        await expectLater(custodia.generarSal(), completes);
+      });
     });
   });
 
@@ -129,6 +177,35 @@ void main() {
       expect(await custodia.leerSal(), isNull);
       expect(await custodia.dbInicializada(), isFalse);
       expect(almacen.contenido, isEmpty);
+    });
+
+    group('dado que el almacén muere después del primer borrado', () {
+      // Fija el orden marca → sal. Si fuera al revés, el estado parcial sería "sin sal + marca
+      // puesta": leerSal() diría dispositivo nuevo y generarSal() lanzaría StateError siempre.
+      late CustodiaClaveDb custodiaFragil;
+
+      setUp(() async {
+        await custodia.generarSal();
+        await custodia.marcarDbInicializada();
+        custodiaFragil = CustodiaClaveDb(
+          _AlmacenQueFallaAlBorrar(almacen, fallaEn: ClaveSegura.salDb),
+          logger: loggerMudo(),
+        );
+      });
+
+      test('cuando se olvida, propaga la falla y la marca ya no está', () async {
+        await expectLater(custodiaFragil.olvidar(), throwsA(isA<AlmacenSeguroException>()));
+
+        expect(almacen.contenido.containsKey(ClaveSegura.dbInicializada), isFalse);
+        expect(almacen.contenido.containsKey(ClaveSegura.salDb), isTrue);
+      });
+
+      test('cuando se olvida a medias, el dispositivo puede rehacerse con generarSal', () async {
+        await expectLater(custodiaFragil.olvidar(), throwsA(isA<AlmacenSeguroException>()));
+
+        expect(await custodia.dbInicializada(), isFalse);
+        await expectLater(custodia.generarSal(), completes);
+      });
     });
   });
 
@@ -159,6 +236,14 @@ void main() {
       const falla = SalCorruptaException('no es base64');
 
       expect(falla.toString(), 'SalCorruptaException(no es base64)');
+    });
+  });
+
+  group('MarcaInicializacionCorruptaException', () {
+    test('cuando se imprime, dice el motivo sin el valor leído', () {
+      const falla = MarcaInicializacionCorruptaException('no es la marca esperada');
+
+      expect(falla.toString(), 'MarcaInicializacionCorruptaException(no es la marca esperada)');
     });
   });
 }
