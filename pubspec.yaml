@@ -58,6 +58,31 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # Offline-first: nada de `google_fonts` con fetch en runtime. Empaquetadas desde el repo oficial
+  # https://github.com/google/fonts (licencia OFL, ver assets/fonts/*-OFL.txt). Las tres familias
+  # solo están disponibles ahí como fuente variable (sin instancias estáticas por peso) — se
+  # registra el mismo archivo una vez por peso usado; Flutter/Skia interpola el eje `wght`.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+          weight: 400
+        - asset: assets/fonts/Inter.ttf
+          weight: 500
+        - asset: assets/fonts/Inter.ttf
+          weight: 600
+        - asset: assets/fonts/Inter.ttf
+          weight: 700
+    - family: SourceSerif4
+      fonts:
+        - asset: assets/fonts/SourceSerif4.ttf
+          weight: 600
+        - asset: assets/fonts/SourceSerif4.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf
+          weight: 500
 # SQLCipher (ADR-003). `package:sqlite3` 3.x empaqueta SQLite con hooks de Dart y baja, según este
 # `source`, el binario precompilado de cada plataforma desde sus releases de GitHub (verificado por
 # sha256). `sqlcipher` = SQLCipher community edition, que es lo que fija ADR-003/ADR-007; el paquete
