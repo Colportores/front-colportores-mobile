@@ -1,0 +1,82 @@
+// Cierre de sesión: además de invalidar la sesión, cierra la DB local y destruye la clave
+// (HU-AUTH-006, ADR-003). Con SQLCipher real en un directorio temporal.
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:colportores_mobile/core/database/database_helper.dart';
+import 'package:colportores_mobile/core/database/database_providers.dart';
+import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../../helpers/logger_mudo.dart';
+
+void main() {
+  group('SesionNotifier.cerrarSesion', () {
+    late Directory directorio;
+    late DatabaseHelper helper;
+    late AuthRemoteDataSourceEnMemoria remote;
+    late ProviderContainer container;
+
+    setUp(() async {
+      directorio = await Directory.systemTemp.createTemp('colportores_sesion_test');
+      helper = DatabaseHelper(
+        directorio: () async => directorio,
+        directorioTemporal: () async => directorio,
+        logger: loggerMudo(),
+      );
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
+      container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          databaseHelperProvider.overrideWithValue(helper),
+        ],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await helper.cerrar();
+      await directorio.delete(recursive: true);
+    });
+
+    Future<void> iniciarSesion() async {
+      await container.read(sesionProvider.future);
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      expect(falla, isNull);
+    }
+
+    test(
+      'dado sesión y DB abierta, cuando cierra sesión, cierra la DB y destruye la clave',
+      () async {
+        await iniciarSesion();
+        final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+        await container.read(dbLocalProvider.notifier).abrir(clave);
+
+        await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(container.read(sesionProvider).value, isNull);
+        expect(container.read(dbLocalProvider), isNull);
+        expect(helper.abierta, isFalse);
+        expect(clave.destruida, isTrue);
+        expect(remote.llamadasCerrarSesion, 1);
+      },
+    );
+
+    test('dado sesión sin DB abierta, cuando cierra sesión, no falla ni toca el helper', () async {
+      await iniciarSesion();
+
+      await expectLater(container.read(sesionProvider.notifier).cerrarSesion(), completes);
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(container.read(dbLocalProvider), isNull);
+      expect(helper.abierta, isFalse);
+    });
+  });
+}
