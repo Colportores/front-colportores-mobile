@@ -1,7 +1,8 @@
 # sync_engine
 
 Motor de sincronización y backup de Colportaje App.
-Implementa el [Contrato del motor de sincronización](../../../../back/) v0.9.2.
+Implementa el [Contrato del motor de sincronización](https://github.com/Colportores/docs-organizacion/blob/main/docs/contrato-sync-engine.md)
+v0.9.3 (borrador; se congela como v1.0 con la firma de las dos partes).
 
 Núcleo Dart puro (§5.9): corre en la VM, sin emulador ni dispositivo.
 
@@ -10,9 +11,9 @@ dart pub get
 dart test        # ~1 s
 ```
 
-> **Ubicación**: el contrato lo pone en `front-colportores-mobile/packages/sync_engine`.
-> Está acá dentro del prototipo hasta que exista ese repo; mover el directorio
-> es todo lo que hace falta.
+> **Ubicación**: la que fija el contrato (ADR-017),
+> `front-colportores-mobile/packages/sync_engine`. Llegó desde el prototipo
+> `Colportores/Prototipo` sin más cambio que moverlo de directorio.
 
 ## Estado
 
@@ -38,7 +39,7 @@ dart test        # ~1 s
 | §6 — `BffTransport`: el camino batch por HTTP | ✅ [`adapters/bff_transport.dart`](lib/src/adapters/bff_transport.dart) |
 | ADR-003 — compresión, SHA-256 e `Isolate.run` del backup | ✅ [`adapters/backup_codec.dart`](lib/src/adapters/backup_codec.dart) |
 | ADR-003, §6 — `DriveArchive`: el `appDataFolder` por HTTP, con la cadena en `appProperties` | ✅ [`adapters/drive_archive.dart`](lib/src/adapters/drive_archive.dart) |
-| `JobStorePort`, `LocalStorePort`, `SnapshotPort` sobre Drift + SQLCipher | ✅ en la app ([`lib/datos/`](../../lib/datos/)), pasando `port_contracts` |
+| `JobStorePort`, `LocalStorePort`, `SnapshotPort` sobre Drift + SQLCipher | ❌ en este repo. Los implementa la app en `lib/datos/` y se verifican con [`port_contracts.dart`](lib/port_contracts.dart); hoy el motor corre sobre los fakes. Es [#29](https://github.com/Colportores/front-colportores-mobile/issues/29) |
 | RF-AL06 — `AesGcmCrypto`: AES-256-GCM sobre el bloque comprimido | ✅ [`adapters/aes_gcm_crypto.dart`](lib/src/adapters/aes_gcm_crypto.dart) |
 | Adaptadores de plataforma: los cinco plugins, y la aceleración nativa del cifrado | ❌ |
 
