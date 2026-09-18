@@ -18,6 +18,13 @@ analyzer:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
     - build/**
+    # `packages/sync_engine` es un paquete con su propio `analysis_options.yaml` y su propio paso
+    # de CI (`dart analyze` + `dart test` ahí adentro). Analizarlo también desde acá lo somete a
+    # dos configuraciones distintas a la vez, y falla por cosas que no son suyas: sin un
+    # `dart pub get` previo en ese directorio, cada import del paquete es un `uri_does_not_exist`.
+    - packages/**
+    - android/**
+    - ios/**
 
 # Línea de 100 (convenciones §4.3). `dart format` lo lee de acá.
 formatter:
