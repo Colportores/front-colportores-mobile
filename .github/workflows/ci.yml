@@ -41,6 +41,18 @@ jobs:
 
       - run: flutter analyze --fatal-infos
       - run: dart run custom_lint --fatal-infos
+
+      # El motor es un paquete aparte con su propia suite (§8 del contrato) y núcleo Dart puro:
+      # corre en la VM, sin emulador. `flutter test` solo mira el `test/` de la app, así que sin
+      # este paso sus tests no los ejecuta nadie — y ahí vive la lógica de la cola, los lotes, los
+      # conflictos y el backup.
+      - name: sync_engine (paquete Dart puro)
+        working-directory: packages/sync_engine
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
       - run: flutter test --coverage
 
       - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)
