@@ -43,6 +43,8 @@ dependencies:
   riverpod_annotation: ^4.0.0
   sqlite3: ^3.5.2           # solo para `PRAGMA key` en el setup de la conexión (core/database)
   supabase_flutter: ^2.17.2 # Supabase Auth (ADR-016, HU-AUTH-003); trae app_links (deep link OAuth)
+  sync_engine:              # el motor de ADR-017; los puertos que implementa `lib/datos/`
+    path: packages/sync_engine
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
 
 dev_dependencies:
