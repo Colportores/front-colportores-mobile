@@ -32,10 +32,15 @@ class AppDatabase extends GeneratedDatabase {
   @override
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
 
+  /// Versión del esquema (`PRAGMA user_version`). Constante además de getter porque
+  /// `DatabaseHelper` la necesita **antes** de construir la DB: el `setup` de la conexión rechaza
+  /// un archivo de una versión posterior antes de que Drift lo migre.
+  static const int versionEsquema = 1;
+
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => versionEsquema;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

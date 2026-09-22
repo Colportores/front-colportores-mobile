@@ -101,9 +101,16 @@ class SesionNotifier extends _$SesionNotifier {
 
   /// Invalida la sesión y cierra la DB local: la clave de cifrado se destruye acá (HU-AUTH-006,
   /// ADR-003 — vive solo mientras la sesión está activa). El borrado de datos es HU-AUTH-010.
+  ///
+  /// El estado se resetea en `finally`: si el cierre de la DB local falla, la sesión remota ya
+  /// quedó invalidada, así que dejar la app mostrando al usuario como logueado sería peor que el
+  /// error. La excepción igual se propaga para quien sí espere el `Future`.
   Future<void> cerrarSesion() async {
-    await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
-    await ref.read(dbLocalProvider.notifier).cerrar();
-    state = const AsyncData(null);
+    try {
+      await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
+      await ref.read(dbLocalProvider.notifier).cerrar();
+    } finally {
+      state = const AsyncData(null);
+    }
   }
 }
