@@ -38,7 +38,7 @@ void main() {
       } on Object catch (e) {
         capturada = e;
       }
-    }, (_, __) {});
+    }, (_, _) {});
 
     expect(capturada, isA<DbLocalException>().having((e) => e.operacion, 'operacion', 'abrir'));
     expect(helper.abierta, isFalse);
