@@ -1,7 +1,7 @@
 // Conformidad con ADR-009: el dominio es Dart puro.
 //
-// Escanea los imports de lib/features/*/domain/** y lib/core/{error,usecases}: si alguno trae
-// Flutter, Riverpod, Drift o Supabase, el test falla. La regla deja de depender del review.
+// Escanea los imports de lib/features/*/domain/** y lib/core/{domain,error,usecases}: si alguno
+// trae Flutter, Riverpod, Drift o Supabase, el test falla. La regla deja de depender del review.
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -30,7 +30,7 @@ Iterable<Directory> _directoriosDeDominio() sync* {
       if (domain.existsSync()) yield domain;
     }
   }
-  for (final core in ['lib/core/error', 'lib/core/usecases']) {
+  for (final core in ['lib/core/domain', 'lib/core/error', 'lib/core/usecases']) {
     final dir = Directory(core);
     if (dir.existsSync()) yield dir;
   }
