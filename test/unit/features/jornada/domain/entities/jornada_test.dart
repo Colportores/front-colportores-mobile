@@ -68,5 +68,23 @@ void main() {
 
       expect(jornada.estaBorrada, isTrue);
     });
+
+    test('dado una jornada sin fin pero borrada por soft delete, cuando se consulta estaAbierta, '
+        'es false (esquema-datos.md §Principios 6)', () {
+      final borrada = Jornada(
+        id: 'jor-1',
+        colportorId: 'u-1',
+        inicio: DateTime(2026, 9, 18, 9, 0),
+        auditoria: Auditoria(
+          createdAt: DateTime(2026, 1, 1),
+          updatedAt: DateTime(2026, 1, 2),
+          // Borrar es setear deleted_at; no toca `fin`.
+          deletedAt: DateTime(2026, 1, 2),
+        ),
+      );
+
+      expect(borrada.fin, isNull);
+      expect(borrada.estaAbierta, isFalse);
+    });
   });
 }

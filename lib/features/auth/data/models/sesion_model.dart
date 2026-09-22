@@ -6,7 +6,9 @@ import '../../domain/entities/sesion.dart';
 /// a una `Sesion` con los mismos datos. Los repositorios devuelven al dominio [toEntity], nunca
 /// el modelo.
 final class SesionModel extends Sesion {
-  const SesionModel({
+  // Sin `const`: [Sesion] normaliza `expiraEn` a UTC en su lista de inicialización, así que su
+  // constructor ya no puede ser const (y con un `DateTime` requerido nunca lo fue en la práctica).
+  SesionModel({
     required super.usuarioId,
     required super.email,
     required super.accessToken,

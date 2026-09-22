@@ -34,11 +34,12 @@ void main() {
       expect(a, isNot(equals(b)));
     });
 
-    test('dado que ventaId es requerido por el tipo, cuando se construye sin venta, no compila '
-        '(regla RF-CO01..04 aplicada por el sistema de tipos, no en runtime)', () {
-      // Documental: Cobranza.ventaId es `String` no-nullable — omitir el argumento es un
-      // error de compilación, no una excepción en runtime. No hay assert que probar acá.
-      expect(construir().ventaId, isNotEmpty);
+    test('dado que RF-CO01..04 exige venta_id NOT NULL, cuando se declara Cobranza.ventaId, su '
+        'tipo estatico es no-nullable', () {
+      // [_exigeNoNullable] tiene `T extends Object`: si `ventaId` pasara a `String?` esta línea
+      // deja de compilar y el build se pone rojo — que es exactamente la regresión que cuida.
+      // Un `expect(..., isNotEmpty)` no la detectaría: pasa igual con un tipo nullable.
+      expect(_exigeNoNullable(construir().ventaId), equals('venta-1'));
     });
 
     test('dado que auditoria.deletedAt tiene valor, cuando se consulta estaBorrada, es true', () {
@@ -60,3 +61,8 @@ void main() {
     });
   });
 }
+
+/// Acepta únicamente valores de un tipo no-nullable (`T extends Object`). Pasarle un `String?`
+/// es un error de compilación, así que sirve para fijar por tipo una regla de integridad que no
+/// se puede comprobar en runtime.
+T _exigeNoNullable<T extends Object>(T valor) => valor;

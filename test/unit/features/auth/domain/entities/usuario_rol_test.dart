@@ -56,13 +56,45 @@ void main() {
       expect(ur.esVigente(ahora: DateTime(2026, 3, 1)), isTrue);
     });
 
-    test(
-      'dado que no se pasa ahora, cuando se consulta esVigente, usa la hora actual del sistema',
-      () {
-        final ur = construir(validoDesde: DateTime(2020, 1, 1));
-        expect(ur.esVigente(), isTrue);
-      },
-    );
+    test('dado que no se pasa ahora, cuando se consulta esVigente, usa el instante actual del '
+        'sistema y no un valor fijo', () {
+      final ahoraReal = DateTime.now();
+      final vigente = construir(
+        validoDesde: ahoraReal.subtract(const Duration(days: 1)),
+        validoHasta: ahoraReal.add(const Duration(days: 1)),
+      );
+      final expirado = construir(
+        validoDesde: ahoraReal.subtract(const Duration(days: 2)),
+        validoHasta: ahoraReal.subtract(const Duration(days: 1)),
+      );
+      final futuro = construir(validoDesde: ahoraReal.add(const Duration(days: 1)));
+
+      // Los tres a la vez fijan el default a "ahora": un centinela fijo (epoch, año 3000)
+      // haría fallar alguno.
+      expect(vigente.esVigente(), isTrue);
+      expect(expirado.esVigente(), isFalse);
+      expect(futuro.esVigente(), isFalse);
+    });
+
+    test('dado un rol revocado por soft delete, cuando se consulta esVigente dentro de la '
+        'ventana temporal, es false (esquema-datos.md §Principios 6)', () {
+      final revocado = UsuarioRol(
+        id: 'ur-1',
+        usuarioId: 'u-1',
+        rolId: 'rol-1',
+        validoDesde: DateTime(2026, 1, 1),
+        validoHasta: DateTime(2026, 12, 1),
+        auditoria: Auditoria(
+          createdAt: DateTime(2026, 1, 1),
+          updatedAt: DateTime(2026, 3, 1),
+          // Revocar es setear deleted_at; no toca validoDesde/validoHasta.
+          deletedAt: DateTime(2026, 3, 1),
+        ),
+      );
+
+      expect(revocado.esVigente(ahora: DateTime(2026, 6, 1)), isFalse);
+      expect(revocado.esVigente(), isFalse);
+    });
 
     test('dado que auditoria.deletedAt tiene valor, cuando se consulta estaBorrada, es true', () {
       final ur = UsuarioRol(

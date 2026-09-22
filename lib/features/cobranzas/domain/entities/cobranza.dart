@@ -8,8 +8,7 @@ import '../../../../core/domain/entities/auditoria.dart';
 /// `cobranza`)" (esquema-datos.md §Reglas de integridad, RF-CO01..04): se enforcea con el tipo
 /// — [ventaId] es `String` no nullable, el sistema de tipos de Dart lo garantiza en compilación.
 ///
-/// `montoCentavos`: mismo criterio que `Venta.montoTotalCentavos` — el esquema no especifica
-/// el tipo del monto; se usa `int` en centavos. **Pendiente de confirmar** (ver PR).
+/// El monto va en centavos como `int`, nunca `double` (flutter-clean-arch.md, regla 6).
 ///
 /// `CobranzaItem`: el diagrama plantuml de esquema-datos.md (§Visión general de entidades)
 /// menciona `CobranzaItem` y una relación `Cobranza "1" -- "N" CobranzaItem`, pero la sección
@@ -19,27 +18,28 @@ import '../../../../core/domain/entities/auditoria.dart';
 enum MedioCobranza { efectivo, tarjeta, transferencia }
 
 class Cobranza extends Equatable {
-  const Cobranza({
+  Cobranza({
     required this.id,
     required this.ventaId,
     required this.montoCentavos,
     required this.medio,
-    required this.fecha,
+    required DateTime fecha,
     this.ticketId,
     required this.numeroCuota,
     required this.auditoria,
-  });
+  }) : fecha = fecha.toUtc();
 
   final String id;
 
   /// FK a `venta.id`. NOT NULL — ver doc comment de la clase.
   final String ventaId;
 
-  /// Pendiente de confirmar: ver doc comment de la clase.
+  /// Monto cobrado en centavos (flutter-clean-arch.md, regla 6).
   final int montoCentavos;
 
   final MedioCobranza medio;
 
+  /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
   final DateTime fecha;
 
   /// FK opcional a `ticket.id` (esquema-datos.md: "ticket_id (FK opcional)").

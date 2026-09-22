@@ -4,11 +4,10 @@ import '../../../../core/domain/entities/auditoria.dart';
 
 /// Línea de venta (esquema-datos.md §Operaciones de campo, tabla `venta_item`).
 ///
-/// `precioUnitarioCentavos`/`subtotalCentavos`: mismo criterio que `Venta.montoTotalCentavos`
-/// — el esquema no especifica el tipo de los montos; se usa `int` en centavos.
-/// **Pendiente de confirmar** (ver PR). El esquema tampoco dice si `subtotal` se deriva de
-/// `cantidad * precio_unitario` o puede diferir (ej. descuentos) — se guarda el valor tal cual
-/// llega, sin asumir la fórmula.
+/// El dinero va en centavos como `int`, nunca `double` (flutter-clean-arch.md, regla 6) — mismo
+/// criterio que [VentaItem.precioUnitarioCentavos] y `Venta.montoTotalCentavos`. El esquema no
+/// dice si `subtotal` se deriva de `cantidad * precio_unitario` o puede diferir (ej. descuentos)
+/// — se guarda el valor tal cual llega, sin asumir la fórmula.
 class VentaItem extends Equatable {
   const VentaItem({
     required this.id,
@@ -30,10 +29,10 @@ class VentaItem extends Equatable {
 
   final int cantidad;
 
-  /// Pendiente de confirmar: ver doc comment de la clase.
+  /// Precio unitario en centavos (flutter-clean-arch.md, regla 6).
   final int precioUnitarioCentavos;
 
-  /// Pendiente de confirmar: ver doc comment de la clase.
+  /// Subtotal en centavos (flutter-clean-arch.md, regla 6).
   final int subtotalCentavos;
 
   final Auditoria auditoria;

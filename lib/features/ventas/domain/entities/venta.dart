@@ -10,20 +10,18 @@ import '../../../../core/domain/entities/auditoria.dart';
 /// entidad no anida objetos de otras tablas (regla 5.6.3). Se enforcea en el
 /// repositorio/caso de uso que persiste `Venta` junto con sus `VentaItem`.
 ///
-/// `montoTotalCentavos`: el esquema no dice si los montos son enteros en centavos o `double`
-/// (esquema-datos.md no lo especifica para `venta.monto_total`) — se usa `int` en centavos
-/// por convención hasta confirmar. **Pendiente de confirmar** (ver PR).
+/// El dinero va en centavos como `int`, nunca `double` (flutter-clean-arch.md, regla 6).
 class Venta extends Equatable {
-  const Venta({
+  Venta({
     required this.id,
     required this.espacioPersonaId,
     required this.numeroTalonario,
     required this.montoTotalCentavos,
-    required this.fecha,
+    required DateTime fecha,
     required this.colportorId,
     required this.visitaId,
     required this.auditoria,
-  });
+  }) : fecha = fecha.toUtc();
 
   final String id;
 
@@ -33,9 +31,14 @@ class Venta extends Equatable {
   /// El esquema no especifica el formato del talonario — se modela como texto libre.
   final String numeroTalonario;
 
-  /// Pendiente de confirmar: ver doc comment de la clase.
+  /// Monto total en centavos (flutter-clean-arch.md, regla 6).
+  ///
+  /// TODO(#8): el nombre del campo (`montoTotalCentavos` vs `montoTotal` del template de
+  /// flutter-clean-arch.md) es decisión pendiente — ver comentario en el issue #8. El tipo no:
+  /// centavos como `int` está decidido.
   final int montoTotalCentavos;
 
+  /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
   final DateTime fecha;
 
   /// FK a `usuario.id`.
