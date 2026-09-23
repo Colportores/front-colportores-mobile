@@ -77,7 +77,14 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     });
   }
 
+  /// Gatea tanto el `onPressed` del botón como el envío por teclado (`onSubmitted`) y la reentrada
+  /// de [_enviar]: sin esto, un doble tap o un "Listo" del teclado justo antes del próximo rebuild
+  /// podría disparar dos solicitudes (el botón recién se deshabilita cuando `setState` repinta).
+  bool get _puedeEnviar => _entiendeImpacto && !_enviando && _segundosRestantes == 0;
+
   Future<void> _enviar() async {
+    if (!_puedeEnviar) return;
+
     setState(() {
       _enviando = true;
       _erroresCampo = const {};
@@ -119,7 +126,6 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     final colores = theme.extension<ColoresColportaje>()!;
     final esOscuro = theme.brightness == Brightness.dark;
     final paddingHorizontal = esOscuro ? 26.0 : 30.0;
-    final puedeEnviar = _entiendeImpacto && !_enviando && _segundosRestantes == 0;
 
     return Scaffold(
       body: SafeArea(
@@ -167,7 +173,11 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
                         style: theme.textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 22),
-                      _CampoRecuperacion(controller: _email, errorText: _erroresCampo['email']),
+                      _CampoRecuperacion(
+                        controller: _email,
+                        errorText: _erroresCampo['email'],
+                        onSubmitted: (_) => _enviar(),
+                      ),
                       const SizedBox(height: 18),
                       Text(
                         _textoAviso,
@@ -222,7 +232,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
                       const SizedBox(height: 16),
                       FilledButton(
                         key: const Key('recuperacion_password_enviar'),
-                        onPressed: puedeEnviar ? _enviar : null,
+                        onPressed: _puedeEnviar ? _enviar : null,
                         child: _enviando
                             ? SizedBox.square(
                                 dimension: 20,
@@ -253,10 +263,11 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 /// Campo de email — mismo criterio visual que `_CampoLogin`/`_CampoRegistro`/`_CampoEmail` de las
 /// otras páginas de auth, sin duplicar esas clases privadas.
 class _CampoRecuperacion extends StatelessWidget {
-  const _CampoRecuperacion({required this.controller, this.errorText});
+  const _CampoRecuperacion({required this.controller, this.errorText, this.onSubmitted});
 
   final TextEditingController controller;
   final String? errorText;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +285,7 @@ class _CampoRecuperacion extends StatelessWidget {
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
           textInputAction: TextInputAction.done,
+          onSubmitted: onSubmitted,
           style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(hintText: 'lucia.silva@correo.com', errorText: errorText),
         ),

@@ -105,6 +105,61 @@ void main() {
     });
   });
 
+  group('RecuperacionPasswordPage — envío por teclado y reentrada', () {
+    testWidgets('el "Listo" del teclado envía si ya se puede (casilla marcada)', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarYAceptar(tester);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_mensajeNeutro), findsOneWidget);
+      expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
+    });
+
+    testWidgets('el "Listo" del teclado no hace nada si falta marcar la casilla', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('recuperacion_password_email')),
+        'lucia.silva@correo.com',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_mensajeNeutro), findsNothing);
+      expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+    });
+
+    testWidgets('doble tap seguido dispara una sola solicitud (guarda de reentrada)', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarYAceptar(tester);
+
+      // Dos taps seguidos sin `pump()` entre medio: simula un doble tap más rápido que el próximo
+      // repintado, cuando el botón todavía no se deshabilitó visualmente.
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
+    });
+  });
+
   group('RecuperacionPasswordPage — anti-enumeración', () {
     testWidgets('email registrado: mensaje neutro y arranca el cooldown de 60s', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(
