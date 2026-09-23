@@ -7,7 +7,10 @@ import '../../data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import '../../data/datasources/jornada_local_data_source.dart';
 import '../../data/datasources/jornada_local_data_source_drift.dart';
 import '../../data/repositories/jornada_repository_impl.dart';
+import '../../data/services/disparador_backup_pendiente.dart';
 import '../../domain/repositories/jornada_repository.dart';
+import '../../domain/services/disparador_backup.dart';
+import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../../domain/usecases/obtener_jornada_activa_use_case.dart';
 
@@ -53,3 +56,15 @@ IniciarJornadaUseCase iniciarJornadaUseCase(Ref ref) => IniciarJornadaUseCase(
 @Riverpod(keepAlive: true)
 ObtenerJornadaActivaUseCase obtenerJornadaActivaUseCase(Ref ref) =>
     ObtenerJornadaActivaUseCase(ref.watch(jornadaRepositoryProvider));
+
+/// El backup automático que se pide al cerrar la jornada (HU-SYNC-005). Hasta que exista, solo
+/// registra el pedido ([DisparadorBackupPendiente], TODO(#74)).
+@Riverpod(keepAlive: true)
+DisparadorBackup disparadorBackup(Ref ref) => DisparadorBackupPendiente();
+
+@Riverpod(keepAlive: true)
+FinalizarJornadaUseCase finalizarJornadaUseCase(Ref ref) => FinalizarJornadaUseCase(
+  ref.watch(jornadaRepositoryProvider),
+  ref.watch(disparadorBackupProvider),
+  ahora: ref.watch(relojJornadaProvider),
+);

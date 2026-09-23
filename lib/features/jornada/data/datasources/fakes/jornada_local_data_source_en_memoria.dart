@@ -32,6 +32,20 @@ final class JornadaLocalDataSourceEnMemoria implements JornadaLocalDataSource {
     _jornadas[jornada.id] = jornada;
   }
 
+  @override
+  Future<void> finalizar(JornadaModel jornada) async {
+    final fin = jornada.fin;
+    if (fin == null) throw ArgumentError.value(jornada.id, 'jornada', 'no trae fin');
+    final guardada = _jornadas[jornada.id];
+    // Sin `await` entre la comprobación y la escritura, igual que en [insertar].
+    if (guardada == null || guardada.colportorId != jornada.colportorId || !guardada.estaAbierta) {
+      throw const JornadaNoAbiertaException();
+    }
+    _jornadas[jornada.id] = JornadaModel.fromEntity(
+      guardada.finalizada(fin: fin, actualizadaEn: jornada.auditoria.updatedAt),
+    );
+  }
+
   JornadaModel? _activa(String colportorId) {
     for (final jornada in _jornadas.values) {
       if (jornada.colportorId == colportorId && jornada.estaAbierta) return jornada;

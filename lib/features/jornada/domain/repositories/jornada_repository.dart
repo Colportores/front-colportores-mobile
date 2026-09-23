@@ -17,4 +17,12 @@ abstract interface class JornadaRepository {
   /// atómicas (dos toques seguidos en "Iniciar jornada"), así que la garantía de "una sola jornada
   /// activa" la cierra el almacenamiento, no el caso de uso.
   Future<Either<Failure, Jornada>> crear(Jornada jornada);
+
+  /// Guarda el cierre de [jornada] (HU-JOR-002): su `fin` y su `updated_at`. [jornada] ya viene
+  /// cerrada ([Jornada.finalizada]); el resto de sus campos no se escribe.
+  ///
+  /// Si la jornada ya no está abierta en el almacenamiento (la cerró un toque anterior, o no
+  /// existe) devuelve `Left(FailureSinJornadaActiva)` y no pisa el `fin` que ya tenía: como en
+  /// [crear], comprobar y escribir es atómico en el almacenamiento, no en el caso de uso.
+  Future<Either<Failure, Jornada>> finalizar(Jornada jornada);
 }

@@ -20,6 +20,10 @@ final class _RepositorioFalso implements JornadaRepository {
   @override
   Future<Either<Failure, Jornada>> crear(Jornada jornada) =>
       throw UnimplementedError('no se usa en este caso de uso');
+
+  @override
+  Future<Either<Failure, Jornada>> finalizar(Jornada jornada) =>
+      throw UnimplementedError('no se usa en este caso de uso');
 }
 
 void main() {

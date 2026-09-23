@@ -71,4 +71,37 @@ final class JornadaRepositoryImpl implements JornadaRepository {
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  /// TODO(#74): encolar el sync del cierre (`engine.stage(Tables.jornada, Op.update, …)` en la
+  /// misma transacción que la escritura, contrato-sync-engine.md §3), igual que el alta en
+  /// [crear]; depende del mismo PR #40.
+  @override
+  Future<Either<Failure, Jornada>> finalizar(Jornada jornada) async {
+    final modelo = JornadaModel.fromEntity(jornada);
+    try {
+      await _local.finalizar(modelo);
+      _log.info(LogModulo.db, 'JORNADA_FINALIZADA', 'jornada finalizada', {
+        'jornada_id': jornada.id,
+        'user_id': jornada.colportorId,
+      });
+      return Right(modelo.toEntity());
+    } on JornadaNoAbiertaException {
+      const failure = FailureSinJornadaActiva();
+      _log.warn(LogModulo.db, 'JORNADA_FIN_RECHAZADO', 'la jornada ya no estaba abierta', {
+        'jornada_id': jornada.id,
+        'codigo': failure.codigo,
+      });
+      return const Left(failure);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'JORNADA_FIN_FAIL',
+        'no se pudo guardar el fin de la jornada',
+        {'jornada_id': jornada.id},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
 }

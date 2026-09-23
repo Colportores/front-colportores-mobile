@@ -1,7 +1,9 @@
+import 'package:dartz/dartz.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../domain/entities/jornada.dart';
+import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../../domain/usecases/obtener_jornada_activa_use_case.dart';
 import 'jornada_providers.dart';
@@ -9,7 +11,7 @@ import 'jornada_providers.dart';
 part 'jornada_actual_notifier.g.dart';
 
 /// La jornada en curso del colportor [colportorId] (`null` = no tiene ninguna), para la pantalla
-/// principal (HU-JOR-001).
+/// principal (HU-JOR-001 y HU-JOR-002).
 ///
 /// Sin lógica de negocio (vive en los casos de uso): solo traduce resultados a estado. Si la
 /// lectura falla, el estado queda en error con el [Failure] como causa; la pantalla ofrece
@@ -46,5 +48,23 @@ class JornadaActual extends _$JornadaActual {
         return null;
       },
     );
+  }
+
+  /// Finaliza la jornada en curso ahora, o a [hora] si el colportor la ajustó (hasta 30 min hacia
+  /// atrás y no antes del inicio).
+  ///
+  /// Devuelve la jornada cerrada (para el resumen) o el [Failure] si no se pudo. Si se cerró, el
+  /// estado pasa a "sin jornada". Con [FailureSinJornadaActiva] —ya estaba cerrada, por ejemplo
+  /// con dos toques seguidos— relee el estado para que la pantalla muestre lo que hay guardado.
+  Future<Either<Failure, Jornada>> finalizar({DateTime? hora}) async {
+    final resultado = await ref.read(finalizarJornadaUseCaseProvider)(
+      FinalizarJornadaParams(colportorId: colportorId, hora: hora),
+    );
+    if (!ref.mounted) return resultado;
+
+    resultado.fold<void>((failure) {
+      if (failure is FailureSinJornadaActiva) ref.invalidateSelf();
+    }, (_) => state = const AsyncData(null));
+    return resultado;
   }
 }
