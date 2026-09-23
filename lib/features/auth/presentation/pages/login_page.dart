@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/sesion_notifier.dart';
+import 'recuperacion_password_page.dart';
 import 'registro_page.dart';
 
 /// Pantalla de inicio de sesión (HU-AUTH-003), diseño "Login Colportor".
@@ -172,14 +173,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           const SizedBox(width: 8),
                           Flexible(
                             child: TextButton(
+                              key: const Key('login_olvidaste_clave'),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(horizontal: 4),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               onPressed: () {
-                                // TODO(HU-AUTH-004): recuperación de contraseña.
-                                _proximamente();
+                                unawaited(
+                                  Navigator.of(context).push<void>(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const RecuperacionPasswordPage(),
+                                    ),
+                                  ),
+                                );
                               },
                               child: Text(
                                 '¿Olvidaste tu clave?',
