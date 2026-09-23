@@ -152,7 +152,9 @@ void main() {
       await tester.tap(find.text('Continuar con Google'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      // Texto exacto del Failure, no solo una parte de la frase (ver HU-AUTH-003, escenario
+      // "red caída"): un `textContaining` deja pasar un mensaje truncado o con texto de más.
+      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
     });
 
     testWidgets('Entrar se deshabilita y muestra spinner mientras iniciarSesion no resolvió', (

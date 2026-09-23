@@ -147,7 +147,13 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('verificar tu correo'), findsOneWidget);
+      // Texto exacto de la HU-AUTH-003 (§Contexto funcional / mensaje de Supabase
+      // `email_not_confirmed`), no solo una parte: un test que solo busca "verificar tu correo"
+      // no detecta que se muestre un mensaje truncado o con texto de más.
+      expect(
+        find.text('Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('cuando el registro requiere verificar el email, lleva a la pantalla de '
