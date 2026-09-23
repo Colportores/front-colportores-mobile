@@ -344,6 +344,49 @@ void main() {
       // contraseña no siguen el criterio de aceptación de HU-AUTH-001. Ver issue #86.
       skip: true,
     );
+
+    testWidgets(
+      'fallo intermitente del backend (5xx): mensaje accionable y botón Reintentar sin perder '
+      'los datos',
+      (tester) async {
+        final remote = _RemoteQueLanzaAlRegistrar(const ServidorException(status: 503));
+        await tester.pumpWidget(_pagina(remote: remote));
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester);
+        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await tester.pumpAndSettle();
+
+        // Criterio de aceptación "Edge - fallo intermitente del backend": mensaje accionable
+        // exacto (no el genérico de FailureServidor), un botón "Reintentar" que no pierda los
+        // datos del formulario, y (no verificable acá) el registro local de un NetworkFailure sin
+        // PII. Hoy no hay botón "Reintentar" en ningún lado de la pantalla ni ese mensaje.
+        expect(
+          find.text('Servicio temporalmente no disponible, reintentá en unos minutos'),
+          findsOneWidget,
+        );
+        expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+        await tester.pumpAndSettle();
+
+        final campoEmail = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const Key('registro_email')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(
+          campoEmail.controller?.text,
+          'lucia.silva@correo.com',
+          reason: 'el botón "Reintentar" no debería perder los datos ya tipeados',
+        );
+      },
+      // Bug real, no se arregla en este QA: el fallo intermitente del backend (5xx) no muestra el
+      // mensaje accionable exacto ni ofrece un botón "Reintentar" que pide el criterio de
+      // aceptación de HU-AUTH-001. Ver issue #90.
+      skip: true,
+    );
   });
 
   group('Desde el login', () {
