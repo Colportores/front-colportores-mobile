@@ -8,7 +8,8 @@
 #   docker compose -f compose.dev.yml run --rm flutter dart run build_runner build
 #
 # La imagen de cirruslabs se publica por versión; subirla = subir Flutter en todo el equipo y en CI
-# (ver .github/workflows/ci.yml → flutter-version).
+# (ver .github/workflows/ci.yml → flutter-version). Al pasar a Dart >= 3.13 se borra
+# tool/riverpod_lint_plugin y analysis_options.yaml declara `riverpod_lint: ^3.1.9` (ver #87).
 
 FROM ghcr.io/cirruslabs/flutter:3.44.0
 

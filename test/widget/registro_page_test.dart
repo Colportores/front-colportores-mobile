@@ -52,39 +52,58 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
 /// [RegistroPage] aislada (sin [ColportoresApp]): igual criterio que `login_page_test.dart` —
 /// cubre diseño/tema/validación/proveedores. El caso feliz necesita, además, una pantalla debajo
 /// en la pila para poder comprobar que `popUntil((r) => r.isFirst)` cierra el registro.
-Widget _pagina({ThemeData? tema, bool? mostrarApple, AuthRemoteDataSource? remote}) =>
-    ProviderScope(
-      overrides: [
-        authRemoteDataSourceProvider.overrideWithValue(
-          remote ??
-              AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
-        ),
-        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-      ],
-      child: MaterialApp(
-        theme: tema ?? temaClaro(),
-        home: RegistroPage(mostrarApple: mostrarApple),
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPagina(
+  WidgetTester tester, {
+  ThemeData? tema,
+  bool? mostrarApple,
+  AuthRemoteDataSource? remote,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(
+        remote ??
+            AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
       ),
-    );
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+    ],
+    child: MaterialApp(
+      theme: tema ?? temaClaro(),
+      home: RegistroPage(mostrarApple: mostrarApple),
+    ),
+  ),
+);
 
 /// Arranca en una pantalla inicial cualquiera y empuja [RegistroPage] arriba, para poder
 /// verificar que el éxito hace `pop` hasta volver a ella.
-Widget _pilaConPantallaInicial({required AuthRemoteDataSourceEnMemoria remote}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(remote),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: MaterialApp(
-    theme: temaClaro(),
-    home: Builder(
-      builder: (context) => Scaffold(
-        body: Center(
-          child: TextButton(
-            key: const Key('abrir_registro'),
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const RegistroPage())),
-            child: const Text('abrir registro'),
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPilaConPantallaInicial(
+  WidgetTester tester, {
+  required AuthRemoteDataSourceEnMemoria remote,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+    ],
+    child: MaterialApp(
+      theme: temaClaro(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              key: const Key('abrir_registro'),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => const RegistroPage())),
+              child: const Text('abrir registro'),
+            ),
           ),
         ),
       ),
@@ -113,7 +132,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(_pagina(tema: temaClaro()));
+      await _montarPagina(tester, tema: temaClaro());
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -124,18 +143,18 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(_pagina(tema: temaOscuro()));
+      await _montarPagina(tester, tema: temaOscuro());
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
-      await tester.pumpWidget(_pagina(mostrarApple: true));
+      await _montarPagina(tester, mostrarApple: true);
       await tester.pumpAndSettle();
       expect(find.text('Apple'), findsOneWidget);
 
-      await tester.pumpWidget(_pagina(mostrarApple: false));
+      await _montarPagina(tester, mostrarApple: false);
       await tester.pumpAndSettle();
       expect(find.text('Apple'), findsNothing);
     });
@@ -146,7 +165,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'ana@example.com': 'secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('registro_continuar')));
@@ -167,7 +186,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'ana@example.com': 'secreto123'},
       );
-      await tester.pumpWidget(_pilaConPantallaInicial(remote: remote));
+      await _montarPilaConPantallaInicial(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('abrir_registro')));
@@ -189,7 +208,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'ana@example.com': 'secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester, email: 'ana@example.com');
@@ -208,7 +227,7 @@ void main() {
           mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
         ),
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
@@ -235,7 +254,7 @@ void main() {
           credenciales: const {},
           requiereVerificacionAlRegistrar: true,
         );
-        await tester.pumpWidget(_pagina(remote: remote));
+        await _montarPagina(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester, email: 'lucia.silva@correo.com');
@@ -256,7 +275,7 @@ void main() {
         credenciales: const {},
         simularSinConexion: true,
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
@@ -277,7 +296,7 @@ void main() {
     testWidgets(
       'debería pedir la casilla del trade-off E2E antes de aceptar (R-AU05)',
       (tester) async {
-        await tester.pumpWidget(_pagina());
+        await _montarPagina(tester);
         await tester.pumpAndSettle();
 
         // Criterio de aceptación de HU-AUTH-001: además de "Acepto Términos y Política de
@@ -297,7 +316,7 @@ void main() {
         final remote = AuthRemoteDataSourceEnMemoria(
           credenciales: const {'ana@example.com': 'secreto123'},
         );
-        await tester.pumpWidget(_pagina(remote: remote));
+        await _montarPagina(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester, email: 'ana@example.com');
@@ -323,7 +342,7 @@ void main() {
           credenciales: const {},
           simularSinConexion: true,
         );
-        await tester.pumpWidget(_pagina(remote: remote));
+        await _montarPagina(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester);
@@ -353,7 +372,7 @@ void main() {
       'los datos',
       (tester) async {
         final remote = _RemoteQueLanzaAlRegistrar(const ServidorException(status: 503));
-        await tester.pumpWidget(_pagina(remote: remote));
+        await _montarPagina(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester);
