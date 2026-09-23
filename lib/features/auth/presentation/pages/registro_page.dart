@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/sesion_notifier.dart';
+import 'recuperacion_password_page.dart';
 import 'verificacion_email_page.dart';
 
 /// Pantalla de registro de cuenta (HU-AUTH-001), diseño "Login Colportor" (registro 1a/1b).
@@ -44,6 +45,10 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   bool _enviando = false;
   bool _aceptaTerminos = false;
 
+  /// `true` cuando el error general es "email ya registrado" (HU-AUTH-001): habilita los accesos
+  /// directos a login y a recuperar contraseña que exige el criterio de aceptación.
+  bool _emailYaRegistrado = false;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +71,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
       _enviando = true;
       _erroresCampo = const {};
       _errorGeneral = null;
+      _emailYaRegistrado = false;
     });
 
     final email = _email.text;
@@ -91,6 +97,16 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
           switch (failure) {
             case FailureValidacion(:final campos):
               _erroresCampo = campos;
+            case FailureSinConexion():
+              // Mensaje propio del registro (HU-AUTH-001, "Error - sin conectividad"): no el
+              // genérico de FailureSinConexion, que también usa el login. Se descarta la
+              // contraseña tipeada "por seguridad" (el criterio de aceptación lo pide
+              // explícitamente); el resto del formulario se conserva.
+              _errorGeneral = 'Necesitás conexión para registrarte por primera vez';
+              _password.clear();
+            case FailureEmailYaRegistrado(:final mensaje):
+              _errorGeneral = mensaje;
+              _emailYaRegistrado = true;
             case Failure(:final mensaje):
               _errorGeneral = mensaje;
           }
@@ -317,6 +333,26 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           key: const Key('registro_error_general'),
                           style: TextStyle(color: theme.colorScheme.error),
                         ),
+                        if (_emailYaRegistrado)
+                          Wrap(
+                            spacing: 4,
+                            children: [
+                              TextButton(
+                                key: const Key('registro_email_duplicado_ir_a_login'),
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Iniciar sesión'),
+                              ),
+                              TextButton(
+                                key: const Key('registro_email_duplicado_ir_a_recuperar'),
+                                onPressed: () => Navigator.of(context).push<void>(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const RecuperacionPasswordPage(),
+                                  ),
+                                ),
+                                child: const Text('Recuperar contraseña'),
+                              ),
+                            ],
+                          ),
                       ],
                       const SizedBox(height: 4),
                       FilledButton(
