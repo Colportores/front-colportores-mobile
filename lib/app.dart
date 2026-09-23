@@ -31,6 +31,12 @@ class ColportoresApp extends ConsumerWidget {
     // suscribe una sola vez por vida de la app (`ColportoresApp` es la raíz, siempre montada).
     ref.listen(erroresVerificacionEmailProvider, (previous, next) {
       if (next is! AsyncData<void>) return;
+      // Con "Confirm email" activo, tener sesión implica cuenta ya verificada: si ya hay una,
+      // este evento viene de un enlace viejo (de un mail anterior) y no corresponde interrumpir
+      // al usuario ni vaciarle la pila de navegación con un aviso falso de "enlace vencido".
+      final haySesion = ref.read(sesionProvider).value != null;
+      if (haySesion) return;
+
       final navigator = navigatorKeyColportores.currentState;
       if (navigator == null) return;
       navigator.popUntil((route) => route.isFirst);
