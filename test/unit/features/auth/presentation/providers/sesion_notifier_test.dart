@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -14,6 +15,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 
@@ -40,6 +42,23 @@ final class _LocalQueFalla implements AuthLocalDataSource {
 
 final class _FallaDeAlmacen implements Exception {
   const _FallaDeAlmacen();
+}
+
+/// Cierra de verdad (la clave se destruye, como hace `DatabaseHelper.cerrar` aunque falle) y
+/// después lanza: es un cierre de la DB que falla.
+class _DbLocalQueFallaAlCerrar extends DbLocalNotifier {
+  @override
+  Future<void> cerrar() async {
+    await super.cerrar();
+    throw const DbLocalException(operacion: 'cerrar');
+  }
+}
+
+class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
 }
 
 void main() {
@@ -129,6 +148,46 @@ void main() {
       expect(helper.abierta, isFalse, reason: 'deslogueado con la DB abierta es peor que el error');
       expect(clave.destruida, isTrue);
     });
+
+    test(
+      'cuando fallan el use case y el cierre de la DB, propaga y loguea la del use case',
+      () async {
+        final salida = _SalidaEnMemoria();
+        final conFallas = ProviderContainer(
+          overrides: [
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(local),
+            databaseHelperProvider.overrideWithValue(helper),
+            dbLocalProvider.overrideWith(_DbLocalQueFallaAlCerrar.new),
+            sesionProvider.overrideWith(() => SesionNotifier(logger: AppLogger(output: salida))),
+          ],
+        );
+        addTearDown(conFallas.dispose);
+        await conFallas.read(sesionProvider.future);
+        final falla = await conFallas
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        expect(falla, isNull);
+        final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+        await conFallas.read(dbLocalProvider.notifier).abrir(clave);
+        local.explotar = true;
+
+        await expectLater(
+          conFallas.read(sesionProvider.notifier).cerrarSesion(),
+          throwsA(isA<_FallaDeAlmacen>()),
+          reason: 'la del cierre de la DB ya la loguea el helper; la que se perdía era esta',
+        );
+
+        expect(
+          salida.lineas,
+          anyElement(startsWith('[ERROR][AUTH][LOGOUT_FAIL]')),
+          reason: 'un logout que no se completó no puede quedar sin rastro',
+        );
+        expect(conFallas.read(sesionProvider).value, isNull);
+        expect(helper.abierta, isFalse);
+        expect(clave.destruida, isTrue);
+      },
+    );
 
     test('dado una apertura de la DB en vuelo, cuando cierra sesión, no la deja abierta', () async {
       await iniciarSesion();

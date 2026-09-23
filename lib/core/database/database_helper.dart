@@ -257,7 +257,8 @@ final class DatabaseHelper {
   ///
   /// Espera en vez de rechazar: el llamador de la UI no controla el solapamiento, y esperar deja
   /// el mismo resultado que si las llamadas hubieran llegado en orden (la segunda [abrir] ve el
-  /// estado ya consolidado y falla con el `StateError` de siempre, sin tocar su clave).
+  /// estado ya consolidado y falla con el `StateError` de siempre, destruyendo la clave que
+  /// recibió, como en todo fallo de [abrir]).
   Future<T> _enExclusiva<T>(Future<T> Function() operacion) async {
     // `_enCurso` se asigna antes del primer `await` de la operación, así que no hay ventana entre
     // mirar el turno y tomarlo. El `while` re-mira porque varios esperando despiertan juntos.
