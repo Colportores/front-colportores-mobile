@@ -31,23 +31,7 @@ class ColportoresApp extends ConsumerWidget {
     // suscribe una sola vez por vida de la app (`ColportoresApp` es la raíz, siempre montada).
     ref.listen(erroresVerificacionEmailProvider, (previous, next) {
       if (next is! AsyncData<void>) return;
-      // Con "Confirm email" activo, tener sesión implica cuenta ya verificada: si ya hay una,
-      // este evento viene de un enlace viejo (de un mail anterior) y no corresponde interrumpir
-      // al usuario ni vaciarle la pila de navegación con un aviso falso de "enlace vencido".
-      final haySesion = ref.read(sesionProvider).value != null;
-      if (haySesion) return;
-
-      final navigator = navigatorKeyColportores.currentState;
-      if (navigator == null) return;
-      navigator.popUntil((route) => route.isFirst);
-      unawaited(
-        navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                const VerificacionEmailPage(estadoInicial: EstadoVerificacionEmail.expirado),
-          ),
-        ),
-      );
+      unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
     });
 
     return MaterialApp(
@@ -63,4 +47,38 @@ class ColportoresApp extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Decide si hay que llevar al usuario a [VerificacionEmailPage] en estado expirado, con el mismo
+/// criterio que `home:` en [ColportoresApp.build] usa para elegir entre [LoginPage] e
+/// [InicioPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
+/// sí. La diferencia con leer `sesion.value` directamente (bug de la ronda anterior) es esperar a
+/// que `sesionProvider` termine de resolver: en un arranque en frío desde el enlace, Supabase ya
+/// procesó el deep link durante `Supabase.initialize()` (antes de `runApp`), pero
+/// `sesionActual()` hace I/O real (local y, si hace falta, de red) y puede seguir en
+/// `AsyncLoading` cuando este evento llega — navegar en ese momento es el bug original: la sesión
+/// existe, solo que todavía no terminó de leerse.
+Future<void> _llevarAVerificacionSiNoHaySesion(BuildContext context, WidgetRef ref) async {
+  bool haySesion;
+  try {
+    haySesion = await ref.read(sesionProvider.future) != null;
+  } on Object {
+    // Mismo criterio que `home:` ante un error de sesión (`error: (_, _) => LoginPage()`): se
+    // trata como si no hubiera sesión.
+    haySesion = false;
+  }
+  if (haySesion) return;
+  if (!context.mounted) return;
+
+  final navigator = navigatorKeyColportores.currentState;
+  if (navigator == null) return;
+  navigator.popUntil((route) => route.isFirst);
+  unawaited(
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            const VerificacionEmailPage(estadoInicial: EstadoVerificacionEmail.expirado),
+      ),
+    ),
+  );
 }
