@@ -16,8 +16,10 @@ final class ResumenDatosLocales extends Equatable {
   /// Visitas registradas localmente.
   final int visitas;
 
-  /// Cambios que todavía no se subieron al servidor. Borrarlos es perder trabajo del colportor.
-  final int operacionesSinSincronizar;
+  /// Cambios que todavía no se subieron al servidor: borrar los pierde (HU-AUTH-010: "las
+  /// operaciones encoladas no se subirán"). `null` si no se pudo contar (la DB existe pero no se
+  /// puede leer): el borrado sigue siendo posible, avisando que no se sabe cuánto se pierde.
+  final int? operacionesSinSincronizar;
 
   /// Si existe un backup en Drive (`appDataFolder`) que el borrado podría incluir.
   final bool hayBackupEnDrive;

@@ -108,15 +108,14 @@ void main() {
       expect(r.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 2);
     });
 
-    test('con el archivo pero sin la DB abierta, no se puede saber: Left', () async {
+    test('con el archivo pero sin la DB abierta, el conteo llega como desconocido', () async {
       await abrirConJornadas(0);
       await helper.cerrar();
       db = null;
 
-      expect(
-        await repo.resumen(),
-        const Left<Failure, ResumenDatosLocales>(FailureDatosLocalesIlegibles()),
-      );
+      final r = await repo.resumen();
+
+      expect(r.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, isNull);
     });
 
     test('si Drive no responde, se muestra como sin backup', () async {
@@ -129,28 +128,60 @@ void main() {
   });
 
   group('borrar', () {
-    test('con operaciones sin sincronizar, se niega y no toca nada', () async {
+    test('con operaciones sin sincronizar, borra igual (decisión de #66)', () async {
       await abrirConJornadas(1);
       await custodia.generarSal();
 
-      final r = await repo.borrar(incluirBackupDrive: true);
+      final r = await repo.borrar(incluirBackupDrive: false);
 
-      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureDatosSinSincronizar(1)));
-      expect(helper.abierta, isTrue);
-      expect(await custodia.leerSal(), isNotNull);
-      expect(drive.borrados, 0);
+      expect(r.isRight(), isTrue);
+      expect(helper.abierta, isFalse);
+      expect(await helper.existe(), isFalse);
+      expect(await custodia.leerSal(), isNull);
     });
 
-    test('sin poder contar, se niega', () async {
+    test('sin poder contar (archivo presente, DB cerrada), borra igual', () async {
       await abrirConJornadas(0);
       await helper.cerrar();
       db = null;
 
       final r = await repo.borrar(incluirBackupDrive: false);
 
-      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureDatosLocalesIlegibles()));
-      expect(await helper.existe(), isTrue);
+      expect(r.isRight(), isTrue);
+      expect(await helper.existe(), isFalse);
     });
+
+    test(
+      'dado un intento que falló después de cerrar la DB, reintentar termina el borrado',
+      () async {
+        await abrirConJornadas(2);
+        await custodia.generarSal();
+        var intentos = 0;
+        final conFallaAMitad = DatosLocalesRepositoryImpl(
+          helper,
+          () => db,
+          () async {
+            intentos++;
+            await helper.cerrar();
+            db = null;
+            if (intentos == 1) throw const DbLocalException(operacion: 'cerrar');
+          },
+          custodia,
+          drive,
+          logger: loggerMudo(),
+        );
+
+        final primero = await conFallaAMitad.borrar(incluirBackupDrive: false);
+        expect(primero.isLeft(), isTrue);
+        expect(await helper.existe(), isTrue, reason: 'quedó a mitad: DB cerrada, archivo y sal');
+
+        final segundo = await conFallaAMitad.borrar(incluirBackupDrive: false);
+
+        expect(segundo.isRight(), isTrue);
+        expect(await helper.existe(), isFalse);
+        expect(await custodia.leerSal(), isNull);
+      },
+    );
 
     test('sin pendientes, cierra y borra la DB, olvida la sal y respeta Drive', () async {
       await abrirConJornadas(0);

@@ -232,7 +232,6 @@ void main() {
           const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
         );
         expect(container.read(sesionProvider).value, isNull);
-        final llamadasSinRed = remote.llamadasCerrarSesion;
 
         remote.simularSinConexion = false;
         await container
@@ -240,7 +239,7 @@ void main() {
             .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
         await pumpEventQueue();
 
-        expect(remote.llamadasCerrarSesion, llamadasSinRed + 1);
+        expect(remote.revocaciones, hasLength(1));
       },
     );
 

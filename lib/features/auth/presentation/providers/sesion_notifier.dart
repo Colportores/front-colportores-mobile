@@ -160,8 +160,9 @@ class SesionNotifier extends _$SesionNotifier {
     return resultado;
   }
 
-  /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Si el borrado se niega (hay
-  /// operaciones sin sincronizar) o falla, la sesión sigue abierta y el `Left` dice por qué.
+  /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
+  /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
+  /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrarDatosLocales({
     required bool incluirBackupDrive,
   }) async {

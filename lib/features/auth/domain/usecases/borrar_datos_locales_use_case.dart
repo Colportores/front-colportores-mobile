@@ -17,11 +17,12 @@ final class BorrarDatosLocalesParams extends Equatable {
 }
 
 /// HU-AUTH-010 — Borra los datos del teléfono y después cierra la sesión (revocación del JWT como
-/// en HU-AUTH-006; sin red o con el JWT vencido queda pendiente: best-effort).
+/// en HU-AUTH-006; sin red queda pendiente: best-effort).
 ///
 /// El orden es a propósito: primero lo local, que no necesita red ("el borrado local procede
-/// igual"). Si el borrado se niega (operaciones sin sincronizar) o falla, la sesión **no** se
-/// cierra: el usuario sigue adentro, con sus datos, y puede reintentar.
+/// igual"). Mismo contrato que el cierre de sesión: si el borrado falla, o si la sesión guardada no
+/// se pudo borrar después, devuelve el `Left` y la sesión **no** se da por cerrada — el usuario
+/// sigue adentro y puede reintentar. Reintentar es seguro: el borrado es idempotente.
 final class BorrarDatosLocalesUseCase
     implements UseCase<ResultadoBorradoDatosLocales, BorrarDatosLocalesParams> {
   const BorrarDatosLocalesUseCase(this._datosLocales, this._auth);
@@ -36,9 +37,10 @@ final class BorrarDatosLocalesUseCase
     final borrado = await _datosLocales.borrar(incluirBackupDrive: params.incluirBackupDrive);
     if (borrado.isLeft()) return borrado;
 
-    // Los datos ya no están: la sesión se cierra pase lo que pase con la revocación (un `Left` acá
-    // es que no se pudo borrar la sesión guardada; lo reporta el propio repositorio en el log).
-    await _auth.cerrarSesion();
-    return borrado;
+    final cierre = await _auth.cerrarSesion();
+    return cierre.fold<Either<Failure, ResultadoBorradoDatosLocales>>(
+      (f) => Left(f),
+      (_) => borrado,
+    );
   }
 }

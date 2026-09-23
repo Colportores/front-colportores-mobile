@@ -24,7 +24,8 @@ import '../datasources/backup_drive_data_source.dart';
 ///   ninguna en el teléfono.
 ///
 /// Sin el archivo de la DB no hay nada que perder (cero de todo). Con el archivo pero sin la DB
-/// abierta no se puede contar, y eso es `Left`: quien borra no borra a ciegas.
+/// abierta no se puede contar: el conteo llega como `null` y el borrado igual se puede hacer
+/// (decisión de Cristian en #66), avisando que no se sabe cuánto se pierde.
 final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   DatosLocalesRepositoryImpl(
     this._helper,
@@ -45,13 +46,11 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResumenDatosLocales>> resumen() async {
     try {
-      final pendientes = await _contarSinSincronizar();
-      if (pendientes == null) return const Left(FailureDatosLocalesIlegibles());
       return Right(
         ResumenDatosLocales(
           personas: 0,
           visitas: 0,
-          operacionesSinSincronizar: pendientes,
+          operacionesSinSincronizar: await _contarSinSincronizar(),
           hayBackupEnDrive: await _hayBackup(),
         ),
       );
@@ -65,23 +64,12 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
   }) async {
-    // 1. La guarda, justo antes de tocar nada: entre el resumen y la confirmación pudo entrar algo.
-    try {
-      final pendientes = await _contarSinSincronizar();
-      if (pendientes == null) return const Left(FailureDatosLocalesIlegibles());
-      if (pendientes > 0) {
-        _log.warn(LogModulo.db, 'WIPE_BLOQUEADO', 'borrado bloqueado: datos sin sincronizar', {
-          'pendientes': pendientes,
-        });
-        return Left(FailureDatosSinSincronizar(pendientes));
-      }
-    } on Object catch (e, st) {
-      _log.error(LogModulo.db, 'WIPE_FAIL', 'no se pudo contar lo local', const {}, e, st);
-      return const Left(FailureDatosLocalesIlegibles());
-    }
+    // Lo que se pierde, solo para el log: la pantalla ya lo avisó y el usuario lo confirmó.
+    final pendientes = await _contarSinSincronizar();
 
-    // 2. Lo local. Cada paso tolera que lo suyo ya no esté, así que reintentar tras una falla a
-    // mitad no deja restos: sin DB abierta `cerrar` no hace nada, sin archivo `borrar` tampoco.
+    // 1. Lo local. Cada paso tolera que lo suyo ya no esté, así que reintentar tras una falla a
+    // mitad termina el trabajo: sin DB abierta `cerrar` no hace nada, sin archivo `borrar` tampoco,
+    // y no hay ninguna guarda que un intento a medias pueda dejar trabada.
     try {
       await _cerrarDb();
       await _helper.borrar();
@@ -92,17 +80,24 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
       return Left(FailureInesperado(causa: e));
     }
 
-    // 3. Drive, si se pidió. Su falla no revierte lo local (HU-AUTH-010).
+    // 2. Drive, si se pidió. Su falla no revierte lo local (HU-AUTH-010).
     var resultado = ResultadoBorradoDatosLocales.completo;
     if (incluirBackupDrive) {
       try {
         await _backupDrive.borrar();
       } on SinConexionException {
         resultado = ResultadoBorradoDatosLocales.backupDriveNoBorradoSinConexion;
-        _log.warn(LogModulo.db, 'WIPE_DRIVE_OFFLINE', 'no se pudo borrar el backup: sin red');
+        _log.warn(LogModulo.backup, 'WIPE_DRIVE_OFFLINE', 'no se pudo borrar el backup: sin red');
       } on Object catch (e, st) {
         resultado = ResultadoBorradoDatosLocales.backupDriveNoBorrado;
-        _log.error(LogModulo.db, 'WIPE_DRIVE_FAIL', 'no se pudo borrar el backup', const {}, e, st);
+        _log.error(
+          LogModulo.backup,
+          'WIPE_DRIVE_FAIL',
+          'no se pudo borrar el backup',
+          const {},
+          e,
+          st,
+        );
       }
     }
 
@@ -111,16 +106,29 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     _log.info(LogModulo.db, 'local_data_wipe', 'datos locales borrados', {
       'included_drive_backup': incluirBackupDrive,
       'drive_ok': resultado == ResultadoBorradoDatosLocales.completo,
+      'pendientes_descartados': pendientes,
     });
     return Right(resultado);
   }
 
-  /// `null` si no se puede saber (archivo presente, DB cerrada).
+  /// `null` si no se puede saber: el archivo está pero la DB no está abierta, o contar falló.
   Future<int?> _contarSinSincronizar() async {
-    final db = _dbAbierta();
-    if (db == null) return await _helper.existe() ? null : 0;
-    final fila = await db.customSelect('SELECT COUNT(*) AS n FROM jornada').getSingle();
-    return fila.read<int>('n');
+    try {
+      final db = _dbAbierta();
+      if (db == null) return await _helper.existe() ? null : 0;
+      final fila = await db.customSelect('SELECT COUNT(*) AS n FROM jornada').getSingle();
+      return fila.read<int>('n');
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'CONTEO_LOCAL_FAIL',
+        'no se pudo contar lo pendiente',
+        const {},
+        e,
+        st,
+      );
+      return null;
+    }
   }
 
   /// Si Drive no responde, se trata como que no hay backup: la opción de incluirlo no aparece y el

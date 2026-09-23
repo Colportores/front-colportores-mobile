@@ -78,17 +78,30 @@ void main() {
       verify(auth.cerrarSesion).called(1);
     });
 
-    test('si el borrado se niega, la sesión sigue abierta', () async {
+    test('si el borrado falla, no cierra la sesión', () async {
       when(
         () => datos.borrar(incluirBackupDrive: false),
-      ).thenAnswer((_) async => const Left(FailureDatosSinSincronizar(4)));
+      ).thenAnswer((_) async => const Left(FailureInesperado()));
 
       final r = await BorrarDatosLocalesUseCase(datos, auth)(
         const BorrarDatosLocalesParams(incluirBackupDrive: false),
       );
 
-      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureDatosSinSincronizar(4)));
+      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureInesperado()));
       verifyNever(auth.cerrarSesion);
+    });
+
+    test('si borra pero la sesión guardada no se puede borrar, devuelve ese Left', () async {
+      when(
+        () => datos.borrar(incluirBackupDrive: false),
+      ).thenAnswer((_) async => const Right(ResultadoBorradoDatosLocales.completo));
+      when(auth.cerrarSesion).thenAnswer((_) async => const Left(FailureInesperado()));
+
+      final r = await BorrarDatosLocalesUseCase(datos, auth)(
+        const BorrarDatosLocalesParams(incluirBackupDrive: false),
+      );
+
+      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureInesperado()));
     });
 
     test('los params se comparan por valor', () {
