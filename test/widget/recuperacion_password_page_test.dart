@@ -248,6 +248,25 @@ void main() {
       );
     });
 
+    // skip: bug #94 — la página muestra el mensaje genérico de FailureSinConexion, no el
+    // literal de la HU. `testWidgets.skip` es `bool?` (a diferencia de `test.skip`, que acepta
+    // un motivo en texto), así que el motivo va en este comentario.
+    testWidgets('sin conexión muestra el texto literal de la HU-AUTH-004 (línea 822)', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..simularSinConexion = true;
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarYAceptar(tester);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Necesitás conexión para solicitar la recuperación'), findsOneWidget);
+    }, skip: true);
+
     testWidgets('falla real del servidor (no 429) muestra el mensaje traducido', (tester) async {
       final remote =
           AuthRemoteDataSourceEnMemoria(
