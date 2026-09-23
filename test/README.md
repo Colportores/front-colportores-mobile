@@ -122,6 +122,16 @@ sirve para "no me importa el comportamiento, solo qué se llamó"; el fake en me
 "necesito comportamiento real pero sin infraestructura" (sin Supabase, sin Drift). Elegí según
 qué está probando el test.
 
+El data source **sobre Drift** no se prueba con un fake sino contra la tabla real: un
+`AppDatabase(NativeDatabase.memory(), logger: loggerMudo())` por test, con el mismo esquema y las
+mismas restricciones que en el dispositivo (sin cifrado; eso lo cubre `database_helper_test.dart`).
+Ejemplo real:
+[`jornada_local_data_source_drift_test.dart`](unit/features/jornada/data/datasources/jornada_local_data_source_drift_test.dart),
+que además fija que las columnas de la tabla sean las claves de `toJson()` del modelo y repite
+contra Drift el test de concurrencia del fake. Las migraciones se prueban en
+[`app_database_test.dart`](unit/core/database/app_database_test.dart): una DB en la versión
+anterior (`setup` con `PRAGMA user_version`) migra y termina con el mismo esquema que una nueva.
+
 **Lo que no hay todavía** es un ejemplo de fake que sea *solo* para tests, sin el doble uso de
 demo de arriba — el repo no tiene ninguno. Para ese caso no existe convención (dónde vive, cómo
 se nombra) y este README no la inventa: queda como pregunta abierta para Cristian (comentario en
