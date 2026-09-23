@@ -18,8 +18,13 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// fija que coincidan. `acompaniante_id` y `tipo_acompaniamiento` van sin `ñ`, como en el cloud.
 ///
 /// "Una sola jornada activa por colportor" **no** es una restricción de esta tabla: el cloud no
-/// la tiene, y un índice único local rechazaría el pull de una jornada abierta en otro
-/// dispositivo. La sostiene `JornadaLocalDataSourceDrift.insertar`, dentro de una transacción.
+/// la tiene, y un índice único local podría hacer fallar la recuperación de dispositivo.
+/// `jornada` es `push` sin `alsoPull` (contrato-sync-engine §2-§3): no baja por pull, así que el
+/// único camino por el que entra una jornada del cloud es `engine.recover()`, en la
+/// reconciliación desde el watermark del backup (§7, fase 3), donde gana el servidor. Si eso trae
+/// una jornada abierta cuando la DB restaurada ya tiene otra, la recuperación no puede fallar por
+/// un índice. La regla la sostiene `JornadaLocalDataSourceDrift.insertar`, dentro de una
+/// transacción.
 @DataClassName('JornadaFila')
 @TableIndex(name: 'jornada_colportor_idx', columns: {#colportorId, #inicio})
 class Jornadas extends Table {
