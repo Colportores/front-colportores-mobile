@@ -57,6 +57,16 @@ final class FailureEmailYaRegistrado extends Failure {
     : super(mensaje: 'Ya existe una cuenta con ese correo.', codigo: 'AUTH_EMAIL_DUPLICADO');
 }
 
+/// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
+/// [mensaje] es el texto literal del criterio de aceptación "Bloqueo - jornada ya activa".
+final class FailureJornadaActiva extends Failure {
+  const FailureJornadaActiva()
+    : super(
+        mensaje: 'Tenés una jornada en curso. Cerrala antes de iniciar otra.',
+        codigo: 'JOR_JORNADA_ACTIVA',
+      );
+}
+
 /// No hay red o el servidor no respondió. La operación puede reintentarse.
 final class FailureSinConexion extends Failure {
   const FailureSinConexion()
