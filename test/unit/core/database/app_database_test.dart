@@ -1,5 +1,7 @@
 // AppDatabase en memoria (sin cifrado): lo que se verifica acá es el esquema y el log de
 // migraciones; el cifrado se prueba en database_helper_test.dart.
+import 'dart:io';
+
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:drift/native.dart';
@@ -39,10 +41,19 @@ void main() {
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
-      await db.customSelect('SELECT 1').get();
+      // Sobre archivo y no en memoria: lo que se prueba es abrir de nuevo la misma DB, y una DB en
+      // memoria deja de existir al cerrarla (dos queries sobre la misma instancia no prueban nada).
+      final directorio = await Directory.systemTemp.createTemp('colportores_app_database_test');
+      addTearDown(() => directorio.delete(recursive: true));
+      final archivo = File('${directorio.path}/prueba.sqlite');
+      final primera = AppDatabase(NativeDatabase(archivo), logger: AppLogger(output: salida));
+      await primera.customSelect('SELECT 1').get();
+      await primera.close();
       salida.lineas.clear();
 
-      await db.customSelect('SELECT 1').get();
+      final segunda = AppDatabase(NativeDatabase(archivo), logger: AppLogger(output: salida));
+      addTearDown(segunda.close);
+      await segunda.customSelect('SELECT 1').get();
 
       expect(salida.lineas, isEmpty);
     });

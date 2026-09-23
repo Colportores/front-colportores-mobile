@@ -81,7 +81,11 @@ void main() {
         await expectLater(helper.abrir(clave), throwsA(isA<StateError>()));
 
         expect(helper.abierta, isTrue);
-        expect(clave.destruida, isFalse, reason: 'no llegó a tomar la clave');
+        expect(
+          clave.destruida,
+          isTrue,
+          reason: 'desde abrir() la clave es del helper, también cuando falla',
+        );
       });
     });
 
@@ -257,6 +261,100 @@ void main() {
 
       expect(roto.abierta, isFalse);
       expect(clave.destruida, isTrue);
+    });
+
+    // El caso del opener de Drift fallando (directorio temporal) vive en
+    // database_helper_apertura_fallida_test.dart: necesita ser la primera apertura del isolate.
+  });
+
+  group('DatabaseHelper — operaciones solapadas', () {
+    test('cuando dos abrir() se solapan, la segunda no deja la primera DB colgada', () async {
+      final primera = _clave(1);
+      final segunda = _clave(2);
+
+      final apertura = helper.abrir(primera);
+      // La expectativa se engancha ya mismo: la segunda falla sola y no puede quedar sin oyente.
+      final rechazo = expectLater(helper.abrir(segunda), throwsA(isA<StateError>()));
+
+      final db = await apertura;
+      await rechazo;
+
+      expect(helper.abierta, isTrue);
+      expect(helper.db, same(db), reason: 'la DB del helper es la primera, no una segunda colgada');
+      expect(primera.destruida, isFalse);
+      expect(segunda.destruida, isTrue, reason: 'la clave de la segunda no queda huérfana y viva');
+    });
+
+    test('cuando cerrar() llega con un abrir() en vuelo, la DB no queda abierta', () async {
+      final clave = _clave(1);
+
+      final apertura = helper.abrir(clave);
+      final cierre = helper.cerrar();
+
+      await apertura;
+      await cierre;
+
+      expect(helper.abierta, isFalse, reason: 'el logout no puede dejar la DB local abierta');
+      expect(clave.destruida, isTrue);
+    });
+
+    test('cuando borrar() llega con un abrir() en vuelo, lanza StateError y no borra', () async {
+      final apertura = helper.abrir(_clave(1));
+      final rechazo = expectLater(helper.borrar(), throwsA(isA<StateError>()));
+
+      await apertura;
+      await rechazo;
+
+      expect(helper.abierta, isTrue);
+      expect(await helper.existe(), isTrue);
+    });
+  });
+
+  group('DatabaseHelper — esquema', () {
+    test('dado un archivo de una versión posterior, cuando abre, lanza DbLocalException', () async {
+      final db = await helper.abrir(_clave(1));
+      await db.customStatement('PRAGMA user_version = 99');
+      await helper.cerrar();
+      final clave = _clave(1);
+
+      await expectLater(
+        helper.abrir(clave),
+        throwsA(isA<DbLocalException>().having((e) => e.operacion, 'operacion', 'abrir')),
+      );
+
+      expect(helper.abierta, isFalse);
+      expect(clave.destruida, isTrue);
+    });
+  });
+
+  group('DatabaseHelper.sinClave', () {
+    // La clave en hex de estos casos: 32 bytes 0xab, el formato del `PRAGMA key` del setup.
+    final hex = 'ab' * 32;
+
+    test('dado una SqliteException del PRAGMA key, lo que queda no lleva la clave', () {
+      final conClave = SqliteException(
+        extendedResultCode: 1,
+        message: 'SQL logic error',
+        causingStatement: 'PRAGMA key = "x\'$hex\'";',
+      );
+      expect(conClave.toString(), contains(hex), reason: 'sin sanear, la clave iría al log');
+
+      final saneada = DatabaseHelper.sinClave(conClave);
+
+      expect(saneada.toString(), isNot(contains(hex)));
+      expect(saneada.toString(), contains('SQL logic error'), reason: 'el diagnóstico se conserva');
+    });
+
+    test('dado cualquier otra falla, la deja pasar tal cual', () {
+      final otra = SqliteException(
+        extendedResultCode: 26,
+        message: 'file is not a database',
+        causingStatement: 'SELECT count(*) FROM sqlite_master;',
+      );
+      const io = FileSystemException('sin espacio');
+
+      expect(DatabaseHelper.sinClave(otra), same(otra));
+      expect(DatabaseHelper.sinClave(io), same(io));
     });
   });
 

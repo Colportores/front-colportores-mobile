@@ -77,6 +77,24 @@ void main() {
       expect(clave.destruida, isTrue);
     });
 
+    test('dado una apertura en vuelo, cuando cierra, la DB termina cerrada y en null', () async {
+      final clave = _clave();
+      final notifier = container.read(dbLocalProvider.notifier);
+
+      // Sin esperar la apertura: es el logout que llega mientras el login todavía abre la DB.
+      final apertura = notifier.abrir(clave);
+      final cierre = notifier.cerrar();
+
+      // Orden que se cubre: el cierre espera su turno en el helper, la continuación de abrir()
+      // publica la DB recién abierta, el helper la cierra y el finally de cerrar() deja null.
+      await apertura;
+      await cierre;
+
+      expect(container.read(dbLocalProvider), isNull);
+      expect(helper.abierta, isFalse, reason: 'el logout no puede dejar la DB abierta');
+      expect(clave.destruida, isTrue);
+    });
+
     test('dado que abrir falla, la DB sigue en null y el error se propaga', () async {
       await container.read(dbLocalProvider.notifier).abrir(_clave());
       await container.read(dbLocalProvider.notifier).cerrar();
