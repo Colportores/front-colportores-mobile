@@ -226,15 +226,36 @@ void main() {
       expect(resultado, const Right<Failure, Unit>(unit));
     });
 
-    test('dado que el proveedor rechaza por rate limit, devuelve Right(unit) igual — no revela el '
-        'límite', () async {
+    test('dado que el proveedor rechaza por rate limit (429), devuelve Right(unit) igual — no '
+        'revela el límite', () async {
       remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 429,
         mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
       );
 
       final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
 
       expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
+        'devuelve la falla visible en vez de enmascararla', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(
+        resultado,
+        const Left<Failure, Unit>(
+          FailureServidor(
+            status: 500,
+            mensaje: 'No se pudo completar la operación (unexpected_failure).',
+          ),
+        ),
+      );
     });
 
     test('dado que no hay conexión, devuelve FailureSinConexion', () async {

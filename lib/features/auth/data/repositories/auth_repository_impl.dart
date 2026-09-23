@@ -53,21 +53,32 @@ final class AuthRepositoryImpl implements AuthRepository {
       _log.info(LogModulo.auth, 'RECUPERACION_SOLICITADA', 'solicitud de recuperación enviada');
       return const Right(unit);
     } on SinConexionException {
-      // Único caso que sí se distingue de un envío exitoso: sin red no se pudo ni intentar.
+      // Sin red no se pudo ni intentar — esto sí es visible: la HU-AUTH-002 fija el mismo patrón
+      // ("Servicio temporalmente no disponible..."), anti-enumeración no exige mentir acá.
       _log.warn(LogModulo.auth, 'RECUPERACION_SIN_CONEXION', 'solicitud sin conectividad');
       return const Left(FailureSinConexion());
     } on AuthRemoteException catch (e) {
-      // Anti-enumeración (OWASP) + regla explícita de la HU-AUTH-004: ni "el email no existe"
-      // ni un rate limit de Supabase pueden distinguirse de un envío exitoso hacia arriba — si
-      // no, un atacante aprende algo de la respuesta. Se loguea el código (sin PII) para poder
-      // diagnosticar del lado del servidor, pero el caso de uso siempre ve éxito.
-      _log.warn(
-        LogModulo.auth,
-        'RECUPERACION_ENMASCARADA',
-        'solicitud de recuperación rechazada por el proveedor (enmascarado como éxito)',
-        {'codigo': _traducir(e).codigo},
-      );
-      return const Right(unit);
+      // HU-AUTH-004 (líneas 824-828, "Edge - rate limit"): el único caso además de "el email no
+      // existe" (que Supabase ni siquiera reporta como error) que la HU pide enmascarar como
+      // éxito — si no, un atacante distingue "ya gastaste el límite" de "se mandó". Supabase
+      // reporta el rate limit siempre como 429 (ver AuthRemoteDataSourceSupabase._traducir: tanto
+      // por over_email_send_rate_limit/over_request_rate_limit como por el fallback sin código).
+      // Cualquier otro error (servidor caído, contrato roto, etc.) sí es visible: anti-
+      // enumeración protege "el email existe" y el rate limit, no una falla genuina del
+      // servicio — el usuario tiene que poder reintentar (mismo patrón que HU-AUTH-002).
+      if (e is ServidorException && e.status == 429) {
+        _log.warn(
+          LogModulo.auth,
+          'RECUPERACION_RATE_LIMIT',
+          'rate limit de Supabase (enmascarado)',
+        );
+        return const Right(unit);
+      }
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'RECUPERACION_FAIL', 'solicitud de recuperación rechazada', {
+        'codigo': failure.codigo,
+      });
+      return Left(failure);
     } on Object catch (e, st) {
       _log.error(
         LogModulo.auth,

@@ -13,7 +13,8 @@ abstract interface class AuthRemoteDataSource {
   ///
   /// Nunca lanza para "el email no existe": Supabase responde igual exista o no la cuenta
   /// (anti-enumeración, OWASP) — solo puede lanzar por falta de red o por su propio rate limit
-  /// de emails. El repositorio enmascara ambos casos como éxito de cara al dominio.
+  /// de emails. El repositorio enmascara el rate limit como éxito, pero **no** la falta de red
+  /// (ver `AuthRepositoryImpl.solicitarRecuperacionPassword` para el detalle de cada caso).
   Future<void> solicitarRecuperacionPassword(String email);
 
   /// Supabase Auth `signUp` (HU-AUTH-001/002). Devuelve la sesión si Supabase la deja iniciada,
