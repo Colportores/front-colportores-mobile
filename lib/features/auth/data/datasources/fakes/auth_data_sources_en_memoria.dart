@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../domain/entities/usuario.dart';
 import '../../models/sesion_model.dart';
 import '../auth_local_data_source.dart';
@@ -134,6 +136,28 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// lanzar el "falta confirmar" para esta cuenta. Sin efecto si no se registró con
   /// `requiereVerificacionAlRegistrar`.
   void confirmarEmail(String email) => _pendientesDeVerificar.remove(email);
+
+  /// Cuántas veces se reenvió el email de verificación (HU-AUTH-002), por email.
+  final Map<String, int> reenviosPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [reenviarVerificacion] lo lanza en vez de reenviar — para
+  /// simular el rate limit de Supabase (~2 emails/hora sin SMTP propio).
+  AuthRemoteException? fallaAlReenviar;
+
+  @override
+  Future<void> reenviarVerificacion(String email) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlReenviar != null) throw fallaAlReenviar!;
+    reenviosPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
+  final _erroresVerificacionController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _erroresVerificacionController.stream;
+
+  /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
+  void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

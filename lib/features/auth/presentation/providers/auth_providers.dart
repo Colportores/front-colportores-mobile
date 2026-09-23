@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
+import '../../../../core/usecases/use_case.dart';
 import '../../data/datasources/auth_local_data_source.dart';
 import '../../data/datasources/auth_remote_data_source.dart';
 import '../../data/datasources/auth_remote_data_source_supabase.dart';
@@ -11,7 +12,9 @@ import '../../domain/repositories/auth_repository.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
+import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
 import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
+import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 
 part 'auth_providers.g.dart';
@@ -58,3 +61,18 @@ ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
 @riverpod
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
     CerrarSesionUseCase(ref.watch(authRepositoryProvider));
+
+@riverpod
+ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>
+    ReenviarVerificacionUseCase(ref.watch(authRepositoryProvider));
+
+/// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
+/// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este
+/// caso de uso) — sin `keepAlive`, Riverpod lo tiraría abajo entre rebuilds sin nadie mirándolo.
+@Riverpod(keepAlive: true)
+ObservarErroresVerificacionUseCase observarErroresVerificacionUseCase(Ref ref) =>
+    ObservarErroresVerificacionUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+Stream<void> erroresVerificacionEmail(Ref ref) =>
+    ref.watch(observarErroresVerificacionUseCaseProvider)(const NoParams());
