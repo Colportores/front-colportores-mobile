@@ -1,6 +1,10 @@
 import 'package:drift/drift.dart';
 
+import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../logging/app_logger.dart';
+import 'fecha_utc_converter.dart';
+
+part 'app_database.g.dart';
 
 /// Base de datos local de la app: Drift sobre SQLite cifrado con SQLCipher (ADR-003, ADR-007).
 ///
@@ -8,42 +12,55 @@ import '../logging/app_logger.dart';
 /// appDb)`, `appDb.transaction(...)`)—. **No sabe de cifrado**: recibe una conexión ya abierta con
 /// la clave puesta; eso lo hace `DatabaseHelper`, que es el único que conoce el `PRAGMA key`.
 ///
-/// Todavía **sin tablas** a propósito: el modelo de dominio es #8 y las tablas de negocio llegan
-/// con cada HU (`Ventas`, `VentaItems`, … — convenciones §4.2). Este issue (#6) solo pone la
-/// infraestructura para que la DB abra cifrada; agregar una tabla acá sin su HU sería modelar el
-/// negocio desde infra.
+/// Las tablas de negocio llegan con cada HU (convenciones §4.2) y viven en su feature
+/// (`features/<feature>/data/datasources/<tabla>_table.dart`); acá solo se registran en
+/// `@DriftDatabase(tables: [...])`. `drift_dev` genera `_$AppDatabase` en `app_database.g.dart`,
+/// que no se versiona: lo regenera `build_runner`, también en CI. Agregar una tabla es siempre lo
+/// mismo: sumarla a la lista, subir [versionEsquema] y escribir su paso en [migration], con test.
 ///
-/// Por eso extiende [GeneratedDatabase] a mano en vez de `@DriftDatabase()` + `part
-/// 'app_database.g.dart'`: sin tablas, esto es exactamente lo que `drift_dev` generaría, y
-/// `drift_dev` todavía no se puede agregar al proyecto (conflicto de analyzer con `custom_lint`,
-/// ver la nota en `pubspec.yaml`). Cuando entre la primera tabla (#8), se resuelve ese tooling y
-/// esta clase pasa a `@DriftDatabase(tables: [...]) class AppDatabase extends _$AppDatabase`,
-/// [schemaVersion] sube y la migración se escribe en [migration].
-///
-/// [migration] es la estrategia por defecto de Drift (crear todo al crear la DB). Cualquier
-/// política más elaborada (migraciones paso a paso, `foreign_keys`, WAL) se decide con #8, no acá.
-/// Lo único que agrega es el log `[DB][MIGRATION]` de convenciones §7.4.
-class AppDatabase extends GeneratedDatabase {
+/// Las fechas de toda tabla van en epoch ms UTC con [FechaUtcConverter]
+/// (08-conceptos-transversales §8.11), no con columnas `dateTime()` de Drift.
+@DriftDatabase(tables: [Jornadas])
+class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
   final AppLogger _log;
 
-  /// Sin tablas hasta #8 (ver doc de la clase).
-  @override
-  Iterable<TableInfo<Table, Object?>> get allTables => const [];
-
   /// Versión del esquema (`PRAGMA user_version`). Constante además de getter porque
   /// `DatabaseHelper` la necesita **antes** de construir la DB: el `setup` de la conexión rechaza
   /// un archivo de una versión posterior antes de que Drift lo migre.
-  static const int versionEsquema = 1;
+  ///
+  /// Historia (forward-only, 08-conceptos-transversales §8.10):
+  /// - 1: sin tablas (#6).
+  /// - 2: `jornada` (#70).
+  static const int versionEsquema = 2;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
   @override
   int get schemaVersion => versionEsquema;
 
+  /// Una DB nueva se crea entera con el esquema actual ([Migrator.createAll]). Una existente sube
+  /// paso a paso desde su versión: cada `if (desde < N)` la lleva de `N - 1` a `N`, y un paso ya
+  /// publicado no se edita.
+  ///
+  /// Ojo con el primer paso que **modifique** una tabla existente: `createTable(jornadas)` crea
+  /// `jornada` con su definición *actual*, así que si la versión 3 le agrega una columna, un
+  /// dispositivo que venga de la 1 ya la tendría al llegar al paso `2 → 3` y el `addColumn`
+  /// fallaría. En ese momento hay que congelar cada versión con `drift_dev make-migrations`
+  /// (`stepByStep`). El test de migración compara el esquema migrado con el de una DB nueva, así
+  /// que ese caso no pasa desapercibido.
+  ///
+  /// `beforeOpen` agrega el log `[DB][MIGRATION]` de convenciones §7.4.
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, desde, hasta) async {
+      if (desde < 2) {
+        await m.createTable(jornadas);
+        await m.createIndex(jornadaColportorIdx);
+      }
+    },
     beforeOpen: (detalles) async {
       if (detalles.wasCreated) {
         _log.info(LogModulo.db, 'DB_CREADA', 'esquema inicial creado', {'version': schemaVersion});

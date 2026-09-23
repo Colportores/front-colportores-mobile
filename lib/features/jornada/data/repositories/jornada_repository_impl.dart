@@ -16,8 +16,8 @@ import '../models/jornada_model.dart';
 /// TODO(#70): encolar el sync. Según contrato-sync-engine.md §3 la escritura local y el
 /// `engine.stage(Tables.jornada, Op.insert, modelo.toJson())` van en la misma transacción, con
 /// `SyncSpec.push(Tables.jornada, critical: true)` (§2). El motor (`sync_engine`, PR #40) y su
-/// cola sobre la DB (PR #41) todavía no están en `develop`, y la tabla `jornada` espera la
-/// decisión de tooling de #6; se engancha acá cuando estén las dos cosas.
+/// cola sobre la DB (PR #41) todavía no están en `develop`; se engancha acá cuando entren. La
+/// tabla `jornada` ya existe (`JornadaLocalDataSourceDrift`).
 final class JornadaRepositoryImpl implements JornadaRepository {
   JornadaRepositoryImpl(this._local, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 

@@ -2,10 +2,9 @@ import '../models/jornada_model.dart';
 
 /// Persistencia local de las jornadas.
 ///
-/// La implementación real es la tabla `jornada` en la DB cifrada (Drift + SQLCipher), que
-/// todavía no existe: la primera tabla de negocio espera la decisión de tooling de codegen
-/// (`drift_dev` vs `custom_lint`, issue #6 y la nota del `pubspec.yaml`). Hasta entonces,
-/// [JornadaLocalDataSourceEnMemoria] cumple este contrato.
+/// La implementación real es `JornadaLocalDataSourceDrift`, sobre la tabla `jornada` de la DB
+/// cifrada (Drift + SQLCipher). `JornadaLocalDataSourceEnMemoria` cumple el mismo contrato sin
+/// infraestructura, para tests y para desarrollar la UI.
 abstract interface class JornadaLocalDataSource {
   /// La jornada abierta del colportor (sin `fin` y sin soft delete), o `null`.
   Future<JornadaModel?> obtenerActiva(String colportorId);
