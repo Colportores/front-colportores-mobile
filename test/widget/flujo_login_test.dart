@@ -41,6 +41,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 Widget _app({required AuthRemoteDataSource remote}) => ProviderScope(

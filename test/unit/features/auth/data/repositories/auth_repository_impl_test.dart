@@ -47,6 +47,9 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async => throw Exception('boom');
 }
 
 /// Remoto que "recuerda" una sesión persistida por el proveedor (como supabase_flutter tras
@@ -93,6 +96,9 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 /// Remoto que devuelve una única excepción fija en `registrar` — para probar cómo el repositorio
@@ -129,6 +135,9 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 void main() {
@@ -197,6 +206,76 @@ void main() {
 
         expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
       });
+    });
+  });
+
+  group('AuthRepositoryImpl.solicitarRecuperacionPassword', () {
+    test('dado un email registrado, cuando solicita, devuelve Right(unit)', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(remote.solicitudesRecuperacionPorEmail['ana@example.com'], 1);
+    });
+
+    test('dado un email no registrado, cuando solicita, devuelve Right(unit) igual — '
+        'anti-enumeración', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(
+        email: 'noexiste@example.com',
+      );
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor rechaza por rate limit (429), devuelve Right(unit) igual — no '
+        'revela el límite', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 429,
+        mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
+        'devuelve la falla visible en vez de enmascararla', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(
+        resultado,
+        const Left<Failure, Unit>(
+          FailureServidor(
+            status: 500,
+            mensaje: 'No se pudo completar la operación (unexpected_failure).',
+          ),
+        ),
+      );
+    });
+
+    test('dado que no hay conexión, devuelve FailureSinConexion', () async {
+      remote.simularSinConexion = true;
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
+    });
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
   });
 
