@@ -338,7 +338,8 @@ void main() {
 
       expect(find.text('MIÉRCOLES 23 DE SEPTIEMBRE'), findsOneWidget);
       expect(find.text('lucia.silva@correo.com'), findsOneWidget);
-      expect(find.byTooltip('Cerrar sesión'), findsOneWidget);
+      // Cerrar sesión vive en Configuración (HU-AUTH-006).
+      expect(find.byTooltip('Configuración'), findsOneWidget);
     });
   });
 
