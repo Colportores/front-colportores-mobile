@@ -31,6 +31,7 @@ final class _DatosLocalesFake implements DatosLocalesRepository {
     ResultadoBorradoDatosLocales.completo,
   );
   Completer<void>? demoraResumen;
+  Completer<void>? demoraBorrado;
   final List<bool> borrados = [];
 
   @override
@@ -43,6 +44,7 @@ final class _DatosLocalesFake implements DatosLocalesRepository {
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
   }) async {
+    await demoraBorrado?.future;
     borrados.add(incluirBackupDrive);
     return respuestaBorrado;
   }
@@ -312,6 +314,11 @@ void main() {
       expect(find.text('34'), findsOneWidget);
       expect(find.text('Sí, vas a elegir si se borra'), findsOneWidget);
       expect(find.text(TextosBorrado.datosDelSistema), findsOneWidget);
+      expect(
+        find.text(TextosBorrado.limiteBorrado),
+        findsOneWidget,
+        reason: 'HU-AUTH-010, caso borde: documenta el límite del overwrite en memoria flash',
+      );
 
       final continuar = find.byKey(const Key('borrar_datos_continuar'));
       expect(tester.widget<FilledButton>(continuar).onPressed, isNull, reason: 'sin checkbox');
@@ -555,6 +562,58 @@ void main() {
       expect(find.text(TextosBorrado.conservarDrive), findsNothing);
       expect(find.text(TextosBorrado.borrarDrive), findsNothing);
     });
+
+    testWidgets('mientras borra, el PopScope bloquea el back y "atrás" queda deshabilitado', (
+      tester,
+    ) async {
+      _datos.demoraBorrado = Completer<void>();
+      await _montar(tester);
+      await _llegarAlDialogoFinal(tester);
+
+      await tester.tap(find.text(TextosBorrado.confirmarFinal));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byKey(const Key('borrar_datos_borrando')), findsOneWidget);
+      // El ListView quedó scrolleado hacia abajo por los toques anteriores (checkbox, continuar):
+      // "atrás" (arriba del todo) queda fuera del viewport actual y flutter_test lo trata como
+      // offstage por default. No hace falta tocarlo, solo inspeccionar su estado: skipOffstage:
+      // false alcanza, sin necesidad de scrollear de vuelta.
+      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
+      expect(
+        tester.widget<IconButton>(atras).onPressed,
+        isNull,
+        reason: '"atrás" no puede sacar de la pantalla mientras borra',
+      );
+      final popScope = tester.widget<PopScope>(
+        find.descendant(
+          of: find.byType(BorrarDatosLocalesPage),
+          matching: find.byType(PopScope),
+          skipOffstage: false,
+        ),
+      );
+      expect(
+        popScope.canPop,
+        isFalse,
+        reason: 'el gesto/botón de sistema tampoco puede sacar de la pantalla mientras borra',
+      );
+
+      _datos.demoraBorrado!.complete();
+      await tester.pumpAndSettle();
+      expect(_login, findsOneWidget);
+    });
+
+    // skip: QA #68 — HU-AUTH-010 (casos borde) pide esperar o cancelar limpiamente una operación
+    // en curso (sync o backup activo) antes de borrar. No hay motor de sync ni jobs de backup en
+    // el código todavía — nada que testear hasta que existan.
+    testWidgets(
+      'caso borde: borrado con una operación en curso (sync o backup activo) espera o cancela '
+      'limpiamente',
+      (tester) async {
+        fail('no hay nada que probar: no existe motor de sync ni job de backup en el código');
+      },
+      skip: true,
+    );
   });
 
   group('Accesibilidad', () {
@@ -638,6 +697,48 @@ void main() {
       await _llegarAlDialogoFinal(tester);
       expect(tester.takeException(), isNull);
       expect(find.text(TextosBorrado.borrarDrive), findsOneWidget);
+    });
+
+    testWidgets('el resumen de borrado con operaciones pendientes cumple las guías', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      _datos.respuestaResumen = const Right(
+        ResumenDatosLocales(
+          personas: 2,
+          visitas: 5,
+          operacionesSinSincronizar: 7,
+          hayBackupEnDrive: true,
+        ),
+      );
+      await _montar(tester);
+      await _abrirBorrado(tester);
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('el diálogo final (con la opción de backup en Drive) cumple las guías', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _montar(tester);
+      await _llegarAlDialogoFinal(tester);
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
     });
   });
 }
