@@ -135,9 +135,15 @@ anterior (`setup` con `PRAGMA user_version`) migra y termina con el mismo esquem
 y compara el texto de `sqlite_master`, así que no detecta un paso `N → N+1` olvidado y daría un
 falso fallo después de un `ALTER TABLE … ADD COLUMN`. El patrón que corresponde son los esquemas
 versionados de Drift —congelar cada versión con `drift_dev make-migrations`, testear desde cada
-versión congelada y comparar con `SchemaVerifier`—, que hoy no compila por la versión de
-`drift_dev` que permite el analyzer del repo. Está pendiente en #70 (ver `AppDatabase.migration`)
-y hay que resolverlo antes de subir a la versión 3.
+versión congelada y comparar con `SchemaVerifier`—, que hoy no compila. El `drift_dev` 2.34.0 del
+lock solo anda con `drift` 2.34.0 (con 2.34.1 a 2.34.4 falla), y `pubspec.yaml` pide
+`drift: ^2.34.1`. Un `drift_dev` más nuevo pide analyzer 13, y eso lo impide `flutter_test`: fija
+`test_api` 0.7.11, que obliga a `test` 1.31.0, que pide analyzer < 13. No es por
+`riverpod_generator`: sin él falla igual. Hay dos salidas: fijar `drift` en 2.34.0 (falta validar
+que la suite, `build_runner` y el APK anden con esa versión) o sacar `test` como dependencia
+directa, lo que choca con la regla de CLAUDE.md de que los tests de dominio/data no importan
+Flutter. Elegir es decisión de Cristian: está pendiente en #70 (ver `AppDatabase.migration`) y hay
+que resolverlo antes de subir a la versión 3.
 
 **Lo que no hay todavía** es un ejemplo de fake que sea *solo* para tests, sin el doble uso de
 demo de arriba — el repo no tiene ninguno. Para ese caso no existe convención (dónde vive, cómo

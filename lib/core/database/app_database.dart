@@ -55,9 +55,14 @@ class AppDatabase extends _$AppDatabase {
   /// (desde la 1, `createTable` ya deja el esquema actual) y daría un falso fallo después de un
   /// `ALTER TABLE … ADD COLUMN` (SQLite guarda otro texto que el de un `CREATE TABLE` nuevo). Lo
   /// que corresponde —congelar la v2 con `make-migrations`, testear también desde la 2 y comparar
-  /// con el `SchemaVerifier` de Drift— hoy no compila: `drift_dev` 2.34.0 no anda con el `drift`
-  /// del lock, y los `drift_dev` que sí andan piden analyzer 13, que `riverpod_generator` no
-  /// deja. Hay que resolverlo antes de la versión 3 (detalle en #70).
+  /// con el `SchemaVerifier` de Drift— hoy no compila: el `drift_dev` 2.34.0 del lock solo anda
+  /// con `drift` 2.34.0 (con 2.34.1 a 2.34.4 falla), y `pubspec.yaml` pide `drift: ^2.34.1`. Un
+  /// `drift_dev` más nuevo pide analyzer 13, y eso lo impide `flutter_test`: fija `test_api`
+  /// 0.7.11, que obliga a `test` 1.31.0, que pide analyzer < 13 (no es `riverpod_generator`: sin
+  /// él falla igual). Hay dos salidas, y elegir es decisión de Cristian (#70): fijar `drift` en
+  /// 2.34.0 (falta validar que la suite, `build_runner` y el APK anden con esa versión) o sacar
+  /// `test` como dependencia directa, lo que choca con la regla de CLAUDE.md de que los tests de
+  /// dominio/data no importan Flutter. Hay que resolverlo antes de la versión 3.
   ///
   /// `beforeOpen` agrega el log `[DB][MIGRATION]` de convenciones §7.4.
   @override
