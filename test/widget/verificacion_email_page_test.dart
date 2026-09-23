@@ -9,48 +9,64 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// [VerificacionEmailPage] aislada (sin [ColportoresApp]) — mismo criterio que
 /// `login_page_test.dart`/`registro_page_test.dart`.
-Widget _pagina({
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPagina(
+  WidgetTester tester, {
   ThemeData? tema,
   String email = 'lucia.silva@correo.com',
   String? password,
   EstadoVerificacionEmail estadoInicial = EstadoVerificacionEmail.pendiente,
   required AuthRemoteDataSourceEnMemoria remote,
-}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(remote),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: MaterialApp(
-    theme: tema ?? temaClaro(),
-    home: VerificacionEmailPage(email: email, password: password, estadoInicial: estadoInicial),
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+    ],
+    child: MaterialApp(
+      theme: tema ?? temaClaro(),
+      home: VerificacionEmailPage(email: email, password: password, estadoInicial: estadoInicial),
+    ),
   ),
 );
 
 /// Arranca en una pantalla inicial y empuja [VerificacionEmailPage] arriba, para poder verificar
 /// que "Continuar"/"Volver al login" hacen `pop` de vuelta a ella.
-Widget _pilaConPantallaInicial({required EstadoVerificacionEmail estadoInicial}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(
-      AuthRemoteDataSourceEnMemoria(credenciales: const {}),
-    ),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: MaterialApp(
-    theme: temaClaro(),
-    home: Builder(
-      builder: (context) => Scaffold(
-        body: Center(
-          child: TextButton(
-            key: const Key('abrir_verificacion'),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => VerificacionEmailPage(
-                  email: 'lucia.silva@correo.com',
-                  estadoInicial: estadoInicial,
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPilaConPantallaInicial(
+  WidgetTester tester, {
+  required EstadoVerificacionEmail estadoInicial,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(
+        AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+      ),
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+    ],
+    child: MaterialApp(
+      theme: temaClaro(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              key: const Key('abrir_verificacion'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => VerificacionEmailPage(
+                    email: 'lucia.silva@correo.com',
+                    estadoInicial: estadoInicial,
+                  ),
                 ),
               ),
+              child: const Text('abrir verificación'),
             ),
-            child: const Text('abrir verificación'),
           ),
         ),
       ),
@@ -71,19 +87,22 @@ void main() {
           credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
         );
 
-        await tester.pumpWidget(
-          _pagina(tema: temaClaro(), estadoInicial: estado, password: 'Secreto123', remote: remote),
+        await _montarPagina(
+          tester,
+          tema: temaClaro(),
+          estadoInicial: estado,
+          password: 'Secreto123',
+          remote: remote,
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
 
-        await tester.pumpWidget(
-          _pagina(
-            tema: temaOscuro(),
-            estadoInicial: estado,
-            password: 'Secreto123',
-            remote: remote,
-          ),
+        await _montarPagina(
+          tester,
+          tema: temaOscuro(),
+          estadoInicial: estado,
+          password: 'Secreto123',
+          remote: remote,
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -96,7 +115,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('lucia.silva@correo.com'), findsWidgets);
@@ -107,7 +126,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('verificacion_email_ya_verifique')), findsNothing);
@@ -128,7 +147,7 @@ void main() {
           password: 'Secreto123',
         );
 
-        await tester.pumpWidget(_pagina(remote: remote, password: 'Secreto123'));
+        await _montarPagina(tester, remote: remote, password: 'Secreto123');
         await tester.pumpAndSettle();
 
         await tester.tap(find.byKey(const Key('verificacion_email_ya_verifique')));
@@ -164,7 +183,7 @@ void main() {
           password: 'Secreto123',
         );
 
-        await tester.pumpWidget(_pagina(remote: remote, password: 'Secreto123'));
+        await _montarPagina(tester, remote: remote, password: 'Secreto123');
         await tester.pumpAndSettle();
 
         // Verificación exitosa "por el enlace" (criterio de aceptación de HU-AUTH-002): la cuenta
@@ -188,7 +207,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote, password: 'Secreto123'));
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
@@ -226,7 +245,7 @@ void main() {
             ..fallaAlReenviar = const ServidorException(
               mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
             );
-      await tester.pumpWidget(_pagina(remote: remote, password: 'Secreto123'));
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
@@ -246,8 +265,11 @@ void main() {
       tester,
     ) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await tester.pumpWidget(
-        _pagina(remote: remote, email: '', estadoInicial: EstadoVerificacionEmail.expirado),
+      await _montarPagina(
+        tester,
+        remote: remote,
+        email: '',
+        estadoInicial: EstadoVerificacionEmail.expirado,
       );
       await tester.pumpAndSettle();
 
@@ -265,9 +287,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(
-        _pagina(remote: remote, estadoInicial: EstadoVerificacionEmail.expirado),
-      );
+      await _montarPagina(tester, remote: remote, estadoInicial: EstadoVerificacionEmail.expirado);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('verificacion_email_campo')), findsNothing);
@@ -276,8 +296,9 @@ void main() {
 
   group('VerificacionEmailPage — estado verificado', () {
     testWidgets('muestra el mensaje de éxito y "Continuar" cierra la pantalla', (tester) async {
-      await tester.pumpWidget(
-        _pilaConPantallaInicial(estadoInicial: EstadoVerificacionEmail.verificado),
+      await _montarPilaConPantallaInicial(
+        tester,
+        estadoInicial: EstadoVerificacionEmail.verificado,
       );
       await tester.pumpAndSettle();
 

@@ -12,14 +12,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _app({required AuthRemoteDataSourceEnMemoria remote, AuthLocalDataSource? local}) =>
-    ProviderScope(
-      overrides: [
-        authRemoteDataSourceProvider.overrideWithValue(remote),
-        authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
-      ],
-      child: const ColportoresApp(),
-    );
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarApp(
+  WidgetTester tester, {
+  required AuthRemoteDataSourceEnMemoria remote,
+  AuthLocalDataSource? local,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
+    ],
+    child: const ColportoresApp(),
+  ),
+);
 
 /// Local que no resuelve `leerSesion()` hasta que se llama a [resolver] — simula el arranque en
 /// frío, donde `sesionActual()` (I/O real) todavía no terminó cuando el deep link de error llega.
@@ -48,7 +56,7 @@ void main() {
   group('ColportoresApp — deep link de verificación con error', () {
     testWidgets('sin sesión activa: navega a la pantalla en estado expirado', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);
@@ -66,7 +74,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'ana@example.com': 'secreto123'},
       );
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -109,7 +117,7 @@ void main() {
           ),
         );
 
-        await tester.pumpWidget(_app(remote: remote, local: local));
+        await _montarApp(tester, remote: remote, local: local);
         await tester.pump();
 
         // sesionProvider sigue en AsyncLoading (leerSesion no resolvió): se ve el spinner de
@@ -154,7 +162,7 @@ void main() {
           password: 'Secreto123',
         );
 
-        await tester.pumpWidget(_app(remote: remote));
+        await _montarApp(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
@@ -190,7 +198,7 @@ void main() {
           password: 'Secreto123',
         );
 
-        await tester.pumpWidget(_app(remote: remote));
+        await _montarApp(tester, remote: remote);
         await tester.pumpAndSettle();
 
         await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');

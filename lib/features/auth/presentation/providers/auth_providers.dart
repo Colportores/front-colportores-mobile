@@ -43,33 +43,39 @@ AuthRepository authRepository(Ref ref) => AuthRepositoryImpl(
   ref.watch(authLocalDataSourceProvider),
 );
 
-@riverpod
+// Los casos de uso que usa `SesionNotifier` son `keepAlive` porque él lo es: un provider que vive
+// toda la app no puede depender de uno autoDispose (riverpod_lint,
+// `only_use_keep_alive_inside_keep_alive`) — con `ref.read` el autoDispose se crea y se tira en
+// cada llamada. Son envoltorios sin estado del repositorio (que ya es `keepAlive`): no retienen
+// nada más que esa referencia.
+@Riverpod(keepAlive: true)
 IniciarSesionUseCase iniciarSesionUseCase(Ref ref) =>
     IniciarSesionUseCase(ref.watch(authRepositoryProvider));
 
-@riverpod
-SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref ref) =>
-    SolicitarRecuperacionPasswordUseCase(ref.watch(authRepositoryProvider));
-
-@riverpod
+@Riverpod(keepAlive: true)
 IniciarSesionConGoogleUseCase iniciarSesionConGoogleUseCase(Ref ref) =>
     IniciarSesionConGoogleUseCase(ref.watch(authRepositoryProvider));
 
-@riverpod
+@Riverpod(keepAlive: true)
 RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
     RegistrarUsuarioUseCase(ref.watch(authRepositoryProvider));
 
-@riverpod
+@Riverpod(keepAlive: true)
 ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
     ObtenerSesionActualUseCase(ref.watch(authRepositoryProvider));
 
-@riverpod
+@Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
     CerrarSesionUseCase(ref.watch(authRepositoryProvider));
 
-@riverpod
+@Riverpod(keepAlive: true)
 ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>
     ReenviarVerificacionUseCase(ref.watch(authRepositoryProvider));
+
+// autoDispose: no lo usa `SesionNotifier`.
+@riverpod
+SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref ref) =>
+    SolicitarRecuperacionPasswordUseCase(ref.watch(authRepositoryProvider));
 
 /// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
 /// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este

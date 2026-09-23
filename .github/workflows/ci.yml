@@ -12,12 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Misma versión que dockerfile.dev. Subirlas juntas.
+  # Misma versión que dockerfile.dev. Subirlas juntas. Al pasar a Dart >= 3.13 se borra
+  # tool/riverpod_lint_plugin y analysis_options.yaml declara `riverpod_lint: ^3.1.9` (ver #87).
   FLUTTER_VERSION: "3.44.0"
 
 jobs:
   verificar:
-    name: format · analyze · lint · test · coverage
+    name: format · analyze · test · coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,8 +40,9 @@ jobs:
       - name: dart format (archivos versionados)
         run: git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
 
-      - run: flutter analyze --fatal-infos
-      - run: dart run custom_lint --fatal-infos
+      # `dart analyze` y no `flutter analyze`: este último no muestra los diagnósticos de plugins,
+      # y las reglas de Riverpod vienen del plugin (analysis_options.yaml → plugins).
+      - run: dart analyze --fatal-infos
       - run: flutter test --coverage
 
       - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)

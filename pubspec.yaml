@@ -11,7 +11,7 @@ environment:
 # (S5 mapa) — no antes. Supabase entró en S3 (auth real, #22).
 #
 # Nota: ADR-007 dice "Riverpod 2.x". Con Dart 3.12 la línea 2.x ya no resuelve junto a
-# `test`/`custom_lint` (analyzer ≥ 8), así que se adopta Riverpod 3.x (misma API de codegen,
+# `test` (analyzer ≥ 8), así que se adopta Riverpod 3.x (misma API de codegen,
 # `Ref` unificado, el generador quita el sufijo `Notifier`). Pendiente: nota en ADR-007.
 #
 # Nota: `flutter_secure_storage` queda en la línea 10.x a propósito. La 11.0.0 compila contra
@@ -19,15 +19,16 @@ environment:
 # 3.44), así que el job `build-android` falla. Subir a 11 implica subir el compileSdk del
 # proyecto — decisión de infra aparte, no de este wrapper. La API que usa
 # `core/secure_storage/` (read/write/delete/deleteAll) es la misma en las dos líneas.
-# Nota: `drift_dev` (codegen de tablas) **todavía no está**. Toda versión que sirva con `drift`
-# ≥ 2.32 (la línea que empaqueta SQLCipher vía hooks de `package:sqlite3`) exige analyzer ≥ 10, y
-# `custom_lint` 0.8.1 —que corre riverpod_lint en CI— quedó en analyzer ^8 sin versiones nuevas.
-# Mientras la DB no tiene tablas (#6) no hace falta: `AppDatabase` es un `GeneratedDatabase`
-# escrito a mano, idéntico a lo que generaría drift_dev para un `@DriftDatabase()` vacío. Antes de
-# la primera tabla (#8) hay que resolver el tooling: migrar riverpod_lint al plugin nativo del
-# analyzer (Dart ≥ 3.10; en Dart 3.12 `dart analyze` se cuelga con el plugin y `flutter analyze`
-# no reporta sus reglas — verificado en Docker) o pinear la DB a drift 2.31 + sqlcipher_flutter_libs
-# 0.6 (EOL). Decisión de Cristian, registrada en el issue #6.
+#
+# Nota: `riverpod_lint` **no está en este pubspec**: corre como plugin nativo del analyzer,
+# declarado en `analysis_options.yaml` y envuelto en `tool/riverpod_lint_plugin` (issue #87,
+# opción (a) de #6). Por eso el análisis es `dart analyze --fatal-infos`: `flutter analyze` no
+# muestra los diagnósticos de plugins. `custom_lint` salió: su 0.8.1 quedó en analyzer ^8, no
+# convivía con `drift_dev` y desde riverpod_lint 3.1.0 ya no corría ninguna regla.
+#
+# Nota: `drift_dev` queda en 2.34.0 (y `drift` en 2.34.x) porque `flutter_test` 3.44 fija
+# `test_api` 0.7.11 → `test` 1.31 → analyzer < 13, y drift_dev ≥ 2.34.1 pide analyzer ^13. Al
+# subir Flutter se destraba solo.
 dependencies:
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
   drift: ^2.34.1            # DB local (ADR-007); cifrada con SQLCipher (ADR-003) — ver `hooks` abajo
@@ -47,13 +48,12 @@ dependencies:
 
 dev_dependencies:
   build_runner: ^2.15.1
-  custom_lint: ^0.8.1
+  drift_dev: ^2.34.0        # codegen de tablas de `core/database` (ver nota arriba)
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
   mocktail: ^1.0.5
   riverpod_generator: ^4.0.0
-  riverpod_lint: ^3.1.0
   test: ^1.31.0             # tests de dominio/data sin importar Flutter (CLAUDE.md §Tests)
 
 flutter:

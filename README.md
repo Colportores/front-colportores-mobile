@@ -70,7 +70,7 @@ Todo lo que no necesita un dispositivo corre en Docker (Flutter + Android SDK in
 
 ```sh
 docker compose -f compose.dev.yml build                                   # una vez
-docker compose -f compose.dev.yml run --rm flutter bash scripts/check.sh  # = CI: format, analyze, lint, tests, cobertura
+docker compose -f compose.dev.yml run --rm flutter bash scripts/check.sh  # = CI: format, analyze (+ riverpod_lint), tests, cobertura
 docker compose -f compose.dev.yml run --rm flutter flutter test           # solo tests
 docker compose -f compose.dev.yml run --rm flutter dart run build_runner build      # regenerar *.g.dart
 docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
@@ -80,7 +80,8 @@ docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
   `docker run --rm -v front-colportores-mobile_build_out:/b -v "$PWD":/out alpine cp /b/app/outputs/flutter-apk/app-debug.apk /out/`
 - `*.g.dart` **no se commitea**: se genera con `build_runner` (CI lo hace en cada corrida).
 - **SQLCipher** lo empaqueta `package:sqlite3` con [hooks](https://pub.dev/documentation/sqlite3/latest/topics/hook-topic.html) (`hooks.user_defines.sqlite3.source: sqlcipher` en `pubspec.yaml`): en el primer build o `flutter test` baja el binario precompilado de la plataforma desde los releases de GitHub del paquete (verificado por sha256) a `.dart_tool/hooks_runner/`. Hace falta red esa primera vez; no hay nada que instalar en el host ni en la imagen (en Linux linkea el `libcrypto.so.3` que Ubuntu ya trae). Los tests de `core/database` corren contra ese SQLCipher real, no contra un fake.
-- **`drift_dev` todavía no está** (ver nota en `pubspec.yaml`): no resuelve junto a `custom_lint`. Mientras la DB no tiene tablas no hace falta; hay que destrabarlo antes de la primera tabla (#8).
+- **`drift_dev`** está instalado (2.34.0, el techo con Flutter 3.44 — ver nota en `pubspec.yaml`) y corre con `build_runner`. `AppDatabase` sigue siendo un `GeneratedDatabase` escrito a mano hasta que entre la primera tabla (#70).
+- **Análisis: `dart analyze --fatal-infos`, no `flutter analyze`.** Las reglas de Riverpod vienen de `riverpod_lint` como plugin nativo del analyzer (`analysis_options.yaml` → `plugins`), y `flutter analyze` no muestra diagnósticos de plugins. En Dart 3.12 el plugin pasa por el envoltorio `tool/riverpod_lint_plugin`, que fija `analysis_server_plugin` 0.3.15 (con la 0.3.16+ `dart analyze` se cuelga); se borra al subir a Dart ≥ 3.13 (#87). La primera corrida compila el plugin (~45 s extra).
 - `dart format` usa 100 columnas (`formatter.page_width` en `analysis_options.yaml`).
 - Para correr en un teléfono o emulador se usa `flutter run` desde el host: el contenedor no ve USB ni emuladores de Windows. Sin Supabase configurado la app usa fakes en memoria: cuenta demo `demo@colportores.app` / `demo1234` (y "Continuar con Google" entra como `google@colportores.app`).
 
@@ -102,7 +103,7 @@ flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUP
 
 ## CI
 
-`ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `flutter analyze --fatal-infos`, `custom_lint` (reglas de Riverpod), `flutter test --coverage` con umbrales, el smoke test de proveedores de Supabase Auth (omitido si no hay variables), y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
+`ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` (incluye las reglas de Riverpod del plugin `riverpod_lint`), `flutter test --coverage` con umbrales, el smoke test de proveedores de Supabase Auth (omitido si no hay variables), y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
 
 ## Privacidad
 

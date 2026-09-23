@@ -1,9 +1,16 @@
-# Reglas de análisis. Se aplican en CI con `flutter analyze --fatal-infos` y `dart run custom_lint`.
+# Reglas de análisis. Se aplican en CI con `dart analyze --fatal-infos` (no `flutter analyze`: no
+# muestra los diagnósticos de plugins, y las reglas de Riverpod vienen de uno).
 include: package:flutter_lints/flutter.yaml
 
+# riverpod_lint como plugin nativo del analyzer. Lo resuelve el analysis server por su lado (en
+# ~/.dartServer/.plugin_manager), no el pubspec del proyecto. El envoltorio local existe solo para
+# fijar `analysis_server_plugin` 0.3.15: con Dart 3.12 la 0.3.16+ cuelga `dart analyze` (issue #87).
+# Al pasar a Dart >= 3.13 se borra tool/riverpod_lint_plugin y esto queda `riverpod_lint: ^3.1.9`.
+plugins:
+  riverpod_lint_plugin:
+    path: tool/riverpod_lint_plugin
+
 analyzer:
-  plugins:
-    - custom_lint
   language:
     strict-casts: true
     strict-inference: true
@@ -18,6 +25,7 @@ analyzer:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
     - build/**
+    - tool/**
 
 # Línea de 100 (convenciones §4.3). `dart format` lo lee de acá.
 formatter:

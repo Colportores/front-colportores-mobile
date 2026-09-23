@@ -46,13 +46,19 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
-Widget _app({required AuthRemoteDataSource remote}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(remote),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: const ColportoresApp(),
-);
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarApp(WidgetTester tester, {required AuthRemoteDataSource remote}) =>
+    tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+        child: const ColportoresApp(),
+      ),
+    );
 
 AuthRemoteDataSourceEnMemoria _remote() =>
     AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
@@ -60,14 +66,14 @@ AuthRemoteDataSourceEnMemoria _remote() =>
 void main() {
   group('Flujo de login', () {
     testWidgets('cuando no hay sesión, arranca en la pantalla de login', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);
     });
 
     testWidgets('cuando el email es inválido, muestra el error en el campo', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'no-es-email');
@@ -82,7 +88,7 @@ void main() {
     testWidgets('cuando las credenciales son incorrectas, muestra el error general', (
       tester,
     ) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -96,7 +102,7 @@ void main() {
 
     testWidgets('cuando no hay conexión, avisa sin exponer detalles', (tester) async {
       final remote = _remote()..simularSinConexion = true;
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -108,7 +114,7 @@ void main() {
     });
 
     testWidgets('cuando las credenciales son válidas, entra y puede cerrar sesión', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'Ana@Example.com');
@@ -133,7 +139,7 @@ void main() {
           mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
         ),
       );
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -154,7 +160,7 @@ void main() {
         credenciales: const {},
         requiereVerificacionAlRegistrar: true,
       );
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('login_ir_a_registro')));
