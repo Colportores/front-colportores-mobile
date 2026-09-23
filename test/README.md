@@ -14,7 +14,8 @@ Los tests reflejan la estructura de `lib/`, con un prefijo por tipo de test:
 ```
 test/
 ├── unit/
-│   ├── arquitectura/     ← reglas transversales que barren TODO lib/ (no una feature puntual)
+│   ├── arquitectura/     ← reglas transversales, no una feature puntual; solo una de las tres
+│   │                        barre lib/ completo, las otras dos se completan a mano (ver §5)
 │   ├── core/             ← test/unit/core/<módulo>/..., espejo de lib/core/<módulo>/...
 │   └── features/
 │       └── <feature>/
