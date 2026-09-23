@@ -88,7 +88,10 @@ void main() {
 
     test('dado una DB migrada desde la versión 1, cuando se compara con una DB nueva, el esquema '
         'es idéntico', () async {
-      // Es lo que detecta un paso de migración que dejó de ser válido (ver `AppDatabase.migration`).
+      // Detecta un paso que falla o deja un esquema distinto desde la 1, pero no un paso `N → N+1`
+      // olvidado ni tolera un `ADD COLUMN` (compara texto). TODO(#70): congelar la v2 con
+      // `drift_dev make-migrations` y usar `SchemaVerifier` — bloqueado por tooling, ver
+      // `AppDatabase.migration`. No copiar este test para la versión 3.
       final migrada = deVersion1(_SalidaEnMemoria());
       final nueva = AppDatabase(
         NativeDatabase.memory(),

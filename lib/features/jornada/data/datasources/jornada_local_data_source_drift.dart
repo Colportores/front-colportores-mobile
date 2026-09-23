@@ -37,8 +37,9 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   /// La jornada sin `fin` y sin soft delete del colportor. `limit(1)`: la regla de una sola activa
-  /// la sostiene [insertar], pero un pull de sync podría traer una segunda abierta desde otro
-  /// dispositivo; en ese caso se devuelve la más reciente en vez de fallar.
+  /// la sostiene [insertar], pero una recuperación de dispositivo (`engine.recover()`,
+  /// contrato-sync-engine §7) podría dejar una segunda abierta —`jornada` no baja por pull: es
+  /// `push` sin `alsoPull`, §2-§3—; en ese caso se devuelve la más reciente en vez de fallar.
   Selectable<JornadaFila> _consultaActiva(String colportorId) => (select(jornadas)
     ..where((j) => j.colportorId.equals(colportorId) & j.fin.isNull() & j.deletedAt.isNull())
     ..orderBy([(j) => OrderingTerm.desc(j.inicio)])

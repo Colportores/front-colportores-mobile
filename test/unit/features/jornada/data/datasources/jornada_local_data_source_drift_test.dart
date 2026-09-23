@@ -203,4 +203,32 @@ void main() {
       expect(await filas(), 1);
     });
   });
+
+  group('IniciarJornadaUseCase + JornadaRepositoryImpl sobre Drift — precisión de fechas', () {
+    test(
+      'dado un reloj con microsegundos, cuando se inicia la jornada, la que devuelve crear es '
+      'igual a la que se relee de la DB y el payload de sync lleva los mismos milisegundos',
+      () async {
+        final repositorio = JornadaRepositoryImpl(local, logger: loggerMudo());
+        final iniciar = IniciarJornadaUseCase(
+          repositorio,
+          generarId: () => 'jor-1',
+          ahora: () => DateTime.utc(2026, 9, 22, 12, 0, 0, 123, 999),
+        );
+
+        final creada = (await iniciar(
+          const IniciarJornadaParams(colportorId: 'u-1'),
+        )).getOrElse(() => fail('se esperaba Right'));
+        final releida = (await repositorio.obtenerActiva(
+          'u-1',
+        )).getOrElse(() => fail('se esperaba Right'));
+
+        expect(releida, creada);
+        final payload = JornadaModel.fromEntity(creada).toJson();
+        expect(payload['inicio'], '2026-09-22T12:00:00.123Z');
+        expect(payload['created_at'], '2026-09-22T12:00:00.123Z');
+        expect(payload['updated_at'], '2026-09-22T12:00:00.123Z');
+      },
+    );
+  });
 }

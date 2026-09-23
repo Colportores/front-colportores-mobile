@@ -146,9 +146,35 @@ void main() {
       expect(repositorio.creadas, isEmpty);
     });
 
+    test('dado un reloj con microsegundos, cuando inicio jornada, las fechas quedan truncadas al '
+        'milisegundo y en UTC', () async {
+      // 09:15:00.123999 en Montevideo (UTC-3): lo que está por debajo del milisegundo no llega a
+      // la DB local (epoch ms), así que tampoco puede quedar en la entidad.
+      final conMicrosegundos = IniciarJornadaUseCase(
+        repositorio,
+        generarId: () => 'jor-nueva',
+        ahora: () => DateTime.parse('2026-09-22T09:15:00.123999-03:00').toLocal(),
+      );
+      final esperado = DateTime.utc(2026, 9, 22, 12, 15, 0, 123);
+
+      final resultado = await conMicrosegundos(const IniciarJornadaParams(colportorId: 'u-1'));
+
+      final creada = resultado.getOrElse(() => fail('se esperaba Right'));
+      for (final fecha in [creada.inicio, creada.auditoria.createdAt, creada.auditoria.updatedAt]) {
+        expect(fecha, esperado);
+        expect(fecha.isUtc, isTrue);
+        expect(fecha.microsecond, 0);
+      }
+    });
+
     test('dado que no se inyecta reloj, cuando inicio jornada, usa la hora actual', () async {
       final sinReloj = IniciarJornadaUseCase(repositorio, generarId: () => 'jor-x');
-      final antes = DateTime.now().toUtc();
+      // Al milisegundo, como el `inicio` que devuelve el caso de uso: con microsegundos, un
+      // `inicio` del mismo milisegundo que `antes` quedaría "antes" de `antes`.
+      final antes = DateTime.fromMillisecondsSinceEpoch(
+        DateTime.now().millisecondsSinceEpoch,
+        isUtc: true,
+      );
 
       final resultado = await sinReloj(const IniciarJornadaParams(colportorId: 'u-1'));
 
