@@ -26,6 +26,10 @@ final class _RepositorioFalso implements JornadaRepository {
     creadas.add(jornada);
     return respuestaCrear ?? Right(jornada);
   }
+
+  @override
+  Future<Either<Failure, Jornada>> finalizar(Jornada jornada) =>
+      throw UnimplementedError('no se usa en este caso de uso');
 }
 
 void main() {

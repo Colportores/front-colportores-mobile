@@ -19,6 +19,9 @@ final class _DataSourceRoto implements JornadaLocalDataSource {
 
   @override
   Future<void> insertar(JornadaModel jornada) async => throw Exception('disco');
+
+  @override
+  Future<void> finalizar(JornadaModel jornada) async => throw Exception('disco');
 }
 
 void main() {
@@ -154,6 +157,71 @@ void main() {
 
       expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
+  });
+
+  group('JornadaRepositoryImpl.finalizar', () {
+    final fin = t0.add(const Duration(hours: 8));
+    final cierre = fin.add(const Duration(minutes: 5));
+
+    test('dado una jornada abierta, cuando se finaliza, guarda fin y updated_at y devuelve la '
+        'entidad cerrada', () async {
+      await local.insertar(JornadaModel.fromEntity(jornada()));
+
+      final resultado = await repositorio.finalizar(
+        jornada().finalizada(fin: fin, actualizadaEn: cierre),
+      );
+
+      final cerrada = resultado.getOrElse(() => throw StateError('esperaba Right'));
+      expect(cerrada.runtimeType, Jornada);
+      expect(cerrada.fin, fin);
+      expect(cerrada.duracion, const Duration(hours: 8));
+      final guardada = local.jornadas.single;
+      expect(guardada.fin, fin);
+      expect(guardada.auditoria.updatedAt, cierre);
+      expect(guardada.auditoria.createdAt, t0);
+      expect(await repositorio.obtenerActiva('u-1'), const Right<Failure, Jornada?>(null));
+    });
+
+    test('dado que la jornada ya estaba cerrada, cuando se finaliza otra vez, devuelve '
+        'FailureSinJornadaActiva y no pisa el fin guardado', () async {
+      await local.insertar(JornadaModel.fromEntity(jornada(fin: fin)));
+
+      final resultado = await repositorio.finalizar(
+        jornada().finalizada(fin: fin.add(const Duration(minutes: 10)), actualizadaEn: cierre),
+      );
+
+      expect(resultado, const Left<Failure, Jornada>(FailureSinJornadaActiva()));
+      expect(local.jornadas.single.fin, fin);
+    });
+
+    test('dado una jornada borrada o de otro colportor, cuando se finaliza, devuelve '
+        'FailureSinJornadaActiva', () async {
+      await local.insertar(JornadaModel.fromEntity(jornada(deletedAt: t0)));
+      await local.insertar(JornadaModel.fromEntity(jornada(id: 'ajena', colportorId: 'u-2')));
+
+      final borrada = await repositorio.finalizar(
+        jornada().finalizada(fin: fin, actualizadaEn: cierre),
+      );
+      final ajena = await repositorio.finalizar(
+        jornada(id: 'ajena').finalizada(fin: fin, actualizadaEn: cierre),
+      );
+
+      expect(borrada, const Left<Failure, Jornada>(FailureSinJornadaActiva()));
+      expect(ajena, const Left<Failure, Jornada>(FailureSinJornadaActiva()));
+    });
+
+    test(
+      'dado que el almacenamiento falla, cuando se finaliza, devuelve FailureInesperado',
+      () async {
+        final roto = JornadaRepositoryImpl(_DataSourceRoto(), logger: loggerMudo());
+
+        final resultado = await roto.finalizar(
+          jornada().finalizada(fin: fin, actualizadaEn: cierre),
+        );
+
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      },
+    );
   });
 
   group('IniciarJornadaUseCase + JornadaRepositoryImpl', () {

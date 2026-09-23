@@ -147,6 +147,66 @@ void main() {
     });
   });
 
+  group('JornadaLocalDataSourceDrift.finalizar', () {
+    final fin = t0.add(const Duration(hours: 8));
+    final cierre = fin.add(const Duration(minutes: 5));
+
+    JornadaModel cerrada({String id = 'jor-1', String colportorId = 'u-1'}) =>
+        JornadaModel.fromEntity(
+          jornada(id: id, colportorId: colportorId).finalizada(fin: fin, actualizadaEn: cierre),
+        );
+
+    test('dado una jornada abierta, cuando se finaliza, guarda solo fin y updated_at', () async {
+      await local.insertar(jornada());
+
+      await local.finalizar(cerrada());
+
+      final fila = await db.select(db.jornadas).getSingle();
+      expect(fila.fin, fin);
+      expect(fila.updatedAt, cierre);
+      expect(fila.inicio, t0);
+      expect(fila.createdAt, t0);
+      expect(await local.obtenerActiva('u-1'), isNull);
+    });
+
+    test('dado una jornada ya cerrada, borrada, de otro colportor o inexistente, cuando se '
+        'finaliza, lanza JornadaNoAbiertaException y no toca la fila', () async {
+      final finPrevio = t0.add(const Duration(hours: 2));
+      await local.insertar(jornada(fin: finPrevio));
+      await local.insertar(jornada(id: 'borrada', deletedAt: t0));
+      await local.insertar(jornada(id: 'ajena', colportorId: 'u-2'));
+
+      for (final intento in [
+        cerrada(),
+        cerrada(id: 'borrada'),
+        cerrada(id: 'ajena'),
+        cerrada(id: 'no-existe'),
+      ]) {
+        await expectLater(local.finalizar(intento), throwsA(isA<JornadaNoAbiertaException>()));
+      }
+      final filas = await db.select(db.jornadas).get();
+      expect(filas.firstWhere((f) => f.id == 'jor-1').fin, finPrevio);
+      expect(filas.firstWhere((f) => f.id == 'ajena').fin, isNull);
+    });
+
+    test('dado dos cierres simultáneos de la misma jornada, cuando corren a la vez, solo uno se '
+        'guarda y el otro lanza JornadaNoAbiertaException', () async {
+      await local.insertar(jornada());
+      final otro = JornadaModel.fromEntity(
+        jornada().finalizada(fin: fin.add(const Duration(minutes: 1)), actualizadaEn: cierre),
+      );
+
+      final resultados = await Future.wait([
+        local.finalizar(cerrada()).then((_) => true, onError: (Object _) => false),
+        local.finalizar(otro).then((_) => true, onError: (Object _) => false),
+      ]);
+
+      expect(resultados.where((ok) => ok), hasLength(1));
+      final ganador = resultados.first ? fin : fin.add(const Duration(minutes: 1));
+      expect((await db.select(db.jornadas).getSingle()).fin, ganador);
+    });
+  });
+
   group('JornadaLocalDataSourceDrift.insertar', () {
     test('dado una jornada activa, cuando se inserta otra del mismo colportor, lanza '
         'JornadaActivaExistenteException y no guarda nada', () async {

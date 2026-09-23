@@ -36,6 +36,27 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     await into(jornadas).insert(_aFila(jornada));
   });
 
+  /// Un solo `UPDATE … WHERE fin IS NULL AND deleted_at IS NULL`: la comprobación y la escritura
+  /// son la misma sentencia, así que un segundo cierre casi simultáneo no encuentra la fila
+  /// abierta y lanza [JornadaNoAbiertaException] en vez de pisar el `fin` del primero.
+  @override
+  Future<void> finalizar(JornadaModel jornada) async {
+    final fin = jornada.fin;
+    if (fin == null) throw ArgumentError.value(jornada.id, 'jornada', 'no trae fin');
+    final actualizadas =
+        await (update(jornadas)..where(
+              (j) =>
+                  j.id.equals(jornada.id) &
+                  j.colportorId.equals(jornada.colportorId) &
+                  j.fin.isNull() &
+                  j.deletedAt.isNull(),
+            ))
+            .write(
+              JornadasCompanion(fin: Value(fin), updatedAt: Value(jornada.auditoria.updatedAt)),
+            );
+    if (actualizadas == 0) throw const JornadaNoAbiertaException();
+  }
+
   /// La jornada sin `fin` y sin soft delete del colportor. `limit(1)`: la regla de una sola activa
   /// la sostiene [insertar], pero una recuperación de dispositivo (`engine.recover()`,
   /// contrato-sync-engine §7) podría dejar una segunda abierta —`jornada` no baja por pull: es

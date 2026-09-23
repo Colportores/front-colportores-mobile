@@ -73,6 +73,13 @@ final class FailureJornadaActiva extends Failure {
       );
 }
 
+/// El colportor quiso finalizar una jornada, pero no tiene ninguna en curso (HU-JOR-002): ya la
+/// cerró —dos toques seguidos en "Finalizar jornada"— o nunca la inició.
+final class FailureSinJornadaActiva extends Failure {
+  const FailureSinJornadaActiva()
+    : super(mensaje: 'No tenés una jornada en curso para finalizar.', codigo: 'JOR_SIN_JORNADA');
+}
+
 /// La hora elegida a mano para una jornada cae fuera del rango permitido (HU-JOR-001: "editable
 /// hasta 30 minutos hacia atrás", decisión de Cristian del 23/09 en #70). [mensaje] trae el rango
 /// explícito en hora local ("La hora tiene que estar entre las 14:05 y las 14:35."), para que el
