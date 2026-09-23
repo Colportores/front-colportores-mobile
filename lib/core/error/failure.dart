@@ -109,6 +109,18 @@ final class FailureHoraFueraDeRango extends Failure {
   }
 }
 
+/// No se pudo armar el resumen de lo guardado en el teléfono por una falla inesperada. Se puede
+/// reintentar; nada se borró.
+final class FailureDatosLocalesIlegibles extends Failure {
+  const FailureDatosLocalesIlegibles()
+    : super(
+        mensaje:
+            'No pudimos revisar los datos de este teléfono. No se borró nada: reintentá en un '
+            'momento.',
+        codigo: 'DATOS_LOCALES_ILEGIBLES',
+      );
+}
+
 /// No hay red o el servidor no respondió. La operación puede reintentarse.
 final class FailureSinConexion extends Failure {
   const FailureSinConexion()

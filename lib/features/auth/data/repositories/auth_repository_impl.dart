@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -184,28 +185,80 @@ final class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  @override
-  Future<Either<Failure, Unit>> cerrarSesion() async {
-    final sesion = await _local.leerSesion();
-    try {
-      if (sesion != null) await _remote.cerrarSesion(sesion.accessToken);
-    } on SinConexionException {
-      // Sin red igual se cierra localmente; la revocación remota queda para HU-AUTH-010.
-      _log.warn(LogModulo.auth, 'LOGOUT_OFFLINE', 'logout sin conexión, solo local');
-    } on AuthRemoteException catch (e) {
-      _log.warn(LogModulo.auth, 'LOGOUT_REMOTO_FAIL', 'logout remoto falló', {
-        'codigo': _traducir(e).codigo,
-      });
-    }
+  /// Sesión cuyo JWT no se pudo revocar por falta de red (HU-AUTH-006, "Logout sin conexión").
+  ///
+  /// Vive en el repositorio (que es `keepAlive`) y no en el data source local porque hoy ese data
+  /// source también es en memoria (`main.dart`): cuando llegue el respaldado por `secure_storage`,
+  /// la pendiente se persiste ahí para sobrevivir a un reinicio de la app.
+  SesionModel? _revocacionPendiente;
 
+  @override
+  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion() async {
+    // Todo adentro del `try`: una falla al leer la sesión o una excepción no prevista del remoto
+    // no puede saltearse el log ni el borrado local (#54).
     try {
+      final sesion = await _local.leerSesion();
+      var resultado = ResultadoCierreSesion.completo;
+      if (sesion != null) {
+        try {
+          await _remote.cerrarSesion(sesion.accessToken);
+        } on SinConexionException {
+          _revocacionPendiente = sesion;
+          resultado = ResultadoCierreSesion.revocacionPendiente;
+          _log.warn(LogModulo.auth, 'LOGOUT_OFFLINE', 'logout sin conexión, revocación pendiente', {
+            'user_id': sesion.usuarioId,
+          });
+        } on Object catch (e, st) {
+          // El servidor respondió con error (o algo no previsto): no hay nada que reintentar con
+          // ese token. El usuario no puede hacer nada con esto, así que solo va al log.
+          _log.error(
+            LogModulo.auth,
+            'LOGOUT_REMOTO_FAIL',
+            'logout remoto falló',
+            {'codigo': e is AuthRemoteException ? _traducir(e).codigo : 'INESPERADO'},
+            e,
+            st,
+          );
+        }
+      }
+
       await _local.borrarSesion();
-      _log.info(LogModulo.auth, 'LOGOUT_OK', 'sesión cerrada', {'user_id': sesion?.usuarioId});
-      return const Right(unit);
+      _log.info(LogModulo.auth, 'LOGOUT_OK', 'sesión cerrada', {
+        'user_id': sesion?.usuarioId,
+        'revocacion_pendiente': resultado == ResultadoCierreSesion.revocacionPendiente,
+      });
+      return Right(resultado);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'LOGOUT_FAIL', 'no se pudo borrar la sesión', const {}, e, st);
       return Left(FailureInesperado(causa: e));
     }
+  }
+
+  @override
+  Future<Either<Failure, Unit>> reintentarRevocacionPendiente() async {
+    final pendiente = _revocacionPendiente;
+    if (pendiente == null) return const Right(unit);
+    try {
+      await _remote.revocarSesion(pendiente.accessToken);
+      _log.info(LogModulo.auth, 'LOGOUT_REVOCADO', 'revocación pendiente completada', {
+        'user_id': pendiente.usuarioId,
+      });
+    } on SinConexionException {
+      return const Left(FailureSinConexion());
+    } on Object catch (e, st) {
+      // El servidor rechazó el token (vencido o ya revocado): reintentar no cambia nada.
+      _log.error(
+        LogModulo.auth,
+        'LOGOUT_REVOCACION_FAIL',
+        'revocación pendiente rechazada',
+        {'user_id': pendiente.usuarioId},
+        e,
+        st,
+      );
+    }
+    // Solo si nadie la reemplazó mientras tanto (otro logout sin red durante el `await`).
+    if (identical(_revocacionPendiente, pendiente)) _revocacionPendiente = null;
+    return const Right(unit);
   }
 
   @override

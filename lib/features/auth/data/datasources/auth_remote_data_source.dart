@@ -39,7 +39,15 @@ abstract interface class AuthRemoteDataSource {
   /// persiste `supabase_flutter` por su cuenta; si está vencida intenta refrescarla.
   Future<SesionModel?> obtenerSesionActual();
 
+  /// Cierra la sesión del cliente: la revoca en el servidor y borra la copia que guarda el
+  /// proveedor. Sin red, la copia local se borra igual y lanza [SinConexionException].
   Future<void> cerrarSesion(String accessToken);
+
+  /// Revoca en el servidor **solo** la sesión de [accessToken] (scope local: ni las otras sesiones
+  /// del usuario ni la que tenga el cliente ahora), sin tocar el cliente. Es para la revocación
+  /// que un logout sin red dejó pendiente (HU-AUTH-006): para entonces el usuario pudo haber
+  /// vuelto a entrar, y esa sesión nueva no se toca.
+  Future<void> revocarSesion(String accessToken);
 
   /// Reenvía el email de verificación de una cuenta con confirmación pendiente (HU-AUTH-002,
   /// Supabase Auth `resend` tipo `signup`). El plan free de Supabase sin SMTP propio limita esto a

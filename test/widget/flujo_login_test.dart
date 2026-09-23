@@ -1,8 +1,12 @@
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +41,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
   Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
 
   @override
@@ -55,10 +62,29 @@ Future<void> _montarApp(WidgetTester tester, {required AuthRemoteDataSource remo
         overrides: [
           authRemoteDataSourceProvider.overrideWithValue(remote),
           authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          datosLocalesRepositoryProvider.overrideWithValue(_SinDatosLocales()),
         ],
         child: const ColportoresApp(),
       ),
     );
+
+/// Teléfono sin nada guardado: el cierre de sesión pide la confirmación común.
+final class _SinDatosLocales implements DatosLocalesRepository {
+  @override
+  Future<Either<Failure, ResumenDatosLocales>> resumen() async => const Right(
+    ResumenDatosLocales(
+      personas: 0,
+      visitas: 0,
+      operacionesSinSincronizar: 0,
+      hayBackupEnDrive: false,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
+    required bool incluirBackupDrive,
+  }) async => const Right(ResultadoBorradoDatosLocales.completo);
+}
 
 AuthRemoteDataSourceEnMemoria _remote() =>
     AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
@@ -125,7 +151,11 @@ void main() {
       expect(find.byKey(const Key('inicio_email')), findsOneWidget);
       expect(find.text('ana@example.com'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('inicio_cerrar_sesion')));
+      await tester.tap(find.byKey(const Key('inicio_configuracion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);

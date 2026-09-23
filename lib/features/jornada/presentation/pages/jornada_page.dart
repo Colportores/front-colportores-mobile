@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
-import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../domain/entities/jornada.dart';
 import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
@@ -175,11 +175,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         titleSpacing: paddingHorizontal,
         title: const _Marca(),
         actions: [
+          // Cerrar sesión (con confirmación) y borrar datos viven en Configuración (HU-AUTH-006/010).
           IconButton(
-            key: const Key('inicio_cerrar_sesion'),
-            tooltip: 'Cerrar sesión',
-            icon: const Icon(Icons.logout),
-            onPressed: () => ref.read(sesionProvider.notifier).cerrarSesion(),
+            key: const Key('inicio_configuracion'),
+            tooltip: 'Configuración',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(ConfiguracionPage.ruta()),
           ),
           const SizedBox(width: 8),
         ],

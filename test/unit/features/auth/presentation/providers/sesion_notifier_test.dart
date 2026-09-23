@@ -11,17 +11,20 @@ import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
+import 'package:mocktail/mocktail.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 
 /// Almacén local que empieza sano y se rompe cuando se le pide: para cerrar sesión primero hay que
-/// haberla iniciado. `AuthRepositoryImpl.cerrarSesion` lee la sesión fuera de su `try`, así que la
-/// falla escapa del use case tal cual, que es el caso que importa acá.
+/// haberla iniciado. `AuthRepositoryImpl.cerrarSesion` traduce la falla a un `Left`.
 final class _LocalQueFalla implements AuthLocalDataSource {
   final AuthLocalDataSourceEnMemoria _real = AuthLocalDataSourceEnMemoria();
 
@@ -39,6 +42,8 @@ final class _LocalQueFalla implements AuthLocalDataSource {
   @override
   Future<void> borrarSesion() => _real.borrarSesion();
 }
+
+class _MockAuthRepository extends Mock implements AuthRepository {}
 
 final class _FallaDeAlmacen implements Exception {
   const _FallaDeAlmacen();
@@ -128,64 +133,113 @@ void main() {
       expect(helper.abierta, isFalse);
     });
 
-    test('cuando el use case lanza, igual cierra la DB y deja la sesión cerrada', () async {
-      await iniciarSesion();
-      final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
-      await container.read(dbLocalProvider.notifier).abrir(clave);
-      local.explotar = true;
+    test(
+      'cuando la sesión guardada no se puede borrar, devuelve el Left y el usuario sigue adentro '
+      'con la DB abierta (#54)',
+      () async {
+        await iniciarSesion();
+        final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+        await container.read(dbLocalProvider.notifier).abrir(clave);
+        local.explotar = true;
 
-      await expectLater(
-        container.read(sesionProvider.notifier).cerrarSesion(),
-        throwsA(isA<Exception>()),
+        final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(resultado.isLeft(), isTrue);
+        expect(
+          container.read(sesionProvider).value,
+          isNotNull,
+          reason: 'la sesión sigue guardada: mostrar el login sería mentirle al usuario',
+        );
+        expect(helper.abierta, isTrue);
+        expect(clave.destruida, isFalse);
+      },
+    );
+
+    test('cuando cerrar la DB falla, igual deja la sesión cerrada y no lo propaga', () async {
+      final conFallas = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          dbLocalProvider.overrideWith(_DbLocalQueFallaAlCerrar.new),
+        ],
       );
+      addTearDown(conFallas.dispose);
+      await conFallas.read(sesionProvider.future);
+      await conFallas
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+      await conFallas.read(dbLocalProvider.notifier).abrir(clave);
+
+      final resultado = await conFallas.read(sesionProvider.notifier).cerrarSesion();
 
       expect(
-        container.read(sesionProvider).value,
-        isNull,
-        reason: 'la sesión ya se dio por cerrada: la app no puede seguir mostrando al usuario',
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.completo),
       );
-      expect(container.read(dbLocalProvider), isNull);
-      expect(helper.abierta, isFalse, reason: 'deslogueado con la DB abierta es peor que el error');
+      expect(conFallas.read(sesionProvider).value, isNull);
+      expect(helper.abierta, isFalse);
       expect(clave.destruida, isTrue);
     });
 
     test(
-      'cuando fallan el use case y el cierre de la DB, propaga y loguea la del use case',
+      'cuando el use case lanza, cierra la DB, deja la sesión cerrada, loguea y propaga',
       () async {
         final salida = _SalidaEnMemoria();
+        final repo = _MockAuthRepository();
+        when(repo.sesionActual).thenAnswer((_) async => const Right(null));
+        when(repo.reintentarRevocacionPendiente).thenAnswer((_) async => const Right(unit));
+        when(repo.cerrarSesion).thenThrow(const _FallaDeAlmacen());
         final conFallas = ProviderContainer(
           overrides: [
-            authRemoteDataSourceProvider.overrideWithValue(remote),
-            authLocalDataSourceProvider.overrideWithValue(local),
+            authRepositoryProvider.overrideWithValue(repo),
             databaseHelperProvider.overrideWithValue(helper),
-            dbLocalProvider.overrideWith(_DbLocalQueFallaAlCerrar.new),
             sesionProvider.overrideWith(() => SesionNotifier(logger: AppLogger(output: salida))),
           ],
         );
         addTearDown(conFallas.dispose);
         await conFallas.read(sesionProvider.future);
-        final falla = await conFallas
-            .read(sesionProvider.notifier)
-            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
-        expect(falla, isNull);
         final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
         await conFallas.read(dbLocalProvider.notifier).abrir(clave);
-        local.explotar = true;
 
         await expectLater(
           conFallas.read(sesionProvider.notifier).cerrarSesion(),
           throwsA(isA<_FallaDeAlmacen>()),
-          reason: 'la del cierre de la DB ya la loguea el helper; la que se perdía era esta',
         );
 
-        expect(
-          salida.lineas,
-          anyElement(startsWith('[ERROR][AUTH][LOGOUT_FAIL]')),
-          reason: 'un logout que no se completó no puede quedar sin rastro',
-        );
+        expect(salida.lineas, anyElement(startsWith('[ERROR][AUTH][LOGOUT_FAIL]')));
         expect(conFallas.read(sesionProvider).value, isNull);
-        expect(helper.abierta, isFalse);
+        expect(
+          helper.abierta,
+          isFalse,
+          reason: 'deslogueado con la DB abierta es peor que el error',
+        );
         expect(clave.destruida, isTrue);
+      },
+    );
+
+    test(
+      'dado un logout sin red, cuando vuelve a iniciar sesión, reintenta la revocación pendiente',
+      () async {
+        await iniciarSesion();
+        remote.simularSinConexion = true;
+
+        final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(
+          resultado,
+          const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
+        );
+        expect(container.read(sesionProvider).value, isNull);
+
+        remote.simularSinConexion = false;
+        await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(remote.revocaciones, hasLength(1));
       },
     );
 

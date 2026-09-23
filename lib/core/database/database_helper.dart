@@ -231,6 +231,7 @@ final class DatabaseHelper {
         final f = File('${archivoDb.path}$sufijo');
         if (await f.exists()) {
           existia = existia || sufijo.isEmpty;
+          await _sobrescribirConCeros(f);
           await f.delete();
         }
       }
@@ -246,6 +247,30 @@ final class DatabaseHelper {
       throw DbLocalException(operacion: 'borrar', causa: e);
     }
     _log.warn(LogModulo.db, 'DB_BORRADA', 'archivo de la DB local borrado', {'existia': existia});
+  }
+
+  /// Pisa [archivo] con ceros antes de borrarlo (HU-AUTH-010). Es en el lugar: no necesita espacio
+  /// extra. En memoria flash no garantiza el borrado físico (wear leveling, R14): la protección
+  /// real es que el contenido ya estaba cifrado. Si falla, se sigue con el borrado igual — el
+  /// usuario no puede hacer nada con eso, así que solo va al log.
+  Future<void> _sobrescribirConCeros(File archivo) async {
+    RandomAccessFile? raf;
+    try {
+      raf = await archivo.open(mode: FileMode.append);
+      final largo = await raf.length();
+      await raf.setPosition(0);
+      const bloque = 64 * 1024;
+      final ceros = List<int>.filled(bloque, 0);
+      for (var escrito = 0; escrito < largo; escrito += bloque) {
+        final resto = largo - escrito;
+        await raf.writeFrom(ceros, 0, resto < bloque ? resto : bloque);
+      }
+      await raf.flush();
+    } on Object catch (e, stack) {
+      _log.error(LogModulo.db, 'OVERWRITE_FAIL', 'no se pudo pisar con ceros', const {}, e, stack);
+    } finally {
+      await raf?.close();
+    }
   }
 
   /// Corre [operacion] con el helper para ella sola.

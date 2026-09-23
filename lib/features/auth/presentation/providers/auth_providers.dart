@@ -2,20 +2,28 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
+import '../../../../core/database/database_providers.dart';
+import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../data/datasources/auth_local_data_source.dart';
 import '../../data/datasources/auth_remote_data_source.dart';
 import '../../data/datasources/auth_remote_data_source_supabase.dart';
+import '../../data/datasources/backup_drive_data_source.dart';
 import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import '../../data/repositories/auth_repository_impl.dart';
+import '../../data/repositories/datos_locales_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/repositories/datos_locales_repository.dart';
+import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
+import '../../domain/usecases/obtener_resumen_datos_locales_use_case.dart';
 import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
+import '../../domain/usecases/reintentar_revocacion_pendiente_use_case.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 
 part 'auth_providers.g.dart';
@@ -71,6 +79,36 @@ CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
 @Riverpod(keepAlive: true)
 ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>
     ReenviarVerificacionUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref ref) =>
+    ReintentarRevocacionPendienteUseCase(ref.watch(authRepositoryProvider));
+
+/// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
+@Riverpod(keepAlive: true)
+BackupDriveDataSource backupDriveDataSource(Ref ref) => const BackupDriveNoDisponible();
+
+/// Los datos del teléfono como un todo (HU-AUTH-006/010). La DB se lee y se cierra a través de
+/// `dbLocalProvider`, la única puerta de entrada a ella.
+@Riverpod(keepAlive: true)
+DatosLocalesRepository datosLocalesRepository(Ref ref) => DatosLocalesRepositoryImpl(
+  ref.watch(databaseHelperProvider),
+  () => ref.read(dbLocalProvider),
+  () => ref.read(dbLocalProvider.notifier).cerrar(),
+  ref.watch(custodiaClaveDbProvider),
+  ref.watch(backupDriveDataSourceProvider),
+);
+
+@Riverpod(keepAlive: true)
+BorrarDatosLocalesUseCase borrarDatosLocalesUseCase(Ref ref) => BorrarDatosLocalesUseCase(
+  ref.watch(datosLocalesRepositoryProvider),
+  ref.watch(authRepositoryProvider),
+);
+
+// autoDispose: no lo usa `SesionNotifier`.
+@riverpod
+ObtenerResumenDatosLocalesUseCase obtenerResumenDatosLocalesUseCase(Ref ref) =>
+    ObtenerResumenDatosLocalesUseCase(ref.watch(datosLocalesRepositoryProvider));
 
 // autoDispose: no lo usa `SesionNotifier`.
 @riverpod
