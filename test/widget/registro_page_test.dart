@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
+import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -217,6 +218,132 @@ void main() {
         findsOneWidget,
       );
     });
+
+    // Criterio de aceptación "Registro exitoso con datos válidos" de HU-AUTH-001, según quedó
+    // tras el PR #79 (#19): con "Confirm email" activo, Supabase no deja la sesión iniciada y la
+    // UI tiene que navegar (pushReplacement, no pop) a VerificacionEmailPage. El otro test de
+    // "caso feliz" de este archivo cubre la sesión inmediata (sin verificación pendiente); este
+    // cubre la rama que de verdad se da con Supabase real, y protege el cambio de #79 de un
+    // regreso accidental al viejo comportamiento (volver al login con un banner).
+    testWidgets(
+      'requiere verificación: reemplaza la página por VerificacionEmailPage (no vuelve al login)',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await tester.pumpWidget(_pagina(remote: remote));
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester, email: 'lucia.silva@correo.com');
+        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(RegistroPage), findsNothing);
+        final pagina = tester.widget<VerificacionEmailPage>(find.byType(VerificacionEmailPage));
+        expect(pagina.email, 'lucia.silva@correo.com');
+        expect(pagina.password, 'Secreto123');
+      },
+    );
+
+    // Nueva cobertura: "sin conectividad" (HU-AUTH-001) a nivel de página — antes solo estaba
+    // probado en el repositorio/use case, no en que RegistroPage efectivamente muestre el banner.
+    testWidgets('sin conexión muestra el banner general y no registra a nadie', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        simularSinConexion: true,
+      );
+      await tester.pumpWidget(_pagina(remote: remote));
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
+      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
+      expect(remote.usuariosRegistrados, isEmpty);
+    });
+  });
+
+  // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumple estos
+  // criterios de aceptación. No se arreglan acá (un QA que arregla código deja de ser QA) — quedan
+  // con `skip:` apuntando al issue abierto, para que la suite no se rompa y quede visible qué
+  // falta.
+  group('RegistroPage — bugs conocidos (no arreglados en este PR)', () {
+    testWidgets(
+      'debería pedir la casilla del trade-off E2E antes de aceptar (R-AU05)',
+      (tester) async {
+        await tester.pumpWidget(_pagina());
+        await tester.pumpAndSettle();
+
+        // Criterio de aceptación de HU-AUTH-001: además de "Acepto Términos y Política de
+        // Privacidad", el formulario debe mostrar y exigir "Entiendo que perder mi contraseña
+        // hace mis datos locales irrecuperables" (R-AU05, trade-off E2E). Hoy solo existe una
+        // casilla ("registro_terminos"), sin ese segundo texto en ningún lado de la pantalla.
+        expect(find.textContaining('irrecuperable'), findsOneWidget);
+      },
+      // Bug real, no se arregla en este QA: falta la casilla de trade-off E2E que exige el
+      // criterio de aceptación de HU-AUTH-001. Ver issue #85.
+      skip: true,
+    );
+
+    testWidgets(
+      'email ya registrado: debería ofrecer accesos directos a login y recuperar contraseña',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'ana@example.com': 'secreto123'},
+        );
+        await tester.pumpWidget(_pagina(remote: remote));
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester, email: 'ana@example.com');
+        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await tester.pumpAndSettle();
+
+        // Criterio de aceptación: "la UI ofrece accesos directos a HU-AUTH-003 e HU-AUTH-004"
+        // (iniciar sesión / recuperar contraseña) además del mensaje. Hoy solo se ve el banner de
+        // texto, sin ningún botón que lleve a esas pantallas.
+        expect(find.text('Iniciar sesión'), findsOneWidget);
+        expect(find.text('Recuperar contraseña'), findsOneWidget);
+      },
+      // Bug real, no se arregla en este QA: el banner de email duplicado no ofrece accesos
+      // directos a login/recuperación que pide el criterio de aceptación de HU-AUTH-001. Ver
+      // issue #86.
+      skip: true,
+    );
+
+    testWidgets(
+      'sin conexión: mensaje exacto del criterio y contraseña borrada por seguridad',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          simularSinConexion: true,
+        );
+        await tester.pumpWidget(_pagina(remote: remote));
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester);
+        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await tester.pumpAndSettle();
+
+        // Criterio de aceptación: mensaje exacto "Necesitás conexión para registrarte por
+        // primera vez" (no el genérico de FailureSinConexion) y la contraseña se descarta del
+        // formulario "por seguridad" al volver la conexión; hoy queda el mensaje genérico y la
+        // contraseña sigue en el controller.
+        expect(find.text('Necesitás conexión para registrarte por primera vez'), findsOneWidget);
+        final campoPassword = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const Key('registro_password')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(campoPassword.controller?.text, isEmpty);
+      },
+      // Bug real, no se arregla en este QA: el mensaje de "sin conectividad" y la limpieza de la
+      // contraseña no siguen el criterio de aceptación de HU-AUTH-001. Ver issue #86.
+      skip: true,
+    );
   });
 
   group('Desde el login', () {

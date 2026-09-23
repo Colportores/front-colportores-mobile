@@ -76,6 +76,40 @@ void main() {
         ).called(1);
       });
 
+      // Caso borde de la HU (§Casos borde identificados): "Email con caracteres Unicode válidos
+      // (ej: tildes en el local-part RFC 6531)". El regex de email (`[^\s@]+@[^\s@]+\.[^\s@]{2,}`)
+      // no restringe a ASCII: si alguien lo "endurece" a `[a-zA-Z0-9.]` para "ser más estricto",
+      // este test lo agarra.
+      test(
+        'cuando el email tiene tildes en el local-part, lo acepta y lo normaliza en minúsculas',
+        () async {
+          final resultadoRegistro = ResultadoRegistro(sesion: sesion, email: sesion.email);
+          stubRepositorio(Right(resultadoRegistro));
+
+          final resultado = await useCase(
+            const RegistrarUsuarioParams(
+              nombre: 'José',
+              apellido: 'Pérez',
+              cedula: '1.234.567-8',
+              email: 'José.Pérez@example.com',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+            ),
+          );
+
+          expect(resultado.isRight(), isTrue);
+          verify(
+            () => repository.registrar(
+              nombre: 'José',
+              apellido: 'Pérez',
+              cedula: '12345678',
+              email: 'josé.pérez@example.com',
+              password: 'Secreto123',
+            ),
+          ).called(1);
+        },
+      );
+
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
         stubRepositorio(const Left(FailureEmailYaRegistrado()));
 
@@ -201,6 +235,25 @@ void main() {
             cedula: datosValidos.cedula,
             email: datosValidos.email,
             password: 'secretito',
+            aceptaTerminos: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
+      });
+
+      // Refuerzo: la política es "≥ 8 y mayúscula y dígito" combinados (Supuesto S1 de la HU),
+      // no solo "algo de cada uno". Con mayúscula y dígito pero 7 caracteres tiene que rechazarla
+      // igual que si le faltara la mayúscula o el dígito.
+      test('cuando la contraseña tiene mayúscula y dígito pero menos de 8 caracteres, marca el '
+          'campo password', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ab1defg',
             aceptaTerminos: true,
           ),
         );
