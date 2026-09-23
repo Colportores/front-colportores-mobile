@@ -44,6 +44,9 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   }
 
   @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
   Future<void> reenviarVerificacion(String email) async => throw Exception('boom');
 
   @override
@@ -93,6 +96,9 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
   Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
 
   @override
@@ -130,6 +136,9 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
 
   @override
   Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
@@ -618,7 +627,6 @@ void main() {
       () async {
         remote.simularSinConexion = true;
         await repository.cerrarSesion();
-        final llamadas = remote.llamadasCerrarSesion;
 
         expect(
           await repository.reintentarRevocacionPendiente(),
@@ -630,13 +638,13 @@ void main() {
         expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
         expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
 
-        expect(remote.llamadasCerrarSesion, llamadas + 1);
+        expect(remote.revocaciones, hasLength(1), reason: 'una sola revocación, por el token');
       },
     );
 
     test('sin revocación pendiente, reintentar no llama al remoto', () async {
       expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
-      expect(remote.llamadasCerrarSesion, 0);
+      expect(remote.revocaciones, isEmpty);
     });
   });
 

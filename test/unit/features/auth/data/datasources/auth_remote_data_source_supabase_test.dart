@@ -52,6 +52,8 @@ class _FakeSession extends Fake implements Session {
 }
 
 void main() {
+  setUpAll(() => registerFallbackValue(SignOutScope.local));
+
   late _MockGoTrueClient auth;
   late StreamController<AuthState> cambios;
 
@@ -483,8 +485,7 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.cerrarSesion', () {
-    test('dado que la sesión es la del cliente, cuando cierra sesión, llama a signOut', () async {
-      when(() => auth.currentSession).thenReturn(sesionSupabase());
+    test('cuando cierra sesión, llama a signOut', () async {
       when(() => auth.signOut()).thenAnswer((_) async {});
 
       await dataSource().cerrarSesion('jwt');
@@ -492,24 +493,50 @@ void main() {
       verify(() => auth.signOut()).called(1);
     });
 
+    test(
+      'dado que el cliente refrescó el token, cuando cierra sesión con el token del login, igual '
+      'llama a signOut (y no revoca por token)',
+      () async {
+        final admin = _MockGoTrueAdminApi();
+        when(() => auth.admin).thenReturn(admin);
+        when(() => auth.currentSession).thenReturn(sesionSupabase());
+        when(() => auth.signOut()).thenAnswer((_) async {});
+
+        await dataSource().cerrarSesion('jwt-del-login-ya-refrescado');
+
+        verify(() => auth.signOut()).called(1);
+        verifyNever(() => admin.signOut(any(), scope: any(named: 'scope')));
+      },
+    );
+
     test('dado que no hay red, lanza SinConexionException', () {
-      when(() => auth.currentSession).thenReturn(sesionSupabase());
       when(() => auth.signOut()).thenThrow(AuthRetryableFetchException(message: 'x'));
 
       expect(() => dataSource().cerrarSesion('jwt'), throwsA(isA<SinConexionException>()));
     });
+  });
 
-    test('dado una revocación pendiente (el cliente ya soltó la sesión), cuando reintenta, revoca '
-        'por el token', () async {
+  group('AuthRemoteDataSourceSupabase.revocarSesion', () {
+    test('revoca solo esa sesión (scope local) y no toca el cliente', () async {
       final admin = _MockGoTrueAdminApi();
-      when(() => auth.currentSession).thenReturn(null);
       when(() => auth.admin).thenReturn(admin);
-      when(() => admin.signOut('jwt-viejo')).thenAnswer((_) async {});
+      when(() => admin.signOut('jwt-viejo', scope: SignOutScope.local)).thenAnswer((_) async {});
 
-      await dataSource().cerrarSesion('jwt-viejo');
+      await dataSource().revocarSesion('jwt-viejo');
 
-      verify(() => admin.signOut('jwt-viejo')).called(1);
+      verify(() => admin.signOut('jwt-viejo', scope: SignOutScope.local)).called(1);
+      verifyNever(() => admin.signOut(any(), scope: SignOutScope.global));
       verifyNever(() => auth.signOut());
+    });
+
+    test('dado que no hay red, lanza SinConexionException', () {
+      final admin = _MockGoTrueAdminApi();
+      when(() => auth.admin).thenReturn(admin);
+      when(
+        () => admin.signOut(any(), scope: any(named: 'scope')),
+      ).thenThrow(AuthRetryableFetchException(message: 'x'));
+
+      expect(() => dataSource().revocarSesion('jwt'), throwsA(isA<SinConexionException>()));
     });
   });
 

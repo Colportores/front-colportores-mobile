@@ -147,6 +147,16 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     llamadasCerrarSesion++;
   }
 
+  /// Tokens revocados con [revocarSesion], en orden. El scope no se registra porque el puerto lo
+  /// fija: siempre es solo esa sesión (el adaptador de Supabase pasa `SignOutScope.local`).
+  final List<String> revocaciones = [];
+
+  @override
+  Future<void> revocarSesion(String accessToken) async {
+    if (simularSinConexion) throw const SinConexionException();
+    revocaciones.add(accessToken);
+  }
+
   /// Simula que el usuario tocó el link de verificación del correo: [iniciarSesion] deja de
   /// lanzar el "falta confirmar" para esta cuenta. Sin efecto si no se registró con
   /// `requiereVerificacionAlRegistrar`.

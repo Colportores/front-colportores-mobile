@@ -40,6 +40,9 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
   Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
 
   @override

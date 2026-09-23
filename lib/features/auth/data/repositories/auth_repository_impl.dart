@@ -239,7 +239,7 @@ final class AuthRepositoryImpl implements AuthRepository {
     final pendiente = _revocacionPendiente;
     if (pendiente == null) return const Right(unit);
     try {
-      await _remote.cerrarSesion(pendiente.accessToken);
+      await _remote.revocarSesion(pendiente.accessToken);
       _log.info(LogModulo.auth, 'LOGOUT_REVOCADO', 'revocación pendiente completada', {
         'user_id': pendiente.usuarioId,
       });
