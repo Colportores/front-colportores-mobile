@@ -137,4 +137,74 @@ void main() {
       },
     );
   });
+
+  group('ColportoresApp — bloqueo de acceso hasta verificar (HU-AUTH-002)', () {
+    testWidgets(
+      'cuenta sin verificar: el login rechaza con el mensaje inline y no entra a Inicio',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await remote.registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia.silva@correo.com',
+          password: 'Secreto123',
+        );
+
+        await tester.pumpWidget(_app(remote: remote));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
+        await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+
+        // Bloqueado: ni entra a Inicio ni queda "logueado a medias" en ninguna otra pantalla.
+        expect(find.byKey(const Key('inicio_email')), findsNothing);
+        expect(find.byKey(const Key('login_error_general')), findsOneWidget);
+        expect(
+          find.textContaining('verificar tu correo'),
+          findsOneWidget,
+          reason: 'mensaje inline de "email sin confirmar", igual que devuelve Supabase',
+        );
+        // Sigue en el login: el intento no dejó una sesión a medio abrir.
+        expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una vez verificada la cuenta, el mismo login que antes fue rechazado ahora entra',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await remote.registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia.silva@correo.com',
+          password: 'Secreto123',
+        );
+
+        await tester.pumpWidget(_app(remote: remote));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
+        await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('inicio_email')), findsNothing);
+
+        remote.confirmarEmail('lucia.silva@correo.com');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      },
+    );
+  });
 }
