@@ -51,10 +51,16 @@ final class FailureCuentaPendiente extends Failure {
       );
 }
 
-/// Ya existe una cuenta con ese correo (HU-AUTH-001).
+/// Ya existe una cuenta con ese correo (HU-AUTH-001, "Error - email ya registrado"). Solo lo usa
+/// el registro (nunca el login): el mensaje literal del criterio de aceptación es seguro acá.
 final class FailureEmailYaRegistrado extends Failure {
   const FailureEmailYaRegistrado()
-    : super(mensaje: 'Ya existe una cuenta con ese correo.', codigo: 'AUTH_EMAIL_DUPLICADO');
+    : super(
+        mensaje:
+            'Ya existe una cuenta con ese email. ¿Querés iniciar sesión o recuperar tu '
+            'contraseña?',
+        codigo: 'AUTH_EMAIL_DUPLICADO',
+      );
 }
 
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").

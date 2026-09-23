@@ -216,7 +216,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
-      expect(find.text('Ya existe una cuenta con ese correo.'), findsOneWidget);
+      expect(
+        find.text(
+          'Ya existe una cuenta con ese email. ¿Querés iniciar sesión o recuperar tu '
+          'contraseña?',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('demasiados intentos (rate limit de Supabase) muestra el banner general', (
@@ -283,16 +289,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
-      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
+      expect(find.text('Necesitás conexión para registrarte por primera vez'), findsOneWidget);
       expect(remote.usuariosRegistrados, isEmpty);
     });
   });
 
-  // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumple estos
-  // criterios de aceptación. No se arreglan acá (un QA que arregla código deja de ser QA) — quedan
-  // con `skip:` apuntando al issue abierto, para que la suite no se rompa y quede visible qué
-  // falta.
-  group('RegistroPage — bugs conocidos (no arreglados en este PR)', () {
+  // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumplía estos
+  // criterios de aceptación. Los de email-ya-registrado y sin-conexión se arreglaron en #86 (ya
+  // sin `skip:`); los de trade-off E2E (#85) y fallo intermitente 5xx (#90) siguen sin arreglar y
+  // quedan con `skip:` apuntando al issue correspondiente, para que la suite no se rompa y quede
+  // visible qué falta.
+  group('RegistroPage — bugs conocidos de HU-AUTH-001', () {
     testWidgets(
       'debería pedir la casilla del trade-off E2E antes de aceptar (R-AU05)',
       (tester) async {
@@ -323,49 +330,39 @@ void main() {
         await tester.tap(find.byKey(const Key('registro_continuar')));
         await tester.pumpAndSettle();
 
-        // Criterio de aceptación: "la UI ofrece accesos directos a HU-AUTH-003 e HU-AUTH-004"
-        // (iniciar sesión / recuperar contraseña) además del mensaje. Hoy solo se ve el banner de
-        // texto, sin ningún botón que lleve a esas pantallas.
+        // Criterio de aceptación de HU-AUTH-001: "la UI ofrece accesos directos a HU-AUTH-003 e
+        // HU-AUTH-004" (iniciar sesión / recuperar contraseña) además del mensaje.
         expect(find.text('Iniciar sesión'), findsOneWidget);
         expect(find.text('Recuperar contraseña'), findsOneWidget);
       },
-      // Bug real, no se arregla en este QA: el banner de email duplicado no ofrece accesos
-      // directos a login/recuperación que pide el criterio de aceptación de HU-AUTH-001. Ver
-      // issue #86.
-      skip: true,
     );
 
-    testWidgets(
-      'sin conexión: mensaje exacto del criterio y contraseña borrada por seguridad',
-      (tester) async {
-        final remote = AuthRemoteDataSourceEnMemoria(
-          credenciales: const {},
-          simularSinConexion: true,
-        );
-        await _montarPagina(tester, remote: remote);
-        await tester.pumpAndSettle();
+    testWidgets('sin conexión: mensaje exacto del criterio y contraseña borrada por seguridad', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        simularSinConexion: true,
+      );
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
 
-        await _completarFormulario(tester);
-        await tester.tap(find.byKey(const Key('registro_continuar')));
-        await tester.pumpAndSettle();
+      await _completarFormulario(tester);
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.pumpAndSettle();
 
-        // Criterio de aceptación: mensaje exacto "Necesitás conexión para registrarte por
-        // primera vez" (no el genérico de FailureSinConexion) y la contraseña se descarta del
-        // formulario "por seguridad" al volver la conexión; hoy queda el mensaje genérico y la
-        // contraseña sigue en el controller.
-        expect(find.text('Necesitás conexión para registrarte por primera vez'), findsOneWidget);
-        final campoPassword = tester.widget<TextField>(
-          find.descendant(
-            of: find.byKey(const Key('registro_password')),
-            matching: find.byType(TextField),
-          ),
-        );
-        expect(campoPassword.controller?.text, isEmpty);
-      },
-      // Bug real, no se arregla en este QA: el mensaje de "sin conectividad" y la limpieza de la
-      // contraseña no siguen el criterio de aceptación de HU-AUTH-001. Ver issue #86.
-      skip: true,
-    );
+      // Criterio de aceptación de HU-AUTH-001: mensaje exacto "Necesitás conexión para
+      // registrarte por primera vez" (no el genérico de FailureSinConexion, que también usa el
+      // login) y la contraseña se descarta del formulario "por seguridad".
+      expect(find.text('Necesitás conexión para registrarte por primera vez'), findsOneWidget);
+      // El finder original acá era `find.descendant(of: find.byKey(...), matching:
+      // find.byType(TextField))`: nunca matchea porque en `_CampoRegistro` la key va puesta en
+      // el propio `TextField` (`key: widget.fieldKey`) y `find.descendant` excluye la raíz por
+      // defecto (`matchRoot: false`). Corregido según la nota del issue #86 (salió de la
+      // revisión del PR #88).
+      final campoPassword = tester.widget<TextField>(find.byKey(const Key('registro_password')));
+      expect(campoPassword.controller?.text, isEmpty);
+    });
 
     testWidgets(
       'fallo intermitente del backend (5xx): mensaje accionable y botón Reintentar sin perder '
