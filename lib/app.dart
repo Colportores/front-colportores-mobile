@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/tema_colportaje.dart';
-import 'features/auth/presentation/pages/inicio_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/jornada/presentation/pages/jornada_page.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -16,7 +16,7 @@ import 'features/auth/presentation/providers/sesion_notifier.dart';
 final navigatorKeyColportores = GlobalKey<NavigatorState>();
 
 /// Raíz de la app. El router (go_router) llega con el mapa en Sprint 5; hasta entonces la
-/// navegación es "hay sesión → inicio, no hay → login".
+/// navegación es "hay sesión → pantalla principal (la jornada, HU-JOR-001), no hay → login".
 class ColportoresApp extends ConsumerWidget {
   const ColportoresApp({super.key});
 
@@ -43,7 +43,7 @@ class ColportoresApp extends ConsumerWidget {
       home: sesion.when(
         loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, _) => const LoginPage(),
-        data: (s) => s == null ? const LoginPage() : InicioPage(sesion: s),
+        data: (s) => s == null ? const LoginPage() : JornadaPage(sesion: s),
       ),
     );
   }
@@ -51,7 +51,7 @@ class ColportoresApp extends ConsumerWidget {
 
 /// Decide si hay que llevar al usuario a [VerificacionEmailPage] en estado expirado, con el mismo
 /// criterio que `home:` en [ColportoresApp.build] usa para elegir entre [LoginPage] e
-/// [InicioPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
+/// [JornadaPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
 /// sí. La diferencia con leer `sesion.value` directamente (bug de la ronda anterior) es esperar a
 /// que `sesionProvider` termine de resolver: en un arranque en frío desde el enlace, Supabase ya
 /// procesó el deep link durante `Supabase.initialize()` (antes de `runApp`), pero
