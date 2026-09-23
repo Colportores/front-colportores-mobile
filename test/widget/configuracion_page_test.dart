@@ -197,7 +197,7 @@ void main() {
           .read(sesionProvider.notifier)
           .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
       await tester.pumpAndSettle();
-      expect(_remote.llamadasCerrarSesion, 1);
+      expect(_remote.revocaciones, hasLength(1));
     });
 
     testWidgets('error: si la sesión no se puede borrar, avisa y deja reintentar', (tester) async {
@@ -359,7 +359,7 @@ void main() {
       expect(_login, findsOneWidget);
     });
 
-    testWidgets('bloqueo: con operaciones sin sincronizar no ofrece borrar y dice qué hacer', (
+    testWidgets('pendientes: avisa cuántas se pierden y pide confirmarlo aparte (#66)', (
       tester,
     ) async {
       _datos.respuestaResumen = const Right(
@@ -370,28 +370,53 @@ void main() {
           hayBackupEnDrive: false,
         ),
       );
+      final container = await _montar(tester);
+      await _abrirBorrado(tester);
+
+      expect(find.text(TextosBorrado.pendientes(7)), findsOneWidget);
+      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
+      final continuar = find.byKey(const Key('borrar_datos_continuar'));
+      expect(
+        tester.widget<FilledButton>(continuar).onPressed,
+        isNull,
+        reason: 'falta confirmar que se pierden las pendientes',
+      );
+
+      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox_pendientes')));
+      await _tocar(tester, continuar);
+      expect(find.byKey(const Key('borrar_datos_dialogo_pendientes')), findsOneWidget);
+      await tester.tap(find.text(TextosBorrado.confirmarFinal));
+      await tester.pumpAndSettle();
+
+      expect(_datos.borrados, [false], reason: 'el borrado se hace igual');
+      expect(container.read(sesionProvider).value, isNull);
+      expect(_login, findsOneWidget);
+    });
+
+    testWidgets('pendientes desconocidos: avisa que no se pudieron contar y deja borrar', (
+      tester,
+    ) async {
+      _datos.respuestaResumen = const Right(
+        ResumenDatosLocales(
+          personas: 0,
+          visitas: 0,
+          operacionesSinSincronizar: null,
+          hayBackupEnDrive: false,
+        ),
+      );
       await _montar(tester);
       await _abrirBorrado(tester);
 
-      expect(find.text(TextosBorrado.bloqueoPendientes(7)), findsOneWidget);
-      expect(find.byKey(const Key('borrar_datos_continuar')), findsNothing);
-
-      await _tocar(tester, find.byKey(const Key('borrar_datos_volver')));
-      expect(find.byType(ConfiguracionPage), findsOneWidget);
-    });
-
-    testWidgets('bloqueo: si entró algo sin sincronizar antes de confirmar, no borra', (
-      tester,
-    ) async {
-      _datos.respuestaBorrado = const Left(FailureDatosSinSincronizar(2));
-      final container = await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar datos locales'));
+      expect(find.text('No se pudieron contar'), findsOneWidget);
+      expect(find.text(TextosBorrado.pendientesDesconocidos), findsOneWidget);
+      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
+      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox_pendientes')));
+      await _tocar(tester, find.byKey(const Key('borrar_datos_continuar')));
+      await tester.tap(find.text(TextosBorrado.confirmarFinal));
       await tester.pumpAndSettle();
 
-      expect(find.text(TextosBorrado.bloqueoPendientes(2)), findsOneWidget);
-      expect(container.read(sesionProvider).value, isNotNull);
+      expect(_datos.borrados, [false]);
+      expect(_login, findsOneWidget);
     });
 
     testWidgets('error: si el borrado falla, avisa y la sesión sigue abierta', (tester) async {
@@ -405,6 +430,33 @@ void main() {
       expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
       expect(container.read(sesionProvider).value, isNotNull);
       expect(find.byType(BorrarDatosLocalesPage), findsOneWidget);
+
+      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
+      await tester.tap(find.text('Reintentar'));
+      await tester.pumpAndSettle();
+      expect(_datos.borrados, [false, false]);
+      expect(_login, findsOneWidget);
+    });
+
+    testWidgets('error: si borra pero no puede cerrar la sesión, no muestra el login', (
+      tester,
+    ) async {
+      final local = _LocalQueNoBorra();
+      final container = await _montar(tester, local: local);
+      local.fallar = true;
+      await _llegarAlDialogoFinal(tester);
+
+      await tester.tap(find.text('Sí, borrar datos locales'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
+      expect(container.read(sesionProvider).value, isNotNull);
+      expect(_login, findsNothing);
+
+      local.fallar = false;
+      await tester.tap(find.text('Reintentar'));
+      await tester.pumpAndSettle();
+      expect(_login, findsOneWidget);
     });
 
     testWidgets('error: si no puede revisar los datos, no ofrece borrar y deja reintentar', (
@@ -416,6 +468,7 @@ void main() {
 
       expect(find.text(const FailureDatosLocalesIlegibles().mensaje), findsOneWidget);
       expect(find.byKey(const Key('borrar_datos_continuar')), findsNothing);
+      expect(_datos.borrados, isEmpty);
 
       _datos.respuestaResumen = const Right(_resumenBase);
       await _tocar(tester, find.byKey(const Key('borrar_datos_reintentar')));

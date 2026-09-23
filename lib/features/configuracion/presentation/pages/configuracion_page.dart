@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -43,7 +45,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     // Si no se puede contar, se cierra igual con la confirmación común: cerrar sesión no borra
     // nada, lo pendiente se sube en el próximo login.
     final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-    final pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar);
+    final pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
     if (!mounted) return;
     setState(() => _cerrando = false);
 
@@ -62,7 +64,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
           SnackBar(
             key: const Key('configuracion_error_cierre'),
             content: const Text(TextosConfiguracion.errorCierre),
-            action: SnackBarAction(label: 'Reintentar', onPressed: _cerrarSesion),
+            // El SnackBar puede seguir visible después de salir de esta pantalla.
+            action: SnackBarAction(
+              label: 'Reintentar',
+              onPressed: () {
+                if (mounted) unawaited(_cerrarSesion());
+              },
+            ),
           ),
         );
       },

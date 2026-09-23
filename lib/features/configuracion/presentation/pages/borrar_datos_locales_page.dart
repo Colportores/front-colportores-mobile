@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,13 +10,15 @@ import '../../../../core/usecases/use_case.dart';
 import '../../../auth/domain/entities/resumen_datos_locales.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../../jornada/presentation/providers/jornada_providers.dart';
 import 'configuracion_page.dart' show colorEncabezado;
 
 /// Configuración → Privacidad y datos → "Borrar datos locales" (HU-AUTH-010).
 ///
 /// Doble confirmación obligatoria: esta pantalla con el resumen y el checkbox, y después el
-/// diálogo final. Si hay operaciones sin sincronizar no se ofrece borrar: perder el trabajo de un
-/// colportor no se revierte, así que se bloquea y se explica qué hacer.
+/// diálogo final. Si hay operaciones sin sincronizar (o no se pudieron contar) el borrado se
+/// puede hacer igual —decisión de Cristian en #66—, pero antes se avisa cuántas se pierden y se
+/// pide confirmarlo con un checkbox aparte.
 class BorrarDatosLocalesPage extends ConsumerStatefulWidget {
   const BorrarDatosLocalesPage({super.key});
 
@@ -47,32 +51,37 @@ abstract final class TextosBorrado {
   static const driveFallo =
       'Tus datos locales se eliminaron. No pudimos borrar el backup en Drive; eliminalo '
       'manualmente desde drive.google.com o reintentá.';
-  static const errorBorrado = 'No pudimos borrar los datos de este teléfono. Probá de nuevo.';
-  static String bloqueoPendientes(int n) =>
-      'Tenés $n operaciones sin sincronizar. Para no perderlas, no se puede borrar hasta que se '
-      'suban: conectate a internet y esperá a que se sincronicen.';
+  static const errorBorrado =
+      'No pudimos terminar de borrar los datos de este teléfono. Reintentá.';
+
+  /// Aviso de lo que se pierde (HU-AUTH-010: "las operaciones encoladas no se subirán").
+  static String pendientes(int n) =>
+      'Tenés $n operaciones sin sincronizar. Si borrás ahora, no se van a subir y se pierden.';
+  static const pendientesDesconocidos =
+      'No pudimos contar si hay operaciones sin sincronizar. Si hay alguna, no se va a subir y se '
+      'pierde al borrar.';
+  static String checkboxPendientes(int? n) => n == null
+      ? 'Entiendo que puedo perder operaciones que no se sincronizaron.'
+      : 'Entiendo que se pierden las $n operaciones sin sincronizar.';
 }
 
 class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage> {
   late Future<Either<Failure, ResumenDatosLocales>> _resumen = _cargar();
   bool _entiende = false;
+  bool _aceptaPerderPendientes = false;
   bool _borrando = false;
-
-  /// Si el borrado se negó por operaciones sin sincronizar que entraron después del resumen.
-  int? _pendientesAlBorrar;
 
   Future<Either<Failure, ResumenDatosLocales>> _cargar() =>
       ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
 
   void _reintentarCarga() => setState(() {
-    _pendientesAlBorrar = null;
     _resumen = _cargar();
   });
 
   Future<void> _continuar(ResumenDatosLocales resumen) async {
     final eleccion = await showDialog<_EleccionFinal>(
       context: context,
-      builder: (_) => _DialogoFinal(hayBackupEnDrive: resumen.hayBackupEnDrive),
+      builder: (_) => _DialogoFinal(resumen: resumen),
     );
     if (!mounted) return;
     if (eleccion == null) {
@@ -80,7 +89,11 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
       Navigator.of(context).pop();
       return;
     }
+    await _borrar(eleccion);
+  }
 
+  Future<void> _borrar(_EleccionFinal eleccion) async {
+    if (_borrando) return;
     setState(() => _borrando = true);
     final resultado = await ref
         .read(sesionProvider.notifier)
@@ -89,24 +102,31 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
 
     final messenger = ScaffoldMessenger.of(context);
     resultado.fold(
-      (failure) {
-        setState(() {
-          _borrando = false;
-          if (failure is FailureDatosSinSincronizar) _pendientesAlBorrar = failure.cantidad;
-        });
-        if (failure is FailureDatosSinSincronizar) return;
+      (_) {
+        setState(() => _borrando = false);
         messenger.showSnackBar(
           SnackBar(
             key: const Key('borrar_datos_error'),
-            content: Text(
-              failure is FailureDatosLocalesIlegibles
-                  ? failure.mensaje
-                  : TextosBorrado.errorBorrado,
+            content: const Text(TextosBorrado.errorBorrado),
+            // Reintentar es seguro: el borrado es idempotente.
+            action: SnackBarAction(
+              label: 'Reintentar',
+              onPressed: () {
+                if (mounted) unawaited(_borrar(eleccion));
+              },
             ),
           ),
         );
       },
       (r) {
+        // La jornada todavía vive en memoria mientras la DB no se abra (#27): sin esto, el próximo
+        // login mostraría datos que la pantalla acaba de decir que se borraron. Después del frame:
+        // en este, la pantalla de jornada que está debajo reanuda sus providers mientras se
+        // reconstruye, y una invalidación en el medio dispara un rebuild durante el build.
+        final container = ProviderScope.containerOf(context, listen: false);
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => container.invalidate(jornadaLocalDataSourceProvider),
+        );
         final aviso = switch (r) {
           ResultadoBorradoDatosLocales.completo => null,
           ResultadoBorradoDatosLocales.backupDriveNoBorradoSinConexion =>
@@ -132,66 +152,67 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
 
-    return Scaffold(
-      body: SafeArea(
-        child: FutureBuilder<Either<Failure, ResumenDatosLocales>>(
-          future: _resumen,
-          builder: (context, snapshot) {
-            final Widget contenido;
-            final datos = snapshot.data;
-            if (datos == null) {
-              contenido = const _Cargando(key: Key('borrar_datos_cargando'));
-            } else {
-              contenido = datos.fold(
-                (failure) => _Error(
-                  mensaje: failure is FailureDatosLocalesIlegibles
-                      ? failure.mensaje
-                      : const FailureDatosLocalesIlegibles().mensaje,
-                  onReintentar: _reintentarCarga,
-                ),
-                (resumen) {
-                  final pendientes = _pendientesAlBorrar ?? resumen.operacionesSinSincronizar;
-                  if (pendientes > 0) return _Bloqueado(pendientes: pendientes);
-                  return _Resumen(
+    // Mientras borra no se puede salir: el "atrás" dejaría el borrado corriendo sin nadie que
+    // muestre cómo terminó.
+    return PopScope(
+      canPop: !_borrando,
+      child: Scaffold(
+        body: SafeArea(
+          child: FutureBuilder<Either<Failure, ResumenDatosLocales>>(
+            future: _resumen,
+            builder: (context, snapshot) {
+              final Widget contenido;
+              final datos = snapshot.data;
+              if (datos == null) {
+                contenido = const _Cargando(key: Key('borrar_datos_cargando'));
+              } else {
+                contenido = datos.fold(
+                  (_) => _Error(
+                    mensaje: const FailureDatosLocalesIlegibles().mensaje,
+                    onReintentar: _reintentarCarga,
+                  ),
+                  (resumen) => _Resumen(
                     resumen: resumen,
                     entiende: _entiende,
+                    aceptaPerderPendientes: _aceptaPerderPendientes,
                     borrando: _borrando,
                     onEntiende: (v) => setState(() => _entiende = v),
+                    onAceptaPerderPendientes: (v) => setState(() => _aceptaPerderPendientes = v),
                     onContinuar: () => _continuar(resumen),
-                  );
-                },
-              );
-            }
+                  ),
+                );
+              }
 
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    key: const Key('borrar_datos_atras'),
-                    tooltip: 'Volver',
-                    onPressed: _borrando ? null : () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back),
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      key: const Key('borrar_datos_atras'),
+                      tooltip: 'Volver',
+                      onPressed: _borrando ? null : () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'PRIVACIDAD Y DATOS',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorEncabezado(theme, colores),
+                  const SizedBox(height: 8),
+                  Text(
+                    'PRIVACIDAD Y DATOS',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorEncabezado(theme, colores),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Borrar datos locales',
-                  style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
-                ),
-                const SizedBox(height: 12),
-                contenido,
-              ],
-            );
-          },
+                  const SizedBox(height: 8),
+                  Text(
+                    'Borrar datos locales',
+                    style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                  ),
+                  const SizedBox(height: 12),
+                  contenido,
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -236,46 +257,35 @@ class _Error extends StatelessWidget {
   );
 }
 
-class _Bloqueado extends StatelessWidget {
-  const _Bloqueado({required this.pendientes});
-
-  final int pendientes;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    key: const Key('borrar_datos_bloqueado'),
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _Aviso(icono: Icons.cloud_off_outlined, texto: TextosBorrado.bloqueoPendientes(pendientes)),
-      const SizedBox(height: 16),
-      OutlinedButton(
-        key: const Key('borrar_datos_volver'),
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Volver a Configuración'),
-      ),
-    ],
-  );
-}
-
 class _Resumen extends StatelessWidget {
   const _Resumen({
     required this.resumen,
     required this.entiende,
+    required this.aceptaPerderPendientes,
     required this.borrando,
     required this.onEntiende,
+    required this.onAceptaPerderPendientes,
     required this.onContinuar,
   });
 
   final ResumenDatosLocales resumen;
   final bool entiende;
+  final bool aceptaPerderPendientes;
   final bool borrando;
   final ValueChanged<bool> onEntiende;
+  final ValueChanged<bool> onAceptaPerderPendientes;
   final VoidCallback onContinuar;
+
+  /// Hay (o puede haber) trabajo sin subir que se pierde: pide una confirmación aparte.
+  bool get _hayPendientes =>
+      resumen.operacionesSinSincronizar == null || resumen.operacionesSinSincronizar! > 0;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
+    final pendientes = resumen.operacionesSinSincronizar;
+    final puedeContinuar = entiende && (!_hayPendientes || aceptaPerderPendientes) && !borrando;
 
     return Column(
       key: const Key('borrar_datos_resumen'),
@@ -305,6 +315,13 @@ class _Resumen extends StatelessWidget {
               ),
               const Divider(),
               _Fila(
+                icono: Icons.cloud_upload_outlined,
+                titulo: 'Operaciones sin sincronizar',
+                valor: pendientes == null ? 'No se pudieron contar' : '$pendientes',
+                valorKey: const Key('borrar_datos_pendientes'),
+              ),
+              const Divider(),
+              _Fila(
                 icono: Icons.cloud_outlined,
                 titulo: 'Backup en Drive',
                 valor: resumen.hayBackupEnDrive ? 'Sí, vas a elegir si se borra' : 'No hay',
@@ -314,6 +331,10 @@ class _Resumen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        if (_hayPendientes) ...[
+          _AvisoPendientes(pendientes: pendientes),
+          const SizedBox(height: 12),
+        ],
         const _Aviso(icono: Icons.info_outline, texto: TextosBorrado.datosDelSistema),
         const SizedBox(height: 8),
         const _Aviso(icono: Icons.lock_outline, texto: TextosBorrado.limiteBorrado),
@@ -326,6 +347,15 @@ class _Resumen extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           title: const Text(TextosBorrado.checkbox),
         ),
+        if (_hayPendientes)
+          CheckboxListTile(
+            key: const Key('borrar_datos_checkbox_pendientes'),
+            value: aceptaPerderPendientes,
+            onChanged: borrando ? null : (v) => onAceptaPerderPendientes(v ?? false),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            title: Text(TextosBorrado.checkboxPendientes(pendientes)),
+          ),
         const SizedBox(height: 12),
         FilledButton(
           key: const Key('borrar_datos_continuar'),
@@ -334,7 +364,7 @@ class _Resumen extends StatelessWidget {
             foregroundColor: theme.colorScheme.onError,
             minimumSize: const Size.fromHeight(48),
           ),
-          onPressed: entiende && !borrando ? onContinuar : null,
+          onPressed: puedeContinuar ? onContinuar : null,
           child: borrando
               ? SizedBox.square(
                   dimension: 22,
@@ -348,6 +378,47 @@ class _Resumen extends StatelessWidget {
               : const Text('Continuar'),
         ),
       ],
+    );
+  }
+}
+
+/// Lo que se pierde, destacado: es trabajo del colportor que no llegó al servidor.
+class _AvisoPendientes extends StatelessWidget {
+  const _AvisoPendientes({required this.pendientes});
+
+  final int? pendientes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      key: const Key('borrar_datos_aviso_pendientes'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(
+              child: Icon(Icons.warning_amber_rounded, color: theme.colorScheme.onErrorContainer),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                pendientes == null
+                    ? TextosBorrado.pendientesDesconocidos
+                    : TextosBorrado.pendientes(pendientes!),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -403,9 +474,9 @@ final class _EleccionFinal {
 /// Segunda confirmación. Con backup en Drive, además pregunta si se borra (por defecto se
 /// conserva: es la opción que no pierde nada).
 class _DialogoFinal extends StatefulWidget {
-  const _DialogoFinal({required this.hayBackupEnDrive});
+  const _DialogoFinal({required this.resumen});
 
-  final bool hayBackupEnDrive;
+  final ResumenDatosLocales resumen;
 
   @override
   State<_DialogoFinal> createState() => _DialogoFinalState();
@@ -417,6 +488,7 @@ class _DialogoFinalState extends State<_DialogoFinal> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final pendientes = widget.resumen.operacionesSinSincronizar;
     return AlertDialog(
       key: const Key('borrar_datos_dialogo_final'),
       title: const Text('¿Borrar datos locales?'),
@@ -429,7 +501,17 @@ class _DialogoFinalState extends State<_DialogoFinal> {
               'Se van a borrar los datos de este teléfono y se va a cerrar tu sesión. No se puede '
               'deshacer.',
             ),
-            if (widget.hayBackupEnDrive) ...[
+            if (pendientes == null || pendientes > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                pendientes == null
+                    ? TextosBorrado.pendientesDesconocidos
+                    : TextosBorrado.pendientes(pendientes),
+                key: const Key('borrar_datos_dialogo_pendientes'),
+                style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
+              ),
+            ],
+            if (widget.resumen.hayBackupEnDrive) ...[
               const SizedBox(height: 12),
               _Opcion(
                 key: const Key('borrar_datos_conservar_drive'),
