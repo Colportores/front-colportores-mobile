@@ -48,8 +48,16 @@ class AppDatabase extends _$AppDatabase {
   /// `jornada` con su definición *actual*, así que si la versión 3 le agrega una columna, un
   /// dispositivo que venga de la 1 ya la tendría al llegar al paso `2 → 3` y el `addColumn`
   /// fallaría. En ese momento hay que congelar cada versión con `drift_dev make-migrations`
-  /// (`stepByStep`). El test de migración compara el esquema migrado con el de una DB nueva, así
-  /// que ese caso no pasa desapercibido.
+  /// (`stepByStep`).
+  ///
+  /// TODO(#70): el test de migración no alcanza todavía para la versión 3. Arranca solo desde la
+  /// 1 y compara el texto de `sqlite_master`, así que no detecta un paso `N → N+1` olvidado
+  /// (desde la 1, `createTable` ya deja el esquema actual) y daría un falso fallo después de un
+  /// `ALTER TABLE … ADD COLUMN` (SQLite guarda otro texto que el de un `CREATE TABLE` nuevo). Lo
+  /// que corresponde —congelar la v2 con `make-migrations`, testear también desde la 2 y comparar
+  /// con el `SchemaVerifier` de Drift— hoy no compila: `drift_dev` 2.34.0 no anda con el `drift`
+  /// del lock, y los `drift_dev` que sí andan piden analyzer 13, que `riverpod_generator` no
+  /// deja. Hay que resolverlo antes de la versión 3 (detalle en #70).
   ///
   /// `beforeOpen` agrega el log `[DB][MIGRATION]` de convenciones §7.4.
   @override

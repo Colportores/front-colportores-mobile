@@ -131,6 +131,13 @@ que además fija que las columnas de la tabla sean las claves de `toJson()` del 
 contra Drift el test de concurrencia del fake. Las migraciones se prueban en
 [`app_database_test.dart`](unit/core/database/app_database_test.dart): una DB en la versión
 anterior (`setup` con `PRAGMA user_version`) migra y termina con el mismo esquema que una nueva.
+**Ese test no es el patrón para la próxima versión del esquema**: arranca solo desde la versión 1
+y compara el texto de `sqlite_master`, así que no detecta un paso `N → N+1` olvidado y daría un
+falso fallo después de un `ALTER TABLE … ADD COLUMN`. El patrón que corresponde son los esquemas
+versionados de Drift —congelar cada versión con `drift_dev make-migrations`, testear desde cada
+versión congelada y comparar con `SchemaVerifier`—, que hoy no compila por la versión de
+`drift_dev` que permite el analyzer del repo. Está pendiente en #70 (ver `AppDatabase.migration`)
+y hay que resolverlo antes de subir a la versión 3.
 
 **Lo que no hay todavía** es un ejemplo de fake que sea *solo* para tests, sin el doble uso de
 demo de arriba — el repo no tiene ninguno. Para ese caso no existe convención (dónde vive, cómo
