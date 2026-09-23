@@ -109,8 +109,10 @@ void main() {
       expect(helper.abierta, isFalse);
     });
 
-    test('cuando el cierre falla, igual deja la sesión cerrada en el estado', () async {
+    test('cuando el use case lanza, igual cierra la DB y deja la sesión cerrada', () async {
       await iniciarSesion();
+      final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+      await container.read(dbLocalProvider.notifier).abrir(clave);
       local.explotar = true;
 
       await expectLater(
@@ -123,6 +125,23 @@ void main() {
         isNull,
         reason: 'la sesión ya se dio por cerrada: la app no puede seguir mostrando al usuario',
       );
+      expect(container.read(dbLocalProvider), isNull);
+      expect(helper.abierta, isFalse, reason: 'deslogueado con la DB abierta es peor que el error');
+      expect(clave.destruida, isTrue);
+    });
+
+    test('dado una apertura de la DB en vuelo, cuando cierra sesión, no la deja abierta', () async {
+      await iniciarSesion();
+      final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+
+      final apertura = container.read(dbLocalProvider.notifier).abrir(clave);
+      await container.read(sesionProvider.notifier).cerrarSesion();
+      await apertura;
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(container.read(dbLocalProvider), isNull);
+      expect(helper.abierta, isFalse);
+      expect(clave.destruida, isTrue);
     });
   });
 

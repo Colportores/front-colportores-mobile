@@ -30,17 +30,29 @@ void main() {
 
     // Drift arranca la apertura sin nadie escuchando todavía (`DatabaseConnection.delayed`), así
     // que la falla del opener queda además como error suelto en la zona. Es de Drift y no del
-    // helper, pero sin zona propia tumbaría el caso antes de poder mirar lo que importa.
+    // helper, pero sin zona propia tumbaría el caso antes de poder mirar lo que importa. Se
+    // guardan en vez de tragarlos: tienen que ser esa misma falla y ninguna otra, para que la zona
+    // no tape una fuga del propio helper.
     Object? capturada;
+    final sueltos = <Object>[];
     await runZonedGuarded(() async {
       try {
         await helper.abrir(clave);
       } on Object catch (e) {
         capturada = e;
       }
-    }, (_, _) {});
+    }, (e, _) => sueltos.add(e));
+    // Una vuelta más del event loop por si algún error suelto llega tarde.
+    await Future<void>.delayed(Duration.zero);
 
     expect(capturada, isA<DbLocalException>().having((e) => e.operacion, 'operacion', 'abrir'));
+    expect(
+      sueltos,
+      everyElement(
+        isA<FileSystemException>().having((e) => e.message, 'message', 'sin directorio temporal'),
+      ),
+      reason: 'lo único suelto en la zona es la falla del opener de Drift',
+    );
     expect(helper.abierta, isFalse);
     expect(clave.destruida, isTrue, reason: 'la clave no sobrevive al fallo del opener');
     expect(await helper.existe(), isFalse, reason: 'el archivo no se llegó a crear');

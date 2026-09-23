@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:drift/isolate.dart' show DriftRemoteException;
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/common.dart' show CommonDatabase, SqlError, SqliteException;
 
@@ -43,7 +44,7 @@ import 'app_database.dart';
 /// isolate de la DB hasta que pase el GC. Es inherente a pasar la clave por `package:sqlite3` (el
 /// pragma no acepta parámetros preparados) y no hay forma de evitarlo sin cambiar de mecanismo de
 /// apertura. Lo que sí se controla es que ese hex no salga del proceso: nunca va a un log
-/// (ver `_sinClave`) ni a un mensaje de excepción.
+/// (ver [sinClave]) ni a un mensaje de excepción.
 ///
 /// ## Lo que el flujo de HU-AUTH-009 tiene que hacer con esto
 ///
@@ -123,6 +124,11 @@ final class DatabaseHelper {
 
   Future<AppDatabase> _abrir(ClaveDb clave) async {
     if (abierta) {
+      // Desde abrir() la clave es del helper, también cuando falla (§ Ciclo de vida): si no se
+      // destruye acá, con dos aperturas solapadas la segunda queda huérfana y viva. Es seguro
+      // aunque sea el mismo objeto que `_clave`: el hex ya está en el isolate, el `setup` corre
+      // una vez por conexión y destruir() es idempotente.
+      clave.destruir();
       throw StateError('la DB local ya está abierta: cerrar() antes de abrir con otra clave');
     }
     // Se extrae acá (y no dentro de `setup`) para que una clave destruida falle rápido con el
@@ -320,7 +326,7 @@ final class DatabaseHelper {
       );
       throw causa;
     }
-    final detalle = _sinClave(causa);
+    final detalle = sinClave(causa);
     _log.error(
       LogModulo.db,
       'OPEN_FAIL',
@@ -335,7 +341,8 @@ final class DatabaseHelper {
   /// La clave en hex viaja en el `PRAGMA key` del `setup`: si SQLCipher falla ahí, el
   /// `causingStatement` de la [SqliteException] la lleva entera y `toString()` la imprimiría en el
   /// log. En ese caso al log va solo el código y el mensaje.
-  static Object _sinClave(Object causa) {
+  @visibleForTesting
+  static Object sinClave(Object causa) {
     if (causa is SqliteException && (causa.causingStatement?.contains('PRAGMA key') ?? false)) {
       return 'SqliteException(${causa.resultCode}): ${causa.message}';
     }
