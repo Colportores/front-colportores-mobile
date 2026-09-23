@@ -1,7 +1,7 @@
 /// Pregunta si la sesión con la que arrancó un flujo largo sigue abierta.
 ///
-/// Existe por la inicialización de la DB local (HU-AUTH-009): derivar la clave tarda cientos de
-/// milisegundos, y si el usuario cierra sesión en ese lapso, abrir la DB después la dejaría abierta
+/// Existe por la inicialización de la DB local (HU-AUTH-009): envolver la DEK con Argon2id tarda de
+/// 1 a 2 s, y si el usuario cierra sesión en ese lapso, abrir la DB después la dejaría abierta
 /// **sin sesión** — el cierre ya pasó y no hay nadie que la cierre (revisión del PR #44, #38).
 ///
 /// Todo es **sincrónico** a propósito: el chequeo tiene que poder hacerse inmediatamente antes de

@@ -11,35 +11,35 @@ void main() {
   group('AlmacenSeguroEnMemoria', () {
     group('dado que el almacén está vacío', () {
       test('cuando lee una clave, devuelve null', () async {
-        expect(await almacen.leer(ClaveSegura.salDb), isNull);
+        expect(await almacen.leer(ClaveSegura.dekDb), isNull);
       });
 
       test('cuando borra una clave que no existe, no lanza', () async {
-        await expectLater(almacen.borrar(ClaveSegura.salDb), completes);
+        await expectLater(almacen.borrar(ClaveSegura.dekDb), completes);
       });
     });
 
     group('dado que hay valores guardados', () {
       setUp(() async {
-        await almacen.escribir(ClaveSegura.salDb, 'sal');
+        await almacen.escribir(ClaveSegura.dekDb, 'dek');
         await almacen.escribir(ClaveSegura.dbInicializada, 'true');
       });
 
       test('cuando lee, devuelve lo escrito', () async {
-        expect(await almacen.leer(ClaveSegura.salDb), 'sal');
+        expect(await almacen.leer(ClaveSegura.dekDb), 'dek');
         expect(await almacen.leer(ClaveSegura.dbInicializada), 'true');
       });
 
       test('cuando reescribe una clave, reemplaza el valor anterior', () async {
-        await almacen.escribir(ClaveSegura.salDb, 'otra');
+        await almacen.escribir(ClaveSegura.dekDb, 'otra');
 
-        expect(await almacen.leer(ClaveSegura.salDb), 'otra');
+        expect(await almacen.leer(ClaveSegura.dekDb), 'otra');
       });
 
       test('cuando borra una clave, no toca las demás', () async {
-        await almacen.borrar(ClaveSegura.salDb);
+        await almacen.borrar(ClaveSegura.dekDb);
 
-        expect(await almacen.leer(ClaveSegura.salDb), isNull);
+        expect(await almacen.leer(ClaveSegura.dekDb), isNull);
         expect(await almacen.leer(ClaveSegura.dbInicializada), 'true');
       });
 
@@ -50,7 +50,7 @@ void main() {
       });
 
       test('cuando se inspecciona el contenido, no se lo puede modificar', () {
-        expect(() => almacen.contenido[ClaveSegura.salDb] = 'x', throwsUnsupportedError);
+        expect(() => almacen.contenido[ClaveSegura.dekDb] = 'x', throwsUnsupportedError);
       });
     });
 
@@ -60,29 +60,29 @@ void main() {
       test('cuando se opera, cada operación lanza AlmacenSeguroException', () async {
         final falla = throwsA(isA<AlmacenSeguroException>());
 
-        await expectLater(almacen.leer(ClaveSegura.salDb), falla);
-        await expectLater(almacen.escribir(ClaveSegura.salDb, 'sal'), falla);
-        await expectLater(almacen.borrar(ClaveSegura.salDb), falla);
+        await expectLater(almacen.leer(ClaveSegura.dekDb), falla);
+        await expectLater(almacen.escribir(ClaveSegura.dekDb, 'dek'), falla);
+        await expectLater(almacen.borrar(ClaveSegura.dekDb), falla);
         await expectLater(almacen.borrarTodo(), falla);
       });
     });
 
     test('cuando se construye con valores iniciales, los expone sin compartir el mapa', () async {
-      final inicial = {ClaveSegura.salDb: 'sal'};
+      final inicial = {ClaveSegura.dekDb: 'dek'};
       final conDatos = AlmacenSeguroEnMemoria(inicial);
 
       await conDatos.escribir(ClaveSegura.dbInicializada, 'true');
 
-      expect(await conDatos.leer(ClaveSegura.salDb), 'sal');
+      expect(await conDatos.leer(ClaveSegura.dekDb), 'dek');
       expect(inicial, hasLength(1), reason: 'el mapa de entrada no se muta');
     });
   });
 
   group('AlmacenSeguroException', () {
     test('cuando se imprime, muestra operación y clave sin el valor guardado', () {
-      const falla = AlmacenSeguroException(operacion: 'escribir', clave: ClaveSegura.salDb);
+      const falla = AlmacenSeguroException(operacion: 'escribir', clave: ClaveSegura.dekDb);
 
-      expect(falla.toString(), 'AlmacenSeguroException(escribir, salDb)');
+      expect(falla.toString(), 'AlmacenSeguroException(escribir, dekDb)');
     });
 
     test('cuando no apunta a una clave, la omite', () {
@@ -94,8 +94,9 @@ void main() {
 
   group('ClaveSegura', () {
     test('los ids son los nombres documentados y no se repiten', () {
-      expect(ClaveSegura.salDb.id, 'db_salt');
+      expect(ClaveSegura.dekDb.id, 'db_dek');
       expect(ClaveSegura.dbInicializada.id, 'db_initialized');
+      expect(ClaveSegura.consentimientoAlmacenSoftware.id, 'keystore_software_aceptado');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });

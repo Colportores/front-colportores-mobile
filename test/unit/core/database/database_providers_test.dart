@@ -119,15 +119,16 @@ void main() {
 
     test('dado que nunca se abrió, cerrar igual cuenta el pedido (HU-AUTH-009)', () async {
       final notifier = container.read(dbLocalProvider.notifier);
-      expect(notifier.cierresPedidos, 0);
+      final cierres = container.read(cierresDbLocalProvider);
+      expect(cierres.pedidos, 0);
 
       final cierre = notifier.cerrar();
 
       // Contado antes del primer await: el flujo de inicialización lo ve sin esperar nada.
-      expect(notifier.cierresPedidos, 1);
+      expect(cierres.pedidos, 1);
       await cierre;
       await notifier.cerrar();
-      expect(notifier.cierresPedidos, 2);
+      expect(cierres.pedidos, 2);
     });
   });
 }

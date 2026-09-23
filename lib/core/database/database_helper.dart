@@ -11,7 +11,7 @@ import '../logging/app_logger.dart';
 import '../secure_storage/clave_db.dart';
 import 'app_database.dart';
 
-/// Abre y cierra la DB local cifrada con SQLCipher (ADR-003, R-PV-03).
+/// Abre y cierra la DB local cifrada con SQLCipher (ADR-006, R-PV-03).
 ///
 /// Es el **único** archivo del proyecto que sabe que la DB está cifrada: arma la conexión Drift
 /// con `PRAGMA key` y entrega un [AppDatabase] listo; nadie más ve la clave. Sigue la doc oficial
@@ -20,19 +20,18 @@ import 'app_database.dart';
 ///
 /// ## Qué recibe y qué no
 ///
-/// Recibe la [ClaveDb] **ya derivada**. La derivación (Argon2id desde la contraseña + la sal de
-/// `CustodiaClaveDb`) no es de este helper: llega con HU-AUTH-009 (#27) detrás de
-/// `ProveedorClaveDb`, donde también se cierra el Supuesto S11. Acá la clave se usa en formato
-/// crudo de SQLCipher (`x'…'`, 32 bytes = AES-256): SQLCipher no vuelve a derivar nada, porque
-/// [ClaveDb] ya **es** la clave, no una contraseña.
+/// Recibe la DEK ([ClaveDb]) **en claro**. De dónde sale —el almacén seguro del equipo, o el
+/// envoltorio por contraseña en la recuperación guiada— no es de este helper: es de
+/// `CustodiaClaveDb` y del flujo de HU-AUTH-009 (ADR-006). Acá la clave se usa en formato crudo de
+/// SQLCipher (`x'…'`, 32 bytes = AES-256): SQLCipher no vuelve a derivar nada, porque la DEK ya
+/// **es** la clave, no una contraseña.
 ///
 /// ## Ciclo de vida
 ///
-/// Una sesión = una DB abierta. [abrir] con la clave del login, [cerrar] al cerrar sesión. Desde
-/// [abrir] el helper es dueño de la clave: la destruye en [cerrar] y también si [abrir] falla
-/// (la clave no sobrevive a un intento fallido; el siguiente login la vuelve a derivar —
-/// HU-AUTH-009, "segundo intento parte desde cero"). Ver `DbLocalNotifier` para el cableado
-/// Riverpod.
+/// Una sesión = una DB abierta. [abrir] con la DEK, [cerrar] al cerrar sesión. Desde [abrir] el
+/// helper es dueño de la clave: la destruye en [cerrar] y también si [abrir] falla (la DEK en claro
+/// no sobrevive a un intento fallido; las copias envueltas siguen donde estaban). Ver
+/// `DbLocalNotifier` para el cableado Riverpod.
 ///
 /// [abrir], [cerrar] y [borrar] **no se solapan**: cada una espera a la que esté en curso (ver
 /// `_enExclusiva`). Sin eso las guardas de estado serían check-then-act —`_db` se asigna varios
@@ -51,17 +50,18 @@ import 'app_database.dart';
 /// `CustodiaClaveDb.dbInicializada()` es una marca del almacén seguro, no la existencia del archivo,
 /// y en iOS se desincronizan (el Keychain sobrevive a la desinstalación). Quien orqueste el primer
 /// login reconcilia con [existe]: marca puesta sin archivo → `custodia.olvidar()` y dispositivo
-/// nuevo; archivo sin sal → [borrar] y dispositivo nuevo; creación interrumpida → [borrar] +
-/// `olvidar()`. Este helper da las primitivas ([existe], [abrir], [cerrar], [borrar]); la
-/// orquestación es de #27.
+/// nuevo; creación interrumpida (archivo sin marca, con la DEK guardada) → [borrar] + `olvidar()`.
+/// Este helper da las primitivas ([existe], [abrir], [cerrar], [borrar]); la orquestación es de
+/// `InicializarDbLocalUseCase`.
 ///
 /// ## Errores
 ///
 /// Como el resto de infra (§8.3), **lanza excepciones tipadas** y es el consumidor quien traduce a
-/// `Failure`: [ClaveDbIncorrectaException] si la clave no abre lo que hay en disco y
-/// [DbLocalException] para el resto (I/O, sin espacio, esquema del archivo posterior al de la app),
-/// en las tres operaciones. Los `Error` (`StateError`, `UnsupportedError`) son bugs de programa o
-/// de build, no fallas del dispositivo: se dejan pasar tal cual, pero se loguean.
+/// `Failure`: [ClaveDbIncorrectaException] si la clave no abre lo que hay en disco,
+/// [EsquemaDbPosteriorException] si el archivo es de una versión más nueva de la app, y
+/// [DbLocalException] para el resto (I/O, sin espacio), en las tres operaciones. Los `Error`
+/// (`StateError`, `UnsupportedError`) son bugs de programa o de build, no fallas del dispositivo: se
+/// dejan pasar tal cual, pero se loguean.
 final class DatabaseHelper {
   DatabaseHelper({
     required this._directorio,
@@ -116,10 +116,11 @@ final class DatabaseHelper {
   /// Si hay otra operación en curso, espera a que termine antes de empezar (ver § Ciclo de vida).
   ///
   /// Lanza [ClaveDbIncorrectaException] si SQLCipher no puede leer el archivo con esa clave
-  /// (`file is not a database`: clave distinta, archivo sin cifrar o corrupto), [DbLocalException]
-  /// ante cualquier otra falla, `StateError` si ya hay una DB abierta o la clave ya fue destruida,
-  /// y `UnsupportedError` si el binario de SQLite del build no es SQLCipher. En todo fallo la
-  /// clave queda destruida y el helper cerrado; el archivo **no** se toca.
+  /// (`file is not a database`: clave distinta, archivo sin cifrar o corrupto),
+  /// [EsquemaDbPosteriorException] si el archivo es de una versión posterior del esquema,
+  /// [DbLocalException] ante cualquier otra falla, `StateError` si ya hay una DB abierta o la clave
+  /// ya fue destruida, y `UnsupportedError` si el binario de SQLite del build no es SQLCipher. En
+  /// todo fallo la clave queda destruida y el helper cerrado; el archivo **no** se toca.
   Future<AppDatabase> abrir(ClaveDb clave) => _enExclusiva(() => _abrir(clave));
 
   Future<AppDatabase> _abrir(ClaveDb clave) async {
@@ -174,8 +175,8 @@ final class DatabaseHelper {
     }
   }
 
-  /// Cierra la DB y destruye la clave (HU-AUTH-006: la clave vive solo mientras la sesión está
-  /// activa). Si no hay nada abierto, no hace nada. Si hay una apertura en curso, espera a que
+  /// Cierra la DB y destruye la DEK en claro (HU-AUTH-006: vive solo mientras la sesión está
+  /// activa; las copias envueltas se conservan). Si no hay nada abierto, no hace nada. Si hay una apertura en curso, espera a que
   /// termine y cierra lo que haya quedado abierto.
   ///
   /// La clave se destruye aunque el cierre falle; si falla, lanza [DbLocalException] (operación
@@ -217,7 +218,7 @@ final class DatabaseHelper {
   /// no existe, no hace nada. Lanza `StateError` si la DB está abierta (cerrar primero) y
   /// [DbLocalException] si el borrado falla.
   ///
-  /// La sal y la marca del almacén seguro no son de este helper: `CustodiaClaveDb.olvidar()`.
+  /// La DEK envuelta y la marca no son de este helper: `CustodiaClaveDb.olvidar()`.
   Future<void> borrar() => _enExclusiva(_borrar);
 
   Future<void> _borrar() async {
@@ -339,17 +340,13 @@ final class DatabaseHelper {
       });
       throw const ClaveDbIncorrectaException();
     }
-    if (causa is DbLocalException) {
-      // Ya viene tipada desde el `setup` (esquema del archivo posterior al de la app): no se
-      // envuelve de nuevo, y el detalle con las dos versiones va al log.
-      _log.error(
-        LogModulo.db,
-        'OPEN_FAIL',
-        'no se pudo abrir la DB cifrada',
-        {'motivo': 'esquema_incompatible'},
-        causa.causa,
-        rastro,
-      );
+    if (causa is EsquemaDbPosteriorException) {
+      // Ya viene tipada desde el `setup`: no se envuelve de nuevo, y las dos versiones van al log.
+      _log.error(LogModulo.db, 'OPEN_FAIL', 'no se pudo abrir la DB cifrada', {
+        'motivo': 'esquema_posterior',
+        'version_archivo': causa.versionArchivo,
+        'version_app': causa.versionApp,
+      });
       throw causa;
     }
     final detalle = sinClave(causa);
@@ -403,21 +400,16 @@ void Function(CommonDatabase) _setupCifrado(String hexClave, int versionEsperada
   final version = db.select('PRAGMA user_version;').first.columnAt(0) as int?;
   if (version != null && version > versionEsperada) {
     // Un archivo escrito por una versión más nueva de la app (downgrade, o un restore de backup
-    // de otro dispositivo): esta versión del esquema no sabe leerlo.
-    throw DbLocalException(
-      operacion: 'abrir',
-      causa:
-          'user_version del archivo ($version) es posterior al esquema de la app '
-          '($versionEsperada)',
-    );
+    // de otro dispositivo): esta versión del esquema no sabe leerlo, y no se toca (HU-AUTH-009).
+    throw EsquemaDbPosteriorException(versionArchivo: version, versionApp: versionEsperada);
   }
 };
 
 /// La clave no abre el archivo que hay en disco: SQLCipher respondió `file is not a database`.
 ///
 /// Pasa con una clave distinta a la de creación, con un archivo sin cifrar o corrupto. Para
-/// HU-AUTH-009 significa "la sal de este dispositivo no corresponde a esta DB" (o la contraseña
-/// no es la de este equipo). Nunca lleva la clave ni la ruta.
+/// HU-AUTH-009 significa "la DEK guardada no corresponde a esta DB". Nunca lleva la clave ni la
+/// ruta.
 final class ClaveDbIncorrectaException implements Exception {
   const ClaveDbIncorrectaException();
 
@@ -425,8 +417,8 @@ final class ClaveDbIncorrectaException implements Exception {
   String toString() => 'ClaveDbIncorrectaException(file is not a database)';
 }
 
-/// Falla de la DB local que no es de clave: I/O, sin espacio, directorio inaccesible, esquema del
-/// archivo posterior al de la app.
+/// Falla de la DB local que no es de clave ni de esquema: I/O, sin espacio, directorio
+/// inaccesible.
 ///
 /// [toString] lleva la operación y nunca la clave.
 final class DbLocalException implements Exception {
@@ -440,4 +432,20 @@ final class DbLocalException implements Exception {
 
   @override
   String toString() => 'DbLocalException($operacion)';
+}
+
+/// El archivo de la DB es de una versión posterior del esquema: `PRAGMA user_version` es mayor que
+/// el `schemaVersion` de esta app (downgrade, o un restore de otro dispositivo). HU-AUTH-009: no se
+/// migra ni se borra; la app pide actualizarla.
+final class EsquemaDbPosteriorException implements Exception {
+  const EsquemaDbPosteriorException({required this.versionArchivo, required this.versionApp});
+
+  /// `user_version` del archivo.
+  final int versionArchivo;
+
+  /// `schemaVersion` de esta app.
+  final int versionApp;
+
+  @override
+  String toString() => 'EsquemaDbPosteriorException($versionArchivo > $versionApp)';
 }

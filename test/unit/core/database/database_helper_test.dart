@@ -311,7 +311,8 @@ void main() {
   });
 
   group('DatabaseHelper — esquema', () {
-    test('dado un archivo de una versión posterior, cuando abre, lanza DbLocalException', () async {
+    test('dado un archivo de una versión posterior, cuando abre, lanza '
+        'EsquemaDbPosteriorException y no toca el archivo (HU-AUTH-009)', () async {
       final db = await helper.abrir(_clave(1));
       await db.customStatement('PRAGMA user_version = 99');
       await helper.cerrar();
@@ -319,11 +320,21 @@ void main() {
 
       await expectLater(
         helper.abrir(clave),
-        throwsA(isA<DbLocalException>().having((e) => e.operacion, 'operacion', 'abrir')),
+        throwsA(
+          isA<EsquemaDbPosteriorException>()
+              .having((e) => e.versionArchivo, 'versionArchivo', 99)
+              .having((e) => e.toString(), 'toString', contains('99 >')),
+        ),
       );
 
       expect(helper.abierta, isFalse);
       expect(clave.destruida, isTrue);
+      expect(await helper.existe(), isTrue, reason: 'ni migra ni borra');
+      await expectLater(
+        helper.abrir(_clave(1)),
+        throwsA(isA<EsquemaDbPosteriorException>()),
+        reason: 'user_version sigue en 99',
+      );
     });
   });
 

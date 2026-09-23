@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
+import '../../../../core/dispositivo/seguridad_dispositivo.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/secure_storage/clave_db.dart';
 import '../../../../core/usecases/use_case.dart';
@@ -11,24 +10,45 @@ import '../repositories/db_local_repository.dart';
 import '../repositories/vigencia_sesion.dart';
 
 /// Pasos que la UI muestra como progreso ("Preparando tu espacio seguro… 1/3, 2/3, 3/3",
-/// HU-AUTH-009). En un login posterior no hay [generandoSal]: la sal ya existe.
-enum PasoInicializacionDb { generandoSal, derivandoClave, abriendoDb }
+/// HU-AUTH-009). Al crear la DB son los tres, salvo [protegiendoClave] sin contraseña (login con
+/// Google); al abrir una DB existente, solo [abriendoDb].
+enum PasoInicializacionDb {
+  /// Genera la DEK y la guarda en el almacén seguro.
+  generandoClave,
+
+  /// Envuelve la DEK con Argon2id(contraseña): el paso largo, de 1 a 2 s.
+  protegiendoClave,
+
+  /// Crea (o abre) el archivo SQLCipher y aplica el esquema.
+  abriendoDb,
+}
 
 /// Cómo terminó una inicialización exitosa.
 enum ResultadoInicializacionDb {
   /// Primer login en el dispositivo (o dispositivo tratado como nuevo): la DB se creó de cero.
   creada,
 
-  /// Login posterior: se abrió la DB que ya estaba.
+  /// Ya estaba: se abrió con la DEK del almacén seguro.
   abierta,
 }
 
 /// Parámetros de [InicializarDbLocalUseCase].
 final class InicializarDbLocalParams extends Equatable {
-  const InicializarDbLocalParams({required this.password, this.alAvanzar});
+  const InicializarDbLocalParams({
+    this.password,
+    this.aceptaAlmacenSoftware = false,
+    this.alAvanzar,
+  });
 
-  /// Contraseña con la que el usuario acaba de autenticarse: de ella se deriva la clave (ADR-003).
-  final String password;
+  /// Contraseña con la que el usuario acaba de autenticarse, o `null` si no hay (login con Google,
+  /// sesión restaurada). Solo se usa al crear la DB, para envolver la DEK (ADR-006): sin ella no hay
+  /// envoltorio por contraseña.
+  final String? password;
+
+  /// El usuario ya aceptó seguir con un Keystore por software (S10): la UI lo pasa en `true`
+  /// después de mostrar [FailureAlmacenPocoSeguro] y recibir "Entiendo el riesgo y quiero
+  /// continuar".
+  final bool aceptaAlmacenSoftware;
 
   /// Avisa cada [PasoInicializacionDb] al empezarlo. Se llama en forma sincrónica.
   final void Function(PasoInicializacionDb paso)? alAvanzar;
@@ -39,37 +59,48 @@ final class InicializarDbLocalParams extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [password, alAvanzar];
+  List<Object?> get props => [password, aceptaAlmacenSoftware, alAvanzar];
 }
 
-/// HU-AUTH-009 — Inicialización de la DB local cifrada tras un login con contraseña.
+/// HU-AUTH-009 — Inicialización de la DB local cifrada con una DEK aleatoria envuelta (ADR-006).
 ///
-/// **Primer login** (o dispositivo que hay que tratar como nuevo): deja el dispositivo limpio,
-/// genera y guarda una sal nueva, deriva la clave, crea la DB y recién al final marca el
-/// dispositivo como inicializado. Si algo falla en el camino, vuelve a dejarlo limpio: nunca queda
-/// una DB a medio hacer ni una sal suelta, y el próximo intento parte desde cero con otra sal.
+/// Se llama después de cada login y al restaurar la sesión, con la DB cerrada.
 ///
-/// **Login posterior** (marca puesta, archivo presente y sal guardada): lee la sal, deriva y abre.
-/// Si algo falla **no se borra nada**: la DB tiene datos del usuario.
+/// **DB existente** (marca puesta y archivo en disco): lee la DEK del almacén seguro y abre, sin
+/// Argon2id y sin contraseña. Si algo falla **no se borra nada**: la DB tiene datos del usuario.
+/// Si el almacén falla o perdió la DEK rige la recuperación guiada: con envoltorio por contraseña,
+/// [FailureAlmacenSeguroRecuperable] (sigue `RecuperarDbLocalConPasswordUseCase`); sin él,
+/// [FailureAlmacenSeguroSinRecuperacion] (la UI ofrece "empezar de nuevo" y pregunta).
 ///
-/// Se trata como nuevo, según HU-AUTH-009 y la custodia de la sal:
-/// - sin marca de inicialización (primer login, o una inicialización interrumpida que dejó sal o
-///   archivo sueltos);
-/// - marca sin archivo (iOS: el Keychain sobrevive a la desinstalación, el archivo no);
-/// - archivo sin sal (sin la sal esa DB ya no se puede abrir).
+/// **Primer login** (o dispositivo que hay que tratar como nuevo):
+/// 1. Verifica el bloqueo de pantalla; sin él no sigue ([FailureSinBloqueoPantalla]).
+/// 2. Mira el nivel del Keystore; por software y sin consentimiento, no sigue
+///    ([FailureAlmacenPocoSeguro]). Con consentimiento lo registra.
+/// 3. Deja el dispositivo limpio, genera la DEK y la guarda en el almacén seguro.
+/// 4. Si hay contraseña, envuelve la DEK con Argon2id(contraseña).
+/// 5. Crea la DB con la DEK y recién al final marca el dispositivo como inicializado.
 ///
-/// ## Cierre de sesión durante la derivación
+/// Si algo falla desde el paso 3, vuelve a dejarlo limpio: nunca queda una DB a medio hacer ni una
+/// DEK suelta, y el próximo intento parte desde cero con otra DEK.
 ///
-/// Después de derivar y **inmediatamente antes de abrir** vuelve a verificar que la sesión sigue
-/// vigente. Si no, destruye la clave y no abre: si abriera, la DB quedaría abierta sin sesión,
-/// porque el cierre ya pasó y no tiene nada que cerrar (revisión del PR #44). Entre ese chequeo y
-/// la apertura no puede haber ningún `await`.
+/// Se trata como nuevo:
+/// - sin archivo, haya marca o no (primer login; o iOS, donde el Keychain sobrevive a la
+///   desinstalación y el archivo no);
+/// - archivo sin marca pero con la DEK en el almacén: una inicialización que se cortó (la marca va
+///   última, así que esa DB nunca se usó).
 ///
-/// La derivación (Argon2id) está detrás de [DbLocalRepository.derivarClave]; este caso de uso no
-/// sabe con qué librería ni con qué parámetros se deriva.
+/// Archivo sin marca y **sin** DEK no es una inicialización cortada (la DEK se guarda antes de
+/// crear el archivo): es un almacén que perdió todo con la DB en disco, y rige la recuperación
+/// guiada. Nunca se borra una DB que pueda tener datos.
 ///
-/// Se llama una vez por sesión, con la DB cerrada. Llamarlo con la DB ya abierta es un error del
-/// llamador y sale como el `StateError` de `DatabaseHelper.abrir`, sin traducir a [Failure].
+/// ## Cierre de sesión en el medio
+///
+/// Inmediatamente antes de abrir vuelve a verificar que la sesión sigue vigente
+/// ([AperturaConSesionVigente.abrirSiSigueVigente]). Si no, destruye la DEK y no abre (revisión del
+/// PR #44); al crear, además deja el dispositivo limpio.
+///
+/// Llamarlo con la DB ya abierta es un error del llamador y sale como el `StateError` de
+/// `DatabaseHelper.abrir`, sin traducir a [Failure].
 final class InicializarDbLocalUseCase
     implements UseCase<ResultadoInicializacionDb, InicializarDbLocalParams> {
   const InicializarDbLocalUseCase(this._repository, this._vigencia);
@@ -79,7 +110,7 @@ final class InicializarDbLocalUseCase
 
   @override
   Future<Either<Failure, ResultadoInicializacionDb>> call(InicializarDbLocalParams params) async {
-    if (params.password.isEmpty) {
+    if (params.password case '') {
       return const Left(FailureValidacion(campos: {'password': 'Ingresá tu contraseña'}));
     }
 
@@ -90,26 +121,57 @@ final class InicializarDbLocalUseCase
     final estado = await _repository.estado();
     if (estado case Left(value: final falla)) return Left(falla);
 
-    if (estado._valor case EstadoDbLocal(inicializada: true, archivoExiste: true)) {
-      final sal = await _repository.leerSal();
-      if (sal case Left(value: final falla)) return Left(falla);
-      final guardada = sal._valor;
-      if (guardada != null) return _abrirExistente(params, testigo, guardada);
+    final e = estado._valor;
+    if (e.archivoExiste) {
+      switch (e.marca) {
+        case MarcaDbLocal.puesta:
+          return _abrirExistente(params, testigo, e);
+        case MarcaDbLocal.ilegible:
+          // Con la DB en disco y un almacén que no responde no se sabe si hay datos: nunca se crea
+          // encima.
+          return Left(_sinDek(e));
+        case MarcaDbLocal.ausente:
+          final interrumpida = await _esInicializacionInterrumpida(e);
+          if (interrumpida case Left(value: final falla)) return Left(falla);
+      }
     }
     return _crearDesdeCero(params, testigo);
+  }
+
+  /// Archivo sin marca: ¿una inicialización que se cortó, o un almacén que perdió todo con la DB
+  /// en disco?
+  ///
+  /// La DEK se guarda **antes** de que exista el archivo, así que una inicialización cortada deja
+  /// la DEK en el almacén: esa DB nunca se usó (la marca va última) y se descarta, como pide
+  /// HU-AUTH-009. Sin DEK es el otro caso —por ejemplo, un iPhone restaurado de un backup trae los
+  /// archivos pero no el Keychain (`_ThisDeviceOnly`)—, y la DB puede tener datos: rige la
+  /// recuperación guiada y no se borra nada. `Right` = seguir creando de cero.
+  Future<Either<Failure, Unit>> _esInicializacionInterrumpida(EstadoDbLocal estado) async {
+    final leida = await _repository.leerDek();
+    if (leida case Right(value: final ClaveDb dek)) {
+      dek.destruir();
+      return const Right(unit);
+    }
+    if (leida case Left(value: FailureAlmacenSeguro()) || Right(value: null)) {
+      return Left(_sinDek(estado));
+    }
+    return Left((leida as Left<Failure, ClaveDb?>).value);
   }
 
   Future<Either<Failure, ResultadoInicializacionDb>> _abrirExistente(
     InicializarDbLocalParams params,
     TestigoSesion testigo,
-    Uint8List sal,
+    EstadoDbLocal estado,
   ) async {
-    params.alAvanzar?.call(PasoInicializacionDb.derivandoClave);
-    final clave = await _repository.derivarClave(password: params.password, sal: sal);
-    if (clave case Left(value: final falla)) return Left(falla);
+    final leida = await _repository.leerDek();
+    if (leida case Left(value: FailureAlmacenSeguro()) || Right(value: null)) {
+      return Left(_sinDek(estado));
+    }
+    if (leida case Left(value: final falla)) return Left(falla);
+    final dek = leida._valor!;
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);
-    final abierta = await _abrirSiSigueVigente(clave._valor, testigo);
+    final abierta = await _repository.abrirSiSigueVigente(dek, testigo);
     return abierta.map((_) => ResultadoInicializacionDb.abierta);
   }
 
@@ -117,20 +179,43 @@ final class InicializarDbLocalUseCase
     InicializarDbLocalParams params,
     TestigoSesion testigo,
   ) async {
-    // Si no se pudo limpiar no se sigue: una sal nueva contra un archivo viejo no lo abriría.
+    // Las dos verificaciones van antes de tocar nada: si no se sigue, el dispositivo queda como
+    // estaba.
+    final bloqueo = await _repository.tieneBloqueoPantalla();
+    if (bloqueo case Left(value: final falla)) return Left(falla);
+    if (bloqueo case Right(value: false)) return const Left(FailureSinBloqueoPantalla());
+
+    final nivel = await _repository.nivelAlmacenSeguro();
+    if (nivel case Left(value: final falla)) return Left(falla);
+    final porSoftware = nivel._valor == NivelAlmacenSeguro.software;
+    if (porSoftware && !params.aceptaAlmacenSoftware) return const Left(FailureAlmacenPocoSeguro());
+
+    // Si no se pudo limpiar no se sigue: una DEK nueva contra un archivo viejo no lo abriría.
     final limpio = await _repository.descartar();
     if (limpio case Left(value: final falla)) return Left(falla);
 
-    params.alAvanzar?.call(PasoInicializacionDb.generandoSal);
-    final sal = await _repository.generarSal();
-    if (sal case Left(value: final falla)) return _abortar(falla);
+    if (porSoftware) {
+      final registrado = await _repository.registrarConsentimientoAlmacenSoftware();
+      if (registrado case Left(value: final falla)) return _abortar(falla);
+    }
 
-    params.alAvanzar?.call(PasoInicializacionDb.derivandoClave);
-    final clave = await _repository.derivarClave(password: params.password, sal: sal._valor);
-    if (clave case Left(value: final falla)) return _abortar(falla);
+    params.alAvanzar?.call(PasoInicializacionDb.generandoClave);
+    final creada = await _repository.crearDek();
+    if (creada case Left(value: final falla)) return _abortar(falla);
+    final dek = creada._valor;
+
+    final password = params.password;
+    if (password != null) {
+      params.alAvanzar?.call(PasoInicializacionDb.protegiendoClave);
+      final envuelta = await _repository.envolverConPassword(dek, password);
+      if (envuelta case Left(value: final falla)) {
+        dek.destruir();
+        return _abortar(falla);
+      }
+    }
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);
-    final abierta = await _abrirSiSigueVigente(clave._valor, testigo);
+    final abierta = await _repository.abrirSiSigueVigente(dek, testigo);
     if (abierta case Left(value: final falla)) return _abortar(falla);
 
     final marcada = await _repository.marcarInicializada();
@@ -139,16 +224,11 @@ final class InicializarDbLocalUseCase
     return const Right(ResultadoInicializacionDb.creada);
   }
 
-  /// Sin `async` a propósito: entre el chequeo del testigo y el pedido de apertura no hay ningún
-  /// `await`, así que un cierre de sesión no puede quedar en el medio. O llegó antes (y acá se ve),
-  /// o llega después, con la apertura ya registrada, y la cierra.
-  Future<Either<Failure, Unit>> _abrirSiSigueVigente(ClaveDb clave, TestigoSesion testigo) {
-    if (!testigo.sigueVigente) {
-      clave.destruir();
-      return Future.value(const Left(FailureSesionCerrada()));
-    }
-    return _repository.abrir(clave);
-  }
+  /// El almacén no tiene la DEK (o no responde) con la DB en disco: recuperación guiada de
+  /// ADR-006. Nada se borra acá.
+  static Failure _sinDek(EstadoDbLocal estado) => estado.envoltorioExiste
+      ? const FailureAlmacenSeguroRecuperable()
+      : const FailureAlmacenSeguroSinRecuperacion();
 
   /// Deja el dispositivo limpio tras un primer login fallido y devuelve la falla original. Si la
   /// limpieza también falla, igual se devuelve la original (es la que explica qué pasó); lo que

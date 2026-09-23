@@ -1,16 +1,21 @@
-// Primitivas de la DB local de HU-AUTH-009 sobre la infraestructura real: SQLCipher en un
-// directorio temporal, la custodia de la sal sobre el almacén en memoria y la derivación de juguete.
-import 'dart:convert';
+// Primitivas de la DB local de HU-AUTH-009 sobre la infraestructura real (ADR-006): SQLCipher en un
+// directorio temporal, la custodia de la DEK sobre el almacén en memoria, el envoltorio en disco,
+// Argon2id de juguete y el cifrado de la DEK real.
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
+import 'package:colportores_mobile/core/dispositivo/fakes/seguridad_dispositivo_fija.dart';
+import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
+import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/db_local_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
@@ -35,6 +40,8 @@ final class _FallaQueCitaLaContrasenia implements Exception {
   String toString() => 'falló derivando secreto123';
 }
 
+const _parametros = ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1);
+
 T _derecha<T>(Either<Failure, T> r) => r.fold((f) => fail('esperaba Right y vino $f'), (v) => v);
 
 Failure _izquierda<T>(Either<Failure, T> r) => r.fold((f) => f, (_) => fail('esperaba Left'));
@@ -44,12 +51,22 @@ void main() {
   late DatabaseHelper helper;
   late AlmacenSeguroEnMemoria almacen;
   late ProveedorClaveDbFalso proveedor;
+  late SeguridadDispositivoFija seguridad;
   late ProviderContainer container;
   late DbLocalRepositoryImpl repo;
 
+  CustodiaClaveDb custodia() => CustodiaClaveDb(
+    almacen,
+    ArchivoEnvoltorioDek(directorio: () async => directorio),
+    proveedor,
+    CriptoSodium(),
+    parametros: _parametros,
+    logger: loggerMudo(),
+  );
+
   DbLocalRepositoryImpl construir({AppLogger? logger}) => DbLocalRepositoryImpl(
-    custodia: CustodiaClaveDb(almacen, logger: loggerMudo()),
-    proveedorClave: proveedor,
+    custodia: custodia(),
+    seguridad: seguridad,
     helper: helper,
     dbLocal: container.read(dbLocalProvider.notifier),
     logger: logger ?? loggerMudo(),
@@ -64,6 +81,7 @@ void main() {
     );
     almacen = AlmacenSeguroEnMemoria();
     proveedor = ProveedorClaveDbFalso();
+    seguridad = SeguridadDispositivoFija();
     container = ProviderContainer(overrides: [databaseHelperProvider.overrideWithValue(helper)]);
     repo = construir();
   });
@@ -74,114 +92,239 @@ void main() {
     await directorio.delete(recursive: true);
   });
 
-  Future<ClaveDb> derivar(String password, Uint8List sal) async =>
-      _derecha(await repo.derivarClave(password: password, sal: sal));
+  /// Copia de la DEK: la original la toma la DB al abrir.
+  ClaveDb copia(ClaveDb dek) => ClaveDb(Uint8List.fromList(dek.bytes));
 
-  test('dado un dispositivo nuevo, el estado es sin marca y sin archivo', () async {
+  test('dado un dispositivo nuevo, el estado es sin marca, sin archivo y sin envoltorio', () async {
     expect(
       _derecha(await repo.estado()),
-      const EstadoDbLocal(inicializada: false, archivoExiste: false),
+      const EstadoDbLocal(
+        marca: MarcaDbLocal.ausente,
+        archivoExiste: false,
+        envoltorioExiste: false,
+      ),
     );
-    expect(_derecha(await repo.leerSal()), isNull);
   });
 
-  test('cuando genera la sal, la guarda y leerla devuelve la misma', () async {
-    final sal = _derecha(await repo.generarSal());
+  test(
+    'dado un primer login completo, el estado lo refleja y la DEK del almacén reabre la DB',
+    () async {
+      final dek = _derecha(await repo.crearDek());
+      _derecha(await repo.envolverConPassword(dek, 'secreto123'));
+      final paraReabrir = copia(dek);
+      _derecha(await repo.abrir(dek));
+      _derecha(await repo.marcarInicializada());
 
-    expect(sal, hasLength(32));
-    expect(_derecha(await repo.leerSal()), sal);
+      expect(
+        _derecha(await repo.estado()),
+        const EstadoDbLocal(
+          marca: MarcaDbLocal.puesta,
+          archivoExiste: true,
+          envoltorioExiste: true,
+        ),
+      );
+      expect(container.read(dbLocalProvider), isNotNull, reason: 'la DB queda publicada');
+
+      await container.read(dbLocalProvider.notifier).cerrar();
+      final leida = _derecha(await repo.leerDek());
+      expect(leida!.bytes, paraReabrir.bytes);
+      expect(_derecha(await repo.abrir(leida)), unit, reason: 'abre sin la contraseña');
+    },
+  );
+
+  test('dada la DEK envuelta, la contraseña la desenvuelve; otra contraseña no', () async {
+    final dek = _derecha(await repo.crearDek());
+    _derecha(await repo.envolverConPassword(dek, 'secreto123'));
+
+    expect(_derecha(await repo.desenvolverConPassword('secreto123')).bytes, dek.bytes);
+    expect(
+      _izquierda(await repo.desenvolverConPassword('otra')),
+      const FailurePasswordNoAbreDatos(),
+    );
   });
 
-  test('cuando crea la DB y marca, el estado lo refleja y la DB queda publicada', () async {
-    final sal = _derecha(await repo.generarSal());
+  test('dado un equipo sin envoltorio, desenvolver devuelve la falla sin recuperación', () async {
+    expect(
+      _izquierda(await repo.desenvolverConPassword('secreto123')),
+      const FailureAlmacenSeguroSinRecuperacion(),
+    );
+  });
 
-    _derecha(await repo.abrir(await derivar('secreto123', sal)));
+  test('cuando reconstruye el almacén, la DB vuelve a abrir con la DEK recuperada', () async {
+    final dek = _derecha(await repo.crearDek());
+    final recuperada = copia(dek);
+    _derecha(await repo.abrir(dek));
     _derecha(await repo.marcarInicializada());
-
-    expect(container.read(dbLocalProvider), isNotNull);
-    expect(
-      _derecha(await repo.estado()),
-      const EstadoDbLocal(inicializada: true, archivoExiste: true),
-    );
-  });
-
-  test('dado otra contraseña, abrir la DB existente devuelve clave incorrecta y destruye la '
-      'clave', () async {
-    final sal = _derecha(await repo.generarSal());
-    _derecha(await repo.abrir(await derivar('secreto123', sal)));
     await container.read(dbLocalProvider.notifier).cerrar();
-    final otra = await derivar('otra-clave', sal);
+    await almacen.borrarTodo();
 
-    final r = await repo.abrir(otra);
+    _derecha(await repo.reconstruirAlmacen(recuperada));
 
-    expect(_izquierda(r), const FailureClaveDbIncorrecta());
-    expect(otra.destruida, isTrue);
-    expect(container.read(dbLocalProvider), isNull);
+    expect(_derecha(await repo.estado()).marca, MarcaDbLocal.puesta);
+    expect(_derecha(await repo.abrir(_derecha(await repo.leerDek())!)), unit);
   });
 
-  test('dado la DB abierta, descartar la cierra, borra el archivo y olvida sal y marca', () async {
-    final sal = _derecha(await repo.generarSal());
-    final clave = await derivar('secreto123', sal);
-    _derecha(await repo.abrir(clave));
+  test('la seguridad del equipo se lee de SeguridadDispositivo', () async {
+    seguridad
+      ..bloqueoPantalla = false
+      ..nivel = NivelAlmacenSeguro.software;
+
+    expect(_derecha(await repo.tieneBloqueoPantalla()), isFalse);
+    expect(_derecha(await repo.nivelAlmacenSeguro()), NivelAlmacenSeguro.software);
+  });
+
+  test('cuando registra el consentimiento de S10, queda en el almacén', () async {
+    _derecha(await repo.registrarConsentimientoAlmacenSoftware());
+
+    expect(almacen.contenido[ClaveSegura.consentimientoAlmacenSoftware], 'true');
+  });
+
+  test('cuando descarta, cierra la DB y no deja archivo, DEK, envoltorio ni marca', () async {
+    final dek = _derecha(await repo.crearDek());
+    _derecha(await repo.envolverConPassword(dek, 'secreto123'));
+    _derecha(await repo.abrir(dek));
     _derecha(await repo.marcarInicializada());
 
     _derecha(await repo.descartar());
 
-    expect(container.read(dbLocalProvider), isNull);
     expect(helper.abierta, isFalse);
-    expect(clave.destruida, isTrue);
-    expect(await helper.existe(), isFalse);
+    expect(container.read(dbLocalProvider), isNull);
+    expect(
+      _derecha(await repo.estado()),
+      const EstadoDbLocal(
+        marca: MarcaDbLocal.ausente,
+        archivoExiste: false,
+        envoltorioExiste: false,
+      ),
+    );
     expect(almacen.contenido, isEmpty);
   });
 
-  test('dado nada abierto, descartar no cuenta como un cierre de sesión', () async {
-    _derecha(await repo.generarSal());
-
+  test('dado nada que descartar, descartar no cuenta un cierre de sesión que no hubo', () async {
     _derecha(await repo.descartar());
 
-    expect(container.read(dbLocalProvider.notifier).cierresPedidos, 0);
-    expect(almacen.contenido, isEmpty);
+    expect(container.read(cierresDbLocalProvider).pedidos, 0);
   });
 
-  group('traducción de fallas', () {
-    test('dado el almacén seguro roto, devuelve la falla de almacenamiento seguro', () async {
-      almacen.simularFalla = true;
+  group('dado que algo falla', () {
+    test(
+      'dado un almacén que no responde, el estado no es un Left: la marca es ilegible',
+      () async {
+        almacen.simularFalla = true;
 
-      expect(_izquierda(await repo.estado()), const FailureAlmacenSeguro());
-      expect(_izquierda(await repo.generarSal()), const FailureAlmacenSeguro());
-      expect(_izquierda(await repo.marcarInicializada()), const FailureAlmacenSeguro());
-      expect(_izquierda(await repo.descartar()), const FailureAlmacenSeguro());
-    });
+        expect(_derecha(await repo.estado()).marca, MarcaDbLocal.ilegible);
+      },
+    );
 
-    test('dado una sal corrupta, devuelve la falla de almacenamiento seguro', () async {
-      almacen = AlmacenSeguroEnMemoria({
-        ClaveSegura.salDb: base64Encode([1, 2, 3]),
-      });
-      repo = construir();
-
-      expect(_izquierda(await repo.leerSal()), const FailureAlmacenSeguro());
-    });
-
-    test('dado una marca corrupta, devuelve la falla de almacenamiento seguro', () async {
+    test('dado una marca corrupta, la marca es ilegible', () async {
       almacen = AlmacenSeguroEnMemoria({ClaveSegura.dbInicializada: 'quizas'});
       repo = construir();
 
-      expect(_izquierda(await repo.estado()), const FailureAlmacenSeguro());
+      expect(_derecha(await repo.estado()).marca, MarcaDbLocal.ilegible);
     });
 
-    test('dado que la derivación falla, devuelve inesperado y no loguea el mensaje', () async {
-      final salida = _SalidaEnMemoria();
-      repo = construir(logger: AppLogger(output: salida));
-      proveedor.falla = _FallaQueCitaLaContrasenia();
+    test('dado que el almacén no guarda la DEK, crearla falla y la DEK no sobrevive', () async {
+      almacen.simularFalla = true;
 
-      final r = await repo.derivarClave(password: 'secreto123', sal: Uint8List(32));
-
-      expect(_izquierda(r), isA<FailureInesperado>());
-      expect(salida.lineas.join('\n'), contains('INIT_DB_FAIL'));
-      expect(salida.lineas.join('\n'), isNot(contains('secreto123')));
+      expect(_izquierda(await repo.crearDek()), const FailureAlmacenSeguro());
     });
 
-    test('dado la DB llena o el disco sin espacio, devuelve sin espacio', () {
+    test('dado una DEK corrupta en el almacén, leerla devuelve la falla del almacén', () async {
+      almacen = AlmacenSeguroEnMemoria({ClaveSegura.dekDb: 'no es base64!!'});
+      repo = construir();
+
+      expect(_izquierda(await repo.leerDek()), const FailureAlmacenSeguro());
+    });
+
+    test('dado que la plataforma no responde por la seguridad del equipo, devuelve la falla del '
+        'almacén', () async {
+      seguridad.simularFalla = true;
+
+      expect(_izquierda(await repo.tieneBloqueoPantalla()), const FailureAlmacenSeguro());
+      expect(_izquierda(await repo.nivelAlmacenSeguro()), const FailureAlmacenSeguro());
+    });
+
+    test(
+      'dada una DEK que no abre el archivo, devuelve clave incorrecta y no borra nada',
+      () async {
+        final dek = _derecha(await repo.crearDek());
+        _derecha(await repo.abrir(dek));
+        await container.read(dbLocalProvider.notifier).cerrar();
+
+        final otra = ClaveDb(Uint8List.fromList(List<int>.filled(32, 1)));
+        expect(_izquierda(await repo.abrir(otra)), const FailureClaveDbIncorrecta());
+        expect(await helper.existe(), isTrue);
+      },
+    );
+
+    test(
+      'dado que la derivación falla con algo desconocido, devuelve inesperado y no loguea el mensaje',
+      () async {
+        final salida = _SalidaEnMemoria();
+        repo = construir(logger: AppLogger(output: salida));
+        proveedor.falla = _FallaQueCitaLaContrasenia();
+        final dek = ClaveDb(Uint8List(32));
+
+        final r = await repo.envolverConPassword(dek, 'secreto123');
+
+        expect(_izquierda(r), isA<FailureInesperado>());
+        expect(salida.lineas.join('\n'), contains('INIT_DB_FAIL'));
+        expect(salida.lineas.join('\n'), isNot(contains('secreto123')));
+      },
+    );
+  });
+
+  group('traducir', () {
+    test('dado una falla del almacén, de la DEK, de la marca, del equipo o de libsodium, devuelve '
+        'la falla de almacenamiento seguro (texto de la HU)', () {
+      for (final e in <Exception>[
+        const AlmacenSeguroException(operacion: 'leer'),
+        const DekCorruptaException('x'),
+        const MarcaInicializacionCorruptaException('x'),
+        const SeguridadDispositivoException(operacion: 'nivelAlmacen'),
+        const CriptoException('derivar', 'x'),
+      ]) {
+        expect(DbLocalRepositoryImpl.traducir(e), const FailureAlmacenSeguro(), reason: '$e');
+      }
+      expect(
+        const FailureAlmacenSeguro().mensaje,
+        'No pudimos preparar el almacenamiento seguro. Probá reinstalar el app o consultá a '
+        'soporte.',
+      );
+    });
+
+    test('dado un envoltorio que no abre con la contraseña, devuelve contraseña que no abre', () {
+      expect(
+        DbLocalRepositoryImpl.traducir(const EnvoltorioNoAbreException()),
+        const FailurePasswordNoAbreDatos(),
+      );
+    });
+
+    test('dado que no hay envoltorio o no se puede leer, no hay recuperación por contraseña', () {
+      expect(
+        DbLocalRepositoryImpl.traducir(const SinEnvoltorioException()),
+        const FailureAlmacenSeguroSinRecuperacion(),
+      );
+      expect(
+        DbLocalRepositoryImpl.traducir(const EnvoltorioCorruptoException('x')),
+        const FailureAlmacenSeguroSinRecuperacion(),
+      );
+    });
+
+    test('dado un archivo de una versión posterior, devuelve el texto de la HU', () {
+      final falla = DbLocalRepositoryImpl.traducir(
+        const EsquemaDbPosteriorException(versionArchivo: 9, versionApp: 2),
+      );
+
+      expect(falla, const FailureEsquemaPosterior());
+      expect(
+        falla.mensaje,
+        'Tus datos son de una versión más nueva de la app. Actualizala para seguir usando tus '
+        'datos.',
+      );
+    });
+
+    test('dado la DB llena o el disco sin espacio, devuelve sin espacio (texto de la HU)', () {
       final llena = SqliteException(extendedResultCode: 13, message: 'database or disk is full');
       const sinEspacio = FileSystemException('no se pudo escribir', '/x', OSError('ENOSPC', 28));
 
@@ -195,6 +338,13 @@ void main() {
         ),
         const FailureSinEspacio(),
       );
+      expect(
+        DbLocalRepositoryImpl.traducir(
+          const ArchivoEnvoltorioException(operacion: 'escribir', causa: sinEspacio),
+        ),
+        const FailureSinEspacio(),
+      );
+      expect(const FailureSinEspacio().mensaje, 'No hay espacio suficiente para preparar el app');
     });
 
     test('dado otra falla de la DB o una desconocida, devuelve inesperado', () {
@@ -205,7 +355,7 @@ void main() {
         isA<FailureInesperado>(),
       );
       expect(
-        DbLocalRepositoryImpl.traducir(const DbLocalException(operacion: 'abrir', causa: 'x')),
+        DbLocalRepositoryImpl.traducir(const ArchivoEnvoltorioException(operacion: 'leer')),
         isA<FailureInesperado>(),
       );
       expect(DbLocalRepositoryImpl.traducir(const FormatException()), isA<FailureInesperado>());

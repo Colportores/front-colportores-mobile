@@ -6,8 +6,11 @@ import 'dart:typed_data';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/backup_drive_data_source.dart';
@@ -17,6 +20,7 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/proveedor_clave_db_falso.dart';
 
 final class _DriveFake implements BackupDriveDataSource {
   bool hay = true;
@@ -52,7 +56,14 @@ void main() {
       directorioTemporal: () async => directorio,
       logger: loggerMudo(),
     );
-    custodia = CustodiaClaveDb(AlmacenSeguroEnMemoria(), logger: loggerMudo());
+    custodia = CustodiaClaveDb(
+      AlmacenSeguroEnMemoria(),
+      ArchivoEnvoltorioDek(directorio: () async => directorio),
+      ProveedorClaveDbFalso(),
+      CriptoSodium(),
+      parametros: const ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1),
+      logger: loggerMudo(),
+    );
     drive = _DriveFake();
     db = null;
     repo = DatosLocalesRepositoryImpl(
@@ -127,17 +138,30 @@ void main() {
     });
   });
 
+  /// La DEK en el almacén y envuelta con la contraseña, como deja el primer login (ADR-006).
+  Future<void> guardarDekYEnvoltorio() async {
+    final dek = custodia.generarDek();
+    await custodia.guardarDek(dek);
+    await custodia.envolverConPassword(dek, 'secreto123');
+  }
+
+  /// HU-AUTH-010: se borra la DEK envuelta, en el almacén y en el archivo del envoltorio.
+  Future<void> esperarDekOlvidada() async {
+    expect(await custodia.leerDek(), isNull);
+    expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
+  }
+
   group('borrar', () {
     test('con operaciones sin sincronizar, borra igual (decisión de #66)', () async {
       await abrirConJornadas(1);
-      await custodia.generarSal();
+      await guardarDekYEnvoltorio();
 
       final r = await repo.borrar(incluirBackupDrive: false);
 
       expect(r.isRight(), isTrue);
       expect(helper.abierta, isFalse);
       expect(await helper.existe(), isFalse);
-      expect(await custodia.leerSal(), isNull);
+      await esperarDekOlvidada();
     });
 
     test('sin poder contar (archivo presente, DB cerrada), borra igual', () async {
@@ -155,7 +179,7 @@ void main() {
       'dado un intento que falló después de cerrar la DB, reintentar termina el borrado',
       () async {
         await abrirConJornadas(2);
-        await custodia.generarSal();
+        await guardarDekYEnvoltorio();
         var intentos = 0;
         final conFallaAMitad = DatosLocalesRepositoryImpl(
           helper,
@@ -173,31 +197,34 @@ void main() {
 
         final primero = await conFallaAMitad.borrar(incluirBackupDrive: false);
         expect(primero.isLeft(), isTrue);
-        expect(await helper.existe(), isTrue, reason: 'quedó a mitad: DB cerrada, archivo y sal');
+        expect(await helper.existe(), isTrue, reason: 'quedó a mitad: DB cerrada, archivo y DEK');
 
         final segundo = await conFallaAMitad.borrar(incluirBackupDrive: false);
 
         expect(segundo.isRight(), isTrue);
         expect(await helper.existe(), isFalse);
-        expect(await custodia.leerSal(), isNull);
+        await esperarDekOlvidada();
       },
     );
 
-    test('sin pendientes, cierra y borra la DB, olvida la sal y respeta Drive', () async {
-      await abrirConJornadas(0);
-      await custodia.generarSal();
+    test(
+      'sin pendientes, cierra y borra la DB, olvida la DEK y su envoltorio y respeta Drive',
+      () async {
+        await abrirConJornadas(0);
+        await guardarDekYEnvoltorio();
 
-      final r = await repo.borrar(incluirBackupDrive: false);
+        final r = await repo.borrar(incluirBackupDrive: false);
 
-      expect(
-        r,
-        const Right<Failure, ResultadoBorradoDatosLocales>(ResultadoBorradoDatosLocales.completo),
-      );
-      expect(helper.abierta, isFalse);
-      expect(await helper.existe(), isFalse);
-      expect(await custodia.leerSal(), isNull);
-      expect(drive.borrados, 0);
-    });
+        expect(
+          r,
+          const Right<Failure, ResultadoBorradoDatosLocales>(ResultadoBorradoDatosLocales.completo),
+        );
+        expect(helper.abierta, isFalse);
+        expect(await helper.existe(), isFalse);
+        await esperarDekOlvidada();
+        expect(drive.borrados, 0);
+      },
+    );
 
     test('es idempotente: reintentar sin nada que borrar no falla', () async {
       await repo.borrar(incluirBackupDrive: false);

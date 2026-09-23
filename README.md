@@ -25,13 +25,17 @@ lib/
 │   ├── error/failure.dart     ← sealed Failure (Either<Failure, T> en todo use case)
 │   ├── usecases/use_case.dart ← UseCase<T, Params>, StreamUseCase, NoParams
 │   ├── logging/app_logger.dart← [NIVEL][MÓDULO][OPERACIÓN] mensaje — {json}
-│   ├── secure_storage/        ← Keystore/Keychain: custodia de la sal de cifrado (ADR-003)
+│   ├── secure_storage/        ← la DEK de la DB y sus dos envoltorios (ADR-006)
 │   │   ├── almacen_seguro.dart          (puerto + ClaveSegura: el inventario de secretos)
 │   │   ├── almacen_seguro_keystore.dart (único archivo que conoce flutter_secure_storage)
-│   │   ├── custodia_clave_db.dart       (sal de 256 bits + marca de DB inicializada)
-│   │   ├── clave_db.dart                (ClaveDb y ProveedorClaveDb: lo que consume la DB)
+│   │   ├── custodia_clave_db.dart       (DEK en el almacén, envoltorio por contraseña, marca)
+│   │   ├── archivo_envoltorio_dek.dart  (la DEK envuelta con Argon2id: archivo fuera del almacén)
+│   │   ├── envoltorio_dek.dart          (formato del envoltorio: cabecera versionada)
+│   │   ├── cripto_sodium.dart           (único archivo que conoce libsodium: Argon2id + cifrado)
+│   │   ├── clave_db.dart                (ClaveDb, ClaveEnvoltorio y los puertos de cripto)
 │   │   └── fakes/…_en_memoria.dart      (para desarrollo y tests)
-│   └── database/              ← DB local cifrada: Drift + SQLCipher (ADR-003, ADR-007)
+│   ├── dispositivo/           ← bloqueo de pantalla y nivel del Keystore (canal nativo propio)
+│   └── database/              ← DB local cifrada: Drift + SQLCipher (ADR-006, ADR-009)
 │       ├── app_database.dart            (AppDatabase: GeneratedDatabase a mano; sin tablas hasta #8)
 │       ├── database_helper.dart         (único archivo que conoce el PRAGMA key: abrir/cerrar/borrar)
 │       └── database_providers.dart      (databaseHelperProvider + dbLocalProvider: AppDatabase? por sesión)
@@ -98,7 +102,7 @@ flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUP
 
 - Google entra por OAuth en el navegador del sistema y vuelve por el deep link `io.supabase.colportores://login-callback/` (intent-filter en `AndroidManifest.xml`); esa URL tiene que estar allowlisteada en Supabase → Authentication → URL Configuration → Redirect URLs. Apple/iOS quedan desactivados por ahora.
 - `scripts/check_auth_providers.sh` verifica contra `/auth/v1/settings` que el proyecto tenga email y Google activos y Apple apagado; en CI lee las variables de repo `SUPABASE_URL` / `SUPABASE_ANON_KEY` (`gh variable set …`) y con ellas el job del APK sale ya configurado.
-- La sesión la persiste `supabase_flutter` (SharedPreferences por default). Pasarla a `flutter_secure_storage` (`Supabase.initialize(authOptions: FlutterAuthClientOptions(localStorage: …))`) está pendiente de decisión (ADR-003).
+- La sesión la persiste `supabase_flutter` (SharedPreferences por default). Pasarla a `flutter_secure_storage` (`Supabase.initialize(authOptions: FlutterAuthClientOptions(localStorage: …))`) está pendiente de decisión (ADR-006).
 - Umbrales de cobertura (`scripts/coverage_check.sh`): total ≥ 70%, dominio ≥ 90%.
 
 ## CI
@@ -111,7 +115,7 @@ Los datos personales de clientes (`persona.nombre`, `persona.apellido`, `persona
 
 Este repositorio es **el único lugar del sistema donde esos datos existen**. La base local se abre con SQLCipher (AES-256, clave en formato crudo `x'…'`) y las tablas `persona` y `nota` nunca se sincronizan.
 
-La clave de esa base **no se guarda en ningún lado**: se deriva con Argon2id de la contraseña del usuario y de una sal aleatoria de 256 bits, y esa sal —no la clave— es lo que vive en Keystore/Keychain ([ADR-003](https://github.com/Colportores/docs-organizacion/blob/main/docs/decisiones/ADR-003-backup-y-cifrado.md)). La custodia de la sal es `core/secure_storage/`; quien abre la DB con la clave ya derivada es `core/database/DatabaseHelper`; la derivación llega con HU-AUTH-009.
+La clave de esa base es una **DEK aleatoria** de 256 bits que **nunca se guarda en claro**: vive envuelta dos veces ([ADR-006](https://github.com/Colportores/docs-organizacion/blob/main/docs/decisiones/ADR-006-cifrado-db-local-y-backup-e2e-en-drive.md)). Una copia la envuelve el almacén seguro del equipo (Keystore/Keychain), para que la app abra sola; la otra, Argon2id de la contraseña (libsodium), en un archivo aparte que viaja con el backup y deja recuperar la DEK si el Keystore falla. La custodia es `core/secure_storage/`; quien abre la DB con la DEK es `core/database/DatabaseHelper`; la orquestación del primer login es `InicializarDbLocalUseCase` (HU-AUTH-009).
 
 ## Licencia
 

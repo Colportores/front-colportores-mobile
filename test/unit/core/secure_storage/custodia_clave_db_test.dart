@@ -1,12 +1,21 @@
-// Test de la custodia de la sal: Dart puro, con el almacén seguro en memoria.
+// Test de la custodia de la DEK (ADR-006): almacén seguro en memoria, envoltorio en un directorio
+// temporal, Argon2id de juguete y el cifrado de la DEK real (libsodium).
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
+import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
+import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import '../../../helpers/logger_mudo.dart';
+import '../../../helpers/proveedor_clave_db_falso.dart';
 
 /// Almacén que falla al borrar una clave puntual y deja el resto en el almacén interno. Simula el
 /// Keystore muriéndose a mitad de `olvidar()`, para ver con qué estado queda el dispositivo.
@@ -34,93 +43,226 @@ final class _AlmacenQueFallaAlBorrar implements AlmacenSeguro {
   Future<void> borrarTodo() => _interno.borrarTodo();
 }
 
+const _parametros = ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1);
+
 void main() {
+  late Directory dir;
   late AlmacenSeguroEnMemoria almacen;
+  late ArchivoEnvoltorioDek archivo;
+  late ProveedorClaveDbFalso proveedor;
   late CustodiaClaveDb custodia;
 
-  setUp(() {
+  CustodiaClaveDb custodiaCon(AlmacenSeguro almacen, {ParametrosArgon2id? parametros}) =>
+      CustodiaClaveDb(
+        almacen,
+        archivo,
+        proveedor,
+        CriptoSodium(),
+        parametros: parametros ?? _parametros,
+        logger: loggerMudo(),
+      );
+
+  setUp(() async {
+    dir = await Directory.systemTemp.createTemp('custodia_');
     almacen = AlmacenSeguroEnMemoria();
-    custodia = CustodiaClaveDb(almacen, logger: loggerMudo());
+    archivo = ArchivoEnvoltorioDek(directorio: () async => dir);
+    proveedor = ProveedorClaveDbFalso();
+    custodia = custodiaCon(almacen);
   });
 
-  group('CustodiaClaveDb.leerSal', () {
-    group('dado un dispositivo nuevo', () {
-      test('cuando lee la sal, devuelve null', () async {
-        expect(await custodia.leerSal(), isNull);
-      });
-    });
-
-    group('dado que ya se generó una sal', () {
-      test('cuando la lee, devuelve exactamente los bytes generados', () async {
-        final generada = await custodia.generarSal();
-
-        expect(await custodia.leerSal(), generada);
-      });
-    });
-
-    group('dado que lo guardado no es una sal válida', () {
-      test('cuando no es base64, lanza SalCorruptaException', () async {
-        await almacen.escribir(ClaveSegura.salDb, 'no es base64!!');
-
-        await expectLater(custodia.leerSal(), throwsA(isA<SalCorruptaException>()));
-      });
-
-      test('cuando tiene otro largo, lanza SalCorruptaException', () async {
-        await almacen.escribir(ClaveSegura.salDb, base64Encode(List<int>.filled(16, 0)));
-
-        await expectLater(custodia.leerSal(), throwsA(isA<SalCorruptaException>()));
-      });
-    });
+  tearDown(() async {
+    if (await dir.exists()) await dir.delete(recursive: true);
   });
 
-  group('CustodiaClaveDb.generarSal', () {
-    test('cuando genera, la sal tiene los 256 bits de ADR-003', () async {
-      final sal = await custodia.generarSal();
+  Future<String> contenidoDelEnvoltorio() =>
+      File(p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto)).readAsString();
 
-      expect(sal, hasLength(32));
-      expect(CustodiaClaveDb.bytesDeSal, 32);
+  group('CustodiaClaveDb — DEK en el almacén seguro', () {
+    test('dado un dispositivo nuevo, no hay DEK', () async {
+      expect(await custodia.leerDek(), isNull);
     });
 
-    test('cuando genera, la persiste en el almacén seguro codificada en base64', () async {
-      final sal = await custodia.generarSal();
+    test('cuando genera una DEK, tiene 32 bytes, es distinta cada vez y no la guarda', () async {
+      final a = custodia.generarDek();
+      final b = custodia.generarDek();
 
-      expect(base64Decode(almacen.contenido[ClaveSegura.salDb]!), sal);
+      expect(a.bytes, hasLength(32));
+      expect(a.bytes, isNot(b.bytes));
+      expect(almacen.contenido, isEmpty);
     });
 
-    test('cuando genera dos veces, las sales son distintas y no quedan en cero', () async {
-      final primera = await custodia.generarSal();
-      final segunda = await custodia.generarSal();
+    test('dada una DEK guardada, cuando se lee, vuelve la misma y se puede destruir', () async {
+      final dek = custodia.generarDek();
+      await custodia.guardarDek(dek);
 
-      expect(segunda, isNot(primera), reason: 'la sal no puede ser predecible');
-      expect(primera.every((b) => b == 0), isFalse);
+      final leida = await custodia.leerDek();
+
+      expect(leida!.bytes, dek.bytes);
+      expect(almacen.contenido[ClaveSegura.dekDb], base64Encode(dek.bytes));
+      expect(leida.destruir, returnsNormally);
     });
 
-    test('cuando reintenta una inicialización fallida, reemplaza la sal anterior', () async {
-      final primera = await custodia.generarSal();
+    test(
+      'cuando guarda otra DEK sin marca puesta, reemplaza la anterior (reintento desde cero)',
+      () async {
+        await custodia.guardarDek(custodia.generarDek());
+        final segunda = custodia.generarDek();
 
-      final segunda = await custodia.generarSal();
+        await custodia.guardarDek(segunda);
 
-      expect(await custodia.leerSal(), segunda);
-      expect(await custodia.leerSal(), isNot(primera));
-    });
+        expect((await custodia.leerDek())!.bytes, segunda.bytes);
+      },
+    );
 
-    group('dado que la DB del dispositivo ya está inicializada', () {
+    group('dado un dispositivo ya inicializado', () {
+      late ClaveDb original;
+
       setUp(() async {
+        original = custodia.generarDek();
+        await custodia.guardarDek(original);
         await custodia.marcarDbInicializada();
       });
 
-      test('cuando se intenta generar otra sal, lanza StateError y no pisa la guardada', () async {
-        await almacen.escribir(ClaveSegura.salDb, base64Encode(List<int>.filled(32, 3)));
-
-        await expectLater(custodia.generarSal(), throwsA(isA<StateError>()));
-        expect(await custodia.leerSal(), List<int>.filled(32, 3));
+      test('cuando se intenta guardar otra DEK, lanza StateError y no pisa la de la DB', () async {
+        await expectLater(custodia.guardarDek(custodia.generarDek()), throwsA(isA<StateError>()));
+        expect((await custodia.leerDek())!.bytes, original.bytes);
       });
 
-      test('cuando primero se olvida, se puede volver a generar', () async {
+      test('cuando se olvida primero, la puede reemplazar', () async {
         await custodia.olvidar();
 
-        await expectLater(custodia.generarSal(), completes);
+        await expectLater(custodia.guardarDek(custodia.generarDek()), completes);
       });
+    });
+
+    group('dado que lo guardado no es una DEK', () {
+      test('cuando no es base64, lanza DekCorruptaException sin el valor', () async {
+        await almacen.escribir(ClaveSegura.dekDb, 'no es base64!!');
+
+        await expectLater(
+          custodia.leerDek(),
+          throwsA(
+            isA<DekCorruptaException>().having(
+              (e) => e.toString(),
+              'toString',
+              isNot(contains('!!')),
+            ),
+          ),
+        );
+      });
+
+      test('cuando no tiene 32 bytes, lanza DekCorruptaException', () async {
+        await almacen.escribir(ClaveSegura.dekDb, base64Encode(List<int>.filled(16, 0)));
+
+        await expectLater(custodia.leerDek(), throwsA(isA<DekCorruptaException>()));
+      });
+    });
+  });
+
+  group('CustodiaClaveDb — envoltorio por contraseña', () {
+    test(
+      'dado un equipo sin envoltorio, no lo hay y desenvolver lanza SinEnvoltorioException',
+      () async {
+        expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
+        await expectLater(
+          custodia.desenvolverConPassword('secreto123'),
+          throwsA(isA<SinEnvoltorioException>()),
+        );
+      },
+    );
+
+    test('cuando envuelve con la contraseña, la misma contraseña la desenvuelve', () async {
+      final dek = custodia.generarDek();
+
+      await custodia.envolverConPassword(dek, 'secreto123');
+      final recuperada = await custodia.desenvolverConPassword('secreto123');
+
+      expect(await custodia.hayEnvoltorioPorPassword(), isTrue);
+      expect(recuperada.bytes, dek.bytes);
+      expect(dek.destruida, isFalse, reason: 'envolver no toca la DEK de quien la pasó');
+    });
+
+    test('dada otra contraseña, lanza EnvoltorioNoAbreException', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+
+      await expectLater(
+        custodia.desenvolverConPassword('otra-cosa'),
+        throwsA(isA<EnvoltorioNoAbreException>()),
+      );
+    });
+
+    test('el archivo lleva la cabecera con los parámetros y nunca la DEK en claro', () async {
+      final dek = custodia.generarDek();
+
+      await custodia.envolverConPassword(dek, 'secreto123');
+      final texto = await contenidoDelEnvoltorio();
+      final envoltorio = EnvoltorioDek.decodificar(texto);
+
+      expect(envoltorio.parametros, _parametros);
+      expect(envoltorio.algoritmo, EnvoltorioDek.algoritmoActual);
+      expect(envoltorio.sal, hasLength(EnvoltorioDek.bytesSal));
+      expect(texto, isNot(contains(base64Encode(dek.bytes))));
+      expect(texto, isNot(contains('secreto123')));
+    });
+
+    test('cada envoltorio usa una sal nueva', () async {
+      final dek = custodia.generarDek();
+
+      await custodia.envolverConPassword(dek, 'secreto123');
+      final primera = EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).sal;
+      await custodia.envolverConPassword(dek, 'secreto123');
+      final segunda = EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).sal;
+
+      expect(primera, isNot(segunda));
+    });
+
+    test('la clave derivada se destruye al terminar, salga bien o mal', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      await expectLater(custodia.desenvolverConPassword('otra'), throwsA(anything));
+
+      expect(proveedor.entregadas, hasLength(2));
+      expect(proveedor.entregadas.every((c) => c.destruida), isTrue);
+    });
+
+    test(
+      'dado un envoltorio armado con otros parámetros, desenvuelve con los de su cabecera',
+      () async {
+        const viejos = ParametrosArgon2id(memoriaBytes: 32 * 1024, iteraciones: 2, paralelismo: 1);
+        final dek = custodia.generarDek();
+        await custodiaCon(almacen, parametros: viejos).envolverConPassword(dek, 'secreto123');
+
+        final recuperada = await custodia.desenvolverConPassword('secreto123');
+
+        expect(recuperada.bytes, dek.bytes);
+        expect(proveedor.parametrosPedidos.last, viejos);
+      },
+    );
+
+    test(
+      'dado un envoltorio de un algoritmo desconocido, lanza EnvoltorioCorruptoException',
+      () async {
+        await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+        final json = jsonDecode(await contenidoDelEnvoltorio()) as Map<String, Object?>;
+        json['alg'] = 'rot13';
+        await File(
+          p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto),
+        ).writeAsString(jsonEncode(json));
+
+        await expectLater(
+          custodia.desenvolverConPassword('secreto123'),
+          throwsA(isA<EnvoltorioCorruptoException>()),
+        );
+      },
+    );
+
+    test('dado que la derivación falla, la falla se propaga y no se escribe nada', () async {
+      proveedor.falla = const CriptoException('derivar', 'sin memoria');
+
+      await expectLater(
+        custodia.envolverConPassword(custodia.generarDek(), 'secreto123'),
+        throwsA(isA<CriptoException>()),
+      );
+      expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
     });
   });
 
@@ -148,13 +290,13 @@ void main() {
       });
 
       test(
-        'cuando se intenta generar una sal, la guarda no se desactiva: lanza y no escribe',
+        'cuando se intenta guardar una DEK, la guarda no se desactiva: lanza y no escribe',
         () async {
           await expectLater(
-            custodia.generarSal(),
+            custodia.guardarDek(custodia.generarDek()),
             throwsA(isA<MarcaInicializacionCorruptaException>()),
           );
-          expect(almacen.contenido.containsKey(ClaveSegura.salDb), isFalse);
+          expect(almacen.contenido.containsKey(ClaveSegura.dekDb), isFalse);
         },
       );
 
@@ -162,88 +304,128 @@ void main() {
         await custodia.olvidar();
 
         expect(await custodia.dbInicializada(), isFalse);
-        await expectLater(custodia.generarSal(), completes);
+        await expectLater(custodia.guardarDek(custodia.generarDek()), completes);
       });
     });
   });
 
+  test('cuando se registra el consentimiento de S10, queda en el almacén', () async {
+    await custodia.registrarConsentimientoAlmacenSoftware();
+
+    expect(almacen.contenido[ClaveSegura.consentimientoAlmacenSoftware], 'true');
+  });
+
+  group('CustodiaClaveDb.reconstruirAlmacen (recuperación guiada)', () {
+    test('limpia el almacén y lo reescribe con la DEK y la marca; el envoltorio queda', () async {
+      final dek = custodia.generarDek();
+      await custodia.envolverConPassword(dek, 'secreto123');
+      await almacen.escribir(ClaveSegura.dekDb, 'basura');
+      await almacen.escribir(ClaveSegura.consentimientoAlmacenSoftware, 'true');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(
+        almacen.contenido.keys,
+        unorderedEquals(<ClaveSegura>[ClaveSegura.dekDb, ClaveSegura.dbInicializada]),
+      );
+      expect((await custodia.leerDek())!.bytes, dek.bytes);
+      expect(await custodia.dbInicializada(), isTrue);
+      expect(await custodia.hayEnvoltorioPorPassword(), isTrue);
+      expect(dek.destruida, isFalse);
+    });
+  });
+
   group('CustodiaClaveDb.olvidar', () {
-    test('cuando se olvida, borra la sal y la marca', () async {
-      await custodia.generarSal();
+    test('cuando se olvida, borra la marca, la DEK, el consentimiento y el envoltorio', () async {
+      final dek = custodia.generarDek();
+      await custodia.guardarDek(dek);
+      await custodia.envolverConPassword(dek, 'secreto123');
+      await custodia.registrarConsentimientoAlmacenSoftware();
       await custodia.marcarDbInicializada();
 
       await custodia.olvidar();
 
-      expect(await custodia.leerSal(), isNull);
+      expect(await custodia.leerDek(), isNull);
       expect(await custodia.dbInicializada(), isFalse);
+      expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
       expect(almacen.contenido, isEmpty);
     });
 
     group('dado que el almacén muere después del primer borrado', () {
-      // Fija el orden marca → sal. Si fuera al revés, el estado parcial sería "sin sal + marca
-      // puesta": leerSal() diría dispositivo nuevo y generarSal() lanzaría StateError siempre.
+      // Fija el orden marca → DEK. Si fuera al revés, el estado parcial sería "sin DEK + marca
+      // puesta", y guardarDek() lanzaría StateError siempre.
       late CustodiaClaveDb custodiaFragil;
 
       setUp(() async {
-        await custodia.generarSal();
+        await custodia.guardarDek(custodia.generarDek());
         await custodia.marcarDbInicializada();
-        custodiaFragil = CustodiaClaveDb(
-          _AlmacenQueFallaAlBorrar(almacen, fallaEn: ClaveSegura.salDb),
-          logger: loggerMudo(),
-        );
+        custodiaFragil = custodiaCon(_AlmacenQueFallaAlBorrar(almacen, fallaEn: ClaveSegura.dekDb));
       });
 
       test('cuando se olvida, propaga la falla y la marca ya no está', () async {
         await expectLater(custodiaFragil.olvidar(), throwsA(isA<AlmacenSeguroException>()));
 
         expect(almacen.contenido.containsKey(ClaveSegura.dbInicializada), isFalse);
-        expect(almacen.contenido.containsKey(ClaveSegura.salDb), isTrue);
+        expect(almacen.contenido.containsKey(ClaveSegura.dekDb), isTrue);
       });
 
-      test('cuando se olvida a medias, el dispositivo puede rehacerse con generarSal', () async {
+      test('cuando se olvida a medias, el dispositivo puede rehacerse', () async {
         await expectLater(custodiaFragil.olvidar(), throwsA(isA<AlmacenSeguroException>()));
 
         expect(await custodia.dbInicializada(), isFalse);
-        await expectLater(custodia.generarSal(), completes);
+        await expectLater(custodia.guardarDek(custodia.generarDek()), completes);
       });
     });
   });
 
   group('CustodiaClaveDb — invariantes de seguridad', () {
-    test('la custodia solo guarda la sal y la marca: nunca una clave', () async {
-      await custodia.generarSal();
-      await custodia.marcarDbInicializada();
+    test(
+      'el almacén solo guarda la DEK y la marca: nunca la contraseña ni la clave derivada',
+      () async {
+        final dek = custodia.generarDek();
+        await custodia.guardarDek(dek);
+        await custodia.envolverConPassword(dek, 'secreto123');
+        await custodia.marcarDbInicializada();
 
-      expect(
-        almacen.contenido.keys,
-        unorderedEquals(<ClaveSegura>[ClaveSegura.salDb, ClaveSegura.dbInicializada]),
-      );
-    });
+        expect(
+          almacen.contenido.keys,
+          unorderedEquals(<ClaveSegura>[ClaveSegura.dekDb, ClaveSegura.dbInicializada]),
+        );
+        expect(almacen.contenido.values, isNot(contains(contains('secreto123'))));
+      },
+    );
 
-    test('cuando el almacén seguro falla, la falla se propaga sin inventar una sal', () async {
+    test('cuando el almacén seguro falla, la falla se propaga sin inventar una DEK', () async {
       almacen.simularFalla = true;
       final falla = throwsA(isA<AlmacenSeguroException>());
 
-      await expectLater(custodia.leerSal(), falla);
-      await expectLater(custodia.generarSal(), falla);
+      await expectLater(custodia.leerDek(), falla);
+      await expectLater(custodia.guardarDek(custodia.generarDek()), falla);
       await expectLater(custodia.marcarDbInicializada(), falla);
+      await expectLater(custodia.reconstruirAlmacen(custodia.generarDek()), falla);
       await expectLater(custodia.olvidar(), falla);
     });
   });
 
-  group('SalCorruptaException', () {
-    test('cuando se imprime, dice el motivo sin el valor leído', () {
-      const falla = SalCorruptaException('no es base64');
-
-      expect(falla.toString(), 'SalCorruptaException(no es base64)');
-    });
+  test('las excepciones de la custodia dicen el motivo sin el valor leído', () {
+    expect(
+      const DekCorruptaException('no es base64').toString(),
+      'DekCorruptaException(no es base64)',
+    );
+    expect(
+      const MarcaInicializacionCorruptaException('x').toString(),
+      'MarcaInicializacionCorruptaException(x)',
+    );
+    expect(const SinEnvoltorioException().toString(), 'SinEnvoltorioException()');
   });
 
-  group('MarcaInicializacionCorruptaException', () {
-    test('cuando se imprime, dice el motivo sin el valor leído', () {
-      const falla = MarcaInicializacionCorruptaException('no es la marca esperada');
+  test('una DEK leída del almacén no comparte buffer con otra lectura', () async {
+    await custodia.guardarDek(ClaveDb(Uint8List.fromList(List<int>.filled(32, 9))));
 
-      expect(falla.toString(), 'MarcaInicializacionCorruptaException(no es la marca esperada)');
-    });
+    final a = await custodia.leerDek();
+    final b = await custodia.leerDek();
+    a!.destruir();
+
+    expect(b!.bytes, List<int>.filled(32, 9), reason: 'destruir una no rompe la otra');
   });
 }

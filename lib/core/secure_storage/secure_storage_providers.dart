@@ -1,16 +1,19 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'almacen_seguro.dart';
+import 'archivo_envoltorio_dek.dart';
 import 'clave_db.dart';
+import 'cripto_sodium.dart';
 import 'custodia_clave_db.dart';
 
 part 'secure_storage_providers.g.dart';
 
-// Cableado del almacén seguro (convenciones §1.2: el DI transversal vive en core/).
+// Cableado de la custodia de la DEK (convenciones §1.2: el DI transversal vive en core/).
 //
-// [almacenSeguroProvider] no tiene implementación por defecto —igual que los data sources de
-// auth—: `main.dart` lo sobreescribe con el adaptador real y los tests con el fake en memoria.
-// Así ninguna capa puede quedarse sin inyectar y, sobre todo, ningún test toca el Keystore.
+// [almacenSeguroProvider] y [archivoEnvoltorioDekProvider] no tienen implementación por defecto
+// —igual que los data sources de auth—: `main.dart` los sobreescribe con el Keystore y el
+// directorio reales, y los tests con fakes o un directorio temporal. Así ningún test toca el
+// Keystore ni el disco del dispositivo sin decirlo.
 
 @Riverpod(keepAlive: true)
 AlmacenSeguro almacenSeguro(Ref ref) {
@@ -18,17 +21,27 @@ AlmacenSeguro almacenSeguro(Ref ref) {
 }
 
 @Riverpod(keepAlive: true)
-CustodiaClaveDb custodiaClaveDb(Ref ref) => CustodiaClaveDb(ref.watch(almacenSeguroProvider));
-
-/// Derivación Argon2id de la clave de la DB local (ADR-003).
-///
-/// **Sin implementación todavía**: la librería de Argon2id y sus parámetros de costo son el
-/// Supuesto S11, pendiente de decisión (#26). Mientras tanto nadie lo sobreescribe en `main.dart` y
-/// leerlo falla, como los demás providers de infraestructura sin default, en lugar de derivar con
-/// algo que no se aprobó. Los tests lo sobreescriben con un fake.
-@Riverpod(keepAlive: true)
-ProveedorClaveDb proveedorClaveDb(Ref ref) {
-  throw UnimplementedError(
-    'proveedorClaveDbProvider: falta la implementación de Argon2id (Supuesto S11, #26)',
-  );
+ArchivoEnvoltorioDek archivoEnvoltorioDek(Ref ref) {
+  throw UnimplementedError('archivoEnvoltorioDekProvider se sobreescribe en main.dart');
 }
+
+/// libsodium (ADR-006). Sí tiene implementación por defecto: no toca ninguna plataforma, solo la
+/// biblioteca nativa que los build hooks empaquetan con la app (y compilan para los tests).
+@Riverpod(keepAlive: true)
+CriptoSodium criptoSodium(Ref ref) => CriptoSodium();
+
+/// Argon2id de la clave que envuelve la DEK (ADR-006, S11).
+@Riverpod(keepAlive: true)
+ProveedorClaveDb proveedorClaveDb(Ref ref) => ref.watch(criptoSodiumProvider);
+
+/// Cifrado autenticado de la DEK con esa clave.
+@Riverpod(keepAlive: true)
+SelladorDek selladorDek(Ref ref) => ref.watch(criptoSodiumProvider);
+
+@Riverpod(keepAlive: true)
+CustodiaClaveDb custodiaClaveDb(Ref ref) => CustodiaClaveDb(
+  ref.watch(almacenSeguroProvider),
+  ref.watch(archivoEnvoltorioDekProvider),
+  ref.watch(proveedorClaveDbProvider),
+  ref.watch(selladorDekProvider),
+);
