@@ -33,8 +33,18 @@ class DbLocalNotifier extends _$DbLocalNotifier {
   /// apertura en vuelo se iría sin cerrar nada (la DB quedaría abierta después del logout).
   bool _helperEnUso = false;
 
+  int _cierresPedidos = 0;
+
   @override
   AppDatabase? build() => null;
+
+  /// Cuántas veces se llamó a [cerrar] en este notifier, haya habido algo para cerrar o no.
+  ///
+  /// Es la señal con la que el flujo de HU-AUTH-009 detecta un cierre de sesión que llegó mientras
+  /// derivaba la clave, **antes** de pedir la apertura: ese [cerrar] no tiene nada que cerrar y
+  /// sale enseguida, y un [abrir] que llegue después dejaría la DB abierta sin sesión (revisión del
+  /// PR #44). Se cuenta al entrar a [cerrar], antes de cualquier `await` y sin condiciones.
+  int get cierresPedidos => _cierresPedidos;
 
   /// Abre la DB con [clave] (ver `DatabaseHelper.abrir` para los errores) y la publica.
   Future<AppDatabase> abrir(ClaveDb clave) async {
@@ -55,6 +65,7 @@ class DbLocalNotifier extends _$DbLocalNotifier {
   /// entornos donde la DB no se cableó (tests de widgets, Sprint 2). Una vez usado, siempre se le
   /// delega: `DatabaseHelper.cerrar` ya es no-op sin DB abierta.
   Future<void> cerrar() async {
+    _cierresPedidos++;
     if (!_helperEnUso) return;
     try {
       await ref.read(databaseHelperProvider).cerrar();

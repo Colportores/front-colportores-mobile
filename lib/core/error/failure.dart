@@ -86,3 +86,40 @@ final class FailureInesperado extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// El almacén seguro del dispositivo (Keystore/Keychain) falló, o lo que guarda no se puede
+/// interpretar (HU-AUTH-009). El mensaje es el que fija la HU.
+final class FailureAlmacenSeguro extends Failure {
+  const FailureAlmacenSeguro()
+    : super(
+        mensaje:
+            'No pudimos preparar el almacenamiento seguro. Probá reinstalar el app o consultá a '
+            'soporte.',
+        codigo: 'DB_ALMACEN_SEGURO',
+      );
+}
+
+/// No hay espacio en disco para crear la DB local (HU-AUTH-009). El mensaje es el que fija la HU.
+final class FailureSinEspacio extends Failure {
+  const FailureSinEspacio()
+    : super(mensaje: 'No hay espacio suficiente para preparar el app', codigo: 'DB_SIN_ESPACIO');
+}
+
+/// La clave derivada no abre la DB local que ya hay en el dispositivo: la contraseña no es la
+/// misma con la que se creó, o la sal guardada no corresponde a ese archivo.
+final class FailureClaveDbIncorrecta extends Failure {
+  const FailureClaveDbIncorrecta()
+    : super(
+        mensaje: 'No pudimos abrir los datos guardados en este dispositivo con esa contraseña',
+        codigo: 'DB_CLAVE_INCORRECTA',
+      );
+}
+
+/// La sesión se cerró (o no había) mientras se preparaba la DB local: no se abre nada sin sesión.
+final class FailureSesionCerrada extends Failure {
+  const FailureSesionCerrada()
+    : super(
+        mensaje: 'La sesión se cerró antes de terminar de preparar tus datos',
+        codigo: 'AUTH_SESION_CERRADA',
+      );
+}

@@ -71,14 +71,25 @@ final class ClaveDb {
   String toString() => 'ClaveDb(oculta)';
 }
 
-/// Puerto con el que la DB local cifrada pide su clave.
+/// Puerto que deriva la clave de la DB local desde la contraseña del usuario y la sal.
 ///
-/// Es la superficie que `DatabaseHelper` (#6) consume: pide la clave y no sabe de dónde sale.
-/// La implementación de producción deriva con **Argon2id** desde la contraseña del usuario y la
-/// sal de `CustodiaClaveDb` (ADR-003). Esa derivación **no** es parte de este wrapper: llega con
-/// HU-AUTH-009 (#27), donde también se cierra el Supuesto S11 —qué implementación de Argon2id se
-/// usa— y se fijan sus parámetros de costo.
+/// Lo consume el flujo de inicialización de HU-AUTH-009 (`DbLocalRepositoryImpl`), que después le
+/// pasa la clave a `DatabaseHelper.abrir`: el helper recibe la clave ya derivada y no sabe de dónde
+/// sale.
+///
+/// La implementación de producción deriva con **Argon2id** (ADR-003) y **todavía no existe**: qué
+/// implementación de Argon2id se usa y con qué parámetros de costo es el Supuesto S11, pendiente de
+/// decisión (#26). Hasta entonces `proveedorClaveDbProvider` no tiene implementación por defecto.
+///
+/// Lo que la implementación tiene que cumplir, venga de donde venga:
+/// - Devolver 32 bytes (AES-256) en un buffer **mutable**, que [ClaveDb] exige para poder
+///   destruirlo.
+/// - Ser determinista: la misma contraseña con la misma sal da la misma clave, o la DB creada en
+///   el primer login no se vuelve a abrir.
+/// - No bloquear el isolate de la UI: la derivación tarda ~200–500 ms (HU-AUTH-009, riesgo R13).
+/// - No poner nunca la contraseña ni la clave en un log ni en el mensaje de una excepción.
+/// - Lanzar una `Exception` si falla: el consumidor la traduce a `Failure`.
 abstract interface class ProveedorClaveDb {
-  /// Clave con la que abrir la DB local. Solo vive en memoria volátil.
-  Future<ClaveDb> claveDb();
+  /// Clave derivada de [password] y [sal]. Solo vive en memoria volátil.
+  Future<ClaveDb> derivar({required String password, required Uint8List sal});
 }
