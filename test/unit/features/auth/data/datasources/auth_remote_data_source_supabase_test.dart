@@ -14,6 +14,8 @@ import '../../../../../helpers/logger_mudo.dart';
 
 class _MockGoTrueClient extends Mock implements GoTrueClient {}
 
+class _MockGoTrueAdminApi extends Mock implements GoTrueAdminApi {}
+
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
 class _FakeUser extends Fake implements User {
@@ -481,7 +483,8 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.cerrarSesion', () {
-    test('cuando cierra sesión, llama a signOut', () async {
+    test('dado que la sesión es la del cliente, cuando cierra sesión, llama a signOut', () async {
+      when(() => auth.currentSession).thenReturn(sesionSupabase());
       when(() => auth.signOut()).thenAnswer((_) async {});
 
       await dataSource().cerrarSesion('jwt');
@@ -490,9 +493,23 @@ void main() {
     });
 
     test('dado que no hay red, lanza SinConexionException', () {
+      when(() => auth.currentSession).thenReturn(sesionSupabase());
       when(() => auth.signOut()).thenThrow(AuthRetryableFetchException(message: 'x'));
 
       expect(() => dataSource().cerrarSesion('jwt'), throwsA(isA<SinConexionException>()));
+    });
+
+    test('dado una revocación pendiente (el cliente ya soltó la sesión), cuando reintenta, revoca '
+        'por el token', () async {
+      final admin = _MockGoTrueAdminApi();
+      when(() => auth.currentSession).thenReturn(null);
+      when(() => auth.admin).thenReturn(admin);
+      when(() => admin.signOut('jwt-viejo')).thenAnswer((_) async {});
+
+      await dataSource().cerrarSesion('jwt-viejo');
+
+      verify(() => admin.signOut('jwt-viejo')).called(1);
+      verifyNever(() => auth.signOut());
     });
   });
 

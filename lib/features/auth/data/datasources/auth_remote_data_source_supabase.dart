@@ -152,7 +152,17 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   }
 
   @override
-  Future<void> cerrarSesion(String accessToken) => _traduciendo(() => _auth.signOut());
+  Future<void> cerrarSesion(String accessToken) => _traduciendo(() async {
+    // Primer intento, con la sesión todavía en el cliente: `signOut` revoca y además limpia la
+    // copia que guarda Supabase. Reintento de una revocación pendiente (HU-AUTH-006, sin red): el
+    // cliente ya no tiene esa sesión (`signOut` la suelta antes de llamar al servidor), así que se
+    // revoca por el token — el mismo `POST /logout` que usa `signOut` por dentro.
+    if (_auth.currentSession?.accessToken == accessToken) {
+      await _auth.signOut();
+    } else {
+      await _auth.admin.signOut(accessToken);
+    }
+  });
 
   @override
   Future<void> reenviarVerificacion(String email) => _traduciendo(

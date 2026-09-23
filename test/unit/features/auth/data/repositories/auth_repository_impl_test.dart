@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
@@ -592,18 +593,50 @@ void main() {
     test('cuando hay conexión, cierra remoto y borra la sesión local', () async {
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.completo),
+      );
       expect(remote.llamadasCerrarSesion, 1);
       expect(await local.leerSesion(), isNull);
     });
 
-    test('cuando no hay conexión, igual borra la sesión local', () async {
+    test('cuando no hay conexión, borra la sesión local y deja la revocación pendiente', () async {
       remote.simularSinConexion = true;
 
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
+      );
       expect(await local.leerSesion(), isNull);
+    });
+
+    test(
+      'dado una revocación pendiente, cuando vuelve la red, la reintenta una sola vez',
+      () async {
+        remote.simularSinConexion = true;
+        await repository.cerrarSesion();
+        final llamadas = remote.llamadasCerrarSesion;
+
+        expect(
+          await repository.reintentarRevocacionPendiente(),
+          const Left<Failure, Unit>(FailureSinConexion()),
+          reason: 'sin red sigue pendiente',
+        );
+
+        remote.simularSinConexion = false;
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+
+        expect(remote.llamadasCerrarSesion, llamadas + 1);
+      },
+    );
+
+    test('sin revocación pendiente, reintentar no llama al remoto', () async {
+      expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+      expect(remote.llamadasCerrarSesion, 0);
     });
   });
 
