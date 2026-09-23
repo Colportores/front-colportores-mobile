@@ -102,6 +102,35 @@ final class FailureHoraFueraDeRango extends Failure {
   }
 }
 
+/// Hay [cantidad] operaciones sin sincronizar y la acción las perdería (HU-AUTH-010). Perder el
+/// trabajo de un colportor no se revierte: ante eso, se bloquea en vez de borrar.
+final class FailureDatosSinSincronizar extends Failure {
+  const FailureDatosSinSincronizar(this.cantidad)
+    : super(
+        mensaje:
+            'Hay cambios en este teléfono que todavía no se subieron. Conectate a internet y '
+            'esperá a que se sincronicen antes de borrar.',
+        codigo: 'DATOS_SIN_SINCRONIZAR',
+      );
+
+  final int cantidad;
+
+  @override
+  List<Object?> get props => [...super.props, cantidad];
+}
+
+/// No se pudo saber qué hay guardado en el teléfono (por ejemplo, la DB existe pero no está
+/// abierta). Quien borra no borra: sin el conteo no se sabe si se pierde trabajo sin subir.
+final class FailureDatosLocalesIlegibles extends Failure {
+  const FailureDatosLocalesIlegibles()
+    : super(
+        mensaje:
+            'No pudimos revisar los datos de este teléfono, así que no borramos nada. Cerrá la '
+            'app, volvé a entrar y reintentá.',
+        codigo: 'DATOS_LOCALES_ILEGIBLES',
+      );
+}
+
 /// No hay red o el servidor no respondió. La operación puede reintentarse.
 final class FailureSinConexion extends Failure {
   const FailureSinConexion()
