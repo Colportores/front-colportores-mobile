@@ -9,13 +9,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// [RecuperacionPasswordPage] aislada (sin [ColportoresApp]) — mismo criterio que
-/// `verificacion_email_page_test.dart`.
-Widget _pagina({ThemeData? tema, required AuthRemoteDataSourceEnMemoria remote}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(remote),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: MaterialApp(theme: tema ?? temaClaro(), home: const RecuperacionPasswordPage()),
+/// `login_page_test.dart`.
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPagina(
+  WidgetTester tester, {
+  ThemeData? tema,
+  required AuthRemoteDataSourceEnMemoria remote,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+    ],
+    child: MaterialApp(theme: tema ?? temaClaro(), home: const RecuperacionPasswordPage()),
+  ),
 );
 
 const _mensajeNeutro = 'Si el email está registrado, te enviamos un enlace de recuperación';
@@ -42,11 +52,11 @@ void main() {
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
 
-      await tester.pumpWidget(_pagina(tema: temaClaro(), remote: remote));
+      await _montarPagina(tester, tema: temaClaro(), remote: remote);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
-      await tester.pumpWidget(_pagina(tema: temaOscuro(), remote: remote));
+      await _montarPagina(tester, tema: temaOscuro(), remote: remote);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -55,7 +65,7 @@ void main() {
   group('RecuperacionPasswordPage — advertencia y casilla', () {
     testWidgets('muestra la advertencia literal de la HU antes de enviar', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('recuperacion_password_aviso')), findsOneWidget);
@@ -66,7 +76,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -100,7 +110,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarYAceptar(tester);
@@ -134,7 +144,7 @@ void main() {
       tester,
     ) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarYAceptar(tester, email: 'noexiste@correo.com');
@@ -148,7 +158,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       )..fallaAlSolicitarRecuperacion = const ServidorException(status: 429);
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarYAceptar(tester);
@@ -165,7 +175,7 @@ void main() {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       )..simularSinConexion = true;
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarYAceptar(tester);
@@ -192,7 +202,7 @@ void main() {
               status: 500,
               mensaje: 'El servidor no pudo procesar la solicitud',
             );
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await _completarYAceptar(tester);
@@ -204,7 +214,7 @@ void main() {
 
     testWidgets('email vacío: error de validación en el campo', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await tester.pumpWidget(_pagina(remote: remote));
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('recuperacion_password_checkbox')));
