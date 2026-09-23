@@ -13,6 +13,13 @@ final class IniciarSesionParams extends Equatable {
   final String email;
   final String password;
 
+  /// [props] lleva el email y la contraseña en texto plano; `EquatableConfig.stringify` arranca
+  /// en `true` en debug, así que sin esto cualquier interpolación de estos params (típicamente en
+  /// un log de error o una excepción cuando el login falla) filtraría la contraseña
+  /// (convenciones-desarrollo.md §7.5).
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [email, password];
 }

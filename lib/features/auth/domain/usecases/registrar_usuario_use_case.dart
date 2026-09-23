@@ -24,6 +24,12 @@ final class RegistrarUsuarioParams extends Equatable {
   final String password;
   final bool aceptaTerminos;
 
+  /// [props] lleva cédula, email y la contraseña en texto plano; `EquatableConfig.stringify`
+  /// arranca en `true` en debug, así que sin esto cualquier interpolación de estos params
+  /// filtraría esos datos (convenciones-desarrollo.md §7.5).
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [nombre, apellido, cedula, email, password, aceptaTerminos];
 }

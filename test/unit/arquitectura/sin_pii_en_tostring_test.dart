@@ -6,8 +6,11 @@
 // apagan `stringify`; esto lo verifica con la config en `true`, que es el peor caso.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/iniciar_sesion_use_case.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/registrar_usuario_use_case.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
@@ -88,6 +91,52 @@ void main() {
 
       expect(texto, isNot(contains('jwt-super-secreto')));
       expect(texto, isNot(contains('matias@example.com')));
+    });
+
+    test('dado un IniciarSesionParams, cuando se interpola, no aparecen el email ni la '
+        'contraseña', () {
+      const params = IniciarSesionParams(email: 'matias@example.com', password: 'Secreta123');
+
+      final texto = '$params';
+
+      expect(texto, isNot(contains('matias@example.com')));
+      expect(texto, isNot(contains('Secreta123')));
+    });
+
+    test('dado un RegistrarUsuarioParams, cuando se interpola, no aparecen nombre, cedula, '
+        'email ni contraseña', () {
+      const params = RegistrarUsuarioParams(
+        nombre: 'Matias',
+        apellido: 'Sosa',
+        cedula: '48123456',
+        email: 'matias@example.com',
+        password: 'Secreta123',
+        aceptaTerminos: true,
+      );
+
+      final texto = '$params';
+
+      expect(texto, isNot(contains('Matias')));
+      expect(texto, isNot(contains('48123456')));
+      expect(texto, isNot(contains('matias@example.com')));
+      expect(texto, isNot(contains('Secreta123')));
+    });
+
+    test('dado un ResultadoRegistro, cuando se interpola, no aparece el email', () {
+      final resultado = ResultadoRegistro(
+        sesion: Sesion(
+          usuarioId: 'u-1',
+          email: 'matias@example.com',
+          accessToken: 'jwt-super-secreto',
+          expiraEn: DateTime(2026, 9, 18),
+        ),
+        email: 'matias@example.com',
+      );
+
+      final texto = '$resultado';
+
+      expect(texto, isNot(contains('matias@example.com')));
+      expect(texto, isNot(contains('jwt-super-secreto')));
     });
 
     test('dado que se apaga stringify, cuando se comparan dos entidades iguales, siguen siendo '
