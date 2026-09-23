@@ -75,18 +75,22 @@ Cuando el fixture se comparte entre varios archivos de test (p. ej. un logger mu
 
 ## 5. Tests de `arquitectura/`
 
-No prueban una feature: escanean `lib/` completo para verificar una regla transversal, y fallan
-si algún archivo nuevo la rompe (así la regla no depende de que el reviewer se acuerde de
-chequearla a mano). Los tres que existen hoy:
+Verifican una regla transversal, no una feature puntual — pero **no los tres de la misma forma**.
+Son dos mecanismos distintos, e importa la diferencia porque define si un archivo nuevo queda
+cubierto solo o si alguien tiene que acordarse de sumarlo a mano:
 
-| Archivo | Qué verifica |
-|---|---|
-| [`dominio_puro_test.dart`](unit/arquitectura/dominio_puro_test.dart) | ADR-009: ningún archivo bajo `*/domain/` (features) ni `core/{domain,error,usecases}` importa Flutter, Riverpod, Drift, Supabase o HTTP. |
-| [`fechas_utc_test.dart`](unit/arquitectura/fechas_utc_test.dart) | Toda entidad normaliza sus `DateTime` a UTC en el constructor (evita el bug de `hashCode` que no distingue `isUtc`). |
-| [`sin_pii_en_tostring_test.dart`](unit/arquitectura/sin_pii_en_tostring_test.dart) | convenciones-desarrollo.md §7.5: ninguna entidad con campos sensibles filtra PII por `toString()` (fuerza `EquatableConfig.stringify = true`, el peor caso). |
+| Archivo | Qué verifica | Cómo |
+|---|---|---|
+| [`dominio_puro_test.dart`](unit/arquitectura/dominio_puro_test.dart) | ADR-009: ningún archivo bajo `*/domain/` (features) ni `core/{domain,error,usecases}` importa Flutter, Riverpod, Drift, Supabase o HTTP. | **Barre el árbol**: `_directoriosDeDominio()` + `listSync(recursive: true)` sobre `lib/`. Un archivo nuevo queda cubierto solo, sin tocar el test. |
+| [`fechas_utc_test.dart`](unit/arquitectura/fechas_utc_test.dart) | Toda entidad *conocida* normaliza sus `DateTime` a UTC en el constructor (evita el bug de `hashCode` que no distingue `isUtc`). | **Lista manual**: un `import` y un caso por entidad, escritos a mano. No escanea nada. |
+| [`sin_pii_en_tostring_test.dart`](unit/arquitectura/sin_pii_en_tostring_test.dart) | convenciones-desarrollo.md §7.5: ninguna entidad *conocida* con campos sensibles filtra PII por `toString()` (fuerza `EquatableConfig.stringify = true`, el peor caso). | **Lista manual**, igual que el anterior: un caso por entidad ya agregada a mano. No escanea nada. |
 
-Si agregás una entidad o un caso de uso nuevo, estos tests corren solos sobre el código nuevo —
-no hace falta escribir un test de arquitectura por feature.
+Solo `dominio_puro_test.dart` corre solo sobre código nuevo. **Si tu entidad tiene un campo
+`DateTime` o PII (email, teléfono, cédula, nombre, notas, tokens) en `props`, sumala a mano a
+`fechas_utc_test.dart` y/o `sin_pii_en_tostring_test.dart`** — si no la agregás, la suite pasa en
+verde igual, sin que esa entidad esté cubierta. Convertir estos dos en barridos automáticos
+(recorrer el árbol y fallar ante cualquier `props` con un nombre de campo sensible o un
+`DateTime`) es una decisión abierta de Cristian, ya anotada en el issue #43 — no se resuelve acá.
 
 ## 6. Mocking: dos técnicas, cada una con su rol
 
@@ -103,14 +107,33 @@ when(() => repository.iniciarSesion(email: any(named: 'email'), password: any(na
 ```
 
 Para la capa `data` (repository impl contra sus datasources), el patrón es distinto: **fakes en
-memoria** hechos a mano que implementan la interfaz real (`.../data/datasources/fakes/`), más
-clases fake puntuales por archivo de test cuando hace falta simular un caso límite (p. ej.
-`_RemoteQueLanzaExcepcionGenerica` en
+memoria** hechos a mano que implementan la interfaz real. El ejemplo real,
+[`lib/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart`](../lib/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart),
+vive en **`lib/`, no en `test/`** — a propósito, según su propio doc-comment: es de doble uso,
+sirve tanto para desarrollar la UI contra un backend inexistente (modo demo de la app) como para
+los tests del repositorio, y `main.dart` recién lo reemplaza por la implementación Supabase en
+Sprint 3. Además hay clases fake puntuales por archivo de test cuando hace falta simular un caso
+límite (p. ej. `_RemoteQueLanzaExcepcionGenerica` en
 [`auth_repository_impl_test.dart`](unit/features/auth/data/repositories/auth_repository_impl_test.dart),
-que fuerza una excepción no tipada para probar el mapeo a `FailureInesperado`). No es una
-inconsistencia: mocktail sirve para "no me importa el comportamiento, solo qué se llamó";
-el fake en memoria sirve para "necesito comportamiento real pero sin infraestructura" (sin
-Supabase, sin Drift). Elegí según qué está probando el test.
+que fuerza una excepción no tipada para probar el mapeo a `FailureInesperado`) — esas sí viven en
+`test/`, junto al test que las usa. No es una inconsistencia entre mocktail y fakes: mocktail
+sirve para "no me importa el comportamiento, solo qué se llamó"; el fake en memoria sirve para
+"necesito comportamiento real pero sin infraestructura" (sin Supabase, sin Drift). Elegí según
+qué está probando el test.
+
+**Lo que no hay todavía** es un ejemplo de fake que sea *solo* para tests, sin el doble uso de
+demo de arriba — el repo no tiene ninguno. Para ese caso no existe convención (dónde vive, cómo
+se nombra) y este README no la inventa: queda como pregunta abierta para Cristian (comentario en
+el issue #9).
+
+**Nota sobre skills instaladas**: el repo tiene `.claude/skills/dart-generate-test-mocks/SKILL.md`,
+que recomienda `package:mockito` + `@GenerateNiceMocks` + `build_runner` para generar mocks. La
+convención efectiva del código es la de arriba, **mocktail**, no mockito: 6 archivos importan
+`package:mocktail`, cero importan `package:mockito` (que solo aparece transitivo en
+`pubspec.lock`). Un agente que cargue esa skill sin leer este README va a mockear con mockito y
+meter un estilo distinto al resto de la suite. Si conviene ajustar el contenido de la skill o
+desinstalarla para que deje de contradecir la convención real, lo decide Cristian (mismo
+comentario del issue #9) — este README no toca la skill.
 
 `test/helpers/logger_mudo.dart` es el ejemplo de fixture compartida: un `AppLogger` con nivel
 `off` para no ensuciar la salida de los tests que reciben un logger inyectado.
