@@ -8,6 +8,7 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
 import '../../domain/entities/jornada.dart';
+import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
@@ -16,15 +17,17 @@ import '../providers/jornada_providers.dart';
 /// Texto literal del criterio de aceptación "Bloqueo - jornada ya activa" (HU-JOR-001).
 const textoBloqueoJornadaActiva = 'Tenés una jornada en curso. Cerrala antes de iniciar otra.';
 
-/// Pantalla principal: la jornada de trabajo del colportor (HU-JOR-001).
+/// Pantalla principal: la jornada de trabajo del colportor (HU-JOR-001 y HU-JOR-002).
 ///
 /// Sin jornada muestra "Iniciar jornada" (con la hora ajustable hasta 30 minutos hacia atrás);
-/// con una en curso cambia a "Jornada activa" y bloquea iniciar otra. Va sin diseño de Claude
-/// Design, con el tema y los componentes de login/registro (decisión del 22/09 para las vistas
-/// del Sprint 4).
+/// con una en curso cambia a "Jornada activa", bloquea iniciar otra y ofrece "Finalizar jornada"
+/// (con la hora de fin ajustable hasta 30 minutos hacia atrás, sin pasar del inicio). Al
+/// finalizar muestra el resumen: por ahora solo las horas; casas visitadas, ventas y cobros
+/// llegan con sus módulos (#74, #75). Va sin diseño de Claude Design, con el tema y los
+/// componentes de login/registro (decisión del 22/09 para las vistas del Sprint 4).
 ///
-/// Todo es local (offline-first): iniciar la jornada no necesita conexión, así que no hay aviso
-/// de "sin conexión".
+/// Todo es local (offline-first): iniciar o finalizar la jornada no necesita conexión, así que no
+/// hay aviso de "sin conexión".
 class JornadaPage extends ConsumerStatefulWidget {
   const JornadaPage({super.key, required this.sesion});
 
@@ -43,6 +46,15 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   bool _ajustandoHora = false;
   bool _iniciando = false;
   String? _error;
+
+  /// Cuántos minutos hacia atrás eligió el colportor para el fin (0 = ahora).
+  int _minutosAtrasFin = 0;
+  bool _ajustandoHoraFin = false;
+  bool _finalizando = false;
+  String? _errorFin;
+
+  /// La jornada que se acaba de cerrar, para el resumen; se va al iniciar otra.
+  Jornada? _finalizada;
 
   @override
   void initState() {
@@ -82,6 +94,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         case null:
           _minutosAtras = 0;
           _ajustandoHora = false;
+          _finalizada = null;
         case FailureJornadaActiva():
           // La pantalla se relee y pasa a "Jornada activa", que ya muestra el bloqueo literal.
           break;
@@ -92,6 +105,53 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
               'No pudimos guardar el inicio de tu jornada. Probá de nuevo; si sigue pasando, '
               'cerrá y volvé a abrir la app.';
       }
+    });
+  }
+
+  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio.
+  static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
+    final desdeInicio = _menosMinutos(ahora, 0).difference(jornada.inicio).inMinutes;
+    return desdeInicio.clamp(0, FinalizarJornadaUseCase.margenHaciaAtras.inMinutes);
+  }
+
+  /// La hora de fin elegida a mano, al principio de su minuto, o `null` si es "ahora".
+  DateTime? _horaElegidaFin(Jornada jornada, DateTime ahora) {
+    final minutos = _minutosAtrasFin.clamp(0, _maximoAtrasFin(jornada, ahora));
+    return minutos == 0 ? null : _menosMinutos(ahora, minutos);
+  }
+
+  Future<void> _finalizar(Jornada jornada) async {
+    if (_finalizando) return;
+    final ahora = ref.read(relojJornadaProvider)();
+    setState(() {
+      _finalizando = true;
+      _errorFin = null;
+    });
+
+    final resultado = await ref
+        .read(jornadaActualProvider(widget.sesion.usuarioId).notifier)
+        .finalizar(hora: _horaElegidaFin(jornada, ahora));
+
+    if (!mounted) return;
+    setState(() {
+      _finalizando = false;
+      resultado.fold<void>(
+        (failure) => _errorFin = switch (failure) {
+          // La pantalla se relee y muestra lo que hay guardado.
+          FailureSinJornadaActiva() => null,
+          FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
+          FailureValidacion(:final mensaje) => mensaje,
+          Failure() =>
+            'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
+                'pasando, cerrá y volvé a abrir la app.',
+        },
+        (cerrada) {
+          _finalizada = cerrada;
+          _minutosAtrasFin = 0;
+          _ajustandoHoraFin = false;
+          _error = null;
+        },
+      );
     });
   }
 
@@ -158,7 +218,11 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
                     ),
                     data: (jornada) => jornada == null
                         ? _sinJornada(context, ahora)
-                        : _JornadaActiva(jornada: jornada, ahora: ahora),
+                        : _JornadaActiva(
+                            jornada: jornada,
+                            ahora: ahora,
+                            finalizar: _accionesFin(jornada, ahora),
+                          ),
                   ),
                 ],
               ),
@@ -178,6 +242,10 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_finalizada case final finalizada?) ...[
+          _ResumenJornada(jornada: finalizada),
+          const SizedBox(height: 14),
+        ],
         const _TarjetaEstado(
           icono: Icons.wb_sunny_outlined,
           titulo: 'Sin jornada en curso',
@@ -185,6 +253,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         ),
         const SizedBox(height: 14),
         _SelectorHora(
+          etiqueta: 'HORA DE INICIO',
+          prefijoSemantico: 'Inicio',
+          ayuda:
+              'Podés marcar el inicio hasta ${IniciarJornadaUseCase.margenHaciaAtras.inMinutes} '
+              'minutos hacia atrás.',
+          maximo: IniciarJornadaUseCase.margenHaciaAtras.inMinutes,
           textoHora: textoHora,
           ajustando: _ajustandoHora,
           minutosAtras: _minutosAtras,
@@ -211,6 +285,60 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
                 )
               : const Icon(Icons.play_arrow_rounded),
           label: Text(_iniciando ? 'Iniciando…' : 'Iniciar jornada'),
+        ),
+      ],
+    );
+  }
+
+  /// Hora de fin + "Finalizar jornada", dentro de "Jornada activa" (HU-JOR-002).
+  Widget _accionesFin(Jornada jornada, DateTime ahora) {
+    final maximo = _maximoAtrasFin(jornada, ahora);
+    final elegida = _horaElegidaFin(jornada, ahora);
+    final minutos = elegida == null ? 0 : _minutosAtrasFin.clamp(0, maximo);
+    final textoHora = elegida == null
+        ? 'Ahora · ${horaCorta(ahora)}'
+        : '${horaCorta(elegida)} · hace $minutos min';
+    final margen = FinalizarJornadaUseCase.margenHaciaAtras.inMinutes;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SelectorHora(
+          sufijoKey: '_fin',
+          etiqueta: 'HORA DE FIN',
+          prefijoSemantico: 'Fin',
+          ayuda: maximo < margen
+              ? 'Podés marcar el fin hasta $maximo minutos hacia atrás: tu jornada empezó a las '
+                    '${horaCorta(jornada.inicio)}.'
+              : 'Podés marcar el fin hasta $margen minutos hacia atrás.',
+          maximo: maximo,
+          textoHora: textoHora,
+          ajustando: _ajustandoHoraFin && maximo > 0,
+          minutosAtras: minutos,
+          horaPara: (m) => m == 0 ? horaCorta(ahora) : horaCorta(_menosMinutos(ahora, m)),
+          onAlternar: _finalizando || maximo == 0
+              ? null
+              : () => setState(() => _ajustandoHoraFin = !_ajustandoHoraFin),
+          onCambiar: (m) => setState(() {
+            _minutosAtrasFin = m;
+            _errorFin = null;
+          }),
+        ),
+        const SizedBox(height: 22),
+        if (_errorFin case final error?) ...[
+          _Aviso(key: const Key('jornada_error_fin'), texto: error, esError: true),
+          const SizedBox(height: 14),
+        ],
+        FilledButton.icon(
+          key: const Key('jornada_finalizar'),
+          onPressed: _finalizando ? null : () => _finalizar(jornada),
+          icon: _finalizando
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.stop_rounded),
+          label: Text(_finalizando ? 'Finalizando…' : 'Finalizar jornada'),
         ),
       ],
     );
@@ -330,12 +458,14 @@ class _TarjetaEstado extends StatelessWidget {
   }
 }
 
-/// "Jornada activa": desde qué hora y cuánto lleva, y el bloqueo de iniciar otra.
+/// "Jornada activa": desde qué hora y cuánto lleva, cómo finalizarla ([finalizar]) y el bloqueo
+/// de iniciar otra.
 class _JornadaActiva extends StatelessWidget {
-  const _JornadaActiva({required this.jornada, required this.ahora});
+  const _JornadaActiva({required this.jornada, required this.ahora, required this.finalizar});
 
   final Jornada jornada;
   final DateTime ahora;
+  final Widget finalizar;
 
   @override
   Widget build(BuildContext context) {
@@ -364,6 +494,8 @@ class _JornadaActiva extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 14),
+        finalizar,
         const SizedBox(height: 22),
         FilledButton.icon(
           key: const Key('jornada_iniciar'),
@@ -380,9 +512,15 @@ class _JornadaActiva extends StatelessWidget {
   }
 }
 
-/// La hora de inicio: "ahora" por defecto, o hasta 30 minutos hacia atrás con el deslizador.
+/// La hora de inicio o de fin: "ahora" por defecto, o hasta [maximo] minutos hacia atrás con el
+/// deslizador.
 class _SelectorHora extends StatelessWidget {
   const _SelectorHora({
+    this.sufijoKey = '',
+    required this.etiqueta,
+    required this.prefijoSemantico,
+    required this.ayuda,
+    required this.maximo,
     required this.textoHora,
     required this.ajustando,
     required this.minutosAtras,
@@ -391,6 +529,16 @@ class _SelectorHora extends StatelessWidget {
     required this.onCambiar,
   });
 
+  /// Distingue las keys del selector de fin (`_fin`) de las del de inicio.
+  final String sufijoKey;
+  final String etiqueta;
+
+  /// "Inicio" / "Fin": lo que lee el lector de pantalla antes de la hora del deslizador.
+  final String prefijoSemantico;
+  final String ayuda;
+
+  /// Minutos hacia atrás que ofrece el deslizador; con 0 no se muestra.
+  final int maximo;
   final String textoHora;
   final bool ajustando;
   final int minutosAtras;
@@ -404,7 +552,6 @@ class _SelectorHora extends StatelessWidget {
     final colores = theme.extension<ColoresColportaje>()!;
     final esOscuro = theme.brightness == Brightness.dark;
     final esquema = theme.colorScheme;
-    final maximo = IniciarJornadaUseCase.margenHaciaAtras.inMinutes;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
@@ -425,45 +572,105 @@ class _SelectorHora extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'HORA DE INICIO',
+                      etiqueta,
                       style: theme.textTheme.labelMedium?.copyWith(color: colores.gris),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       textoHora,
-                      key: const Key('jornada_hora'),
+                      key: Key('jornada_hora$sufijoKey'),
                       style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
               ),
               TextButton(
-                key: const Key('jornada_ajustar_hora'),
+                key: Key('jornada_ajustar_hora$sufijoKey'),
                 onPressed: onAlternar,
                 child: Text(ajustando ? 'Listo' : 'Cambiar'),
               ),
             ],
           ),
-          if (ajustando) ...[
+          if (ajustando && maximo > 0) ...[
             const SizedBox(height: 8),
             Slider(
-              key: const Key('jornada_selector_hora'),
+              key: Key('jornada_selector_hora$sufijoKey'),
               min: -maximo.toDouble(),
               max: 0,
               divisions: maximo,
               value: -minutosAtras.toDouble(),
               label: horaPara(minutosAtras),
-              semanticFormatterCallback: (valor) => 'Inicio a las ${horaPara(-valor.round())}',
+              semanticFormatterCallback: (valor) =>
+                  '$prefijoSemantico a las ${horaPara(-valor.round())}',
               onChanged: (valor) => onCambiar(-valor.round()),
             ),
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                'Podés marcar el inicio hasta $maximo minutos hacia atrás.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
-              ),
+              child: Text(ayuda, style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris)),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Resumen de la jornada recién cerrada (HU-JOR-002: "se muestra resumen"). Por ahora solo las
+/// horas: casas visitadas, ventas y cobros llegan con sus módulos (Sprints 8-11, #74).
+class _ResumenJornada extends StatelessWidget {
+  const _ResumenJornada({required this.jornada});
+
+  final Jornada jornada;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    final esOscuro = theme.brightness == Brightness.dark;
+    final esquema = theme.colorScheme;
+    final fin = jornada.fin ?? jornada.inicio;
+    final duracion = jornada.duracion ?? Duration.zero;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: esOscuro ? colores.inputRelleno : esquema.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colores.borde, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: esquema.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    'Jornada finalizada',
+                    key: const Key('jornada_resumen'),
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'De las ${horaCorta(jornada.inicio)} a las ${horaCorta(fin)}',
+            key: const Key('jornada_resumen_horario'),
+            style: theme.textTheme.bodyLarge?.copyWith(color: colores.gris),
+          ),
+          const SizedBox(height: 14),
+          Text('TRABAJASTE', style: theme.textTheme.labelMedium?.copyWith(color: colores.gris)),
+          const SizedBox(height: 4),
+          Text(
+            duracionCorta(duracion),
+            key: const Key('jornada_resumen_duracion'),
+            style: theme.textTheme.headlineMedium,
+          ),
         ],
       ),
     );

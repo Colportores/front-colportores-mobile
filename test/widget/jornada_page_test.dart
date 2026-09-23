@@ -1,4 +1,5 @@
-// Pantalla principal: iniciar jornada (HU-JOR-001, #71). Un test por escenario de aceptación
+// Pantalla principal: iniciar jornada (HU-JOR-001, #71) y finalizarla (HU-JOR-002, #75). Un test
+// por escenario de aceptación
 // con el texto literal de la HU, los estados de la pantalla y la accesibilidad (tamaño de toque,
 // etiquetas, contraste y texto al 200 %).
 import 'dart:async';
@@ -10,6 +11,7 @@ import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jorna
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source.dart';
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
 import 'package:colportores_mobile/features/jornada/domain/entities/jornada.dart';
+import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/presentation/pages/jornada_page.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +43,10 @@ final class _DataSource implements JornadaLocalDataSource {
   Completer<void>? demoraInsercion;
   Object? errorAlInsertar;
 
+  /// Si no es `null`, el cierre espera a que se complete (estado "finalizando").
+  Completer<void>? demoraFinalizar;
+  Object? errorAlFinalizar;
+
   /// Cuántas lecturas más devuelven "sin jornada" aunque haya una abierta: simula otra jornada
   /// que se abrió mientras la pantalla mostraba "Sin jornada en curso".
   int lecturasSinVer = 0;
@@ -64,6 +70,21 @@ final class _DataSource implements JornadaLocalDataSource {
     if (errorAlInsertar case final error?) throw error;
     return _real.insertar(jornada);
   }
+
+  @override
+  Future<void> finalizar(JornadaModel jornada) async {
+    if (demoraFinalizar case final demora?) await demora.future;
+    if (errorAlFinalizar case final error?) throw error;
+    return _real.finalizar(jornada);
+  }
+}
+
+/// Registra los pedidos de backup: el motor real (HU-SYNC-005) decide si hay Wi-Fi y batería.
+final class _BackupFalso implements DisparadorBackup {
+  final List<String> pedidos = [];
+
+  @override
+  Future<void> solicitar(String colportorId) async => pedidos.add(colportorId);
 }
 
 JornadaModel _jornadaAbiertaDesde(DateTime inicio) => JornadaModel.fromEntity(
@@ -82,10 +103,12 @@ Future<void> _montar(
   ThemeData? tema,
   double escalaTexto = 1,
   DateTime Function()? reloj,
+  _BackupFalso? backup,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
       jornadaLocalDataSourceProvider.overrideWithValue(dataSource),
+      disparadorBackupProvider.overrideWithValue(backup ?? _BackupFalso()),
       relojJornadaProvider.overrideWithValue(reloj ?? () => _ahora),
     ],
     child: MaterialApp(
@@ -107,6 +130,15 @@ void _pantalla(WidgetTester tester, Size tamanio) {
 
 FilledButton _botonIniciar(WidgetTester tester) =>
     tester.widget<FilledButton>(find.byKey(const Key('jornada_iniciar')));
+
+FilledButton _botonFinalizar(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.byKey(const Key('jornada_finalizar')));
+
+Future<void> _tocarFinalizar(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('jornada_finalizar')));
+  await tester.tap(find.byKey(const Key('jornada_finalizar')));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   group('HU-JOR-001 — criterios de aceptación', () {
@@ -342,29 +374,193 @@ void main() {
     });
   });
 
+  group('HU-JOR-002 — criterios de aceptación', () {
+    testWidgets('Escenario: Fin de jornada con backup — Dado que tengo jornada activa con Wi-Fi '
+        'disponible, Cuando finalizo, Entonces `hora_fin = now()` Y se dispara backup nocturno Y '
+        'se muestra resumen', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      );
+      final backup = _BackupFalso();
+      await _montar(tester, dataSource, backup: backup);
+      await tester.pumpAndSettle();
+      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.text('Finalizar jornada'), findsOneWidget);
+
+      await _tocarFinalizar(tester);
+
+      final cerrada = dataSource.jornadas.single;
+      expect(cerrada.fin, _ahora.toUtc());
+      expect(cerrada.estaAbierta, isFalse);
+      // El backup se pide al motor (HU-SYNC-005), que es el que mira Wi-Fi y batería.
+      expect(backup.pedidos, ['u-1']);
+      expect(find.text('Jornada finalizada'), findsOneWidget);
+      expect(find.text('De las 13:15 a las 14:35'), findsOneWidget);
+      expect(find.text('1 h 20 min'), findsOneWidget);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+      expect(_botonIniciar(tester).onPressed, isNotNull);
+    });
+  });
+
+  group('Hora de fin (hasta 30 minutos hacia atrás, no antes del inicio)', () {
+    testWidgets('el selector ofrece de 30 minutos atrás a ahora, y la jornada termina a la hora '
+        'elegida', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      );
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+      expect(find.text('Ahora · 14:35'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      await tester.pumpAndSettle();
+      final selector = tester.widget<Slider>(find.byKey(const Key('jornada_selector_hora_fin')));
+      expect(selector.min, -30);
+      expect(selector.max, 0);
+      expect(find.text('Podés marcar el fin hasta 30 minutos hacia atrás.'), findsOneWidget);
+
+      selector.onChanged!(-10);
+      await tester.pumpAndSettle();
+      expect(find.text('14:25 · hace 10 min'), findsOneWidget);
+
+      await _tocarFinalizar(tester);
+
+      expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 23, 14, 25).toUtc());
+      expect(find.text('De las 13:15 a las 14:25'), findsOneWidget);
+      expect(find.text('1 h 10 min'), findsOneWidget);
+    });
+
+    testWidgets('si la jornada empezó hace menos de 30 minutos, el selector no pasa del inicio', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(
+        tester,
+        _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 14, 20))]),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Slider>(find.byKey(const Key('jornada_selector_hora_fin'))).min, -15);
+      expect(
+        find.text(
+          'Podés marcar el fin hasta 15 minutos hacia atrás: tu jornada empezó a las 14:20.',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('Estados al finalizar', () {
+    testWidgets('mientras guarda, el botón se deshabilita (un segundo toque no vuelve a cerrar)', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      )..demoraFinalizar = Completer<void>();
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('jornada_finalizar')));
+      await tester.tap(find.byKey(const Key('jornada_finalizar')));
+      await tester.pump();
+      expect(find.text('Finalizando…'), findsOneWidget);
+      expect(_botonFinalizar(tester).onPressed, isNull);
+
+      dataSource.demoraFinalizar!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Jornada finalizada'), findsOneWidget);
+      expect(dataSource.jornadas.single.fin, _ahora.toUtc());
+    });
+
+    testWidgets('error al guardar: dice qué pasó y qué hacer, la jornada sigue abierta y deja '
+        'volver a intentar', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      )..errorAlFinalizar = StateError('disco lleno');
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await _tocarFinalizar(tester);
+
+      expect(
+        find.text(
+          'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
+          'pasando, cerrá y volvé a abrir la app.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+      expect(_botonFinalizar(tester).onPressed, isNotNull);
+
+      dataSource.errorAlFinalizar = null;
+      await _tocarFinalizar(tester);
+      expect(find.text('Jornada finalizada'), findsOneWidget);
+      expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
+    });
+
+    testWidgets('después de finalizar se puede iniciar otra jornada, y el resumen se va', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      );
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+      await _tocarFinalizar(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('jornada_iniciar')));
+      await tester.tap(find.byKey(const Key('jornada_iniciar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.text('Jornada finalizada'), findsNothing);
+      expect(dataSource.jornadas, hasLength(2));
+    });
+  });
+
   group('Accesibilidad', () {
     final temas = {'claro': temaClaro, 'oscuro': temaOscuro};
+    const estados = ['sin jornada', 'jornada activa', 'jornada finalizada'];
+
+    /// Deja la pantalla en [estado], con el selector de hora abierto cuando lo hay.
+    Future<void> prepararEstado(WidgetTester tester, String estado) async {
+      switch (estado) {
+        case 'sin jornada':
+          await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora')));
+          await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
+        case 'jornada activa':
+          await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora_fin')));
+          await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+        case 'jornada finalizada':
+          await tester.ensureVisible(find.byKey(const Key('jornada_finalizar')));
+          await tester.tap(find.byKey(const Key('jornada_finalizar')));
+      }
+      await tester.pumpAndSettle();
+    }
+
+    _DataSource dataSourcePara(String estado) => _DataSource(
+      iniciales: [if (estado != 'sin jornada') _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))],
+    );
 
     for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
-      for (final activa in [false, true]) {
-        final estado = activa ? 'jornada activa' : 'sin jornada';
-
+      for (final estado in estados) {
         testWidgets('tema $nombreTema, $estado: tamaño de toque, etiquetas y contraste', (
           tester,
         ) async {
           final semantica = tester.ensureSemantics();
           _pantalla(tester, const Size(390, 844));
-          await _montar(
-            tester,
-            _DataSource(iniciales: [if (activa) _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))]),
-            tema: tema(),
-          );
+          await _montar(tester, dataSourcePara(estado), tema: tema());
           await tester.pumpAndSettle();
-          if (!activa) {
-            await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora')));
-            await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
-            await tester.pumpAndSettle();
-          }
+          await prepararEstado(tester, estado);
 
           await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
           await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
@@ -377,18 +573,9 @@ void main() {
           tester,
         ) async {
           _pantalla(tester, const Size(360, 740));
-          await _montar(
-            tester,
-            _DataSource(iniciales: [if (activa) _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))]),
-            tema: tema(),
-            escalaTexto: 2,
-          );
+          await _montar(tester, dataSourcePara(estado), tema: tema(), escalaTexto: 2);
           await tester.pumpAndSettle();
-          if (!activa) {
-            await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora')));
-            await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
-            await tester.pumpAndSettle();
-          }
+          await prepararEstado(tester, estado);
 
           expect(tester.takeException(), isNull);
         });
