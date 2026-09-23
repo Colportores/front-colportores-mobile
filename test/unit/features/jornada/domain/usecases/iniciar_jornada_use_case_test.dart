@@ -196,4 +196,97 @@ void main() {
       );
     });
   });
+
+  group('IniciarJornadaUseCase — hora elegida a mano (hasta 30 min hacia atrás)', () {
+    // 12:15:20 UTC: con segundos, para ver que el borde de abajo se compara al minuto.
+    final ahora = DateTime.utc(2026, 9, 22, 12, 15, 20);
+    late IniciarJornadaUseCase conSegundos;
+
+    setUp(() {
+      conSegundos = IniciarJornadaUseCase(
+        repositorio,
+        generarId: () => 'jor-nueva',
+        ahora: () => ahora,
+      );
+    });
+
+    Future<Either<Failure, Jornada>> iniciarA(DateTime hora) =>
+        conSegundos(IniciarJornadaParams(colportorId: 'u-1', hora: hora));
+
+    test('dado que no tengo jornada activa, cuando inicio con una hora de hace 10 minutos, la '
+        'jornada empieza a esa hora', () async {
+      final hora = DateTime.utc(2026, 9, 22, 12, 5);
+
+      final resultado = await iniciarA(hora.toLocal());
+
+      final jornada = resultado.getOrElse(() => fail('se esperaba Right, llegó $resultado'));
+      expect(jornada.inicio, hora);
+      expect(jornada.inicio.isUtc, isTrue);
+      expect(repositorio.creadas.single.inicio, hora);
+    });
+
+    test(
+      'dado now = 12:15:20, cuando elijo 11:45:00 (el minuto de now − 30 min), se acepta',
+      () async {
+        final resultado = await iniciarA(DateTime.utc(2026, 9, 22, 11, 45));
+
+        expect(resultado.isRight(), isTrue);
+      },
+    );
+
+    test('dado now, cuando elijo exactamente now, se acepta', () async {
+      final resultado = await iniciarA(ahora);
+
+      expect(resultado.getOrElse(() => fail('se esperaba Right')).inicio, ahora);
+    });
+
+    test('dado now = 12:15:20, cuando elijo 11:44:59 (más de 30 min atrás), se rechaza con el '
+        'rango explícito y no se crea nada', () async {
+      final resultado = await iniciarA(DateTime.utc(2026, 9, 22, 11, 44, 59));
+
+      final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
+      expect(
+        failure,
+        FailureHoraFueraDeRango(desde: DateTime.utc(2026, 9, 22, 11, 45), hasta: ahora),
+      );
+      expect(failure.codigo, 'JOR_HORA_FUERA_DE_RANGO');
+      expect(repositorio.consultas, isEmpty);
+      expect(repositorio.creadas, isEmpty);
+    });
+
+    test('dado now, cuando elijo una hora futura, se rechaza: sin horas futuras', () async {
+      final resultado = await iniciarA(ahora.add(const Duration(seconds: 1)));
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureHoraFueraDeRango>());
+      expect(repositorio.creadas, isEmpty);
+    });
+
+    test(
+      'dado que ya tengo jornada activa, cuando inicio con una hora válida, se bloquea igual',
+      () async {
+        repositorio.respuestaActiva = Right(jornadaAbierta());
+
+        final resultado = await iniciarA(DateTime.utc(2026, 9, 22, 12, 10));
+
+        expect(resultado, const Left<Failure, Jornada>(FailureJornadaActiva()));
+      },
+    );
+
+    test('dado un rango de 14:05 a 14:35, el mensaje es "La hora tiene que estar entre las 14:05 '
+        'y las 14:35."', () {
+      final failure = FailureHoraFueraDeRango(
+        desde: DateTime(2026, 9, 23, 14, 5),
+        hasta: DateTime(2026, 9, 23, 14, 35, 40),
+      );
+
+      expect(failure.mensaje, 'La hora tiene que estar entre las 14:05 y las 14:35.');
+    });
+
+    test('dado dos IniciarJornadaParams con distinta hora, cuando se comparan, son distintos', () {
+      expect(
+        IniciarJornadaParams(colportorId: 'u-1', hora: DateTime.utc(2026)),
+        isNot(const IniciarJornadaParams(colportorId: 'u-1')),
+      );
+    });
+  });
 }

@@ -73,6 +73,35 @@ final class FailureJornadaActiva extends Failure {
       );
 }
 
+/// La hora elegida a mano para una jornada cae fuera del rango permitido (HU-JOR-001: "editable
+/// hasta 30 minutos hacia atrás", decisión de Cristian del 23/09 en #70). [mensaje] trae el rango
+/// explícito en hora local ("La hora tiene que estar entre las 14:05 y las 14:35."), para que el
+/// colportor sepa qué elegir: la hora nunca se ajusta en silencio.
+final class FailureHoraFueraDeRango extends Failure {
+  FailureHoraFueraDeRango({required this.desde, required this.hasta})
+    : super(
+        mensaje:
+            'La hora tiene que estar entre las ${_horaLocal(desde)} y las ${_horaLocal(hasta)}.',
+        codigo: 'JOR_HORA_FUERA_DE_RANGO',
+      );
+
+  /// Primer instante válido (incluido).
+  final DateTime desde;
+
+  /// Último instante válido (incluido).
+  final DateTime hasta;
+
+  @override
+  List<Object?> get props => [...super.props, desde, hasta];
+
+  /// `HH:MM` en la zona del dispositivo: la hora que el colportor ve en su reloj.
+  static String _horaLocal(DateTime instante) {
+    final local = instante.toLocal();
+    String dosDigitos(int n) => n.toString().padLeft(2, '0');
+    return '${dosDigitos(local.hour)}:${dosDigitos(local.minute)}';
+  }
+}
+
 /// No hay red o el servidor no respondió. La operación puede reintentarse.
 final class FailureSinConexion extends Failure {
   const FailureSinConexion()
