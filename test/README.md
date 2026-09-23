@@ -198,16 +198,24 @@ que el `pub.lock` esté resuelto):
 flutter pub get
 dart run build_runner build
 git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
-flutter analyze --fatal-infos
-dart run custom_lint --fatal-infos
+dart analyze --fatal-infos
 flutter test --coverage
 bash scripts/coverage_check.sh
 ```
+
+El análisis es `dart analyze` y **no** `flutter analyze`: las reglas de Riverpod
+(`missing_provider_scope`, `scoped_providers_should_specify_dependencies`, etc.) vienen de
+`riverpod_lint` como plugin del analyzer, y `flutter analyze` no muestra diagnósticos de plugins —
+contesta "No issues found!" aunque haya violaciones. Tampoco sirve apuntarlo a una carpeta:
+`dart analyze lib` no carga el plugin (verificado en #87); va sin argumentos, sobre el proyecto
+entero. La primera corrida en un contenedor nuevo
+tarda más (~45 s) porque compila el plugin.
 
 Solo tests: `docker compose -f compose.dev.yml run --rm flutter flutter test`.
 
 **Nota para agentes trabajando en un git worktree** (`.claude/worktrees/...`): `scripts/check.sh`
 usa `git ls-files`, que no resuelve bien cuando el `.git` del worktree apunta a una ruta de
 Windows que el contenedor Linux no ve. En ese caso corré los comandos sueltos en el mismo orden
-de arriba, y para el chequeo de formato apuntá `dart format` solo a los archivos que tocaste en
+de arriba (`flutter pub get` antes que `dart format`, que necesita el paquete resuelto para leer
+`analysis_options.yaml`), y para el chequeo de formato apuntá `dart format` solo a los archivos que tocaste en
 vez de depender de `git ls-files`.
