@@ -9,6 +9,14 @@ import '../models/sesion_model.dart';
 abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesion({required String email, required String password});
 
+  /// Solicita el reset de contraseña (HU-AUTH-004, Supabase Auth `resetPasswordForEmail`).
+  ///
+  /// Nunca lanza para "el email no existe": Supabase responde igual exista o no la cuenta
+  /// (anti-enumeración, OWASP) — solo puede lanzar por falta de red o por su propio rate limit
+  /// de emails. El repositorio enmascara el rate limit como éxito, pero **no** la falta de red
+  /// (ver `AuthRepositoryImpl.solicitarRecuperacionPassword` para el detalle de cada caso).
+  Future<void> solicitarRecuperacionPassword(String email);
+
   /// Supabase Auth `signUp` (HU-AUTH-001/002). Devuelve la sesión si Supabase la deja iniciada,
   /// o `null` si la cuenta se creó pero falta confirmar el email ("Confirm email" activo) — eso
   /// **no** es un error, el fake en memoria no tiene ese paso intermedio y siempre devuelve
@@ -31,7 +39,31 @@ abstract interface class AuthRemoteDataSource {
   /// persiste `supabase_flutter` por su cuenta; si está vencida intenta refrescarla.
   Future<SesionModel?> obtenerSesionActual();
 
+  /// Cierra la sesión del cliente: la revoca en el servidor y borra la copia que guarda el
+  /// proveedor. Sin red, la copia local se borra igual y lanza [SinConexionException].
   Future<void> cerrarSesion(String accessToken);
+
+  /// Revoca en el servidor **solo** la sesión de [accessToken] (scope local: ni las otras sesiones
+  /// del usuario ni la que tenga el cliente ahora), sin tocar el cliente. Es para la revocación
+  /// que un logout sin red dejó pendiente (HU-AUTH-006): para entonces el usuario pudo haber
+  /// vuelto a entrar, y esa sesión nueva no se toca.
+  Future<void> revocarSesion(String accessToken);
+
+  /// Reenvía el email de verificación de una cuenta con confirmación pendiente (HU-AUTH-002,
+  /// Supabase Auth `resend` tipo `signup`). El plan free de Supabase sin SMTP propio limita esto a
+  /// ~2 emails por hora; ese límite llega como [ServidorException] (mismo código que cualquier
+  /// otro rate limit de Supabase), no hace falta modelarlo aparte acá.
+  Future<void> reenviarVerificacion(String email);
+
+  /// Emite cada vez que el deep link de verificación de email (HU-AUTH-002) vuelve con un error:
+  /// enlace vencido o ya usado. Supabase no distingue los dos casos (mismo `error_code`
+  /// `otp_expired` para ambos), así que del lado de la app también es un solo evento.
+  ///
+  /// Cubre el caso donde el usuario abre el enlace sin tener la pantalla de verificación en
+  /// pantalla (p. ej. la app estaba cerrada); la raíz de la app (`ColportoresApp`) lo escucha para
+  /// llevarlo a esa pantalla en estado "expirado". El caso de éxito (enlace válido) no pasa por
+  /// acá: se resuelve con el flujo normal de "Ya verifiqué mi email" de esa misma pantalla.
+  Stream<void> get erroresVerificacionEmail;
 }
 
 /// Excepciones tipadas del origen remoto. Sin PII en [toString].

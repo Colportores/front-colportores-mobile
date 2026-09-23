@@ -51,10 +51,74 @@ final class FailureCuentaPendiente extends Failure {
       );
 }
 
-/// Ya existe una cuenta con ese correo (HU-AUTH-001).
+/// Ya existe una cuenta con ese correo (HU-AUTH-001, "Error - email ya registrado"). Solo lo usa
+/// el registro (nunca el login): el mensaje literal del criterio de aceptación es seguro acá.
 final class FailureEmailYaRegistrado extends Failure {
   const FailureEmailYaRegistrado()
-    : super(mensaje: 'Ya existe una cuenta con ese correo.', codigo: 'AUTH_EMAIL_DUPLICADO');
+    : super(
+        mensaje:
+            'Ya existe una cuenta con ese email. ¿Querés iniciar sesión o recuperar tu '
+            'contraseña?',
+        codigo: 'AUTH_EMAIL_DUPLICADO',
+      );
+}
+
+/// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
+/// [mensaje] es el texto literal del criterio de aceptación "Bloqueo - jornada ya activa".
+final class FailureJornadaActiva extends Failure {
+  const FailureJornadaActiva()
+    : super(
+        mensaje: 'Tenés una jornada en curso. Cerrala antes de iniciar otra.',
+        codigo: 'JOR_JORNADA_ACTIVA',
+      );
+}
+
+/// El colportor quiso finalizar una jornada, pero no tiene ninguna en curso (HU-JOR-002): ya la
+/// cerró —dos toques seguidos en "Finalizar jornada"— o nunca la inició.
+final class FailureSinJornadaActiva extends Failure {
+  const FailureSinJornadaActiva()
+    : super(mensaje: 'No tenés una jornada en curso para finalizar.', codigo: 'JOR_SIN_JORNADA');
+}
+
+/// La hora elegida a mano para una jornada cae fuera del rango permitido (HU-JOR-001: "editable
+/// hasta 30 minutos hacia atrás", decisión de Cristian del 23/09 en #70). [mensaje] trae el rango
+/// explícito en hora local ("La hora tiene que estar entre las 14:05 y las 14:35."), para que el
+/// colportor sepa qué elegir: la hora nunca se ajusta en silencio.
+final class FailureHoraFueraDeRango extends Failure {
+  FailureHoraFueraDeRango({required this.desde, required this.hasta})
+    : super(
+        mensaje:
+            'La hora tiene que estar entre las ${_horaLocal(desde)} y las ${_horaLocal(hasta)}.',
+        codigo: 'JOR_HORA_FUERA_DE_RANGO',
+      );
+
+  /// Primer instante válido (incluido).
+  final DateTime desde;
+
+  /// Último instante válido (incluido).
+  final DateTime hasta;
+
+  @override
+  List<Object?> get props => [...super.props, desde, hasta];
+
+  /// `HH:MM` en la zona del dispositivo: la hora que el colportor ve en su reloj.
+  static String _horaLocal(DateTime instante) {
+    final local = instante.toLocal();
+    String dosDigitos(int n) => n.toString().padLeft(2, '0');
+    return '${dosDigitos(local.hour)}:${dosDigitos(local.minute)}';
+  }
+}
+
+/// No se pudo armar el resumen de lo guardado en el teléfono por una falla inesperada. Se puede
+/// reintentar; nada se borró.
+final class FailureDatosLocalesIlegibles extends Failure {
+  const FailureDatosLocalesIlegibles()
+    : super(
+        mensaje:
+            'No pudimos revisar los datos de este teléfono. No se borró nada: reintentá en un '
+            'momento.',
+        codigo: 'DATOS_LOCALES_ILEGIBLES',
+      );
 }
 
 /// No hay red o el servidor no respondió. La operación puede reintentarse.

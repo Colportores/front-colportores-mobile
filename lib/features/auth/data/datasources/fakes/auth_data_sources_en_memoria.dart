@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../domain/entities/usuario.dart';
 import '../../models/sesion_model.dart';
 import '../auth_local_data_source.dart';
@@ -69,6 +71,21 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     );
   }
 
+  /// Cuántas veces se solicitó recuperación de contraseña (HU-AUTH-004), por email. Se registra
+  /// igual exista o no la cuenta —anti-enumeración—: el fake no puede filtrar esa diferencia.
+  final Map<String, int> solicitudesRecuperacionPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [solicitarRecuperacionPassword] lo lanza en vez de
+  /// registrar la solicitud — para simular un rate limit u otro error de Supabase.
+  AuthRemoteException? fallaAlSolicitarRecuperacion;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlSolicitarRecuperacion != null) throw fallaAlSolicitarRecuperacion!;
+    solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
@@ -130,10 +147,42 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     llamadasCerrarSesion++;
   }
 
+  /// Tokens revocados con [revocarSesion], en orden. El scope no se registra porque el puerto lo
+  /// fija: siempre es solo esa sesión (el adaptador de Supabase pasa `SignOutScope.local`).
+  final List<String> revocaciones = [];
+
+  @override
+  Future<void> revocarSesion(String accessToken) async {
+    if (simularSinConexion) throw const SinConexionException();
+    revocaciones.add(accessToken);
+  }
+
   /// Simula que el usuario tocó el link de verificación del correo: [iniciarSesion] deja de
   /// lanzar el "falta confirmar" para esta cuenta. Sin efecto si no se registró con
   /// `requiereVerificacionAlRegistrar`.
   void confirmarEmail(String email) => _pendientesDeVerificar.remove(email);
+
+  /// Cuántas veces se reenvió el email de verificación (HU-AUTH-002), por email.
+  final Map<String, int> reenviosPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [reenviarVerificacion] lo lanza en vez de reenviar — para
+  /// simular el rate limit de Supabase (~2 emails/hora sin SMTP propio).
+  AuthRemoteException? fallaAlReenviar;
+
+  @override
+  Future<void> reenviarVerificacion(String email) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlReenviar != null) throw fallaAlReenviar!;
+    reenviosPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
+  final _erroresVerificacionController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _erroresVerificacionController.stream;
+
+  /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
+  void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

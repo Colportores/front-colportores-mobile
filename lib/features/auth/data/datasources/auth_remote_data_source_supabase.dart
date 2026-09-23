@@ -57,6 +57,11 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   }
 
   @override
+  Future<void> solicitarRecuperacionPassword(String email) => _traduciendo(
+    () => _auth.resetPasswordForEmail(email, redirectTo: ConfigSupabase.redirectOAuth),
+  );
+
+  @override
   Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
@@ -146,8 +151,44 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     return sesion == null ? null : _aModelo(sesion);
   }
 
+  // Siempre `signOut`, aunque [accessToken] no coincida con el del cliente (`autoRefreshToken`
+  // lo renueva): es lo único que borra la sesión que persiste `supabase_flutter`, que si no se
+  // restauraría al rearrancar sin pedir contraseña. `signOut` la suelta **antes** de llamar al
+  // servidor (gotrue 2.27), así que sin red la copia local ya no está cuando lanza.
   @override
   Future<void> cerrarSesion(String accessToken) => _traduciendo(() => _auth.signOut());
+
+  // `admin.signOut` es el mismo `POST /logout` que usa `signOut` por dentro, pero con el token
+  // explícito. Su scope por defecto es **global** (cerraría también la sesión nueva y las de otros
+  // equipos): acá va `local`.
+  @override
+  Future<void> revocarSesion(String accessToken) =>
+      _traduciendo(() => _auth.admin.signOut(accessToken, scope: SignOutScope.local));
+
+  @override
+  Future<void> reenviarVerificacion(String email) => _traduciendo(
+    () => _auth.resend(
+      email: email,
+      type: OtpType.signup,
+      emailRedirectTo: ConfigSupabase.redirectOAuth,
+    ),
+  );
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _auth.onAuthStateChange.transform(
+    StreamTransformer<AuthState, void>.fromHandlers(
+      handleData: (_, _) {},
+      // `getSessionFromUrl` (dentro de supabase_flutter) traduce el error del deep link a un
+      // `AuthException` y lo empuja acá como error del stream (`notifyException`), en vez de un
+      // evento normal. `statusCode` es, pese al nombre, el `error_code` crudo de la URL —
+      // `otp_expired` es el único que Supabase usa para "vencido o ya usado" en un link de
+      // verificación. Cualquier otro error del stream (p. ej. un signInWithOAuth cancelado) se
+      // descarta acá: no es de esta pantalla.
+      handleError: (error, stackTrace, sink) {
+        if (error is AuthException && error.statusCode == 'otp_expired') sink.add(null);
+      },
+    ),
+  );
 
   static SesionModel _aModelo(Session sesion) {
     final expiraEnSegundos = sesion.expiresAt;

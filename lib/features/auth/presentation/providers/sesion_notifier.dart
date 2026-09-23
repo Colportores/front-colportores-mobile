@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -5,9 +7,13 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
+import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
+import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
+import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 
@@ -29,6 +35,7 @@ class SesionNotifier extends _$SesionNotifier {
   @override
   Future<Sesion?> build() async {
     final resultado = await ref.watch(obtenerSesionActualUseCaseProvider)(const NoParams());
+    _reintentarRevocacionPendiente();
     return resultado.fold((_) => null, (sesion) => sesion);
   }
 
@@ -46,6 +53,8 @@ class SesionNotifier extends _$SesionNotifier {
       },
       (sesion) {
         state = AsyncData(sesion);
+        // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
+        _reintentarRevocacionPendiente();
         return null;
       },
     );
@@ -106,27 +115,35 @@ class SesionNotifier extends _$SesionNotifier {
     );
   }
 
-  /// Invalida la sesión y cierra la DB local: la clave de cifrado se destruye acá (HU-AUTH-006,
-  /// ADR-003 — vive solo mientras la sesión está activa). El borrado de datos es HU-AUTH-010.
+  /// Reenvía el email de verificación (HU-AUTH-002). No toca el estado de sesión: la cuenta sigue
+  /// sin poder entrar hasta que el usuario confirme el correo, se reenvíe o no.
+  Future<Failure?> reenviarVerificacion(String email) async {
+    final resultado = await ref.read(reenviarVerificacionUseCaseProvider)(
+      ReenviarVerificacionParams(email: email),
+    );
+    return resultado.fold((failure) => failure, (_) => null);
+  }
+
+  /// Cierra la sesión (HU-AUTH-006): revoca el JWT —o lo deja pendiente sin red—, borra la sesión
+  /// guardada, cierra la DB y destruye la DEK en claro. Los datos del teléfono se conservan: el
+  /// próximo login reabre todo. Borrarlos es [borrarDatosLocales] (HU-AUTH-010).
   ///
-  /// Los tres pasos no dependen uno del otro:
-  /// - La DB local se cierra **aunque el use case lance** (por ejemplo, si el almacén seguro falla
-  ///   al leer la sesión). Si no, el estado diría "deslogueado" con la DB abierta y la clave viva.
-  /// - El estado se resetea aunque falle el cierre de la DB: la sesión remota ya puede estar
-  ///   invalidada, y dejar la app mostrando al usuario como logueado sería peor que el error.
+  /// Es todo o nada desde el punto de vista del usuario (#54):
+  /// - `Left`: la sesión guardada no se pudo borrar. **No** se toca nada más: el usuario sigue
+  ///   adentro, con la DB abierta, y la pantalla le ofrece reintentar. Resetear el estado acá haría
+  ///   creer que salió cuando la sesión sigue en el teléfono.
+  /// - `Right`: se cierra la DB y el estado pasa a `null` (la app vuelve al login). Si cerrar la
+  ///   DB falla, ya lo loguea `DatabaseHelper` como `CLOSE_FAIL` y el usuario no puede hacer nada:
+  ///   no se le muestra, y el estado se resetea igual.
   ///
-  /// La excepción igual se propaga para quien sí espere el `Future`. Si fallan los dos pasos, se
-  /// propaga **la del use case**: es la que dice que el logout no se completó (el JWT puede no
-  /// haberse revocado y la sesión local seguir guardada), y es la única que no deja rastro en otro
-  /// lado — la del cierre de la DB ya la loguea `DatabaseHelper` como `CLOSE_FAIL`.
-  Future<void> cerrarSesion() async {
-    Object? fallaLogout;
-    StackTrace? rastroLogout;
+  /// Si el use case **lanza** (no debería: el repositorio traduce todo a `Failure`), la DB se cierra
+  /// igual, el estado se resetea y la excepción se propaga: deslogueado en pantalla con la DB
+  /// abierta y la clave viva sería peor.
+  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion() async {
+    final Either<Failure, ResultadoCierreSesion> resultado;
     try {
-      await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
+      resultado = await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
     } on Object catch (e, st) {
-      fallaLogout = e;
-      rastroLogout = st;
       _log.error(
         LogModulo.auth,
         'LOGOUT_FAIL',
@@ -135,17 +152,39 @@ class SesionNotifier extends _$SesionNotifier {
         e,
         st,
       );
+      await _cerrarDbYSesion();
+      rethrow;
     }
 
+    if (resultado.isRight()) await _cerrarDbYSesion();
+    return resultado;
+  }
+
+  /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
+  /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
+  /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.
+  Future<Either<Failure, ResultadoBorradoDatosLocales>> borrarDatosLocales({
+    required bool incluirBackupDrive,
+  }) async {
+    final resultado = await ref.read(borrarDatosLocalesUseCaseProvider)(
+      BorrarDatosLocalesParams(incluirBackupDrive: incluirBackupDrive),
+    );
+    if (resultado.isRight()) state = const AsyncData(null);
+    return resultado;
+  }
+
+  Future<void> _cerrarDbYSesion() async {
     try {
       await ref.read(dbLocalProvider.notifier).cerrar();
     } on Object {
-      // Con el logout ya fallado, la causa que se propaga es esa (ver arriba).
-      if (fallaLogout == null) rethrow;
+      // Ya logueado por `DatabaseHelper` (`CLOSE_FAIL`); la clave se destruye igual.
     } finally {
       state = const AsyncData(null);
     }
-
-    if (fallaLogout != null) Error.throwWithStackTrace(fallaLogout, rastroLogout!);
   }
+
+  /// Best-effort: un logout sin red dejó la revocación del JWT pendiente (HU-AUTH-006). Sin red
+  /// sigue pendiente y no se avisa — el usuario no puede hacer nada con eso.
+  void _reintentarRevocacionPendiente() =>
+      unawaited(ref.read(reintentarRevocacionPendienteUseCaseProvider)(const NoParams()));
 }

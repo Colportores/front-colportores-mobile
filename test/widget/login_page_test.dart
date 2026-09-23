@@ -52,22 +52,42 @@ class _RemoteConDemora implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
+
+  @override
+  Future<void> revocarSesion(String accessToken) => _interno.revocarSesion(accessToken);
+
+  @override
+  Future<void> reenviarVerificacion(String email) => _interno.reenviarVerificacion(email);
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _interno.erroresVerificacionEmail;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) =>
+      _interno.solicitarRecuperacionPassword(email);
 }
 
 /// [LoginPage] aislada (sin [ColportoresApp]): estas pruebas cubren diseño/tema/proveedores, no el
 /// flujo de negocio — eso ya está en `flujo_login_test.dart`.
-Widget _pagina({ThemeData? tema, bool? mostrarApple}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(
-      AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
-    ),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: MaterialApp(
-    theme: tema ?? temaClaro(),
-    home: LoginPage(mostrarApple: mostrarApple),
-  ),
-);
+///
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarPagina(WidgetTester tester, {ThemeData? tema, bool? mostrarApple}) =>
+    tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(
+            AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
+          ),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+        child: MaterialApp(
+          theme: tema ?? temaClaro(),
+          home: LoginPage(mostrarApple: mostrarApple),
+        ),
+      ),
+    );
 
 void main() {
   group('LoginPage — diseño', () {
@@ -76,7 +96,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(_pagina(tema: temaClaro()));
+      await _montarPagina(tester, tema: temaClaro());
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -87,24 +107,24 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(_pagina(tema: temaOscuro()));
+      await _montarPagina(tester, tema: temaOscuro());
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
-      await tester.pumpWidget(_pagina(mostrarApple: true));
+      await _montarPagina(tester, mostrarApple: true);
       await tester.pumpAndSettle();
       expect(find.text('Continuar con Apple'), findsOneWidget);
 
-      await tester.pumpWidget(_pagina(mostrarApple: false));
+      await _montarPagina(tester, mostrarApple: false);
       await tester.pumpAndSettle();
       expect(find.text('Continuar con Apple'), findsNothing);
     });
 
     testWidgets('tocar "Continuar con Google" inicia sesión con el proveedor', (tester) async {
-      await tester.pumpWidget(_pagina());
+      await _montarPagina(tester);
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Continuar con Google'));
@@ -135,7 +155,9 @@ void main() {
       await tester.tap(find.text('Continuar con Google'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      // Texto exacto del Failure, no solo una parte de la frase (ver HU-AUTH-003, escenario
+      // "red caída"): un `textContaining` deja pasar un mensaje truncado o con texto de más.
+      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
     });
 
     testWidgets('Entrar se deshabilita y muestra spinner mientras iniciarSesion no resolvió', (

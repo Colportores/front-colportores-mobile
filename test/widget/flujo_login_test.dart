@@ -1,8 +1,12 @@
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,15 +39,52 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
-Widget _app({required AuthRemoteDataSource remote}) => ProviderScope(
-  overrides: [
-    authRemoteDataSourceProvider.overrideWithValue(remote),
-    authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-  ],
-  child: const ColportoresApp(),
-);
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarApp(WidgetTester tester, {required AuthRemoteDataSource remote}) =>
+    tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          datosLocalesRepositoryProvider.overrideWithValue(_SinDatosLocales()),
+        ],
+        child: const ColportoresApp(),
+      ),
+    );
+
+/// Teléfono sin nada guardado: el cierre de sesión pide la confirmación común.
+final class _SinDatosLocales implements DatosLocalesRepository {
+  @override
+  Future<Either<Failure, ResumenDatosLocales>> resumen() async => const Right(
+    ResumenDatosLocales(
+      personas: 0,
+      visitas: 0,
+      operacionesSinSincronizar: 0,
+      hayBackupEnDrive: false,
+    ),
+  );
+
+  @override
+  Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
+    required bool incluirBackupDrive,
+  }) async => const Right(ResultadoBorradoDatosLocales.completo);
+}
 
 AuthRemoteDataSourceEnMemoria _remote() =>
     AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
@@ -51,14 +92,14 @@ AuthRemoteDataSourceEnMemoria _remote() =>
 void main() {
   group('Flujo de login', () {
     testWidgets('cuando no hay sesión, arranca en la pantalla de login', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);
     });
 
     testWidgets('cuando el email es inválido, muestra el error en el campo', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'no-es-email');
@@ -73,7 +114,7 @@ void main() {
     testWidgets('cuando las credenciales son incorrectas, muestra el error general', (
       tester,
     ) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -87,7 +128,7 @@ void main() {
 
     testWidgets('cuando no hay conexión, avisa sin exponer detalles', (tester) async {
       final remote = _remote()..simularSinConexion = true;
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -99,7 +140,7 @@ void main() {
     });
 
     testWidgets('cuando las credenciales son válidas, entra y puede cerrar sesión', (tester) async {
-      await tester.pumpWidget(_app(remote: _remote()));
+      await _montarApp(tester, remote: _remote());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'Ana@Example.com');
@@ -110,7 +151,11 @@ void main() {
       expect(find.byKey(const Key('inicio_email')), findsOneWidget);
       expect(find.text('ana@example.com'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('inicio_cerrar_sesion')));
+      await tester.tap(find.byKey(const Key('inicio_configuracion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_enviar')), findsOneWidget);
@@ -124,7 +169,7 @@ void main() {
           mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
         ),
       );
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
@@ -132,11 +177,17 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('verificar tu correo'), findsOneWidget);
+      // Texto exacto de la HU-AUTH-003 (§Contexto funcional / mensaje de Supabase
+      // `email_not_confirmed`), no solo una parte: un test que solo busca "verificar tu correo"
+      // no detecta que se muestre un mensaje truncado o con texto de más.
+      expect(
+        find.text('Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('cuando el registro requiere verificar el email, vuelve al login con los campos '
-        'precargados y el aviso', (tester) async {
+    testWidgets('cuando el registro requiere verificar el email, lleva a la pantalla de '
+        'verificación pendiente, y "Ya verifiqué mi email" entra tras confirmar', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -145,7 +196,7 @@ void main() {
         credenciales: const {},
         requiereVerificacionAlRegistrar: true,
       );
-      await tester.pumpWidget(_app(remote: remote));
+      await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('login_ir_a_registro')));
@@ -161,14 +212,23 @@ void main() {
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.pumpAndSettle();
 
-      // Volvió al login (no llegó a "Cuenta creada" ni a la pantalla de inicio).
-      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
-      expect(find.byKey(const Key('login_banner_verificacion')), findsOneWidget);
+      // No volvió al login ni entró directo: pasó a la pantalla de verificación pendiente.
+      expect(find.byKey(const Key('login_enviar')), findsNothing);
+      expect(find.byKey(const Key('inicio_email')), findsNothing);
       expect(find.textContaining('lucia.silva@correo.com'), findsWidgets);
-      expect(
-        tester.widget<TextField>(find.byKey(const Key('login_password'))).controller?.text,
-        'Secreto123',
-      );
+      expect(find.byKey(const Key('verificacion_email_ya_verifique')), findsOneWidget);
+
+      // Simula que confirmó el correo (tocó el enlace) y toca "Ya verifiqué mi email".
+      remote.confirmarEmail('lucia.silva@correo.com');
+      await tester.tap(find.byKey(const Key('verificacion_email_ya_verifique')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_continuar')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('verificacion_email_continuar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      expect(find.text('lucia.silva@correo.com'), findsOneWidget);
     });
   });
 }

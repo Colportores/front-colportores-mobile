@@ -56,6 +56,29 @@ class Jornada extends Equatable {
   /// fue eliminada.
   bool get estaAbierta => fin == null && !estaBorrada;
 
+  /// Cuánto duró la jornada (HU-JOR-002: "Calcula `duracion`"), o `null` si sigue en curso.
+  ///
+  /// Se calcula, no se guarda: la tabla `jornada` no tiene columna de duración
+  /// (esquema-datos.md §Operaciones de campo) y así nunca puede quedar desfasada de [inicio] y
+  /// [fin].
+  Duration? get duracion => fin?.difference(inicio);
+
+  /// La misma jornada cerrada a las [fin] (HU-JOR-002), con `updated_at` = [actualizadaEn] (el
+  /// momento en que el colportor la cerró, que puede ser posterior a [fin]).
+  ///
+  /// Conserva todos los demás campos: el cierre solo toca `fin` y `updated_at`.
+  Jornada finalizada({required DateTime fin, required DateTime actualizadaEn}) => Jornada(
+    id: id,
+    colportorId: colportorId,
+    inicio: inicio,
+    fin: fin,
+    acompananteId: acompananteId,
+    tipoAcompanamiento: tipoAcompanamiento,
+    totalVisitas: totalVisitas,
+    totalVentas: totalVentas,
+    auditoria: auditoria.copyWith(updatedAt: actualizadaEn),
+  );
+
   @override
   List<Object?> get props => [
     id,

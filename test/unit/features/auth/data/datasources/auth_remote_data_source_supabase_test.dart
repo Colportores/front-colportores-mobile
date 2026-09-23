@@ -14,6 +14,8 @@ import '../../../../../helpers/logger_mudo.dart';
 
 class _MockGoTrueClient extends Mock implements GoTrueClient {}
 
+class _MockGoTrueAdminApi extends Mock implements GoTrueAdminApi {}
+
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
 class _FakeUser extends Fake implements User {
@@ -50,6 +52,8 @@ class _FakeSession extends Fake implements Session {
 }
 
 void main() {
+  setUpAll(() => registerFallbackValue(SignOutScope.local));
+
   late _MockGoTrueClient auth;
   late StreamController<AuthState> cambios;
 
@@ -83,6 +87,12 @@ void main() {
     esperaOAuth: esperaOAuth,
     logger: loggerMudo(),
   );
+
+  setUpAll(() {
+    // Hace falta un fallback para poder usar `any(named: 'type')` con `resend` (mocktail exige
+    // uno para cualquier tipo no primitivo, aunque el valor real no importe).
+    registerFallbackValue(OtpType.signup);
+  });
 
   setUp(() {
     auth = _MockGoTrueClient();
@@ -295,6 +305,54 @@ void main() {
     });
   });
 
+  group('AuthRemoteDataSourceSupabase.solicitarRecuperacionPassword', () {
+    test('cuando solicita, llama a resetPasswordForEmail con el emailRedirectTo', () async {
+      when(
+        () =>
+            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+      ).thenAnswer((_) async {});
+
+      await dataSource().solicitarRecuperacionPassword('ana@example.com');
+
+      verify(
+        () =>
+            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+      ).called(1);
+    });
+
+    test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
+      when(() => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo'))).thenThrow(
+        const AuthApiException(
+          'Email rate limit exceeded',
+          statusCode: '429',
+          code: 'over_email_send_rate_limit',
+        ),
+      );
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('ana@example.com'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
+          ),
+        ),
+      );
+    });
+
+    test('dado que no hay red, lanza SinConexionException', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(AuthRetryableFetchException(message: 'SocketException'));
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('ana@example.com'),
+        throwsA(isA<SinConexionException>()),
+      );
+    });
+  });
+
   group('AuthRemoteDataSourceSupabase.registrar', () {
     Future<SesionModel?> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
       nombre: 'Ana',
@@ -435,10 +493,50 @@ void main() {
       verify(() => auth.signOut()).called(1);
     });
 
+    test(
+      'dado que el cliente refrescó el token, cuando cierra sesión con el token del login, igual '
+      'llama a signOut (y no revoca por token)',
+      () async {
+        final admin = _MockGoTrueAdminApi();
+        when(() => auth.admin).thenReturn(admin);
+        when(() => auth.currentSession).thenReturn(sesionSupabase());
+        when(() => auth.signOut()).thenAnswer((_) async {});
+
+        await dataSource().cerrarSesion('jwt-del-login-ya-refrescado');
+
+        verify(() => auth.signOut()).called(1);
+        verifyNever(() => admin.signOut(any(), scope: any(named: 'scope')));
+      },
+    );
+
     test('dado que no hay red, lanza SinConexionException', () {
       when(() => auth.signOut()).thenThrow(AuthRetryableFetchException(message: 'x'));
 
       expect(() => dataSource().cerrarSesion('jwt'), throwsA(isA<SinConexionException>()));
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.revocarSesion', () {
+    test('revoca solo esa sesión (scope local) y no toca el cliente', () async {
+      final admin = _MockGoTrueAdminApi();
+      when(() => auth.admin).thenReturn(admin);
+      when(() => admin.signOut('jwt-viejo', scope: SignOutScope.local)).thenAnswer((_) async {});
+
+      await dataSource().revocarSesion('jwt-viejo');
+
+      verify(() => admin.signOut('jwt-viejo', scope: SignOutScope.local)).called(1);
+      verifyNever(() => admin.signOut(any(), scope: SignOutScope.global));
+      verifyNever(() => auth.signOut());
+    });
+
+    test('dado que no hay red, lanza SinConexionException', () {
+      final admin = _MockGoTrueAdminApi();
+      when(() => auth.admin).thenReturn(admin);
+      when(
+        () => admin.signOut(any(), scope: any(named: 'scope')),
+      ).thenThrow(AuthRetryableFetchException(message: 'x'));
+
+      expect(() => dataSource().revocarSesion('jwt'), throwsA(isA<SinConexionException>()));
     });
   });
 
@@ -536,6 +634,93 @@ void main() {
       );
 
       expect(ds.iniciarSesionConGoogle(), throwsA(isA<SinConexionException>()));
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.reenviarVerificacion', () {
+    test('cuando reenvía, llama a resend con type signup y el emailRedirectTo', () async {
+      when(
+        () => auth.resend(
+          email: 'ana@example.com',
+          type: OtpType.signup,
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).thenAnswer((_) async => ResendResponse());
+
+      await dataSource().reenviarVerificacion('ana@example.com');
+
+      verify(
+        () => auth.resend(
+          email: 'ana@example.com',
+          type: OtpType.signup,
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).called(1);
+    });
+
+    test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
+      when(
+        () => auth.resend(
+          email: any(named: 'email'),
+          type: any(named: 'type'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Email rate limit exceeded',
+          statusCode: '429',
+          code: 'over_email_send_rate_limit',
+        ),
+      );
+
+      expect(
+        () => dataSource().reenviarVerificacion('ana@example.com'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.erroresVerificacionEmail', () {
+    test('dado un error otp_expired en el stream, emite el evento', () async {
+      final futuro = dataSource().erroresVerificacionEmail.first;
+
+      cambios.addError(
+        const AuthApiException(
+          'Email link is invalid or has expired',
+          statusCode: 'otp_expired',
+          code: 'access_denied',
+        ),
+      );
+
+      await expectLater(futuro, completes);
+    });
+
+    test('ignora otros errores del stream (p. ej. un OAuth cancelado)', () async {
+      final eventos = <void>[];
+      final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      cambios.addError(const AuthApiException('access_denied', code: 'access_denied'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+
+    test('ignora eventos normales del stream (signedIn, etc.)', () async {
+      final eventos = <void>[];
+      final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
     });
   });
 }

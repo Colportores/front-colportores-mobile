@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
@@ -41,6 +42,18 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   Future<void> cerrarSesion(String accessToken) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) async => throw Exception('boom');
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async => throw Exception('boom');
 }
 
 /// Remoto que "recuerda" una sesión persistida por el proveedor (como supabase_flutter tras
@@ -81,6 +94,18 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 /// Remoto que devuelve una única excepción fija en `registrar` — para probar cómo el repositorio
@@ -111,6 +136,18 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 void main() {
@@ -179,6 +216,76 @@ void main() {
 
         expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
       });
+    });
+  });
+
+  group('AuthRepositoryImpl.solicitarRecuperacionPassword', () {
+    test('dado un email registrado, cuando solicita, devuelve Right(unit)', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(remote.solicitudesRecuperacionPorEmail['ana@example.com'], 1);
+    });
+
+    test('dado un email no registrado, cuando solicita, devuelve Right(unit) igual — '
+        'anti-enumeración', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(
+        email: 'noexiste@example.com',
+      );
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor rechaza por rate limit (429), devuelve Right(unit) igual — no '
+        'revela el límite', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 429,
+        mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
+        'devuelve la falla visible en vez de enmascararla', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(
+        resultado,
+        const Left<Failure, Unit>(
+          FailureServidor(
+            status: 500,
+            mensaje: 'No se pudo completar la operación (unexpected_failure).',
+          ),
+        ),
+      );
+    });
+
+    test('dado que no hay conexión, devuelve FailureSinConexion', () async {
+      remote.simularSinConexion = true;
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
+    });
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
   });
 
@@ -495,18 +602,98 @@ void main() {
     test('cuando hay conexión, cierra remoto y borra la sesión local', () async {
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.completo),
+      );
       expect(remote.llamadasCerrarSesion, 1);
       expect(await local.leerSesion(), isNull);
     });
 
-    test('cuando no hay conexión, igual borra la sesión local', () async {
+    test('cuando no hay conexión, borra la sesión local y deja la revocación pendiente', () async {
       remote.simularSinConexion = true;
 
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
+      );
       expect(await local.leerSesion(), isNull);
+    });
+
+    test(
+      'dado una revocación pendiente, cuando vuelve la red, la reintenta una sola vez',
+      () async {
+        remote.simularSinConexion = true;
+        await repository.cerrarSesion();
+
+        expect(
+          await repository.reintentarRevocacionPendiente(),
+          const Left<Failure, Unit>(FailureSinConexion()),
+          reason: 'sin red sigue pendiente',
+        );
+
+        remote.simularSinConexion = false;
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+
+        expect(remote.revocaciones, hasLength(1), reason: 'una sola revocación, por el token');
+      },
+    );
+
+    test('sin revocación pendiente, reintentar no llama al remoto', () async {
+      expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+      expect(remote.revocaciones, isEmpty);
+    });
+  });
+
+  group('AuthRepositoryImpl.reenviarVerificacion', () {
+    test('cuando reenvía, delega en el remoto y devuelve Right(unit)', () async {
+      final resultado = await repository.reenviarVerificacion(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(remote.reenviosPorEmail['ana@example.com'], 1);
+    });
+
+    test(
+      'cuando el remoto rechaza por rate limit, devuelve FailureServidor con ese mensaje',
+      () async {
+        remote.fallaAlReenviar = const ServidorException(
+          mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+        );
+
+        final resultado = await repository.reenviarVerificacion(email: 'ana@example.com');
+
+        expect(
+          resultado,
+          const Left<Failure, Unit>(
+            FailureServidor(mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.'),
+          ),
+        );
+      },
+    );
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.reenviarVerificacion(email: 'ana@example.com');
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+  });
+
+  group('AuthRepositoryImpl.erroresVerificacionEmail', () {
+    test('reenvía lo que emite el remoto', () async {
+      final futuro = repository.erroresVerificacionEmail.first;
+
+      remote.simularEnlaceVerificacionInvalido();
+
+      await expectLater(futuro, completes);
     });
   });
 }
