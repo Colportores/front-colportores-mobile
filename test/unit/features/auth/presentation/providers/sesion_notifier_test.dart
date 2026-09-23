@@ -206,4 +206,26 @@ void main() {
       expect(container.read(sesionProvider).value, isNull);
     });
   });
+
+  group('SesionNotifier.reenviarVerificacion', () {
+    test('cuando reenvía, no toca el estado de sesión', () async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      final container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .reenviarVerificacion('ana@example.com');
+
+      expect(falla, isNull);
+      expect(remote.reenviosPorEmail['ana@example.com'], 1);
+      expect(container.read(sesionProvider).value, isNull);
+    });
+  });
 }

@@ -84,6 +84,12 @@ void main() {
     logger: loggerMudo(),
   );
 
+  setUpAll(() {
+    // Hace falta un fallback para poder usar `any(named: 'type')` con `resend` (mocktail exige
+    // uno para cualquier tipo no primitivo, aunque el valor real no importe).
+    registerFallbackValue(OtpType.signup);
+  });
+
   setUp(() {
     auth = _MockGoTrueClient();
     cambios = StreamController<AuthState>.broadcast();
@@ -536,6 +542,93 @@ void main() {
       );
 
       expect(ds.iniciarSesionConGoogle(), throwsA(isA<SinConexionException>()));
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.reenviarVerificacion', () {
+    test('cuando reenvía, llama a resend con type signup y el emailRedirectTo', () async {
+      when(
+        () => auth.resend(
+          email: 'ana@example.com',
+          type: OtpType.signup,
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).thenAnswer((_) async => ResendResponse());
+
+      await dataSource().reenviarVerificacion('ana@example.com');
+
+      verify(
+        () => auth.resend(
+          email: 'ana@example.com',
+          type: OtpType.signup,
+          emailRedirectTo: ConfigSupabase.redirectOAuth,
+        ),
+      ).called(1);
+    });
+
+    test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
+      when(
+        () => auth.resend(
+          email: any(named: 'email'),
+          type: any(named: 'type'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Email rate limit exceeded',
+          statusCode: '429',
+          code: 'over_email_send_rate_limit',
+        ),
+      );
+
+      expect(
+        () => dataSource().reenviarVerificacion('ana@example.com'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.erroresVerificacionEmail', () {
+    test('dado un error otp_expired en el stream, emite el evento', () async {
+      final futuro = dataSource().erroresVerificacionEmail.first;
+
+      cambios.addError(
+        const AuthApiException(
+          'Email link is invalid or has expired',
+          statusCode: 'otp_expired',
+          code: 'access_denied',
+        ),
+      );
+
+      await expectLater(futuro, completes);
+    });
+
+    test('ignora otros errores del stream (p. ej. un OAuth cancelado)', () async {
+      final eventos = <void>[];
+      final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      cambios.addError(const AuthApiException('access_denied', code: 'access_denied'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+
+    test('ignora eventos normales del stream (signedIn, etc.)', () async {
+      final eventos = <void>[];
+      final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
     });
   });
 }

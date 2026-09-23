@@ -32,6 +32,22 @@ abstract interface class AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual();
 
   Future<void> cerrarSesion(String accessToken);
+
+  /// Reenvía el email de verificación de una cuenta con confirmación pendiente (HU-AUTH-002,
+  /// Supabase Auth `resend` tipo `signup`). El plan free de Supabase sin SMTP propio limita esto a
+  /// ~2 emails por hora; ese límite llega como [ServidorException] (mismo código que cualquier
+  /// otro rate limit de Supabase), no hace falta modelarlo aparte acá.
+  Future<void> reenviarVerificacion(String email);
+
+  /// Emite cada vez que el deep link de verificación de email (HU-AUTH-002) vuelve con un error:
+  /// enlace vencido o ya usado. Supabase no distingue los dos casos (mismo `error_code`
+  /// `otp_expired` para ambos), así que del lado de la app también es un solo evento.
+  ///
+  /// Cubre el caso donde el usuario abre el enlace sin tener la pantalla de verificación en
+  /// pantalla (p. ej. la app estaba cerrada); la raíz de la app (`ColportoresApp`) lo escucha para
+  /// llevarlo a esa pantalla en estado "expirado". El caso de éxito (enlace válido) no pasa por
+  /// acá: se resuelve con el flujo normal de "Ya verifiqué mi email" de esa misma pantalla.
+  Stream<void> get erroresVerificacionEmail;
 }
 
 /// Excepciones tipadas del origen remoto. Sin PII en [toString].

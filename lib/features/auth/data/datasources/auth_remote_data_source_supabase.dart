@@ -149,6 +149,31 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   @override
   Future<void> cerrarSesion(String accessToken) => _traduciendo(() => _auth.signOut());
 
+  @override
+  Future<void> reenviarVerificacion(String email) => _traduciendo(
+    () => _auth.resend(
+      email: email,
+      type: OtpType.signup,
+      emailRedirectTo: ConfigSupabase.redirectOAuth,
+    ),
+  );
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _auth.onAuthStateChange.transform(
+    StreamTransformer<AuthState, void>.fromHandlers(
+      handleData: (_, _) {},
+      // `getSessionFromUrl` (dentro de supabase_flutter) traduce el error del deep link a un
+      // `AuthException` y lo empuja acá como error del stream (`notifyException`), en vez de un
+      // evento normal. `statusCode` es, pese al nombre, el `error_code` crudo de la URL —
+      // `otp_expired` es el único que Supabase usa para "vencido o ya usado" en un link de
+      // verificación. Cualquier otro error del stream (p. ej. un signInWithOAuth cancelado) se
+      // descarta acá: no es de esta pantalla.
+      handleError: (error, stackTrace, sink) {
+        if (error is AuthException && error.statusCode == 'otp_expired') sink.add(null);
+      },
+    ),
+  );
+
   static SesionModel _aModelo(Session sesion) {
     final expiraEnSegundos = sesion.expiresAt;
     final expiraEn = expiraEnSegundos != null

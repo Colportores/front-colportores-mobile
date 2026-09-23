@@ -162,6 +162,34 @@ final class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
+  @override
+  Future<Either<Failure, Unit>> reenviarVerificacion({required String email}) async {
+    try {
+      await _remote.reenviarVerificacion(email);
+      _log.info(LogModulo.auth, 'VERIFICACION_REENVIADA', 'reenvío de verificación solicitado');
+      return const Right(unit);
+    } on AuthRemoteException catch (e) {
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'VERIFICACION_REENVIO_FAIL', 'reenvío rechazado', {
+        'codigo': failure.codigo,
+      });
+      return Left(failure);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'VERIFICACION_REENVIO_FAIL',
+        'error inesperado al reenviar',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _remote.erroresVerificacionEmail;
+
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
     CuentaPendienteException() => const FailureCuentaPendiente(),

@@ -52,6 +52,12 @@ class _RemoteConDemora implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
+
+  @override
+  Future<void> reenviarVerificacion(String email) => _interno.reenviarVerificacion(email);
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _interno.erroresVerificacionEmail;
 }
 
 /// [LoginPage] aislada (sin [ColportoresApp]): estas pruebas cubren diseño/tema/proveedores, no el

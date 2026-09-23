@@ -35,6 +35,12 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
 }
 
 Widget _app({required AuthRemoteDataSource remote}) => ProviderScope(
@@ -135,8 +141,8 @@ void main() {
       expect(find.textContaining('verificar tu correo'), findsOneWidget);
     });
 
-    testWidgets('cuando el registro requiere verificar el email, vuelve al login con los campos '
-        'precargados y el aviso', (tester) async {
+    testWidgets('cuando el registro requiere verificar el email, lleva a la pantalla de '
+        'verificación pendiente, y "Ya verifiqué mi email" entra tras confirmar', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -161,14 +167,23 @@ void main() {
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.pumpAndSettle();
 
-      // Volvió al login (no llegó a "Cuenta creada" ni a la pantalla de inicio).
-      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
-      expect(find.byKey(const Key('login_banner_verificacion')), findsOneWidget);
+      // No volvió al login ni entró directo: pasó a la pantalla de verificación pendiente.
+      expect(find.byKey(const Key('login_enviar')), findsNothing);
+      expect(find.byKey(const Key('inicio_email')), findsNothing);
       expect(find.textContaining('lucia.silva@correo.com'), findsWidgets);
-      expect(
-        tester.widget<TextField>(find.byKey(const Key('login_password'))).controller?.text,
-        'Secreto123',
-      );
+      expect(find.byKey(const Key('verificacion_email_ya_verifique')), findsOneWidget);
+
+      // Simula que confirmó el correo (tocó el enlace) y toca "Ya verifiqué mi email".
+      remote.confirmarEmail('lucia.silva@correo.com');
+      await tester.tap(find.byKey(const Key('verificacion_email_ya_verifique')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_continuar')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('verificacion_email_continuar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      expect(find.text('lucia.silva@correo.com'), findsOneWidget);
     });
   });
 }

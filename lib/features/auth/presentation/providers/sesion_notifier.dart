@@ -7,6 +7,7 @@ import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
+import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 
@@ -97,6 +98,15 @@ class SesionNotifier extends _$SesionNotifier {
         return Right(r);
       },
     );
+  }
+
+  /// Reenvía el email de verificación (HU-AUTH-002). No toca el estado de sesión: la cuenta sigue
+  /// sin poder entrar hasta que el usuario confirme el correo, se reenvíe o no.
+  Future<Failure?> reenviarVerificacion(String email) async {
+    final resultado = await ref.read(reenviarVerificacionUseCaseProvider)(
+      ReenviarVerificacionParams(email: email),
+    );
+    return resultado.fold((failure) => failure, (_) => null);
   }
 
   /// Invalida la sesión y cierra la DB local: la clave de cifrado se destruye acá (HU-AUTH-006,

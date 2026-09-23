@@ -30,4 +30,11 @@ abstract interface class AuthRepository {
 
   /// Cierra la sesión remota (si hay red) y borra la local siempre.
   Future<Either<Failure, Unit>> cerrarSesion();
+
+  /// Reenvía el email de verificación de una cuenta con confirmación pendiente (HU-AUTH-002).
+  Future<Either<Failure, Unit>> reenviarVerificacion({required String email});
+
+  /// Emite cuando el deep link de verificación de email vuelve con un error (enlace vencido o ya
+  /// usado — ver `AuthRemoteDataSource.erroresVerificacionEmail` en `data` para el detalle).
+  Stream<void> get erroresVerificacionEmail;
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -31,10 +32,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
   bool _enviando = false;
-
-  /// Email con el que se acaba de registrar y todavía tiene que verificar (viene de
-  /// [RegistroPendiente]). Muestra el banner informativo hasta que el usuario lo cierra.
-  String? _emailPendienteVerificacion;
 
   // Solo estado local: la sesión deslizante ("mantenerme conectado" de verdad) es HU-AUTH-006,
   // Sprint 4. Por ahora este checkbox no persiste nada.
@@ -123,15 +120,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 8),
                       Text('Iniciá tu jornada', style: theme.textTheme.headlineMedium),
                       const SizedBox(height: 34),
-                      if (_emailPendienteVerificacion != null) ...[
-                        _BannerInformativo(
-                          mensaje:
-                              'Te enviamos un correo a $_emailPendienteVerificacion. '
-                              'Verificá tu cuenta y después tocá Entrar.',
-                          onCerrar: () => setState(() => _emailPendienteVerificacion = null),
-                        ),
-                        const SizedBox(height: 18),
-                      ],
                       _CampoLogin(
                         fieldKey: const Key('login_email'),
                         etiqueta: 'CORREO O CÉDULA',
@@ -266,22 +254,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       Center(
                         child: TextButton(
                           key: const Key('login_ir_a_registro'),
-                          onPressed: () async {
-                            final pendiente = await Navigator.of(context).push<RegistroPendiente>(
-                              MaterialPageRoute<RegistroPendiente>(
-                                builder: (_) => RegistroPage(mostrarApple: widget.mostrarApple),
+                          onPressed: () {
+                            unawaited(
+                              Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => RegistroPage(mostrarApple: widget.mostrarApple),
+                                ),
                               ),
                             );
-                            if (!mounted || pendiente == null) return;
-                            setState(() {
-                              _email.text = pendiente.email;
-                              _password.text = pendiente.password;
-                              _emailPendienteVerificacion = pendiente.email;
-                              // Un login fallido antes de ir a registrarse no debería quedar
-                              // marcado en rojo junto al banner nuevo (no es un error).
-                              _errorGeneral = null;
-                              _erroresCampo = const {};
-                            });
                           },
                           child: Text(
                             '¿No tenés cuenta? Registrate',
@@ -298,49 +278,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             );
           },
         ),
-      ),
-    );
-  }
-}
-
-/// Aviso no destructivo (verificación de email pendiente, no un error): colores de
-/// superficie/primario del tema, nunca `colorScheme.error`.
-class _BannerInformativo extends StatelessWidget {
-  const _BannerInformativo({required this.mensaje, required this.onCerrar});
-
-  final String mensaje;
-  final VoidCallback onCerrar;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-
-    return Container(
-      key: const Key('login_banner_verificacion'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: colores.borde, width: 1.5),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              mensaje,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary),
-            ),
-          ),
-          IconButton(
-            onPressed: onCerrar,
-            icon: Icon(Icons.close, size: 18, color: theme.colorScheme.primary),
-            tooltip: 'Cerrar',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          ),
-        ],
       ),
     );
   }

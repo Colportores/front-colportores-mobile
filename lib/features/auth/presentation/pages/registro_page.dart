@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/sesion_notifier.dart';
+import 'verificacion_email_page.dart';
 
 /// Pantalla de registro de cuenta (HU-AUTH-001), diseño "Login Colportor" (registro 1a/1b).
 ///
@@ -15,10 +17,9 @@ import '../providers/sesion_notifier.dart';
 /// muestra los mensajes por campo o un banner general, igual que [LoginPage]. Todo lo visual sale
 /// de `Theme.of(context)`.
 ///
-/// Si el registro queda pendiente de verificar el email (HU-AUTH-002), hace `pop` con
-/// [RegistroPendiente] en vez de cerrar hasta el fondo de la pila — [LoginPage] lo usa para
-/// precargar el formulario y mostrar el aviso. La pantalla de espera/reenvío (#19) queda
-/// pendiente: no hay diseño para eso todavía.
+/// Si el registro queda pendiente de verificar el email (HU-AUTH-002), reemplaza esta pantalla por
+/// [VerificacionEmailPage] (con el email y la contraseña recién tipeados) en vez de volver al
+/// login — esa pantalla es la que ahora ofrece esperar, reenviar o revisar el enlace.
 class RegistroPage extends ConsumerStatefulWidget {
   const RegistroPage({super.key, this.mostrarApple});
 
@@ -99,7 +100,13 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
         if (r.requiereVerificacion) {
           // r.email es el normalizado por el use case (trim + minúsculas), no lo que haya
           // tecleado el usuario.
-          Navigator.of(context).pop(RegistroPendiente(email: r.email, password: password));
+          unawaited(
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => VerificacionEmailPage(email: r.email, password: password),
+              ),
+            ),
+          );
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cuenta creada')));
@@ -537,13 +544,4 @@ class _BotonProveedor extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Lo que [RegistroPage] devuelve al hacer `pop` cuando el registro quedó pendiente de verificar
-/// el email — [LoginPage] usa esto para precargar el formulario y mostrar el aviso.
-final class RegistroPendiente {
-  const RegistroPendiente({required this.email, required this.password});
-
-  final String email;
-  final String password;
 }

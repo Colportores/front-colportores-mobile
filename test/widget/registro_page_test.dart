@@ -37,6 +37,12 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
 }
 
 /// [RegistroPage] aislada (sin [ColportoresApp]): igual criterio que `login_page_test.dart` —
