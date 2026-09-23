@@ -145,19 +145,15 @@ directa, lo que choca con la regla de CLAUDE.md de que los tests de dominio/data
 Flutter. Elegir es decisión de Cristian: está pendiente en #70 (ver `AppDatabase.migration`) y hay
 que resolverlo antes de subir a la versión 3.
 
-**Lo que no hay todavía** es un ejemplo de fake que sea *solo* para tests, sin el doble uso de
-demo de arriba — el repo no tiene ninguno. Para ese caso no existe convención (dónde vive, cómo
-se nombra) y este README no la inventa: queda como pregunta abierta para Cristian (comentario en
-el issue #9).
+**Convención de fakes** (decisión de Cristian del 23/09, issue #9): todo fake en memoria vive **al
+lado de su interfaz**, en `lib/<ruta de la interfaz>/fakes/<interfaz>_en_memoria.dart`, y la clase
+se llama `<Interfaz>EnMemoria`, lo use el modo demo o solo los tests. Los mocks de mocktail
+(`class _MockX extends Mock implements X`) se declaran dentro del archivo de test que los usa, y los
+helpers sin interfaz (logger mudo, relojes fijos) van en `test/helpers/`.
 
-**Nota sobre skills instaladas**: el repo tiene `.claude/skills/dart-generate-test-mocks/SKILL.md`,
-que recomienda `package:mockito` + `@GenerateNiceMocks` + `build_runner` para generar mocks. La
-convención efectiva del código es la de arriba, **mocktail**, no mockito: 6 archivos importan
-`package:mocktail`, cero importan `package:mockito` (que solo aparece transitivo en
-`pubspec.lock`). Un agente que cargue esa skill sin leer este README va a mockear con mockito y
-meter un estilo distinto al resto de la suite. Si conviene ajustar el contenido de la skill o
-desinstalarla para que deje de contradecir la convención real, lo decide Cristian (mismo
-comentario del issue #9) — este README no toca la skill.
+**Mocks: mocktail, nunca mockito.** La skill oficial `dart-generate-test-mocks`, que generaba mocks
+con mockito + `build_runner`, se desinstaló el 23/09 (#9; ver `.claude/skills/PROCEDENCIA.md`).
+Donde otra skill mencione mockito, en este repo es mocktail.
 
 `test/helpers/logger_mudo.dart` es el ejemplo de fixture compartida: un `AppLogger` con nivel
 `off` para no ensuciar la salida de los tests que reciben un logger inyectado.
