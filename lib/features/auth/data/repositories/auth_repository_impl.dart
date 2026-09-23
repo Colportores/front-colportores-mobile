@@ -47,6 +47,41 @@ final class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, Unit>> solicitarRecuperacionPassword({required String email}) async {
+    try {
+      await _remote.solicitarRecuperacionPassword(email);
+      _log.info(LogModulo.auth, 'RECUPERACION_SOLICITADA', 'solicitud de recuperación enviada');
+      return const Right(unit);
+    } on SinConexionException {
+      // Único caso que sí se distingue de un envío exitoso: sin red no se pudo ni intentar.
+      _log.warn(LogModulo.auth, 'RECUPERACION_SIN_CONEXION', 'solicitud sin conectividad');
+      return const Left(FailureSinConexion());
+    } on AuthRemoteException catch (e) {
+      // Anti-enumeración (OWASP) + regla explícita de la HU-AUTH-004: ni "el email no existe"
+      // ni un rate limit de Supabase pueden distinguirse de un envío exitoso hacia arriba — si
+      // no, un atacante aprende algo de la respuesta. Se loguea el código (sin PII) para poder
+      // diagnosticar del lado del servidor, pero el caso de uso siempre ve éxito.
+      _log.warn(
+        LogModulo.auth,
+        'RECUPERACION_ENMASCARADA',
+        'solicitud de recuperación rechazada por el proveedor (enmascarado como éxito)',
+        {'codigo': _traducir(e).codigo},
+      );
+      return const Right(unit);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'RECUPERACION_FAIL',
+        'error inesperado al solicitar recuperación',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
   Future<Either<Failure, ResultadoRegistro>> registrar({
     required String nombre,
     required String apellido,

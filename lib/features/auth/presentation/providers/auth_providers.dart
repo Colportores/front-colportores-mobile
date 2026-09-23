@@ -16,6 +16,7 @@ import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
 import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
+import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 
 part 'auth_providers.g.dart';
 
@@ -45,6 +46,10 @@ AuthRepository authRepository(Ref ref) => AuthRepositoryImpl(
 @riverpod
 IniciarSesionUseCase iniciarSesionUseCase(Ref ref) =>
     IniciarSesionUseCase(ref.watch(authRepositoryProvider));
+
+@riverpod
+SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref ref) =>
+    SolicitarRecuperacionPasswordUseCase(ref.watch(authRepositoryProvider));
 
 @riverpod
 IniciarSesionConGoogleUseCase iniciarSesionConGoogleUseCase(Ref ref) =>

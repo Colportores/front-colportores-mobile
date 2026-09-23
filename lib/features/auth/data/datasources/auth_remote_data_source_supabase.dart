@@ -57,6 +57,11 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   }
 
   @override
+  Future<void> solicitarRecuperacionPassword(String email) => _traduciendo(
+    () => _auth.resetPasswordForEmail(email, redirectTo: ConfigSupabase.redirectOAuth),
+  );
+
+  @override
   Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,

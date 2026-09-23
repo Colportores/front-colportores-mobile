@@ -9,6 +9,13 @@ import '../models/sesion_model.dart';
 abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesion({required String email, required String password});
 
+  /// Solicita el reset de contraseña (HU-AUTH-004, Supabase Auth `resetPasswordForEmail`).
+  ///
+  /// Nunca lanza para "el email no existe": Supabase responde igual exista o no la cuenta
+  /// (anti-enumeración, OWASP) — solo puede lanzar por falta de red o por su propio rate limit
+  /// de emails. El repositorio enmascara ambos casos como éxito de cara al dominio.
+  Future<void> solicitarRecuperacionPassword(String email);
+
   /// Supabase Auth `signUp` (HU-AUTH-001/002). Devuelve la sesión si Supabase la deja iniciada,
   /// o `null` si la cuenta se creó pero falta confirmar el email ("Confirm email" activo) — eso
   /// **no** es un error, el fake en memoria no tiene ese paso intermedio y siempre devuelve

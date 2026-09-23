@@ -11,6 +11,11 @@ abstract interface class AuthRepository {
   /// Inicia sesión y deja la sesión persistida en el dispositivo.
   Future<Either<Failure, Sesion>> iniciarSesion({required String email, required String password});
 
+  /// Solicita el reset de contraseña (HU-AUTH-004). Siempre devuelve `Right(unit)` salvo que el
+  /// dispositivo esté sin conexión: ni "el email no existe" ni un rate limit del proveedor se
+  /// distinguen de un envío exitoso hacia arriba (anti-enumeración, OWASP).
+  Future<Either<Failure, Unit>> solicitarRecuperacionPassword({required String email});
+
   /// Registra una cuenta nueva. Deja la sesión iniciada si Supabase la devuelve, o `null` en
   /// [ResultadoRegistro.sesion] si falta confirmar el email (HU-AUTH-001/002).
   Future<Either<Failure, ResultadoRegistro>> registrar({

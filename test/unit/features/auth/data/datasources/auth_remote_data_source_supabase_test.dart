@@ -301,6 +301,54 @@ void main() {
     });
   });
 
+  group('AuthRemoteDataSourceSupabase.solicitarRecuperacionPassword', () {
+    test('cuando solicita, llama a resetPasswordForEmail con el emailRedirectTo', () async {
+      when(
+        () =>
+            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+      ).thenAnswer((_) async {});
+
+      await dataSource().solicitarRecuperacionPassword('ana@example.com');
+
+      verify(
+        () =>
+            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+      ).called(1);
+    });
+
+    test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
+      when(() => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo'))).thenThrow(
+        const AuthApiException(
+          'Email rate limit exceeded',
+          statusCode: '429',
+          code: 'over_email_send_rate_limit',
+        ),
+      );
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('ana@example.com'),
+        throwsA(
+          isA<ServidorException>().having(
+            (e) => e.mensaje,
+            'mensaje',
+            contains('Demasiados intentos'),
+          ),
+        ),
+      );
+    });
+
+    test('dado que no hay red, lanza SinConexionException', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(AuthRetryableFetchException(message: 'SocketException'));
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('ana@example.com'),
+        throwsA(isA<SinConexionException>()),
+      );
+    });
+  });
+
   group('AuthRemoteDataSourceSupabase.registrar', () {
     Future<SesionModel?> registrar(AuthRemoteDataSourceSupabase ds) => ds.registrar(
       nombre: 'Ana',

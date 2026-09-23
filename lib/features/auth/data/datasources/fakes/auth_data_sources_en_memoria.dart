@@ -71,6 +71,21 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     );
   }
 
+  /// Cuántas veces se solicitó recuperación de contraseña (HU-AUTH-004), por email. Se registra
+  /// igual exista o no la cuenta —anti-enumeración—: el fake no puede filtrar esa diferencia.
+  final Map<String, int> solicitudesRecuperacionPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [solicitarRecuperacionPassword] lo lanza en vez de
+  /// registrar la solicitud — para simular un rate limit u otro error de Supabase.
+  AuthRemoteException? fallaAlSolicitarRecuperacion;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlSolicitarRecuperacion != null) throw fallaAlSolicitarRecuperacion!;
+    solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
