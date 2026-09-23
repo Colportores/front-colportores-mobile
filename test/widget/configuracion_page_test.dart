@@ -95,9 +95,20 @@ Future<ProviderContainer> _montar(WidgetTester tester, {AuthLocalDataSource? loc
   return container;
 }
 
-/// Scrollea hasta [finder] (con texto grande puede quedar fuera de pantalla) y lo toca.
+/// Fija el tamaño de pantalla del test (convención del repo: 390x844 para guías de accesibilidad,
+/// 360x740 para el chequeo de overflow con textScaler 2.0 — ver jornada_page_test.dart).
+void _pantalla(WidgetTester tester, Size tamanio) {
+  tester.view.physicalSize = tamanio;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
+/// Scrollea hasta [finder] y lo toca. Con texto grande en una pantalla chica, el ítem puede
+/// todavía no estar construido (el `ListView` es perezoso más allá del cache extent) — por eso
+/// `scrollUntilVisible` en vez de `ensureVisible`: scrollea de a poco hasta que aparece, en vez
+/// de asumir que ya existe en el árbol (issue #56, hallazgo de accesibilidad a 360x740 + 2.0x).
 Future<void> _tocar(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
+  await tester.scrollUntilVisible(finder, 200, scrollable: find.byType(Scrollable).first);
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
@@ -248,6 +259,46 @@ void main() {
       expect(find.byKey(const Key('inicio_email')), findsOneWidget);
       expect(container.read(sesionProvider).value, isNotNull);
     });
+
+    // Los siguientes tres escenarios de HU-AUTH-006 no tienen nada que probar todavía: el código
+    // no tiene motor de sync, backup en background ni push notifications. `testWidgets.skip` es
+    // `bool?` (a diferencia de `test.skip`, que acepta un motivo en texto), así que el motivo va
+    // en el comentario de cada uno, apuntando al issue #56 en vez de omitirse en silencio.
+
+    // skip: QA #56 — HU-AUTH-006 (criterios de aceptación, escenario Edge) pide que cerrarSesion()
+    // espere el sync activo con timeout de 5s, o lo cancele limpiamente. El código no tiene ningún
+    // concepto de "job de sincronización" (feature/sync-engine y feature/sync-queue sin mergear a
+    // develop) — nada que testear hasta que exista.
+    testWidgets(
+      'Escenario: Edge -logout en medio de un sync activo (espera con timeout de 5s, o cancela '
+      'limpiamente)',
+      (tester) async {
+        fail(
+          'no hay nada que probar: el código no tiene ningún concepto de "job de sincronización" '
+          'que cerrarSesion() pueda esperar o cancelar (feature/sync-engine y feature/sync-queue '
+          'sin mergear a develop)',
+        );
+      },
+      skip: true,
+    );
+
+    // skip: QA #56 — HU-AUTH-006 (casos borde) pide cancelar limpiamente un backup nocturno en
+    // curso al cerrar sesión. No hay job de backup en background en el código todavía — nada que
+    // testear hasta que exista.
+    testWidgets('caso borde: logout en medio de un backup nocturno cancela el backup limpiamente', (
+      tester,
+    ) async {
+      fail('no hay nada que probar: no existe backup nocturno en background en el código');
+    }, skip: true);
+
+    // skip: QA #56 — HU-AUTH-006 (casos borde) pide descartar un push notification que entra
+    // justo al cerrar sesión. La app no tiene push notifications implementadas todavía — nada que
+    // testear hasta que exista.
+    testWidgets('caso borde: logout justo cuando entra un push notification descarta el push', (
+      tester,
+    ) async {
+      fail('no hay nada que probar: la app no recibe push notifications todavía');
+    }, skip: true);
   });
 
   group('HU-AUTH-010 — Borrar datos locales', () {
@@ -510,6 +561,7 @@ void main() {
     for (final tema in [ThemeMode.light, ThemeMode.dark]) {
       testWidgets('Configuración cumple las guías (${tema.name})', (tester) async {
         final handle = tester.ensureSemantics();
+        _pantalla(tester, const Size(390, 844));
         tester.platformDispatcher.platformBrightnessTestValue = tema == ThemeMode.dark
             ? Brightness.dark
             : Brightness.light;
@@ -517,20 +569,67 @@ void main() {
         await _montar(tester);
 
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
 
         await _abrirBorrado(tester);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         handle.dispose();
       });
     }
 
+    testWidgets('el diálogo de confirmación con operaciones pendientes cumple las guías', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      _pantalla(tester, const Size(390, 844));
+      _datos.respuestaResumen = const Right(
+        ResumenDatosLocales(
+          personas: 0,
+          visitas: 0,
+          operacionesSinSincronizar: 3,
+          hayBackupEnDrive: false,
+        ),
+      );
+      await _montar(tester);
+
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('el aviso de error con "Reintentar" cumple las guías', (tester) async {
+      final handle = tester.ensureSemantics();
+      _pantalla(tester, const Size(390, 844));
+      final local = _LocalQueNoBorra()..fallar = true;
+      await _montar(tester, local: local);
+
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
+      await tester.pumpAndSettle();
+      expect(find.text('No pudimos cerrar la sesión. Probá de nuevo.'), findsOneWidget);
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+    });
+
     testWidgets('con textScaler 2.0 no hay overflow en Configuración ni en el borrado', (
       tester,
     ) async {
+      _pantalla(tester, const Size(360, 740));
       tester.platformDispatcher.textScaleFactorTestValue = 2.0;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _montar(tester);
