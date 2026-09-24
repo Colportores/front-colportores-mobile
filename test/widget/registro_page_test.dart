@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/auth/presentation/pages/registro_pag
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
