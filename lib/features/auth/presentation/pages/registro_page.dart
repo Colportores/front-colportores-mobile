@@ -293,15 +293,18 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: Checkbox(
-                              key: const Key('registro_terminos'),
-                              value: _aceptaTerminos,
-                              onChanged: (valor) =>
-                                  setState(() => _aceptaTerminos = valor ?? false),
-                            ),
+                          // Sin achicar: el área de toque tiene que ser de 48x48 (#115). Con
+                          // `semanticLabel` propio (no se excluye el texto de al lado, como en el
+                          // otro checkbox de acá abajo: tiene el link tappeable a "términos de
+                          // uso", que se perdería si se lo excluyera de la semántica).
+                          Checkbox(
+                            key: const Key('registro_terminos'),
+                            value: _aceptaTerminos,
+                            semanticLabel:
+                                'Acepto los términos de uso y el tratamiento de los datos de '
+                                'clientes según la política de la asociación.',
+                            materialTapTargetSize: MaterialTapTargetSize.padded,
+                            onChanged: (valor) => setState(() => _aceptaTerminos = valor ?? false),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -350,26 +353,31 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: Checkbox(
-                              key: const Key('registro_trade_off'),
-                              value: _aceptaTradeOffE2E,
-                              onChanged: (valor) =>
-                                  setState(() => _aceptaTradeOffE2E = valor ?? false),
-                            ),
+                          // Sin achicar: el área de toque tiene que ser de 48x48 (#115).
+                          Checkbox(
+                            key: const Key('registro_trade_off'),
+                            value: _aceptaTradeOffE2E,
+                            semanticLabel:
+                                'Entiendo que mi contraseña protege la copia de seguridad de mis '
+                                'datos: si la olvido y pierdo el teléfono, los datos de mis '
+                                'clientes no se pueden recuperar.',
+                            materialTapTargetSize: MaterialTapTargetSize.padded,
+                            onChanged: (valor) =>
+                                setState(() => _aceptaTradeOffE2E = valor ?? false),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'Entiendo que mi contraseña protege la copia de seguridad de mis '
-                              'datos: si la olvido y pierdo el teléfono, los datos de mis '
-                              'clientes no se pueden recuperar.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 12.5,
-                                height: 1.45,
-                                color: theme.colorScheme.onSurface,
+                            // La etiqueta ya la lleva el checkbox para el lector de pantalla.
+                            child: ExcludeSemantics(
+                              child: Text(
+                                'Entiendo que mi contraseña protege la copia de seguridad de mis '
+                                'datos: si la olvido y pierdo el teléfono, los datos de mis '
+                                'clientes no se pueden recuperar.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 12.5,
+                                  height: 1.45,
+                                  color: theme.colorScheme.onSurface,
+                                ),
                               ),
                             ),
                           ),
@@ -563,8 +571,12 @@ class _CampoRegistroState extends State<_CampoRegistro> {
             helperText: widget.textoAyudaInferior,
             helperStyle: TextStyle(color: colores.gris, fontSize: 11),
             helperMaxLines: 2,
+            // Área de toque mínima de 48 (accesibilidad, #115): en el tema claro el campo queda
+            // en 41.
+            constraints: const BoxConstraints(minHeight: 48),
             suffixIcon: widget.esContrasena
                 ? IconButton(
+                    tooltip: _mostrarTexto ? 'Ocultar contraseña' : 'Mostrar contraseña',
                     icon: Icon(
                       _mostrarTexto ? Icons.visibility_off : Icons.visibility,
                       color: colores.placeholder,

@@ -316,7 +316,13 @@ class _CampoEmail extends StatelessWidget {
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
           style: theme.textTheme.bodyLarge,
-          decoration: InputDecoration(hintText: 'lucia.silva@correo.com', errorText: errorText),
+          decoration: InputDecoration(
+            hintText: 'lucia.silva@correo.com',
+            errorText: errorText,
+            // Área de toque mínima de 48 (accesibilidad, #115): en el tema claro el campo queda
+            // en 41.
+            constraints: const BoxConstraints(minHeight: 48),
+          ),
         ),
       ],
     );
