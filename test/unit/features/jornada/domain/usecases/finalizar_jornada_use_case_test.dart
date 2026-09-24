@@ -250,16 +250,64 @@ void main() {
       expect(backup.pedidos, isEmpty);
     });
 
-    test('tampoco con una hora elegida a mano', () async {
-      repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 23, 50)));
+    test('con una hora elegida a mano que no está dentro de la corrección (otro día), rechaza con '
+        'el rango explícito', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 23, 50);
+      repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
 
       final resultado = await finalizarJornada(
         FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 7, 50)),
       );
 
-      expect(resultado.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
+      expect(
+        resultado,
+        // `Jornada.inicio` siempre queda en UTC (ver su constructor): la comparación por
+        // `Equatable` de dos `DateTime` con el mismo instante pero `isUtc` distinto no dio
+        // igual en la práctica — `.toUtc()` de los dos lados para que coincida con lo que
+        // devuelve el caso de uso.
+        Left<Failure, Jornada>(
+          FailureHoraFueraDeRango(
+            desde: inicioAyer.toUtc(),
+            hasta: DateTime(2026, 9, 22, 23, 59, 59, 999).toUtc(),
+          ),
+        ),
+      );
       expect(repositorio.finalizadas, isEmpty);
     });
+
+    test('la corrección de "jornada que quedó abierta" cierra con la hora elegida, entre el inicio '
+        'y las 23:59 de ese día, sin el margen de 30 min (#109)', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 13);
+      repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+
+      final resultado = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 22, 30)),
+      );
+
+      final cerrada = resultado.getOrElse(() => fail('se esperaba Right'));
+      expect(cerrada.fin, DateTime(2026, 9, 22, 22, 30).toUtc());
+      expect(repositorio.finalizadas, hasLength(1));
+      expect(backup.pedidos, ['u-1'], reason: 'el backup se pide igual que en el cierre normal');
+    });
+
+    test(
+      'la corrección rechaza una hora que no es posterior al inicio (nunca se inventa un fin)',
+      () async {
+        final inicioAyer = DateTime(2026, 9, 22, 13);
+        repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+
+        final igualAlInicio = await finalizarJornada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: inicioAyer),
+        );
+        final antesDelInicio = await finalizarJornada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 12, 59)),
+        );
+
+        expect(igualAlInicio.fold((f) => f, (_) => null), isA<FailureHoraFueraDeRango>());
+        expect(antesDelInicio.fold((f) => f, (_) => null), isA<FailureHoraFueraDeRango>());
+        expect(repositorio.finalizadas, isEmpty);
+      },
+    );
 
     test('a las 00:10, elegir las 23:50 de ayer vale: está dentro de los 30 minutos y del día del '
         'inicio (revisión de #107)', () async {
