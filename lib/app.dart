@@ -56,16 +56,18 @@ class ColportoresApp extends ConsumerWidget {
       navigatorKeyColportores.currentState?.popUntil((route) => route.isFirst);
     });
 
-    return MaterialApp(
-      navigatorKey: navigatorKeyColportores,
-      title: 'Colportores',
-      theme: temaClaro(),
-      darkTheme: temaOscuro(),
-      themeMode: ThemeMode.system,
-      home: sesion.when(
-        loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-        error: (_, _) => const LoginPage(),
-        data: (s) => s == null ? const LoginPage() : JornadaPage(sesion: s),
+    return _RevisionAlVolver(
+      child: MaterialApp(
+        navigatorKey: navigatorKeyColportores,
+        title: 'Colportores',
+        theme: temaClaro(),
+        darkTheme: temaOscuro(),
+        themeMode: ThemeMode.system,
+        home: sesion.when(
+          loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+          error: (_, _) => const LoginPage(),
+          data: (s) => s == null ? const LoginPage() : JornadaPage(sesion: s),
+        ),
       ),
     );
   }
@@ -109,4 +111,36 @@ void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoI
       MaterialPageRoute<void>(builder: (_) => VerificacionEmailPage(estadoInicial: estadoInicial)),
     ),
   );
+}
+
+/// HU-AUTH-007: cada vez que la app vuelve al frente, revisa si la sesión venció por inactividad
+/// mientras estaba en segundo plano (el proceso pudo quedar vivo días sin red).
+class _RevisionAlVolver extends ConsumerStatefulWidget {
+  const _RevisionAlVolver({required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<_RevisionAlVolver> createState() => _RevisionAlVolverState();
+}
+
+class _RevisionAlVolverState extends ConsumerState<_RevisionAlVolver> {
+  late final AppLifecycleListener _ciclo;
+
+  @override
+  void initState() {
+    super.initState();
+    _ciclo = AppLifecycleListener(
+      onResume: () => unawaited(ref.read(sesionProvider.notifier).revisarVigencia()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ciclo.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/usecases/use_case.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -33,6 +34,7 @@ Future<AuthRemoteDataSourceEnMemoria> _montar(
   SesionModel? guardada,
   AuthRemoteDataSourceEnMemoria? remote,
   ThemeMode tema = ThemeMode.light,
+  RelojSesionEnMemoria? reloj,
 }) async {
   final remoto =
       remote ??
@@ -48,6 +50,7 @@ Future<AuthRemoteDataSourceEnMemoria> _montar(
       overrides: [
         authRemoteDataSourceProvider.overrideWithValue(remoto),
         authLocalDataSourceProvider.overrideWithValue(local),
+        if (reloj != null) relojSesionProvider.overrideWithValue(reloj),
       ],
       child: const ColportoresApp(),
     ),
@@ -130,6 +133,56 @@ void main() {
       expect(find.byKey(const Key('otra_pantalla')), findsNothing);
       expect(_login, findsOneWidget);
       expect(find.text(_revocada), findsOneWidget);
+    });
+  });
+
+  group('Al volver a la app (proceso vivo en segundo plano)', () {
+    Future<void> volverALaApp(WidgetTester tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Escenario: Expiración por inactividad — si pasaron los 30 días con la app en '
+        'segundo plano, al volver cierra la sesión con "$_inactividad"', (tester) async {
+      var ahora = DateTime.now().toUtc();
+      final reloj = RelojSesionEnMemoria(sistema: () => ahora);
+      await _montar(tester, guardada: _sesionSinUsoDesde(const Duration(days: 20)), reloj: reloj);
+      expect(_principal, findsOneWidget);
+
+      ahora = ahora.add(const Duration(days: 11));
+      await volverALaApp(tester);
+
+      expect(_login, findsOneWidget);
+      expect(find.text(_inactividad), findsOneWidget);
+    });
+
+    testWidgets('dentro de la ventana, volver a la app no cambia nada', (tester) async {
+      var ahora = DateTime.now().toUtc();
+      final reloj = RelojSesionEnMemoria(sistema: () => ahora);
+      await _montar(tester, guardada: _sesionSinUsoDesde(const Duration(days: 20)), reloj: reloj);
+
+      ahora = ahora.add(const Duration(days: 9));
+      await volverALaApp(tester);
+
+      expect(_principal, findsOneWidget);
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('atrasar el reloj del equipo no estira la sesión', (tester) async {
+      var ahora = DateTime.now().toUtc().add(const Duration(days: 11));
+      final reloj = RelojSesionEnMemoria(sistema: () => ahora);
+      await reloj.ahora();
+      ahora = ahora.subtract(const Duration(days: 11));
+
+      await _montar(tester, guardada: _sesionSinUsoDesde(const Duration(days: 20)), reloj: reloj);
+
+      expect(find.text(_inactividad), findsOneWidget);
     });
   });
 

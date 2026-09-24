@@ -198,6 +198,17 @@ class SesionNotifier extends _$SesionNotifier {
     return resultado;
   }
 
+  /// Al volver a la app (HU-AUTH-007): si la sesión pasó los 30 días sin actividad de red mientras
+  /// la app estaba en segundo plano, se cierra como [MotivoExpiracion.inactividad], conservando la
+  /// DB. La raíz de la app lo llama en cada `resumed`.
+  Future<void> revisarVigencia() async {
+    if (state.value == null) return;
+    final resultado = await ref.read(obtenerSesionActualUseCaseProvider)(const NoParams());
+    if (resultado case Left(value: FailureSesionExpiradaPorInactividad())) {
+      await _alExpirar(MotivoExpiracion.inactividad);
+    }
+  }
+
   /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
   /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
   /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.
