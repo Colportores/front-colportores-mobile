@@ -208,7 +208,9 @@ void main() {
       await tester.enterText(find.byKey(const Key('registro_email')), 'lucia.silva@correo.com');
       await tester.enterText(find.byKey(const Key('registro_password')), 'Secreto123');
       await tester.tap(find.byKey(const Key('registro_terminos')));
+      await tester.tap(find.byKey(const Key('registro_trade_off')));
       await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.pumpAndSettle();
 

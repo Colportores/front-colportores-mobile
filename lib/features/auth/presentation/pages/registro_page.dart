@@ -44,6 +44,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   String? _errorGeneral;
   bool _enviando = false;
   bool _aceptaTerminos = false;
+  bool _aceptaTradeOffE2E = false;
 
   /// `true` cuando el error general es "email ya registrado" (HU-AUTH-001): habilita los accesos
   /// directos a login y a recuperar contraseña que exige el criterio de aceptación.
@@ -86,6 +87,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
           email: email,
           password: password,
           aceptaTerminos: _aceptaTerminos,
+          aceptaTradeOffE2E: _aceptaTradeOffE2E,
         );
 
     if (!mounted) return;
@@ -168,6 +170,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
     final paddingHorizontal = esOscuro ? 26.0 : 30.0;
     final errorTerminos = _erroresCampo['aceptaTerminos'];
+    final errorTradeOffE2E = _erroresCampo['aceptaTradeOffE2E'];
 
     return Scaffold(
       body: SafeArea(
@@ -323,6 +326,47 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           child: Text(
                             errorTerminos,
                             key: const Key('registro_terminos_error'),
+                            style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      // Trade-off E2E (R-AU05, HU-AUTH-001, issue #85): mismos componentes que la
+                      // casilla de términos de arriba, sin diseño nuevo (decisión de Cristian,
+                      // 23/09). Sin link tappeable: es una única oración, no hay documento aparte.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: Checkbox(
+                              key: const Key('registro_trade_off'),
+                              value: _aceptaTradeOffE2E,
+                              onChanged: (valor) =>
+                                  setState(() => _aceptaTradeOffE2E = valor ?? false),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Entiendo que mi contraseña protege la copia de seguridad de mis '
+                              'datos: si la olvido y pierdo el teléfono, los datos de mis '
+                              'clientes no se pueden recuperar.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 12.5,
+                                height: 1.45,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (errorTradeOffE2E != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 32),
+                          child: Text(
+                            errorTradeOffE2E,
+                            key: const Key('registro_trade_off_error'),
                             style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
                           ),
                         ),
