@@ -27,13 +27,17 @@ final class FinalizarJornadaParams extends Equatable {
 /// HU-JOR-002 — Finalizar jornada de trabajo.
 ///
 /// 1. Si el colportor no tiene una jornada en curso devuelve `Left(FailureSinJornadaActiva)`.
-/// 2. Si el fin (el elegido, o ahora) cae **en un día posterior al del inicio** (en la zona del
-///    dispositivo) devuelve `Left(FailureJornadaDeDiaAnterior)` y no la toca: cerrarla con la hora
-///    de hoy inventaría un `fin` —el lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y
-///    la HU pide que nunca se invente uno. Cerca de la medianoche sí vale elegir una hora del día
-///    del inicio dentro de los 30 minutos (a las 00:10, las 23:50). Si no, la jornada se cierra con
-///    la corrección de la HU ("¿A qué hora terminaste?", con tope en las 23:59 de ese día), que es
-///    otra pantalla, todavía pendiente (#102).
+/// 2. Si el margen normal (ahora, o hasta 30 min hacia atrás) ya no llega al día del inicio (en
+///    la zona del dispositivo) y no llegó [FinalizarJornadaParams.hora], devuelve
+///    `Left(FailureJornadaDeDiaAnterior)`: cerrarla con la hora de hoy inventaría un `fin` —el
+///    lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y la HU pide que nunca se
+///    invente uno. Es la señal para que la pantalla ofrezca la corrección de la HU ("¿A qué hora
+///    terminaste?"). Cerca de la medianoche sí vale elegir una hora del día del inicio dentro de
+///    los 30 minutos (a las 00:10, las 23:50): ver el punto 4.
+/// 2b. Si en cambio SÍ llegó [FinalizarJornadaParams.hora] para esa misma jornada de día
+///    anterior, es la corrección: se acepta si está estrictamente después del inicio y no pasa
+///    de las 23:59:59.999 (zona del dispositivo) de ese día — sin el margen de 30 min, porque es
+///    una corrección, no un ajuste del momento. Fuera de ese rango, `Left(FailureHoraFueraDeRango)`.
 /// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
@@ -91,14 +95,23 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
 
       final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
       final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
-      // Ni la hora más temprana que se puede elegir cae en el día del inicio: no hay fin posible.
-      if (_caeEnOtroDia(abierta.inicio, desde)) {
-        return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
-      }
+      final elegida = params.hora;
 
       final DateTime fin;
-      final elegida = params.hora;
-      if (elegida == null) {
+      // Ni la hora más temprana del margen normal (30 min) cae en el día del inicio: es la
+      // "jornada que quedó abierta" (HU-JOR-002). Se corrige con una hora elegida a mano entre
+      // el inicio (excluido) y las 23:59 de ese día; sin hora elegida, se pide la corrección.
+      if (_caeEnOtroDia(abierta.inicio, desde)) {
+        if (elegida == null) {
+          return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
+        }
+        final hora = _alMilisegundo(elegida);
+        final finDelDia = _finDelDiaLocal(abierta.inicio);
+        if (!hora.isAfter(abierta.inicio) || hora.isAfter(finDelDia)) {
+          return Left(FailureHoraFueraDeRango(desde: abierta.inicio, hasta: finDelDia));
+        }
+        fin = hora;
+      } else if (elegida == null) {
         fin = ahora;
       } else {
         final hora = _alMilisegundo(elegida);
@@ -109,7 +122,9 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
       }
 
       // Una jornada no cruza la medianoche (HU-JOR-002: el fin tiene tope en las 23:59 del día del
-      // inicio). A las 00:10, elegir las 23:50 de ayer vale; las 00:05 de hoy, no.
+      // inicio). A las 00:10, elegir las 23:50 de ayer vale; las 00:05 de hoy, no. La rama de
+      // corrección de arriba ya valida este mismo tope contra `finDelDia`: este chequeo es un
+      // resguardo para el camino normal (nunca debería dispararse desde la corrección).
       if (_caeEnOtroDia(abierta.inicio, fin)) {
         return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
       }
@@ -150,6 +165,13 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
     final i = inicio.toLocal();
     final x = instante.toLocal();
     return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
+  }
+
+  /// 23:59:59.999 del día LOCAL de [inicio] (el día del colportor), como instante UTC — el tope
+  /// de la corrección de "jornada que quedó abierta" (HU-JOR-002).
+  static DateTime _finDelDiaLocal(DateTime inicio) {
+    final local = inicio.toLocal();
+    return DateTime(local.year, local.month, local.day, 23, 59, 59, 999).toUtc();
   }
 
   /// [fecha] en UTC y sin lo que haya por debajo del milisegundo (ver `IniciarJornadaUseCase`).
