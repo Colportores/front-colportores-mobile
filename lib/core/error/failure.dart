@@ -109,6 +109,36 @@ final class FailureHoraFueraDeRango extends Failure {
   }
 }
 
+/// La jornada en curso empezó un día anterior (HU-JOR-002, "Jornada que quedó abierta"): no se
+/// cierra con la hora de hoy, porque eso inventaría un `fin` y sumaría horas que no se trabajaron.
+/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", entre el inicio y las 23:59 de
+/// ese día—, que es otra pantalla. [mensaje] nombra el día en la zona del dispositivo ("Tenés una
+/// jornada del lunes 21 sin cerrar.", como la HU).
+final class FailureJornadaDeDiaAnterior extends Failure {
+  FailureJornadaDeDiaAnterior({required this.inicio})
+    : super(
+        mensaje:
+            'Tenés una jornada del ${_dia(inicio)} sin cerrar. No la cerramos con la hora de hoy '
+            'para no sumarle horas que no trabajaste: hay que indicar a qué hora terminaste ese '
+            'día.',
+        codigo: 'JOR_JORNADA_DIA_ANTERIOR',
+      );
+
+  /// Inicio de la jornada que quedó abierta.
+  final DateTime inicio;
+
+  @override
+  List<Object?> get props => [...super.props, inicio];
+
+  static const _dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+  /// `lunes 21`, en la zona del dispositivo.
+  static String _dia(DateTime instante) {
+    final local = instante.toLocal();
+    return '${_dias[local.weekday - 1]} ${local.day}';
+  }
+}
+
 /// No se pudo armar el resumen de lo guardado en el teléfono por una falla inesperada. Se puede
 /// reintentar; nada se borró.
 final class FailureDatosLocalesIlegibles extends Failure {
