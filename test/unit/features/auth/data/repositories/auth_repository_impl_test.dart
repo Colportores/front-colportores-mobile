@@ -228,6 +228,9 @@ final class _RemoteConTokenRenovado implements AuthRemoteDataSource {
   Stream<void> get erroresVerificacionEmail => interno.erroresVerificacionEmail;
 
   @override
+  Stream<void> get verificacionesExitosas => interno.verificacionesExitosas;
+
+  @override
   Future<void> solicitarRecuperacionPassword(String email) =>
       interno.solicitarRecuperacionPassword(email);
 }
