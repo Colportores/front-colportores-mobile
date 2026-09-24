@@ -554,36 +554,55 @@ class _DivisorTexto extends StatelessWidget {
 
   final String texto;
 
+  /// Padding horizontal del texto (12 a cada lado) — también entra en la cuenta de ancho.
+  static const _paddingHorizontal = 24.0;
+
+  /// Línea visible mínima de cada `Divider`, aun con el texto más largo posible.
+  static const _anchoMinimoDivisor = 16.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
+    final estilo = theme.textTheme.bodySmall?.copyWith(
+      letterSpacing: 1.1,
+      color: colores.placeholder,
+    );
 
-    return Row(
-      children: [
-        Expanded(child: Divider(color: colores.borde)),
-        // `Flexible` con más flex que los `Divider` (no solo Padding+Text): a escala normal, sin
-        // esto, cada uno de los tres se lleva un tercio del ancho y el texto trunca en pantallas
-        // angostas incluso sin textScaler alto (revisión de #116) — con flex 3 contra flex 1 de
-        // cada divisor le da margen de sobra. `TextOverflow.ellipsis` sigue como resguardo contra
-        // textScaler alto (2.0, WCAG 1.4.4) — issue #108.
-        Flexible(
-          flex: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              texto,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                letterSpacing: 1.1,
-                color: colores.placeholder,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Mide el ancho real que pide el texto (con el tema y el `textScaler` actuales) en vez
+        // de adivinar una proporción de `flex` fija: un `flex` chico lo truncaba a escala normal
+        // (revisión de #116) y sin ningún límite desbordaba con `textScaler` alto (issue #108).
+        // Midiendo, el texto ocupa exactamente lo que necesita —y los `Divider` el resto— hasta
+        // el mínimo de `_anchoMinimoDivisor`; `TextOverflow.ellipsis` es el resguardo final si ni
+        // así entra.
+        final medidor = TextPainter(
+          text: TextSpan(text: texto, style: estilo),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+
+        final espacioParaTexto =
+            constraints.maxWidth - _paddingHorizontal - _anchoMinimoDivisor * 2;
+        final anchoMaximoTexto = espacioParaTexto > 0 ? espacioParaTexto : 0.0;
+        final anchoTexto = medidor.width > anchoMaximoTexto ? anchoMaximoTexto : medidor.width;
+
+        return Row(
+          children: [
+            Expanded(child: Divider(color: colores.borde)),
+            SizedBox(
+              width: anchoTexto + _paddingHorizontal,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
               ),
             ),
-          ),
-        ),
-        Expanded(child: Divider(color: colores.borde)),
-      ],
+            Expanded(child: Divider(color: colores.borde)),
+          ],
+        );
+      },
     );
   }
 }
