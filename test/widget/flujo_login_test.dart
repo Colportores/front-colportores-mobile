@@ -136,7 +136,11 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
+      expect(
+        find.text('Necesitás conexión para iniciar sesión por primera vez en este dispositivo.'),
+        findsOneWidget,
+        reason: 'HU-AUTH-003, "Error - primer login sin conectividad" (#94)',
+      );
     });
 
     testWidgets('cuando las credenciales son válidas, entra y puede cerrar sesión', (tester) async {

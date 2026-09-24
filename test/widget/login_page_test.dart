@@ -157,7 +157,11 @@ void main() {
 
       // Texto exacto del Failure, no solo una parte de la frase (ver HU-AUTH-003, escenario
       // "red caída"): un `textContaining` deja pasar un mensaje truncado o con texto de más.
-      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsOneWidget);
+      expect(
+        find.text('Necesitás conexión para iniciar sesión por primera vez en este dispositivo.'),
+        findsOneWidget,
+        reason: 'HU-AUTH-003, "Error - primer login sin conectividad" (#94)',
+      );
     });
 
     testWidgets('Entrar se deshabilita y muestra spinner mientras iniciarSesion no resolvió', (
