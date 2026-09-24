@@ -19,6 +19,7 @@ import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
+import '../../domain/usecases/observar_verificaciones_exitosas_use_case.dart';
 import '../../domain/usecases/obtener_resumen_datos_locales_use_case.dart';
 import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
@@ -125,3 +126,13 @@ ObservarErroresVerificacionUseCase observarErroresVerificacionUseCase(Ref ref) =
 @Riverpod(keepAlive: true)
 Stream<void> erroresVerificacionEmail(Ref ref) =>
     ref.watch(observarErroresVerificacionUseCaseProvider)(const NoParams());
+
+/// Kept-alive por el mismo motivo que `erroresVerificacionEmailProvider`: la raíz de la app se
+/// suscribe una sola vez, para toda la vida de la app.
+@Riverpod(keepAlive: true)
+ObservarVerificacionesExitosasUseCase observarVerificacionesExitosasUseCase(Ref ref) =>
+    ObservarVerificacionesExitosasUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+Stream<void> verificacionesExitosas(Ref ref) =>
+    ref.watch(observarVerificacionesExitosasUseCaseProvider)(const NoParams());

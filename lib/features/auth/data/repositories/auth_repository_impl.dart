@@ -289,6 +289,9 @@ final class AuthRepositoryImpl implements AuthRepository {
   @override
   Stream<void> get erroresVerificacionEmail => _remote.erroresVerificacionEmail;
 
+  @override
+  Stream<void> get verificacionesExitosas => _remote.verificacionesExitosas;
+
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
     CuentaPendienteException() => const FailureCuentaPendiente(),

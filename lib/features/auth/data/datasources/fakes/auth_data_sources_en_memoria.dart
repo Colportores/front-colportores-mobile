@@ -184,6 +184,18 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
   void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
 
+  final _verificacionExitosaController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  /// Simula que el deep link de verificación volvió válido (issue #84): confirma el email —igual
+  /// que [confirmarEmail]— y emite el evento de éxito.
+  void simularEnlaceVerificacionExitoso(String email) {
+    confirmarEmail(email);
+    _verificacionExitosaController.add(null);
+  }
+
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {
     final h = email.hashCode.toUnsigned(32).toRadixString(16).padLeft(8, '0');
