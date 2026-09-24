@@ -202,7 +202,7 @@ final class AuthRepositoryImpl implements AuthRepository {
       if (guardada != null) {
         // Antes de `signOut`, que suelta la sesión del cliente: la que queda pendiente de revocar
         // tiene que llevar el token vigente, no el del login (#102).
-        final sesion = await _sesionVigente(guardada);
+        final sesion = _sesionVigente(guardada);
         try {
           await _remote.cerrarSesion(sesion.accessToken);
         } on SinConexionException {
@@ -242,11 +242,12 @@ final class AuthRepositoryImpl implements AuthRepository {
   ///
   /// `supabase_flutter` renueva el JWT solo (`autoRefreshToken`), así que el `accessToken` que se
   /// guardó en el login puede estar vencido o reemplazado: revocar ese más tarde no cerraría la
-  /// sesión que sigue viva en el servidor. Si el proveedor no la puede dar (por ejemplo, vencida y
-  /// sin red para refrescarla), se usa la guardada: es lo mejor que hay.
-  Future<SesionModel> _sesionVigente(SesionModel guardada) async {
+  /// sesión que sigue viva en el servidor. Se lee **sin refrescar ni tocar la red**: el logout no
+  /// puede quedar esperando a la red (si matan la app en el medio, la sesión sobreviviría;
+  /// revisión de #107). Si el cliente no la puede dar, se usa la guardada.
+  SesionModel _sesionVigente(SesionModel guardada) {
     try {
-      final actual = await _remote.obtenerSesionActual();
+      final actual = _remote.sesionEnElCliente();
       if (actual != null && actual.usuarioId == guardada.usuarioId) return actual;
     } on Object catch (e) {
       _log.debug(LogModulo.auth, 'LOGOUT_TOKEN_VIGENTE', 'se usa el token guardado', {

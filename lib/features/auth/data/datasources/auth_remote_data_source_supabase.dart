@@ -151,6 +151,12 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     return sesion == null ? null : _aModelo(sesion);
   }
 
+  @override
+  SesionModel? sesionEnElCliente() {
+    final actual = _auth.currentSession;
+    return actual == null ? null : _aModelo(actual);
+  }
+
   // Siempre `signOut`, aunque [accessToken] no coincida con el del cliente (`autoRefreshToken`
   // lo renueva): es lo único que borra la sesión que persiste `supabase_flutter`, que si no se
   // restauraría al rearrancar sin pedir contraseña. `signOut` la suelta **antes** de llamar al

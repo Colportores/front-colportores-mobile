@@ -1,4 +1,6 @@
 // Test de la capa data: Dart puro, con los data sources en memoria.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -39,6 +41,9 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
 
   @override
+  SesionModel? sesionEnElCliente() => throw Exception('boom');
+
+  @override
   Future<void> cerrarSesion(String accessToken) {
     throw UnimplementedError();
   }
@@ -72,6 +77,9 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
     if (falla != null) throw falla!;
     return recordada;
   }
+
+  @override
+  SesionModel? sesionEnElCliente() => recordada;
 
   @override
   Future<SesionModel> iniciarSesionConGoogle() {
@@ -135,6 +143,9 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
 
   @override
+  SesionModel? sesionEnElCliente() => throw UnimplementedError();
+
+  @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
@@ -151,18 +162,26 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 }
 
 /// Remoto en memoria cuyo cliente ya renovó el JWT del login (como hace `supabase_flutter` con
-/// `autoRefreshToken`): [obtenerSesionActual] devuelve [vigente], o lanza [falla].
+/// `autoRefreshToken`): [sesionEnElCliente] devuelve [vigente], o lanza [falla]. Refrescar por red
+/// ([obtenerSesionActual]) no responde nunca: el logout no puede depender de eso.
 final class _RemoteConTokenRenovado implements AuthRemoteDataSource {
   _RemoteConTokenRenovado(this.interno);
 
   final AuthRemoteDataSourceEnMemoria interno;
   SesionModel? vigente;
   AuthRemoteException? falla;
+  int refrescos = 0;
 
   @override
-  Future<SesionModel?> obtenerSesionActual() async {
+  SesionModel? sesionEnElCliente() {
     if (falla != null) throw falla!;
     return vigente;
+  }
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() {
+    refrescos++;
+    return Completer<SesionModel?>().future;
   }
 
   @override
@@ -734,6 +753,16 @@ void main() {
           expect(remote.revocaciones, ['token-renovado']);
         },
       );
+
+      test('dado un remoto que no responde al refrescar, el logout no lo espera: lee el token del '
+          'cliente sin tocar la red (revisión de #107)', () async {
+        remote.simularSinConexion = true;
+
+        final resultado = await conRenovado.cerrarSesion().timeout(const Duration(seconds: 1));
+
+        expect(resultado.isRight(), isTrue);
+        expect(renovado.refrescos, 0);
+      });
 
       test('dado que el cliente no puede dar su sesión, usa el token guardado', () async {
         renovado.falla = const SinConexionException();
