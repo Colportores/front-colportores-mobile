@@ -159,6 +159,36 @@ void main() {
       }
     }
 
+    // El campo de email editable (`_CampoEmail`) solo aparece sin `email` conocido (link de
+    // verificación abierto sin sesión) — ninguno de los tests de arriba lo ejercita, así que el
+    // tap-target de #115 (el `TextField` quedaba en 41, ya arreglado) no estaba cubierto.
+    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
+      testWidgets(
+        'tema $nombreTema, sin email conocido: tamaño de toque, etiquetas y contraste',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final remote = AuthRemoteDataSourceEnMemoria(
+            credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+          );
+
+          await _montarPagina(tester, tema: tema(), email: '', remote: remote);
+          await tester.pumpAndSettle();
+
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          semantica.dispose();
+        },
+        // Mismo bug de contraste que arriba (#115, decisión de Cristian): el label "VERIFICACIÓN
+        // DE EMAIL" en tema claro.
+        skip: nombreTema == 'claro' ? true : null,
+      );
+    }
+
     for (final estado in EstadoVerificacionEmail.values) {
       testWidgets('estado $estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
         tester.view.physicalSize = const Size(360, 740);
