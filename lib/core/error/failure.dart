@@ -63,6 +63,27 @@ final class FailureEmailYaRegistrado extends Failure {
       );
 }
 
+/// Pasaron 30 días sin actividad de red y la sesión venció (HU-AUTH-007, "Expiración por
+/// inactividad"). Los datos locales siguen intactos: se abren al volver a entrar.
+final class FailureSesionExpiradaPorInactividad extends Failure {
+  const FailureSesionExpiradaPorInactividad()
+    : super(
+        mensaje: 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.',
+        codigo: 'AUTH_SESION_INACTIVA',
+      );
+}
+
+/// El servidor ya no acepta la sesión: se revocó (cambio de contraseña, cierre en todos los
+/// equipos) o venció de su lado (HU-AUTH-007, "Edge - backend revocó la sesión"). La HU no fija el
+/// texto; los datos locales siguen intactos.
+final class FailureSesionRevocada extends Failure {
+  const FailureSesionRevocada()
+    : super(
+        mensaje: 'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+        codigo: 'AUTH_SESION_REVOCADA',
+      );
+}
+
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
 /// [mensaje] es el texto literal del criterio de aceptación "Bloqueo - jornada ya activa".
 final class FailureJornadaActiva extends Failure {

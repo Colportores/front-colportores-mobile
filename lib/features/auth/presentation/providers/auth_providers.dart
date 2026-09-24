@@ -5,6 +5,7 @@ import '../../../../core/config/config_supabase.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../data/datasources/almacen_sesion_supabase.dart';
 import '../../data/datasources/auth_local_data_source.dart';
 import '../../data/datasources/auth_remote_data_source.dart';
 import '../../data/datasources/auth_remote_data_source_supabase.dart';
@@ -16,6 +17,7 @@ import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
+import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
@@ -25,6 +27,7 @@ import '../../domain/usecases/obtener_sesion_actual_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import '../../domain/usecases/reintentar_revocacion_pendiente_use_case.dart';
+import '../../domain/usecases/renovar_sesion_use_case.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 
 part 'auth_providers.g.dart';
@@ -38,8 +41,18 @@ part 'auth_providers.g.dart';
 /// variables y la demo sin backend siguen funcionando igual (HU-AUTH-003, #22).
 @Riverpod(keepAlive: true)
 AuthRemoteDataSource authRemoteDataSource(Ref ref) => ConfigSupabase.configurada
-    ? AuthRemoteDataSourceSupabase(Supabase.instance.client.auth)
+    ? AuthRemoteDataSourceSupabase(
+        Supabase.instance.client.auth,
+        sesionPersistida: ref.watch(almacenSesionSupabaseProvider),
+      )
     : AuthRemoteDataSourceEnMemoria.demo();
+
+/// Dónde guarda `supabase_flutter` la sesión (HU-AUTH-007). La misma instancia que `main.dart` le
+/// pasa a `Supabase.initialize`, que la sobreescribe acá; sin Supabase no se usa.
+@Riverpod(keepAlive: true)
+AlmacenSesionSupabase almacenSesionSupabase(Ref ref) {
+  throw UnimplementedError('almacenSesionSupabaseProvider se sobreescribe en main.dart');
+}
 
 @Riverpod(keepAlive: true)
 AuthLocalDataSource authLocalDataSource(Ref ref) {
@@ -76,6 +89,19 @@ ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
     CerrarSesionUseCase(ref.watch(authRepositoryProvider));
+
+/// Refresh del JWT para el resto de la app (HU-AUTH-007; el motor de sync lo usa ante un `401`).
+@Riverpod(keepAlive: true)
+RenovarSesionUseCase renovarSesionUseCase(Ref ref) =>
+    RenovarSesionUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+ObservarExpiracionesSesionUseCase observarExpiracionesSesionUseCase(Ref ref) =>
+    ObservarExpiracionesSesionUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+ExpirarSesionUseCase expirarSesionUseCase(Ref ref) =>
+    ExpirarSesionUseCase(ref.watch(authRepositoryProvider));
 
 @Riverpod(keepAlive: true)
 ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>

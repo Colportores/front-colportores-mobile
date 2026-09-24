@@ -9,10 +9,13 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto que lanza una excepción fija en `registrar` — para ver el banner del límite de
 /// intentos/emails de Supabase sin depender del backend real.
-final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
+final class _RemoteQueLanzaAlRegistrar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteQueLanzaAlRegistrar(this.excepcion);
 
   final AuthRemoteException excepcion;

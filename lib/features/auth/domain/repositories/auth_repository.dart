@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
+import '../entities/motivo_expiracion.dart';
 import '../entities/resultado_cierre_sesion.dart';
 import '../entities/resultado_registro.dart';
 import '../entities/sesion.dart';
@@ -33,8 +34,30 @@ abstract interface class AuthRepository {
   /// y deja la sesión persistida en el dispositivo.
   Future<Either<Failure, Sesion>> iniciarSesionConGoogle();
 
-  /// Sesión guardada en el dispositivo, o `null` si nunca hubo login o se cerró.
+  /// Sesión guardada en el dispositivo, o `null` si nunca hubo login o se cerró. No toca la red:
+  /// sin conexión, una sesión dentro de su ventana de 30 días sigue sirviendo (HU-AUTH-007).
+  ///
+  /// `Left(FailureSesionExpiradaPorInactividad)` si la sesión guardada venció por inactividad y ya
+  /// se descartó al arrancar.
   Future<Either<Failure, Sesion?>> sesionActual();
+
+  /// Renueva el JWT contra el servidor (HU-AUTH-007; ADR-007: el sync lo llama ante un `401` y
+  /// reintenta). Hay un solo mecanismo de refresh: el del proveedor, que también renueva solo
+  /// mientras la app está abierta. Varias llamadas a la vez comparten un único refresh.
+  ///
+  /// `Left(FailureSinConexion)`: se mantiene la sesión anterior y se reintenta más tarde.
+  /// `Left(FailureSesionRevocada)`: el servidor ya no la acepta; además emite en [expiraciones].
+  Future<Either<Failure, Sesion>> renovarSesion();
+
+  /// Emite cuando la sesión termina sin que el usuario lo pida: el servidor rechazó el refresh
+  /// ([MotivoExpiracion.revocada]) o, con la app abierta, pasaron 30 días sin actividad de red
+  /// ([MotivoExpiracion.inactividad]).
+  Stream<MotivoExpiracion> get expiraciones;
+
+  /// Descarta la sesión guardada porque venció ([motivo]). A diferencia de [cerrarSesion] no
+  /// espera a la red: el servidor ya no la acepta o la ventana de 30 días se cumplió. Los datos
+  /// locales no se tocan.
+  Future<Either<Failure, Unit>> expirarSesion(MotivoExpiracion motivo);
 
   /// Cierra la sesión: revoca el JWT en Supabase y borra la sesión local (HU-AUTH-006).
   ///

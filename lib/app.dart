@@ -7,6 +7,7 @@ import 'core/theme/tema_colportaje.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/auth/presentation/providers/aviso_sesion_notifier.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/jornada/presentation/pages/jornada_page.dart';
 
@@ -45,6 +46,14 @@ class ColportoresApp extends ConsumerWidget {
     ref.listen(verificacionesExitosasProvider, (previous, next) {
       if (next is! AsyncData<void>) return;
       _navegarAVerificacion(context, EstadoVerificacionEmail.verificado);
+    });
+
+    // HU-AUTH-007: si la sesión vence o el servidor la revoca con la app abierta, `home:` pasa al
+    // login, pero lo que estuviera apilado encima (configuración, otra pantalla) seguiría a la
+    // vista: se vacía la pila para que se vea el login con el aviso.
+    ref.listen(avisoSesionProvider, (previous, next) {
+      if (next == null) return;
+      navigatorKeyColportores.currentState?.popUntil((route) => route.isFirst);
     });
 
     return MaterialApp(

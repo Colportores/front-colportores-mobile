@@ -5,8 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/motivo_expiracion.dart';
+import '../../domain/entities/politica_sesion.dart';
 import '../models/sesion_model.dart';
+import 'almacen_sesion_supabase.dart';
 import 'auth_remote_data_source.dart';
+import 'emision_jwt.dart';
 
 /// Lanza el flujo OAuth por navegador y devuelve `true` si se pudo abrir. Es una costura para
 /// los tests: `signInWithOAuth` es una *extensión* de `supabase_flutter` sobre [GoTrueClient]
@@ -25,8 +29,9 @@ typedef LanzadorOAuth = Future<bool> Function(OAuthProvider proveedor, String re
 ///   [verificacionesExitosas] cruza ese path (visto con una suscripción propia a `app_links`, en
 ///   paralelo a la que arma `supabase_flutter` por su cuenta — el plugin soporta varios
 ///   suscriptores) contra el próximo `signedIn` para distinguirlo de un login/registro normal.
-/// - La sesión la persiste `supabase_flutter` (hoy en SharedPreferences; pasarla a
-///   secure_storage vía `FlutterAuthClientOptions.localStorage` es decisión pendiente, ADR-003).
+/// - La sesión la persiste `supabase_flutter` en el almacén seguro ([AlmacenSesionSupabase], que
+///   `main.dart` le pasa como `FlutterAuthClientOptions.localStorage`) y la renueva sola
+///   (`autoRefreshToken`): es el único mecanismo de refresh de la app (HU-AUTH-007).
 ///
 /// Traduce [AuthException] a [AuthRemoteException]; el repositorio las convierte en `Failure`.
 /// Nunca loguea email ni tokens (convenciones §7.5).
@@ -36,6 +41,7 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     this._lanzarOAuth,
     this.esperaOAuth = const Duration(minutes: 2),
     Stream<Uri>? enlacesEntrantes,
+    this._sesionPersistida,
     AppLogger? logger,
   }) : _enlacesEntrantes = enlacesEntrantes ?? AppLinks().uriLinkStream,
        _log = logger ?? AppLogger.instance {
@@ -46,6 +52,7 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   }
 
   final GoTrueClient _auth;
+  final AlmacenSesionSupabase? _sesionPersistida;
   final LanzadorOAuth? _lanzarOAuth;
   final AppLogger _log;
 
@@ -160,16 +167,67 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
         authScreenLaunchMode: LaunchMode.externalApplication,
       );
 
+  // Sin refrescar: `Supabase.initialize` ya cargó la sesión guardada (aunque su JWT de acceso haya
+  // vencido) y `autoRefreshToken` la renueva en cuanto hay red. Refrescar acá frenaría el arranque
+  // sin red con los reintentos de gotrue y dejaría al usuario afuera (HU-AUTH-007, "Refresh
+  // offline con JWT vigente").
   @override
-  Future<SesionModel?> obtenerSesionActual() async {
-    final actual = _auth.currentSession;
-    if (actual == null) return null;
-    if (!actual.isExpired) return _aModelo(actual);
+  Future<SesionModel?> obtenerSesionActual() async => sesionEnElCliente();
 
-    final refrescada = await _traduciendo(() => _auth.refreshSession());
-    final sesion = refrescada.session;
-    return sesion == null ? null : _aModelo(sesion);
+  // gotrue comparte un solo refresh entre las llamadas simultáneas con el mismo refresh token
+  // (`_pendingRefreshes`), y es el mismo que usa `autoRefreshToken`: no hay dos mecanismos.
+  // Cualquier rechazo que no sea de red hace que gotrue suelte la sesión (y emita `signedOut` con
+  // `sessionExpired`, que llega a [expiraciones]).
+  @override
+  Future<SesionModel> renovarSesion() async {
+    try {
+      final sesion = (await _auth.refreshSession()).session;
+      if (sesion == null) throw const SesionRevocadaException();
+      return _aModelo(sesion);
+    } on AuthRetryableFetchException {
+      throw const SinConexionException();
+    } on AuthException catch (e) {
+      _log.warn(LogModulo.auth, 'REFRESH_RECHAZADO', 'el servidor rechazó el refresh', {
+        'status': e.statusCode,
+        'code': e.code,
+      });
+      throw const SesionRevocadaException();
+    }
   }
+
+  @override
+  late final Stream<MotivoExpiracion> expiraciones = _crearExpiraciones();
+
+  Stream<MotivoExpiracion> _crearExpiraciones() {
+    late final StreamController<MotivoExpiracion> controller;
+    StreamSubscription<AuthState>? delCliente;
+    StreamSubscription<void>? delAlmacen;
+    controller = StreamController<MotivoExpiracion>.broadcast(
+      onListen: () {
+        delCliente = _auth.onAuthStateChange.listen(
+          (estado) {
+            if (estado.event == AuthChangeEvent.signedOut &&
+                estado.signOutReason == SignOutReason.sessionExpired) {
+              controller.add(MotivoExpiracion.revocada);
+            }
+          },
+          // Los errores del stream son de otros flujos (deep links); acá no se usan.
+          onError: (Object _, StackTrace _) {},
+        );
+        delAlmacen = _sesionPersistida?.vencimientos.listen(
+          (_) => controller.add(MotivoExpiracion.inactividad),
+        );
+      },
+      onCancel: () {
+        unawaited(delCliente?.cancel());
+        unawaited(delAlmacen?.cancel());
+      },
+    );
+    return controller.stream;
+  }
+
+  @override
+  bool tomarVencimientoPorInactividad() => _sesionPersistida?.tomarVencimiento() ?? false;
 
   @override
   SesionModel? sesionEnElCliente() {
@@ -258,18 +316,14 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     _suscripcionAuthParaVerificacion = null;
   }
 
-  static SesionModel _aModelo(Session sesion) {
-    final expiraEnSegundos = sesion.expiresAt;
-    final expiraEn = expiraEnSegundos != null
-        ? DateTime.fromMillisecondsSinceEpoch(expiraEnSegundos * 1000, isUtc: true)
-        : DateTime.now().toUtc().add(Duration(seconds: sesion.expiresIn ?? 3600));
-    return SesionModel(
-      usuarioId: sesion.user.id,
-      email: sesion.user.email ?? '',
-      accessToken: sesion.accessToken,
-      expiraEn: expiraEn,
-    );
-  }
+  /// La ventana de 30 días arranca cuando el servidor emitió el JWT (su `iat`, con el reloj del
+  /// servidor): es la última actividad de red de la sesión (HU-AUTH-007).
+  static SesionModel _aModelo(Session sesion) => SesionModel(
+    usuarioId: sesion.user.id,
+    email: sesion.user.email ?? '',
+    accessToken: sesion.accessToken,
+    expiraEn: PoliticaSesion.expiraEn(emisionDelJwt(sesion.accessToken) ?? DateTime.now()),
+  );
 
   /// Ejecuta [accion] y traduce toda [AuthException] a la [AuthRemoteException] equivalente.
   /// Cualquier otra excepción sube tal cual (el repositorio la convierte en `FailureInesperado`).

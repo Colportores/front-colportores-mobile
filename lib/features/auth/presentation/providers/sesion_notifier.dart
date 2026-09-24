@@ -7,6 +7,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../domain/entities/motivo_expiracion.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/resumen_datos_locales.dart';
@@ -16,6 +17,7 @@ import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
+import 'aviso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
 
@@ -34,9 +36,40 @@ class SesionNotifier extends _$SesionNotifier {
 
   @override
   Future<Sesion?> build() async {
+    // HU-AUTH-007: la sesión puede terminar sin que el usuario lo pida (el servidor la revocó, o
+    // la app volvió al frente después de 30 días sin red). Suscripto antes de leer la sesión.
+    final expiraciones = ref
+        .watch(observarExpiracionesSesionUseCaseProvider)(const NoParams())
+        .listen((motivo) => unawaited(_alExpirar(motivo)));
+    ref.onDispose(expiraciones.cancel);
+
     final resultado = await ref.watch(obtenerSesionActualUseCaseProvider)(const NoParams());
     _reintentarRevocacionPendiente();
-    return resultado.fold((_) => null, (sesion) => sesion);
+    return resultado.fold((failure) {
+      if (failure case FailureSesionExpiradaPorInactividad() || FailureSesionRevocada()) {
+        ref.read(avisoSesionProvider.notifier).mostrar(failure);
+      }
+      return null;
+    }, (sesion) => sesion);
+  }
+
+  /// La sesión venció o el servidor la revocó (HU-AUTH-007): de vuelta al login con el motivo.
+  /// Es un cierre de sesión, no un borrado: la DB local se cierra con todo lo que tiene —incluido
+  /// lo que falta sincronizar— y se vuelve a abrir al entrar de nuevo.
+  Future<void> _alExpirar(MotivoExpiracion motivo) async {
+    final Failure aviso = switch (motivo) {
+      MotivoExpiracion.inactividad => const FailureSesionExpiradaPorInactividad(),
+      MotivoExpiracion.revocada => const FailureSesionRevocada(),
+    };
+    final habiaSesion = state.value != null;
+    _log.warn(LogModulo.auth, 'SESION_FIN_FORZADO', 'la sesión terminó sin logout', {
+      'motivo': motivo.name,
+      'habia_sesion': habiaSesion,
+    });
+    ref.read(avisoSesionProvider.notifier).mostrar(aviso);
+    if (!habiaSesion) return;
+    await ref.read(expirarSesionUseCaseProvider)(motivo);
+    await _cerrarDbYSesion();
   }
 
   /// Devuelve el [Failure] si falló (para que el formulario lo muestre) o `null` si entró.
@@ -53,6 +86,7 @@ class SesionNotifier extends _$SesionNotifier {
       },
       (sesion) {
         state = AsyncData(sesion);
+        ref.read(avisoSesionProvider.notifier).descartar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
         return null;
@@ -73,6 +107,7 @@ class SesionNotifier extends _$SesionNotifier {
       },
       (sesion) {
         state = AsyncData(sesion);
+        ref.read(avisoSesionProvider.notifier).descartar();
         return null;
       },
     );
@@ -112,6 +147,7 @@ class SesionNotifier extends _$SesionNotifier {
       },
       (r) {
         state = AsyncData(r.sesion);
+        if (r.sesion != null) ref.read(avisoSesionProvider.notifier).descartar();
         return Right(r);
       },
     );

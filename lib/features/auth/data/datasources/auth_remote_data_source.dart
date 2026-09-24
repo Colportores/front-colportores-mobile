@@ -1,3 +1,4 @@
+import '../../domain/entities/motivo_expiracion.dart';
 import '../models/sesion_model.dart';
 
 /// Origen remoto de autenticación. La implementación real es `AuthRemoteDataSourceSupabase`
@@ -36,8 +37,23 @@ abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesionConGoogle();
 
   /// Sesión que el proveedor tiene persistida en el dispositivo (o `null`). Con Supabase la
-  /// persiste `supabase_flutter` por su cuenta; si está vencida intenta refrescarla.
+  /// persiste `supabase_flutter` en el almacén seguro (`AlmacenSesionSupabase`). No toca la red:
+  /// con el JWT de acceso vencido la devuelve igual (sin red la app sigue trabajando, y el
+  /// proveedor la renueva solo cuando vuelve la red, HU-AUTH-007).
   Future<SesionModel?> obtenerSesionActual();
+
+  /// Renueva el JWT contra el servidor (HU-AUTH-007). Lanza [SinConexionException] sin red (la
+  /// sesión sigue como estaba) o [SesionRevocadaException] si el servidor ya no la acepta.
+  Future<SesionModel> renovarSesion();
+
+  /// Emite cuando el proveedor termina la sesión por su cuenta: el servidor rechazó el refresh
+  /// ([MotivoExpiracion.revocada]) o, al volver a la app, la sesión guardada llevaba 30 días sin
+  /// actividad de red ([MotivoExpiracion.inactividad]).
+  Stream<MotivoExpiracion> get expiraciones;
+
+  /// `true` (una sola vez) si al arrancar se descartó la sesión guardada por 30 días sin
+  /// actividad de red. Pasa antes de que la app se suscriba a [expiraciones].
+  bool tomarVencimientoPorInactividad();
 
   /// La sesión que el cliente del proveedor tiene **ahora**, tal cual, sin refrescar ni tocar la
   /// red (o `null`). Con Supabase es `currentSession`: `autoRefreshToken` la renueva sola, así que
@@ -100,6 +116,11 @@ final class EmailYaRegistradoException extends AuthRemoteException {
 
 final class SinConexionException extends AuthRemoteException {
   const SinConexionException();
+}
+
+/// El servidor ya no acepta la sesión: se revocó o venció de su lado (HU-AUTH-007).
+final class SesionRevocadaException extends AuthRemoteException {
+  const SesionRevocadaException();
 }
 
 /// La contraseña no cumple la política de Supabase Auth (`weak_password`).

@@ -2,10 +2,12 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
@@ -14,10 +16,13 @@ import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto roto a propósito: para probar que `registrar` traduce cualquier excepción no tipada a
 /// [FailureInesperado] (no solo las [AuthRemoteException] conocidas).
-final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
+final class _RemoteQueLanzaExcepcionGenerica
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) {
     throw UnimplementedError();
@@ -66,7 +71,9 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
 
 /// Remoto que "recuerda" una sesión persistida por el proveedor (como supabase_flutter tras
 /// reiniciar la app), o que falla al consultarla.
-final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
+final class _RemoteConSesionRecordada
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteConSesionRecordada({this.recordada, this.falla});
 
   final SesionModel? recordada;
@@ -124,7 +131,9 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
 
 /// Remoto que devuelve una única excepción fija en `registrar` — para probar cómo el repositorio
 /// traduce casos que el fake en memoria no modela (p. ej. contraseña débil).
-final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
+final class _RemoteQueLanzaEnRegistrar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteQueLanzaEnRegistrar(this.excepcion);
 
   final AuthRemoteException excepcion;
@@ -226,6 +235,9 @@ final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements Au
 
   @override
   Stream<void> get erroresVerificacionEmail => interno.erroresVerificacionEmail;
+
+  @override
+  Stream<void> get verificacionesExitosas => interno.verificacionesExitosas;
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) =>
@@ -857,4 +869,199 @@ void main() {
       await expectLater(futuro, completes);
     });
   });
+
+  group('AuthRepositoryImpl.renovarSesion (HU-AUTH-007)', () {
+    setUp(() => repository.iniciarSesion(email: 'ana@example.com', password: 'secreto123'));
+
+    test('Escenario: Refresh transparente con uso regular — guarda la sesión nueva en lugar de la '
+        'anterior', () async {
+      final resultado = await repository.renovarSesion();
+
+      final nueva = resultado.getOrElse(() => throw StateError('esperaba Right'));
+      expect(nueva.accessToken, 'token-renovado-1');
+      expect((await local.leerSesion())?.accessToken, 'token-renovado-1');
+    });
+
+    test('varias llamadas a la vez comparten un solo refresh', () async {
+      remote.demoraAlRenovar = Completer<void>();
+
+      final a = repository.renovarSesion();
+      final b = repository.renovarSesion();
+      remote.demoraAlRenovar!.complete();
+
+      expect(await a, await b);
+      expect(remote.llamadasRenovarSesion, 1);
+      expect((await repository.renovarSesion()).isRight(), isTrue);
+      expect(remote.llamadasRenovarSesion, 2, reason: 'terminado el anterior, uno nuevo');
+    });
+
+    test(
+      'Escenario: Refresh offline con JWT vigente — sin red se mantiene la sesión anterior',
+      () async {
+        final antes = await local.leerSesion();
+        remote.simularSinConexion = true;
+
+        expect(await repository.renovarSesion(), const Left<Failure, Sesion>(FailureSinConexion()));
+        expect(await local.leerSesion(), antes);
+      },
+    );
+
+    test('Escenario: Edge - backend revocó la sesión — devuelve FailureSesionRevocada', () async {
+      remote.sesionRevocadaEnElServidor = true;
+
+      expect(
+        await repository.renovarSesion(),
+        const Left<Failure, Sesion>(FailureSesionRevocada()),
+      );
+      expect(
+        const FailureSesionRevocada().mensaje,
+        'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+      );
+    });
+
+    test('dado un error inesperado del remoto, devuelve FailureInesperado', () async {
+      final roto = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      expect(
+        (await roto.renovarSesion()).fold((f) => f, (_) => null),
+        isA<FailureSinConexion>(),
+        reason: 'el remoto de ese test no renueva: sin red',
+      );
+    });
+  });
+
+  group('AuthRepositoryImpl.sesionActual con la sesión deslizante (HU-AUTH-007)', () {
+    test(
+      'dado que al arrancar se descartó la sesión por 30 días sin uso, lo dice una sola vez',
+      () async {
+        remote.vencidaPorInactividadAlArrancar = true;
+
+        expect(
+          await repository.sesionActual(),
+          const Left<Failure, Sesion?>(FailureSesionExpiradaPorInactividad()),
+        );
+        expect(await repository.sesionActual(), const Right<Failure, Sesion?>(null));
+      },
+    );
+
+    test(
+      'dado que el cliente del proveedor ya renovó el JWT, devuelve esa y reemplaza la guardada',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote);
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        final delLogin = (await local.leerSesion())!;
+        renovado.vigente = SesionModel(
+          usuarioId: delLogin.usuarioId,
+          email: delLogin.email,
+          accessToken: 'token-renovado',
+          expiraEn: DateTime.utc(2026, 10, 1, 12),
+        );
+
+        final sesion = (await repo.sesionActual()).getOrElse(() => null);
+
+        expect(sesion?.accessToken, 'token-renovado');
+        expect((await local.leerSesion())?.accessToken, 'token-renovado');
+      },
+    );
+  });
+
+  group('AuthRepositoryImpl.expirarSesion (HU-AUTH-007)', () {
+    test('borra la sesión guardada sin tocar la red', () async {
+      await repository.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+
+      expect(
+        await repository.expirarSesion(MotivoExpiracion.revocada),
+        const Right<Failure, Unit>(unit),
+      );
+      expect(await local.leerSesion(), isNull);
+      expect(remote.llamadasCerrarSesion, 0);
+    });
+
+    test('por inactividad, el próximo arranque no lo vuelve a avisar', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      await repository.expirarSesion(MotivoExpiracion.inactividad);
+
+      expect(await repository.sesionActual(), const Right<Failure, Sesion?>(null));
+    });
+
+    test(
+      'si el cliente del proveedor todavía la tiene, la suelta sin esperar; sin red no falla',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote);
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        renovado.vigente = (await local.leerSesion())!;
+
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.inactividad),
+          const Right<Failure, Unit>(unit),
+        );
+        await pumpEventQueue();
+        expect(remote.llamadasCerrarSesion, 1);
+
+        remote.simularSinConexion = true;
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.inactividad),
+          const Right<Failure, Unit>(unit),
+        );
+        await pumpEventQueue();
+      },
+    );
+
+    test(
+      'dado que el cliente del proveedor falla al consultarlo, igual borra la guardada',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote)..falla = const SinConexionException();
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await local.guardarSesion(
+          SesionModel(
+            usuarioId: 'u',
+            email: 'ana@example.com',
+            accessToken: 't',
+            expiraEn: DateTime.utc(2026, 10, 1),
+          ),
+        );
+
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.revocada),
+          const Right<Failure, Unit>(unit),
+        );
+        expect(await local.leerSesion(), isNull);
+      },
+    );
+
+    test('dado que no se puede leer la sesión guardada, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(remote, _LocalQueNoLee(), logger: loggerMudo());
+
+      expect(
+        (await repo.expirarSesion(MotivoExpiracion.revocada)).fold((f) => f, (_) => null),
+        isA<FailureInesperado>(),
+      );
+    });
+
+    test('las expiraciones del remoto llegan tal cual', () async {
+      final futuro = repository.expiraciones.first;
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+
+      expect(await futuro, MotivoExpiracion.revocada);
+    });
+  });
+}
+
+final class _LocalQueNoLee implements AuthLocalDataSource {
+  @override
+  Future<SesionModel?> leerSesion() async => throw StateError('almacén roto');
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) async {}
+
+  @override
+  Future<void> borrarSesion() async {}
 }

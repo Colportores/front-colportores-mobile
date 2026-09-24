@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../providers/aviso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
 import 'recuperacion_password_page.dart';
 import 'registro_page.dart';
@@ -34,8 +35,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   String? _errorGeneral;
   bool _enviando = false;
 
-  // Solo estado local: la sesión deslizante ("mantenerme conectado" de verdad) es HU-AUTH-006,
-  // Sprint 4. Por ahora este checkbox no persiste nada.
+  // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
+  // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
   bool _mantenerSesion = true;
 
   @override
@@ -99,6 +100,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final esOscuro = theme.brightness == Brightness.dark;
     final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
     final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    final aviso = ref.watch(avisoSesionProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -121,6 +123,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 8),
                       Text('Iniciá tu jornada', style: theme.textTheme.headlineMedium),
                       const SizedBox(height: 34),
+                      if (aviso != null) ...[
+                        _AvisoSesion(texto: aviso.mensaje),
+                        const SizedBox(height: 20),
+                      ],
                       _CampoLogin(
                         fieldKey: const Key('login_email'),
                         etiqueta: 'CORREO O CÉDULA',
@@ -284,6 +290,39 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// Por qué la app volvió al login sin que el usuario cerrara sesión (HU-AUTH-007). No es un error
+/// del formulario: se anuncia al lector de pantalla al aparecer y dura hasta volver a entrar.
+class _AvisoSesion extends StatelessWidget {
+  const _AvisoSesion({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        key: const Key('login_aviso_sesion'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.primary),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(child: Icon(Icons.info_outline, color: theme.colorScheme.primary)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(texto, style: theme.textTheme.bodyMedium)),
+          ],
         ),
       ),
     );

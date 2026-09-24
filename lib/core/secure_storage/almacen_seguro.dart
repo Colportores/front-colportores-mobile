@@ -12,7 +12,11 @@ enum ClaveSegura {
   salDb('db_salt'),
 
   /// Marca de que la DB local ya se creó y migró en este dispositivo (HU-AUTH-009).
-  dbInicializada('db_initialized');
+  dbInicializada('db_initialized'),
+
+  /// Sesión de Supabase Auth (JWT de acceso + refresh token) tal como la serializa
+  /// `supabase_flutter` (HU-AUTH-007, `AlmacenSesionSupabase`).
+  sesionAuth('auth_session');
 
   const ClaveSegura(this.id);
 
@@ -23,10 +27,9 @@ enum ClaveSegura {
 /// Almacén seguro del dispositivo: Android Keystore / iOS Keychain (§8.2.1).
 ///
 /// Es el **único** lugar donde la app guarda material secreto, y todo lo que guarda está
-/// inventariado en [ClaveSegura]: hoy la sal con la que se deriva la clave de la DB y la marca de
-/// inicialización; la sesión de auth (el JWT) también va a vivir acá cuando `AuthLocalDataSource`
-/// tenga implementación real. Lo que **nunca** guarda es la clave de la DB: se deriva de la sal y
-/// no toca el disco (ADR-003).
+/// inventariado en [ClaveSegura]: hoy la sal con la que se deriva la clave de la DB, la marca de
+/// inicialización y la sesión de auth (el JWT y el refresh token, HU-AUTH-007). Lo que **nunca**
+/// guarda es la clave de la DB: se deriva de la sal y no toca el disco (ADR-003).
 ///
 /// Puerto en Dart puro; la implementación que conoce el plugin es `AlmacenSeguroKeystore` y la de
 /// tests es `AlmacenSeguroEnMemoria`. Igual que los data sources de auth, **el almacén lanza
