@@ -39,6 +39,11 @@ abstract interface class AuthRemoteDataSource {
   /// persiste `supabase_flutter` por su cuenta; si está vencida intenta refrescarla.
   Future<SesionModel?> obtenerSesionActual();
 
+  /// La sesión que el cliente del proveedor tiene **ahora**, tal cual, sin refrescar ni tocar la
+  /// red (o `null`). Con Supabase es `currentSession`: `autoRefreshToken` la renueva sola, así que
+  /// su token puede ser más nuevo que el que se guardó en el login.
+  SesionModel? sesionEnElCliente();
+
   /// Cierra la sesión del cliente: la revoca en el servidor y borra la copia que guarda el
   /// proveedor. Sin red, la copia local se borra igual y lanza [SinConexionException].
   Future<void> cerrarSesion(String accessToken);

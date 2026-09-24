@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
@@ -25,15 +27,24 @@ final class FinalizarJornadaParams extends Equatable {
 /// HU-JOR-002 — Finalizar jornada de trabajo.
 ///
 /// 1. Si el colportor no tiene una jornada en curso devuelve `Left(FailureSinJornadaActiva)`.
-/// 2. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
+/// 2. Si el fin (el elegido, o ahora) cae **en un día posterior al del inicio** (en la zona del
+///    dispositivo) devuelve `Left(FailureJornadaDeDiaAnterior)` y no la toca: cerrarla con la hora
+///    de hoy inventaría un `fin` —el lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y
+///    la HU pide que nunca se invente uno. Cerca de la medianoche sí vale elegir una hora del día
+///    del inicio dentro de los 30 minutos (a las 00:10, las 23:50). Si no, la jornada se cierra con
+///    la corrección de la HU ("¿A qué hora terminaste?", con tope en las 23:59 de ese día), que es
+///    otra pantalla, todavía pendiente (#102).
+/// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
-/// 3. Si llega [FinalizarJornadaParams.hora], la jornada termina a esa hora, siempre que esté en
+/// 4. Si llega [FinalizarJornadaParams.hora], la jornada termina a esa hora, siempre que esté en
 ///    `[max(now − 30 min, inicio), now]` (HU-JOR-002, decisión de Cristian del 23/09 en #70: solo
 ///    hacia atrás, sin horas futuras). Fuera de ese rango devuelve `Left(FailureHoraFueraDeRango)`
 ///    con el rango explícito; nunca la ajusta en silencio.
-/// 4. Con la jornada ya guardada, pide el backup automático ([DisparadorBackup], HU-SYNC-005). Un
-///    error del backup no deshace ni oculta el cierre.
+/// 5. Con la jornada ya guardada, pide el backup automático ([DisparadorBackup], HU-SYNC-005)
+///    **sin esperarlo**: la pantalla recibe el cierre enseguida. Un error del backup no deshace ni
+///    oculta el cierre; va a `alFallarBackup` (el cableado lo manda al log), porque el colportor no
+///    puede hacer nada con él.
 ///
 /// El borde de `now − 30 min` se compara al minuto, igual que al iniciar (el selector ofrece
 /// minutos enteros y el mensaje de error habla en minutos). El borde del inicio se compara
@@ -43,8 +54,14 @@ final class FinalizarJornadaParams extends Equatable {
 /// `total_visitas`/`total_ventas`, que se denormalizan al cerrar) dependen de módulos que llegan
 /// en los Sprints 8-11 (#74).
 final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornadaParams> {
-  FinalizarJornadaUseCase(this._repository, this._backup, {DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  /// `alFallarBackup` recibe el error si pedir el backup falla. El dominio no loguea (no conoce
+  /// `AppLogger`): el cableado de la feature lo conecta al log.
+  FinalizarJornadaUseCase(
+    this._repository,
+    this._backup, {
+    DateTime Function()? ahora,
+    this._alFallarBackup,
+  }) : _ahora = ahora ?? DateTime.now;
 
   /// Cuánto hacia atrás se puede marcar el fin (HU-JOR-002).
   static const margenHaciaAtras = Duration(minutes: 30);
@@ -52,6 +69,7 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
   final JornadaRepository _repository;
   final DisparadorBackup _backup;
   final DateTime Function() _ahora;
+  final void Function(Object error, StackTrace rastro)? _alFallarBackup;
 
   @override
   Future<Either<Failure, Jornada>> call(FinalizarJornadaParams params) async {
@@ -71,18 +89,29 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
     ) async {
       if (abierta == null) return const Left(FailureSinJornadaActiva());
 
+      final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
+      final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
+      // Ni la hora más temprana que se puede elegir cae en el día del inicio: no hay fin posible.
+      if (_caeEnOtroDia(abierta.inicio, desde)) {
+        return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
+      }
+
       final DateTime fin;
       final elegida = params.hora;
       if (elegida == null) {
         fin = ahora;
       } else {
-        final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
-        final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
         final hora = _alMilisegundo(elegida);
         if (hora.isBefore(desde) || hora.isAfter(ahora)) {
           return Left(FailureHoraFueraDeRango(desde: desde, hasta: ahora));
         }
         fin = hora;
+      }
+
+      // Una jornada no cruza la medianoche (HU-JOR-002: el fin tiene tope en las 23:59 del día del
+      // inicio). A las 00:10, elegir las 23:50 de ayer vale; las 00:05 de hoy, no.
+      if (_caeEnOtroDia(abierta.inicio, fin)) {
+        return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
       }
 
       if (fin.isBefore(abierta.inicio)) {
@@ -100,18 +129,27 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
       final resultado = await _repository.finalizar(
         abierta.finalizada(fin: fin, actualizadaEn: ahora),
       );
-      if (resultado.isRight()) await _pedirBackup(colportorId);
+      if (resultado.isRight()) unawaited(_pedirBackup(colportorId));
       return resultado;
     });
   }
 
+  /// El cierre ya quedó guardado: el backup se vuelve a pedir en su próxima ventana (HU-SYNC-005).
+  /// Su falla no es un error de "finalizar jornada", pero tampoco se pierde: va al log.
   Future<void> _pedirBackup(String colportorId) async {
     try {
       await _backup.solicitar(colportorId);
-    } on Object {
-      // El cierre ya quedó guardado; el backup se vuelve a pedir en su próxima ventana
-      // (HU-SYNC-005). No se informa como error de "finalizar jornada".
+    } on Object catch (e, rastro) {
+      _alFallarBackup?.call(e, rastro);
     }
+  }
+
+  /// Si [instante] cae en un día calendario posterior al de [inicio], en la zona del dispositivo
+  /// (el día del colportor, no el de UTC).
+  static bool _caeEnOtroDia(DateTime inicio, DateTime instante) {
+    final i = inicio.toLocal();
+    final x = instante.toLocal();
+    return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
   }
 
   /// [fecha] en UTC y sin lo que haya por debajo del milisegundo (ver `IniciarJornadaUseCase`).

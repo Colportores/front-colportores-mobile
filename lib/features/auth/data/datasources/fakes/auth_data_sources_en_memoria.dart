@@ -141,6 +141,10 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   @override
   Future<SesionModel?> obtenerSesionActual() async => null;
 
+  /// El fake no tiene un cliente que renueve el token: siempre `null` (se usa la guardada).
+  @override
+  SesionModel? sesionEnElCliente() => null;
+
   @override
   Future<void> cerrarSesion(String accessToken) async {
     if (simularSinConexion) throw const SinConexionException();

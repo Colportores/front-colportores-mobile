@@ -51,6 +51,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() => _interno.obtenerSesionActual();
 
   @override
+  SesionModel? sesionEnElCliente() => _interno.sesionEnElCliente();
+
+  @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
 
   @override

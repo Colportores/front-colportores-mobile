@@ -486,6 +486,24 @@ void main() {
     });
   });
 
+  group('AuthRemoteDataSourceSupabase.sesionEnElCliente', () {
+    test('devuelve la sesión que el cliente tiene ahora, sin refrescar ni tocar la red', () {
+      when(() => auth.currentSession).thenReturn(sesionSupabase(accessToken: 'jwt-renovado'));
+
+      final sesion = dataSource().sesionEnElCliente();
+
+      expect(sesion?.accessToken, 'jwt-renovado');
+      expect(sesion?.usuarioId, usuarioId);
+      verifyNever(() => auth.refreshSession());
+    });
+
+    test('sin sesión en el cliente, devuelve null', () {
+      when(() => auth.currentSession).thenReturn(null);
+
+      expect(dataSource().sesionEnElCliente(), isNull);
+    });
+  });
+
   group('AuthRemoteDataSourceSupabase.cerrarSesion', () {
     test('cuando cierra sesión, llama a signOut', () async {
       when(() => auth.signOut()).thenAnswer((_) async {});

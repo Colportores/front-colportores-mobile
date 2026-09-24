@@ -262,6 +262,71 @@ void main() {
       expect(container.read(sesionProvider).value, isNotNull);
     });
 
+    group('el aviso de error con "Reintentar" al salir de Configuración (#102)', () {
+      late _LocalQueNoBorra local;
+      late ProviderContainer container;
+
+      setUp(() => local = _LocalQueNoBorra());
+
+      Future<void> fallarElCierre(WidgetTester tester) async {
+        container = await _montar(tester, local: local);
+        local.fallar = true;
+        await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('configuracion_error_cierre')), findsOneWidget);
+      }
+
+      testWidgets('dado que se sale sin reintentar, el aviso no queda colgado en otra pantalla', (
+        tester,
+      ) async {
+        await fallarElCierre(tester);
+
+        await tester.tap(find.byKey(const Key('configuracion_atras')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ConfiguracionPage), findsNothing);
+        expect(find.byKey(const Key('configuracion_error_cierre')), findsNothing);
+        expect(find.text('Reintentar'), findsNothing);
+        expect(container.read(sesionProvider).value, isNotNull);
+      });
+
+      testWidgets('con la navegación accesible prendida (TalkBack, VoiceOver), salir tampoco '
+          'deja el aviso colgado ni rompe la app (revisión de #107)', (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+          accessibleNavigation: true,
+        );
+        addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+        await fallarElCierre(tester);
+
+        await tester.tap(find.byKey(const Key('configuracion_atras')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ConfiguracionPage), findsNothing);
+        expect(find.byKey(const Key('configuracion_error_cierre')), findsNothing);
+      });
+
+      testWidgets('dado un "Reintentar" que llega con la pantalla ya cerrada, no hace nada', (
+        tester,
+      ) async {
+        await fallarElCierre(tester);
+        final reintentar = tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed;
+        await tester.tap(find.byKey(const Key('configuracion_atras')));
+        await tester.pumpAndSettle();
+        local.fallar = false;
+
+        reintentar();
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
+        expect(container.read(sesionProvider).value, isNotNull, reason: 'no cerró la sesión');
+        expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      });
+    });
+
     // Los siguientes tres escenarios de HU-AUTH-006 no tienen nada que probar todavía: el código
     // no tiene motor de sync, backup en background ni push notifications. `testWidgets.skip` es
     // `bool?` (a diferencia de `test.skip`, que acepta un motivo en texto), así que el motivo va
@@ -601,6 +666,59 @@ void main() {
       _datos.demoraBorrado!.complete();
       await tester.pumpAndSettle();
       expect(_login, findsOneWidget);
+    });
+
+    testWidgets('en reposo, el PopScope deja salir y "atrás" está habilitado (contraste con el '
+        'borrado en curso, #102)', (tester) async {
+      await _montar(tester);
+      await _abrirBorrado(tester);
+
+      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
+      expect(tester.widget<IconButton>(atras).onPressed, isNotNull);
+      final popScope = tester.widget<PopScope>(
+        find.descendant(
+          of: find.byType(BorrarDatosLocalesPage),
+          matching: find.byType(PopScope),
+          skipOffstage: false,
+        ),
+      );
+      expect(popScope.canPop, isTrue);
+    });
+
+    testWidgets('dado que el borrado falló y se sale sin reintentar, el aviso con "Reintentar" '
+        'no queda colgado, también con la navegación accesible prendida (#102, #107)', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      _datos.respuestaBorrado = const Left(FailureInesperado());
+      final container = await _montar(tester);
+      await _llegarAlDialogoFinal(tester);
+      await tester.tap(find.text(TextosBorrado.confirmarFinal));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('borrar_datos_error')), findsOneWidget);
+      final reintentar = tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed;
+
+      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
+      expect(tester.widget<IconButton>(atras).onPressed, isNotNull, reason: 'ya no está borrando');
+
+      // El "atrás" del sistema (gesto o botón), que el PopScope deja pasar en reposo.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BorrarDatosLocalesPage), findsNothing);
+      expect(find.byKey(const Key('borrar_datos_error')), findsNothing);
+
+      // Y si el "Reintentar" llegara igual, con la pantalla ya cerrada, no hace nada.
+      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
+      reintentar();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(_datos.borrados, [false], reason: 'un solo intento: el que falló');
+      expect(container.read(sesionProvider).value, isNotNull);
     });
 
     // skip: QA #68 — HU-AUTH-010 (casos borde) pide esperar o cancelar limpiamente una operación

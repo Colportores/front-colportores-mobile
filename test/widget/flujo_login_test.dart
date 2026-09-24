@@ -38,6 +38,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() async => null;
 
   @override
+  SesionModel? sesionEnElCliente() => null;
+
+  @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
