@@ -393,6 +393,19 @@ void main() {
       // Cerrar sesión vive en Configuración (HU-AUTH-006).
       expect(find.byTooltip('Configuración'), findsOneWidget);
     });
+
+    testWidgets(
+      'la jornada activa sobrevive a un reinicio de la app',
+      // skip: issue #72 — bloqueado por #27. Hoy nadie abre la DB local (el login todavía no
+      // deriva la clave, HU-AUTH-009), así que `jornadaLocalDataSourceProvider` cae al fallback
+      // en memoria (`JornadaLocalDataSourceEnMemoria`, ver el comentario TODO(#27) en
+      // `jornada_providers.dart`) y la jornada se pierde al cerrar la app — por diseño, no es un
+      // bug. Cuando el login abra la DB este provider pasa solo a `JornadaLocalDataSourceDrift`,
+      // que persiste; ahí este criterio se puede probar de verdad (con un `AppDatabase` real
+      // entre dos "sesiones" de la app, no con el fake en memoria de este archivo).
+      skip: true,
+      (tester) async {},
+    );
   });
 
   group('HU-JOR-002 — criterios de aceptación', () {
@@ -526,6 +539,47 @@ void main() {
       expect(find.text('Jornada finalizada'), findsOneWidget);
       expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
     });
+
+    testWidgets('finalizar sin jornada activa (doble toque desde dos dispositivos): si ya se '
+        'cerró en otro lado mientras la pantalla seguía en "Jornada activa", relee el estado sin '
+        'mostrar error (#76)', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final abierta = _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15));
+      final dataSource = _DataSource(iniciales: [abierta]);
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+      expect(find.text('Jornada activa'), findsOneWidget);
+
+      // Otro dispositivo (o una pestaña duplicada) ya la cerró por su cuenta: el almacenamiento
+      // real ya no tiene una jornada abierta, pero esta pantalla todavía no se enteró — el mismo
+      // caso de uso que el "doble toque" pero disparado desde afuera en vez de un segundo tap acá
+      // (ese lo bloquea el botón deshabilitado, ver el test de arriba).
+      await dataSource.finalizar(
+        JornadaModel.fromEntity(
+          abierta.finalizada(
+            fin: DateTime(2026, 9, 23, 14),
+            actualizadaEn: DateTime(2026, 9, 23, 14),
+          ),
+        ),
+      );
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+      expect(dataSource.jornadas.single.estaAbierta, isFalse);
+    });
+
+    testWidgets(
+      'el backup solo se dispara con Wi-Fi disponible y batería ≥ 30 %',
+      // skip: issue #76 — bloqueado por #74. `DisparadorBackupPendiente` (el stub de
+      // HU-SYNC-005 que usa hoy `disparadorBackupProvider`) no mira Wi-Fi ni batería: siempre
+      // "dispara" (en los hechos, solo loguea que se pidió). La condición real llega con el
+      // motor de sync (carril aparte); hasta entonces este criterio de la HU no se puede
+      // verificar ni cumplir.
+      skip: true,
+      (tester) async {},
+    );
 
     testWidgets('después de finalizar se puede iniciar otra jornada, y el resumen se va', (
       tester,
