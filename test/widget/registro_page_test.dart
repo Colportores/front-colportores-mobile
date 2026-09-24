@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -20,6 +22,12 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
   /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap en "Reintentar".
   int llamadasRegistrar = 0;
 
+  /// Si no es `null`, [registrar] no lanza hasta que el test lo complete — para que el segundo
+  /// toque del doble tap ocurra mientras el primero todavía está en vuelo. Sin esto el fake
+  /// resuelve instantáneo (como el resto de los fakes en memoria) y no hay ventana de carrera
+  /// real: la guarda ya se resetea antes del segundo toque, y el test no prueba nada.
+  Completer<void>? demora;
+
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) =>
       throw UnimplementedError();
@@ -33,6 +41,7 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
     required String password,
   }) async {
     llamadasRegistrar++;
+    await demora?.future;
     throw excepcion;
   }
 
@@ -493,19 +502,28 @@ void main() {
       tester,
     ) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await _montarPagina(tester, remote: remote);
+      await _montarPilaConPantallaInicial(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('abrir_registro')));
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
 
-      // Dos taps seguidos sin `pump()` entre medio: simula un doble tap más rápido que el
-      // próximo repintado, cuando el botón todavía no se deshabilitó visualmente.
+      // `demora` mantiene la primera llamada en vuelo: sin esto, el fake resuelve instantáneo
+      // (no hay I/O real) y el segundo toque llega cuando la guarda ya se reseteó — no habría
+      // ventana de carrera que probar. Dos taps seguidos sin `pump()` entre medio simulan un
+      // doble tap más rápido que el próximo repintado, cuando el botón todavía no se deshabilitó
+      // visualmente.
+      remote.demoraRegistrar = Completer<void>();
       await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.tap(find.byKey(const Key('registro_continuar')));
+      remote.demoraRegistrar!.complete();
       await tester.pumpAndSettle();
 
       expect(remote.llamadasRegistrar, 1);
+      expect(find.text('Cuenta creada'), findsOneWidget);
     });
 
     testWidgets('doble toque en "Reintentar" dispara una sola llamada más a registrar', (
@@ -520,9 +538,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(remote.llamadasRegistrar, 1, reason: 'el primer intento');
 
+      // Mismo motivo que arriba: `demora` mantiene el reintento en vuelo para que el segundo
+      // toque compita de verdad contra la guarda, en vez de llegar después de que ya se reseteó.
+      remote.demora = Completer<void>();
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Reintentar'));
       await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
       await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+      remote.demora!.complete();
       await tester.pumpAndSettle();
 
       expect(remote.llamadasRegistrar, 2, reason: 'una sola llamada más, no dos');

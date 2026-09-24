@@ -89,6 +89,11 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap de RegistroPage.
   int llamadasRegistrar = 0;
 
+  /// Si no es `null`, [registrar] no sigue hasta que el test lo complete — para que un segundo
+  /// toque ocurra mientras el primero todavía está en vuelo (sin esto el fake resuelve
+  /// instantáneo y no hay ventana de carrera real que probar).
+  Completer<void>? demoraRegistrar;
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
@@ -98,6 +103,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required String password,
   }) async {
     llamadasRegistrar++;
+    await demoraRegistrar?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
 
