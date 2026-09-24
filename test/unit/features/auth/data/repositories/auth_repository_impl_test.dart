@@ -485,6 +485,29 @@ void main() {
         expect(failure, isA<FailureInesperado>());
       });
     });
+
+    // "Edge - fallo intermitente del backend" (HU-AUTH-001, issue #90): el repositorio solo
+    // propaga el status — el mensaje accionable de la HU lo arma RegistroPage (mismo patrón que
+    // "sin conexión"), no el repositorio.
+    group('dado que el servidor responde con un 5xx', () {
+      test('cuando registra, devuelve FailureServidor con ese status', () async {
+        final repositorioRoto = AuthRepositoryImpl(
+          _RemoteQueLanzaEnRegistrar(const ServidorException(status: 503)),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repositorioRoto.registrar(
+          nombre: 'Bruno',
+          apellido: 'Díaz',
+          cedula: '12345678',
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
+
+        expect(resultado, const Left<Failure, ResultadoRegistro>(FailureServidor(status: 503)));
+      });
+    });
   });
 
   group('AuthRepositoryImpl.iniciarSesionConGoogle', () {

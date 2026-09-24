@@ -299,9 +299,8 @@ void main() {
 
   // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumplía estos
   // criterios de aceptación. Los de email-ya-registrado y sin-conexión se arreglaron en #86 (ya
-  // sin `skip:`); los de trade-off E2E (#85) y fallo intermitente 5xx (#90) siguen sin arreglar y
-  // quedan con `skip:` apuntando al issue correspondiente, para que la suite no se rompa y quede
-  // visible qué falta.
+  // sin `skip:`); el de fallo intermitente 5xx (#90) también, acá mismo. El de trade-off E2E
+  // (#85) se arregla en una rama aparte (mismo archivo, PR distinto) y sigue con `skip: true`.
   group('RegistroPage — bugs conocidos de HU-AUTH-001', () {
     testWidgets(
       'debería pedir la casilla del trade-off E2E antes de aceptar (R-AU05)',
@@ -380,34 +379,33 @@ void main() {
         await tester.pumpAndSettle();
 
         // Criterio de aceptación "Edge - fallo intermitente del backend": mensaje accionable
-        // exacto (no el genérico de FailureServidor), un botón "Reintentar" que no pierda los
-        // datos del formulario, y (no verificable acá) el registro local de un NetworkFailure sin
-        // PII. Hoy no hay botón "Reintentar" en ningún lado de la pantalla ni ese mensaje.
+        // exacto (no el genérico de FailureServidor) y un botón "Reintentar" que no pierda los
+        // datos del formulario. El registro local del NetworkFailure (status, sin PII) lo cubre
+        // `auth_repository_impl_test.dart`, no esta pantalla.
         expect(
           find.text('Servicio temporalmente no disponible, reintentá en unos minutos'),
           findsOneWidget,
         );
         expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
 
+        // El banner con el botón empuja el resto de la pantalla más abajo, fuera del viewport
+        // default de los tests (800x600) — mismo caso que `registro_continuar` en #85.
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Reintentar'));
         await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
         await tester.pumpAndSettle();
 
-        final campoEmail = tester.widget<TextField>(
-          find.descendant(
-            of: find.byKey(const Key('registro_email')),
-            matching: find.byType(TextField),
-          ),
-        );
+        // El finder original acá era `find.descendant(of: find.byKey(...), matching:
+        // find.byType(TextField))`: nunca matchea porque en `_CampoRegistro` la key va puesta en
+        // el propio `TextField` (`key: widget.fieldKey`) y `find.descendant` excluye la raíz por
+        // defecto (`matchRoot: false`) — mismo hallazgo que el issue documentó para este test
+        // (salió de la revisión del PR #88). Corregido con `find.byKey` directo.
+        final campoEmail = tester.widget<TextField>(find.byKey(const Key('registro_email')));
         expect(
           campoEmail.controller?.text,
           'lucia.silva@correo.com',
           reason: 'el botón "Reintentar" no debería perder los datos ya tipeados',
         );
       },
-      // Bug real, no se arregla en este QA: el fallo intermitente del backend (5xx) no muestra el
-      // mensaje accionable exacto ni ofrece un botón "Reintentar" que pide el criterio de
-      // aceptación de HU-AUTH-001. Ver issue #90.
-      skip: true,
     );
   });
 
