@@ -173,7 +173,7 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 /// Remoto en memoria cuyo cliente ya renovó el JWT del login (como hace `supabase_flutter` con
 /// `autoRefreshToken`): [sesionEnElCliente] devuelve [vigente], o lanza [falla]. Refrescar por red
 /// ([obtenerSesionActual]) no responde nunca: el logout no puede depender de eso.
-final class _RemoteConTokenRenovado implements AuthRemoteDataSource {
+final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements AuthRemoteDataSource {
   _RemoteConTokenRenovado(this.interno);
 
   final AuthRemoteDataSourceEnMemoria interno;
