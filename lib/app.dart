@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/error/failure.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/auth/domain/entities/sesion.dart';
+import 'features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/jornada/presentation/pages/jornada_page.dart';
 
@@ -56,7 +60,7 @@ class ColportoresApp extends ConsumerWidget {
       home: sesion.when(
         loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, _) => const LoginPage(),
-        data: (s) => s == null ? const LoginPage() : JornadaPage(sesion: s),
+        data: (s) => s == null ? const LoginPage() : _Principal(sesion: s),
       ),
     );
   }
@@ -100,4 +104,25 @@ void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoI
       MaterialPageRoute<void>(builder: (_) => VerificacionEmailPage(estadoInicial: estadoInicial)),
     ),
   );
+}
+
+/// Con sesión, la pantalla principal depende del estado de la cuenta (HU-AUTH-008): solo una
+/// cuenta activa ve los módulos de campo; las demás, la pantalla de espera con Configuración. Es
+/// el único camino a los módulos de campo mientras no haya router (llega en Sprint 5): el gate de
+/// deep links de la HU vive acá.
+class _Principal extends ConsumerWidget {
+  const _Principal({required this.sesion});
+
+  final Sesion sesion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
+    AsyncData(value: final estado) when estado == null || estado.accedeAModulosDeCampo =>
+      JornadaPage(sesion: sesion),
+    AsyncData(value: final estado) => EsperandoAsignacionPage(estado: estado),
+    AsyncError(:final error) => EsperandoAsignacionPage(
+      falla: error is Failure ? error : FailureInesperado(causa: error),
+    ),
+    _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
+  };
 }
