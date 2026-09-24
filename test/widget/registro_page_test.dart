@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -187,6 +189,29 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+    });
+
+    // Revisión de #116 (#108): el `Flexible` sin `flex` (todos a 1, igual que los dos
+    // `Expanded(Divider)`) le daba al texto solo un tercio del ancho — "O REGISTRATE CON" podía
+    // truncarse con puntos suspensivos **a escala normal** en un teléfono angosto, y ningún test
+    // lo agarraba porque el `...` no tira excepción. `didExceedMaxLines` en el `RenderParagraph`
+    // sí lo detecta.
+    testWidgets('el divisor "O REGISTRATE CON" no se trunca a escala 1.0 en 390x844', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
+
+      final parrafo = tester.renderObject<RenderParagraph>(find.text('O REGISTRATE CON'));
+      expect(
+        parrafo.didExceedMaxLines,
+        isFalse,
+        reason: 'el texto del divisor no debería truncarse a escala normal',
+      );
     });
 
     // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108):

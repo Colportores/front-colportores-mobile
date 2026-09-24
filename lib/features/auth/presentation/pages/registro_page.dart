@@ -562,10 +562,13 @@ class _DivisorTexto extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Divider(color: colores.borde)),
-        // Flexible (no solo Padding+Text): con textScaler alto (2.0, WCAG 1.4.4) en pantallas
-        // angostas el texto no entra a tamaño natural — issue #108. TextOverflow.ellipsis en vez
-        // de achicar la letra, para no perder legibilidad.
+        // `Flexible` con más flex que los `Divider` (no solo Padding+Text): a escala normal, sin
+        // esto, cada uno de los tres se lleva un tercio del ancho y el texto trunca en pantallas
+        // angostas incluso sin textScaler alto (revisión de #116) — con flex 3 contra flex 1 de
+        // cada divisor le da margen de sobra. `TextOverflow.ellipsis` sigue como resguardo contra
+        // textScaler alto (2.0, WCAG 1.4.4) — issue #108.
         Flexible(
+          flex: 3,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
