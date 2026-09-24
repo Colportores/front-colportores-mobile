@@ -67,4 +67,13 @@ FinalizarJornadaUseCase finalizarJornadaUseCase(Ref ref) => FinalizarJornadaUseC
   ref.watch(jornadaRepositoryProvider),
   ref.watch(disparadorBackupProvider),
   ahora: ref.watch(relojJornadaProvider),
+  // El colportor no puede hacer nada con esto (el cierre ya quedó guardado): solo va al log.
+  alFallarBackup: (error, rastro) => AppLogger.instance.error(
+    LogModulo.backup,
+    'BACKUP_PEDIDO_FAIL',
+    'no se pudo pedir el backup al cerrar la jornada',
+    const {},
+    error,
+    rastro,
+  ),
 );

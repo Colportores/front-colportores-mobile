@@ -141,6 +141,10 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   @override
   Future<SesionModel?> obtenerSesionActual() async => null;
 
+  /// El fake no tiene un cliente que renueve el token: siempre `null` (se usa la guardada).
+  @override
+  SesionModel? sesionEnElCliente() => null;
+
   @override
   Future<void> cerrarSesion(String accessToken) async {
     if (simularSinConexion) throw const SinConexionException();
@@ -183,6 +187,18 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
 
   /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
   void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
+
+  final _verificacionExitosaController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  /// Simula que el deep link de verificación volvió válido (issue #84): confirma el email —igual
+  /// que [confirmarEmail]— y emite el evento de éxito.
+  void simularEnlaceVerificacionExitoso(String email) {
+    confirmarEmail(email);
+    _verificacionExitosaController.add(null);
+  }
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

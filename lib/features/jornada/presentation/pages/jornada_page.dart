@@ -38,7 +38,8 @@ class JornadaPage extends ConsumerStatefulWidget {
 }
 
 class _JornadaPageState extends ConsumerState<JornadaPage> {
-  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta.
+  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta, al cambiar
+  /// el minuto.
   Timer? _tic;
 
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
@@ -56,11 +57,36 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// La jornada que se acaba de cerrar, para el resumen; se va al iniciar otra.
   Jornada? _finalizada;
 
+  /// El "ahora" con el que se armó la pantalla que el colportor está viendo (lo actualiza cada
+  /// `build`). La hora elegida se calcula con este instante y no con el del toque: si entre el
+  /// último refresco y el toque cambió el minuto, se guardaría un minuto más que lo que mostraba la
+  /// etiqueta (#102). Si la hora mostrada quedó fuera de rango, el caso de uso la rechaza con el
+  /// rango explícito; nunca se ajusta en silencio.
+  DateTime? _ahoraMostrado;
+
   @override
   void initState() {
     super.initState();
-    _tic = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() {});
+    _programarTic();
+  }
+
+  /// Redibuja justo cuando cambia el minuto: así "Ahora · 14:35", la hora elegida y lo que se
+  /// guarda (que sale del mismo instante, ver [_ahoraMostrado]) nunca quedan un minuto atrás del
+  /// reloj del teléfono (revisión de #107).
+  void _programarTic() {
+    final ahora = ref.read(relojJornadaProvider)();
+    final proximoMinuto = DateTime(
+      ahora.year,
+      ahora.month,
+      ahora.day,
+      ahora.hour,
+      ahora.minute + 1,
+    );
+    final espera = proximoMinuto.difference(ahora);
+    _tic = Timer(espera > Duration.zero ? espera : const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _programarTic();
     });
   }
 
@@ -77,7 +103,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   Future<void> _iniciar() async {
     if (_iniciando) return;
-    final ahora = ref.read(relojJornadaProvider)();
+    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _iniciando = true;
       _error = null;
@@ -122,7 +148,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   Future<void> _finalizar(Jornada jornada) async {
     if (_finalizando) return;
-    final ahora = ref.read(relojJornadaProvider)();
+    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _finalizando = true;
       _errorFin = null;
@@ -140,7 +166,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           // La pantalla se relee y muestra lo que hay guardado.
           FailureSinJornadaActiva() => null,
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
-          FailureValidacion(:final mensaje) => mensaje,
+          // Reloj atrasado (qué pasó y qué hacer) y jornada de un día anterior (#102).
+          FailureValidacion(:final mensaje) ||
+          FailureJornadaDeDiaAnterior(:final mensaje) => mensaje,
           Failure() =>
             'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
                 'pasando, cerrá y volvé a abrir la app.',
@@ -161,6 +189,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     final colores = theme.extension<ColoresColportaje>()!;
     final esOscuro = theme.brightness == Brightness.dark;
     final ahora = ref.watch(relojJornadaProvider)();
+    _ahoraMostrado = ahora;
     final estado = ref.watch(jornadaActualProvider(widget.sesion.usuarioId));
     final paddingHorizontal = esOscuro ? 26.0 : 30.0;
 

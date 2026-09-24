@@ -16,4 +16,18 @@ abstract final class ConfigSupabase {
   /// estar (a) en `AndroidManifest.xml` como intent-filter de `MainActivity` y (b) en el
   /// dashboard: Authentication → URL Configuration → Redirect URLs.
   static const String redirectOAuth = 'io.supabase.colportores://login-callback/';
+
+  /// Deep link propio para la verificación de email (HU-AUTH-002, decisión de Cristian del
+  /// 23/09, issue #84). Mismo scheme y host que [redirectOAuth] — el intent-filter de
+  /// `AndroidManifest.xml` no filtra por path, así que lo captura igual — pero un path propio
+  /// (`/verificado`) para que la app pueda distinguir, del lado del cliente, un `signedIn` que
+  /// vino de confirmar el correo de uno de un login/registro normal (Supabase no los separa por
+  /// `AuthChangeEvent`).
+  ///
+  /// **Pendiente de backend** (no se puede hacer desde la app, ver issue #84): sumar esta URL —o
+  /// un comodín `io.supabase.colportores://login-callback/**`— en el dashboard de Supabase,
+  /// Authentication → URL Configuration → Redirect URLs. Sin eso, Supabase rechaza el
+  /// `emailRedirectTo` y el enlace de verificación no vuelve a la app.
+  static const String redirectVerificacionEmail =
+      'io.supabase.colportores://login-callback/verificado';
 }

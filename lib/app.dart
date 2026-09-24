@@ -34,6 +34,19 @@ class ColportoresApp extends ConsumerWidget {
       unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
     });
 
+    // HU-AUTH-002 (issue #84): simétrico al listener de arriba, para el caso de éxito — el
+    // enlace de verificación es válido y Supabase ya confirmó el email y creó la sesión. A
+    // diferencia del caso de error, acá no hace falta esperar a `sesionProvider`: el evento en sí
+    // ya es la prueba de que la sesión se acaba de crear (no hay ambigüedad de "enlace viejo" que
+    // resolver, como sí la hay con `otp_expired`). Funciona igual en un arranque en frío: el deep
+    // link se procesa durante `Supabase.initialize()`, antes de `runApp`, pero el intercambio de
+    // código por sesión (red) tarda lo suficiente como para que este listener ya esté suscripto
+    // cuando el evento llega.
+    ref.listen(verificacionesExitosasProvider, (previous, next) {
+      if (next is! AsyncData<void>) return;
+      _navegarAVerificacion(context, EstadoVerificacionEmail.verificado);
+    });
+
     return MaterialApp(
       navigatorKey: navigatorKeyColportores,
       title: 'Colportores',
@@ -69,16 +82,22 @@ Future<void> _llevarAVerificacionSiNoHaySesion(BuildContext context, WidgetRef r
   }
   if (haySesion) return;
   if (!context.mounted) return;
+  _navegarAVerificacion(context, EstadoVerificacionEmail.expirado);
+}
+
+/// Lleva a [VerificacionEmailPage] en [estadoInicial], vaciando la pila hasta la raíz primero —
+/// compartido por los dos listeners globales de deep link de verificación (error arriba, éxito en
+/// [ColportoresApp.build]): en los dos casos la pantalla puede tener que aparecer encima de
+/// cualquier otra que estuviera mostrándose (o de ninguna, en un arranque en frío).
+void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoInicial) {
+  if (!context.mounted) return;
 
   final navigator = navigatorKeyColportores.currentState;
   if (navigator == null) return;
   navigator.popUntil((route) => route.isFirst);
   unawaited(
     navigator.push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            const VerificacionEmailPage(estadoInicial: EstadoVerificacionEmail.expirado),
-      ),
+      MaterialPageRoute<void>(builder: (_) => VerificacionEmailPage(estadoInicial: estadoInicial)),
     ),
   );
 }

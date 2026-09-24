@@ -38,6 +38,43 @@ abstract final class TextosConfiguracion {
 class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
   bool _cerrando = false;
 
+  /// El aviso de error con "Reintentar", mientras está visible (ver [_ocultarAvisoReintentar]).
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _avisoReintentar;
+
+  /// Guardado en [didChangeDependencies]: en [dispose] ya no se puede buscar en el `context`.
+  ScaffoldMessengerState? _messenger;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  @override
+  void dispose() {
+    // El SnackBar vive en el ScaffoldMessenger de la app, no en esta pantalla: sin esto, su
+    // "Reintentar" seguiría visible afuera y sin hacer nada (#102). Después del frame y no acá:
+    // en `dispose` el árbol está bloqueado, y con la navegación accesible (TalkBack, VoiceOver)
+    // ocultarlo hace un `setState` en el messenger que dispara una aserción.
+    if (_avisoReintentar != null) {
+      _avisoReintentar = null;
+      final messenger = _messenger;
+      // Si la app entera se desmontó en el mismo frame, el messenger ya no está: nada que ocultar.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (messenger != null && messenger.mounted) messenger.hideCurrentSnackBar();
+      });
+    }
+    super.dispose();
+  }
+
+  /// Saca el aviso con "Reintentar" si sigue visible. Siempre se cierra antes de mostrar otro, así
+  /// que mientras [_avisoReintentar] no es `null` es el SnackBar actual.
+  void _ocultarAvisoReintentar() {
+    if (_avisoReintentar == null) return;
+    _avisoReintentar = null;
+    _messenger?.hideCurrentSnackBar();
+  }
+
   Future<void> _cerrarSesion() async {
     if (_cerrando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
     setState(() => _cerrando = true);
@@ -57,21 +94,28 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
+    _ocultarAvisoReintentar();
     resultado.fold(
       (_) {
         setState(() => _cerrando = false);
-        messenger.showSnackBar(
+        final aviso = messenger.showSnackBar(
           SnackBar(
             key: const Key('configuracion_error_cierre'),
             content: const Text(TextosConfiguracion.errorCierre),
-            // El SnackBar puede seguir visible después de salir de esta pantalla.
             action: SnackBarAction(
               label: 'Reintentar',
               onPressed: () {
+                // Si la pantalla ya no está, el reintento no tiene dónde mostrar nada.
                 if (mounted) unawaited(_cerrarSesion());
               },
             ),
           ),
+        );
+        _avisoReintentar = aviso;
+        unawaited(
+          aviso.closed.then((_) {
+            if (identical(_avisoReintentar, aviso)) _avisoReintentar = null;
+          }),
         );
       },
       (r) {

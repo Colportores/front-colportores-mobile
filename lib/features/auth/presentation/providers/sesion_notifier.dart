@@ -90,6 +90,7 @@ class SesionNotifier extends _$SesionNotifier {
     required String email,
     required String password,
     required bool aceptaTerminos,
+    required bool aceptaTradeOffE2E,
   }) async {
     state = const AsyncLoading();
     final resultado = await ref.read(registrarUsuarioUseCaseProvider)(
@@ -100,6 +101,7 @@ class SesionNotifier extends _$SesionNotifier {
         email: email,
         password: password,
         aceptaTerminos: aceptaTerminos,
+        aceptaTradeOffE2E: aceptaTradeOffE2E,
       ),
     );
 

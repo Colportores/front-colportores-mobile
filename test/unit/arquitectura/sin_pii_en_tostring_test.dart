@@ -112,6 +112,7 @@ void main() {
         email: 'matias@example.com',
         password: 'Secreta123',
         aceptaTerminos: true,
+        aceptaTradeOffE2E: true,
       );
 
       final texto = '$params';

@@ -81,10 +81,12 @@ void main() {
   AuthRemoteDataSourceSupabase dataSource({
     LanzadorOAuth? lanzarOAuth,
     Duration esperaOAuth = const Duration(seconds: 1),
+    Stream<Uri>? enlaces,
   }) => AuthRemoteDataSourceSupabase(
     auth,
     lanzarOAuth: lanzarOAuth,
     esperaOAuth: esperaOAuth,
+    enlacesEntrantes: enlaces ?? const Stream<Uri>.empty(),
     logger: loggerMudo(),
   );
 
@@ -362,14 +364,14 @@ void main() {
       password: 'secreto123',
     );
 
-    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo, y devuelve '
-        'la sesión', () async {
+    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo propio de '
+        'verificación (issue #84), y devuelve la sesión', () async {
       when(
         () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
           data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
-          emailRedirectTo: ConfigSupabase.redirectOAuth,
+          emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
         ),
       ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
 
@@ -481,6 +483,24 @@ void main() {
 
       expect(modelo?.email, '');
       expect(modelo?.expiraEn.isAfter(antes.add(const Duration(minutes: 59))), isTrue);
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.sesionEnElCliente', () {
+    test('devuelve la sesión que el cliente tiene ahora, sin refrescar ni tocar la red', () {
+      when(() => auth.currentSession).thenReturn(sesionSupabase(accessToken: 'jwt-renovado'));
+
+      final sesion = dataSource().sesionEnElCliente();
+
+      expect(sesion?.accessToken, 'jwt-renovado');
+      expect(sesion?.usuarioId, usuarioId);
+      verifyNever(() => auth.refreshSession());
+    });
+
+    test('sin sesión en el cliente, devuelve null', () {
+      when(() => auth.currentSession).thenReturn(null);
+
+      expect(dataSource().sesionEnElCliente(), isNull);
     });
   });
 
@@ -718,6 +738,78 @@ void main() {
       addTearDown(suscripcion.cancel);
 
       cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.verificacionesExitosas', () {
+    test('deep link a /verificado seguido de signedIn: emite el evento', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final futuro = dataSource(enlaces: enlaces.stream).verificacionesExitosas.first;
+
+      enlaces.add(Uri.parse('io.supabase.colportores://login-callback/verificado'));
+      await Future<void>.delayed(Duration.zero);
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+
+      await expectLater(futuro, completes);
+    });
+
+    test(
+      'signedIn sin haber visto antes el deep link a /verificado: no emite (login/registro normal)',
+      () async {
+        final enlaces = StreamController<Uri>();
+        addTearDown(enlaces.close);
+        final eventos = <void>[];
+        final suscripcion = dataSource(
+          enlaces: enlaces.stream,
+        ).verificacionesExitosas.listen(eventos.add);
+        addTearDown(suscripcion.cancel);
+
+        cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+        await Future<void>.delayed(Duration.zero);
+
+        expect(eventos, isEmpty);
+      },
+    );
+
+    test('deep link a otro path (el del OAuth): no emite', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final eventos = <void>[];
+      final suscripcion = dataSource(
+        enlaces: enlaces.stream,
+      ).verificacionesExitosas.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      enlaces.add(Uri.parse(ConfigSupabase.redirectOAuth));
+      await Future<void>.delayed(Duration.zero);
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+
+    test('ignora errores del stream (p. ej. otp_expired)', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final eventos = <void>[];
+      final suscripcion = dataSource(
+        enlaces: enlaces.stream,
+      ).verificacionesExitosas.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      enlaces.add(Uri.parse('io.supabase.colportores://login-callback/verificado'));
+      await Future<void>.delayed(Duration.zero);
+      cambios.addError(
+        const AuthApiException(
+          'Email link is invalid or has expired',
+          statusCode: 'otp_expired',
+          code: 'access_denied',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(eventos, isEmpty);

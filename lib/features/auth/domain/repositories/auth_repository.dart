@@ -54,4 +54,8 @@ abstract interface class AuthRepository {
   /// Emite cuando el deep link de verificación de email vuelve con un error (enlace vencido o ya
   /// usado — ver `AuthRemoteDataSource.erroresVerificacionEmail` en `data` para el detalle).
   Stream<void> get erroresVerificacionEmail;
+
+  /// Emite cuando el deep link de verificación de email vuelve válido (issue #84 — ver
+  /// `AuthRemoteDataSource.verificacionesExitosas` en `data` para el detalle).
+  Stream<void> get verificacionesExitosas;
 }

@@ -208,9 +208,12 @@ final class AuthRepositoryImpl implements AuthRepository {
     // Todo adentro del `try`: una falla al leer la sesión o una excepción no prevista del remoto
     // no puede saltearse el log ni el borrado local (#54).
     try {
-      final sesion = await _local.leerSesion();
+      final guardada = await _local.leerSesion();
       var resultado = ResultadoCierreSesion.completo;
-      if (sesion != null) {
+      if (guardada != null) {
+        // Antes de `signOut`, que suelta la sesión del cliente: la que queda pendiente de revocar
+        // tiene que llevar el token vigente, no el del login (#102).
+        final sesion = _sesionVigente(guardada);
         try {
           await _remote.cerrarSesion(sesion.accessToken);
         } on SinConexionException {
@@ -235,7 +238,7 @@ final class AuthRepositoryImpl implements AuthRepository {
 
       await _local.borrarSesion();
       _log.info(LogModulo.auth, 'LOGOUT_OK', 'sesión cerrada', {
-        'user_id': sesion?.usuarioId,
+        'user_id': guardada?.usuarioId,
         'revocacion_pendiente': resultado == ResultadoCierreSesion.revocacionPendiente,
       });
       return Right(resultado);
@@ -243,6 +246,26 @@ final class AuthRepositoryImpl implements AuthRepository {
       _log.error(LogModulo.auth, 'LOGOUT_FAIL', 'no se pudo borrar la sesión', const {}, e, st);
       return Left(FailureInesperado(causa: e));
     }
+  }
+
+  /// La sesión que tiene el cliente del proveedor ahora, si es del mismo usuario que [guardada];
+  /// si no, [guardada].
+  ///
+  /// `supabase_flutter` renueva el JWT solo (`autoRefreshToken`), así que el `accessToken` que se
+  /// guardó en el login puede estar vencido o reemplazado: revocar ese más tarde no cerraría la
+  /// sesión que sigue viva en el servidor. Se lee **sin refrescar ni tocar la red**: el logout no
+  /// puede quedar esperando a la red (si matan la app en el medio, la sesión sobreviviría;
+  /// revisión de #107). Si el cliente no la puede dar, se usa la guardada.
+  SesionModel _sesionVigente(SesionModel guardada) {
+    try {
+      final actual = _remote.sesionEnElCliente();
+      if (actual != null && actual.usuarioId == guardada.usuarioId) return actual;
+    } on Object catch (e) {
+      _log.debug(LogModulo.auth, 'LOGOUT_TOKEN_VIGENTE', 'se usa el token guardado', {
+        'error': e.runtimeType.toString(),
+      });
+    }
+    return guardada;
   }
 
   @override
@@ -299,6 +322,9 @@ final class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Stream<void> get erroresVerificacionEmail => _remote.erroresVerificacionEmail;
+
+  @override
+  Stream<void> get verificacionesExitosas => _remote.verificacionesExitosas;
 
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
