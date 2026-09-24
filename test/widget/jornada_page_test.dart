@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/jornada/data/datasources/jornada_loc
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
 import 'package:colportores_mobile/features/jornada/domain/entities/jornada.dart';
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
+import 'package:colportores_mobile/features/jornada/presentation/pages/corregir_jornada_page.dart';
 import 'package:colportores_mobile/features/jornada/presentation/pages/jornada_page.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
@@ -114,7 +115,12 @@ Future<void> _montar(
     child: MaterialApp(
       theme: tema ?? temaClaro(),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
+        data: MediaQuery.of(context).copyWith(
+          textScaler: TextScaler.linear(escalaTexto),
+          // Sin AM/PM: `CorregirJornadaPage` (#109) abre el selector de hora del sistema, y en
+          // 24 h el orden de campos es siempre hora-minuto sin control de período.
+          alwaysUse24HourFormat: true,
+        ),
         child: child!,
       ),
       home: JornadaPage(sesion: _sesion),
@@ -487,6 +493,32 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('si la jornada es de un día anterior, el selector no se ofrece (ninguna hora de '
+        'hoy le corresponde): "Cambiar" queda deshabilitado y "Finalizar" navega directo a la '
+        'corrección (bug #118, repro del revisor)', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))]);
+      // Repro exacta del revisor: inicio 22/09 18:00, ahora 23/09 10:00.
+      await _montar(tester, dataSource, reloj: () => DateTime(2026, 9, 23, 10));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      expect(
+        tester.widget<TextButton>(find.byKey(const Key('jornada_ajustar_hora_fin'))).onPressed,
+        isNull,
+        reason:
+            'antes del fix, esto se podía tocar y ofrecía una hora de hoy (p. ej. "hace 15 '
+            'min") que el caso de uso rechazaba con un rango de AYER, sin navegar a la corrección',
+      );
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
   });
 
   group('Estados al finalizar', () {
@@ -625,8 +657,8 @@ void main() {
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
 
-    testWidgets('jornada de un día anterior: no la cierra con la hora de hoy y dice de qué día es '
-        '(#102)', (tester) async {
+    testWidgets('jornada de un día anterior: no la cierra con la hora de hoy y navega a "¿A qué '
+        'hora terminaste?" con el mensaje de qué día es (#102, wiring en #109)', (tester) async {
       _pantalla(tester, const Size(390, 844));
       final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))]);
       await _montar(tester, dataSource);
@@ -634,9 +666,63 @@ void main() {
 
       await _tocarFinalizar(tester);
 
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(find.text('¿A qué hora terminaste?'), findsOneWidget);
       expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      // Se navegó: la pantalla de jornada (con su bloqueo "Jornada activa") ya no está en pantalla.
+      expect(find.text('Jornada activa'), findsNothing);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
+
+    testWidgets('al corregir la hora de esa jornada y cerrar, vuelve y lo trata como un cierre '
+        'exitoso normal, con el resumen (#109)', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))]);
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await _tocarFinalizar(tester);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
+      await tester.pumpAndSettle();
+      // Selector de hora del sistema: modo texto (más estable en tests que arrastrar el dial).
+      await tester.tap(find.byIcon(Icons.keyboard_outlined));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).at(0), '20');
+      await tester.enterText(find.byType(TextFormField).at(1), '30');
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 22, 20, 30).toUtc());
+      expect(dataSource.jornadas.single.estaAbierta, isFalse);
+      expect(find.text('Jornada finalizada'), findsOneWidget);
+      expect(find.text('De las 18:00 a las 20:30'), findsOneWidget);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+    });
+
+    testWidgets('si vuelve de la corrección sin elegir una hora, la jornada sigue activa y no '
+        'queda trabada (#118)', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))]);
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await _tocarFinalizar(tester);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
       expect(find.text('Jornada activa'), findsOneWidget);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
+      // No quedó deshabilitado: se puede volver a tocar "Finalizar" sin reabrir la app.
+      expect(_botonFinalizar(tester).onPressed, isNotNull);
     });
 
     testWidgets('guarda la hora de fin que mostraba la etiqueta, aunque el minuto cambie antes '
