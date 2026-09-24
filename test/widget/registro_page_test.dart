@@ -17,6 +17,9 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
 
   final AuthRemoteException excepcion;
 
+  /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap en "Reintentar".
+  int llamadasRegistrar = 0;
+
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) =>
       throw UnimplementedError();
@@ -28,7 +31,10 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
     required String cedula,
     required String email,
     required String password,
-  }) async => throw excepcion;
+  }) async {
+    llamadasRegistrar++;
+    throw excepcion;
+  }
 
   @override
   Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
@@ -477,6 +483,50 @@ void main() {
         );
       },
     );
+
+    // Revisión de #111 (#90): `_enviar()` no tenía guarda de reentrada, solo el botón
+    // deshabilitado en el build — dos toques más rápidos que el próximo repintado (mismo patrón
+    // que `recuperacion_password_page_test.dart`) disparaban dos `signUp`, y Supabase reenviaba
+    // el correo de confirmación. "Crear cuenta" y "Reintentar" comparten `_enviar()`: los dos
+    // botones necesitan la guarda.
+    testWidgets('doble toque en "Crear cuenta" dispara una sola llamada a registrar', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+
+      // Dos taps seguidos sin `pump()` entre medio: simula un doble tap más rápido que el
+      // próximo repintado, cuando el botón todavía no se deshabilitó visualmente.
+      await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.pumpAndSettle();
+
+      expect(remote.llamadasRegistrar, 1);
+    });
+
+    testWidgets('doble toque en "Reintentar" dispara una sola llamada más a registrar', (
+      tester,
+    ) async {
+      final remote = _RemoteQueLanzaAlRegistrar(const ServidorException(status: 503));
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+      await _tocarContinuar(tester);
+      await tester.pumpAndSettle();
+      expect(remote.llamadasRegistrar, 1, reason: 'el primer intento');
+
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Reintentar'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+      await tester.pumpAndSettle();
+
+      expect(remote.llamadasRegistrar, 2, reason: 'una sola llamada más, no dos');
+    });
   });
 
   group('Desde el login', () {

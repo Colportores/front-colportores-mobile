@@ -74,6 +74,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   }
 
   Future<void> _enviar() async {
+    if (_enviando) return; // Doble tap: "Crear cuenta" y "Reintentar" comparten este guardián.
     setState(() {
       _enviando = true;
       _erroresCampo = const {};

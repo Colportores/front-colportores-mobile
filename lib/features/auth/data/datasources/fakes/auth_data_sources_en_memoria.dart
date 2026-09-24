@@ -86,6 +86,9 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
   }
 
+  /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap de RegistroPage.
+  int llamadasRegistrar = 0;
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
@@ -94,6 +97,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required String email,
     required String password,
   }) async {
+    llamadasRegistrar++;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
 
