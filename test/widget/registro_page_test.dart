@@ -175,23 +175,43 @@ void main() {
 
     // Convención de accesibilidad del carril (jornada_page_test.dart): 360x740 para overflow con
     // el texto al 200 %. La casilla nueva del trade-off E2E (#85) no desborda (Text en Expanded,
-    // igual que la de términos) — el desborde real que encontró este test es otro, preexistente y
-    // ajeno a #85: ver issue #108.
+    // igual que la de términos); el desborde real que encontró este test era otro, preexistente y
+    // ajeno a #85 (`_DivisorTexto`, "O REGISTRATE CON") — arreglado en #108, con `Flexible` +
+    // `TextOverflow.ellipsis`.
+    testWidgets('sin overflow con el texto al 200 % en 360x740', (tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(tester, escalaTexto: 2);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108):
+    // este archivo no tenía `meetsGuideline` ni contraste. Misma convención que
+    // jornada_page_test.dart: 390x844, tamaño de toque Android/iOS, etiquetas y contraste.
     testWidgets(
-      'sin overflow con el texto al 200 % en 360x740',
+      'tamaño de toque, etiquetas y contraste',
       (tester) async {
-        tester.view.physicalSize = const Size(360, 740);
+        final semantica = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
 
-        await _montarPagina(tester, escalaTexto: 2);
+        await _montarPagina(tester);
         await tester.pumpAndSettle();
 
-        expect(tester.takeException(), isNull);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
       },
-      // Bug real, no se arregla acá: `_DivisorTexto` ("O REGISTRATE CON") no envuelve su texto en
-      // Flexible/Expanded y desborda con textScaler alto en pantallas angostas — nada que ver con
-      // el trade-off E2E de este issue. Ver issue #108.
+      // Bugs reales, no se arreglan acá: los `TextField` (41 de alto, faltan 48) y los dos
+      // `Checkbox` envueltos a mano en SizedBox(24, 24) no llegan al tamaño mínimo de toque —
+      // patrón compartido con LoginPage/RecuperacionPasswordPage (carril "auth"). Ver issue #115.
       skip: true,
     );
 

@@ -562,13 +562,20 @@ class _DivisorTexto extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Divider(color: colores.borde)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            texto,
-            style: theme.textTheme.bodySmall?.copyWith(
-              letterSpacing: 1.1,
-              color: colores.placeholder,
+        // Flexible (no solo Padding+Text): con textScaler alto (2.0, WCAG 1.4.4) en pantallas
+        // angostas el texto no entra a tamaño natural — issue #108. TextOverflow.ellipsis en vez
+        // de achicar la letra, para no perder legibilidad.
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              texto,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                letterSpacing: 1.1,
+                color: colores.placeholder,
+              ),
             ),
           ),
         ),
