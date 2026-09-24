@@ -67,6 +67,7 @@ Future<void> _montarPagina(
   ThemeData? tema,
   bool? mostrarApple,
   AuthRemoteDataSource? remote,
+  double escalaTexto = 1,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -78,6 +79,10 @@ Future<void> _montarPagina(
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
+        child: child!,
+      ),
       home: RegistroPage(mostrarApple: mostrarApple),
     ),
   ),
@@ -128,7 +133,17 @@ Future<void> _completarFormulario(
   await tester.enterText(find.byKey(const Key('registro_email')), email);
   await tester.enterText(find.byKey(const Key('registro_password')), password);
   await tester.tap(find.byKey(const Key('registro_terminos')));
+  await tester.ensureVisible(find.byKey(const Key('registro_trade_off')));
+  await tester.tap(find.byKey(const Key('registro_trade_off')));
   await tester.pump();
+}
+
+/// La casilla nueva del trade-off E2E (#85) corrió "Continuar" fuera del viewport por default de
+/// los tests (800x600): sin esto, `tester.tap` tira "outside the bounds of the root of the render
+/// tree" en vez de tocar el botón.
+Future<void> _tocarContinuar(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
+  await tester.tap(find.byKey(const Key('registro_continuar')));
 }
 
 void main() {
@@ -155,6 +170,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Convención de accesibilidad del carril (jornada_page_test.dart): 360x740 para overflow con
+    // el texto al 200 %. La casilla nueva del trade-off E2E (#85) no desborda (Text en Expanded,
+    // igual que la de términos) — el desborde real que encontró este test es otro, preexistente y
+    // ajeno a #85: ver issue #108.
+    testWidgets(
+      'sin overflow con el texto al 200 % en 360x740',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+
+        await _montarPagina(tester, escalaTexto: 2);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+      // Bug real, no se arregla acá: `_DivisorTexto` ("O REGISTRATE CON") no envuelve su texto en
+      // Flexible/Expanded y desborda con textScaler alto en pantallas angostas — nada que ver con
+      // el trade-off E2E de este issue. Ver issue #108.
+      skip: true,
+    );
+
     testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
       await _montarPagina(tester, mostrarApple: true);
       await tester.pumpAndSettle();
@@ -174,7 +211,7 @@ void main() {
       await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       expect(find.text('Ingresá tu nombre'), findsOneWidget);
@@ -183,6 +220,7 @@ void main() {
       expect(find.text('Ingresá tu email'), findsOneWidget);
       expect(find.text('Ingresá tu contraseña'), findsOneWidget);
       expect(find.text('Tenés que aceptar los términos.'), findsOneWidget);
+      expect(find.text('Tenés que aceptar el trade-off de tu contraseña.'), findsOneWidget);
       expect(remote.usuariosRegistrados, isEmpty);
     });
   });
@@ -200,7 +238,7 @@ void main() {
       expect(find.byKey(const Key('registro_continuar')), findsOneWidget);
 
       await _completarFormulario(tester);
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       // Cerró el registro y volvió a la pantalla inicial.
@@ -218,7 +256,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester, email: 'ana@example.com');
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
@@ -243,7 +281,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
@@ -270,7 +308,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester, email: 'lucia.silva@correo.com');
-        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await _tocarContinuar(tester);
         await tester.pumpAndSettle();
 
         expect(find.byType(RegistroPage), findsNothing);
@@ -291,7 +329,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
@@ -301,26 +339,51 @@ void main() {
   });
 
   // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumplía estos
-  // criterios de aceptación. Los de email-ya-registrado y sin-conexión se arreglaron en #86 (ya
-  // sin `skip:`); los de trade-off E2E (#85) y fallo intermitente 5xx (#90) siguen sin arreglar y
-  // quedan con `skip:` apuntando al issue correspondiente, para que la suite no se rompa y quede
-  // visible qué falta.
+  // criterios de aceptación. Los de email-ya-registrado, sin-conexión y trade-off E2E (#85) ya
+  // están arreglados (sin `skip:`); el de fallo intermitente 5xx (#90) sigue sin arreglar y queda
+  // con `skip:` apuntando al issue, para que la suite no se rompa y quede visible qué falta.
   group('RegistroPage — bugs conocidos de HU-AUTH-001', () {
+    testWidgets('R-AU05: casilla del trade-off E2E, con el texto de la DEK envuelta (issue #85)', (
+      tester,
+    ) async {
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
+
+      // Criterio de aceptación de HU-AUTH-001, con el texto actualizado (decisión de Cristian,
+      // 23/09): desde la DEK envuelta (#26, ADR-006) el Keystore abre la DB local igual aunque se
+      // pierda la contraseña — lo irrecuperable es el backup, no los datos locales. El finder
+      // busca "no se pueden recuperar" (el texto viejo, "irrecuperable", ya no es exacto).
+      expect(find.byKey(const Key('registro_trade_off')), findsOneWidget);
+      expect(
+        find.text(
+          'Entiendo que mi contraseña protege la copia de seguridad de mis datos: si la '
+          'olvido y pierdo el teléfono, los datos de mis clientes no se pueden recuperar.',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets(
-      'debería pedir la casilla del trade-off E2E antes de aceptar (R-AU05)',
+      'R-AU05: acepta términos pero no el trade-off — Continuar lo exige aparte (issue #85)',
       (tester) async {
-        await _montarPagina(tester);
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+        await _montarPagina(tester, remote: remote);
         await tester.pumpAndSettle();
 
-        // Criterio de aceptación de HU-AUTH-001: además de "Acepto Términos y Política de
-        // Privacidad", el formulario debe mostrar y exigir "Entiendo que perder mi contraseña
-        // hace mis datos locales irrecuperables" (R-AU05, trade-off E2E). Hoy solo existe una
-        // casilla ("registro_terminos"), sin ese segundo texto en ningún lado de la pantalla.
-        expect(find.textContaining('irrecuperable'), findsOneWidget);
+        await tester.enterText(find.byKey(const Key('registro_nombre')), 'Lucía');
+        await tester.enterText(find.byKey(const Key('registro_apellido')), 'Silva');
+        await tester.enterText(find.byKey(const Key('registro_cedula')), '4812309-2');
+        await tester.enterText(find.byKey(const Key('registro_email')), 'lucia.silva@correo.com');
+        await tester.enterText(find.byKey(const Key('registro_password')), 'Secreto123');
+        await tester.tap(find.byKey(const Key('registro_terminos')));
+        await tester.pump();
+
+        await _tocarContinuar(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Tenés que aceptar el trade-off de tu contraseña.'), findsOneWidget);
+        expect(remote.usuariosRegistrados, isEmpty);
       },
-      // Bug real, no se arregla en este QA: falta la casilla de trade-off E2E que exige el
-      // criterio de aceptación de HU-AUTH-001. Ver issue #85.
-      skip: true,
     );
 
     testWidgets(
@@ -333,7 +396,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester, email: 'ana@example.com');
-        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await _tocarContinuar(tester);
         await tester.pumpAndSettle();
 
         // Criterio de aceptación de HU-AUTH-001: "la UI ofrece accesos directos a HU-AUTH-003 e
@@ -354,7 +417,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await _completarFormulario(tester);
-      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await _tocarContinuar(tester);
       await tester.pumpAndSettle();
 
       // Criterio de aceptación de HU-AUTH-001: mensaje exacto "Necesitás conexión para
@@ -379,7 +442,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await _completarFormulario(tester);
-        await tester.tap(find.byKey(const Key('registro_continuar')));
+        await _tocarContinuar(tester);
         await tester.pumpAndSettle();
 
         // Criterio de aceptación "Edge - fallo intermitente del backend": mensaje accionable
