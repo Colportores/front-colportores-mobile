@@ -27,11 +27,13 @@ final class FinalizarJornadaParams extends Equatable {
 /// HU-JOR-002 — Finalizar jornada de trabajo.
 ///
 /// 1. Si el colportor no tiene una jornada en curso devuelve `Left(FailureSinJornadaActiva)`.
-/// 2. Si la jornada en curso empezó **un día anterior** (en la zona del dispositivo) devuelve
-///    `Left(FailureJornadaDeDiaAnterior)` y no la toca: cerrarla con la hora de hoy inventaría un
-///    `fin` —el lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y la HU pide que nunca se
-///    invente uno. Esa jornada se cierra con la corrección de la HU ("¿A qué hora terminaste?", con
-///    tope en las 23:59 de ese día), que es otra pantalla, todavía pendiente (#102).
+/// 2. Si el fin (el elegido, o ahora) cae **en un día posterior al del inicio** (en la zona del
+///    dispositivo) devuelve `Left(FailureJornadaDeDiaAnterior)` y no la toca: cerrarla con la hora
+///    de hoy inventaría un `fin` —el lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y
+///    la HU pide que nunca se invente uno. Cerca de la medianoche sí vale elegir una hora del día
+///    del inicio dentro de los 30 minutos (a las 00:10, las 23:50). Si no, la jornada se cierra con
+///    la corrección de la HU ("¿A qué hora terminaste?", con tope en las 23:59 de ese día), que es
+///    otra pantalla, todavía pendiente (#102).
 /// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
@@ -86,7 +88,11 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
       abierta,
     ) async {
       if (abierta == null) return const Left(FailureSinJornadaActiva());
-      if (_esDeUnDiaAnterior(abierta.inicio, ahora)) {
+
+      final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
+      final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
+      // Ni la hora más temprana que se puede elegir cae en el día del inicio: no hay fin posible.
+      if (_caeEnOtroDia(abierta.inicio, desde)) {
         return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
       }
 
@@ -95,13 +101,17 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
       if (elegida == null) {
         fin = ahora;
       } else {
-        final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
-        final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
         final hora = _alMilisegundo(elegida);
         if (hora.isBefore(desde) || hora.isAfter(ahora)) {
           return Left(FailureHoraFueraDeRango(desde: desde, hasta: ahora));
         }
         fin = hora;
+      }
+
+      // Una jornada no cruza la medianoche (HU-JOR-002: el fin tiene tope en las 23:59 del día del
+      // inicio). A las 00:10, elegir las 23:50 de ayer vale; las 00:05 de hoy, no.
+      if (_caeEnOtroDia(abierta.inicio, fin)) {
+        return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
       }
 
       if (fin.isBefore(abierta.inicio)) {
@@ -134,12 +144,12 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
     }
   }
 
-  /// Si [inicio] cae en un día calendario anterior al de [ahora], en la zona del dispositivo (el
-  /// día del colportor, no el de UTC).
-  static bool _esDeUnDiaAnterior(DateTime inicio, DateTime ahora) {
+  /// Si [instante] cae en un día calendario posterior al de [inicio], en la zona del dispositivo
+  /// (el día del colportor, no el de UTC).
+  static bool _caeEnOtroDia(DateTime inicio, DateTime instante) {
     final i = inicio.toLocal();
-    final a = ahora.toLocal();
-    return DateTime(i.year, i.month, i.day).isBefore(DateTime(a.year, a.month, a.day));
+    final x = instante.toLocal();
+    return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
   }
 
   /// [fecha] en UTC y sin lo que haya por debajo del milisegundo (ver `IniciarJornadaUseCase`).

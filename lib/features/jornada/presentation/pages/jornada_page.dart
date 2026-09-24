@@ -38,7 +38,8 @@ class JornadaPage extends ConsumerStatefulWidget {
 }
 
 class _JornadaPageState extends ConsumerState<JornadaPage> {
-  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta.
+  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta, al cambiar
+  /// el minuto.
   Timer? _tic;
 
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
@@ -66,8 +67,26 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   @override
   void initState() {
     super.initState();
-    _tic = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() {});
+    _programarTic();
+  }
+
+  /// Redibuja justo cuando cambia el minuto: así "Ahora · 14:35", la hora elegida y lo que se
+  /// guarda (que sale del mismo instante, ver [_ahoraMostrado]) nunca quedan un minuto atrás del
+  /// reloj del teléfono (revisión de #107).
+  void _programarTic() {
+    final ahora = ref.read(relojJornadaProvider)();
+    final proximoMinuto = DateTime(
+      ahora.year,
+      ahora.month,
+      ahora.day,
+      ahora.hour,
+      ahora.minute + 1,
+    );
+    final espera = proximoMinuto.difference(ahora);
+    _tic = Timer(espera > Duration.zero ? espera : const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _programarTic();
     });
   }
 

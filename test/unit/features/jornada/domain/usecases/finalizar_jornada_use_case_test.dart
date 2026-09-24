@@ -46,10 +46,16 @@ final class _BackupFalso implements DisparadorBackup {
   }
 }
 
+/// Una hora del miércoles 23/09/2026 **en la zona del dispositivo**, como instante UTC (como la
+/// devuelve el caso de uso). Así los tests no dependen del huso horario de quien los corre: la
+/// guarda de "día anterior" mira el día local.
+DateTime _hoy(int hora, int minuto, [int segundo = 0, int ms = 0, int us = 0]) =>
+    DateTime(2026, 9, 23, hora, minuto, segundo, ms, us).toUtc();
+
 void main() {
-  // 14:35:20 UTC; la jornada empezó a las 13:15 UTC.
-  final ahora = DateTime.utc(2026, 9, 23, 14, 35, 20);
-  final inicio = DateTime.utc(2026, 9, 23, 13, 15);
+  // 14:35:20 hora local; la jornada empezó a las 13:15.
+  final ahora = _hoy(14, 35, 20);
+  final inicio = _hoy(13, 15);
 
   late _RepositorioFalso repositorio;
   late _BackupFalso backup;
@@ -89,20 +95,20 @@ void main() {
     });
 
     test('la hora del toque se trunca al milisegundo y queda en UTC', () async {
-      final conMicros = DateTime.utc(2026, 9, 23, 14, 35, 20, 123, 999);
+      final conMicros = _hoy(14, 35, 20, 123, 999);
       final caso = FinalizarJornadaUseCase(repositorio, backup, ahora: () => conMicros.toLocal());
 
       final cerrada = (await caso(
         const FinalizarJornadaParams(colportorId: 'u-1'),
       )).getOrElse(() => fail('se esperaba Right'));
 
-      expect(cerrada.fin, DateTime.utc(2026, 9, 23, 14, 35, 20, 123));
+      expect(cerrada.fin, _hoy(14, 35, 20, 123));
       expect(cerrada.fin!.isUtc, isTrue);
     });
 
     test('con una hora elegida dentro de [max(now − 30 min, inicio), now], la jornada termina a '
         'esa hora (el borde de abajo se compara al minuto)', () async {
-      for (final hora in [DateTime.utc(2026, 9, 23, 14, 5), DateTime.utc(2026, 9, 23, 14, 30)]) {
+      for (final hora in [_hoy(14, 5), _hoy(14, 30)]) {
         final resultado = await finalizarJornada(
           FinalizarJornadaParams(colportorId: 'u-1', hora: hora),
         );
@@ -112,21 +118,15 @@ void main() {
 
     test('con una hora de más de 30 minutos atrás, en el futuro o anterior al inicio, rechaza con '
         'el rango explícito y no guarda nada', () async {
-      repositorio.respuestaActiva = Right(abierta(desde: DateTime.utc(2026, 9, 23, 14, 20)));
+      repositorio.respuestaActiva = Right(abierta(desde: _hoy(14, 20)));
 
-      for (final hora in [
-        DateTime.utc(2026, 9, 23, 14, 4, 59),
-        DateTime.utc(2026, 9, 23, 14, 36),
-        DateTime.utc(2026, 9, 23, 14, 19),
-      ]) {
+      for (final hora in [_hoy(14, 4, 59), _hoy(14, 36), _hoy(14, 19)]) {
         final resultado = await finalizarJornada(
           FinalizarJornadaParams(colportorId: 'u-1', hora: hora),
         );
         expect(
           resultado,
-          Left<Failure, Jornada>(
-            FailureHoraFueraDeRango(desde: DateTime.utc(2026, 9, 23, 14, 20), hasta: ahora),
-          ),
+          Left<Failure, Jornada>(FailureHoraFueraDeRango(desde: _hoy(14, 20), hasta: ahora)),
         );
       }
       expect(repositorio.finalizadas, isEmpty);
@@ -216,14 +216,12 @@ void main() {
         'rechaza por el borde de 30 min, no por el del inicio (#102)', () async {
       // Inicio 13:15: el piso del rango es now − 30 = 14:05 (al minuto), no el inicio.
       final resultado = await finalizarJornada(
-        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime.utc(2026, 9, 23, 14, 4, 59)),
+        FinalizarJornadaParams(colportorId: 'u-1', hora: _hoy(14, 4, 59)),
       );
 
       expect(
         resultado,
-        Left<Failure, Jornada>(
-          FailureHoraFueraDeRango(desde: DateTime.utc(2026, 9, 23, 14, 5), hasta: ahora),
-        ),
+        Left<Failure, Jornada>(FailureHoraFueraDeRango(desde: _hoy(14, 5), hasta: ahora)),
       );
       expect(repositorio.finalizadas, isEmpty);
     });
@@ -262,6 +260,46 @@ void main() {
       expect(resultado.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
       expect(repositorio.finalizadas, isEmpty);
     });
+
+    test('a las 00:10, elegir las 23:50 de ayer vale: está dentro de los 30 minutos y del día del '
+        'inicio (revisión de #107)', () async {
+      final medianoche = FinalizarJornadaUseCase(
+        repositorio,
+        backup,
+        ahora: () => DateTime(2026, 9, 23, 0, 10),
+      );
+      repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 20)));
+
+      final resultado = await medianoche(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 23, 50)),
+      );
+
+      expect(
+        resultado.getOrElse(() => fail('se esperaba Right')).fin,
+        DateTime(2026, 9, 22, 23, 50).toUtc(),
+      );
+    });
+
+    test(
+      'a las 00:10, elegir las 00:05 de hoy no vale: la jornada cruzaría la medianoche',
+      () async {
+        final medianoche = FinalizarJornadaUseCase(
+          repositorio,
+          backup,
+          ahora: () => DateTime(2026, 9, 23, 0, 10),
+        );
+        repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 20)));
+
+        final sinElegir = await medianoche(const FinalizarJornadaParams(colportorId: 'u-1'));
+        final hoy = await medianoche(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 5)),
+        );
+
+        expect(sinElegir.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
+        expect(hoy.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
+        expect(repositorio.finalizadas, isEmpty);
+      },
+    );
 
     test('dado que empezó hoy temprano, la cierra normalmente', () async {
       repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 23, 0, 5)));
