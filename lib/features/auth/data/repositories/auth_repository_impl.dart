@@ -297,6 +297,12 @@ final class AuthRepositoryImpl implements AuthRepository {
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
     ),
+    // Solo los lanza la recuperación de contraseña (HU-AUTH-005), que tiene su propio repositorio:
+    // acá no llegan, pero el switch es exhaustivo.
+    PasswordIgualALaAnteriorException() => const FailureValidacion(
+      campos: {'password': 'Tiene que ser distinta de la anterior.'},
+    ),
+    SesionDeRecuperacionVencidaException() => const FailureEnlaceRecuperacionVencido(),
     ServidorException(:final status, :final mensaje) =>
       mensaje == null
           ? FailureServidor(status: status)

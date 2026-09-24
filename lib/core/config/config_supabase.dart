@@ -16,4 +16,12 @@ abstract final class ConfigSupabase {
   /// estar (a) en `AndroidManifest.xml` como intent-filter de `MainActivity` y (b) en el
   /// dashboard: Authentication → URL Configuration → Redirect URLs.
   static const String redirectOAuth = 'io.supabase.colportores://login-callback/';
+
+  /// Deep link del enlace de recuperación de contraseña (HU-AUTH-004 lo pide, HU-AUTH-005 lo
+  /// recibe). Mismo scheme y host que [redirectOAuth] (el mismo intent-filter lo captura), con una
+  /// ruta propia para distinguirlo de la verificación de email: Supabase manda el mismo error para
+  /// los dos cuando el enlace venció (`RegistroEnlacesAuth`). **También tiene que estar** en el
+  /// dashboard: Authentication → URL Configuration → Redirect URLs.
+  static const String redirectRecuperacion =
+      'io.supabase.colportores://login-callback/recuperacion';
 }

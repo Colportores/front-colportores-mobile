@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/tema_colportaje.dart';
+import 'features/auth/domain/entities/enlace_recuperacion.dart';
+import 'features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/jornada/presentation/pages/jornada_page.dart';
 
@@ -32,6 +35,14 @@ class ColportoresApp extends ConsumerWidget {
     ref.listen(erroresVerificacionEmailProvider, (previous, next) {
       if (next is! AsyncData<void>) return;
       unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
+    });
+
+    // HU-AUTH-005: el enlace de recuperación de contraseña (válido o vencido) puede llegar con la
+    // app en cualquier pantalla, o abriéndola. Mismo criterio que la verificación: este es el único
+    // lugar que se entera. Si había una sesión iniciada, igual se muestra: el enlace es de la
+    // cuenta de quien lo pidió, y al terminar se cierran todas las sesiones.
+    ref.listen(enlacesRecuperacionProvider, (previous, next) {
+      if (next case AsyncData(:final value)) _llevarAConfirmarRecuperacion(value);
     });
 
     return MaterialApp(
@@ -81,4 +92,12 @@ Future<void> _llevarAVerificacionSiNoHaySesion(BuildContext context, WidgetRef r
       ),
     ),
   );
+}
+
+/// Lleva a la pantalla de la contraseña nueva (o de enlace vencido) desde la raíz de la pila.
+void _llevarAConfirmarRecuperacion(EnlaceRecuperacion enlace) {
+  final navigator = navigatorKeyColportores.currentState;
+  if (navigator == null) return;
+  navigator.popUntil((route) => route.isFirst);
+  unawaited(navigator.push(ConfirmarRecuperacionPasswordPage.ruta(enlace)));
 }

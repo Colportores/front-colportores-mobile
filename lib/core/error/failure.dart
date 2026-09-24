@@ -63,6 +63,15 @@ final class FailureEmailYaRegistrado extends Failure {
       );
 }
 
+/// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
+/// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
+/// `otp_expired`), así que la app tampoco. [mensaje] es el literal de la HU; la pantalla ofrece
+/// pedir un enlace nuevo (HU-AUTH-004).
+final class FailureEnlaceRecuperacionVencido extends Failure {
+  const FailureEnlaceRecuperacionVencido()
+    : super(mensaje: 'El enlace expiró. Solicitá uno nuevo.', codigo: 'AUTH_ENLACE_VENCIDO');
+}
+
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
 /// [mensaje] es el texto literal del criterio de aceptación "Bloqueo - jornada ya activa".
 final class FailureJornadaActiva extends Failure {

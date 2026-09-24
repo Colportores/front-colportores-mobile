@@ -93,6 +93,17 @@ final class PasswordDebilException extends AuthRemoteException {
   const PasswordDebilException();
 }
 
+/// La contraseña nueva es igual a la anterior (Supabase `same_password`, HU-AUTH-005).
+final class PasswordIgualALaAnteriorException extends AuthRemoteException {
+  const PasswordIgualALaAnteriorException();
+}
+
+/// La sesión que abrió el enlace de recuperación ya no sirve (venció, o no hay): hay que pedir un
+/// enlace nuevo (HU-AUTH-005).
+final class SesionDeRecuperacionVencidaException extends AuthRemoteException {
+  const SesionDeRecuperacionVencidaException();
+}
+
 /// Error del proveedor sin traducción propia. [mensaje], si viene, reemplaza el texto genérico
 /// de `FailureServidor` (nunca lleva PII: sale de códigos de error, no de datos del usuario).
 final class ServidorException extends AuthRemoteException {
