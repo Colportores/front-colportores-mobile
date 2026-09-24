@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -7,6 +9,7 @@ import 'package:colportores_mobile/features/auth/presentation/pages/registro_pag
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +19,15 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
   _RemoteQueLanzaAlRegistrar(this.excepcion);
 
   final AuthRemoteException excepcion;
+
+  /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap en "Reintentar".
+  int llamadasRegistrar = 0;
+
+  /// Si no es `null`, [registrar] no lanza hasta que el test lo complete — para que el segundo
+  /// toque del doble tap ocurra mientras el primero todavía está en vuelo. Sin esto el fake
+  /// resuelve instantáneo (como el resto de los fakes en memoria) y no hay ventana de carrera
+  /// real: la guarda ya se resetea antes del segundo toque, y el test no prueba nada.
+  Completer<void>? demora;
 
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) =>
@@ -28,7 +40,11 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
     required String cedula,
     required String email,
     required String password,
-  }) async => throw excepcion;
+  }) async {
+    llamadasRegistrar++;
+    await demora?.future;
+    throw excepcion;
+  }
 
   @override
   Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
@@ -175,23 +191,66 @@ void main() {
 
     // Convención de accesibilidad del carril (jornada_page_test.dart): 360x740 para overflow con
     // el texto al 200 %. La casilla nueva del trade-off E2E (#85) no desborda (Text en Expanded,
-    // igual que la de términos) — el desborde real que encontró este test es otro, preexistente y
-    // ajeno a #85: ver issue #108.
+    // igual que la de términos); el desborde real que encontró este test era otro, preexistente y
+    // ajeno a #85 (`_DivisorTexto`, "O REGISTRATE CON") — arreglado en #108, con `Flexible` +
+    // `TextOverflow.ellipsis`.
+    testWidgets('sin overflow con el texto al 200 % en 360x740', (tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(tester, escalaTexto: 2);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    // Revisión de #116 (#108): el `Flexible` sin `flex` (todos a 1, igual que los dos
+    // `Expanded(Divider)`) le daba al texto solo un tercio del ancho — "O REGISTRATE CON" podía
+    // truncarse con puntos suspensivos **a escala normal** en un teléfono angosto, y ningún test
+    // lo agarraba porque el `...` no tira excepción. `didExceedMaxLines` en el `RenderParagraph`
+    // sí lo detecta.
+    testWidgets('el divisor "O REGISTRATE CON" no se trunca a escala 1.0 en 390x844', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
+
+      final parrafo = tester.renderObject<RenderParagraph>(find.text('O REGISTRATE CON'));
+      expect(
+        parrafo.didExceedMaxLines,
+        isFalse,
+        reason: 'el texto del divisor no debería truncarse a escala normal',
+      );
+    });
+
+    // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108):
+    // este archivo no tenía `meetsGuideline` ni contraste. Misma convención que
+    // jornada_page_test.dart: 390x844, tamaño de toque Android/iOS, etiquetas y contraste.
     testWidgets(
-      'sin overflow con el texto al 200 % en 360x740',
+      'tamaño de toque, etiquetas y contraste',
       (tester) async {
-        tester.view.physicalSize = const Size(360, 740);
+        final semantica = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
 
-        await _montarPagina(tester, escalaTexto: 2);
+        await _montarPagina(tester);
         await tester.pumpAndSettle();
 
-        expect(tester.takeException(), isNull);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
       },
-      // Bug real, no se arregla acá: `_DivisorTexto` ("O REGISTRATE CON") no envuelve su texto en
-      // Flexible/Expanded y desborda con textScaler alto en pantallas angostas — nada que ver con
-      // el trade-off E2E de este issue. Ver issue #108.
+      // Bugs reales, no se arreglan acá: los `TextField` (41 de alto, faltan 48) y los dos
+      // `Checkbox` envueltos a mano en SizedBox(24, 24) no llegan al tamaño mínimo de toque —
+      // patrón compartido con LoginPage/RecuperacionPasswordPage (carril "auth"). Ver issue #115.
       skip: true,
     );
 
@@ -342,9 +401,9 @@ void main() {
   });
 
   // Bugs reales encontrados durante el QA de HU-AUTH-001 (issue #16): el código no cumplía estos
-  // criterios de aceptación. Los de email-ya-registrado, sin-conexión y trade-off E2E (#85) ya
-  // están arreglados (sin `skip:`); el de fallo intermitente 5xx (#90) sigue sin arreglar y queda
-  // con `skip:` apuntando al issue, para que la suite no se rompa y quede visible qué falta.
+  // criterios de aceptación. Los de email-ya-registrado, sin-conexión, trade-off E2E (#85) y
+  // fallo intermitente 5xx (#90) ya están arreglados (sin `skip:`). El único `skip:` que queda en
+  // este archivo es el overflow de `_DivisorTexto`, ajeno a estos bugs — ver issue #108.
   group('RegistroPage — bugs conocidos de HU-AUTH-001', () {
     testWidgets('R-AU05: casilla del trade-off E2E, con el texto de la DEK envuelta (issue #85)', (
       tester,
@@ -449,35 +508,91 @@ void main() {
         await tester.pumpAndSettle();
 
         // Criterio de aceptación "Edge - fallo intermitente del backend": mensaje accionable
-        // exacto (no el genérico de FailureServidor), un botón "Reintentar" que no pierda los
-        // datos del formulario, y (no verificable acá) el registro local de un NetworkFailure sin
-        // PII. Hoy no hay botón "Reintentar" en ningún lado de la pantalla ni ese mensaje.
+        // exacto (no el genérico de FailureServidor) y un botón "Reintentar" que no pierda los
+        // datos del formulario. El registro local del NetworkFailure (status, sin PII) lo cubre
+        // `auth_repository_impl_test.dart`, no esta pantalla.
         expect(
           find.text('Servicio temporalmente no disponible, reintentá en unos minutos'),
           findsOneWidget,
         );
         expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
 
+        // El banner con el botón empuja el resto de la pantalla más abajo, fuera del viewport
+        // default de los tests (800x600) — mismo caso que `registro_continuar` en #85.
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Reintentar'));
         await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
         await tester.pumpAndSettle();
 
-        final campoEmail = tester.widget<TextField>(
-          find.descendant(
-            of: find.byKey(const Key('registro_email')),
-            matching: find.byType(TextField),
-          ),
-        );
+        // El finder original acá era `find.descendant(of: find.byKey(...), matching:
+        // find.byType(TextField))`: nunca matchea porque en `_CampoRegistro` la key va puesta en
+        // el propio `TextField` (`key: widget.fieldKey`) y `find.descendant` excluye la raíz por
+        // defecto (`matchRoot: false`) — mismo hallazgo que el issue documentó para este test
+        // (salió de la revisión del PR #88). Corregido con `find.byKey` directo.
+        final campoEmail = tester.widget<TextField>(find.byKey(const Key('registro_email')));
         expect(
           campoEmail.controller?.text,
           'lucia.silva@correo.com',
           reason: 'el botón "Reintentar" no debería perder los datos ya tipeados',
         );
       },
-      // Bug real, no se arregla en este QA: el fallo intermitente del backend (5xx) no muestra el
-      // mensaje accionable exacto ni ofrece un botón "Reintentar" que pide el criterio de
-      // aceptación de HU-AUTH-001. Ver issue #90.
-      skip: true,
     );
+
+    // Revisión de #111 (#90): `_enviar()` no tenía guarda de reentrada, solo el botón
+    // deshabilitado en el build — dos toques más rápidos que el próximo repintado (mismo patrón
+    // que `recuperacion_password_page_test.dart`) disparaban dos `signUp`, y Supabase reenviaba
+    // el correo de confirmación. "Crear cuenta" y "Reintentar" comparten `_enviar()`: los dos
+    // botones necesitan la guarda.
+    testWidgets('doble toque en "Crear cuenta" dispara una sola llamada a registrar', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPilaConPantallaInicial(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('abrir_registro')));
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+
+      // `demora` mantiene la primera llamada en vuelo: sin esto, el fake resuelve instantáneo
+      // (no hay I/O real) y el segundo toque llega cuando la guarda ya se reseteó — no habría
+      // ventana de carrera que probar. Dos taps seguidos sin `pump()` entre medio simulan un
+      // doble tap más rápido que el próximo repintado, cuando el botón todavía no se deshabilitó
+      // visualmente.
+      remote.demoraRegistrar = Completer<void>();
+      await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      await tester.tap(find.byKey(const Key('registro_continuar')));
+      remote.demoraRegistrar!.complete();
+      await tester.pumpAndSettle();
+
+      expect(remote.llamadasRegistrar, 1);
+      expect(find.text('Cuenta creada'), findsOneWidget);
+    });
+
+    testWidgets('doble toque en "Reintentar" dispara una sola llamada más a registrar', (
+      tester,
+    ) async {
+      final remote = _RemoteQueLanzaAlRegistrar(const ServidorException(status: 503));
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await _completarFormulario(tester);
+      await _tocarContinuar(tester);
+      await tester.pumpAndSettle();
+      expect(remote.llamadasRegistrar, 1, reason: 'el primer intento');
+
+      // Mismo motivo que arriba: `demora` mantiene el reintento en vuelo para que el segundo
+      // toque compita de verdad contra la guarda, en vez de llegar después de que ya se reseteó.
+      remote.demora = Completer<void>();
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Reintentar'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+      remote.demora!.complete();
+      await tester.pumpAndSettle();
+
+      expect(remote.llamadasRegistrar, 2, reason: 'una sola llamada más, no dos');
+    });
   });
 
   group('Desde el login', () {
