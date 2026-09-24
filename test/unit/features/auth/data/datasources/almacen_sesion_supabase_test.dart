@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/emision_jwt.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show LocalStorage;
@@ -55,15 +56,15 @@ String _sesionEmitidaEn(DateTime emitido) =>
 void main() {
   final ahora = DateTime.utc(2026, 9, 23, 12);
   late AlmacenSeguroEnMemoria almacen;
+  late RelojSesionEnMemoria reloj;
 
-  AlmacenSesionSupabase crear({LocalStorage? anterior, AppLogger? logger}) => AlmacenSesionSupabase(
-    almacen,
-    anterior: anterior,
-    ahora: () => ahora,
-    logger: logger ?? loggerMudo(),
-  );
+  AlmacenSesionSupabase crear({LocalStorage? anterior, AppLogger? logger}) =>
+      AlmacenSesionSupabase(almacen, reloj, anterior: anterior, logger: logger ?? loggerMudo());
 
-  setUp(() => almacen = AlmacenSeguroEnMemoria());
+  setUp(() {
+    almacen = AlmacenSeguroEnMemoria();
+    reloj = RelojSesionEnMemoria(sistema: () => ahora);
+  });
 
   group('guarda la sesión en el almacén seguro', () {
     test('Escenario: Refresh transparente con uso regular — cada sesión nueva reemplaza la '
@@ -176,6 +177,31 @@ void main() {
     }
   });
 
+  group('reloj que no vuelve atrás', () {
+    test(
+      'si atrasan el reloj del equipo después de ver una hora más alta, la sesión vence igual',
+      () async {
+        almacen = AlmacenSeguroEnMemoria({
+          ClaveSegura.sesionAuth: _sesionEmitidaEn(ahora.subtract(const Duration(days: 31))),
+        });
+        await reloj.ahora();
+        reloj.sistema = () => ahora.subtract(const Duration(days: 10));
+
+        expect(await crear().accessToken(), isNull);
+        expect(almacen.contenido[ClaveSegura.sesionAuth], isNull);
+      },
+    );
+
+    test('guardar una sesión registra su iat (hora del servidor) en el reloj', () async {
+      reloj.sistema = () => ahora.subtract(const Duration(days: 40));
+      final sesiones = crear();
+
+      await sesiones.persistSession(_sesionEmitidaEn(ahora));
+
+      expect(await reloj.ahora(), ahora);
+    });
+  });
+
   group('migración desde SharedPreferences', () {
     test('mueve la sesión al almacén seguro y la borra de SharedPreferences', () async {
       final anterior = _Anterior(_sesionEmitidaEn(ahora));
@@ -198,19 +224,50 @@ void main() {
     });
 
     test('si no puede escribir en el almacén seguro, no borra la vieja (reintenta al próximo '
-        'arranque)', () async {
+        'arranque) y en esta corrida la sirve desde memoria', () async {
       final anterior = _Anterior(_sesionEmitidaEn(ahora));
-      almacen.simularFalla = true;
+      final escrituras = _AlmacenQueNoEscribe();
+      final sesiones = AlmacenSesionSupabase(
+        escrituras,
+        reloj,
+        anterior: anterior,
+        logger: loggerMudo(),
+      );
 
-      await crear(anterior: anterior).initialize();
+      await sesiones.initialize();
 
       expect(anterior.valor, isNotNull);
+      expect(await sesiones.accessToken(), _sesionEmitidaEn(ahora), reason: 'no queda afuera');
+      expect(escrituras.contenido[ClaveSegura.sesionMigrada], isNull, reason: 'se reintenta');
+
+      await sesiones.removePersistedSession();
+      expect(await sesiones.accessToken(), isNull, reason: 'un logout también la suelta');
     });
 
-    test('sin sesión vieja o sin almacén anterior, no hace nada', () async {
-      final anterior = _Anterior();
+    test('deja la marca de migrada: una copia vieja que quedó en SharedPreferences después de un '
+        'logout no se vuelve a usar, solo se limpia', () async {
+      final sesiones = crear(anterior: _Anterior(_sesionEmitidaEn(ahora)));
+      await sesiones.initialize();
+      expect(almacen.contenido[ClaveSegura.sesionMigrada], isNotNull);
+      await sesiones.removePersistedSession();
 
-      await crear(anterior: anterior).initialize();
+      final quedoVieja = _Anterior(_sesionEmitidaEn(ahora));
+      await crear(anterior: quedoVieja).initialize();
+
+      expect(almacen.contenido[ClaveSegura.sesionAuth], isNull);
+      expect(quedoVieja.valor, isNull);
+    });
+
+    test(
+      'sin sesión vieja no migra nada, pero deja la marca para no mirar más SharedPreferences',
+      () async {
+        await crear(anterior: _Anterior()).initialize();
+
+        expect(almacen.contenido, {ClaveSegura.sesionMigrada: '1'});
+      },
+    );
+
+    test('sin almacén anterior no hace nada', () async {
       await crear().initialize();
 
       expect(almacen.contenido, isEmpty);
@@ -223,4 +280,32 @@ void main() {
     expect(emisionDelJwt(_jwtEmitidoEn(emitido)), emitido);
     expect(emisionDelJwt('a.%%%.c'), isNull);
   });
+
+  test('emisionDelJwt no lanza con un iat fuera de rango o no finito', () {
+    String conIat(Object iat) =>
+        'a.${base64Url.encode(utf8.encode('{"iat": $iat}')).replaceAll('=', '')}.c';
+
+    expect(emisionDelJwt(conIat('1e300')), isNull);
+    expect(emisionDelJwt(conIat(9007199254740991)), isNull);
+  });
+}
+
+/// Almacén que lee pero no puede escribir (p. ej. Keystore bloqueado al migrar).
+final class _AlmacenQueNoEscribe implements AlmacenSeguro {
+  final _real = AlmacenSeguroEnMemoria();
+
+  Map<ClaveSegura, String> get contenido => _real.contenido;
+
+  @override
+  Future<String?> leer(ClaveSegura clave) => _real.leer(clave);
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) async =>
+      throw AlmacenSeguroException(operacion: 'escribir', clave: clave);
+
+  @override
+  Future<void> borrar(ClaveSegura clave) => _real.borrar(clave);
+
+  @override
+  Future<void> borrarTodo() => _real.borrarTodo();
 }

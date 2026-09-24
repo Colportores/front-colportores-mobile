@@ -9,6 +9,7 @@ import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_m
 import 'package:colportores_mobile/features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source_supabase.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/politica_sesion.dart';
@@ -564,7 +565,7 @@ void main() {
       });
       final persistida = AlmacenSesionSupabase(
         almacen,
-        ahora: () => DateTime.utc(2026, 9, 23),
+        RelojSesionEnMemoria(sistema: () => DateTime.utc(2026, 9, 23)),
         logger: loggerMudo(),
       );
       final ds = dataSource(sesionPersistida: persistida);
