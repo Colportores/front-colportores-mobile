@@ -37,7 +37,12 @@ final class FinalizarJornadaParams extends Equatable {
 /// 2b. Si en cambio SÍ llegó [FinalizarJornadaParams.hora] para esa misma jornada de día
 ///    anterior, es la corrección: se acepta si está estrictamente después del inicio y no pasa
 ///    de las 23:59:59.999 (zona del dispositivo) de ese día — sin el margen de 30 min, porque es
-///    una corrección, no un ajuste del momento. Fuera de ese rango, `Left(FailureHoraFueraDeRango)`.
+///    una corrección, no un ajuste del momento. Si la hora elegida SÍ cae en el día del inicio
+///    pero fuera de ese sub-rango (a esa hora o antes), `Left(FailureHoraFueraDeRango)`. Si ni
+///    siquiera cae en el día del inicio (bug #118: llegó una hora de hoy, no de la corrección —
+///    el selector normal de "Hora de fin" no debería ofrecerla en este caso, pero esta es la
+///    defensa), sigue siendo `Left(FailureJornadaDeDiaAnterior)`: nunca se inventa un fin de
+///    otro día ni se confunde con "elegiste mal la hora".
 /// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
@@ -107,7 +112,14 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
         }
         final hora = _alMilisegundo(elegida);
         final finDelDia = _finDelDiaLocal(abierta.inicio);
-        if (!hora.isAfter(abierta.inicio) || hora.isAfter(finDelDia)) {
+        // Si la hora elegida ni siquiera cae en el día del inicio (bug #118: el selector normal
+        // de "Hora de fin" no debería ofrecerse acá, pero esto es la defensa si de todos modos
+        // llega una hora de hoy), no es un problema de rango — sigue siendo la misma jornada de
+        // un día anterior de siempre, y nunca se inventa un fin de otro día.
+        if (hora.isAfter(finDelDia)) {
+          return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
+        }
+        if (!hora.isAfter(abierta.inicio)) {
           return Left(FailureHoraFueraDeRango(desde: abierta.inicio, hasta: finDelDia));
         }
         fin = hora;

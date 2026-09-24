@@ -135,10 +135,28 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     });
   }
 
-  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio.
+  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio. 0 si la
+  /// jornada es de un día anterior (HU-JOR-002, bug #118): ahí cualquier hora que ofreciera este
+  /// selector caería en el día de HOY, no en el del inicio — el margen normal no corresponde. Con
+  /// 0 el selector no se muestra (`_SelectorHora` lo esconde con `maximo == 0`) y el botón
+  /// "Cambiar" queda deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
+  /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
   static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
+    final margen = FinalizarJornadaUseCase.margenHaciaAtras.inMinutes;
+    final hace30 = _menosMinutos(ahora, margen);
+    final desde = jornada.inicio.isAfter(hace30) ? jornada.inicio : hace30;
+    if (_caeEnOtroDia(jornada.inicio, desde)) return 0;
     final desdeInicio = _menosMinutos(ahora, 0).difference(jornada.inicio).inMinutes;
-    return desdeInicio.clamp(0, FinalizarJornadaUseCase.margenHaciaAtras.inMinutes);
+    return desdeInicio.clamp(0, margen);
+  }
+
+  /// Si [instante] cae en un día calendario posterior al de [inicio], en la zona del dispositivo.
+  /// Espejo de `FinalizarJornadaUseCase._caeEnOtroDia` (privado ahí): decide acá si ofrecer el
+  /// selector de "Hora de fin" (#118) con la misma regla que usa el caso de uso para lo mismo.
+  static bool _caeEnOtroDia(DateTime inicio, DateTime instante) {
+    final i = inicio.toLocal();
+    final x = instante.toLocal();
+    return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
   }
 
   /// La hora de fin elegida a mano, al principio de su minuto, o `null` si es "ahora".

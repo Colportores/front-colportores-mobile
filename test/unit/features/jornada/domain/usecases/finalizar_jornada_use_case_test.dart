@@ -250,27 +250,49 @@ void main() {
       expect(backup.pedidos, isEmpty);
     });
 
-    test('con una hora elegida a mano que no está dentro de la corrección (otro día), rechaza con '
-        'el rango explícito', () async {
-      final inicioAyer = DateTime(2026, 9, 22, 23, 50);
+    test(
+      'con una hora elegida a mano que ni siquiera cae en el día del inicio (de hoy, no de la '
+      'corrección), sigue siendo la jornada de un día anterior — no "rango" (bug #118)',
+      () async {
+        final inicioAyer = DateTime(2026, 9, 22, 23, 50);
+        repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+
+        final resultado = await finalizarJornada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 7, 50)),
+        );
+
+        expect(
+          resultado,
+          // `Jornada.inicio` siempre queda en UTC (ver su constructor): la comparación por
+          // `Equatable` de dos `DateTime` con el mismo instante pero `isUtc` distinto no dio
+          // igual en la práctica — `.toUtc()` de los dos lados para que coincida con lo que
+          // devuelve el caso de uso.
+          Left<Failure, Jornada>(FailureJornadaDeDiaAnterior(inicio: inicioAyer.toUtc())),
+        );
+        expect(repositorio.finalizadas, isEmpty);
+      },
+    );
+
+    test('reproduce el bug #118: una hora de HOY que el selector normal de "Hora de fin" ofrecía '
+        'para una jornada de ayer (antes del fix de `JornadaPage._maximoAtrasFin`) también da '
+        'FailureJornadaDeDiaAnterior, no un rango que atrapa al colportor', () async {
+      final ahoraDeHoy = FinalizarJornadaUseCase(
+        repositorio,
+        backup,
+        ahora: () => DateTime(2026, 9, 23, 10),
+      );
+      final inicioAyer = DateTime(2026, 9, 22, 18);
       repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
 
-      final resultado = await finalizarJornada(
-        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 7, 50)),
+      // Repro exacta del revisor: inicio 22/09 18:00, ahora 23/09 10:00, "hace 15 min" (09:45 de
+      // HOY, no de ayer).
+      final resultado = await ahoraDeHoy(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 9, 45)),
       );
 
       expect(
-        resultado,
-        // `Jornada.inicio` siempre queda en UTC (ver su constructor): la comparación por
-        // `Equatable` de dos `DateTime` con el mismo instante pero `isUtc` distinto no dio
-        // igual en la práctica — `.toUtc()` de los dos lados para que coincida con lo que
-        // devuelve el caso de uso.
-        Left<Failure, Jornada>(
-          FailureHoraFueraDeRango(
-            desde: inicioAyer.toUtc(),
-            hasta: DateTime(2026, 9, 22, 23, 59, 59, 999).toUtc(),
-          ),
-        ),
+        resultado.fold((f) => f, (_) => null),
+        FailureJornadaDeDiaAnterior(inicio: inicioAyer.toUtc()),
       );
       expect(repositorio.finalizadas, isEmpty);
     });
