@@ -436,7 +436,16 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                             : const Text('Continuar'),
                       ),
                       const SizedBox(height: 28),
-                      const _DivisorTexto(texto: 'O REGISTRATE CON'),
+                      // El ancho disponible viene del `LayoutBuilder` de acá arriba, no de uno
+                      // propio en `_DivisorTexto`: ese widget vive dentro del `IntrinsicHeight`
+                      // de más abajo, y `LayoutBuilder` no soporta que le pidan dimensiones
+                      // intrínsecas ("LayoutBuilder does not support returning intrinsic
+                      // dimensions") — reventaba en cascada en cualquier test que montara la
+                      // página (revisión de #116).
+                      _DivisorTexto(
+                        texto: 'O REGISTRATE CON',
+                        anchoDisponible: constraints.maxWidth - paddingHorizontal * 2,
+                      ),
                       const SizedBox(height: 18),
                       Row(
                         children: [
@@ -572,27 +581,60 @@ class _CampoRegistroState extends State<_CampoRegistro> {
 }
 
 /// Línea divisoria con texto centrado, p.ej. "O REGISTRATE CON". Igual que en `login_page.dart`.
+///
+/// [anchoDisponible] viene del `LayoutBuilder` del padre (no uno propio acá): este widget vive
+/// dentro del `IntrinsicHeight` de la página, y `LayoutBuilder` no soporta que le pidan
+/// dimensiones intrínsecas — revienta en cascada apenas algo (un test, `IntrinsicHeight` mismo)
+/// pide el alto intrínseco del árbol (revisión de #116).
 class _DivisorTexto extends StatelessWidget {
-  const _DivisorTexto({required this.texto});
+  const _DivisorTexto({required this.texto, required this.anchoDisponible});
 
   final String texto;
+
+  /// Ancho de la fila completa (los dos `Divider` + el texto), ya sin el padding horizontal de
+  /// la página.
+  final double anchoDisponible;
+
+  /// Padding horizontal del texto (12 a cada lado) — también entra en la cuenta de ancho.
+  static const _paddingHorizontal = 24.0;
+
+  /// Línea visible mínima de cada `Divider`, aun con el texto más largo posible.
+  static const _anchoMinimoDivisor = 16.0;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
+    final estilo = theme.textTheme.bodySmall?.copyWith(
+      letterSpacing: 1.1,
+      color: colores.placeholder,
+    );
+
+    // Mide el ancho real que pide el texto (con el tema y el `textScaler` actuales) en vez de
+    // adivinar una proporción de `flex` fija: un `flex` chico lo truncaba a escala normal
+    // (revisión de #116) y sin ningún límite desbordaba con `textScaler` alto (issue #108).
+    // Midiendo, el texto ocupa exactamente lo que necesita —y los `Divider` el resto— hasta el
+    // mínimo de `_anchoMinimoDivisor`; `TextOverflow.ellipsis` es el resguardo final si ni así
+    // entra.
+    final medidor = TextPainter(
+      text: TextSpan(text: texto, style: estilo),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+
+    final espacioParaTexto = anchoDisponible - _paddingHorizontal - _anchoMinimoDivisor * 2;
+    final anchoMaximoTexto = espacioParaTexto > 0 ? espacioParaTexto : 0.0;
+    final anchoTexto = medidor.width > anchoMaximoTexto ? anchoMaximoTexto : medidor.width;
 
     return Row(
       children: [
         Expanded(child: Divider(color: colores.borde)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            texto,
-            style: theme.textTheme.bodySmall?.copyWith(
-              letterSpacing: 1.1,
-              color: colores.placeholder,
-            ),
+        SizedBox(
+          width: anchoTexto + _paddingHorizontal,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
           ),
         ),
         Expanded(child: Divider(color: colores.borde)),
