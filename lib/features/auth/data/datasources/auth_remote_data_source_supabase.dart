@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
@@ -19,6 +20,11 @@ typedef LanzadorOAuth = Future<bool> Function(OAuthProvider proveedor, String re
 /// - Google: `signInWithOAuth` abre el navegador del sistema; Supabase vuelve a la app por el
 ///   deep link [ConfigSupabase.redirectOAuth] y `supabase_flutter` (app_links) completa la sesión,
 ///   que se observa por [GoTrueClient.onAuthStateChange].
+/// - Verificación de email (HU-AUTH-002, issue #84): el enlace del correo vuelve por
+///   [ConfigSupabase.redirectVerificacionEmail] (mismo deep link, path propio `/verificado`);
+///   [verificacionesExitosas] cruza ese path (visto con una suscripción propia a `app_links`, en
+///   paralelo a la que arma `supabase_flutter` por su cuenta — el plugin soporta varios
+///   suscriptores) contra el próximo `signedIn` para distinguirlo de un login/registro normal.
 /// - La sesión la persiste `supabase_flutter` (hoy en SharedPreferences; pasarla a
 ///   secure_storage vía `FlutterAuthClientOptions.localStorage` es decisión pendiente, ADR-003).
 ///
@@ -29,8 +35,15 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
     this._auth, {
     this._lanzarOAuth,
     this.esperaOAuth = const Duration(minutes: 2),
+    Stream<Uri>? enlacesEntrantes,
     AppLogger? logger,
-  }) : _log = logger ?? AppLogger.instance;
+  }) : _enlacesEntrantes = enlacesEntrantes ?? AppLinks().uriLinkStream,
+       _log = logger ?? AppLogger.instance {
+    _verificacionExitosaController = StreamController<void>.broadcast(
+      onListen: _empezarAEscucharVerificacionExitosa,
+      onCancel: _dejarDeEscucharVerificacionExitosa,
+    );
+  }
 
   final GoTrueClient _auth;
   final LanzadorOAuth? _lanzarOAuth;
@@ -38,6 +51,11 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
 
   /// Cuánto se espera a que el usuario vuelva del navegador antes de darlo por abandonado.
   final Duration esperaOAuth;
+
+  /// Deep links entrantes (`AppLinks().uriLinkStream` por default; costura para los tests, mismo
+  /// motivo que [LanzadorOAuth]). Incluye el enlace inicial si la app arrancó desde uno (arranque
+  /// en frío) y los que lleguen mientras corre.
+  final Stream<Uri> _enlacesEntrantes;
 
   static const String _mensajeEmailNoConfirmado =
       'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
@@ -75,8 +93,10 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
         password: password,
         data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
         // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
-        // no al Site URL (localhost:3000 por default). Ver README § Supabase para el dashboard.
-        emailRedirectTo: ConfigSupabase.redirectOAuth,
+        // no al Site URL (localhost:3000 por default). Path propio `/verificado` (issue #84) para
+        // poder distinguir, del lado de la app, esta confirmación de un login/registro normal.
+        // Ver README § Supabase para el dashboard.
+        emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
       ),
     );
     final sesion = respuesta.session;
@@ -189,6 +209,48 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
       },
     ),
   );
+
+  late final StreamController<void> _verificacionExitosaController;
+  StreamSubscription<Uri>? _suscripcionEnlaces;
+  StreamSubscription<AuthState>? _suscripcionAuthParaVerificacion;
+
+  /// `true` desde que llega un deep link a `/verificado` hasta el próximo `signedIn` (o hasta que
+  /// se cancela la escucha). Es lo que distingue, del lado de la app, ese `signedIn` de uno de
+  /// login/registro normal — Supabase no los separa por `AuthChangeEvent`.
+  bool _esperandoConfirmacionEmail = false;
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  // Suscripción perezosa (recién al primer `listen`, igual que hace un StreamProvider `keepAlive`
+  // de la app real): así un test que solo ejercita otro método de esta clase no dispara
+  // `AppLinks()` (canal de plataforma) sin necesidad.
+  void _empezarAEscucharVerificacionExitosa() {
+    _esperandoConfirmacionEmail = false;
+    _suscripcionEnlaces = _enlacesEntrantes.listen((uri) {
+      if (uri.path == '/verificado') _esperandoConfirmacionEmail = true;
+    });
+    _suscripcionAuthParaVerificacion = _auth.onAuthStateChange.listen(
+      (estado) {
+        if (!_esperandoConfirmacionEmail) return;
+        if (estado.event == AuthChangeEvent.signedIn && estado.session != null) {
+          _esperandoConfirmacionEmail = false;
+          _verificacionExitosaController.add(null);
+        }
+      },
+      // Los errores del stream (p. ej. `otp_expired`) son cosa de `erroresVerificacionEmail`;
+      // acá no hay nada que hacer con ellos, pero sin `onError` un error no manejado se propaga
+      // como excepción no capturada de la zona (rompe el test/la app igual).
+      onError: (Object _, StackTrace _) {},
+    );
+  }
+
+  void _dejarDeEscucharVerificacionExitosa() {
+    unawaited(_suscripcionEnlaces?.cancel());
+    unawaited(_suscripcionAuthParaVerificacion?.cancel());
+    _suscripcionEnlaces = null;
+    _suscripcionAuthParaVerificacion = null;
+  }
 
   static SesionModel _aModelo(Session sesion) {
     final expiraEnSegundos = sesion.expiresAt;

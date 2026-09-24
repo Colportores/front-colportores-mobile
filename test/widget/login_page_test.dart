@@ -63,6 +63,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   Stream<void> get erroresVerificacionEmail => _interno.erroresVerificacionEmail;
 
   @override
+  Stream<void> get verificacionesExitosas => _interno.verificacionesExitosas;
+
+  @override
   Future<void> solicitarRecuperacionPassword(String email) =>
       _interno.solicitarRecuperacionPassword(email);
 }

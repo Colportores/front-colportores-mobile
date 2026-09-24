@@ -30,6 +30,8 @@ environment:
 # `test_api` 0.7.11 → `test` 1.31 → analyzer < 13, y drift_dev ≥ 2.34.1 pide analyzer ^13. Al
 # subir Flutter se destraba solo.
 dependencies:
+  app_links: ^7.2.1          # deep link propio de verificación de email (#84) — antes transitiva
+                              # vía supabase_flutter, ahora también uso directo en AuthRemoteDataSourceSupabase
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
   drift: ^2.34.1            # DB local (ADR-007); cifrada con SQLCipher (ADR-003) — ver `hooks` abajo
   drift_flutter: ^0.3.1     # driftDatabase(): archivo, isolate de fondo y temp dir de sqlite en Android

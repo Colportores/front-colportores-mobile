@@ -49,6 +49,9 @@ final class _RemoteQueLanzaAlRegistrar implements AuthRemoteDataSource {
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
 
   @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 

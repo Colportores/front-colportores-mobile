@@ -53,6 +53,9 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
 
   @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
   Future<void> solicitarRecuperacionPassword(String email) async => throw Exception('boom');
 }
 
@@ -105,6 +108,9 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
 
   @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
@@ -145,6 +151,9 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
@@ -692,6 +701,16 @@ void main() {
       final futuro = repository.erroresVerificacionEmail.first;
 
       remote.simularEnlaceVerificacionInvalido();
+
+      await expectLater(futuro, completes);
+    });
+  });
+
+  group('AuthRepositoryImpl.verificacionesExitosas', () {
+    test('reenvía lo que emite el remoto', () async {
+      final futuro = repository.verificacionesExitosas.first;
+
+      remote.simularEnlaceVerificacionExitoso('ana@example.com');
 
       await expectLater(futuro, completes);
     });

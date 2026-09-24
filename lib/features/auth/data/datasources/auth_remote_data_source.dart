@@ -62,8 +62,17 @@ abstract interface class AuthRemoteDataSource {
   /// Cubre el caso donde el usuario abre el enlace sin tener la pantalla de verificación en
   /// pantalla (p. ej. la app estaba cerrada); la raíz de la app (`ColportoresApp`) lo escucha para
   /// llevarlo a esa pantalla en estado "expirado". El caso de éxito (enlace válido) no pasa por
-  /// acá: se resuelve con el flujo normal de "Ya verifiqué mi email" de esa misma pantalla.
+  /// acá: ver [verificacionesExitosas].
   Stream<void> get erroresVerificacionEmail;
+
+  /// Emite cada vez que el deep link de verificación de email (HU-AUTH-002, issue #84) vuelve
+  /// **válido**: llegó un deep link a `ConfigSupabase.redirectVerificacionEmail` (path
+  /// `/verificado`) y a continuación Supabase confirmó el email y creó la sesión (`signedIn`).
+  ///
+  /// Simétrico a [erroresVerificacionEmail]: la raíz de la app (`ColportoresApp`) lo escucha para
+  /// llevar al usuario a la pantalla de verificación en estado "verificado", funcione o no la app
+  /// ya montada (cubre también el arranque en frío desde el enlace).
+  Stream<void> get verificacionesExitosas;
 }
 
 /// Excepciones tipadas del origen remoto. Sin PII en [toString].
