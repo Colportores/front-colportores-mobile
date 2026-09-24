@@ -292,6 +292,22 @@ void main() {
         expect(container.read(sesionProvider).value, isNotNull);
       });
 
+      testWidgets('con la navegación accesible prendida (TalkBack, VoiceOver), salir tampoco '
+          'deja el aviso colgado ni rompe la app (revisión de #107)', (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+          accessibleNavigation: true,
+        );
+        addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+        await fallarElCierre(tester);
+
+        await tester.tap(find.byKey(const Key('configuracion_atras')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ConfiguracionPage), findsNothing);
+        expect(find.byKey(const Key('configuracion_error_cierre')), findsNothing);
+      });
+
       testWidgets('dado un "Reintentar" que llega con la pantalla ya cerrada, no hace nada', (
         tester,
       ) async {
@@ -670,7 +686,13 @@ void main() {
     });
 
     testWidgets('dado que el borrado falló y se sale sin reintentar, el aviso con "Reintentar" '
-        'no queda colgado (#102)', (tester) async {
+        'no queda colgado, también con la navegación accesible prendida (#102, #107)', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
       _datos.respuestaBorrado = const Left(FailureInesperado());
       final container = await _montar(tester);
       await _llegarAlDialogoFinal(tester);
@@ -686,6 +708,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
+      expect(tester.takeException(), isNull);
       expect(find.byType(BorrarDatosLocalesPage), findsNothing);
       expect(find.byKey(const Key('borrar_datos_error')), findsNothing);
 

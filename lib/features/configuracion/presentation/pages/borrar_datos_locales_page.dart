@@ -86,8 +86,17 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
   @override
   void dispose() {
     // El SnackBar vive en el ScaffoldMessenger de la app, no en esta pantalla: sin esto, su
-    // "Reintentar" seguiría visible afuera y sin hacer nada (#102).
-    _ocultarAvisoReintentar();
+    // "Reintentar" seguiría visible afuera y sin hacer nada (#102). Después del frame y no acá:
+    // en `dispose` el árbol está bloqueado, y con la navegación accesible (TalkBack, VoiceOver)
+    // ocultarlo hace un `setState` en el messenger que dispara una aserción.
+    if (_avisoReintentar != null) {
+      _avisoReintentar = null;
+      final messenger = _messenger;
+      // Si la app entera se desmontó en el mismo frame, el messenger ya no está: nada que ocultar.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (messenger != null && messenger.mounted) messenger.hideCurrentSnackBar();
+      });
+    }
     super.dispose();
   }
 
