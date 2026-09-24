@@ -13,6 +13,10 @@ import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 
+const _igualALaAnterior = FailureValidacion(
+  campos: {'password': 'Tiene que ser distinta de la anterior.'},
+);
+
 class _SalidaEnMemoria extends LogOutput {
   final lineas = <String>[];
 
@@ -71,10 +75,75 @@ void main() {
     test('dada la misma contraseña que antes, lo dice en el campo', () async {
       expect(
         await repo.actualizarPassword('Vieja1234'),
-        const Left<Failure, Unit>(
-          FailureValidacion(campos: {'password': 'Tiene que ser distinta de la anterior.'}),
-        ),
+        const Left<Failure, Unit>(_igualALaAnterior),
       );
+    });
+
+    group('caso borde: pérdida de conexión durante el cambio', () {
+      test('dado que la respuesta se perdió pero Supabase aceptó el cambio, el reintento con la '
+          'misma contraseña es un éxito y deja el evento en el log', () async {
+        final salida = _SalidaEnMemoria();
+        repo = RecuperacionPasswordRepositoryImpl(remoto, logger: AppLogger(output: salida));
+        remoto.pierdeLaRespuestaAlActualizar = true;
+
+        expect(
+          await repo.actualizarPassword('NuevaClave1'),
+          const Left<Failure, Unit>(FailureSinConexion()),
+        );
+        expect(salida.lineas.join('\n'), isNot(contains('password_reset_completed')));
+
+        expect(await repo.actualizarPassword('NuevaClave1'), const Right<Failure, Unit>(unit));
+        expect(remoto.passwordActual, 'NuevaClave1');
+        expect(salida.lineas.join('\n'), contains('password_reset_completed'));
+      });
+
+      test('dado un corte, la contraseña anterior sigue sin poder repetirse', () async {
+        remoto.simularSinConexion = true;
+        await repo.actualizarPassword('NuevaClave1');
+        remoto.simularSinConexion = false;
+
+        expect(
+          await repo.actualizarPassword('Vieja1234'),
+          const Left<Failure, Unit>(_igualALaAnterior),
+        );
+      });
+
+      test('el reintento vale una sola vez: después de una respuesta del servidor, igual a la '
+          'anterior vuelve a ser un error', () async {
+        remoto.pierdeLaRespuestaAlActualizar = true;
+        await repo.actualizarPassword('NuevaClave1');
+        await repo.actualizarPassword('NuevaClave1');
+
+        expect(
+          await repo.actualizarPassword('NuevaClave1'),
+          const Left<Failure, Unit>(_igualALaAnterior),
+        );
+      });
+
+      test('salir de la pantalla suelta el intento en duda', () async {
+        remoto.pierdeLaRespuestaAlActualizar = true;
+        await repo.actualizarPassword('NuevaClave1');
+        await repo.abandonar();
+        remoto.simularEnlace(EnlaceRecuperacion.valido);
+
+        expect(
+          await repo.actualizarPassword('NuevaClave1'),
+          const Left<Failure, Unit>(_igualALaAnterior),
+        );
+      });
+
+      test('una respuesta del servidor con otro error también lo suelta', () async {
+        remoto.pierdeLaRespuestaAlActualizar = true;
+        await repo.actualizarPassword('NuevaClave1');
+        remoto.fallaAlActualizar = const ServidorException(status: 500);
+        await repo.actualizarPassword('NuevaClave1');
+        remoto.fallaAlActualizar = null;
+
+        expect(
+          await repo.actualizarPassword('NuevaClave1'),
+          const Left<Failure, Unit>(_igualALaAnterior),
+        );
+      });
     });
 
     test('dada una contraseña que Supabase considera débil, muestra la política', () async {

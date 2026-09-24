@@ -293,6 +293,23 @@ void main() {
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
     });
 
+    testWidgets('caso borde: se cortó la conexión pero Supabase ya había aceptado el cambio — el '
+        'reintento termina bien, sin "Tiene que ser distinta de la anterior."', (tester) async {
+      await _montar(tester);
+      _recuperacion.pierdeLaRespuestaAlActualizar = true;
+      await _completar(tester, 'NuevaClave1');
+
+      await _tocarGuardar(tester);
+      expect(find.text('Necesitás conexión para cambiar tu contraseña'), findsOneWidget);
+      expect(_recuperacion.passwordActual, 'NuevaClave1', reason: 'el servidor ya la tiene');
+
+      await _tocarGuardar(tester);
+
+      expect(find.text('Tiene que ser distinta de la anterior.'), findsNothing);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      expect(_recuperacion.sesionesCerradas, 1);
+    });
+
     testWidgets('error del servidor: muestra su mensaje', (tester) async {
       await _montar(tester);
       _recuperacion.fallaAlActualizar = const ServidorException(

@@ -27,6 +27,10 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   /// Si está, [actualizarPassword] espera a que el test la complete (estado "guardando").
   Completer<void>? demoraAlActualizar;
 
+  /// Si es `true`, la próxima [actualizarPassword] fija la contraseña pero lanza
+  /// [SinConexionException], como si la respuesta se hubiera perdido en el camino. Una sola vez.
+  bool pierdeLaRespuestaAlActualizar = false;
+
   /// Contraseñas fijadas, en orden.
   final List<String> actualizaciones = [];
 
@@ -57,6 +61,10 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
     if (nueva == _passwordActual) throw const PasswordIgualALaAnteriorException();
     _passwordActual = nueva;
     actualizaciones.add(nueva);
+    if (pierdeLaRespuestaAlActualizar) {
+      pierdeLaRespuestaAlActualizar = false;
+      throw const SinConexionException();
+    }
   }
 
   @override

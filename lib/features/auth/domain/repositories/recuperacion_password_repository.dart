@@ -11,6 +11,9 @@ abstract interface class RecuperacionPasswordRepository {
 
   /// Fija [nueva] como contraseña de la cuenta, con la sesión que abrió el enlace.
   /// `Left(FailureEnlaceRecuperacionVencido)` si esa sesión ya no sirve.
+  ///
+  /// Reintentar es idempotente: si un intento se cortó sin respuesta y el servidor sí lo había
+  /// aceptado, el reintento con la misma contraseña da `Right` (no "igual a la anterior").
   Future<Either<Failure, Unit>> actualizarPassword(String nueva);
 
   /// Revoca todas las sesiones de la cuenta, en todos los dispositivos, incluida la de este.
