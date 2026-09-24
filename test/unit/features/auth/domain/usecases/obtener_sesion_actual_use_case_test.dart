@@ -4,6 +4,7 @@ import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiraci
 import 'package:colportores_mobile/features/auth/domain/entities/politica_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/services/reloj_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/obtener_sesion_actual_use_case.dart';
 import 'package:dartz/dartz.dart';
 import 'package:mocktail/mocktail.dart';
@@ -12,6 +13,18 @@ import 'package:test/test.dart';
 // Test de dominio: Dart puro.
 
 class _MockAuthRepository extends Mock implements AuthRepository {}
+
+final class _RelojFijo implements RelojSesion {
+  _RelojFijo(this.instante);
+
+  final DateTime instante;
+
+  @override
+  Future<DateTime> ahora() async => instante;
+
+  @override
+  Future<void> registrar(DateTime visto) async {}
+}
 
 void main() {
   late _MockAuthRepository repository;
@@ -32,7 +45,7 @@ void main() {
   });
 
   Future<Either<Failure, Sesion?>> obtener() =>
-      ObtenerSesionActualUseCase(repository, ahora: () => ahora)(const NoParams());
+      ObtenerSesionActualUseCase(repository, _RelojFijo(ahora))(const NoParams());
 
   group('ObtenerSesionActualUseCase (HU-AUTH-007, sesión deslizante de 30 días)', () {
     group('dado que hay una sesión guardada', () {

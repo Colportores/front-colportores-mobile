@@ -11,10 +11,12 @@ import '../../data/datasources/auth_remote_data_source.dart';
 import '../../data/datasources/auth_remote_data_source_supabase.dart';
 import '../../data/datasources/backup_drive_data_source.dart';
 import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import '../../data/datasources/reloj_sesion_en_almacen.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
+import '../../domain/services/reloj_sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
@@ -84,7 +86,13 @@ RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
 
 @Riverpod(keepAlive: true)
 ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
-    ObtenerSesionActualUseCase(ref.watch(authRepositoryProvider));
+    ObtenerSesionActualUseCase(ref.watch(authRepositoryProvider), ref.watch(relojSesionProvider));
+
+/// Reloj de la ventana de la sesión (HU-AUTH-007). En el equipo, `main.dart` lo sobreescribe con
+/// el que recuerda en el almacén seguro el instante más alto visto (la misma instancia que usa
+/// `AlmacenSesionSupabase`); por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+RelojSesion relojSesion(Ref ref) => RelojSesionEnMemoria();
 
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>

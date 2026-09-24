@@ -16,7 +16,15 @@ enum ClaveSegura {
 
   /// Sesión de Supabase Auth (JWT de acceso + refresh token) tal como la serializa
   /// `supabase_flutter` (HU-AUTH-007, `AlmacenSesionSupabase`).
-  sesionAuth('auth_session');
+  sesionAuth('auth_session'),
+
+  /// Marca de que la sesión ya se migró desde SharedPreferences: una copia vieja que haya quedado
+  /// ahí no se vuelve a migrar (p. ej. después de un logout).
+  sesionMigrada('auth_session_migrated'),
+
+  /// El instante más alto que vio la app (ISO 8601, UTC): la ventana de la sesión no se mide con
+  /// un reloj que vuelve atrás (HU-AUTH-007, `RelojSesionEnAlmacen`).
+  relojSesion('session_clock');
 
   const ClaveSegura(this.id);
 
