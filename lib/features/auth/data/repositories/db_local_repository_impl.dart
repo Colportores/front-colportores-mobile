@@ -50,6 +50,7 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
       marca: await _marca(),
       archivoExiste: archivoExiste,
       envoltorioExiste: envoltorioExiste,
+      abierta: _helper.abierta,
     );
   });
 
@@ -144,6 +145,19 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
   Future<Either<Failure, T>> _intentar<T>(String paso, Future<T> Function() accion) async {
     try {
       return Right(await accion());
+    } on StateError catch (e, rastro) {
+      // Un estado que no debería darse (la DB ya abierta, la marca puesta al guardar otra DEK): con
+      // el turno de los casos de uso no pasa, pero si pasa, se corta el flujo con un Left en vez de
+      // dejarlo a medio hacer por una excepción que nadie atrapa (revisión del PR #81).
+      _log.error(
+        LogModulo.db,
+        'INIT_DB_FAIL',
+        'estado inesperado en un paso de la DB local',
+        {'paso': paso},
+        e,
+        rastro,
+      );
+      return Left(FailureInesperado(causa: e));
     } on Exception catch (e) {
       final falla = traducir(e);
       // Sin la excepción ni su mensaje: las de la derivación y el cifrado no tienen por qué ir a un
@@ -171,7 +185,9 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
     SinEnvoltorioException() ||
     EnvoltorioCorruptoException() => const FailureAlmacenSeguroSinRecuperacion(),
     ClaveDbIncorrectaException() => const FailureClaveDbIncorrecta(),
-    EsquemaDbPosteriorException() => const FailureEsquemaPosterior(),
+    // Una DB o un envoltorio de una versión más nueva de la app: se pide actualizar, nunca borrar.
+    EsquemaDbPosteriorException() ||
+    EnvoltorioPosteriorException() => const FailureEsquemaPosterior(),
     DbLocalException(:final causa) when _esSinEspacio(causa) => const FailureSinEspacio(),
     ArchivoEnvoltorioException(:final causa) when _esSinEspacio(causa) => const FailureSinEspacio(),
     _ => FailureInesperado(causa: e),

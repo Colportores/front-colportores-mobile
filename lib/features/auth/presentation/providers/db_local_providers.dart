@@ -6,6 +6,7 @@ import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../data/repositories/db_local_repository_impl.dart';
 import '../../domain/repositories/db_local_repository.dart';
 import '../../domain/repositories/vigencia_sesion.dart';
+import '../../domain/services/turno_db_local.dart';
 import '../../domain/usecases/empezar_de_nuevo_db_local_use_case.dart';
 import '../../domain/usecases/inicializar_db_local_use_case.dart';
 import '../../domain/usecases/recuperar_db_local_con_password_use_case.dart';
@@ -30,10 +31,16 @@ DbLocalRepository dbLocalRepository(Ref ref) => DbLocalRepositoryImpl(
 @Riverpod(keepAlive: true)
 VigenciaSesion vigenciaSesion(Ref ref) => _VigenciaSesionRiverpod(ref);
 
+/// Un solo turno para toda la app, compartido por los tres flujos de la DB local (revisión del PR
+/// #81): `keepAlive`, o cada caso de uso tendría el suyo y no serviría de nada.
+@Riverpod(keepAlive: true)
+TurnoDbLocal turnoDbLocal(Ref ref) => TurnoDbLocal();
+
 @riverpod
 InicializarDbLocalUseCase inicializarDbLocalUseCase(Ref ref) => InicializarDbLocalUseCase(
   ref.watch(dbLocalRepositoryProvider),
   ref.watch(vigenciaSesionProvider),
+  ref.watch(turnoDbLocalProvider),
 );
 
 @riverpod
@@ -41,11 +48,14 @@ RecuperarDbLocalConPasswordUseCase recuperarDbLocalConPasswordUseCase(Ref ref) =
     RecuperarDbLocalConPasswordUseCase(
       ref.watch(dbLocalRepositoryProvider),
       ref.watch(vigenciaSesionProvider),
+      ref.watch(turnoDbLocalProvider),
     );
 
 @riverpod
-EmpezarDeNuevoDbLocalUseCase empezarDeNuevoDbLocalUseCase(Ref ref) =>
-    EmpezarDeNuevoDbLocalUseCase(ref.watch(dbLocalRepositoryProvider));
+EmpezarDeNuevoDbLocalUseCase empezarDeNuevoDbLocalUseCase(Ref ref) => EmpezarDeNuevoDbLocalUseCase(
+  ref.watch(dbLocalRepositoryProvider),
+  ref.watch(turnoDbLocalProvider),
+);
 
 /// La sesión vigente es la de `sesionProvider`, y el cierre de sesión se detecta por
 /// `cierresDbLocalProvider`.

@@ -65,6 +65,13 @@ final class EnvoltorioDek extends Equatable {
   /// `crypto_pwhash_SALTBYTES` de libsodium.
   static const int bytesSal = 16;
 
+  /// Tope de `m` que la app acepta al leer un envoltorio: 4 veces el de ADR-006. Uno alterado o
+  /// roto con un `m` enorme haría que Argon2id pidiera toda la memoria del teléfono.
+  static const int maxMemoriaBytes = 256 * 1024 * 1024;
+
+  /// Tope de `t` al leer un envoltorio, por lo mismo (un `t` enorme congelaría la recuperación).
+  static const int maxIteraciones = 10;
+
   final int version;
   final String algoritmo;
   final ParametrosArgon2id parametros;
@@ -107,8 +114,9 @@ final class EnvoltorioDek extends Equatable {
     'dek': base64Encode(cifrado),
   });
 
-  /// Lee un envoltorio. Lanza [EnvoltorioCorruptoException] si el texto no es un envoltorio que
-  /// esta versión de la app sepa abrir: formato roto, un campo que falta o una versión posterior.
+  /// Lee un envoltorio. Lanza [EnvoltorioPosteriorException] si lo escribió una versión más nueva
+  /// de la app, y [EnvoltorioCorruptoException] si no es un envoltorio válido: formato roto, un
+  /// campo que falta o parámetros de Argon2id fuera de los topes.
   static EnvoltorioDek decodificar(String texto) {
     final Object? json;
     try {
@@ -121,15 +129,13 @@ final class EnvoltorioDek extends Equatable {
     }
 
     final version = _entero(json, 'v');
-    if (version > versionActual) {
-      throw EnvoltorioCorruptoException('versión $version posterior a la de la app');
-    }
+    if (version > versionActual) throw EnvoltorioPosteriorException(version);
     return EnvoltorioDek(
       version: version,
       algoritmo: _texto(json, 'alg'),
       parametros: ParametrosArgon2id(
-        memoriaBytes: _entero(json, 'm'),
-        iteraciones: _entero(json, 't'),
+        memoriaBytes: _entero(json, 'm', maximo: maxMemoriaBytes),
+        iteraciones: _entero(json, 't', maximo: maxIteraciones),
         paralelismo: _entero(json, 'p'),
       ),
       sal: _binario(json, 'sal'),
@@ -138,10 +144,14 @@ final class EnvoltorioDek extends Equatable {
     );
   }
 
-  static int _entero(Map<String, Object?> json, String campo) => switch (json[campo]) {
-    final int valor when valor > 0 => valor,
-    _ => throw EnvoltorioCorruptoException('falta "$campo" o no es un entero positivo'),
-  };
+  static int _entero(Map<String, Object?> json, String campo, {int? maximo}) =>
+      switch (json[campo]) {
+        final int valor when valor > 0 && (maximo == null || valor <= maximo) => valor,
+        final int _ when maximo != null => throw EnvoltorioCorruptoException(
+          '"$campo" fuera de rango (tope $maximo)',
+        ),
+        _ => throw EnvoltorioCorruptoException('falta "$campo" o no es un entero positivo'),
+      };
 
   static String _texto(Map<String, Object?> json, String campo) => switch (json[campo]) {
     final String valor when valor.isNotEmpty => valor,
@@ -176,6 +186,17 @@ final class EnvoltorioCorruptoException implements Exception {
 
   @override
   String toString() => 'EnvoltorioCorruptoException($motivo)';
+}
+
+/// El envoltorio lo escribió una versión más nueva de la app: esta no sabe abrirlo, pero no está
+/// roto. No se ofrece borrar nada: se pide actualizar la app.
+final class EnvoltorioPosteriorException implements Exception {
+  const EnvoltorioPosteriorException(this.version);
+
+  final int version;
+
+  @override
+  String toString() => 'EnvoltorioPosteriorException(v$version)';
 }
 
 /// El envoltorio no abre con esa clave: la contraseña no es la que lo armó, o se alteró.

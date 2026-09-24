@@ -8,10 +8,12 @@ import '../../../../core/usecases/use_case.dart';
 import '../entities/estado_db_local.dart';
 import '../repositories/db_local_repository.dart';
 import '../repositories/vigencia_sesion.dart';
+import '../services/turno_db_local.dart';
 
 /// Pasos que la UI muestra como progreso ("Preparando tu espacio seguro… 1/3, 2/3, 3/3",
 /// HU-AUTH-009). Al crear la DB son los tres, salvo [protegiendoClave] sin contraseña (login con
-/// Google); al abrir una DB existente, solo [abriendoDb].
+/// Google); al abrir una DB existente, [abriendoDb], antecedido por [protegiendoClave] si hay que
+/// armar el envoltorio.
 enum PasoInicializacionDb {
   /// Genera la DEK y la guarda en el almacén seguro.
   generandoClave,
@@ -68,6 +70,8 @@ final class InicializarDbLocalParams extends Equatable {
 ///
 /// **DB existente** (marca puesta y archivo en disco): lee la DEK del almacén seguro y abre, sin
 /// Argon2id y sin contraseña. Si algo falla **no se borra nada**: la DB tiene datos del usuario.
+/// Si el login fue con contraseña y el equipo no tiene envoltorio (entró con Google, o se perdió),
+/// lo arma antes de abrir; si eso falla, abre igual.
 /// Si el almacén falla o perdió la DEK rige la recuperación guiada: con envoltorio por contraseña,
 /// [FailureAlmacenSeguroRecuperable] (sigue `RecuperarDbLocalConPasswordUseCase`); sin él,
 /// [FailureAlmacenSeguroSinRecuperacion] (la UI ofrece "empezar de nuevo" y pregunta).
@@ -93,20 +97,26 @@ final class InicializarDbLocalParams extends Equatable {
 /// crear el archivo): es un almacén que perdió todo con la DB en disco, y rige la recuperación
 /// guiada. Nunca se borra una DB que pueda tener datos.
 ///
+/// ## Un flujo a la vez
+///
+/// Corre dentro de [TurnoDbLocal], compartido con la recuperación y "empezar de nuevo": dos flujos
+/// en paralelo se pisarían la DEK (revisión del PR #81). El segundo espera y, cuando le toca, ve el
+/// estado que dejó el primero: si la DB ya quedó abierta, devuelve
+/// [ResultadoInicializacionDb.abierta] sin tocar nada.
+///
 /// ## Cierre de sesión en el medio
 ///
 /// Inmediatamente antes de abrir vuelve a verificar que la sesión sigue vigente
 /// ([AperturaConSesionVigente.abrirSiSigueVigente]). Si no, destruye la DEK y no abre (revisión del
-/// PR #44); al crear, además deja el dispositivo limpio.
-///
-/// Llamarlo con la DB ya abierta es un error del llamador y sale como el `StateError` de
-/// `DatabaseHelper.abrir`, sin traducir a [Failure].
+/// PR #44); al crear, además deja el dispositivo limpio. El testigo se toma al llamar, antes de
+/// esperar el turno.
 final class InicializarDbLocalUseCase
     implements UseCase<ResultadoInicializacionDb, InicializarDbLocalParams> {
-  const InicializarDbLocalUseCase(this._repository, this._vigencia);
+  const InicializarDbLocalUseCase(this._repository, this._vigencia, this._turno);
 
   final DbLocalRepository _repository;
   final VigenciaSesion _vigencia;
+  final TurnoDbLocal _turno;
 
   @override
   Future<Either<Failure, ResultadoInicializacionDb>> call(InicializarDbLocalParams params) async {
@@ -118,10 +128,19 @@ final class InicializarDbLocalUseCase
     final testigo = _vigencia.tomarTestigo();
     if (testigo == null) return const Left(FailureSesionCerrada());
 
+    return _turno.enExclusiva(() => _inicializar(params, testigo));
+  }
+
+  Future<Either<Failure, ResultadoInicializacionDb>> _inicializar(
+    InicializarDbLocalParams params,
+    TestigoSesion testigo,
+  ) async {
     final estado = await _repository.estado();
     if (estado case Left(value: final falla)) return Left(falla);
 
     final e = estado._valor;
+    // Otro flujo ya la abrió mientras este esperaba el turno: no hay nada que hacer.
+    if (e.abierta) return const Right(ResultadoInicializacionDb.abierta);
     if (e.archivoExiste) {
       switch (e.marca) {
         case MarcaDbLocal.puesta:
@@ -169,6 +188,15 @@ final class InicializarDbLocalUseCase
     }
     if (leida case Left(value: final falla)) return Left(falla);
     final dek = leida._valor!;
+
+    final password = params.password;
+    if (password != null && !estado.envoltorioExiste) {
+      // Login con contraseña en un equipo sin envoltorio: se arma ahora, así hay con qué recuperar
+      // si el Keystore falla. Si no se puede, igual se abre: la DB está bien y el envoltorio se
+      // vuelve a intentar en el próximo login (la falla ya quedó en el log).
+      params.alAvanzar?.call(PasoInicializacionDb.protegiendoClave);
+      await _repository.envolverConPassword(dek, password);
+    }
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);
     final abierta = await _repository.abrirSiSigueVigente(dek, testigo);

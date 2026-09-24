@@ -25,6 +25,7 @@ final class EstadoDbLocal extends Equatable {
     required this.marca,
     required this.archivoExiste,
     required this.envoltorioExiste,
+    this.abierta = false,
   });
 
   final MarcaDbLocal marca;
@@ -35,6 +36,9 @@ final class EstadoDbLocal extends Equatable {
   /// Si hay una DEK envuelta con la contraseña en este equipo. No dice si se puede abrir.
   final bool envoltorioExiste;
 
+  /// Si la DB ya está abierta en esta sesión: otro flujo la inicializó antes (ver `TurnoDbLocal`).
+  final bool abierta;
+
   @override
-  List<Object?> get props => [marca, archivoExiste, envoltorioExiste];
+  List<Object?> get props => [marca, archivoExiste, envoltorioExiste, abierta];
 }

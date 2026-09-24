@@ -6,8 +6,12 @@ import 'dart:typed_data';
 
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/usecases/use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
+import 'package:colportores_mobile/features/auth/domain/services/turno_db_local.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/empezar_de_nuevo_db_local_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/inicializar_db_local_use_case.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/recuperar_db_local_con_password_use_case.dart';
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
@@ -17,13 +21,15 @@ import '../../../../../helpers/db_local_repository_en_memoria.dart';
 void main() {
   late DbLocalRepositoryEnMemoria repo;
   late VigenciaEnMemoria vigencia;
+  late TurnoDbLocal turno;
   late InicializarDbLocalUseCase useCase;
   late List<PasoInicializacionDb> pasos;
 
   setUp(() {
     repo = DbLocalRepositoryEnMemoria();
     vigencia = VigenciaEnMemoria();
-    useCase = InicializarDbLocalUseCase(repo, vigencia);
+    turno = TurnoDbLocal();
+    useCase = InicializarDbLocalUseCase(repo, vigencia, turno);
     pasos = [];
   });
 
@@ -411,6 +417,36 @@ void main() {
     });
 
     test(
+      'dado un login con contraseña en un equipo sin envoltorio, lo arma antes de abrir (#81)',
+      () async {
+        dispositivoInicializado(conEnvoltorio: false);
+
+        final r = await inicializar();
+
+        expect(r, abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'envolver', 'abrir']);
+        expect(repo.envoltorio!.dek, List<int>.filled(32, 77), reason: 'envuelve la DEK de la DB');
+        expect(repo.envoltorio!.password, 'secreto123');
+        expect(pasos, [PasoInicializacionDb.protegiendoClave, PasoInicializacionDb.abriendoDb]);
+      },
+    );
+
+    test('dado que armar ese envoltorio falla, abre igual: la DB está bien (#81)', () async {
+      dispositivoInicializado(conEnvoltorio: false);
+      repo.fallas['envolver'] = const FailureAlmacenSeguro();
+
+      expect(await inicializar(), abierta);
+      expect(repo.abierta, isTrue);
+    });
+
+    test('dado un envoltorio que ya existe, no lo toca', () async {
+      final r = await inicializar();
+
+      expect(r, abierta);
+      expect(repo.llamadas, isNot(contains('envolver')));
+    });
+
+    test(
       'no verifica el bloqueo de pantalla ni el Keystore: al abrir, la app no pide nada propio',
       () async {
         repo
@@ -579,5 +615,93 @@ void main() {
         isNot(contains('secreto')),
       );
     });
+  });
+
+  group('un flujo a la vez (revisión del PR #81)', () {
+    test('dadas dos inicializaciones en paralelo, la segunda espera y encuentra la DB abierta: la '
+        'DEK de la DB, la del almacén y la del envoltorio son la misma', () async {
+      repo.argon2idPendiente = Completer<void>();
+
+      final primera = inicializar();
+      await repo.pidioArgon2id.future;
+      final segunda = inicializar();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        repo.llamadas.where((l) => l == 'estado'),
+        hasLength(1),
+        reason: 'la segunda no empezó: espera el turno',
+      );
+
+      repo.argon2idPendiente!.complete();
+      expect(await primera, creada);
+      expect(await segunda, abierta);
+
+      expect(repo.llamadas.where((l) => l == 'descartar'), hasLength(1));
+      expect(repo.claveDelArchivo, repo.dekEnAlmacen);
+      expect(repo.envoltorio!.dek, repo.dekEnAlmacen);
+    });
+
+    test('"empezar de nuevo" espera a que termine una inicialización en curso', () async {
+      repo.argon2idPendiente = Completer<void>();
+      final empezarDeNuevo = EmpezarDeNuevoDbLocalUseCase(repo, turno);
+
+      final inicializacion = inicializar();
+      await repo.pidioArgon2id.future;
+      final borrado = empezarDeNuevo(const NoParams());
+      await Future<void>.delayed(Duration.zero);
+      expect(repo.llamadas.where((l) => l == 'descartar'), hasLength(1), reason: 'solo el inicial');
+
+      repo.argon2idPendiente!.complete();
+      expect(await inicializacion, creada);
+      await borrado;
+      expect(repo.llamadas.last, 'descartar', reason: 'recién después de que terminó');
+    });
+
+    test('dada la DB ya abierta en esta sesión, inicializar no toca nada', () async {
+      dispositivoInicializado();
+      repo.abierta = true;
+
+      expect(await inicializar(), abierta);
+      expect(repo.llamadas, ['estado']);
+    });
+  });
+
+  group('almacén que se corta a mitad de la recuperación (revisión del PR #81)', () {
+    for (final (escritura, descripcion) in [(1, 'la marca'), (2, 'la DEK')]) {
+      test(
+        'dado que el Keystore falla al escribir $descripcion, el próximo arranque vuelve a pedir '
+        'la contraseña y no borra la DB',
+        () async {
+          final dek = Uint8List.fromList(List<int>.filled(32, 77));
+          repo
+            ..archivo = true
+            ..claveDelArchivo = dek
+            ..envoltorio = (dek: dek, password: 'secreto123')
+            ..reconstruccionSeCortaEn = escritura;
+          final recuperar = RecuperarDbLocalConPasswordUseCase(repo, vigencia, turno);
+
+          expect(
+            await inicializar(password: null),
+            const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
+          );
+          await recuperar(const RecuperarDbLocalParams(password: 'secreto123'));
+
+          // Reinicio de la app con el Keystore otra vez sano.
+          repo
+            ..abierta = false
+            ..reconstruccionSeCortaEn = null
+            ..llamadas.clear();
+          final r = await inicializar(password: null);
+
+          expect(
+            r,
+            const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
+          );
+          expect(repo.llamadas, isNot(contains('descartar')));
+          expect(repo.archivo, isTrue);
+          expect(repo.claveDelArchivo, dek, reason: 'la DB del colportor sigue ahí');
+        },
+      );
+    }
   });
 }

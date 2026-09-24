@@ -80,11 +80,30 @@ void main() {
         expect(() => EnvoltorioDek.decodificar('[1, 2]'), corrupto('objeto'));
       });
 
-      test('cuando es de una versión posterior, lanza EnvoltorioCorruptoException', () {
+      test('cuando es de una versión posterior, lanza EnvoltorioPosteriorException: no está roto, '
+          'hay que actualizar la app (#81)', () {
         expect(
           () => EnvoltorioDek.decodificar(_envoltorio(version: 2).codificar()),
-          corrupto('posterior'),
+          throwsA(isA<EnvoltorioPosteriorException>().having((e) => e.version, 'version', 2)),
         );
+        expect(
+          const EnvoltorioPosteriorException(2).toString(),
+          'EnvoltorioPosteriorException(v2)',
+        );
+      });
+
+      test('cuando m o t pasan los topes, lanza EnvoltorioCorruptoException: Argon2id no puede '
+          'pedir toda la memoria ni congelar la recuperación (#81)', () {
+        final mEnorme = campos()..['m'] = EnvoltorioDek.maxMemoriaBytes + 1;
+        final tEnorme = campos()..['t'] = EnvoltorioDek.maxIteraciones + 1;
+        final enElTope = campos()
+          ..['m'] = EnvoltorioDek.maxMemoriaBytes
+          ..['t'] = EnvoltorioDek.maxIteraciones;
+
+        expect(() => EnvoltorioDek.decodificar(jsonEncode(mEnorme)), corrupto('"m"'));
+        expect(() => EnvoltorioDek.decodificar(jsonEncode(tEnorme)), corrupto('"t"'));
+        expect(EnvoltorioDek.decodificar(jsonEncode(enElTope)).parametros.iteraciones, 10);
+        expect(EnvoltorioDek.maxMemoriaBytes, 256 * 1024 * 1024);
       });
 
       for (final campo in ['v', 'm', 't', 'p']) {

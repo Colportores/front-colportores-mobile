@@ -121,6 +121,7 @@ void main() {
           marca: MarcaDbLocal.puesta,
           archivoExiste: true,
           envoltorioExiste: true,
+          abierta: true,
         ),
       );
       expect(container.read(dbLocalProvider), isNotNull, reason: 'la DB queda publicada');
@@ -198,6 +199,17 @@ void main() {
       ),
     );
     expect(almacen.contenido, isEmpty);
+  });
+
+  test('dada la DB ya abierta, el estado lo dice; y abrirla de nuevo es un Left, no un StateError '
+      'suelto (#81)', () async {
+    final dek = _derecha(await repo.crearDek());
+    final otra = copia(dek);
+    _derecha(await repo.abrir(dek));
+
+    expect(_derecha(await repo.estado()).abierta, isTrue);
+    expect(_izquierda(await repo.abrir(otra)), isA<FailureInesperado>());
+    expect(otra.destruida, isTrue);
   });
 
   test('dado nada que descartar, descartar no cuenta un cierre de sesión que no hubo', () async {
@@ -310,6 +322,16 @@ void main() {
         const FailureAlmacenSeguroSinRecuperacion(),
       );
     });
+
+    test(
+      'dado un envoltorio de una versión posterior, pide actualizar: nunca ofrece borrar (#81)',
+      () {
+        expect(
+          DbLocalRepositoryImpl.traducir(const EnvoltorioPosteriorException(2)),
+          const FailureEsquemaPosterior(),
+        );
+      },
+    );
 
     test('dado un archivo de una versión posterior, devuelve el texto de la HU', () {
       final falla = DbLocalRepositoryImpl.traducir(

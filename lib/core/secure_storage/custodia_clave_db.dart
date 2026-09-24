@@ -207,13 +207,23 @@ final class CustodiaClaveDb {
 
   // --- Recuperación y borrado ---
 
-  /// Recuperación guiada de ADR-006: con la DEK ya desenvuelta con la contraseña, limpia el almacén
-  /// (`borrarTodo`) y lo reescribe con esa DEK y la marca. **No** toca el archivo de la DB ni el
-  /// envoltorio. No destruye [dek]: sigue siendo de quien la pasó.
+  /// Recuperación guiada de ADR-006: con la DEK ya desenvuelta con la contraseña (y probada contra
+  /// la DB), limpia el almacén (`borrarTodo`) y lo reescribe con la marca y esa DEK. Conserva el
+  /// consentimiento de S10 si se puede leer. **No** toca el archivo de la DB ni el envoltorio. No
+  /// destruye [dek]: sigue siendo de quien la pasó.
+  ///
+  /// **La marca va antes que la DEK.** Si se corta en el medio queda "marca sin DEK" o nada, y con
+  /// la DB en disco los dos llevan a la recuperación guiada. Al revés podría quedar "DEK sin marca",
+  /// que el flujo de inicialización toma por una inicialización cortada y descarta: se borraría la
+  /// DB del colportor (revisión del PR #81).
   Future<void> reconstruirAlmacen(ClaveDb dek) async {
+    final habiaConsentimiento = await _consentimientoRegistrado();
     await _almacen.borrarTodo();
-    await _almacen.escribir(ClaveSegura.dekDb, base64Encode(dek.bytes));
     await _almacen.escribir(ClaveSegura.dbInicializada, _marcaInicializada);
+    await _almacen.escribir(ClaveSegura.dekDb, base64Encode(dek.bytes));
+    if (habiaConsentimiento) {
+      await _almacen.escribir(ClaveSegura.consentimientoAlmacenSoftware, _aceptado);
+    }
     _log.warn(
       LogModulo.db,
       'ALMACEN_RECONSTRUIDO',
@@ -221,22 +231,38 @@ final class CustodiaClaveDb {
     );
   }
 
-  /// Olvida la marca de inicialización, la DEK del almacén, el consentimiento de S10 y la DEK
-  /// envuelta con la contraseña, **en ese orden**.
+  /// Si el consentimiento de S10 está registrado. Con el almacén fallando no se puede saber: `false`
+  /// (se vuelve a preguntar si hace falta, nunca se inventa un sí).
+  Future<bool> _consentimientoRegistrado() async {
+    try {
+      return await _almacen.leer(ClaveSegura.consentimientoAlmacenSoftware) == _aceptado;
+    } on AlmacenSeguroException {
+      return false;
+    }
+  }
+
+  /// Olvida la marca de inicialización, la DEK del almacén y el consentimiento de S10, **en ese
+  /// orden**, y la DEK envuelta con la contraseña.
   ///
-  /// Es **destructivo**: sin la DEK, la DB local que quedó en disco no se puede volver a abrir. Lo
-  /// usan el borrado de datos (HU-AUTH-010), "empezar de nuevo" (ADR-006) y la limpieza de una
-  /// inicialización que quedó a mitad de camino. Borrar el archivo de la DB es de quien la creó.
+  /// Es **destructivo**: sin la DEK, la DB local no se puede volver a abrir. Lo usan el borrado de
+  /// datos (HU-AUTH-010), "empezar de nuevo" (ADR-006) y la limpieza de una inicialización que
+  /// quedó a mitad de camino, **siempre con el archivo de la DB ya borrado** (borrarlo es de quien
+  /// la creó).
   ///
-  /// El orden importa por si un borrado falla o la app muere en el medio: la marca va primero, así
-  /// lo que quede es "sin marca", que el flujo de inicialización trata como dispositivo nuevo y
-  /// [guardarDek] pisa sin problema. Al revés quedaría "sin DEK + marca puesta", y [guardarDek]
-  /// lanzaría `StateError` en cada intento.
+  /// El orden del almacén importa por si un borrado falla o la app muere en el medio: la marca va
+  /// primero, así lo que quede es "sin marca", que [guardarDek] pisa sin problema. Al revés quedaría
+  /// "sin DEK + marca puesta", y [guardarDek] lanzaría `StateError` en cada intento.
+  ///
+  /// El envoltorio se borra **aunque el almacén falle** (un Keystore roto no puede dejarlo en
+  /// disco): vive fuera del almacén y la DB que cifraba ya no está. Si falla algo, se relanza.
   Future<void> olvidar() async {
-    await _almacen.borrar(ClaveSegura.dbInicializada);
-    await _almacen.borrar(ClaveSegura.dekDb);
-    await _almacen.borrar(ClaveSegura.consentimientoAlmacenSoftware);
-    await _archivo.borrar();
+    try {
+      await _almacen.borrar(ClaveSegura.dbInicializada);
+      await _almacen.borrar(ClaveSegura.dekDb);
+      await _almacen.borrar(ClaveSegura.consentimientoAlmacenSoftware);
+    } finally {
+      await _archivo.borrar();
+    }
     _log.warn(LogModulo.db, 'DEK_OLVIDADA', 'DEK, envoltorio y marca de inicialización borrados');
   }
 

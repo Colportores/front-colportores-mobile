@@ -43,6 +43,33 @@ final class _AlmacenQueFallaAlBorrar implements AlmacenSeguro {
   Future<void> borrarTodo() => _interno.borrarTodo();
 }
 
+/// Almacén que falla en la escritura número [fallaEnEscritura] (contando desde 1) y deja escrito
+/// lo anterior: un Keystore que se corta a mitad de la reconstrucción.
+final class _AlmacenQueFallaAlEscribir implements AlmacenSeguro {
+  _AlmacenQueFallaAlEscribir(this._interno, {required this.fallaEnEscritura});
+
+  final AlmacenSeguroEnMemoria _interno;
+  final int fallaEnEscritura;
+  int _escrituras = 0;
+
+  @override
+  Future<String?> leer(ClaveSegura clave) => _interno.leer(clave);
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) {
+    if (++_escrituras == fallaEnEscritura) {
+      throw AlmacenSeguroException(operacion: 'escribir', clave: clave);
+    }
+    return _interno.escribir(clave, valor);
+  }
+
+  @override
+  Future<void> borrar(ClaveSegura clave) => _interno.borrar(clave);
+
+  @override
+  Future<void> borrarTodo() => _interno.borrarTodo();
+}
+
 const _parametros = ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1);
 
 void main() {
@@ -316,11 +343,36 @@ void main() {
   });
 
   group('CustodiaClaveDb.reconstruirAlmacen (recuperación guiada)', () {
+    test('conserva el consentimiento de S10 (#81)', () async {
+      final dek = custodia.generarDek();
+      await custodia.registrarConsentimientoAlmacenSoftware();
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.consentimientoAlmacenSoftware], 'true');
+    });
+
+    for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
+      test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
+          'marca", que se tomaría por una inicialización cortada (#81)', () async {
+        final fragil = custodiaCon(
+          _AlmacenQueFallaAlEscribir(almacen, fallaEnEscritura: escritura),
+        );
+
+        await expectLater(
+          fragil.reconstruirAlmacen(custodia.generarDek()),
+          throwsA(isA<AlmacenSeguroException>()),
+        );
+
+        expect(almacen.contenido.containsKey(ClaveSegura.dekDb), isFalse);
+        expect(almacen.contenido.containsKey(ClaveSegura.dbInicializada), escritura == 2);
+      });
+    }
+
     test('limpia el almacén y lo reescribe con la DEK y la marca; el envoltorio queda', () async {
       final dek = custodia.generarDek();
       await custodia.envolverConPassword(dek, 'secreto123');
       await almacen.escribir(ClaveSegura.dekDb, 'basura');
-      await almacen.escribir(ClaveSegura.consentimientoAlmacenSoftware, 'true');
 
       await custodia.reconstruirAlmacen(dek);
 
@@ -349,6 +401,15 @@ void main() {
       expect(await custodia.dbInicializada(), isFalse);
       expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
       expect(almacen.contenido, isEmpty);
+    });
+
+    test('dado un Keystore roto, borra igual el envoltorio y relanza la falla (#81)', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      almacen.simularFalla = true;
+
+      await expectLater(custodia.olvidar(), throwsA(isA<AlmacenSeguroException>()));
+
+      expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
     });
 
     group('dado que el almacén muere después del primer borrado', () {

@@ -175,6 +175,27 @@ void main() {
     expect(await inicializar(password: null), _creada);
   });
 
+  test('dadas dos inicializaciones en paralelo (login y sesión restaurada juntos), la segunda '
+      'espera: una sola DEK, la misma en la DB, el almacén y el envoltorio (#81)', () async {
+    await iniciarSesion();
+    proveedor.pausar();
+
+    final primera = inicializar();
+    await proveedor.seEstaDerivando;
+    final segunda = inicializar();
+    proveedor.continuar();
+
+    expect(await primera, _creada);
+    expect(await segunda, _abierta);
+    expect(proveedor.entregadas, hasLength(1), reason: 'un solo Argon2id: la segunda no creó nada');
+    final custodia = container.read(custodiaClaveDbProvider);
+    final dek = (await custodia.leerDek())!.bytes;
+    expect((await custodia.desenvolverConPassword(_password)).bytes, dek);
+    await cerrarSesion();
+    await iniciarSesion();
+    expect(await inicializar(password: null), _abierta, reason: 'la DEK del almacén abre la DB');
+  });
+
   test('dado un equipo sin bloqueo de pantalla, no crea nada', () async {
     seguridad.bloqueoPantalla = false;
     await iniciarSesion();
