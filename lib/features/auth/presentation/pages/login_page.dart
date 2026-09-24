@@ -160,20 +160,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: Checkbox(
-                              value: _mantenerSesion,
-                              onChanged: (valor) => setState(() => _mantenerSesion = valor ?? true),
-                            ),
+                          // Sin achicar: el área de toque tiene que ser de 48x48 (accesibilidad).
+                          Checkbox(
+                            value: _mantenerSesion,
+                            semanticLabel: 'Mantener sesión',
+                            materialTapTargetSize: MaterialTapTargetSize.padded,
+                            onChanged: (valor) => setState(() => _mantenerSesion = valor ?? true),
                           ),
-                          const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'Mantener sesión',
-                              style: theme.textTheme.bodyMedium,
-                              overflow: TextOverflow.ellipsis,
+                            // La etiqueta ya la lleva el checkbox para el lector de pantalla.
+                            child: ExcludeSemantics(
+                              child: Text(
+                                'Mantener sesión',
+                                style: theme.textTheme.bodyMedium,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -182,8 +183,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               key: const Key('login_olvidaste_clave'),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                minimumSize: const Size(48, 48),
                               ),
                               onPressed: () {
                                 unawaited(
@@ -372,11 +372,13 @@ class _MarcaColportaje extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(
-          'COLPORTAJE',
-          style: theme.textTheme.labelMedium?.copyWith(
-            letterSpacing: 2.4,
-            color: theme.colorScheme.primary,
+        Flexible(
+          child: Text(
+            'COLPORTAJE',
+            style: theme.textTheme.labelMedium?.copyWith(
+              letterSpacing: 2.4,
+              color: theme.colorScheme.primary,
+            ),
           ),
         ),
       ],
@@ -439,8 +441,11 @@ class _CampoLoginState extends State<_CampoLogin> {
           decoration: InputDecoration(
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
+            // Área de toque mínima de 48 (accesibilidad): en el tema claro el campo queda en 41.
+            constraints: const BoxConstraints(minHeight: 48),
             suffixIcon: widget.esContrasena
                 ? IconButton(
+                    tooltip: _mostrarTexto ? 'Ocultar contraseña' : 'Mostrar contraseña',
                     icon: Icon(
                       _mostrarTexto ? Icons.visibility_off : Icons.visibility,
                       color: colores.placeholder,
@@ -470,13 +475,18 @@ class _DivisorTexto extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Divider(color: colores.borde)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            texto,
-            style: theme.textTheme.bodySmall?.copyWith(
-              letterSpacing: 1.1,
-              color: colores.placeholder,
+        // Flexible: con el texto grande (200 %) no entra en una línea y tiene que poder partirse.
+        Flexible(
+          flex: 3,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                letterSpacing: 1.1,
+                color: colores.placeholder,
+              ),
             ),
           ),
         ),
@@ -529,7 +539,7 @@ class _BotonProveedor extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: colorGlifo),
           ),
           const SizedBox(width: 10),
-          Text(etiqueta),
+          Flexible(child: Text(etiqueta, textAlign: TextAlign.center)),
         ],
       ),
     );
