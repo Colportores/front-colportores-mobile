@@ -12,7 +12,12 @@ enum ClaveSegura {
   salDb('db_salt'),
 
   /// Marca de que la DB local ya se creó y migró en este dispositivo (HU-AUTH-009).
-  dbInicializada('db_initialized');
+  dbInicializada('db_initialized'),
+
+  /// Último estado de cuenta que informó el backend, con el usuario (`<uuid>:<estado>`,
+  /// HU-AUTH-008). No es secreto: vive acá para no sumar otro almacenamiento, y así el borrado de
+  /// datos locales (HU-AUTH-010) también lo borra.
+  estadoCuenta('account_state');
 
   const ClaveSegura(this.id);
 
