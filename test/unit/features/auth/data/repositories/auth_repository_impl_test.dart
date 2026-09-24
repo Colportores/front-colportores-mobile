@@ -150,6 +150,60 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
+/// Remoto en memoria cuyo cliente ya renovó el JWT del login (como hace `supabase_flutter` con
+/// `autoRefreshToken`): [obtenerSesionActual] devuelve [vigente], o lanza [falla].
+final class _RemoteConTokenRenovado implements AuthRemoteDataSource {
+  _RemoteConTokenRenovado(this.interno);
+
+  final AuthRemoteDataSourceEnMemoria interno;
+  SesionModel? vigente;
+  AuthRemoteException? falla;
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() async {
+    if (falla != null) throw falla!;
+    return vigente;
+  }
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      interno.iniciarSesion(email: email, password: password);
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => interno.registrar(
+    nombre: nombre,
+    apellido: apellido,
+    cedula: cedula,
+    email: email,
+    password: password,
+  );
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() => interno.iniciarSesionConGoogle();
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => interno.cerrarSesion(accessToken);
+
+  @override
+  Future<void> revocarSesion(String accessToken) => interno.revocarSesion(accessToken);
+
+  @override
+  Future<void> reenviarVerificacion(String email) => interno.reenviarVerificacion(email);
+
+  @override
+  Stream<void> get erroresVerificacionEmail => interno.erroresVerificacionEmail;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) =>
+      interno.solicitarRecuperacionPassword(email);
+}
+
 void main() {
   late AuthRemoteDataSourceEnMemoria remote;
   late AuthLocalDataSourceEnMemoria local;
@@ -645,6 +699,65 @@ void main() {
     test('sin revocación pendiente, reintentar no llama al remoto', () async {
       expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
       expect(remote.revocaciones, isEmpty);
+    });
+
+    group('con el JWT del login ya renovado por el cliente (#102)', () {
+      late _RemoteConTokenRenovado renovado;
+      late AuthRepositoryImpl conRenovado;
+      late SesionModel delLogin;
+
+      setUp(() async {
+        renovado = _RemoteConTokenRenovado(remote);
+        conRenovado = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await conRenovado.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        delLogin = (await local.leerSesion())!;
+        renovado.vigente = SesionModel(
+          usuarioId: delLogin.usuarioId,
+          email: delLogin.email,
+          accessToken: 'token-renovado',
+          expiraEn: DateTime.utc(2026, 9, 1, 13),
+        );
+      });
+
+      Future<void> cerrarSinRedYVolverLaRed() async {
+        remote.simularSinConexion = true;
+        await conRenovado.cerrarSesion();
+        remote.simularSinConexion = false;
+        await conRenovado.reintentarRevocacionPendiente();
+      }
+
+      test(
+        'dado un logout sin red, la revocación pendiente usa el token vigente, no el del login',
+        () async {
+          await cerrarSinRedYVolverLaRed();
+
+          expect(remote.revocaciones, ['token-renovado']);
+        },
+      );
+
+      test('dado que el cliente no puede dar su sesión, usa el token guardado', () async {
+        renovado.falla = const SinConexionException();
+
+        await cerrarSinRedYVolverLaRed();
+
+        expect(remote.revocaciones, [delLogin.accessToken]);
+      });
+
+      test(
+        'dado que el cliente tiene la sesión de otro usuario, no la toca: usa la guardada',
+        () async {
+          renovado.vigente = SesionModel(
+            usuarioId: 'otro',
+            email: 'otro@example.com',
+            accessToken: 'token-de-otro',
+            expiraEn: DateTime.utc(2026, 9, 1, 13),
+          );
+
+          await cerrarSinRedYVolverLaRed();
+
+          expect(remote.revocaciones, [delLogin.accessToken]);
+        },
+      );
     });
   });
 
