@@ -18,8 +18,10 @@ import 'package:test/test.dart';
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
 
-/// Remoto roto a propósito: para probar que `registrar` traduce cualquier excepción no tipada a
-/// [FailureInesperado] (no solo las [AuthRemoteException] conocidas).
+/// Remoto roto a propósito: para probar que el repositorio traduce cualquier excepción no
+/// tipada a [FailureInesperado] (no solo las [AuthRemoteException] conocidas), en varios de sus
+/// métodos — [renovarSesion] incluido, a diferencia del resto de los remotos de este archivo que
+/// usan [RemotoSinSesionDeslizante] tal cual (con su [SinConexionException] de relleno).
 final class _RemoteQueLanzaExcepcionGenerica
     with RemotoSinSesionDeslizante
     implements AuthRemoteDataSource {
@@ -44,6 +46,9 @@ final class _RemoteQueLanzaExcepcionGenerica
 
   @override
   Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
+
+  @override
+  Future<SesionModel> renovarSesion() async => throw Exception('boom');
 
   @override
   SesionModel? sesionEnElCliente() => throw Exception('boom');
@@ -242,6 +247,61 @@ final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements Au
   @override
   Future<void> solicitarRecuperacionPassword(String email) =>
       interno.solicitarRecuperacionPassword(email);
+}
+
+/// Remoto cuyo [renovarSesion] falla con un error genuino del servidor (ni offline ni
+/// revocada) — para "Escenario: refresh fallido" (HU-AUTH-007, issue #60), distinto de
+/// [SinConexionException] y de [SesionRevocadaException], ya cubiertos aparte.
+final class _RemoteQueFallaAlRenovar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
+  _RemoteQueFallaAlRenovar(this.interno, this.falla);
+
+  final AuthRemoteDataSourceEnMemoria interno;
+  final AuthRemoteException falla;
+
+  @override
+  Future<SesionModel> renovarSesion() async => throw falla;
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      interno.iniciarSesion(email: email, password: password);
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
+
+  @override
+  SesionModel? sesionEnElCliente() => throw UnimplementedError();
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 void main() {
@@ -949,11 +1009,21 @@ void main() {
         logger: loggerMudo(),
       );
 
-      expect(
-        (await roto.renovarSesion()).fold((f) => f, (_) => null),
-        isA<FailureSinConexion>(),
-        reason: 'el remoto de ese test no renueva: sin red',
+      expect((await roto.renovarSesion()).fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+
+    test('Escenario: refresh fallido — un error genuino del servidor (ni offline ni revocada) se '
+        'traduce y no toca la sesión guardada', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueFallaAlRenovar(remote, const ServidorException(status: 500)),
+        local,
+        logger: loggerMudo(),
       );
+      await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      final antes = await local.leerSesion();
+
+      expect(await repo.renovarSesion(), const Left<Failure, Sesion>(FailureServidor(status: 500)));
+      expect(await local.leerSesion(), antes);
     });
   });
 
