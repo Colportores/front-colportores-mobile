@@ -18,8 +18,10 @@ import 'package:test/test.dart';
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
 
-/// Remoto roto a propósito: para probar que `registrar` traduce cualquier excepción no tipada a
-/// [FailureInesperado] (no solo las [AuthRemoteException] conocidas).
+/// Remoto roto a propósito: para probar que el repositorio traduce cualquier excepción no
+/// tipada a [FailureInesperado] (no solo las [AuthRemoteException] conocidas), en varios de sus
+/// métodos — [renovarSesion] incluido, a diferencia del resto de los remotos de este archivo que
+/// usan [RemotoSinSesionDeslizante] tal cual (con su [SinConexionException] de relleno).
 final class _RemoteQueLanzaExcepcionGenerica
     with RemotoSinSesionDeslizante
     implements AuthRemoteDataSource {
@@ -44,6 +46,9 @@ final class _RemoteQueLanzaExcepcionGenerica
 
   @override
   Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
+
+  @override
+  Future<SesionModel> renovarSesion() async => throw Exception('boom');
 
   @override
   SesionModel? sesionEnElCliente() => throw Exception('boom');
@@ -1004,11 +1009,7 @@ void main() {
         logger: loggerMudo(),
       );
 
-      expect(
-        (await roto.renovarSesion()).fold((f) => f, (_) => null),
-        isA<FailureSinConexion>(),
-        reason: 'el remoto de ese test no renueva: sin red',
-      );
+      expect((await roto.renovarSesion()).fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
 
     test('Escenario: refresh fallido — un error genuino del servidor (ni offline ni revocada) se '
