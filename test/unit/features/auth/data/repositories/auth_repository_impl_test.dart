@@ -1011,25 +1011,19 @@ void main() {
       );
     });
 
-    test(
-      'Escenario: refresh fallido — un error genuino del servidor (ni offline ni revocada) se '
-      'traduce y no toca la sesión guardada',
-      () async {
-        final repo = AuthRepositoryImpl(
-          _RemoteQueFallaAlRenovar(remote, const ServidorException(status: 500)),
-          local,
-          logger: loggerMudo(),
-        );
-        await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
-        final antes = await local.leerSesion();
+    test('Escenario: refresh fallido — un error genuino del servidor (ni offline ni revocada) se '
+        'traduce y no toca la sesión guardada', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueFallaAlRenovar(remote, const ServidorException(status: 500)),
+        local,
+        logger: loggerMudo(),
+      );
+      await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      final antes = await local.leerSesion();
 
-        expect(
-          await repo.renovarSesion(),
-          const Left<Failure, Sesion>(FailureServidor(status: 500)),
-        );
-        expect(await local.leerSesion(), antes);
-      },
-    );
+      expect(await repo.renovarSesion(), const Left<Failure, Sesion>(FailureServidor(status: 500)));
+      expect(await local.leerSesion(), antes);
+    });
   });
 
   group('AuthRepositoryImpl.sesionActual con la sesión deslizante (HU-AUTH-007)', () {
