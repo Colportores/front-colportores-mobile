@@ -25,6 +25,12 @@ abstract final class TextosConfirmacionRecuperacion {
   /// Para `mensajePara`: "Necesitás conexión para cambiar tu contraseña" (#94).
   static const accionSinConexion = 'cambiar tu contraseña';
 
+  /// Para `mensajePara`, cuando el enlace no se pudo canjear por falta de red: "Necesitás conexión
+  /// para abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el correo." (propio, sin
+  /// literal en la HU).
+  static const accionAbrirEnlace =
+      'abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el correo.';
+
   /// Qué pasa con los datos del teléfono (HU-AUTH-005, principio de no-sorpresa; ADR-006: se
   /// re-envuelve la DEK y la DB no se toca).
   static const datosLocales =
@@ -46,6 +52,8 @@ abstract final class TextosConfirmacionRecuperacion {
 ///   actualizada. Iniciá sesión.".
 /// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): "El enlace
 ///   expiró. Solicitá uno nuevo.", con el botón para pedir otro (HU-AUTH-004) y volver al login.
+/// - Con [EnlaceRecuperacion.sinConexion]: que hace falta conexión y que el enlace se vuelve a
+///   abrir desde el correo (sigue sirviendo).
 ///
 /// Si el usuario sale sin terminar, se suelta la sesión que abrió el enlace: si no, el próximo
 /// arranque lo dejaría adentro sin haber puesto ninguna contraseña. Mientras guarda no se puede
@@ -71,6 +79,7 @@ class _ConfirmarRecuperacionPasswordPageState
   late bool _vencido = widget.enlace == EnlaceRecuperacion.vencido;
   bool _guardando = false;
   bool _terminado = false;
+  bool _sesionSoltada = false;
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
 
@@ -143,17 +152,29 @@ class _ConfirmarRecuperacionPasswordPageState
   }
 
   void _alSalir(bool salio) {
-    if (!salio || _terminado || _vencido) return;
-    // Sin terminar: se suelta la sesión que abrió el enlace (ver dartdoc de la clase). Si falla,
-    // ya quedó en el log; el usuario no puede hacer nada con eso.
+    if (salio) _soltarSesionDelEnlace();
+  }
+
+  /// Sin terminar, se suelta la sesión que abrió el enlace (ver dartdoc de la clase). También si el
+  /// enlace venció a mitad del flujo: un 401/403 del servidor no borra la sesión que gotrue guardó
+  /// en el teléfono, y el próximo arranque entraría sin contraseña (revisión de #112). Un enlace
+  /// que llegó vencido o sin red no abrió ninguna sesión: soltar cerraría la de quien ya estaba
+  /// adentro. Una sola vez; si falla, ya quedó en el log y el usuario no puede hacer nada con eso.
+  void _soltarSesionDelEnlace() {
+    if (_terminado || _sesionSoltada || widget.enlace != EnlaceRecuperacion.valido) return;
+    _sesionSoltada = true;
     unawaited(ref.read(abandonarRecuperacionPasswordUseCaseProvider)(const NoParams()));
   }
 
-  void _pedirOtroEnlace() => unawaited(
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute<void>(builder: (_) => const RecuperacionPasswordPage())),
-  );
+  /// `pushReplacement` no pasa por el `PopScope`: la sesión se suelta acá.
+  void _pedirOtroEnlace() {
+    _soltarSesionDelEnlace();
+    unawaited(
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute<void>(builder: (_) => const RecuperacionPasswordPage())),
+    );
+  }
 
   void _irAlLogin() => Navigator.of(context).popUntil((route) => route.isFirst);
 
@@ -183,7 +204,12 @@ class _ConfirmarRecuperacionPasswordPageState
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (_vencido) _vencidoContenido(theme) else _formulario(theme),
+                if (_vencido)
+                  _vencidoContenido(theme)
+                else if (widget.enlace == EnlaceRecuperacion.sinConexion)
+                  _sinConexionContenido(theme)
+                else
+                  _formulario(theme),
               ],
             ),
           ),
@@ -232,6 +258,31 @@ class _ConfirmarRecuperacionPasswordPageState
       ),
       const SizedBox(height: 8),
       TextButton(
+        key: const Key('confirmar_recuperacion_ir_al_login'),
+        onPressed: _irAlLogin,
+        child: const Text('Volver al login'),
+      ),
+    ],
+  );
+
+  Widget _sinConexionContenido(ThemeData theme) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _encabezado(theme, 'Sin conexión'),
+      const SizedBox(height: 16),
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          mensajePara(
+            const FailureSinConexion(),
+            accion: TextosConfirmacionRecuperacion.accionAbrirEnlace,
+          ),
+          key: const Key('confirmar_recuperacion_sin_conexion'),
+          style: theme.textTheme.bodyLarge,
+        ),
+      ),
+      const SizedBox(height: 24),
+      FilledButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
         onPressed: _irAlLogin,
         child: const Text('Volver al login'),

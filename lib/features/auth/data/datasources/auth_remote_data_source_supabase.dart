@@ -307,6 +307,16 @@ final class AuthRemoteDataSourceSupabase
       },
       handleError: (error, stackTrace, sink) {
         if (error is AuthException && _registro.tomarRecuperacionEnCanje()) {
+          // Sin red (o un 5xx) el enlace no venció: el servidor nunca lo vio.
+          if (error is AuthRetryableFetchException) {
+            _log.warn(
+              LogModulo.auth,
+              'RECUPERACION_ENLACE_SIN_RED',
+              'no se pudo canjear el enlace de recuperación: sin red',
+            );
+            sink.add(EnlaceRecuperacion.sinConexion);
+            return;
+          }
           _log.warn(
             LogModulo.auth,
             'RECUPERACION_ENLACE_VENCIDO',

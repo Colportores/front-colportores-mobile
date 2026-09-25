@@ -14,6 +14,7 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   final _enlaces = StreamController<EnlaceRecuperacion>.broadcast();
   String _passwordActual;
   bool _haySesionDeRecuperacion = false;
+  bool _servidorRechazaLaSesion = false;
 
   /// Si es `true`, las operaciones de red lanzan [SinConexionException].
   bool simularSinConexion = false;
@@ -49,6 +50,14 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   /// Simula que la sesión de recuperación venció mientras la pantalla estaba abierta.
   void vencerSesionDeRecuperacion() => _haySesionDeRecuperacion = false;
 
+  /// Simula que el servidor rechaza (401/403) la sesión de recuperación que el teléfono todavía
+  /// guarda: [actualizarPassword] lanza [SesionDeRecuperacionVencidaException], pero la sesión
+  /// sigue en el teléfono hasta que alguien la suelte.
+  void rechazarSesionDeRecuperacion() => _servidorRechazaLaSesion = true;
+
+  /// Si el teléfono guarda una sesión de recuperación (la dejó un enlace válido y nadie la soltó).
+  bool get haySesionDeRecuperacion => _haySesionDeRecuperacion;
+
   @override
   Stream<EnlaceRecuperacion> get enlacesRecuperacion => _enlaces.stream;
 
@@ -57,7 +66,9 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
     await demoraAlActualizar?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlActualizar case final falla?) throw falla;
-    if (!_haySesionDeRecuperacion) throw const SesionDeRecuperacionVencidaException();
+    if (!_haySesionDeRecuperacion || _servidorRechazaLaSesion) {
+      throw const SesionDeRecuperacionVencidaException();
+    }
     if (nueva == _passwordActual) throw const PasswordIgualALaAnteriorException();
     _passwordActual = nueva;
     actualizaciones.add(nueva);

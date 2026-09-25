@@ -981,6 +981,19 @@ void main() {
         },
       );
 
+      test('dado que el canje falla sin red, emite sin conexión y no vencido: el enlace sigue '
+          'sirviendo (revisión de #112)', () async {
+        final eventos = <EnlaceRecuperacion>[];
+        final suscripcion = dataSource().enlacesRecuperacion.listen(eventos.add);
+        addTearDown(suscripcion.cancel);
+        registro.esCallbackDeAuth(Uri.parse('${ConfigSupabase.redirectRecuperacion}?code=abc'));
+
+        cambios.addError(AuthRetryableFetchException(message: 'sin red'));
+        await Future<void>.delayed(Duration.zero);
+
+        expect(eventos, [EnlaceRecuperacion.sinConexion]);
+      });
+
       test(
         'ignora los errores que no vienen de un enlace de recuperación y los demás eventos',
         () async {

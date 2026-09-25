@@ -191,6 +191,52 @@ void main() {
       expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
       expect(_recuperacion.actualizaciones, isEmpty);
     });
+
+    for (final (boton, destino) in [
+      ('confirmar_recuperacion_ir_al_login', 'el login'),
+      ('confirmar_recuperacion_pedir_otro', 'pedir otro enlace'),
+    ]) {
+      testWidgets('dado que el servidor rechaza la sesión que el teléfono guarda, al ir a $destino '
+          'la suelta: el próximo arranque no entra sin contraseña (revisión de #112)', (
+        tester,
+      ) async {
+        await _montar(tester);
+        _recuperacion.rechazarSesionDeRecuperacion();
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+        expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+
+        await tester.tap(find.byKey(Key(boton)));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+        expect(_recuperacion.abandonos, 1);
+        expect(_recuperacion.haySesionDeRecuperacion, isFalse);
+      });
+    }
+  });
+
+  group('Enlace sin conexión (revisión de #112)', () {
+    testWidgets('dice qué pasa y qué hacer; "Volver al login" no suelta nada (no se abrió ninguna '
+        'sesión)', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.sinConexion);
+
+      expect(
+        find.text(
+          'Necesitás conexión para abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el '
+          'correo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsNothing);
+      expect(_guardar, findsNothing);
+
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
+      await tester.pumpAndSettle();
+
+      expect(_login, findsOneWidget);
+      expect(_recuperacion.abandonos, 0);
+    });
   });
 
   group('Enlaces repetidos (revisión de #112)', () {
