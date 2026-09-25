@@ -193,6 +193,33 @@ void main() {
     });
   });
 
+  group('Enlaces repetidos (revisión de #112)', () {
+    testWidgets('dado un segundo enlace válido sin cerrar la app, vuelve a abrir la pantalla', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_atras')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.valido);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsOneWidget);
+    });
+
+    testWidgets('dados dos enlaces vencidos seguidos, los dos avisan', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
+      await tester.pumpAndSettle();
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+    });
+  });
+
   group('Validación de la contraseña nueva', () {
     testWidgets('vacía: pide las dos', (tester) async {
       await _montar(tester);

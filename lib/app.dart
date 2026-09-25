@@ -68,7 +68,7 @@ class ColportoresApp extends ConsumerWidget {
     // lugar que se entera. Si había una sesión iniciada, igual se muestra: el enlace es de la
     // cuenta de quien lo pidió, y al terminar se cierran todas las sesiones.
     ref.listen(enlacesRecuperacionProvider, (previous, next) {
-      if (next case AsyncData(:final value)) _llevarAConfirmarRecuperacion(value);
+      if (next case AsyncData(:final value)) _llevarAConfirmarRecuperacion(value.enlace);
     });
 
     return _RevisionAlVolver(

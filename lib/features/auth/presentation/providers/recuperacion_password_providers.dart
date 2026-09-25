@@ -37,9 +37,20 @@ RecuperacionPasswordRepository recuperacionPasswordRepository(Ref ref) =>
 ObservarEnlacesRecuperacionUseCase observarEnlacesRecuperacionUseCase(Ref ref) =>
     ObservarEnlacesRecuperacionUseCase(ref.watch(recuperacionPasswordRepositoryProvider));
 
+/// Una llegada de un enlace de recuperación. **Sin `==` a propósito**: `ref.listen` solo avisa si
+/// el valor cambió, y dos enlaces válidos seguidos (el colportor pidió otro sin cerrar la app) son
+/// dos llegadas. Con el enum pelado, el segundo no abría la pantalla y la sesión de recuperación
+/// quedaba guardada sin que nadie fijara una contraseña (revisión de #112).
+final class LlegadaEnlaceRecuperacion {
+  LlegadaEnlaceRecuperacion(this.enlace);
+
+  final EnlaceRecuperacion enlace;
+}
+
 @Riverpod(keepAlive: true)
-Stream<EnlaceRecuperacion> enlacesRecuperacion(Ref ref) =>
-    ref.watch(observarEnlacesRecuperacionUseCaseProvider)(const NoParams());
+Stream<LlegadaEnlaceRecuperacion> enlacesRecuperacion(Ref ref) => ref
+    .watch(observarEnlacesRecuperacionUseCaseProvider)(const NoParams())
+    .map(LlegadaEnlaceRecuperacion.new);
 
 @riverpod
 ConfirmarRecuperacionPasswordUseCase confirmarRecuperacionPasswordUseCase(Ref ref) =>
