@@ -5,12 +5,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/enlace_recuperacion.dart';
 import '../../domain/entities/motivo_expiracion.dart';
 import '../../domain/entities/politica_sesion.dart';
 import '../models/sesion_model.dart';
 import 'almacen_sesion_supabase.dart';
 import 'auth_remote_data_source.dart';
 import 'emision_jwt.dart';
+import 'recuperacion_password_remote_data_source.dart';
+import 'registro_enlaces_auth.dart';
 
 /// Lanza el flujo OAuth por navegador y devuelve `true` si se pudo abrir. Es una costura para
 /// los tests: `signInWithOAuth` es una *extensión* de `supabase_flutter` sobre [GoTrueClient]
@@ -29,21 +32,27 @@ typedef LanzadorOAuth = Future<bool> Function(OAuthProvider proveedor, String re
 ///   [verificacionesExitosas] cruza ese path (visto con una suscripción propia a `app_links`, en
 ///   paralelo a la que arma `supabase_flutter` por su cuenta — el plugin soporta varios
 ///   suscriptores) contra el próximo `signedIn` para distinguirlo de un login/registro normal.
+/// - Recuperación de contraseña (HU-AUTH-004/005): el enlace vuelve por
+///   [ConfigSupabase.redirectRecuperacion]; [RegistroEnlacesAuth] dice de qué flujo es cada deep
+///   link, porque Supabase manda el mismo error para una verificación y una recuperación vencidas.
 /// - La sesión la persiste `supabase_flutter` en el almacén seguro ([AlmacenSesionSupabase], que
 ///   `main.dart` le pasa como `FlutterAuthClientOptions.localStorage`) y la renueva sola
 ///   (`autoRefreshToken`): es el único mecanismo de refresh de la app (HU-AUTH-007).
 ///
 /// Traduce [AuthException] a [AuthRemoteException]; el repositorio las convierte en `Failure`.
 /// Nunca loguea email ni tokens (convenciones §7.5).
-final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
+final class AuthRemoteDataSourceSupabase
+    implements AuthRemoteDataSource, RecuperacionPasswordRemoteDataSource {
   AuthRemoteDataSourceSupabase(
     this._auth, {
     this._lanzarOAuth,
     this.esperaOAuth = const Duration(minutes: 2),
     Stream<Uri>? enlacesEntrantes,
     this._sesionPersistida,
+    RegistroEnlacesAuth? registroEnlaces,
     AppLogger? logger,
   }) : _enlacesEntrantes = enlacesEntrantes ?? AppLinks().uriLinkStream,
+       _registro = registroEnlaces ?? RegistroEnlacesAuth.instancia,
        _log = logger ?? AppLogger.instance {
     _verificacionExitosaController = StreamController<void>.broadcast(
       onListen: _empezarAEscucharVerificacionExitosa,
@@ -54,6 +63,7 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
   final GoTrueClient _auth;
   final AlmacenSesionSupabase? _sesionPersistida;
   final LanzadorOAuth? _lanzarOAuth;
+  final RegistroEnlacesAuth _registro;
   final AppLogger _log;
 
   /// Cuánto se espera a que el usuario vuelva del navegador antes de darlo por abandonado.
@@ -83,7 +93,7 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) => _traduciendo(
-    () => _auth.resetPasswordForEmail(email, redirectTo: ConfigSupabase.redirectOAuth),
+    () => _auth.resetPasswordForEmail(email, redirectTo: ConfigSupabase.redirectRecuperacion),
   );
 
   @override
@@ -268,11 +278,85 @@ final class AuthRemoteDataSourceSupabase implements AuthRemoteDataSource {
       // `otp_expired` es el único que Supabase usa para "vencido o ya usado" en un link de
       // verificación. Cualquier otro error del stream (p. ej. un signInWithOAuth cancelado) se
       // descarta acá: no es de esta pantalla.
+      // Un enlace de recuperación vencido manda el mismo `otp_expired`: ese no es de acá
+      // (HU-AUTH-005, `enlacesRecuperacion`).
       handleError: (error, stackTrace, sink) {
-        if (error is AuthException && error.statusCode == 'otp_expired') sink.add(null);
+        if (error is AuthException &&
+            error.statusCode == 'otp_expired' &&
+            !_registro.ultimoEsRecuperacion) {
+          sink.add(null);
+        }
       },
     ),
   );
+
+  // --- Recuperación de contraseña (HU-AUTH-005) ---
+
+  /// El evento `passwordRecovery` que `supabase_flutter` emite al canjear un enlace de recuperación
+  /// es un enlace válido. Un error del canje es un enlace vencido, pero solo si el deep link era de
+  /// recuperación y nadie tomó ya su resultado ([RegistroEnlacesAuth.tomarRecuperacionEnCanje]):
+  /// así un error posterior (un refresco de token que falla) no se confunde con el enlace.
+  @override
+  Stream<EnlaceRecuperacion> get enlacesRecuperacion => _auth.onAuthStateChange.transform(
+    StreamTransformer<AuthState, EnlaceRecuperacion>.fromHandlers(
+      handleData: (estado, sink) {
+        if (estado.event == AuthChangeEvent.passwordRecovery) {
+          _registro.tomarRecuperacionEnCanje();
+          sink.add(EnlaceRecuperacion.valido);
+        }
+      },
+      handleError: (error, stackTrace, sink) {
+        if (error is AuthException && _registro.tomarRecuperacionEnCanje()) {
+          // Sin red (o un 5xx) el enlace no venció: el servidor nunca lo vio.
+          if (error is AuthRetryableFetchException) {
+            _log.warn(
+              LogModulo.auth,
+              'RECUPERACION_ENLACE_SIN_RED',
+              'no se pudo canjear el enlace de recuperación: sin red',
+            );
+            sink.add(EnlaceRecuperacion.sinConexion);
+            return;
+          }
+          _log.warn(
+            LogModulo.auth,
+            'RECUPERACION_ENLACE_VENCIDO',
+            'enlace de recuperación vencido',
+            {'code': error.statusCode},
+          );
+          sink.add(EnlaceRecuperacion.vencido);
+        }
+      },
+    ),
+  );
+
+  @override
+  Future<void> actualizarPassword(String nueva) async {
+    try {
+      await _auth.updateUser(UserAttributes(password: nueva));
+    } on AuthSessionMissingException {
+      throw const SesionDeRecuperacionVencidaException();
+    } on AuthException catch (e) {
+      if (e.code == 'same_password') throw const PasswordIgualALaAnteriorException();
+      if (e.code == 'session_not_found' ||
+          e.code == 'session_expired' ||
+          e.statusCode == '401' ||
+          e.statusCode == '403') {
+        throw const SesionDeRecuperacionVencidaException();
+      }
+      throw _traducir(e);
+    }
+  }
+
+  // Scope global: revoca las sesiones de la cuenta en todos los dispositivos (HU-AUTH-005, "todos
+  // los JWT activos quedan revocados"). Supabase lo soporta nativo: no hace falta el plan B de la
+  // HU (Edge Function que itere `sessions`). El JWT de acceso ya emitido vale hasta que vence (1 h
+  // por defecto); lo que se revoca son los refresh tokens.
+  @override
+  Future<void> cerrarTodasLasSesiones() =>
+      _traduciendo(() => _auth.signOut(scope: SignOutScope.global));
+
+  @override
+  Future<void> abandonarRecuperacion() => _traduciendo(() => _auth.signOut());
 
   late final StreamController<void> _verificacionExitosaController;
   StreamSubscription<Uri>? _suscripcionEnlaces;

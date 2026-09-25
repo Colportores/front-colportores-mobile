@@ -15,6 +15,7 @@ import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 
@@ -41,7 +42,12 @@ Future<void> main() async {
     await Supabase.initialize(
       url: ConfigSupabase.url,
       publishableKey: ConfigSupabase.anonKey,
-      authOptions: FlutterAuthClientOptions(localStorage: sesionPersistida),
+      // Registra cada deep link antes de que supabase_flutter lo canjee, para saber si es de
+      // verificación de email o de recuperación de contraseña (HU-AUTH-005, RegistroEnlacesAuth).
+      authOptions: FlutterAuthClientOptions(
+        localStorage: sesionPersistida,
+        detectSessionInUriPredicate: RegistroEnlacesAuth.instancia.esCallbackDeAuth,
+      ),
     );
   } else {
     AppLogger.instance.info(

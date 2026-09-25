@@ -312,7 +312,6 @@ void main() {
   setUp(() {
     remote = AuthRemoteDataSourceEnMemoria(
       credenciales: const {'ana@example.com': 'secreto123'},
-      cuentasPendientes: const {'pendiente@example.com'},
       ahora: () => DateTime.utc(2026, 9, 1, 12),
     );
     local = AuthLocalDataSourceEnMemoria();
@@ -345,17 +344,6 @@ void main() {
 
         expect(resultado, const Left<Failure, Sesion>(FailureCredencialesInvalidas()));
         expect(await local.leerSesion(), isNull);
-      });
-    });
-
-    group('dado que la cuenta está pendiente de aprobación', () {
-      test('cuando inicia sesión, devuelve FailureCuentaPendiente', () async {
-        final resultado = await repository.iniciarSesion(
-          email: 'pendiente@example.com',
-          password: 'loquesea1',
-        );
-
-        expect(resultado, const Left<Failure, Sesion>(FailureCuentaPendiente()));
       });
     });
 

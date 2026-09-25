@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/aviso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
@@ -65,11 +66,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           break;
         case FailureValidacion(:final campos):
           _erroresCampo = campos;
-        case Failure(:final mensaje):
-          _errorGeneral = mensaje;
+        case Failure():
+          _errorGeneral = mensajePara(failure, accion: _accionSinConexion);
       }
     });
   }
+
+  /// HU-AUTH-003, "Error - primer login sin conectividad" (#94).
+  static const _accionSinConexion = 'iniciar sesión por primera vez en este dispositivo.';
 
   Future<void> _entrarConGoogle() async {
     setState(() {
@@ -83,7 +87,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!mounted) return;
     setState(() {
       _enviando = false;
-      _errorGeneral = failure?.mensaje;
+      _errorGeneral = failure == null ? null : mensajePara(failure, accion: _accionSinConexion);
     });
   }
 

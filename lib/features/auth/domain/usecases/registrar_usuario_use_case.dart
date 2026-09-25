@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/politica_password.dart';
 import '../entities/resultado_registro.dart';
 import '../repositories/auth_repository.dart';
 
@@ -65,7 +66,6 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
   final AuthRepository _repository;
 
   static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
-  static final RegExp _passwordRegExp = RegExp(r'^(?=.*[A-Z])(?=.*\d).{8,}$');
   static final RegExp _cedulaFormatoRegExp = RegExp(r'^[\d.\-]+$');
   static final RegExp _cedulaNormalizadaRegExp = RegExp(r'^\d{7,8}$');
 
@@ -94,10 +94,8 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
       errores['email'] = 'El email no es válido';
     }
 
-    if (params.password.isEmpty) {
-      errores['password'] = 'Ingresá tu contraseña';
-    } else if (!_passwordRegExp.hasMatch(params.password)) {
-      errores['password'] = 'Usá al menos 8 caracteres, una mayúscula y un número.';
+    if (PoliticaPassword.validar(params.password) case final error?) {
+      errores['password'] = error;
     }
 
     if (!params.aceptaTerminos) {
