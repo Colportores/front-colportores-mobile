@@ -735,29 +735,23 @@ void main() {
   });
 
   group('Accesibilidad', () {
-    for (final tema in [ThemeMode.light, ThemeMode.dark]) {
-      testWidgets('Configuración cumple las guías (${tema.name})', (tester) async {
-        final handle = tester.ensureSemantics();
-        _pantalla(tester, const Size(390, 844));
-        tester.platformDispatcher.platformBrightnessTestValue = tema == ThemeMode.dark
-            ? Brightness.dark
-            : Brightness.light;
-        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-        await _montar(tester);
+    testWidgets('Configuración cumple las guías', (tester) async {
+      final handle = tester.ensureSemantics();
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester);
 
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-        await _abrirBorrado(tester);
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-        handle.dispose();
-      });
-    }
+      await _abrirBorrado(tester);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+    });
 
     testWidgets('el diálogo de confirmación con operaciones pendientes cumple las guías', (
       tester,

@@ -751,7 +751,6 @@ void main() {
   });
 
   group('Accesibilidad', () {
-    final temas = {'claro': temaClaro, 'oscuro': temaOscuro};
     const estados = ['sin jornada', 'jornada activa', 'jornada finalizada'];
 
     /// Deja la pantalla en [estado], con el selector de hora abierto cuando lo hay.
@@ -774,35 +773,29 @@ void main() {
       iniciales: [if (estado != 'sin jornada') _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))],
     );
 
-    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
-      for (final estado in estados) {
-        testWidgets('tema $nombreTema, $estado: tamaño de toque, etiquetas y contraste', (
-          tester,
-        ) async {
-          final semantica = tester.ensureSemantics();
-          _pantalla(tester, const Size(390, 844));
-          await _montar(tester, dataSourcePara(estado), tema: tema());
-          await tester.pumpAndSettle();
-          await prepararEstado(tester, estado);
+    for (final estado in estados) {
+      testWidgets('$estado: tamaño de toque, etiquetas y contraste', (tester) async {
+        final semantica = tester.ensureSemantics();
+        _pantalla(tester, const Size(390, 844));
+        await _montar(tester, dataSourcePara(estado));
+        await tester.pumpAndSettle();
+        await prepararEstado(tester, estado);
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        });
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
+      });
 
-        testWidgets('tema $nombreTema, $estado: sin overflow con el texto al 200 % en 360x740', (
-          tester,
-        ) async {
-          _pantalla(tester, const Size(360, 740));
-          await _montar(tester, dataSourcePara(estado), tema: tema(), escalaTexto: 2);
-          await tester.pumpAndSettle();
-          await prepararEstado(tester, estado);
+      testWidgets('$estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
+        _pantalla(tester, const Size(360, 740));
+        await _montar(tester, dataSourcePara(estado), escalaTexto: 2);
+        await tester.pumpAndSettle();
+        await prepararEstado(tester, estado);
 
-          expect(tester.takeException(), isNull);
-        });
-      }
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 }

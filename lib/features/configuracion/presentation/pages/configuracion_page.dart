@@ -12,7 +12,8 @@ import 'borrar_datos_locales_page.dart';
 
 /// Configuración de la cuenta en este teléfono: cerrar sesión (HU-AUTH-006) y, bajo "Privacidad y
 /// datos", borrar los datos locales (HU-AUTH-010). Sin diseño de Claude Design: sigue el tema y
-/// los patrones de las pantallas de auth (encabezado dorado, título grande, tarjetas con borde).
+/// los patrones de las pantallas de auth (encabezado en color primario, título grande, tarjetas
+/// con borde).
 class ConfiguracionPage extends ConsumerStatefulWidget {
   const ConfiguracionPage({super.key});
 
@@ -201,8 +202,8 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
               children: [
                 ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: colores.oro,
-                    foregroundColor: colores.negro,
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
                     child: const Icon(Icons.person_outline),
                   ),
                   title: const Text('Sesión iniciada como'),
@@ -257,11 +258,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
   }
 }
 
-/// Color del encabezado chico ("CONFIGURACIÓN", "PRIVACIDAD Y DATOS"): el dorado de las pantallas
-/// de auth en el tema oscuro; en el claro el dorado sobre crema no llega al contraste mínimo
-/// (2,3:1 contra 4,5:1), así que va el color primario.
-Color colorEncabezado(ThemeData theme, ColoresColportaje colores) =>
-    theme.brightness == Brightness.dark ? colores.oro : theme.colorScheme.primary;
+/// Color del encabezado chico ("CONFIGURACIÓN", "PRIVACIDAD Y DATOS"): el color primario (paleta
+/// única 1b, #121 — el dorado ya no forma parte de la paleta).
+Color colorEncabezado(ThemeData theme, ColoresColportaje colores) => theme.colorScheme.primary;
 
 class _TituloSeccion extends StatelessWidget {
   const _TituloSeccion(this.texto);

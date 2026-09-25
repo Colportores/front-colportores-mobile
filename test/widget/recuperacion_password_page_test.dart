@@ -44,7 +44,7 @@ Future<void> _completarYAceptar(
 
 void main() {
   group('RecuperacionPasswordPage — diseño', () {
-    testWidgets('renderiza sin overflow en 390x844 (claro y oscuro)', (tester) async {
+    testWidgets('renderiza sin overflow en 390x844', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -52,11 +52,7 @@ void main() {
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
 
-      await _montarPagina(tester, tema: temaClaro(), remote: remote);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-
-      await _montarPagina(tester, tema: temaOscuro(), remote: remote);
+      await _montarPagina(tester, remote: remote);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });

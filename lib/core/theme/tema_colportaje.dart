@@ -2,25 +2,21 @@ import 'package:flutter/material.dart';
 
 import 'colores_colportaje.dart';
 
-/// Temas del diseño "Login Colportor" (Claude Design, propuestas 1a oscura / 1b clara).
+/// El tema del diseño "Login Colportor": paleta única 1b "Crema sobria" (#121, decisión de
+/// Cristian) — sin tema oscuro ni variante clara/oscura. La propuesta 1a "Navy inmersivo" (tema
+/// oscuro con acento dorado) queda descartada.
 ///
-/// El copy y el layout son iguales en los dos temas; lo que cambia es exclusivamente lo que vive
-/// acá: colores ([ColorScheme] + [ColoresColportaje]), tipografía y forma de inputs/botones.
 /// Ninguna pantalla debería tener un `Color(0x...)` propio: todo sale de `Theme.of(context)`.
 
 const _navy = Color(0xFF002856);
 const _navyHover = Color(0xFF13407A);
 const _tinta = Color(0xFF0E1A2B);
-const _textoSecundarioClaro = Color(0xFF2A3A52);
-const _textoSecundarioOscuro = Color(0xFF1F2937);
+const _textoSecundario = Color(0xFF2A3A52);
 const _crema = Color(0xFFFAFAF7);
 const _superficie = Color(0xFFFFFFFF);
 
-const _radioInputOscuro = 10.0;
-const _radioBotonOscuro = 10.0;
-
 ThemeData temaClaro() {
-  const colores = ColoresColportaje.claro;
+  const colores = ColoresColportaje.unica;
   final colorScheme = ColorScheme.light(
     primary: _navy,
     onPrimary: Colors.white,
@@ -29,7 +25,7 @@ ThemeData temaClaro() {
     surface: _crema,
     onSurface: _tinta,
     surfaceContainerHighest: _superficie,
-    onSurfaceVariant: _textoSecundarioClaro,
+    onSurfaceVariant: _textoSecundario,
     outline: colores.bordeInput,
   );
 
@@ -47,7 +43,9 @@ ThemeData temaClaro() {
       filled: false,
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-      hintStyle: textTheme.bodyLarge?.copyWith(color: colores.placeholder),
+      // No `colores.placeholder` acá: a 2,5:1 contra el fondo no llega al 4,5:1 que pide WCAG para
+      // texto chico y el hint queda visible en cualquier campo vacío (#121).
+      hintStyle: textTheme.bodyLarge?.copyWith(color: colores.gris),
       errorStyle: TextStyle(color: colorScheme.error, fontSize: 12),
       border: UnderlineInputBorder(borderSide: BorderSide(color: colores.bordeInput, width: 1.5)),
       enabledBorder: UnderlineInputBorder(
@@ -98,94 +96,6 @@ ThemeData temaClaro() {
   );
 }
 
-ThemeData temaOscuro() {
-  const colores = ColoresColportaje.oscuro;
-  final colorScheme = ColorScheme.dark(
-    primary: colores.oro,
-    onPrimary: _navy,
-    secondary: colores.oro,
-    onSecondary: _navy,
-    surface: _navy,
-    onSurface: Colors.white,
-    surfaceContainerHighest: _superficie,
-    onSurfaceVariant: _textoSecundarioOscuro,
-    outline: colores.bordeInput,
-  );
-
-  final textTheme = _textTheme(colorScheme.onSurface);
-
-  return ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.dark,
-    colorScheme: colorScheme,
-    scaffoldBackgroundColor: _navy,
-    fontFamily: 'Inter',
-    textTheme: textTheme,
-    dividerTheme: DividerThemeData(color: colores.borde, thickness: 1, space: 1),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: colores.inputRelleno,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 14),
-      hintStyle: textTheme.bodyLarge?.copyWith(color: colores.placeholder),
-      errorStyle: TextStyle(color: colorScheme.error, fontSize: 12),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_radioInputOscuro),
-        borderSide: BorderSide(color: colores.bordeInput),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_radioInputOscuro),
-        borderSide: BorderSide(color: colores.bordeInput),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_radioInputOscuro),
-        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_radioInputOscuro),
-        borderSide: BorderSide(color: colorScheme.error),
-      ),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        disabledBackgroundColor: colorScheme.primary.withValues(alpha: .5),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radioBotonOscuro)),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        elevation: 4,
-        shadowColor: colores.oro.withValues(alpha: .32),
-        textStyle: const TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 15.5,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        backgroundColor: colorScheme.surfaceContainerHighest,
-        foregroundColor: colorScheme.onSurfaceVariant,
-        side: BorderSide.none,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radioBotonOscuro)),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        textStyle: const TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 14.5,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    ),
-    checkboxTheme: CheckboxThemeData(
-      fillColor: WidgetStatePropertyAll(colorScheme.primary),
-      checkColor: WidgetStatePropertyAll(colorScheme.onPrimary),
-      side: BorderSide.none,
-    ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-    extensions: const [colores],
-  );
-}
-
 TextTheme _textTheme(Color colorTexto) {
   return TextTheme(
     // Kicker: "COLPORTAJE · URUGUAY".
@@ -196,7 +106,7 @@ TextTheme _textTheme(Color colorTexto) {
       fontWeight: FontWeight.w600,
       color: colorTexto,
     ),
-    // Título: "Iniciá tu jornada".
+    // Título: "Iniciá tu jornada". Serif 600 (#121): Source Serif 4.
     headlineMedium: TextStyle(
       fontFamily: 'SourceSerif4',
       fontSize: 30,

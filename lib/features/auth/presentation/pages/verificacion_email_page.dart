@@ -157,16 +157,14 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
-    final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    const paddingHorizontal = 30.0;
 
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
                 child: IntrinsicHeight(
@@ -176,7 +174,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
                       const SizedBox(height: 40),
                       Text(
                         'VERIFICACIÓN DE EMAIL',
-                        style: theme.textTheme.labelSmall?.copyWith(color: colores.oro),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(

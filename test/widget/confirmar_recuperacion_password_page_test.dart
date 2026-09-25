@@ -476,43 +476,35 @@ void main() {
   });
 
   group('Accesibilidad', () {
-    for (final brillo in [Brightness.light, Brightness.dark]) {
-      for (final enlace in EnlaceRecuperacion.values) {
-        testWidgets(
-          '${brillo.name}, enlace ${enlace.name}: tamaño de toque, etiquetas y contraste',
-          (tester) async {
-            final handle = tester.ensureSemantics();
-            tester.platformDispatcher.platformBrightnessTestValue = brillo;
-            addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-            tester.view.physicalSize = const Size(390, 844);
-            tester.view.devicePixelRatio = 1;
-            addTearDown(tester.view.reset);
-            await _montar(tester, enlace: enlace);
+    // Paleta única 1b (#121): sin tema oscuro, así que ya no hace falta correr esto por brillo ni
+    // saltear el contraste del error (el rojo de `ColorScheme.dark().error` sobre navy, que no
+    // llegaba a 4.5:1, se fue junto con el tema oscuro).
+    for (final enlace in EnlaceRecuperacion.values) {
+      testWidgets('enlace ${enlace.name}: tamaño de toque, etiquetas y contraste', (tester) async {
+        final handle = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _montar(tester, enlace: enlace);
 
-            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-            if (enlace == EnlaceRecuperacion.valido) {
-              // Con los errores de cada campo y el error general a la vista.
-              _recuperacion.simularSinConexion = true;
-              await _completar(tester, 'corta', repetida: 'otra');
-              await _tocarGuardar(tester);
-              await _completar(tester, 'NuevaClave1');
-              await _tocarGuardar(tester);
-              await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-              await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-              // El rojo de error del tema oscuro (`ColorScheme.dark().error`) no llega a 4.5:1 sobre
-              // el navy; es del tema, no de esta pantalla (queda anotado en el PR). En claro sí.
-              if (brillo == Brightness.light) {
-                await expectLater(tester, meetsGuideline(textContrastGuideline));
-              }
-            }
-            handle.dispose();
-          },
-        );
-      }
+        if (enlace == EnlaceRecuperacion.valido) {
+          // Con los errores de cada campo y el error general a la vista.
+          _recuperacion.simularSinConexion = true;
+          await _completar(tester, 'corta', repetida: 'otra');
+          await _tocarGuardar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+        }
+        handle.dispose();
+      });
     }
 
     for (final enlace in EnlaceRecuperacion.values) {

@@ -76,8 +76,6 @@ class ColportoresApp extends ConsumerWidget {
         navigatorKey: navigatorKeyColportores,
         title: 'Colportores',
         theme: temaClaro(),
-        darkTheme: temaOscuro(),
-        themeMode: ThemeMode.system,
         home: sesion.when(
           loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
           error: (_, _) => const LoginPage(),

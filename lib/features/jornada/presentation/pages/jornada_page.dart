@@ -230,17 +230,14 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final ahora = ref.watch(relojJornadaProvider)();
     _ahoraMostrado = ahora;
     final estado = ref.watch(jornadaActualProvider(widget.sesion.usuarioId));
-    final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    const paddingHorizontal = 30.0;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: theme.scaffoldBackgroundColor,
-        // Sin esto los íconos de la barra salen con `onSurfaceVariant`, que en el tema oscuro es
-        // casi negro sobre el navy.
         foregroundColor: theme.colorScheme.onSurface,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -264,15 +261,13 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(paddingHorizontal, 12, paddingHorizontal, 32),
+              padding: const EdgeInsets.fromLTRB(paddingHorizontal, 12, paddingHorizontal, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
                     fechaLarga(ahora).toUpperCase(),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: esOscuro ? colores.oro : theme.colorScheme.primary,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
                   ),
                   const SizedBox(height: 8),
                   Text('Tu jornada', style: theme.textTheme.headlineMedium),
@@ -482,12 +477,9 @@ class _TarjetaEstado extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final esquema = theme.colorScheme;
 
-    final fondo = activa
-        ? esquema.primary
-        : (esOscuro ? colores.inputRelleno : esquema.surfaceContainerHighest);
+    final fondo = activa ? esquema.primary : esquema.surfaceContainerHighest;
     final texto = activa ? esquema.onPrimary : esquema.onSurface;
     final textoSecundario = activa ? esquema.onPrimary : colores.gris;
 
@@ -573,8 +565,6 @@ class _JornadaActiva extends StatelessWidget {
         FilledButton.icon(
           key: const Key('jornada_iniciar'),
           onPressed: null,
-          // El tema oscuro le da sombra dorada al botón; deshabilitado queda sucia.
-          style: FilledButton.styleFrom(elevation: 0, shadowColor: Colors.transparent),
           icon: const Icon(Icons.lock_outline),
           label: const Text('Iniciar jornada'),
         ),
@@ -623,13 +613,12 @@ class _SelectorHora extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final esquema = theme.colorScheme;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       decoration: BoxDecoration(
-        color: esOscuro ? colores.inputRelleno : esquema.surfaceContainerHighest,
+        color: esquema.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colores.borde, width: 1.5),
       ),
@@ -699,7 +688,6 @@ class _ResumenJornada extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final esquema = theme.colorScheme;
     final fin = jornada.fin ?? jornada.inicio;
     final duracion = jornada.duracion ?? Duration.zero;
@@ -707,7 +695,7 @@ class _ResumenJornada extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: esOscuro ? colores.inputRelleno : esquema.surfaceContainerHighest,
+        color: esquema.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colores.borde, width: 1.5),
       ),
@@ -761,12 +749,9 @@ class _Aviso extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final esquema = theme.colorScheme;
 
-    final fondo = esError
-        ? esquema.errorContainer
-        : (esOscuro ? colores.inputRelleno : esquema.surfaceContainerHighest);
+    final fondo = esError ? esquema.errorContainer : esquema.surfaceContainerHighest;
     final color = esError ? esquema.onErrorContainer : esquema.onSurface;
 
     return Semantics(
