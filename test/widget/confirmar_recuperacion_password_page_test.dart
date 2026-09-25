@@ -264,6 +264,24 @@ void main() {
 
       expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
     });
+
+    testWidgets(
+      'dos enlaces distintos seguidos SIN que el usuario haga nada en el medio (la raíz los '
+      'resuelve sola con popUntil+push): una sola pantalla, con el segundo enlace, y suelta la '
+      'sesión que había dejado el primero',
+      (tester) async {
+        await _montar(tester);
+        expect(_guardar, findsOneWidget, reason: 'primer enlace: válido, formulario a la vista');
+
+        _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ConfirmarRecuperacionPasswordPage), findsOneWidget);
+        expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+        expect(_guardar, findsNothing);
+        expect(_recuperacion.abandonos, 1, reason: 'suelta la sesión que dejó el enlace válido');
+      },
+    );
   });
 
   group('Validación de la contraseña nueva', () {
