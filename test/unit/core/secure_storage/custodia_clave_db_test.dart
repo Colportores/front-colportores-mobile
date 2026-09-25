@@ -71,7 +71,9 @@ final class _AlmacenQueFallaAlEscribir implements AlmacenSeguro {
 }
 
 /// Almacén en el que, justo después de `borrarTodo`, el refresco automático de Supabase guarda una
-/// sesión nueva y adelanta el reloj: la carrera de `reconstruirAlmacen` (#122).
+/// sesión nueva y adelanta el reloj. Es **solo ese orden** de la carrera de `reconstruirAlmacen`
+/// (#122): un refresco antes de `borrarTodo`, o un cierre de sesión en el medio, no están cubiertos
+/// (ver el dartdoc del método).
 final class _AlmacenConRefrescoConcurrente implements AlmacenSeguro {
   _AlmacenConRefrescoConcurrente(this._interno);
 
@@ -418,8 +420,9 @@ void main() {
       });
     }
 
-    test('dado que el refresco de Supabase guarda una sesión nueva en el medio, no la pisa con la '
-        'vieja (#122)', () async {
+    // Solo el orden "refresco después de borrarTodo": el único que cubre reconstruirAlmacen.
+    test('dado que el refresco de Supabase guarda una sesión nueva después de borrarTodo, no la '
+        'pisa con la vieja (#122)', () async {
       await almacen.escribir(ClaveSegura.sesionAuth, 'sesion-vieja');
       await almacen.escribir(ClaveSegura.relojSesion, '2026-09-25T12:00:00.000Z');
       await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');

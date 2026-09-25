@@ -212,10 +212,16 @@ final class CustodiaClaveDb {
   /// que no es de la DB ([seConservanAlReconstruir]) que se pueda leer. **No** toca el archivo de
   /// la DB ni el envoltorio. No destruye [dek]: sigue siendo de quien la pasó.
   ///
-  /// Lo conservado se reescribe **solo si no volvió a aparecer** (#122): entre la lectura y el
-  /// final, el refresco automático de Supabase puede guardar una sesión nueva (y adelantar el
-  /// reloj), y pisarla con la vieja haría que el servidor detecte un refresh token reutilizado y
-  /// cierre la sesión.
+  /// Lo conservado se reescribe **solo si no volvió a aparecer** (#122). Eso cubre un solo orden:
+  /// el refresco automático de Supabase guarda una sesión nueva (o adelanta el reloj) **después**
+  /// de `borrarTodo`, y no se pisa con la vieja (pisarla haría que el servidor detecte un refresh
+  /// token reutilizado y cierre la sesión). **No** cubre:
+  /// - un refresco entre `_leerConservables` y `borrarTodo`: se borra la sesión nueva y se reescribe
+  ///   la vieja, con el refresh token ya usado;
+  /// - un cierre de sesión en el medio: la sesión leída antes vuelve a escribirse (ya pasaba antes
+  ///   de #122).
+  /// Sin transacciones en el Keystore, cerrar esas ventanas es dejar de reescribir la sesión, el
+  /// reloj y la marca de migrada: lo decide Cristian.
   ///
   /// **La marca va antes que la DEK.** Si se corta en el medio queda "marca sin DEK" o nada, y con
   /// la DB en disco los dos llevan a la recuperación guiada. Al revés podría quedar "DEK sin marca",
