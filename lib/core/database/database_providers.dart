@@ -24,7 +24,7 @@ DatabaseHelper databaseHelper(Ref ref) {
 /// o se cierra (un `AppDatabase` cerrado nunca queda cacheado en un consumidor). Misma forma que
 /// `SesionNotifier`: el estado sigue a la sesión.
 ///
-/// [abrir] lo llama el flujo de login de HU-AUTH-009 (#27) con la clave derivada; [cerrar] lo
+/// [abrir] lo llama el flujo de HU-AUTH-009 (`InicializarDbLocalUseCase`) con la DEK; [cerrar] lo
 /// llama `SesionNotifier.cerrarSesion`.
 @Riverpod(keepAlive: true)
 class DbLocalNotifier extends _$DbLocalNotifier {
@@ -36,7 +36,7 @@ class DbLocalNotifier extends _$DbLocalNotifier {
   @override
   AppDatabase? build() => null;
 
-  /// Abre la DB con [clave] (ver `DatabaseHelper.abrir` para los errores) y la publica.
+  /// Abre la DB con la DEK [clave] (ver `DatabaseHelper.abrir` para los errores) y la publica.
   Future<AppDatabase> abrir(ClaveDb clave) async {
     final helper = ref.read(databaseHelperProvider);
     _helperEnUso = true;
@@ -55,6 +55,7 @@ class DbLocalNotifier extends _$DbLocalNotifier {
   /// entornos donde la DB no se cableó (tests de widgets, Sprint 2). Una vez usado, siempre se le
   /// delega: `DatabaseHelper.cerrar` ya es no-op sin DB abierta.
   Future<void> cerrar() async {
+    ref.read(cierresDbLocalProvider)._registrar();
     if (!_helperEnUso) return;
     try {
       await ref.read(databaseHelperProvider).cerrar();
@@ -63,3 +64,26 @@ class DbLocalNotifier extends _$DbLocalNotifier {
     }
   }
 }
+
+/// Cuántas veces se pidió cerrar la DB local ([DbLocalNotifier.cerrar]), haya habido algo para
+/// cerrar o no.
+///
+/// Es la señal con la que el flujo de HU-AUTH-009 detecta un cierre de sesión que llegó mientras
+/// preparaba la DEK (Argon2id tarda de 1 a 2 s), **antes** de pedir la apertura: ese cierre no
+/// tiene nada que cerrar y sale enseguida, y una apertura que llegue después dejaría la DB abierta
+/// sin sesión (revisión del PR #44). Se cuenta en la primera línea de [DbLocalNotifier.cerrar],
+/// antes de cualquier `await` y sin condiciones.
+///
+/// Vive fuera del notifier para que la API pública de este siga siendo solo su `state`, la DB
+/// (regla `avoid_public_notifier_properties` de riverpod_lint). Se lee en forma sincrónica.
+final class CierresDbLocal {
+  int _pedidos = 0;
+
+  /// Pedidos de cierre hasta ahora.
+  int get pedidos => _pedidos;
+
+  void _registrar() => _pedidos++;
+}
+
+@Riverpod(keepAlive: true)
+CierresDbLocal cierresDbLocal(Ref ref) => CierresDbLocal();

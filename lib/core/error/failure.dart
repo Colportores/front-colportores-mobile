@@ -180,3 +180,118 @@ final class FailureInesperado extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// El almacén seguro del dispositivo (Keystore/Keychain) falló, o lo que guarda no se puede
+/// interpretar (HU-AUTH-009). El mensaje es el de la HU con el cambio que decidió Cristian el 25/09
+/// (#26): en Android reinstalar borra la DB, así que dice "consultá a soporte antes de reinstalar".
+final class FailureAlmacenSeguro extends Failure {
+  const FailureAlmacenSeguro()
+    : super(
+        mensaje:
+            'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de '
+            'reinstalar la app.',
+        codigo: 'DB_ALMACEN_SEGURO',
+      );
+}
+
+/// No hay espacio en disco para crear la DB local (HU-AUTH-009). El mensaje es el que fija la HU.
+final class FailureSinEspacio extends Failure {
+  const FailureSinEspacio()
+    : super(mensaje: 'No hay espacio suficiente para preparar el app', codigo: 'DB_SIN_ESPACIO');
+}
+
+/// La DEK que guarda el almacén seguro no abre la DB local que hay en el dispositivo: el archivo o
+/// el almacén se corrompieron (ADR-006). **No se borra nada**: los datos siguen en el archivo.
+final class FailureClaveDbIncorrecta extends Failure {
+  const FailureClaveDbIncorrecta()
+    : super(
+        mensaje:
+            'No pudimos abrir los datos guardados en este teléfono. No se borró nada: consultá a '
+            'soporte antes de reinstalar la app.',
+        codigo: 'DB_CLAVE_INCORRECTA',
+      );
+}
+
+/// El equipo no tiene bloqueo de pantalla (PIN, patrón, contraseña ni biometría), y sin él no se
+/// inicializa la DB local (ADR-006, HU-AUTH-009). [mensaje] explica por qué y cómo configurarlo.
+final class FailureSinBloqueoPantalla extends Failure {
+  const FailureSinBloqueoPantalla()
+    : super(
+        mensaje:
+            'Para proteger los datos de tus clientes, tu teléfono necesita un bloqueo de pantalla. '
+            'Configurá un PIN, un patrón, una contraseña o tu huella en los ajustes de seguridad '
+            'del teléfono y volvé a intentar.',
+        codigo: 'DB_SIN_BLOQUEO_PANTALLA',
+      );
+}
+
+/// El Keystore del equipo es por software (Supuesto S10, HU-AUTH-009): hace falta el consentimiento
+/// explícito del usuario para seguir. No es un error: la UI muestra la advertencia (el [mensaje] es
+/// el texto literal de la HU) con "Entiendo el riesgo y quiero continuar" y "Cancelar".
+final class FailureAlmacenPocoSeguro extends Failure {
+  const FailureAlmacenPocoSeguro()
+    : super(
+        mensaje:
+            'Tu dispositivo tiene almacenamiento menos seguro. Los datos siguen cifrados pero el '
+            'nivel de protección es menor.',
+        codigo: 'DB_ALMACEN_SOFTWARE',
+      );
+}
+
+/// La DB local es de una versión más nueva de la app (HU-AUTH-009): no se migra ni se borra. La UI
+/// muestra una pantalla bloqueante con el botón **Actualizar** y no ofrece empezar de nuevo.
+final class FailureEsquemaPosterior extends Failure {
+  const FailureEsquemaPosterior()
+    : super(
+        mensaje:
+            'Tus datos son de una versión más nueva de la app. Actualizala para seguir usando tus '
+            'datos.',
+        codigo: 'DB_ESQUEMA_POSTERIOR',
+      );
+}
+
+/// El almacén seguro falló (o perdió la DEK) con la DB en el teléfono, y hay un envoltorio por
+/// contraseña: la DEK se recupera con la contraseña (recuperación guiada de ADR-006, texto literal
+/// del ADR). No se borró nada.
+final class FailureAlmacenSeguroRecuperable extends Failure {
+  const FailureAlmacenSeguroRecuperable()
+    : super(
+        mensaje: 'Tu almacenamiento seguro falló. Ingresá tu contraseña para recuperar tus datos',
+        codigo: 'DB_ALMACEN_RECUPERABLE',
+      );
+}
+
+/// El almacén seguro falló (o perdió la DEK) con la DB en el teléfono, y **no** hay envoltorio por
+/// contraseña (usuario de Google sin backup): ADR-006 muestra el mensaje de [FailureAlmacenSeguro]
+/// y ofrece "empezar de nuevo", que avisa qué se pierde. **Nunca se borra sin ese sí.**
+final class FailureAlmacenSeguroSinRecuperacion extends Failure {
+  const FailureAlmacenSeguroSinRecuperacion()
+    : super(
+        mensaje:
+            'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de '
+            'reinstalar la app.',
+        codigo: 'DB_ALMACEN_SIN_RECUPERACION',
+      );
+}
+
+/// En la recuperación guiada (ADR-006), la contraseña no abre la DEK envuelta de este teléfono.
+/// Puede ser la contraseña vieja: el envoltorio queda con la que había al armarlo si después se
+/// cambió en otro lado (ADR-006, riesgos abiertos).
+final class FailurePasswordNoAbreDatos extends Failure {
+  const FailurePasswordNoAbreDatos()
+    : super(
+        mensaje:
+            'Esa contraseña no abre tus datos guardados en este teléfono. Si la cambiaste hace '
+            'poco, probá con la anterior.',
+        codigo: 'DB_PASSWORD_NO_ABRE',
+      );
+}
+
+/// La sesión se cerró (o no había) mientras se preparaba la DB local: no se abre nada sin sesión.
+final class FailureSesionCerrada extends Failure {
+  const FailureSesionCerrada()
+    : super(
+        mensaje: 'La sesión se cerró antes de terminar de preparar tus datos',
+        codigo: 'AUTH_SESION_CERRADA',
+      );
+}

@@ -44,6 +44,11 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.6     # directorio de la DB local (core/database)
   riverpod_annotation: ^4.0.0
+  # libsodium (ADR-006, S11): Argon2id y el cifrado autenticado de la DEK envuelta por contraseña.
+  # ADR-006 nombra `sodium` + `sodium_libs`, pero `sodium_libs` quedó discontinuado en la 4.x
+  # ("replaced by sodium"): desde la 4.0, `sodium` compila libsodium con build hooks para cada
+  # plataforma (como `sqlite3`), así que es el único paquete necesario. La 4.1 pide Dart 3.13.
+  sodium: ^4.0.4
   sqlite3: ^3.5.2           # solo para `PRAGMA key` en el setup de la conexión (core/database)
   supabase_flutter: ^2.17.2 # Supabase Auth (ADR-016, HU-AUTH-003); trae app_links (deep link OAuth)
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
