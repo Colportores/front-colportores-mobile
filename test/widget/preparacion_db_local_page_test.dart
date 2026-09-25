@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/preparacion_db_local_page.dart';
+import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/password_para_db_local.dart';
@@ -242,6 +243,25 @@ void main() {
       expect(_principal, findsOneWidget);
       expect(_db.envoltorio!.password, _password);
       expect(_db.llamadas, isNot(contains('descartar')));
+    });
+
+    testWidgets('quien no recuerda la contraseña (entra con Google, por ejemplo) no queda '
+        'encerrado: "¿Olvidaste tu contraseña?" lleva a restablecerla con el email de la sesión '
+        '(N1)', (tester) async {
+      _dbExistente(dekEnAlmacen: true, conEnvoltorio: false);
+      await _entrar(tester, restaurada: true);
+      expect(find.text(TextosPreparacionDbLocal.olvidePassword), findsOneWidget);
+
+      await _tocar(tester, 'preparacion_db_olvide_password');
+
+      expect(find.byType(RecuperacionPasswordPage), findsOneWidget);
+      final email = tester.widget<TextField>(find.byKey(const Key('recuperacion_password_email')));
+      expect(email.controller!.text, _email);
+      expect(_db.llamadas, isNot(contains('descartar')), reason: 'no toca la DB del teléfono');
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
+      await tester.pumpAndSettle();
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
     });
   });
 

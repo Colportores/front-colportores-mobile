@@ -9,6 +9,7 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/inicializar_db_local_use_case.dart';
 import '../providers/preparacion_db_local_notifier.dart';
 import '../providers/sesion_notifier.dart';
+import 'recuperacion_password_page.dart';
 
 /// Textos de la pantalla. Los de la HU y de ADR-006 van literales (en los `Failure`); los demás
 /// son propios y están **para confirmar** (#27).
@@ -29,6 +30,9 @@ abstract final class TextosPreparacionDbLocal {
   static const confirmandoPassword = 'Confirmando tu contraseña…';
 
   static const passwordIncorrecta = 'Esa no es la contraseña de tu cuenta. Probá de nuevo.';
+
+  /// Lleva a restablecerla (HU-AUTH-004), revisión del PR #130, N1.
+  static const olvidePassword = '¿Olvidaste tu contraseña?';
 
   /// Para `mensajePara`: "Necesitás conexión para confirmar tu contraseña." (#94).
   static const accionConfirmarPassword = 'confirmar tu contraseña.';
@@ -70,7 +74,8 @@ abstract final class TextosPreparacionDbLocal {
 /// - la advertencia del Keystore por software (S10), con el consentimiento explícito;
 /// - la recuperación con la contraseña (ADR-006);
 /// - la contraseña de la cuenta, cuando entra con contraseña y la DB quedaría sin envoltorio (una
-///   sesión restaurada): se confirma contra el servidor antes de seguir (revisión del PR #130);
+///   sesión restaurada): se confirma contra el servidor antes de seguir (revisión del PR #130),
+///   con "¿Olvidaste tu contraseña?" para quien no la recuerda;
 /// - "Reintentar" ante una falla, y "empezar de nuevo" —que borra, con confirmación— recién
 ///   después de un reintento que volvió a fallar;
 /// - la pantalla bloqueante de una DB de una versión más nueva de la app, sin ofrecer borrar.
@@ -105,6 +110,19 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     resultado.fold(
       (falla) => messenger.showSnackBar(SnackBar(content: Text(falla.mensaje))),
       (_) => null,
+    );
+  }
+
+  /// Una cuenta con contraseña que no la recuerda —p. ej. entra siempre con Google— no queda
+  /// encerrada acá (revisión del PR #130, N1): la restablece (HU-AUTH-004) con el email de la
+  /// sesión. Al guardar la nueva, esa pantalla cierra la sesión, y el login con la nueva protege
+  /// la DB.
+  void _olvidePassword() {
+    final email = ref.read(sesionProvider).value?.email;
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => RecuperacionPasswordPage(emailInicial: email)),
+      ),
     );
   }
 
@@ -281,6 +299,12 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         key: const Key('preparacion_db_confirmar_password'),
         onPressed: confirmar,
         child: const Text('Confirmar contraseña'),
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        key: const Key('preparacion_db_olvide_password'),
+        onPressed: _olvidePassword,
+        child: const Text(TextosPreparacionDbLocal.olvidePassword),
       ),
       const SizedBox(height: 8),
       _botonCerrarSesion(),

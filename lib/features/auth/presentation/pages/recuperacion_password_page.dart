@@ -23,7 +23,11 @@ import '../providers/auth_providers.dart';
 /// distinguirlos. Los errores reales del servicio (sin conexión, falla del servidor) sí llegan
 /// como [Failure] visible, con el mismo tratamiento que el resto del flujo de auth.
 class RecuperacionPasswordPage extends ConsumerStatefulWidget {
-  const RecuperacionPasswordPage({super.key});
+  const RecuperacionPasswordPage({super.key, this.emailInicial});
+
+  /// El email con el que arranca el campo, si ya se sabe: la preparación de la DB local la abre
+  /// con el de la sesión (revisión del PR #130, N1). Se puede cambiar.
+  final String? emailInicial;
 
   @override
   ConsumerState<RecuperacionPasswordPage> createState() => _RecuperacionPasswordPageState();
@@ -46,7 +50,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
       'Si restablecés tu contraseña y tenés datos locales en otro dispositivo, no podrás '
       'abrirlos ahí. Tendrás que restaurar desde tu backup.';
 
-  final _email = TextEditingController();
+  late final _email = TextEditingController(text: widget.emailInicial);
   Timer? _timer;
   int _segundosRestantes = 0;
 
