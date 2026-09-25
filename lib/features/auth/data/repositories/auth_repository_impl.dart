@@ -309,6 +309,30 @@ final class AuthRepositoryImpl implements AuthRepository {
     return const Right(unit);
   }
 
+  @override
+  Future<Either<Failure, Unit>> revocarSesionReemplazada(Sesion reemplazada) async {
+    try {
+      await _remote.revocarSesion(reemplazada.accessToken);
+      _log.info(LogModulo.auth, 'SESION_REEMPLAZADA_REVOCADA', 'se revocó la sesión anterior', {
+        'user_id': reemplazada.usuarioId,
+      });
+      return const Right(unit);
+    } on Object catch (e) {
+      // Best-effort: el usuario ya está adentro con la sesión nueva y no puede hacer nada con esto.
+      final failure = switch (e) {
+        final AuthRemoteException remota => _traducir(remota),
+        _ => FailureInesperado(causa: e),
+      };
+      _log.warn(
+        LogModulo.auth,
+        'SESION_REEMPLAZADA_REVOCACION_FAIL',
+        'la sesión anterior sigue viva en el servidor',
+        {'user_id': reemplazada.usuarioId, 'codigo': failure.codigo},
+      );
+      return Left(failure);
+    }
+  }
+
   /// El refresh en curso, si hay uno: las llamadas simultáneas lo comparten (HU-AUTH-007, "coordinar
   /// refresh único").
   Future<Either<Failure, Sesion>>? _renovacionEnCurso;

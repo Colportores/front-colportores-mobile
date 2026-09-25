@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
@@ -407,7 +408,19 @@ final class AuthRemoteDataSourceSupabase
     email: sesion.user.email ?? '',
     accessToken: sesion.accessToken,
     expiraEn: PoliticaSesion.expiraEn(emisionDelJwt(sesion.accessToken) ?? DateTime.now()),
+    entraConPassword: entraConPassword(sesion.user.appMetadata),
   );
+
+  /// Si la cuenta tiene contraseña: `providers` de Supabase incluye `email` (una cuenta de Google
+  /// que después creó una contraseña también). Sin esa información, ante la duda, `true`: se pide
+  /// la contraseña para proteger la DB local (revisión del PR #130).
+  @visibleForTesting
+  static bool entraConPassword(Map<String, dynamic> appMetadata) {
+    final proveedores = appMetadata['providers'];
+    if (proveedores is List) return proveedores.contains('email');
+    final proveedor = appMetadata['provider'];
+    return proveedor is! String || proveedor == 'email';
+  }
 
   /// Ejecuta [accion] y traduce toda [AuthException] a la [AuthRemoteException] equivalente.
   /// Cualquier otra excepción sube tal cual (el repositorio la convierte en `FailureInesperado`).

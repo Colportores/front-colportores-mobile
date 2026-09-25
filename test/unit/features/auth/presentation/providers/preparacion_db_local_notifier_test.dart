@@ -2,8 +2,12 @@
 // contraseña, y que la contraseña no quede en memoria más de lo necesario. Los estados de la
 // pantalla se prueban en `test/widget/preparacion_db_local_page_test.dart`.
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -20,16 +24,18 @@ const _password = 'Secreto123';
 
 void main() {
   late DbLocalRepositoryEnMemoria db;
+  late AuthRemoteDataSourceEnMemoria remote;
+  late AuthLocalDataSourceEnMemoria local;
   late ProviderContainer container;
 
   setUp(() {
     db = DbLocalRepositoryEnMemoria();
+    remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password});
+    local = AuthLocalDataSourceEnMemoria();
     container = ProviderContainer(
       overrides: [
-        authRemoteDataSourceProvider.overrideWithValue(
-          AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
-        ),
-        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        authRemoteDataSourceProvider.overrideWithValue(remote),
+        authLocalDataSourceProvider.overrideWithValue(local),
         dbLocalRepositoryProvider.overrideWithValue(db),
       ],
     );
@@ -40,7 +46,11 @@ void main() {
   Future<EstadoPreparacionDbLocal> terminada() async {
     final fin = Completer<EstadoPreparacionDbLocal>();
     final sub = container.listen(preparacionDbLocalProvider, (_, estado) {
-      if (estado is! PreparandoDbLocal && estado is! RecuperandoDbLocal && !fin.isCompleted) {
+      final enCurso =
+          estado is PreparandoDbLocal ||
+          estado is RecuperandoDbLocal ||
+          estado is ConfirmandoPasswordDbLocal;
+      if (!enCurso && !fin.isCompleted) {
         fin.complete(estado);
       }
     }, fireImmediately: true);
@@ -100,6 +110,167 @@ void main() {
 
     final segunda = container.read(preparacionDbLocalProvider) as PreparacionDbLocalFallida;
     expect(segunda.reintentos, 1);
+  });
+
+  group('cuenta con contraseña sin envoltorio (revisión del PR #130)', () {
+    /// Una sesión restaurada: entró antes, así que no hay contraseña del login en memoria.
+    Future<void> restaurada() async {
+      await entrar();
+      container.read(passwordParaDbLocalProvider).olvidar();
+    }
+
+    test('dada una sesión restaurada sin DB, pide la contraseña antes de crear nada; confirmada '
+        'contra el servidor, crea la DB con envoltorio', () async {
+      await restaurada();
+
+      final pedido = await terminada() as PreparacionDbLocalFallida;
+      expect(pedido.falla, const FailurePasswordParaProteger());
+      expect(db.llamadas, isNot(contains('crearDek')));
+      expect(db.llamadas, isNot(contains('descartar')));
+
+      final notifier = container.read(preparacionDbLocalProvider.notifier);
+      await notifier.confirmarPassword('equivocada');
+      final error = container.read(preparacionDbLocalProvider) as PreparacionDbLocalFallida;
+      expect(error.errorRecuperacion, const FailureCredencialesInvalidas());
+      expect(db.envoltorio, isNull);
+
+      await notifier.confirmarPassword(_password);
+
+      expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+      expect(db.envoltorio!.password, _password);
+      expect(container.read(passwordParaDbLocalProvider).actual, isNull);
+    });
+
+    test(
+      'dada una DB existente sin envoltorio, no la da por lista hasta tener la contraseña',
+      () async {
+        final dek = Uint8List.fromList(List<int>.filled(32, 5));
+        db
+          ..marca = MarcaDbLocal.puesta
+          ..archivo = true
+          ..claveDelArchivo = dek
+          ..dekEnAlmacen = dek;
+        await restaurada();
+
+        final pedido = await terminada() as PreparacionDbLocalFallida;
+        expect(pedido.falla, const FailurePasswordParaProteger());
+        expect(db.abierta, isFalse);
+
+        await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
+
+        expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+        expect(db.envoltorio!.password, _password);
+        expect(db.claveDelArchivo, dek, reason: 'la misma DB, nunca una nueva');
+      },
+    );
+
+    /// Una sesión que ya estaba guardada al abrir la app, con su propio token: la que el login de
+    /// la confirmación reemplaza.
+    Future<String> guardadaAlAbrir() async {
+      final delServidor = await AuthRemoteDataSourceEnMemoria(
+        credenciales: const {_email: _password},
+      ).iniciarSesion(email: _email, password: _password);
+      await local.guardarSesion(
+        SesionModel(
+          usuarioId: delServidor.usuarioId,
+          email: _email,
+          accessToken: 'token-restaurado',
+          expiraEn: delServidor.expiraEn,
+        ),
+      );
+      expect((await container.read(sesionProvider.future))?.accessToken, 'token-restaurado');
+      return 'token-restaurado';
+    }
+
+    test('al confirmar la contraseña, revoca en el servidor la sesión restaurada, no la nueva '
+        '(N3)', () async {
+      final restaurada = await guardadaAlAbrir();
+      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+      await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
+      await pumpEventQueue();
+
+      expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+      expect(remote.revocaciones, [restaurada]);
+      expect(container.read(sesionProvider).value?.accessToken, isNot(restaurada));
+    });
+
+    test('si la revocación de la sesión restaurada falla, la DB igual queda lista (N3)', () async {
+      remote.fallaAlRevocar = const SinConexionException();
+      await guardadaAlAbrir();
+      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+      await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
+      await pumpEventQueue();
+
+      expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+      expect(db.envoltorio!.password, _password);
+      expect(remote.revocaciones, isEmpty);
+      expect(container.read(sesionProvider).value?.email, _email, reason: 'sigue adentro');
+    });
+
+    test('con Google no pide contraseña: abre sin envoltorio (ADR-006)', () async {
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+      expect(await terminada(), isA<DbLocalLista>());
+      expect(db.envoltorio, isNull);
+    });
+  });
+
+  group('la contraseña se olvida en SesionNotifier (revisión del PR #130)', () {
+    test('sin nadie escuchando la preparación, cerrar la sesión la olvida', () async {
+      await entrar();
+      expect(container.read(passwordParaDbLocalProvider).actual, _password);
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(container.read(passwordParaDbLocalProvider).actual, isNull);
+    });
+
+    test('empezar un login con Google olvida la de un ingreso anterior', () async {
+      await entrar();
+
+      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+
+      expect(container.read(passwordParaDbLocalProvider).actual, isNull);
+    });
+  });
+
+  test('si la falla cambia de tipo, los reintentos vuelven a 0: "empezar de nuevo" nunca aparece '
+      'la primera vez que se ve (revisión del PR #130)', () async {
+    db.fallas['nivel'] = const FailureAlmacenSeguro();
+    await entrar();
+    expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+    // Ahora el almacén perdió la DEK con la DB en disco: otra falla.
+    db
+      ..fallas.remove('nivel')
+      ..marca = MarcaDbLocal.puesta
+      ..archivo = true;
+    await container.read(preparacionDbLocalProvider.notifier).reintentar();
+
+    final otra = container.read(preparacionDbLocalProvider) as PreparacionDbLocalFallida;
+    expect(otra.falla, const FailureAlmacenSeguroSinRecuperacion());
+    expect(otra.reintentos, 0);
+  });
+
+  test('una preparación que termina después de que la sesión cambió no pisa el estado nuevo '
+      '(revisión del PR #130)', () async {
+    db.argon2idPendiente = Completer<void>();
+    final estados = <EstadoPreparacionDbLocal>[];
+    final sub = container.listen(preparacionDbLocalProvider, (_, e) => estados.add(e));
+    addTearDown(sub.close);
+    await entrar();
+    await db.pidioArgon2id.future;
+
+    await container.read(sesionProvider.notifier).cerrarSesion();
+    await entrar();
+    estados.clear();
+    db.argon2idPendiente!.complete();
+
+    expect(await terminada(), isA<DbLocalLista>());
+    expect(estados, isNot(contains(isA<SinSesionDbLocal>())));
   });
 
   test('la contraseña no aparece al imprimir el contenedor', () {

@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/inicializar_db_local_use_case.dart';
 import '../providers/preparacion_db_local_notifier.dart';
 import '../providers/sesion_notifier.dart';
+import 'recuperacion_password_page.dart';
 
 /// Textos de la pantalla. Los de la HU y de ADR-006 van literales (en los `Failure`); los demás
 /// son propios y están **para confirmar** (#27).
@@ -24,6 +26,16 @@ abstract final class TextosPreparacionDbLocal {
   // --- Para confirmar ---
 
   static const recuperando = 'Recuperando tus datos…';
+
+  static const confirmandoPassword = 'Confirmando tu contraseña…';
+
+  static const passwordIncorrecta = 'Esa no es la contraseña de tu cuenta. Probá de nuevo.';
+
+  /// Lleva a restablecerla (HU-AUTH-004), revisión del PR #130, N1.
+  static const olvidePassword = '¿Olvidaste tu contraseña?';
+
+  /// Para `mensajePara`: "Necesitás conexión para confirmar tu contraseña." (#94).
+  static const accionConfirmarPassword = 'confirmar tu contraseña.';
 
   static const preguntaRiesgo = '¿Querés continuar con este celular?';
 
@@ -61,6 +73,9 @@ abstract final class TextosPreparacionDbLocal {
 /// - el progreso, con el paso de 3 de la HU (nunca un spinner mudo);
 /// - la advertencia del Keystore por software (S10), con el consentimiento explícito;
 /// - la recuperación con la contraseña (ADR-006);
+/// - la contraseña de la cuenta, cuando entra con contraseña y la DB quedaría sin envoltorio (una
+///   sesión restaurada): se confirma contra el servidor antes de seguir (revisión del PR #130),
+///   con "¿Olvidaste tu contraseña?" para quien no la recuerda;
 /// - "Reintentar" ante una falla, y "empezar de nuevo" —que borra, con confirmación— recién
 ///   después de un reintento que volvió a fallar;
 /// - la pantalla bloqueante de una DB de una versión más nueva de la app, sin ofrecer borrar.
@@ -95,6 +110,19 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     resultado.fold(
       (falla) => messenger.showSnackBar(SnackBar(content: Text(falla.mensaje))),
       (_) => null,
+    );
+  }
+
+  /// Una cuenta con contraseña que no la recuerda —p. ej. entra siempre con Google— no queda
+  /// encerrada acá (revisión del PR #130, N1): la restablece (HU-AUTH-004) con el email de la
+  /// sesión. Al guardar la nueva, esa pantalla cierra la sesión, y el login con la nueva protege
+  /// la DB.
+  void _olvidePassword() {
+    final email = ref.read(sesionProvider).value?.email;
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => RecuperacionPasswordPage(emailInicial: email)),
+      ),
     );
   }
 
@@ -151,11 +179,17 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   List<Widget> _contenido(ThemeData theme) => switch (widget.estado) {
     PreparandoDbLocal(:final paso) => _progreso(theme, paso),
     RecuperandoDbLocal() => _progreso(theme, null, texto: TextosPreparacionDbLocal.recuperando),
+    ConfirmandoPasswordDbLocal() => _progreso(
+      theme,
+      null,
+      texto: TextosPreparacionDbLocal.confirmandoPassword,
+    ),
     AlmacenSoftwareRechazado() => _rechazado(theme),
     PreparacionDbLocalFallida(:final falla, :final reintentos, :final errorRecuperacion) =>
       switch (falla) {
         FailureAlmacenPocoSeguro() => _consentimiento(theme, falla),
         FailureAlmacenSeguroRecuperable() => _recuperacion(theme, falla, errorRecuperacion),
+        FailurePasswordParaProteger() => _confirmacionPassword(theme, falla, errorRecuperacion),
         FailureEsquemaPosterior() => _esquemaPosterior(theme, falla),
         FailureAlmacenSeguroSinRecuperacion() => _sinRecuperacion(theme, falla, reintentos),
         _ => _falla(theme, falla),
@@ -226,18 +260,70 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   ];
 
   List<Widget> _recuperacion(ThemeData theme, Failure falla, Failure? error) {
-    final colores = theme.extension<ColoresColportaje>()!;
-    final errorTexto = switch (error) {
-      FailureValidacion(:final campos) => campos['password'],
-      final Failure f => f.mensaje,
-      null => null,
-    };
     void recuperar() => unawaited(_notifier.recuperarConPassword(_password.text));
     return [
       _titulo(theme, 'Recuperá tus datos'),
       const SizedBox(height: 16),
       _mensaje(theme, falla.mensaje, const Key('preparacion_db_mensaje')),
       const SizedBox(height: 22),
+      ..._campoPassword(theme, error, recuperar),
+      const SizedBox(height: 24),
+      FilledButton(
+        key: const Key('preparacion_db_recuperar'),
+        onPressed: recuperar,
+        child: const Text('Recuperar mis datos'),
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton(
+        key: const Key('preparacion_db_reintentar'),
+        onPressed: () => unawaited(_notifier.reintentar()),
+        child: const Text('Reintentar sin la contraseña'),
+      ),
+      const SizedBox(height: 8),
+      _botonCerrarSesion(),
+    ];
+  }
+
+  /// Cuenta con contraseña y DB sin envoltorio (revisión del PR #130): se pide la contraseña antes
+  /// de seguir. Sin "reintentar": sin la contraseña, el resultado sería el mismo.
+  List<Widget> _confirmacionPassword(ThemeData theme, Failure falla, Failure? error) {
+    void confirmar() => unawaited(_notifier.confirmarPassword(_password.text));
+    return [
+      _titulo(theme, 'Confirmá tu contraseña'),
+      const SizedBox(height: 16),
+      _mensaje(theme, falla.mensaje, const Key('preparacion_db_mensaje')),
+      const SizedBox(height: 22),
+      ..._campoPassword(theme, error, confirmar),
+      const SizedBox(height: 24),
+      FilledButton(
+        key: const Key('preparacion_db_confirmar_password'),
+        onPressed: confirmar,
+        child: const Text('Confirmar contraseña'),
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        key: const Key('preparacion_db_olvide_password'),
+        onPressed: _olvidePassword,
+        child: const Text(TextosPreparacionDbLocal.olvidePassword),
+      ),
+      const SizedBox(height: 8),
+      _botonCerrarSesion(),
+    ];
+  }
+
+  List<Widget> _campoPassword(ThemeData theme, Failure? error, void Function() alEnviar) {
+    final colores = theme.extension<ColoresColportaje>()!;
+    final errorTexto = switch (error) {
+      FailureValidacion(:final campos) => campos['password'],
+      FailureCredencialesInvalidas() => TextosPreparacionDbLocal.passwordIncorrecta,
+      final FailureSinConexion f => mensajePara(
+        f,
+        accion: TextosPreparacionDbLocal.accionConfirmarPassword,
+      ),
+      final Failure f => f.mensaje,
+      null => null,
+    };
+    return [
       Text('CONTRASEÑA', style: theme.textTheme.labelMedium?.copyWith(color: colores.gris)),
       const SizedBox(height: 6),
       TextField(
@@ -246,7 +332,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         obscureText: !_mostrarPassword,
         autofillHints: const [AutofillHints.password],
         textInputAction: TextInputAction.done,
-        onSubmitted: (_) => recuperar(),
+        onSubmitted: (_) => alEnviar(),
         style: theme.textTheme.bodyLarge,
         decoration: InputDecoration(
           errorText: errorTexto,
@@ -262,20 +348,6 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
           ),
         ),
       ),
-      const SizedBox(height: 24),
-      FilledButton(
-        key: const Key('preparacion_db_recuperar'),
-        onPressed: recuperar,
-        child: const Text('Recuperar mis datos'),
-      ),
-      const SizedBox(height: 8),
-      OutlinedButton(
-        key: const Key('preparacion_db_reintentar'),
-        onPressed: () => unawaited(_notifier.reintentar()),
-        child: const Text('Reintentar sin la contraseña'),
-      ),
-      const SizedBox(height: 8),
-      _botonCerrarSesion(),
     ];
   }
 

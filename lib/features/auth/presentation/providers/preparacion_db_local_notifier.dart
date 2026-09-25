@@ -38,6 +38,11 @@ final class RecuperandoDbLocal extends EstadoPreparacionDbLocal {
   const RecuperandoDbLocal();
 }
 
+/// Confirmando la contraseña de la cuenta contra el servidor, para proteger la DB con ella.
+final class ConfirmandoPasswordDbLocal extends EstadoPreparacionDbLocal {
+  const ConfirmandoPasswordDbLocal();
+}
+
 /// La DB está abierta: la app sigue a la pantalla principal (o a HU-AUTH-008).
 final class DbLocalLista extends EstadoPreparacionDbLocal {
   const DbLocalLista();
@@ -45,11 +50,12 @@ final class DbLocalLista extends EstadoPreparacionDbLocal {
 
 /// La preparación no terminó. [falla] dice por qué y la pantalla elige qué ofrecer.
 ///
-/// - [reintentos]: cuántas veces el usuario tocó "Reintentar" y volvió a fallar. "Empezar de
-///   nuevo", que borra, recién se ofrece después de un reintento: una falla del almacén puede ser
-///   pasajera, y reintentar no cuesta nada (revisión del PR #81, punto 7).
-/// - [errorRecuperacion]: con [FailureAlmacenSeguroRecuperable], por qué no sirvió la contraseña
-///   que se probó (va debajo del campo).
+/// - [reintentos]: cuántas veces seguidas el usuario tocó "Reintentar" y volvió a fallar **por lo
+///   mismo** (si la falla cambia, vuelve a 0). "Empezar de nuevo", que borra, recién se ofrece
+///   después de un reintento: una falla del almacén puede ser pasajera, y reintentar no cuesta
+///   nada (revisión del PR #81, punto 7).
+/// - [errorRecuperacion]: con [FailureAlmacenSeguroRecuperable] o [FailurePasswordParaProteger],
+///   por qué no sirvió la contraseña que se probó (va debajo del campo).
 final class PreparacionDbLocalFallida extends EstadoPreparacionDbLocal {
   const PreparacionDbLocalFallida(this.falla, {this.reintentos = 0, this.errorRecuperacion});
 
@@ -69,7 +75,12 @@ final class AlmacenSoftwareRechazado extends EstadoPreparacionDbLocal {
 ///
 /// Se dispara solo: observa el usuario de `sesionProvider`, así que cubre el login con contraseña,
 /// el de Google, el registro con sesión y la sesión restaurada al abrir la app. Con la contraseña
-/// del login ([PasswordParaDbLocal]) arma el envoltorio; sin ella, abre sin él.
+/// del login ([PasswordParaDbLocal]) arma el envoltorio. Si la cuenta entra con contraseña y no
+/// está (sesión restaurada), la pide antes de crear la DB o de dar por lista una sin envoltorio
+/// ([FailurePasswordParaProteger], revisión del PR #130); con Google, abre sin él (ADR-006).
+///
+/// Cada método guarda `ref` antes de esperar y mira `mounted` en esa copia: si la sesión cambió
+/// en el medio, el provider se reconstruyó y lo que termina tarde no pisa el estado nuevo.
 ///
 /// Los flujos corren en `TurnoDbLocal`, así que dos toques seguidos no se pisan: el segundo
 /// encuentra la DB abierta y termina en [DbLocalLista].
@@ -92,11 +103,11 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
   /// Vuelve a intentar después de una falla (por ejemplo, un Keystore que no respondió o poco
   /// espacio que el usuario ya liberó).
   Future<void> reintentar() async {
-    final reintentos = switch (state) {
-      PreparacionDbLocalFallida(:final reintentos) => reintentos + 1,
-      _ => 0,
+    final (anterior, reintentos) = switch (state) {
+      PreparacionDbLocalFallida(:final falla, :final reintentos) => (falla, reintentos + 1),
+      _ => (null, 0),
     };
-    await _preparar(reintentos: reintentos);
+    await _preparar(fallaAnterior: anterior, reintentos: reintentos);
   }
 
   /// "Entiendo el riesgo y quiero continuar" (S10): sigue con el Keystore por software y registra
@@ -113,11 +124,12 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
   /// Recuperación guiada (ADR-006): la DEK se desenvuelve con [password]. Si la contraseña no
   /// abre, se queda en el formulario con el error.
   Future<void> recuperarConPassword(String password) async {
+    final r = ref;
     state = const RecuperandoDbLocal();
-    final resultado = await ref.read(recuperarDbLocalConPasswordUseCaseProvider)(
+    final resultado = await r.read(recuperarDbLocalConPasswordUseCaseProvider)(
       RecuperarDbLocalParams(password: password),
     );
-    if (!ref.mounted) return;
+    if (!r.mounted) return;
     state = resultado.fold(
       (falla) => switch (falla) {
         FailurePasswordNoAbreDatos() || FailureValidacion() => PreparacionDbLocalFallida(
@@ -130,12 +142,32 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     );
   }
 
+  /// La contraseña de la cuenta, para proteger la DB con ella ([FailurePasswordParaProteger]). Se
+  /// confirma contra el servidor (`SesionNotifier.confirmarPassword`): un envoltorio armado con
+  /// una contraseña equivocada no serviría el día que haga falta. Si no se pudo confirmar, se queda
+  /// en el formulario con el error.
+  Future<void> confirmarPassword(String password) async {
+    final r = ref;
+    state = const ConfirmandoPasswordDbLocal();
+    final falla = await r.read(sesionProvider.notifier).confirmarPassword(password);
+    if (!r.mounted) return;
+    if (falla != null) {
+      state = PreparacionDbLocalFallida(
+        const FailurePasswordParaProteger(),
+        errorRecuperacion: falla,
+      );
+      return;
+    }
+    await _preparar();
+  }
+
   /// "Empezar de nuevo" de ADR-006, **solo después del sí del usuario**: borra la DB que no se
   /// puede abrir y prepara una nueva.
   Future<void> empezarDeNuevo() async {
+    final r = ref;
     state = const PreparandoDbLocal();
-    final resultado = await ref.read(empezarDeNuevoDbLocalUseCaseProvider)(const NoParams());
-    if (!ref.mounted) return;
+    final resultado = await r.read(empezarDeNuevoDbLocalUseCaseProvider)(const NoParams());
+    if (!r.mounted) return;
     if (resultado case Left(value: final falla)) {
       state = _fallida(falla);
       return;
@@ -143,20 +175,33 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     await _preparar();
   }
 
-  Future<void> _preparar({bool aceptaAlmacenSoftware = false, int reintentos = 0}) async {
-    if (!ref.mounted) return;
+  Future<void> _preparar({
+    bool aceptaAlmacenSoftware = false,
+    Failure? fallaAnterior,
+    int reintentos = 0,
+  }) async {
+    final r = ref;
+    if (!r.mounted) return;
     state = const PreparandoDbLocal();
-    final resultado = await ref.read(inicializarDbLocalUseCaseProvider)(
+    final resultado = await r.read(inicializarDbLocalUseCaseProvider)(
       InicializarDbLocalParams(
-        password: ref.read(passwordParaDbLocalProvider).actual,
+        password: r.read(passwordParaDbLocalProvider).actual,
+        requiereEnvoltorio: r.read(sesionProvider).value?.entraConPassword ?? true,
         aceptaAlmacenSoftware: aceptaAlmacenSoftware,
         alAvanzar: (paso) {
-          if (ref.mounted) state = PreparandoDbLocal(paso: paso);
+          if (r.mounted) state = PreparandoDbLocal(paso: paso);
         },
       ),
     );
-    if (!ref.mounted) return;
-    state = resultado.fold((falla) => _fallida(falla, reintentos: reintentos), (_) => _lista());
+    if (!r.mounted) return;
+    state = resultado.fold(
+      (falla) => _fallida(
+        falla,
+        // Otra falla cuenta desde cero: "empezar de nuevo" nunca aparece la primera vez.
+        reintentos: falla.runtimeType == fallaAnterior?.runtimeType ? reintentos : 0,
+      ),
+      (_) => _lista(),
+    );
   }
 
   EstadoPreparacionDbLocal _lista() {

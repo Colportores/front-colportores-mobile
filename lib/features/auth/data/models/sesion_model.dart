@@ -13,6 +13,7 @@ final class SesionModel extends Sesion {
     required super.email,
     required super.accessToken,
     required super.expiraEn,
+    super.entraConPassword,
   });
 
   factory SesionModel.fromEntity(Sesion sesion) => SesionModel(
@@ -20,6 +21,7 @@ final class SesionModel extends Sesion {
     email: sesion.email,
     accessToken: sesion.accessToken,
     expiraEn: sesion.expiraEn,
+    entraConPassword: sesion.entraConPassword,
   );
 
   factory SesionModel.fromJson(Map<String, Object?> json) => SesionModel(
@@ -27,15 +29,23 @@ final class SesionModel extends Sesion {
     email: json['email']! as String,
     accessToken: json['access_token']! as String,
     expiraEn: DateTime.parse(json['expira_en']! as String).toUtc(),
+    // Una sesión guardada antes de #130 no lo trae: ante la duda, con contraseña.
+    entraConPassword: json['entra_con_password'] as bool? ?? true,
   );
 
-  Sesion toEntity() =>
-      Sesion(usuarioId: usuarioId, email: email, accessToken: accessToken, expiraEn: expiraEn);
+  Sesion toEntity() => Sesion(
+    usuarioId: usuarioId,
+    email: email,
+    accessToken: accessToken,
+    expiraEn: expiraEn,
+    entraConPassword: entraConPassword,
+  );
 
   Map<String, Object?> toJson() => {
     'usuario_id': usuarioId,
     'email': email,
     'access_token': accessToken,
     'expira_en': expiraEn.toUtc().toIso8601String(),
+    'entra_con_password': entraConPassword,
   };
 }

@@ -75,6 +75,7 @@ class SesionNotifier extends _$SesionNotifier {
 
   /// Devuelve el [Failure] si falló (para que el formulario lo muestre) o `null` si entró.
   Future<Failure?> iniciarSesion({required String email, required String password}) async {
+    _olvidarPassword();
     state = const AsyncLoading();
     final resultado = await ref.read(iniciarSesionUseCaseProvider)(
       IniciarSesionParams(email: email, password: password),
@@ -101,6 +102,8 @@ class SesionNotifier extends _$SesionNotifier {
   /// Ingreso con Google (HU-AUTH-003): abre el navegador y espera el deep link de vuelta.
   /// Mismo contrato que [iniciarSesion]: el [Failure] si falló o `null` si entró.
   Future<Failure?> iniciarSesionConGoogle() async {
+    // Sin esto, la contraseña de una sesión anterior armaría el envoltorio de esta (#130).
+    _olvidarPassword();
     state = const AsyncLoading();
     final resultado = await ref.read(iniciarSesionConGoogleUseCaseProvider)(const NoParams());
 
@@ -131,6 +134,7 @@ class SesionNotifier extends _$SesionNotifier {
     required bool aceptaTerminos,
     required bool aceptaTradeOffE2E,
   }) async {
+    _olvidarPassword();
     state = const AsyncLoading();
     final resultado = await ref.read(registrarUsuarioUseCaseProvider)(
       RegistrarUsuarioParams(
@@ -223,11 +227,46 @@ class SesionNotifier extends _$SesionNotifier {
     final resultado = await ref.read(borrarDatosLocalesUseCaseProvider)(
       BorrarDatosLocalesParams(incluirBackupDrive: incluirBackupDrive),
     );
-    if (resultado.isRight()) state = const AsyncData(null);
+    if (resultado.isRight()) {
+      _olvidarPassword();
+      state = const AsyncData(null);
+    }
     return resultado;
   }
 
+  /// Confirma la contraseña de la cuenta que tiene la sesión, contra el servidor, para proteger la
+  /// DB local con ella (HU-AUTH-009, revisión del PR #130: una sesión restaurada no la tiene). Es
+  /// un login con el mismo email: si sale bien, la sesión pasa a ser la nueva (el mismo usuario) y
+  /// la contraseña queda para la preparación. Si falla, **no** toca la sesión: devuelve el
+  /// [Failure] (contraseña incorrecta, sin red) para mostrarlo en el formulario.
+  ///
+  /// El login crea una sesión nueva en el servidor sin cerrar la restaurada: esa se revoca aparte,
+  /// best-effort y sin esperarla (revisión del PR #130, N3). Si no se puede, queda un warn en el
+  /// log y la preparación sigue igual.
+  Future<Failure?> confirmarPassword(String password) async {
+    final actual = state.value;
+    if (actual == null) return const FailureSesionCerrada();
+    final resultado = await ref.read(iniciarSesionUseCaseProvider)(
+      IniciarSesionParams(email: actual.email, password: password),
+    );
+    return resultado.fold((falla) => falla, (sesion) {
+      if (sesion.usuarioId != actual.usuarioId) {
+        // No debería pasar (mismo email), pero una sesión de otro usuario nunca se cuela acá.
+        return const FailureCredencialesInvalidas();
+      }
+      ref.read(passwordParaDbLocalProvider).recordar(password);
+      state = AsyncData(sesion);
+      unawaited(ref.read(revocarSesionReemplazadaUseCaseProvider)(actual));
+      return null;
+    });
+  }
+
+  /// La contraseña del login deja de hacer falta: se cerró la sesión o empieza otro ingreso
+  /// (revisión del PR #130). Acá y no en la preparación de la DB, que puede no estar escuchando.
+  void _olvidarPassword() => ref.read(passwordParaDbLocalProvider).olvidar();
+
   Future<void> _cerrarDbYSesion() async {
+    _olvidarPassword();
     try {
       await ref.read(dbLocalProvider.notifier).cerrar();
     } on Object {

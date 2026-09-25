@@ -1,5 +1,6 @@
 // Cierre de sesión: además de invalidar la sesión, cierra la DB local y destruye la clave
 // (HU-AUTH-006, ADR-003). Con SQLCipher real en un directorio temporal.
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -451,6 +452,17 @@ void main() {
       return clave;
     }
 
+    /// Espera a que el estado real quede sin sesión. El cierre de la DB pasa por el isolate de
+    /// drift, y `pumpEventQueue` no espera mensajes entre isolates: en un runner lento el estado
+    /// todavía tenía la sesión (falla intermitente en el CI del PR #130).
+    Future<void> sesionCerrada() {
+      final cerrada = Completer<void>();
+      final escucha = container.listen(sesionProvider, (_, estado) {
+        if (estado case AsyncData(value: null) when !cerrada.isCompleted) cerrada.complete();
+      }, fireImmediately: true);
+      return cerrada.future.whenComplete(escucha.close);
+    }
+
     for (final (motivo, aviso) in const [
       (MotivoExpiracion.revocada, FailureSesionRevocada()),
       (MotivoExpiracion.inactividad, FailureSesionExpiradaPorInactividad()),
@@ -464,7 +476,7 @@ void main() {
           expect(archivo.existsSync(), isTrue);
 
           remote.simularExpiracion(motivo);
-          await pumpEventQueue();
+          await sesionCerrada();
 
           expect(container.read(sesionProvider).value, isNull);
           expect(container.read(avisoSesionProvider), aviso);
