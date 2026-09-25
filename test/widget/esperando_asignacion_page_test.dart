@@ -12,12 +12,15 @@ import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_l
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 final _titulo = find.byKey(const Key('espera_titulo'));
 final _actualizar = find.byKey(const Key('espera_actualizar'));
@@ -56,6 +59,8 @@ Future<void> _montar(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+        dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
         authRemoteDataSourceProvider.overrideWithValue(
           AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
         ),

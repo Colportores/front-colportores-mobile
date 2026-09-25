@@ -18,6 +18,7 @@ import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
+import 'password_para_db_local.dart';
 
 part 'sesion_notifier.g.dart';
 
@@ -85,6 +86,9 @@ class SesionNotifier extends _$SesionNotifier {
         return failure;
       },
       (sesion) {
+        // Antes de publicar la sesión: publicarla dispara la preparación de la DB local, que
+        // envuelve la DEK con esta contraseña (HU-AUTH-009, `PreparacionDbLocalNotifier`).
+        ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(sesion);
         ref.read(avisoSesionProvider.notifier).descartar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
@@ -146,6 +150,7 @@ class SesionNotifier extends _$SesionNotifier {
         return Left(failure);
       },
       (r) {
+        if (r.sesion != null) ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(r.sesion);
         if (r.sesion != null) ref.read(avisoSesionProvider.notifier).descartar();
         return Right(r);

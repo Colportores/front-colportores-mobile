@@ -36,14 +36,15 @@ VigenciaSesion vigenciaSesion(Ref ref) => _VigenciaSesionRiverpod(ref);
 @Riverpod(keepAlive: true)
 TurnoDbLocal turnoDbLocal(Ref ref) => TurnoDbLocal();
 
-@riverpod
+/// Los tres casos de uso son `keepAlive`: los usa `PreparacionDbLocalNotifier`, que también lo es.
+@Riverpod(keepAlive: true)
 InicializarDbLocalUseCase inicializarDbLocalUseCase(Ref ref) => InicializarDbLocalUseCase(
   ref.watch(dbLocalRepositoryProvider),
   ref.watch(vigenciaSesionProvider),
   ref.watch(turnoDbLocalProvider),
 );
 
-@riverpod
+@Riverpod(keepAlive: true)
 RecuperarDbLocalConPasswordUseCase recuperarDbLocalConPasswordUseCase(Ref ref) =>
     RecuperarDbLocalConPasswordUseCase(
       ref.watch(dbLocalRepositoryProvider),
@@ -51,7 +52,7 @@ RecuperarDbLocalConPasswordUseCase recuperarDbLocalConPasswordUseCase(Ref ref) =
       ref.watch(turnoDbLocalProvider),
     );
 
-@riverpod
+@Riverpod(keepAlive: true)
 EmpezarDeNuevoDbLocalUseCase empezarDeNuevoDbLocalUseCase(Ref ref) => EmpezarDeNuevoDbLocalUseCase(
   ref.watch(dbLocalRepositoryProvider),
   ref.watch(turnoDbLocalProvider),

@@ -6,10 +6,12 @@ import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto que lanza una excepción fija en `iniciarSesion` — para ver el banner de "email sin
@@ -69,6 +71,8 @@ Future<void> _montarApp(WidgetTester tester, {required AuthRemoteDataSource remo
     tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+          dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
           authRemoteDataSourceProvider.overrideWithValue(remote),
           authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
           datosLocalesRepositoryProvider.overrideWithValue(_SinDatosLocales()),

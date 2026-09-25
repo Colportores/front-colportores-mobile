@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/borrar_datos_locales_page.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/configuracion_page.dart';
@@ -17,6 +18,8 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 const _resumenBase = ResumenDatosLocales(
   personas: 12,
@@ -77,6 +80,8 @@ late _DatosLocalesFake _datos;
 Future<ProviderContainer> _montar(WidgetTester tester, {AuthLocalDataSource? local}) async {
   final container = ProviderContainer(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+      dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
       authRemoteDataSourceProvider.overrideWithValue(_remote),
       authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
       datosLocalesRepositoryProvider.overrideWithValue(_datos),

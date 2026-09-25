@@ -164,8 +164,9 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
         );
       },
       (r) {
-        // La jornada todavía vive en memoria mientras la DB no se abra (#27): sin esto, el próximo
-        // login mostraría datos que la pantalla acaba de decir que se borraron. Después del frame:
+        // Si la jornada quedó en memoria (sin DB abierta, ver `jornadaLocalDataSourceProvider`),
+        // sin esto el próximo login mostraría datos que la pantalla acaba de decir que se
+        // borraron. Con la DB, borrarla ya se los llevó. Después del frame:
         // en este, la pantalla de jornada que está debajo reanuda sus providers mientras se
         // reconstruye, y una invalidación en el medio dispara un rebuild durante el build.
         final container = ProviderScope.containerOf(context, listen: false);

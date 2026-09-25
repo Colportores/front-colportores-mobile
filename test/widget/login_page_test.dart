@@ -4,10 +4,12 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Envoltorio de test: agrega una demora real antes de delegar al fake en memoria, para poder
@@ -84,6 +86,8 @@ Future<void> _montarPagina(WidgetTester tester, {ThemeData? tema, bool? mostrarA
     tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+          dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
           authRemoteDataSourceProvider.overrideWithValue(
             AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
           ),
@@ -138,6 +142,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+            dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
             authRemoteDataSourceProvider.overrideWithValue(
               AuthRemoteDataSourceEnMemoria(credenciales: const {}, simularSinConexion: true),
             ),
@@ -166,6 +172,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+            dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
             authRemoteDataSourceProvider.overrideWithValue(
               _RemoteConDemora(
                 AuthRemoteDataSourceEnMemoria(

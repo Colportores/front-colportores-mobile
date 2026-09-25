@@ -24,11 +24,11 @@ DateTime Function() relojJornada(Ref ref) => DateTime.now;
 
 /// La tabla `jornada` de la DB local cifrada si la DB está abierta (`dbLocalProvider`).
 ///
-/// TODO(#27): hoy nadie abre la DB — el login todavía no deriva la clave (HU-AUTH-009) —, así
-/// que mientras tanto la jornada vive en memoria, igual que la sesión (`main.dart` usa
-/// `AuthLocalDataSourceEnMemoria`): la pantalla funciona, pero la jornada **se pierde al cerrar
-/// la app**. Cuando el login abra la DB, este provider se reconstruye solo (observa
-/// `dbLocalProvider`) y pasa a Drift sin tocar nada más.
+/// En la app la DB siempre está abierta cuando se llega a la jornada: la raíz no muestra la
+/// pantalla principal hasta que la preparación de HU-AUTH-009 la abre (#27). La versión en memoria
+/// queda para los tests de widgets que no cablean la DB, y avisa en el log si alguna vez se usa
+/// fuera de ellos (la jornada **se perdería al cerrar la app**). Observa `dbLocalProvider`: al
+/// abrirse o cerrarse la DB, se reconstruye solo.
 @Riverpod(keepAlive: true)
 JornadaLocalDataSource jornadaLocalDataSource(Ref ref) {
   final db = ref.watch(dbLocalProvider);

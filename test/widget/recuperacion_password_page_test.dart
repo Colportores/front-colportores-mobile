@@ -4,9 +4,12 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 /// [RecuperacionPasswordPage] aislada (sin [ColportoresApp]) — mismo criterio que
 /// `login_page_test.dart`.
@@ -21,6 +24,8 @@ Future<void> _montarPagina(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+      dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
     ],
@@ -300,6 +305,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+            dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
             authRemoteDataSourceProvider.overrideWithValue(
               AuthRemoteDataSourceEnMemoria(credenciales: const {}),
             ),

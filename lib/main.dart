@@ -80,8 +80,9 @@ Future<void> main() async {
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
-        // DB local cifrada (ADR-006). Construirlo no abre nada: la abre el flujo de HU-AUTH-009
-        // (#27) con la DEK, vía `dbLocalProvider`. El archivo vive en el directorio de documentos
+        // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
+        // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de
+        // cada login y al restaurar la sesión. El archivo vive en el directorio de documentos
         // de la app (default de drift_flutter); nombre y ruta no están fijados por la doc del
         // proyecto.
         databaseHelperProvider.overrideWithValue(

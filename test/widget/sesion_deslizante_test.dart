@@ -10,9 +10,12 @@ import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_e
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 const _inactividad = 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.';
 const _revocada = 'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.';
@@ -43,6 +46,8 @@ Future<AuthRemoteDataSourceEnMemoria> _montar(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
+        dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
         authRemoteDataSourceProvider.overrideWithValue(remoto),
         authLocalDataSourceProvider.overrideWithValue(local),
         if (reloj != null) relojSesionProvider.overrideWithValue(reloj),

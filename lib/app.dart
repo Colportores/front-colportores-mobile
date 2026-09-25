@@ -10,10 +10,12 @@ import 'features/auth/domain/entities/sesion.dart';
 import 'features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
 import 'features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/auth/presentation/pages/preparacion_db_local_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/aviso_sesion_notifier.dart';
 import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
+import 'features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/jornada/presentation/pages/jornada_page.dart';
@@ -158,17 +160,24 @@ class _RevisionAlVolverState extends ConsumerState<_RevisionAlVolver> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// Con sesión, la pantalla principal depende del estado de la cuenta (HU-AUTH-008): solo una
-/// cuenta activa ve los módulos de campo; las demás, la pantalla de espera con Configuración. Es
-/// el único camino a los módulos de campo mientras no haya router (llega en Sprint 5): el gate de
-/// deep links de la HU vive acá.
+/// Con sesión, primero la DB local cifrada (HU-AUTH-009, #27): hasta que esté abierta, la pantalla
+/// de preparación. Después, la pantalla principal depende del estado de la cuenta (HU-AUTH-008):
+/// solo una cuenta activa ve los módulos de campo; las demás, la pantalla de espera con
+/// Configuración. Es el único camino a los módulos de campo mientras no haya router (llega en
+/// Sprint 5): el gate de deep links de la HU vive acá.
 class _Principal extends ConsumerWidget {
   const _Principal({required this.sesion});
 
   final Sesion sesion;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final preparacion = ref.watch(preparacionDbLocalProvider);
+    if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    return _porEstadoDeCuenta(ref);
+  }
+
+  Widget _porEstadoDeCuenta(WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
     AsyncData(value: final estado) when estado == null || estado.accedeAModulosDeCampo =>
       JornadaPage(sesion: sesion),
     AsyncData(value: final estado) => EsperandoAsignacionPage(estado: estado),
