@@ -121,7 +121,18 @@ final class AuthRepositoryImpl implements AuthRepository {
       return Right(ResultadoRegistro(sesion: sesion.toEntity(), email: email));
     } on AuthRemoteException catch (e) {
       final failure = _traducir(e);
-      _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {'codigo': failure.codigo});
+      // "Edge - fallo intermitente del backend" (HU-AUTH-001, issue #90): registro propio del
+      // NetworkFailure con el status, sin PII (nunca nombre ni email) — el criterio de aceptación
+      // lo pide aparte del genérico REGISTRO_FAIL.
+      if (e is ServidorException && e.status != null && e.status! >= 500) {
+        _log.warn(LogModulo.auth, 'REGISTRO_5XX', 'fallo intermitente del backend', {
+          'status': e.status,
+        });
+      } else {
+        _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {
+          'codigo': failure.codigo,
+        });
+      }
       return Left(failure);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'REGISTRO_FAIL', 'error inesperado en registro', const {}, e, st);

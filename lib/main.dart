@@ -7,8 +7,11 @@ import 'app.dart';
 import 'core/config/config_supabase.dart';
 import 'core/database/database_helper.dart';
 import 'core/database/database_providers.dart';
+import 'core/dispositivo/dispositivo_providers.dart';
+import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
+import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -56,16 +59,25 @@ Future<void> main() async {
       // Sprint 2: AuthLocalDataSource sobre secure_storage (pendiente; hoy en memoria).
       overrides: [
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-        // Keystore/Keychain reales. Construirlo no toca la plataforma: recién en la primera
-        // lectura o escritura se cruza al canal nativo.
+        // Keystore/Keychain reales, con las opciones de ADR-006: la misma instancia que guarda la
+        // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o
+        // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
         relojSesionProvider.overrideWithValue(relojSesion),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
-        // DB local cifrada (ADR-003). Construirlo no abre nada: la abre el flujo de login de
-        // HU-AUTH-009 (#27) con la clave derivada, vía `dbLocalProvider`. El archivo vive en el
-        // directorio de documentos de la app (default de drift_flutter); nombre y ruta no están
-        // fijados por la doc del proyecto.
+        // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en
+        // el mismo directorio que la DB.
+        archivoEnvoltorioDekProvider.overrideWithValue(
+          ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
+        ),
+        // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
+        // AppDelegate.swift).
+        seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
+        // DB local cifrada (ADR-006). Construirlo no abre nada: la abre el flujo de HU-AUTH-009
+        // (#27) con la DEK, vía `dbLocalProvider`. El archivo vive en el directorio de documentos
+        // de la app (default de drift_flutter); nombre y ruta no están fijados por la doc del
+        // proyecto.
         databaseHelperProvider.overrideWithValue(
           DatabaseHelper(
             directorio: getApplicationDocumentsDirectory,

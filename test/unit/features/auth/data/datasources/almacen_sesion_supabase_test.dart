@@ -137,7 +137,7 @@ void main() {
         'lo avisa una vez y no toca nada más del almacén', () async {
       almacen = AlmacenSeguroEnMemoria({
         ClaveSegura.sesionAuth: _sesionEmitidaEn(ahora.subtract(const Duration(days: 31))),
-        ClaveSegura.salDb: 'sal',
+        ClaveSegura.dekDb: 'dek',
       });
       final sesiones = crear();
       final avisos = <void>[];
@@ -148,7 +148,7 @@ void main() {
       expect(await sesiones.accessToken(), isNull);
       await Future<void>.delayed(Duration.zero);
 
-      expect(almacen.contenido, {ClaveSegura.salDb: 'sal'});
+      expect(almacen.contenido, {ClaveSegura.dekDb: 'dek'});
       expect(avisos, hasLength(1));
       expect(sesiones.tomarVencimiento(), isTrue);
       expect(sesiones.tomarVencimiento(), isFalse);
