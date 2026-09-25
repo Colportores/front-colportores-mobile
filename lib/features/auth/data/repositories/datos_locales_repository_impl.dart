@@ -73,7 +73,7 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     try {
       await _cerrarDb();
       await _helper.borrar();
-      await _custodia.olvidar();
+      await _custodia.olvidarDatosDelUsuario();
       // Caché de tiles del mapa: llega con el mapa (Sprint 5, ADR-011); hoy no existe.
     } on Object catch (e, st) {
       _log.error(LogModulo.db, 'WIPE_FAIL', 'el borrado local falló', const {}, e, st);

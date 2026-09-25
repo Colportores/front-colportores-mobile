@@ -70,6 +70,30 @@ final class _AlmacenQueFallaAlEscribir implements AlmacenSeguro {
   Future<void> borrarTodo() => _interno.borrarTodo();
 }
 
+/// Almacén en el que, justo después de `borrarTodo`, el refresco automático de Supabase guarda una
+/// sesión nueva y adelanta el reloj: la carrera de `reconstruirAlmacen` (#122).
+final class _AlmacenConRefrescoConcurrente implements AlmacenSeguro {
+  _AlmacenConRefrescoConcurrente(this._interno);
+
+  final AlmacenSeguroEnMemoria _interno;
+
+  @override
+  Future<String?> leer(ClaveSegura clave) => _interno.leer(clave);
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) => _interno.escribir(clave, valor);
+
+  @override
+  Future<void> borrar(ClaveSegura clave) => _interno.borrar(clave);
+
+  @override
+  Future<void> borrarTodo() async {
+    await _interno.borrarTodo();
+    await _interno.escribir(ClaveSegura.sesionAuth, 'sesion-nueva');
+    await _interno.escribir(ClaveSegura.relojSesion, '2026-09-25T13:00:00.000Z');
+  }
+}
+
 const _parametros = ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1);
 
 void main() {
@@ -394,6 +418,20 @@ void main() {
       });
     }
 
+    test('dado que el refresco de Supabase guarda una sesión nueva en el medio, no la pisa con la '
+        'vieja (#122)', () async {
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion-vieja');
+      await almacen.escribir(ClaveSegura.relojSesion, '2026-09-25T12:00:00.000Z');
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');
+      final conRefresco = custodiaCon(_AlmacenConRefrescoConcurrente(almacen));
+
+      await conRefresco.reconstruirAlmacen(custodia.generarDek());
+
+      expect(almacen.contenido[ClaveSegura.sesionAuth], 'sesion-nueva');
+      expect(almacen.contenido[ClaveSegura.relojSesion], '2026-09-25T13:00:00.000Z');
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'u-1:activa');
+    });
+
     test('limpia el almacén y lo reescribe con la DEK y la marca; el envoltorio queda', () async {
       final dek = custodia.generarDek();
       await custodia.envolverConPassword(dek, 'secreto123');
@@ -461,6 +499,56 @@ void main() {
         expect(await custodia.dbInicializada(), isFalse);
         await expectLater(custodia.guardarDek(custodia.generarDek()), completes);
       });
+    });
+  });
+
+  group('CustodiaClaveDb.olvidarDatosDelUsuario (HU-AUTH-010, #122)', () {
+    test('borra lo de la DB, el estado de cuenta y el reloj; la sesión y la marca de migrada '
+        'quedan', () async {
+      final dek = custodia.generarDek();
+      await custodia.guardarDek(dek);
+      await custodia.envolverConPassword(dek, 'secreto123');
+      await custodia.marcarDbInicializada();
+      await custodia.registrarConsentimientoAlmacenSoftware();
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');
+      await almacen.escribir(ClaveSegura.relojSesion, '2026-09-25T12:00:00.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+      await almacen.escribir(ClaveSegura.sesionMigrada, '1');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(
+        almacen.contenido.keys,
+        unorderedEquals(<ClaveSegura>[ClaveSegura.sesionAuth, ClaveSegura.sesionMigrada]),
+      );
+      expect(await custodia.hayEnvoltorioPorPassword(), isFalse);
+    });
+
+    test('es idempotente: sin nada que borrar, no falla', () async {
+      await custodia.olvidarDatosDelUsuario();
+
+      await expectLater(custodia.olvidarDatosDelUsuario(), completes);
+    });
+  });
+
+  group('CustodiaClaveDb — cada ClaveSegura tiene un destino (#122)', () {
+    // Una clave nueva que no se sume a ninguna lista se borraría en silencio al reconstruir, o
+    // sobreviviría al borrado de datos sin que nadie lo haya decidido.
+    test('al reconstruir el almacén: es de la DB o se conserva, nunca las dos', () {
+      expect([
+        ClaveSegura.dekDb,
+        ClaveSegura.dbInicializada,
+        ...CustodiaClaveDb.seConservanAlReconstruir,
+      ], unorderedEquals(ClaveSegura.values));
+    });
+
+    test('al borrar los datos: la borra olvidar(), la borra el borrado de datos o queda fuera con '
+        'motivo, una sola de las tres', () {
+      expect([
+        ...CustodiaClaveDb.seBorranAlOlvidar,
+        ...CustodiaClaveDb.seBorranAlBorrarDatos,
+        ...CustodiaClaveDb.quedanFueraDelBorradoDeDatos,
+      ], unorderedEquals(ClaveSegura.values));
     });
   });
 
