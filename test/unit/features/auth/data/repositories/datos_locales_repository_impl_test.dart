@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
@@ -44,6 +45,7 @@ final class _DriveFake implements BackupDriveDataSource {
 void main() {
   late Directory directorio;
   late DatabaseHelper helper;
+  late AlmacenSeguroEnMemoria almacen;
   late CustodiaClaveDb custodia;
   late _DriveFake drive;
   AppDatabase? db;
@@ -56,8 +58,9 @@ void main() {
       directorioTemporal: () async => directorio,
       logger: loggerMudo(),
     );
+    almacen = AlmacenSeguroEnMemoria();
     custodia = CustodiaClaveDb(
-      AlmacenSeguroEnMemoria(),
+      almacen,
       ArchivoEnvoltorioDek(directorio: () async => directorio),
       ProveedorClaveDbFalso(),
       CriptoSodium(),
@@ -225,6 +228,23 @@ void main() {
         expect(drive.borrados, 0);
       },
     );
+
+    test('borra también el último estado de cuenta y el reloj de la sesión; la sesión la borra el '
+        'cierre de sesión que sigue (#122)', () async {
+      await guardarDekYEnvoltorio();
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');
+      await almacen.escribir(ClaveSegura.relojSesion, '2026-09-25T12:00:00.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+      await almacen.escribir(ClaveSegura.sesionMigrada, '1');
+
+      final r = await repo.borrar(incluirBackupDrive: false);
+
+      expect(r.isRight(), isTrue);
+      expect(
+        almacen.contenido.keys,
+        unorderedEquals(<ClaveSegura>[ClaveSegura.sesionAuth, ClaveSegura.sesionMigrada]),
+      );
+    });
 
     test('es idempotente: reintentar sin nada que borrar no falla', () async {
       await repo.borrar(incluirBackupDrive: false);
