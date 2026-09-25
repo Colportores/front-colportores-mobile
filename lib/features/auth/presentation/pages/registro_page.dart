@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
@@ -108,11 +109,11 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
             case FailureValidacion(:final campos):
               _erroresCampo = campos;
             case FailureSinConexion():
-              // Mensaje propio del registro (HU-AUTH-001, "Error - sin conectividad"): no el
-              // genérico de FailureSinConexion, que también usa el login. Se descarta la
-              // contraseña tipeada "por seguridad" (el criterio de aceptación lo pide
-              // explícitamente); el resto del formulario se conserva.
-              _errorGeneral = 'Necesitás conexión para registrarte por primera vez';
+              // Mensaje propio del registro (HU-AUTH-001, "Error - sin conectividad"), armado con
+              // el helper común (#94). Se descarta la contraseña tipeada "por seguridad" (el
+              // criterio de aceptación lo pide explícitamente); el resto del formulario se
+              // conserva.
+              _errorGeneral = mensajePara(failure, accion: 'registrarte por primera vez');
               _password.clear();
             case FailureEmailYaRegistrado(:final mensaje):
               _errorGeneral = mensaje;

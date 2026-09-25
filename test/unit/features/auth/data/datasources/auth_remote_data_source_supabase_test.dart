@@ -9,8 +9,10 @@ import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_m
 import 'package:colportores_mobile/features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source_supabase.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/politica_sesion.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +24,8 @@ import '../../../../../helpers/logger_mudo.dart';
 class _MockGoTrueClient extends Mock implements GoTrueClient {}
 
 class _MockGoTrueAdminApi extends Mock implements GoTrueAdminApi {}
+
+class _FakeUserResponse extends Fake implements UserResponse {}
 
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
@@ -85,6 +89,8 @@ void main() {
   AuthResponse respuestaCon({Session? sesion, User? user}) =>
       AuthResponse(session: sesion, user: user);
 
+  late RegistroEnlacesAuth registro;
+
   AuthRemoteDataSourceSupabase dataSource({
     LanzadorOAuth? lanzarOAuth,
     Duration esperaOAuth = const Duration(seconds: 1),
@@ -96,6 +102,7 @@ void main() {
     esperaOAuth: esperaOAuth,
     enlacesEntrantes: enlaces ?? const Stream<Uri>.empty(),
     sesionPersistida: sesionPersistida,
+    registroEnlaces: registro,
     logger: loggerMudo(),
   );
 
@@ -103,9 +110,11 @@ void main() {
     // Hace falta un fallback para poder usar `any(named: 'type')` con `resend` (mocktail exige
     // uno para cualquier tipo no primitivo, aunque el valor real no importe).
     registerFallbackValue(OtpType.signup);
+    registerFallbackValue(UserAttributes());
   });
 
   setUp(() {
+    registro = RegistroEnlacesAuth();
     auth = _MockGoTrueClient();
     cambios = StreamController<AuthState>.broadcast();
     when(() => auth.onAuthStateChange).thenAnswer((_) => cambios.stream);
@@ -320,18 +329,24 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.solicitarRecuperacionPassword', () {
-    test('cuando solicita, llama a resetPasswordForEmail con el emailRedirectTo', () async {
+    test('cuando solicita, llama a resetPasswordForEmail con el deep link propio de la '
+        'recuperación (HU-AUTH-005)', () async {
       when(
-        () =>
-            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+        () => auth.resetPasswordForEmail(
+          'ana@example.com',
+          redirectTo: ConfigSupabase.redirectRecuperacion,
+        ),
       ).thenAnswer((_) async {});
 
       await dataSource().solicitarRecuperacionPassword('ana@example.com');
 
       verify(
-        () =>
-            auth.resetPasswordForEmail('ana@example.com', redirectTo: ConfigSupabase.redirectOAuth),
+        () => auth.resetPasswordForEmail(
+          'ana@example.com',
+          redirectTo: ConfigSupabase.redirectRecuperacion,
+        ),
       ).called(1);
+      expect(ConfigSupabase.redirectRecuperacion, startsWith(ConfigSupabase.redirectOAuth));
     });
 
     test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
@@ -821,6 +836,25 @@ void main() {
       await expectLater(futuro, completes);
     });
 
+    test(
+      'ignora el otp_expired de un enlace de recuperación de contraseña (HU-AUTH-005)',
+      () async {
+        final eventos = <void>[];
+        final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
+        addTearDown(suscripcion.cancel);
+        registro.esCallbackDeAuth(
+          Uri.parse('${ConfigSupabase.redirectRecuperacion}#error_code=otp_expired'),
+        );
+
+        cambios.addError(
+          const AuthApiException('Email link is invalid or has expired', statusCode: 'otp_expired'),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(eventos, isEmpty);
+      },
+    );
+
     test('ignora otros errores del stream (p. ej. un OAuth cancelado)', () async {
       final eventos = <void>[];
       final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
@@ -913,6 +947,149 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(eventos, isEmpty);
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase — recuperación de contraseña (HU-AUTH-005)', () {
+    group('enlacesRecuperacion', () {
+      test('dado el evento passwordRecovery, emite un enlace válido', () async {
+        final futuro = dataSource().enlacesRecuperacion.first;
+
+        cambios.add(
+          AuthState(AuthChangeEvent.passwordRecovery, sesionSupabase(proveedor: 'email')),
+        );
+
+        expect(await futuro, EnlaceRecuperacion.valido);
+      });
+
+      test(
+        'dado un error del canje de un enlace de recuperación, emite vencido una sola vez',
+        () async {
+          final eventos = <EnlaceRecuperacion>[];
+          final suscripcion = dataSource().enlacesRecuperacion.listen(eventos.add);
+          addTearDown(suscripcion.cancel);
+          registro.esCallbackDeAuth(
+            Uri.parse('${ConfigSupabase.redirectRecuperacion}#error_code=otp_expired'),
+          );
+
+          cambios
+            ..addError(const AuthApiException('expired', statusCode: 'otp_expired'))
+            ..addError(AuthRetryableFetchException(message: 'refresco que falla después'));
+          await Future<void>.delayed(Duration.zero);
+
+          expect(eventos, [EnlaceRecuperacion.vencido]);
+        },
+      );
+
+      test('dado que el canje falla sin red, emite sin conexión y no vencido: el enlace sigue '
+          'sirviendo (revisión de #112)', () async {
+        final eventos = <EnlaceRecuperacion>[];
+        final suscripcion = dataSource().enlacesRecuperacion.listen(eventos.add);
+        addTearDown(suscripcion.cancel);
+        registro.esCallbackDeAuth(Uri.parse('${ConfigSupabase.redirectRecuperacion}?code=abc'));
+
+        cambios.addError(AuthRetryableFetchException(message: 'sin red'));
+        await Future<void>.delayed(Duration.zero);
+
+        expect(eventos, [EnlaceRecuperacion.sinConexion]);
+      });
+
+      test(
+        'ignora los errores que no vienen de un enlace de recuperación y los demás eventos',
+        () async {
+          final eventos = <EnlaceRecuperacion>[];
+          final suscripcion = dataSource().enlacesRecuperacion.listen(eventos.add);
+          addTearDown(suscripcion.cancel);
+          registro.esCallbackDeAuth(
+            Uri.parse('${ConfigSupabase.redirectOAuth}#error_code=otp_expired'),
+          );
+
+          cambios
+            ..addError(const AuthApiException('expired', statusCode: 'otp_expired'))
+            ..add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+          await Future<void>.delayed(Duration.zero);
+
+          expect(eventos, isEmpty);
+        },
+      );
+    });
+
+    group('actualizarPassword', () {
+      test('fija la contraseña con updateUser', () async {
+        when(() => auth.updateUser(any())).thenAnswer((_) async => _FakeUserResponse());
+
+        await dataSource().actualizarPassword('NuevaClave1');
+
+        final atributos =
+            verify(() => auth.updateUser(captureAny())).captured.single as UserAttributes;
+        expect(atributos.password, 'NuevaClave1');
+      });
+
+      test('sin sesión de recuperación, lanza SesionDeRecuperacionVencidaException', () {
+        when(() => auth.updateUser(any())).thenThrow(AuthSessionMissingException());
+
+        expect(
+          () => dataSource().actualizarPassword('NuevaClave1'),
+          throwsA(isA<SesionDeRecuperacionVencidaException>()),
+        );
+      });
+
+      for (final (descripcion, error) in [
+        ('session_not_found', const AuthApiException('x', code: 'session_not_found')),
+        ('session_expired', const AuthApiException('x', code: 'session_expired')),
+        ('un 401', const AuthApiException('x', statusCode: '401')),
+        ('un 403', const AuthApiException('x', statusCode: '403')),
+      ]) {
+        test('dado $descripcion, lanza SesionDeRecuperacionVencidaException', () {
+          when(() => auth.updateUser(any())).thenThrow(error);
+
+          expect(
+            () => dataSource().actualizarPassword('NuevaClave1'),
+            throwsA(isA<SesionDeRecuperacionVencidaException>()),
+          );
+        });
+      }
+
+      test('dada la misma contraseña (same_password), lanza PasswordIgualALaAnteriorException', () {
+        when(
+          () => auth.updateUser(any()),
+        ).thenThrow(const AuthApiException('x', statusCode: '422', code: 'same_password'));
+
+        expect(
+          () => dataSource().actualizarPassword('Vieja1234'),
+          throwsA(isA<PasswordIgualALaAnteriorException>()),
+        );
+      });
+
+      test('dada una contraseña débil o sin red, traduce como el resto del adaptador', () {
+        when(
+          () => auth.updateUser(any()),
+        ).thenThrow(const AuthApiException('x', statusCode: '422', code: 'weak_password'));
+        expect(() => dataSource().actualizarPassword('x'), throwsA(isA<PasswordDebilException>()));
+
+        when(() => auth.updateUser(any())).thenThrow(AuthRetryableFetchException(message: 'x'));
+        expect(
+          () => dataSource().actualizarPassword('NuevaClave1'),
+          throwsA(isA<SinConexionException>()),
+        );
+      });
+    });
+
+    test('cerrarTodasLasSesiones revoca con scope global', () async {
+      when(() => auth.signOut(scope: SignOutScope.global)).thenAnswer((_) async {});
+
+      await dataSource().cerrarTodasLasSesiones();
+
+      verify(() => auth.signOut(scope: SignOutScope.global)).called(1);
+    });
+
+    test('abandonarRecuperacion suelta la sesión de este cliente (scope local)', () async {
+      when(() => auth.signOut()).thenAnswer((_) async {});
+
+      await dataSource().abandonarRecuperacion();
+
+      verify(() => auth.signOut()).called(1);
+      verifyNever(() => auth.signOut(scope: SignOutScope.global));
     });
   });
 }

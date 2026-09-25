@@ -16,7 +16,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   AuthRemoteDataSourceEnMemoria({
     required Map<String, String> credenciales,
     this.simularSinConexion = false,
-    this.cuentasPendientes = const {},
     this.requiereVerificacionAlRegistrar = false,
     DateTime Function()? ahora,
   }) : _credenciales = Map.of(credenciales),
@@ -29,7 +28,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// Mutable a propósito: `registrar` agrega credenciales nuevas para que la demo pueda
   /// registrarse y loguearse a continuación.
   final Map<String, String> _credenciales;
-  final Set<String> cuentasPendientes;
   final DateTime Function() _ahora;
 
   /// Si es `true`, `registrar` crea la cuenta pero devuelve `null` en vez de sesión — simula
@@ -57,7 +55,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) async {
     if (simularSinConexion) throw const SinConexionException();
-    if (cuentasPendientes.contains(email)) throw const CuentaPendienteException();
     if (_credenciales[email] != password) throw const CredencialesInvalidasException();
     // El orden importa: como en Supabase real, una contraseña incorrecta da credenciales
     // inválidas primero — recién con la contraseña bien se ve si falta confirmar el email.

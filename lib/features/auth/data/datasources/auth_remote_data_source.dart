@@ -105,10 +105,6 @@ final class CredencialesInvalidasException extends AuthRemoteException {
   const CredencialesInvalidasException();
 }
 
-final class CuentaPendienteException extends AuthRemoteException {
-  const CuentaPendienteException();
-}
-
 /// Ya existe una cuenta con ese email (HU-AUTH-001).
 final class EmailYaRegistradoException extends AuthRemoteException {
   const EmailYaRegistradoException();
@@ -126,6 +122,17 @@ final class SesionRevocadaException extends AuthRemoteException {
 /// La contraseña no cumple la política de Supabase Auth (`weak_password`).
 final class PasswordDebilException extends AuthRemoteException {
   const PasswordDebilException();
+}
+
+/// La contraseña nueva es igual a la anterior (Supabase `same_password`, HU-AUTH-005).
+final class PasswordIgualALaAnteriorException extends AuthRemoteException {
+  const PasswordIgualALaAnteriorException();
+}
+
+/// La sesión que abrió el enlace de recuperación ya no sirve (venció, o no hay): hay que pedir un
+/// enlace nuevo (HU-AUTH-005).
+final class SesionDeRecuperacionVencidaException extends AuthRemoteException {
+  const SesionDeRecuperacionVencidaException();
 }
 
 /// Error del proveedor sin traducción propia. [mensaje], si viene, reemplaza el texto genérico

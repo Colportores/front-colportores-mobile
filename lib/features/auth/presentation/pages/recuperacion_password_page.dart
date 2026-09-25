@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import '../providers/auth_providers.dart';
@@ -105,8 +106,9 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
           switch (failure) {
             case FailureValidacion(:final campos):
               _erroresCampo = campos;
-            case Failure(:final mensaje):
-              _errorGeneral = mensaje;
+            case Failure():
+              // HU-AUTH-004, "Error - sin conectividad" (#94).
+              _errorGeneral = mensajePara(failure, accion: 'solicitar la recuperación');
           }
         });
       },

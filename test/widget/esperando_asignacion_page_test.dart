@@ -284,20 +284,27 @@ void main() {
   });
 
   group('Accesibilidad', () {
+    // 390x844 (convención del carril, issue #64): sin fijar el tamaño, `meetsGuideline` corría
+    // con el viewport default de test (no un teléfono real).
     for (final brillo in Brightness.values) {
       for (final estado in [EstadoCuenta.pendienteAsignacion, EstadoCuenta.suspendida]) {
-        testWidgets('${estado.name}, tema ${brillo.name}: tamaño de toque, etiquetas y contraste', (
-          tester,
-        ) async {
-          final semantica = tester.ensureSemantics();
-          await _montar(tester, estado: estado, brillo: brillo);
+        testWidgets(
+          '${estado.name}, tema ${brillo.name}: tamaño de toque, etiquetas y contraste en '
+          '390x844',
+          (tester) async {
+            final semantica = tester.ensureSemantics();
+            tester.view.physicalSize = const Size(390, 844);
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.reset);
+            await _montar(tester, estado: estado, brillo: brillo);
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        });
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+            semantica.dispose();
+          },
+        );
       }
     }
 

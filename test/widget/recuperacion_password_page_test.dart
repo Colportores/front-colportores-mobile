@@ -248,9 +248,7 @@ void main() {
       );
     });
 
-    // skip: bug #94 — la página muestra el mensaje genérico de FailureSinConexion, no el
-    // literal de la HU. `testWidgets.skip` es `bool?` (a diferencia de `test.skip`, que acepta
-    // un motivo en texto), así que el motivo va en este comentario.
+    // Era el bug #94: la página mostraba el mensaje genérico de FailureSinConexion.
     testWidgets('sin conexión muestra el texto literal de la HU-AUTH-004 (línea 822)', (
       tester,
     ) async {
@@ -265,7 +263,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Necesitás conexión para solicitar la recuperación'), findsOneWidget);
-    }, skip: true);
+      expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsNothing);
+    });
 
     testWidgets('falla real del servidor (no 429) muestra el mensaje traducido', (tester) async {
       final remote =

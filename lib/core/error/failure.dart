@@ -42,15 +42,6 @@ final class FailureCredencialesInvalidas extends Failure {
     : super(mensaje: 'Email o contraseña incorrectos', codigo: 'AUTH_CREDENCIALES');
 }
 
-/// La cuenta existe pero todavía no fue habilitada (HU-AUTH-008).
-final class FailureCuentaPendiente extends Failure {
-  const FailureCuentaPendiente()
-    : super(
-        mensaje: 'Tu cuenta está pendiente de aprobación por el coordinador',
-        codigo: 'AUTH_CUENTA_PENDIENTE',
-      );
-}
-
 /// Ya existe una cuenta con ese correo (HU-AUTH-001, "Error - email ya registrado"). Solo lo usa
 /// el registro (nunca el login): el mensaje literal del criterio de aceptación es seguro acá.
 final class FailureEmailYaRegistrado extends Failure {
@@ -82,6 +73,15 @@ final class FailureSesionRevocada extends Failure {
         mensaje: 'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
         codigo: 'AUTH_SESION_REVOCADA',
       );
+}
+
+/// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
+/// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
+/// `otp_expired`), así que la app tampoco. [mensaje] es el literal de la HU; la pantalla ofrece
+/// pedir un enlace nuevo (HU-AUTH-004).
+final class FailureEnlaceRecuperacionVencido extends Failure {
+  const FailureEnlaceRecuperacionVencido()
+    : super(mensaje: 'El enlace expiró. Solicitá uno nuevo.', codigo: 'AUTH_ENLACE_VENCIDO');
 }
 
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
