@@ -195,7 +195,6 @@ void main() {
     test('las excepciones que no son de este flujo salen como inesperado', () async {
       for (final e in const <AuthRemoteException>[
         CredencialesInvalidasException(),
-        CuentaPendienteException(),
         EmailYaRegistradoException(),
       ]) {
         remoto.fallaAlActualizar = e;

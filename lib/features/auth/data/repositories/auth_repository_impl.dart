@@ -433,7 +433,6 @@ final class AuthRepositoryImpl implements AuthRepository {
 
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
-    CuentaPendienteException() => const FailureCuentaPendiente(),
     EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
     SesionRevocadaException() => const FailureSesionRevocada(),

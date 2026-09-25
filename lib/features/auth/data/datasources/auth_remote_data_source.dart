@@ -105,10 +105,6 @@ final class CredencialesInvalidasException extends AuthRemoteException {
   const CredencialesInvalidasException();
 }
 
-final class CuentaPendienteException extends AuthRemoteException {
-  const CuentaPendienteException();
-}
-
 /// Ya existe una cuenta con ese email (HU-AUTH-001).
 final class EmailYaRegistradoException extends AuthRemoteException {
   const EmailYaRegistradoException();
