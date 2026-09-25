@@ -181,8 +181,7 @@ class _ConfirmarRecuperacionPasswordPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final esOscuro = theme.brightness == Brightness.dark;
-    final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    const paddingHorizontal = 30.0;
 
     return PopScope(
       canPop: !_guardando,
@@ -219,17 +218,12 @@ class _ConfirmarRecuperacionPasswordPageState
   }
 
   Widget _encabezado(ThemeData theme, String titulo) {
-    final colores = theme.extension<ColoresColportaje>()!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Dorado sobre navy en oscuro; en claro el dorado sobre crema no llega al contraste de
-        // WCAG, así que va el primario (mismo criterio que Configuración).
         Text(
           'RECUPERAR CONTRASEÑA',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.brightness == Brightness.dark ? colores.oro : theme.colorScheme.primary,
-          ),
+          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
         ),
         const SizedBox(height: 8),
         Text(titulo, style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),

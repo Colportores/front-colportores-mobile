@@ -98,23 +98,12 @@ Future<void> _montarPagina(WidgetTester tester, {ThemeData? tema, bool? mostrarA
 
 void main() {
   group('LoginPage — diseño', () {
-    testWidgets('renderiza con tema claro sin overflow en 390x844', (tester) async {
+    testWidgets('renderiza sin overflow en 390x844', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await _montarPagina(tester, tema: temaClaro());
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('renderiza con tema oscuro sin overflow en 390x844', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      await _montarPagina(tester, tema: temaOscuro());
+      await _montarPagina(tester);
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);

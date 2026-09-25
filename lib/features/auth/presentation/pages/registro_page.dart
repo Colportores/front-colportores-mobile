@@ -13,7 +13,7 @@ import '../widgets/banner_error_con_accion.dart';
 import 'recuperacion_password_page.dart';
 import 'verificacion_email_page.dart';
 
-/// Pantalla de registro de cuenta (HU-AUTH-001), diseño "Login Colportor" (registro 1a/1b).
+/// Pantalla de registro de cuenta (HU-AUTH-001), diseño "Login Colportor".
 ///
 /// Un solo paso: sin barra de progreso ni código de equipo (unirse a una campaña es otra HU).
 /// Sin lógica de negocio propia: valida por [Failure] que devuelve [SesionNotifier.registrar] y
@@ -181,9 +181,8 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
-    final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    const paddingHorizontal = 30.0;
     final errorTerminos = _erroresCampo['aceptaTerminos'];
     final errorTradeOffE2E = _erroresCampo['aceptaTradeOffE2E'];
 
@@ -220,7 +219,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       const SizedBox(height: 20),
                       Text(
                         'DATOS PERSONALES',
-                        style: theme.textTheme.labelSmall?.copyWith(color: colores.oro),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -472,7 +473,6 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                               child: _BotonProveedor(
                                 etiqueta: 'Apple',
                                 glifo: 'A',
-                                fondoNegro: esOscuro,
                                 onPressed: () {
                                   // TODO: alta de OAuth con Apple — todavía sin HU asignada.
                                   _proximamente();
@@ -618,10 +618,7 @@ class _DivisorTexto extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final estilo = theme.textTheme.bodySmall?.copyWith(
-      letterSpacing: 1.1,
-      color: colores.placeholder,
-    );
+    final estilo = theme.textTheme.bodySmall?.copyWith(letterSpacing: 1.1, color: colores.gris);
 
     // Mide el ancho real que pide el texto (con el tema y el `textScaler` actuales) en vez de
     // adivinar una proporción de `flex` fija: un `flex` chico lo truncaba a escala normal
@@ -663,7 +660,6 @@ class _BotonProveedor extends StatelessWidget {
     required this.glifo,
     required this.onPressed,
     this.colorGlifo,
-    this.fondoNegro = false,
   });
 
   final String etiqueta;
@@ -672,23 +668,11 @@ class _BotonProveedor extends StatelessWidget {
 
   /// `null` deshabilita el botón (mientras hay un ingreso en curso).
   final VoidCallback? onPressed;
-  final bool fondoNegro;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final estiloBase = theme.outlinedButtonTheme.style ?? const ButtonStyle();
-
     return OutlinedButton(
       onPressed: onPressed,
-      style: fondoNegro
-          ? estiloBase.copyWith(
-              backgroundColor: WidgetStatePropertyAll(colores.negro),
-              foregroundColor: WidgetStatePropertyAll(theme.colorScheme.onSurface),
-              side: const WidgetStatePropertyAll(BorderSide.none),
-            )
-          : estiloBase,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

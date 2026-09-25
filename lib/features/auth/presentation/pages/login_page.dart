@@ -16,7 +16,7 @@ import 'registro_page.dart';
 ///
 /// Sin lógica de negocio: valida por [Failure] que devuelve el notifier y muestra los mensajes
 /// por campo o un banner general. Todo lo visual sale de `Theme.of(context)` — el tema
-/// (`temaClaro`/`temaOscuro`, ver `core/theme/`) decide colores, tipografía y forma.
+/// (`temaClaro`, ver `core/theme/`) decide colores, tipografía y forma.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.mostrarApple});
 
@@ -101,9 +101,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final esOscuro = theme.brightness == Brightness.dark;
     final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
-    final paddingHorizontal = esOscuro ? 26.0 : 30.0;
+    const paddingHorizontal = 30.0;
     final aviso = ref.watch(avisoSesionProvider);
 
     return Scaffold(
@@ -118,11 +117,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _MarcaColportaje(esOscuro: esOscuro),
+                      const _MarcaColportaje(),
                       const SizedBox(height: 58),
                       Text(
                         'COLPORTAJE · URUGUAY',
-                        style: theme.textTheme.labelSmall?.copyWith(color: colores.oro),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text('Iniciá tu jornada', style: theme.textTheme.headlineMedium),
@@ -238,7 +239,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         _BotonProveedor(
                           etiqueta: 'Continuar con Apple',
                           glifo: 'A',
-                          fondoNegro: esOscuro,
                           onPressed: () {
                             // TODO: alta de OAuth con Apple — todavía sin HU asignada.
                             _proximamente();
@@ -253,7 +253,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           Container(
                             width: 6,
                             height: 6,
-                            decoration: BoxDecoration(color: colores.oro, shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Flexible(
@@ -333,36 +336,13 @@ class _AvisoSesion extends StatelessWidget {
   }
 }
 
-/// Marca de Colportaje: logo grande dorado con "C" en oscuro, fila navy+wordmark en claro.
+/// Marca de Colportaje: cuadrado navy + wordmark.
 class _MarcaColportaje extends StatelessWidget {
-  const _MarcaColportaje({required this.esOscuro});
-
-  final bool esOscuro;
+  const _MarcaColportaje();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    if (esOscuro) {
-      return Container(
-        width: 52,
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: Text(
-          'C',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.onPrimary,
-            height: 1,
-          ),
-        ),
-      );
-    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -487,10 +467,7 @@ class _DivisorTexto extends StatelessWidget {
             child: Text(
               texto,
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                letterSpacing: 1.1,
-                color: colores.placeholder,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(letterSpacing: 1.1, color: colores.gris),
             ),
           ),
         ),
@@ -500,16 +477,13 @@ class _DivisorTexto extends StatelessWidget {
   }
 }
 
-/// Botón "Continuar con" un proveedor (Google/Apple). El fondo negro (solo Apple, solo tema
-/// oscuro) es la única
-/// variante que no sale del `outlinedButtonTheme` general.
+/// Botón "Continuar con" un proveedor (Google/Apple).
 class _BotonProveedor extends StatelessWidget {
   const _BotonProveedor({
     required this.etiqueta,
     required this.glifo,
     required this.onPressed,
     this.colorGlifo,
-    this.fondoNegro = false,
   });
 
   final String etiqueta;
@@ -518,23 +492,11 @@ class _BotonProveedor extends StatelessWidget {
 
   /// `null` deshabilita el botón (mientras hay un ingreso en curso).
   final VoidCallback? onPressed;
-  final bool fondoNegro;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final estiloBase = theme.outlinedButtonTheme.style ?? const ButtonStyle();
-
     return OutlinedButton(
       onPressed: onPressed,
-      style: fondoNegro
-          ? estiloBase.copyWith(
-              backgroundColor: WidgetStatePropertyAll(colores.negro),
-              foregroundColor: WidgetStatePropertyAll(theme.colorScheme.onSurface),
-              side: const WidgetStatePropertyAll(BorderSide.none),
-            )
-          : estiloBase,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

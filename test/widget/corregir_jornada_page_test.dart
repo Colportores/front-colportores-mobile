@@ -291,7 +291,6 @@ void main() {
   });
 
   group('Accesibilidad', () {
-    final temas = {'claro': temaClaro, 'oscuro': temaOscuro};
     const estados = ['sin elegir hora', 'hora elegida', 'error de rango'];
 
     /// Deja la pantalla en [estado].
@@ -309,48 +308,37 @@ void main() {
       }
     }
 
-    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
-      for (final estado in estados) {
-        testWidgets('tema $nombreTema, $estado: tamaño de toque, etiquetas y contraste', (
-          tester,
-        ) async {
-          final semantica = tester.ensureSemantics();
-          _pantalla(tester, const Size(390, 844));
-          await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]), tema: tema());
-          await _abrirCorregir(tester);
-          await prepararEstado(tester, estado);
+    for (final estado in estados) {
+      testWidgets('$estado: tamaño de toque, etiquetas y contraste', (tester) async {
+        final semantica = tester.ensureSemantics();
+        _pantalla(tester, const Size(390, 844));
+        await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]));
+        await _abrirCorregir(tester);
+        await prepararEstado(tester, estado);
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        });
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
+      });
 
-        testWidgets('tema $nombreTema, $estado: sin overflow con el texto al 200 % en 360x740', (
-          tester,
-        ) async {
-          // El estado se arma a tamaño normal: a 360x740 con el texto al 200 % el diálogo del
-          // selector de hora del *sistema* puede desbordar (ajeno a esta pantalla) antes de que
-          // termine de abrirse. Lo que audita este test es el layout de `CorregirJornadaPage` ya
-          // con el estado puesto, no el picker de Flutter.
-          final escala = _Escala(1);
-          await _montar(
-            tester,
-            _DataSource(iniciales: [_jornadaAbierta()]),
-            tema: tema(),
-            escala: escala,
-          );
-          await _abrirCorregir(tester);
-          await prepararEstado(tester, estado);
+      testWidgets('$estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
+        // El estado se arma a tamaño normal: a 360x740 con el texto al 200 % el diálogo del
+        // selector de hora del *sistema* puede desbordar (ajeno a esta pantalla) antes de que
+        // termine de abrirse. Lo que audita este test es el layout de `CorregirJornadaPage` ya
+        // con el estado puesto, no el picker de Flutter.
+        final escala = _Escala(1);
+        await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]), escala: escala);
+        await _abrirCorregir(tester);
+        await prepararEstado(tester, estado);
 
-          escala.valor = 2;
-          _pantalla(tester, const Size(360, 740));
-          await tester.pumpAndSettle();
+        escala.valor = 2;
+        _pantalla(tester, const Size(360, 740));
+        await tester.pumpAndSettle();
 
-          expect(tester.takeException(), isNull);
-        });
-      }
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 }

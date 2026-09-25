@@ -50,12 +50,9 @@ Future<void> _montar(
   WidgetTester tester, {
   EstadoCuenta estado = EstadoCuenta.pendienteAsignacion,
   bool entrar = true,
-  Brightness brillo = Brightness.light,
 }) async {
   _backend = EstadoCuentaEnMemoria(estado: estado);
   _recordado = EstadoCuentaLocalEnMemoria();
-  tester.platformDispatcher.platformBrightnessTestValue = brillo;
-  addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -285,27 +282,24 @@ void main() {
 
   group('Accesibilidad', () {
     // 390x844 (convención del carril, issue #64): sin fijar el tamaño, `meetsGuideline` corría
-    // con el viewport default de test (no un teléfono real).
-    for (final brillo in Brightness.values) {
-      for (final estado in [EstadoCuenta.pendienteAsignacion, EstadoCuenta.suspendida]) {
-        testWidgets(
-          '${estado.name}, tema ${brillo.name}: tamaño de toque, etiquetas y contraste en '
-          '390x844',
-          (tester) async {
-            final semantica = tester.ensureSemantics();
-            tester.view.physicalSize = const Size(390, 844);
-            tester.view.devicePixelRatio = 1;
-            addTearDown(tester.view.reset);
-            await _montar(tester, estado: estado, brillo: brillo);
+    // con el viewport default de test (no un teléfono real). Paleta única 1b (#121): sin tema
+    // oscuro, así que ya no hace falta correr esto por brillo.
+    for (final estado in [EstadoCuenta.pendienteAsignacion, EstadoCuenta.suspendida]) {
+      testWidgets('${estado.name}: tamaño de toque, etiquetas y contraste en 390x844', (
+        tester,
+      ) async {
+        final semantica = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _montar(tester, estado: estado);
 
-            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(textContrastGuideline));
-            semantica.dispose();
-          },
-        );
-      }
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
+      });
     }
 
     testWidgets('el título se anuncia como encabezado', (tester) async {

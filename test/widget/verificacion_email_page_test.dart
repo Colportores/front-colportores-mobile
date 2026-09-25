@@ -82,9 +82,7 @@ Future<void> _montarPilaConPantallaInicial(
 void main() {
   group('VerificacionEmailPage — diseño', () {
     for (final estado in EstadoVerificacionEmail.values) {
-      testWidgets('estado $estado: renderiza sin overflow en 390x844 (claro y oscuro)', (
-        tester,
-      ) async {
+      testWidgets('estado $estado: renderiza sin overflow en 390x844', (tester) async {
         tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
@@ -92,23 +90,7 @@ void main() {
           credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
         );
 
-        await _montarPagina(
-          tester,
-          tema: temaClaro(),
-          estadoInicial: estado,
-          password: 'Secreto123',
-          remote: remote,
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-
-        await _montarPagina(
-          tester,
-          tema: temaOscuro(),
-          estadoInicial: estado,
-          password: 'Secreto123',
-          remote: remote,
-        );
+        await _montarPagina(tester, estadoInicial: estado, password: 'Secreto123', remote: remote);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       });
@@ -119,75 +101,50 @@ void main() {
   // archivo no tenía `meetsGuideline` ni cobertura de `textScaler` alto. Misma convención que
   // jornada_page_test.dart / registro_page_test.dart.
   group('VerificacionEmailPage — accesibilidad', () {
-    final temas = {'claro': temaClaro, 'oscuro': temaOscuro};
-
-    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
-      for (final estado in EstadoVerificacionEmail.values) {
-        testWidgets(
-          'tema $nombreTema, estado $estado: tamaño de toque, etiquetas y contraste',
-          (tester) async {
-            final semantica = tester.ensureSemantics();
-            tester.view.physicalSize = const Size(390, 844);
-            tester.view.devicePixelRatio = 1;
-            addTearDown(tester.view.reset);
-            final remote = AuthRemoteDataSourceEnMemoria(
-              credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
-            );
-
-            await _montarPagina(
-              tester,
-              tema: tema(),
-              estadoInicial: estado,
-              password: 'Secreto123',
-              remote: remote,
-            );
-            await tester.pumpAndSettle();
-
-            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-            await expectLater(tester, meetsGuideline(textContrastGuideline));
-            semantica.dispose();
-          },
-          // Bug real, no se arregla acá (tema claro únicamente): el label "VERIFICACIÓN DE
-          // EMAIL" usa `colores.oro` fijo y da contraste 2.30 contra los 4.5 que pide WCAG —
-          // mismo patrón sin condicionar por brillo que en LoginPage/RegistroPage/
-          // RecuperacionPasswordPage. `jornada_page.dart` ya lo resuelve condicionando por tema.
-          // Ver issue #115.
-          skip: nombreTema == 'claro' ? true : null,
+    // El bug de contraste 2.30 en "VERIFICACIÓN DE EMAIL" (`colores.oro` fijo, #115) se resolvió
+    // con la paleta única 1b (#121): ya no hace falta saltear el tema claro.
+    for (final estado in EstadoVerificacionEmail.values) {
+      testWidgets('estado $estado: tamaño de toque, etiquetas y contraste', (tester) async {
+        final semantica = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
         );
-      }
+
+        await _montarPagina(tester, estadoInicial: estado, password: 'Secreto123', remote: remote);
+        await tester.pumpAndSettle();
+
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        semantica.dispose();
+      });
     }
 
     // El campo de email editable (`_CampoEmail`) solo aparece sin `email` conocido (link de
     // verificación abierto sin sesión) — ninguno de los tests de arriba lo ejercita, así que el
     // tap-target de #115 (el `TextField` quedaba en 41, ya arreglado) no estaba cubierto.
-    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
-      testWidgets(
-        'tema $nombreTema, sin email conocido: tamaño de toque, etiquetas y contraste',
-        (tester) async {
-          final semantica = tester.ensureSemantics();
-          tester.view.physicalSize = const Size(390, 844);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.reset);
-          final remote = AuthRemoteDataSourceEnMemoria(
-            credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
-          );
-
-          await _montarPagina(tester, tema: tema(), email: '', remote: remote);
-          await tester.pumpAndSettle();
-
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        },
-        // Mismo bug de contraste que arriba (#115, decisión de Cristian): el label "VERIFICACIÓN
-        // DE EMAIL" en tema claro.
-        skip: nombreTema == 'claro' ? true : null,
+    testWidgets('sin email conocido: tamaño de toque, etiquetas y contraste', (tester) async {
+      final semantica = tester.ensureSemantics();
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
-    }
+
+      await _montarPagina(tester, email: '', remote: remote);
+      await tester.pumpAndSettle();
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      semantica.dispose();
+    });
 
     for (final estado in EstadoVerificacionEmail.values) {
       testWidgets('estado $estado: sin overflow con el texto al 200 % en 360x740', (tester) async {

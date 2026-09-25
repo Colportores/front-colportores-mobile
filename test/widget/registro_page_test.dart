@@ -170,23 +170,12 @@ Future<void> _tocarContinuar(WidgetTester tester) async {
 
 void main() {
   group('RegistroPage — diseño', () {
-    testWidgets('renderiza con tema claro sin overflow en 390x844', (tester) async {
+    testWidgets('renderiza sin overflow en 390x844', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await _montarPagina(tester, tema: temaClaro());
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('renderiza con tema oscuro sin overflow en 390x844', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      await _montarPagina(tester, tema: temaOscuro());
+      await _montarPagina(tester);
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -233,37 +222,24 @@ void main() {
 
     // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108):
     // este archivo no tenía `meetsGuideline` ni contraste. Misma convención que
-    // jornada_page_test.dart: 390x844, tamaño de toque Android/iOS, etiquetas y contraste, en los
-    // dos temas (el tap-target de #115 ya no depende del tema, pero el contraste sí).
-    for (final MapEntry(key: nombreTema, value: tema) in {
-      'claro': temaClaro,
-      'oscuro': temaOscuro,
-    }.entries) {
-      testWidgets(
-        'tema $nombreTema: tamaño de toque, etiquetas y contraste',
-        (tester) async {
-          final semantica = tester.ensureSemantics();
-          tester.view.physicalSize = const Size(390, 844);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.reset);
+    // jornada_page_test.dart: 390x844, tamaño de toque Android/iOS, etiquetas y contraste.
+    // El bug de contraste 2.30 en "DATOS PERSONALES" (`colores.oro` fijo, #115) se resolvió con
+    // la paleta única 1b (#121): ya no hay que saltear el tema claro.
+    testWidgets('tamaño de toque, etiquetas y contraste', (tester) async {
+      final semantica = tester.ensureSemantics();
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-          await _montarPagina(tester, tema: tema());
-          await tester.pumpAndSettle();
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        },
-        // Bug real, no se arregla acá (tema claro únicamente): el label "DATOS PERSONALES" usa
-        // `colores.oro` fijo y da contraste 2.30 contra los 4.5 que pide WCAG — mismo patrón sin
-        // condicionar por brillo que en LoginPage/VerificacionEmailPage/RecuperacionPasswordPage.
-        // `jornada_page.dart` ya lo resuelve condicionando por tema. Decisión de Cristian, no de
-        // #115 (que solo pedía el tamaño de toque, ya arreglado arriba). Ver issue #115.
-        skip: nombreTema == 'claro' ? true : null,
-      );
-    }
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      semantica.dispose();
+    });
 
     testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
       await _montarPagina(tester, mostrarApple: true);

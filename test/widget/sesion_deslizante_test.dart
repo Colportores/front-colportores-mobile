@@ -33,7 +33,6 @@ Future<AuthRemoteDataSourceEnMemoria> _montar(
   WidgetTester tester, {
   SesionModel? guardada,
   AuthRemoteDataSourceEnMemoria? remote,
-  ThemeMode tema = ThemeMode.light,
   RelojSesionEnMemoria? reloj,
 }) async {
   final remoto =
@@ -41,10 +40,6 @@ Future<AuthRemoteDataSourceEnMemoria> _montar(
       AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
   final local = AuthLocalDataSourceEnMemoria();
   if (guardada != null) await local.guardarSesion(guardada);
-  tester.platformDispatcher.platformBrightnessTestValue = tema == ThemeMode.dark
-      ? Brightness.dark
-      : Brightness.light;
-  addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -227,25 +222,21 @@ void main() {
   });
 
   group('Accesibilidad del aviso', () {
-    for (final tema in [ThemeMode.light, ThemeMode.dark]) {
-      testWidgets('tema ${tema.name}: tamaño de toque, etiquetas y contraste', (tester) async {
-        final semantica = tester.ensureSemantics();
-        await _montar(tester, guardada: _sesionSinUsoDesde(const Duration(days: 40)), tema: tema);
-        expect(_aviso, findsOneWidget);
+    // El bug de contraste #59 ("COLPORTAJE · URUGUAY" en oro, "O CONTINUAR CON") se resolvió con
+    // la paleta única 1b (#121): ya no hace falta saltear `textContrastGuideline` ni correr esto
+    // por tema.
+    testWidgets('tamaño de toque, etiquetas y contraste', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await _montar(tester, guardada: _sesionSinUsoDesde(const Duration(days: 40)));
+      expect(_aviso, findsOneWidget);
 
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-        // En el tema claro, dos rótulos de marca del login ("COLPORTAJE · URUGUAY" en oro y
-        // "O CONTINUAR CON") no llegan a 4.5:1: es la paleta del diseño, anotado en #59. El
-        // contraste del aviso se mide aparte, en los dos temas.
-        if (tema == ThemeMode.dark) {
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-        }
-        expect(_contrasteDelAviso(tester), greaterThanOrEqualTo(4.5));
-        semantica.dispose();
-      });
-    }
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      expect(_contrasteDelAviso(tester), greaterThanOrEqualTo(4.5));
+      semantica.dispose();
+    });
 
     testWidgets('sin overflow con el texto al 200 % en 360x740', (tester) async {
       tester.view
