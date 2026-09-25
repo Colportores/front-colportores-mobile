@@ -196,6 +196,7 @@ void main() {
       for (final e in const <AuthRemoteException>[
         CredencialesInvalidasException(),
         EmailYaRegistradoException(),
+        SesionRevocadaException(),
       ]) {
         remoto.fallaAlActualizar = e;
         expect(

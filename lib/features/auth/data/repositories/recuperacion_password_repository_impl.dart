@@ -108,6 +108,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
       mensaje == null
           ? FailureServidor(status: status)
           : FailureServidor(status: status, mensaje: mensaje),
-    CredencialesInvalidasException() || EmailYaRegistradoException() => const FailureInesperado(),
+    // No son de este flujo: la revocada solo sale de renovar la sesión (HU-AUTH-007).
+    CredencialesInvalidasException() ||
+    EmailYaRegistradoException() ||
+    SesionRevocadaException() => const FailureInesperado(),
   };
 }
