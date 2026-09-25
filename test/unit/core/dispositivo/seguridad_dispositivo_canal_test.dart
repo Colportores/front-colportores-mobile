@@ -1,5 +1,7 @@
 // El adaptador del canal nativo de seguridad del equipo (ADR-006). El lado nativo se simula con un
 // handler de mensajes: los tests nunca tocan Kotlin ni Swift.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/dispositivo/fakes/seguridad_dispositivo_fija.dart';
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo_canal.dart';
@@ -60,6 +62,31 @@ void main() {
       responder((_) => 'software');
       expect(await seguridad.nivelAlmacenSeguro(), NivelAlmacenSeguro.software);
       expect(llamadas, ['nivelAlmacen', 'nivelAlmacen']);
+    });
+
+    test('dado que la plataforma no contesta, corta al tiempo máximo con '
+        'SeguridadDispositivoException: nunca una espera sin fin (#27)', () async {
+      final nunca = Completer<Object?>();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        canal,
+        (_) => nunca.future,
+      );
+      final lenta = SeguridadDispositivoCanal(tiempoMaximo: const Duration(milliseconds: 20));
+
+      await expectLater(
+        lenta.tieneBloqueoPantalla(),
+        throwsA(
+          isA<SeguridadDispositivoException>().having(
+            (e) => e.causa,
+            'causa',
+            isA<TimeoutException>(),
+          ),
+        ),
+      );
+    });
+
+    test('por defecto espera 10 s por respuesta (para confirmar, #27)', () {
+      expect(SeguridadDispositivoCanal().tiempoMaximo, const Duration(seconds: 10));
     });
 
     test('dada una respuesta desconocida, lanza SeguridadDispositivoException', () async {
