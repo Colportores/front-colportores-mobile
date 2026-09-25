@@ -352,6 +352,16 @@ void main() {
       expect(almacen.contenido[ClaveSegura.consentimientoAlmacenSoftware], 'true');
     });
 
+    test('conserva tal cual el último estado de cuenta (HU-AUTH-008)', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:pendiente');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'u-1:pendiente');
+      expect((await custodia.leerDek())!.bytes, dek.bytes);
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {

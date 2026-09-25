@@ -109,6 +109,36 @@ final class FailureHoraFueraDeRango extends Failure {
   }
 }
 
+/// La jornada en curso empezó un día anterior (HU-JOR-002, "Jornada que quedó abierta"): no se
+/// cierra con la hora de hoy, porque eso inventaría un `fin` y sumaría horas que no se trabajaron.
+/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", entre el inicio y las 23:59 de
+/// ese día—, que es otra pantalla. [mensaje] nombra el día en la zona del dispositivo ("Tenés una
+/// jornada del lunes 21 sin cerrar.", como la HU).
+final class FailureJornadaDeDiaAnterior extends Failure {
+  FailureJornadaDeDiaAnterior({required this.inicio})
+    : super(
+        mensaje:
+            'Tenés una jornada del ${_dia(inicio)} sin cerrar. No la cerramos con la hora de hoy '
+            'para no sumarle horas que no trabajaste: hay que indicar a qué hora terminaste ese '
+            'día.',
+        codigo: 'JOR_JORNADA_DIA_ANTERIOR',
+      );
+
+  /// Inicio de la jornada que quedó abierta.
+  final DateTime inicio;
+
+  @override
+  List<Object?> get props => [...super.props, inicio];
+
+  static const _dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+  /// `lunes 21`, en la zona del dispositivo.
+  static String _dia(DateTime instante) {
+    final local = instante.toLocal();
+    return '${_dias[local.weekday - 1]} ${local.day}';
+  }
+}
+
 /// No se pudo armar el resumen de lo guardado en el teléfono por una falla inesperada. Se puede
 /// reintentar; nada se borró.
 final class FailureDatosLocalesIlegibles extends Failure {
@@ -152,13 +182,14 @@ final class FailureInesperado extends Failure {
 }
 
 /// El almacén seguro del dispositivo (Keystore/Keychain) falló, o lo que guarda no se puede
-/// interpretar (HU-AUTH-009). El mensaje es el que fija la HU.
+/// interpretar (HU-AUTH-009). El mensaje es el de la HU con el cambio que decidió Cristian el 25/09
+/// (#26): en Android reinstalar borra la DB, así que dice "consultá a soporte antes de reinstalar".
 final class FailureAlmacenSeguro extends Failure {
   const FailureAlmacenSeguro()
     : super(
         mensaje:
-            'No pudimos preparar el almacenamiento seguro. Probá reinstalar el app o consultá a '
-            'soporte.',
+            'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de '
+            'reinstalar la app.',
         codigo: 'DB_ALMACEN_SEGURO',
       );
 }
@@ -231,14 +262,14 @@ final class FailureAlmacenSeguroRecuperable extends Failure {
 }
 
 /// El almacén seguro falló (o perdió la DEK) con la DB en el teléfono, y **no** hay envoltorio por
-/// contraseña (usuario de Google sin backup): ADR-006 muestra el mensaje de HU-AUTH-009 y ofrece
-/// "empezar de nuevo", que avisa qué se pierde. **Nunca se borra sin ese sí.**
+/// contraseña (usuario de Google sin backup): ADR-006 muestra el mensaje de [FailureAlmacenSeguro]
+/// y ofrece "empezar de nuevo", que avisa qué se pierde. **Nunca se borra sin ese sí.**
 final class FailureAlmacenSeguroSinRecuperacion extends Failure {
   const FailureAlmacenSeguroSinRecuperacion()
     : super(
         mensaje:
-            'No pudimos preparar el almacenamiento seguro. Probá reinstalar el app o consultá a '
-            'soporte.',
+            'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de '
+            'reinstalar la app.',
         codigo: 'DB_ALMACEN_SIN_RECUPERACION',
       );
 }

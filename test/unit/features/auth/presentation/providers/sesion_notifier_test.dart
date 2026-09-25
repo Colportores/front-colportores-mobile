@@ -321,6 +321,7 @@ void main() {
             email: 'ana@example.com',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           );
 
       expect(resultado.isRight(), isTrue);
@@ -349,6 +350,7 @@ void main() {
               email: 'ana@example.com',
               password: 'OtraSecreta1',
               aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
             );
 
         expect(resultado.fold((f) => f, (_) => null), isA<FailureEmailYaRegistrado>());
@@ -375,6 +377,7 @@ void main() {
             email: 'ana@example.com',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           );
 
       expect(resultado.isRight(), isTrue);

@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/error/failure.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/auth/domain/entities/sesion.dart';
+import 'features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/jornada/presentation/pages/jornada_page.dart';
 
@@ -34,6 +38,19 @@ class ColportoresApp extends ConsumerWidget {
       unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
     });
 
+    // HU-AUTH-002 (issue #84): simétrico al listener de arriba, para el caso de éxito — el
+    // enlace de verificación es válido y Supabase ya confirmó el email y creó la sesión. A
+    // diferencia del caso de error, acá no hace falta esperar a `sesionProvider`: el evento en sí
+    // ya es la prueba de que la sesión se acaba de crear (no hay ambigüedad de "enlace viejo" que
+    // resolver, como sí la hay con `otp_expired`). Funciona igual en un arranque en frío: el deep
+    // link se procesa durante `Supabase.initialize()`, antes de `runApp`, pero el intercambio de
+    // código por sesión (red) tarda lo suficiente como para que este listener ya esté suscripto
+    // cuando el evento llega.
+    ref.listen(verificacionesExitosasProvider, (previous, next) {
+      if (next is! AsyncData<void>) return;
+      _navegarAVerificacion(context, EstadoVerificacionEmail.verificado);
+    });
+
     return MaterialApp(
       navigatorKey: navigatorKeyColportores,
       title: 'Colportores',
@@ -43,7 +60,7 @@ class ColportoresApp extends ConsumerWidget {
       home: sesion.when(
         loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, _) => const LoginPage(),
-        data: (s) => s == null ? const LoginPage() : JornadaPage(sesion: s),
+        data: (s) => s == null ? const LoginPage() : _Principal(sesion: s),
       ),
     );
   }
@@ -69,16 +86,43 @@ Future<void> _llevarAVerificacionSiNoHaySesion(BuildContext context, WidgetRef r
   }
   if (haySesion) return;
   if (!context.mounted) return;
+  _navegarAVerificacion(context, EstadoVerificacionEmail.expirado);
+}
+
+/// Lleva a [VerificacionEmailPage] en [estadoInicial], vaciando la pila hasta la raíz primero —
+/// compartido por los dos listeners globales de deep link de verificación (error arriba, éxito en
+/// [ColportoresApp.build]): en los dos casos la pantalla puede tener que aparecer encima de
+/// cualquier otra que estuviera mostrándose (o de ninguna, en un arranque en frío).
+void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoInicial) {
+  if (!context.mounted) return;
 
   final navigator = navigatorKeyColportores.currentState;
   if (navigator == null) return;
   navigator.popUntil((route) => route.isFirst);
   unawaited(
     navigator.push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            const VerificacionEmailPage(estadoInicial: EstadoVerificacionEmail.expirado),
-      ),
+      MaterialPageRoute<void>(builder: (_) => VerificacionEmailPage(estadoInicial: estadoInicial)),
     ),
   );
+}
+
+/// Con sesión, la pantalla principal depende del estado de la cuenta (HU-AUTH-008): solo una
+/// cuenta activa ve los módulos de campo; las demás, la pantalla de espera con Configuración. Es
+/// el único camino a los módulos de campo mientras no haya router (llega en Sprint 5): el gate de
+/// deep links de la HU vive acá.
+class _Principal extends ConsumerWidget {
+  const _Principal({required this.sesion});
+
+  final Sesion sesion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
+    AsyncData(value: final estado) when estado == null || estado.accedeAModulosDeCampo =>
+      JornadaPage(sesion: sesion),
+    AsyncData(value: final estado) => EsperandoAsignacionPage(estado: estado),
+    AsyncError(:final error) => EsperandoAsignacionPage(
+      falla: error is Failure ? error : FailureInesperado(causa: error),
+    ),
+    _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
+  };
 }

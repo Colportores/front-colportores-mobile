@@ -51,6 +51,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() => _interno.obtenerSesionActual();
 
   @override
+  SesionModel? sesionEnElCliente() => _interno.sesionEnElCliente();
+
+  @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
 
   @override
@@ -61,6 +64,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => _interno.erroresVerificacionEmail;
+
+  @override
+  Stream<void> get verificacionesExitosas => _interno.verificacionesExitosas;
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) =>

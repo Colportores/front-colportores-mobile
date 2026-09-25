@@ -20,6 +20,7 @@ Future<void> _montarPagina(
   String? password,
   EstadoVerificacionEmail estadoInicial = EstadoVerificacionEmail.pendiente,
   required AuthRemoteDataSourceEnMemoria remote,
+  double escalaTexto = 1,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -28,6 +29,10 @@ Future<void> _montarPagina(
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
+        child: child!,
+      ),
       home: VerificacionEmailPage(email: email, password: password, estadoInicial: estadoInicial),
     ),
   ),
@@ -110,6 +115,103 @@ void main() {
     }
   });
 
+  // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108): este
+  // archivo no tenía `meetsGuideline` ni cobertura de `textScaler` alto. Misma convención que
+  // jornada_page_test.dart / registro_page_test.dart.
+  group('VerificacionEmailPage — accesibilidad', () {
+    final temas = {'claro': temaClaro, 'oscuro': temaOscuro};
+
+    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
+      for (final estado in EstadoVerificacionEmail.values) {
+        testWidgets(
+          'tema $nombreTema, estado $estado: tamaño de toque, etiquetas y contraste',
+          (tester) async {
+            final semantica = tester.ensureSemantics();
+            tester.view.physicalSize = const Size(390, 844);
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.reset);
+            final remote = AuthRemoteDataSourceEnMemoria(
+              credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+            );
+
+            await _montarPagina(
+              tester,
+              tema: tema(),
+              estadoInicial: estado,
+              password: 'Secreto123',
+              remote: remote,
+            );
+            await tester.pumpAndSettle();
+
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+            semantica.dispose();
+          },
+          // Bug real, no se arregla acá (tema claro únicamente): el label "VERIFICACIÓN DE
+          // EMAIL" usa `colores.oro` fijo y da contraste 2.30 contra los 4.5 que pide WCAG —
+          // mismo patrón sin condicionar por brillo que en LoginPage/RegistroPage/
+          // RecuperacionPasswordPage. `jornada_page.dart` ya lo resuelve condicionando por tema.
+          // Ver issue #115.
+          skip: nombreTema == 'claro' ? true : null,
+        );
+      }
+    }
+
+    // El campo de email editable (`_CampoEmail`) solo aparece sin `email` conocido (link de
+    // verificación abierto sin sesión) — ninguno de los tests de arriba lo ejercita, así que el
+    // tap-target de #115 (el `TextField` quedaba en 41, ya arreglado) no estaba cubierto.
+    for (final MapEntry(key: nombreTema, value: tema) in temas.entries) {
+      testWidgets(
+        'tema $nombreTema, sin email conocido: tamaño de toque, etiquetas y contraste',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final remote = AuthRemoteDataSourceEnMemoria(
+            credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+          );
+
+          await _montarPagina(tester, tema: tema(), email: '', remote: remote);
+          await tester.pumpAndSettle();
+
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          semantica.dispose();
+        },
+        // Mismo bug de contraste que arriba (#115, decisión de Cristian): el label "VERIFICACIÓN
+        // DE EMAIL" en tema claro.
+        skip: nombreTema == 'claro' ? true : null,
+      );
+    }
+
+    for (final estado in EstadoVerificacionEmail.values) {
+      testWidgets('estado $estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
+        tester.view.physicalSize = const Size(360, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+        );
+
+        await _montarPagina(
+          tester,
+          estadoInicial: estado,
+          password: 'Secreto123',
+          remote: remote,
+          escalaTexto: 2,
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('VerificacionEmailPage — estado pendiente', () {
     testWidgets('muestra el email y ofrece reenviar', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(
@@ -164,44 +266,15 @@ void main() {
       },
     );
 
-    // BUG real (issue #84), no arreglado a propósito: falta una decisión de diseño sobre cómo
-    // distinguir un `signedIn` por verificación de uno por login normal, y agregar el método hace
-    // falta tocar AuthRemoteDataSource/AuthRepository, bloqueado por el PR #82 en vuelo.
-    testWidgets(
-      'BUG (issue #84): verificar por el enlace, sin tocar "Ya verifiqué mi email", no actualiza '
-      'la pantalla a "verificado" — hoy solo lo hace el botón manual',
-      (tester) async {
-        final remote = AuthRemoteDataSourceEnMemoria(
-          credenciales: const {},
-          requiereVerificacionAlRegistrar: true,
-        );
-        await remote.registrar(
-          nombre: 'Lucía',
-          apellido: 'Silva',
-          cedula: '12345678',
-          email: 'lucia.silva@correo.com',
-          password: 'Secreto123',
-        );
-
-        await _montarPagina(tester, remote: remote, password: 'Secreto123');
-        await tester.pumpAndSettle();
-
-        // Verificación exitosa "por el enlace" (criterio de aceptación de HU-AUTH-002): la cuenta
-        // se confirma en el backend sin que el usuario toque el botón "Ya verifiqué mi email".
-        remote.confirmarEmail('lucia.silva@correo.com');
-        await tester.pumpAndSettle();
-
-        expect(
-          find.text('Email verificado. Esperá la asignación de tu coordinador.'),
-          findsOneWidget,
-          reason:
-              'la HU pide que abrir el enlace muestre el mensaje solo; hoy la pantalla no '
-              'escucha nada y se queda en "Verificá tu cuenta" hasta que alguien toca el botón '
-              'manual — ver issue #84',
-        );
-      },
-      skip: true,
-    );
+    // Issue #84, arreglado: la decisión de Cristian (23/09) fue un deep link propio
+    // (`ConfigSupabase.redirectVerificacionEmail`, path `/verificado`) escuchado desde la RAÍZ de
+    // la app (`ColportoresApp`), simétrico al listener de errores — no algo que
+    // [VerificacionEmailPage] resuelva mirando su propio estado. El test que antes vivía acá
+    // (skip, montaba la página sola y llamaba `remote.confirmarEmail`, que no dispara ningún
+    // stream) probaba una hipótesis de arreglo distinta a la que se terminó decidiendo. La
+    // cobertura real —deep link válido → `ColportoresApp` navega a esta pantalla en estado
+    // "verificado", con el texto literal de la HU, incluyendo el caso de arranque en frío— está
+    // en `test/widget/app_test.dart`, grupo "ColportoresApp — deep link de verificación exitosa".
 
     testWidgets('reenviar: éxito muestra el aviso y arranca el cooldown de 60s', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(

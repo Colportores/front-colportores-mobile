@@ -38,6 +38,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() async => null;
 
   @override
+  SesionModel? sesionEnElCliente() => null;
+
+  @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
@@ -48,6 +51,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
@@ -208,7 +214,9 @@ void main() {
       await tester.enterText(find.byKey(const Key('registro_email')), 'lucia.silva@correo.com');
       await tester.enterText(find.byKey(const Key('registro_password')), 'Secreto123');
       await tester.tap(find.byKey(const Key('registro_terminos')));
+      await tester.tap(find.byKey(const Key('registro_trade_off')));
       await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.pumpAndSettle();
 

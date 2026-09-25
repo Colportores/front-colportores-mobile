@@ -18,7 +18,12 @@ enum ClaveSegura {
 
   /// El usuario aceptó seguir con un Keystore por software (Supuesto S10, HU-AUTH-009): la
   /// elección queda registrada acá.
-  consentimientoAlmacenSoftware('keystore_software_aceptado');
+  consentimientoAlmacenSoftware('keystore_software_aceptado'),
+
+  /// Último estado de cuenta que informó el backend, con el usuario (`<uuid>:<estado>`,
+  /// HU-AUTH-008). No es secreto: vive acá para no sumar otro almacenamiento, y así el borrado de
+  /// datos locales (HU-AUTH-010) también lo borra.
+  estadoCuenta('account_state');
 
   const ClaveSegura(this.id);
 

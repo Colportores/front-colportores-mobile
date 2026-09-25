@@ -300,8 +300,8 @@ void main() {
       }
       expect(
         const FailureAlmacenSeguro().mensaje,
-        'No pudimos preparar el almacenamiento seguro. Probá reinstalar el app o consultá a '
-        'soporte.',
+        'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de '
+        'reinstalar la app.',
       );
     });
 

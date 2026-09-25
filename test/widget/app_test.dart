@@ -146,6 +146,73 @@ void main() {
     );
   });
 
+  group('ColportoresApp — deep link de verificación exitosa (issue #84)', () {
+    testWidgets('enlace válido: navega a la pantalla en estado "verificado"', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        requiereVerificacionAlRegistrar: true,
+      );
+      await remote.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia.silva@correo.com',
+        password: 'Secreto123',
+      );
+
+      await _montarApp(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+
+      remote.simularEnlaceVerificacionExitoso('lucia.silva@correo.com');
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
+      expect(find.text('Email verificado'), findsOneWidget);
+      expect(
+        find.text('Email verificado. Esperá la asignación de tu coordinador.'),
+        findsOneWidget,
+        reason: 'texto literal del criterio de aceptación de HU-AUTH-002',
+      );
+    });
+
+    testWidgets('arranque en frío (sesión local todavía resolviendo): igual navega — no espera a '
+        '`sesionProvider` como el caso de error, el evento en sí ya prueba que la sesión se acaba '
+        'de crear', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        requiereVerificacionAlRegistrar: true,
+      );
+      await remote.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia.silva@correo.com',
+        password: 'Secreto123',
+      );
+      final local = _LocalConDemora(null);
+
+      await _montarApp(tester, remote: remote, local: local);
+      await tester.pump();
+
+      // sesionProvider sigue en AsyncLoading (leerSesion no resolvió): se ve el spinner de
+      // `home:`. A propósito no se resuelve en todo el test — sin `pumpAndSettle`, que
+      // colgaría esperando a que termine una animación indeterminada.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      remote.simularEnlaceVerificacionExitoso('lucia.silva@correo.com');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
+      expect(
+        find.text('Email verificado. Esperá la asignación de tu coordinador.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('ColportoresApp — bloqueo de acceso hasta verificar (HU-AUTH-002)', () {
     testWidgets(
       'cuenta sin verificar: el login rechaza con el mensaje inline y no entra a Inicio',

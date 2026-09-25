@@ -157,8 +157,8 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
     await argon2idPendiente?.future;
   }
 
-  /// Como `CustodiaClaveDb.reconstruirAlmacen`: `borrarTodo` → marca → DEK → consentimiento, una
-  /// escritura por vez.
+  /// Como `CustodiaClaveDb.reconstruirAlmacen`: `borrarTodo` → marca → DEK → lo que se conserva
+  /// (acá, el consentimiento), una escritura por vez.
   @override
   Future<Either<Failure, Unit>> reconstruirAlmacen(ClaveDb dek) async {
     llamadas.add('reconstruir');
