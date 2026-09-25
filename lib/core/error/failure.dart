@@ -308,6 +308,21 @@ final class FailurePasswordNoAbreDatos extends Failure {
       );
 }
 
+/// La cuenta entra con contraseña pero no hay con qué armar el envoltorio de la DEK (sesión
+/// restaurada, sin el login a mano): antes de crear la DB, o de dar por lista una que no lo tiene,
+/// se pide la contraseña (revisión del PR #130, "ante la duda, bloquear"). Sin envoltorio, si el
+/// almacén seguro falla solo queda "empezar de nuevo" (ADR-006). El texto es propio: para
+/// confirmar.
+final class FailurePasswordParaProteger extends Failure {
+  const FailurePasswordParaProteger()
+    : super(
+        mensaje:
+            'Para proteger tus datos, confirmá tu contraseña. Con ella vas a poder recuperarlos si '
+            'este teléfono pierde su clave.',
+        codigo: 'DB_FALTA_PASSWORD',
+      );
+}
+
 /// La sesión se cerró (o no había) mientras se preparaba la DB local: no se abre nada sin sesión.
 final class FailureSesionCerrada extends Failure {
   const FailureSesionCerrada()

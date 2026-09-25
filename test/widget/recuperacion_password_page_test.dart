@@ -24,8 +24,8 @@ Future<void> _montarPagina(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
-      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
-      dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
     ],
@@ -305,8 +305,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
-            dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
+            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
             authRemoteDataSourceProvider.overrideWithValue(
               AuthRemoteDataSourceEnMemoria(credenciales: const {}),
             ),

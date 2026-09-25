@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local
 import 'package:colportores_mobile/features/auth/presentation/pages/preparacion_db_local_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/password_para_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/jornada/presentation/pages/jornada_page.dart';
 import 'package:flutter/material.dart';
@@ -30,8 +31,13 @@ Finder get _principal => find.byType(JornadaPage);
 Finder get _preparacion => find.byType(PreparacionDbLocalPage);
 Finder _boton(String key) => find.byKey(Key(key));
 
-/// Entra con email y contraseña y monta la app, que prepara la DB local.
-Future<ProviderContainer> _entrar(WidgetTester tester, {bool esperar = true}) async {
+/// Entra con email y contraseña y monta la app, que prepara la DB local. Con [restaurada], como
+/// una sesión que ya estaba al abrir la app: sin la contraseña del login en memoria.
+Future<ProviderContainer> _entrar(
+  WidgetTester tester, {
+  bool esperar = true,
+  bool restaurada = false,
+}) async {
   final container = ProviderContainer(
     overrides: [
       authRemoteDataSourceProvider.overrideWithValue(
@@ -44,6 +50,7 @@ Future<ProviderContainer> _entrar(WidgetTester tester, {bool esperar = true}) as
   addTearDown(container.dispose);
   await container.read(sesionProvider.future);
   await container.read(sesionProvider.notifier).iniciarSesion(email: _email, password: _password);
+  if (restaurada) container.read(passwordParaDbLocalProvider).olvidar();
 
   await tester.pumpWidget(
     UncontrolledProviderScope(container: container, child: const ColportoresApp()),
@@ -201,6 +208,43 @@ void main() {
     });
   });
 
+  group('Cuenta con contraseña y DB sin envoltorio (revisión del PR #130)', () {
+    testWidgets('dada una sesión restaurada sin DB, pide la contraseña antes de crear nada; con la '
+        'correcta crea la DB con envoltorio', (tester) async {
+      await _entrar(tester, restaurada: true);
+
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
+      expect(_db.llamadas, isNot(contains('crearDek')));
+
+      await tester.enterText(_boton('preparacion_db_password'), 'equivocada');
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+      expect(find.text(TextosPreparacionDbLocal.passwordIncorrecta), findsOneWidget);
+      expect(_principal, findsNothing);
+
+      await tester.enterText(_boton('preparacion_db_password'), _password);
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+
+      expect(_principal, findsOneWidget);
+      expect(_db.envoltorio!.password, _password);
+    });
+
+    testWidgets('dada una DB existente sin envoltorio, pide la contraseña antes de darla por lista '
+        'y la protege sin tocar sus datos', (tester) async {
+      _dbExistente(dekEnAlmacen: true, conEnvoltorio: false);
+      await _entrar(tester, restaurada: true);
+
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
+      expect(_db.abierta, isFalse);
+
+      await tester.enterText(_boton('preparacion_db_password'), _password);
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+
+      expect(_principal, findsOneWidget);
+      expect(_db.envoltorio!.password, _password);
+      expect(_db.llamadas, isNot(contains('descartar')));
+    });
+  });
+
   group('Reintentar (#27)', () {
     testWidgets('dada una falla pasajera del almacén (un Keystore que no respondió a tiempo), '
         '"Reintentar" termina la preparación', (tester) async {
@@ -340,6 +384,11 @@ void main() {
         _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
         await _entrar(tester);
         await _tocar(tester, 'preparacion_db_reintentar');
+      },
+      'confirmar contraseña con error': (tester) async {
+        await _entrar(tester, restaurada: true);
+        await tester.enterText(_boton('preparacion_db_password'), 'equivocada');
+        await _tocar(tester, 'preparacion_db_confirmar_password');
       },
       'sin espacio': (tester) async {
         _db.fallas['abrir'] = const FailureSinEspacio();

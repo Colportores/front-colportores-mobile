@@ -35,10 +35,12 @@ void main() {
 
   Future<Either<Failure, ResultadoInicializacionDb>> inicializar({
     String? password = 'secreto123',
+    bool requiereEnvoltorio = false,
     bool aceptaAlmacenSoftware = false,
   }) => useCase(
     InicializarDbLocalParams(
       password: password,
+      requiereEnvoltorio: requiereEnvoltorio,
       aceptaAlmacenSoftware: aceptaAlmacenSoftware,
       alAvanzar: pasos.add,
     ),
@@ -56,6 +58,39 @@ void main() {
 
   const creada = Right<Failure, ResultadoInicializacionDb>(ResultadoInicializacionDb.creada);
   const abierta = Right<Failure, ResultadoInicializacionDb>(ResultadoInicializacionDb.abierta);
+
+  group('cuenta con contraseña sin la contraseña (revisión del PR #130)', () {
+    test('dado un dispositivo nuevo, no toca nada y pide la contraseña', () async {
+      final r = await inicializar(password: null, requiereEnvoltorio: true);
+
+      expect(r, const Left<Failure, ResultadoInicializacionDb>(FailurePasswordParaProteger()));
+      expect(repo.llamadas, isNot(contains('crearDek')));
+      expect(repo.llamadas, isNot(contains('descartar')));
+      expect(repo.llamadas, isNot(contains('bloqueo')));
+    });
+
+    test('dada una DB existente sin envoltorio, no la abre y pide la contraseña; la DEK leída se '
+        'destruye', () async {
+      dispositivoInicializado(conEnvoltorio: false);
+
+      final r = await inicializar(password: null, requiereEnvoltorio: true);
+
+      expect(r, const Left<Failure, ResultadoInicializacionDb>(FailurePasswordParaProteger()));
+      expect(repo.abierta, isFalse);
+      expect(repo.entregadas.single.destruida, isTrue);
+    });
+
+    test('dada una DB existente con envoltorio, abre sin pedir nada', () async {
+      dispositivoInicializado();
+
+      expect(await inicializar(password: null, requiereEnvoltorio: true), abierta);
+    });
+
+    test('sin la exigencia (Google), crea la DB sin envoltorio como antes', () async {
+      expect(await inicializar(password: null), creada);
+      expect(repo.envoltorio, isNull);
+    });
+  });
 
   group('Escenario: Inicialización exitosa', () {
     test(

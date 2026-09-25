@@ -143,6 +143,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       email: emailGoogle,
       accessToken: 'token-google-en-memoria',
       expiraEn: PoliticaSesion.expiraEn(_ahora()),
+      entraConPassword: false,
     );
   }
 

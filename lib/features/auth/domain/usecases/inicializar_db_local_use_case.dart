@@ -38,6 +38,7 @@ enum ResultadoInicializacionDb {
 final class InicializarDbLocalParams extends Equatable {
   const InicializarDbLocalParams({
     this.password,
+    this.requiereEnvoltorio = false,
     this.aceptaAlmacenSoftware = false,
     this.alAvanzar,
   });
@@ -46,6 +47,12 @@ final class InicializarDbLocalParams extends Equatable {
   /// sesión restaurada). Solo se usa al crear la DB, para envolver la DEK (ADR-006): sin ella no hay
   /// envoltorio por contraseña.
   final String? password;
+
+  /// La cuenta entra con contraseña, así que la DB tiene que quedar con envoltorio (ADR-006). Sin
+  /// [password], no se crea la DB ni se da por lista una que no lo tiene: devuelve
+  /// [FailurePasswordParaProteger] sin tocar nada, y la UI pide la contraseña (revisión del PR
+  /// #130).
+  final bool requiereEnvoltorio;
 
   /// El usuario ya aceptó seguir con un Keystore por software (S10): la UI lo pasa en `true`
   /// después de mostrar [FailureAlmacenPocoSeguro] y recibir "Entiendo el riesgo y quiero
@@ -61,7 +68,7 @@ final class InicializarDbLocalParams extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [password, aceptaAlmacenSoftware, alAvanzar];
+  List<Object?> get props => [password, requiereEnvoltorio, aceptaAlmacenSoftware, alAvanzar];
 }
 
 /// HU-AUTH-009 — Inicialización de la DB local cifrada con una DEK aleatoria envuelta (ADR-006).
@@ -190,6 +197,11 @@ final class InicializarDbLocalUseCase
     final dek = leida._valor!;
 
     final password = params.password;
+    if (password == null && params.requiereEnvoltorio && !estado.envoltorioExiste) {
+      // Abriría sin envoltorio una cuenta que tiene contraseña: primero, la contraseña.
+      dek.destruir();
+      return const Left(FailurePasswordParaProteger());
+    }
     if (password != null && !estado.envoltorioExiste) {
       // Login con contraseña en un equipo sin envoltorio: se arma ahora, así hay con qué recuperar
       // si el Keystore falla. Si no se puede, igual se abre: la DB está bien y el envoltorio se
@@ -207,6 +219,12 @@ final class InicializarDbLocalUseCase
     InicializarDbLocalParams params,
     TestigoSesion testigo,
   ) async {
+    // Una DB nueva de una cuenta con contraseña nace con envoltorio: sin la contraseña, no se toca
+    // nada y se pide.
+    if (params.password == null && params.requiereEnvoltorio) {
+      return const Left(FailurePasswordParaProteger());
+    }
+
     // Las dos verificaciones van antes de tocar nada: si no se sigue, el dispositivo queda como
     // estaba.
     final bloqueo = await _repository.tieneBloqueoPantalla();

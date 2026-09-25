@@ -80,8 +80,8 @@ late _DatosLocalesFake _datos;
 Future<ProviderContainer> _montar(WidgetTester tester, {AuthLocalDataSource? local}) async {
   final container = ProviderContainer(
     overrides: [
-      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal.
-      dbLocalRepositoryProvider.overrideWithValue(DbLocalRepositoryEnMemoria()),
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(_remote),
       authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
       datosLocalesRepositoryProvider.overrideWithValue(_datos),
