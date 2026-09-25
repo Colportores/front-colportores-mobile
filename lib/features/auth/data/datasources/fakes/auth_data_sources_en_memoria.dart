@@ -208,9 +208,14 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// fija: siempre es solo esa sesión (el adaptador de Supabase pasa `SignOutScope.local`).
   final List<String> revocaciones = [];
 
+  /// Si no es `null`, [revocarSesion] lo lanza (sin registrar la revocación): el servidor rechazó
+  /// el token, o se cortó la red justo ahí, sin que falle el resto.
+  AuthRemoteException? fallaAlRevocar;
+
   @override
   Future<void> revocarSesion(String accessToken) async {
     if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlRevocar case final falla?) throw falla;
     revocaciones.add(accessToken);
   }
 

@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -13,10 +14,18 @@ import 'package:colportores_mobile/features/auth/domain/entities/resultado_regis
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:dartz/dartz.dart';
+import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
+
+class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
+}
 
 /// Remoto roto a propósito: para probar que el repositorio traduce cualquier excepción no
 /// tipada a [FailureInesperado] (no solo las [AuthRemoteException] conocidas), en varios de sus
@@ -879,6 +888,52 @@ void main() {
           expect(remote.revocaciones, [delLogin.accessToken]);
         },
       );
+    });
+  });
+
+  group('AuthRepositoryImpl.revocarSesionReemplazada (revisión del PR #130, N3)', () {
+    final reemplazada = Sesion(
+      usuarioId: 'id-de-ana',
+      email: 'ana@example.com',
+      accessToken: 'token-restaurado',
+      expiraEn: DateTime.utc(2026, 9, 30),
+    );
+
+    test(
+      'revoca en el servidor solo el token de la sesión reemplazada, sin tocar el cliente',
+      () async {
+        final resultado = await repository.revocarSesionReemplazada(reemplazada);
+
+        expect(resultado, const Right<Failure, Unit>(unit));
+        expect(remote.revocaciones, ['token-restaurado']);
+        expect(remote.llamadasCerrarSesion, 0, reason: 'la sesión nueva del cliente sigue');
+      },
+    );
+
+    test('sin red, devuelve FailureSinConexion y deja un warn, sin lanzar', () async {
+      final salida = _SalidaEnMemoria();
+      final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+      remote.fallaAlRevocar = const SinConexionException();
+
+      final resultado = await repo.revocarSesionReemplazada(reemplazada);
+
+      expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
+      expect(
+        salida.lineas,
+        anyElement(startsWith('[WARN][AUTH][SESION_REEMPLAZADA_REVOCACION_FAIL]')),
+      );
+    });
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.revocarSesionReemplazada(reemplazada);
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
   });
 

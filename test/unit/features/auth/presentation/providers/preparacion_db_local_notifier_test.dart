@@ -5,7 +5,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -22,16 +24,18 @@ const _password = 'Secreto123';
 
 void main() {
   late DbLocalRepositoryEnMemoria db;
+  late AuthRemoteDataSourceEnMemoria remote;
+  late AuthLocalDataSourceEnMemoria local;
   late ProviderContainer container;
 
   setUp(() {
     db = DbLocalRepositoryEnMemoria();
+    remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password});
+    local = AuthLocalDataSourceEnMemoria();
     container = ProviderContainer(
       overrides: [
-        authRemoteDataSourceProvider.overrideWithValue(
-          AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
-        ),
-        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        authRemoteDataSourceProvider.overrideWithValue(remote),
+        authLocalDataSourceProvider.overrideWithValue(local),
         dbLocalRepositoryProvider.overrideWithValue(db),
       ],
     );
@@ -159,6 +163,51 @@ void main() {
         expect(db.claveDelArchivo, dek, reason: 'la misma DB, nunca una nueva');
       },
     );
+
+    /// Una sesión que ya estaba guardada al abrir la app, con su propio token: la que el login de
+    /// la confirmación reemplaza.
+    Future<String> guardadaAlAbrir() async {
+      final delServidor = await AuthRemoteDataSourceEnMemoria(
+        credenciales: const {_email: _password},
+      ).iniciarSesion(email: _email, password: _password);
+      await local.guardarSesion(
+        SesionModel(
+          usuarioId: delServidor.usuarioId,
+          email: _email,
+          accessToken: 'token-restaurado',
+          expiraEn: delServidor.expiraEn,
+        ),
+      );
+      expect((await container.read(sesionProvider.future))?.accessToken, 'token-restaurado');
+      return 'token-restaurado';
+    }
+
+    test('al confirmar la contraseña, revoca en el servidor la sesión restaurada, no la nueva '
+        '(N3)', () async {
+      final restaurada = await guardadaAlAbrir();
+      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+      await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
+      await pumpEventQueue();
+
+      expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+      expect(remote.revocaciones, [restaurada]);
+      expect(container.read(sesionProvider).value?.accessToken, isNot(restaurada));
+    });
+
+    test('si la revocación de la sesión restaurada falla, la DB igual queda lista (N3)', () async {
+      remote.fallaAlRevocar = const SinConexionException();
+      await guardadaAlAbrir();
+      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+      await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
+      await pumpEventQueue();
+
+      expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
+      expect(db.envoltorio!.password, _password);
+      expect(remote.revocaciones, isEmpty);
+      expect(container.read(sesionProvider).value?.email, _email, reason: 'sigue adentro');
+    });
 
     test('con Google no pide contraseña: abre sin envoltorio (ADR-006)', () async {
       await container.read(sesionProvider.future);

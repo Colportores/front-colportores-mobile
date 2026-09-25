@@ -30,6 +30,7 @@ import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import '../../domain/usecases/reintentar_revocacion_pendiente_use_case.dart';
 import '../../domain/usecases/renovar_sesion_use_case.dart';
+import '../../domain/usecases/revocar_sesion_reemplazada_use_case.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 
 part 'auth_providers.g.dart';
@@ -118,6 +119,10 @@ ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>
 @Riverpod(keepAlive: true)
 ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref ref) =>
     ReintentarRevocacionPendienteUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+RevocarSesionReemplazadaUseCase revocarSesionReemplazadaUseCase(Ref ref) =>
+    RevocarSesionReemplazadaUseCase(ref.watch(authRepositoryProvider));
 
 /// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
 @Riverpod(keepAlive: true)

@@ -239,6 +239,10 @@ class SesionNotifier extends _$SesionNotifier {
   /// un login con el mismo email: si sale bien, la sesión pasa a ser la nueva (el mismo usuario) y
   /// la contraseña queda para la preparación. Si falla, **no** toca la sesión: devuelve el
   /// [Failure] (contraseña incorrecta, sin red) para mostrarlo en el formulario.
+  ///
+  /// El login crea una sesión nueva en el servidor sin cerrar la restaurada: esa se revoca aparte,
+  /// best-effort y sin esperarla (revisión del PR #130, N3). Si no se puede, queda un warn en el
+  /// log y la preparación sigue igual.
   Future<Failure?> confirmarPassword(String password) async {
     final actual = state.value;
     if (actual == null) return const FailureSesionCerrada();
@@ -252,6 +256,7 @@ class SesionNotifier extends _$SesionNotifier {
       }
       ref.read(passwordParaDbLocalProvider).recordar(password);
       state = AsyncData(sesion);
+      unawaited(ref.read(revocarSesionReemplazadaUseCaseProvider)(actual));
       return null;
     });
   }
