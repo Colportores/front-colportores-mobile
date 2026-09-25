@@ -19,6 +19,7 @@ import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
+import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
@@ -30,7 +31,6 @@ import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
 import '../../domain/usecases/reintentar_revocacion_pendiente_use_case.dart';
 import '../../domain/usecases/renovar_sesion_use_case.dart';
-import '../../domain/usecases/revocar_sesion_reemplazada_use_case.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 
 part 'auth_providers.g.dart';
@@ -121,8 +121,8 @@ ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref re
     ReintentarRevocacionPendienteUseCase(ref.watch(authRepositoryProvider));
 
 @Riverpod(keepAlive: true)
-RevocarSesionReemplazadaUseCase revocarSesionReemplazadaUseCase(Ref ref) =>
-    RevocarSesionReemplazadaUseCase(ref.watch(authRepositoryProvider));
+ConfirmarPasswordUseCase confirmarPasswordUseCase(Ref ref) =>
+    ConfirmarPasswordUseCase(ref.watch(authRepositoryProvider));
 
 /// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
 @Riverpod(keepAlive: true)

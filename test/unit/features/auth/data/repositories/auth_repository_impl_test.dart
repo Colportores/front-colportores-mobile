@@ -891,49 +891,91 @@ void main() {
     });
   });
 
-  group('AuthRepositoryImpl.revocarSesionReemplazada (revisión del PR #130, N3)', () {
-    final reemplazada = Sesion(
-      usuarioId: 'id-de-ana',
+  group('AuthRepositoryImpl.confirmarPassword (HU-AUTH-009, revisión del PR #130, N3)', () {
+    late String idDeAna;
+    late Sesion restaurada;
+
+    setUp(() async {
+      idDeAna = (await remote.iniciarSesion(
+        email: 'ana@example.com',
+        password: 'secreto123',
+      )).usuarioId;
+      // La del arranque: su JWT ya venció, el servidor lo rechaza.
+      restaurada = Sesion(
+        usuarioId: idDeAna,
+        email: 'ana@example.com',
+        accessToken: 'token-del-arranque',
+        expiraEn: DateTime.utc(2026, 9, 30),
+      );
+      remote.tokensVencidos.add('token-del-arranque');
+    });
+
+    /// El cliente del proveedor renovó el JWT de esa misma sesión mientras tanto.
+    void clienteRenovado() => remote.enElCliente = SesionModel(
+      usuarioId: idDeAna,
       email: 'ana@example.com',
-      accessToken: 'token-restaurado',
+      accessToken: 'token-renovado-por-el-cliente',
       expiraEn: DateTime.utc(2026, 9, 30),
     );
 
-    test(
-      'revoca en el servidor solo el token de la sesión reemplazada, sin tocar el cliente',
-      () async {
-        final resultado = await repository.revocarSesionReemplazada(reemplazada);
+    test('revoca el token vigente del cliente, tomado antes del login: ni el vencido del arranque '
+        'ni el de la sesión nueva', () async {
+      clienteRenovado();
 
-        expect(resultado, const Right<Failure, Unit>(unit));
-        expect(remote.revocaciones, ['token-restaurado']);
-        expect(remote.llamadasCerrarSesion, 0, reason: 'la sesión nueva del cliente sigue');
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
+      );
+      await pumpEventQueue();
+
+      final nueva = resultado.getOrElse(() => throw StateError('debía entrar'));
+      expect(nueva.usuarioId, idDeAna);
+      expect((await local.leerSesion())?.accessToken, nueva.accessToken, reason: 'queda guardada');
+      expect(remote.revocaciones, ['token-renovado-por-el-cliente']);
+      expect(remote.revocaciones, isNot(contains(nueva.accessToken)));
+      expect(remote.llamadasCerrarSesion, 0, reason: 'la sesión nueva del cliente sigue');
+    });
+
+    test(
+      'si el servidor rechaza la revocación (JWT vencido), confirma igual y deja un warn',
+      () async {
+        final salida = _SalidaEnMemoria();
+        final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+        final resultado = await repo.confirmarPassword(sesion: restaurada, password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(resultado.isRight(), isTrue);
+        expect(remote.revocaciones, isEmpty, reason: 'el fake rechaza el token vencido');
+        expect(
+          salida.lineas,
+          anyElement(startsWith('[WARN][AUTH][SESION_REEMPLAZADA_REVOCACION_FAIL]')),
+        );
       },
     );
 
-    test('sin red, devuelve FailureSinConexion y deja un warn, sin lanzar', () async {
-      final salida = _SalidaEnMemoria();
-      final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
-      remote.fallaAlRevocar = const SinConexionException();
+    test('si la revocación lanza algo no tipado, confirma igual', () async {
+      clienteRenovado();
+      remote.fallaAlRevocar = const FormatException('inesperado');
 
-      final resultado = await repo.revocarSesionReemplazada(reemplazada);
-
-      expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
-      expect(
-        salida.lineas,
-        anyElement(startsWith('[WARN][AUTH][SESION_REEMPLAZADA_REVOCACION_FAIL]')),
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
       );
+      await pumpEventQueue();
+
+      expect(resultado.isRight(), isTrue);
+      expect(remote.revocaciones, isEmpty);
     });
 
-    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteQueLanzaExcepcionGenerica(),
-        local,
-        logger: loggerMudo(),
-      );
+    test('con la contraseña incorrecta no entra ni revoca nada', () async {
+      clienteRenovado();
 
-      final resultado = await repo.revocarSesionReemplazada(reemplazada);
+      final resultado = await repository.confirmarPassword(sesion: restaurada, password: 'otra');
+      await pumpEventQueue();
 
-      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      expect(resultado, const Left<Failure, Sesion>(FailureCredencialesInvalidas()));
+      expect(remote.revocaciones, isEmpty);
     });
   });
 
