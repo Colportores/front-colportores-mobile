@@ -122,5 +122,12 @@ void main() {
       expect(PoliticaSesion.vencida(expira, expira.toLocal()), isFalse);
       expect(PoliticaSesion.expiraEn(DateTime(2026, 8, 1)).isUtc, isTrue);
     });
+
+    test('borde: justo en el instante de los 30 días (sin margen de tolerancia de por medio) '
+        'todavía es vigente', () {
+      final expira = PoliticaSesion.expiraEn(DateTime.utc(2026, 8, 1, 10));
+
+      expect(PoliticaSesion.vencida(expira, expira), isFalse);
+    });
   });
 }
