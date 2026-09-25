@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/motivo_expiracion.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
@@ -169,11 +172,16 @@ final class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, Sesion?>> sesionActual() async {
     try {
       final local = await _local.leerSesion();
-      if (local != null) return Right(local.toEntity());
+      if (local != null) {
+        // El proveedor renueva el JWT solo: si su sesión es del mismo usuario, esa es la vigente,
+        // y reemplaza a la guardada (HU-AUTH-007, "Refresh transparente").
+        final vigente = _sesionVigente(local);
+        if (!identical(vigente, local)) await _local.guardarSesion(vigente);
+        return Right(vigente.toEntity());
+      }
 
-      // Sin sesión local (p. ej. tras reiniciar la app): el proveedor puede tenerla persistida
-      // por su cuenta (supabase_flutter). Si no se puede consultar (sin red y token vencido),
-      // se arranca deslogueado; la política de "sliding session" offline es HU-AUTH-006.
+      // Sin sesión local (p. ej. tras reiniciar la app): el proveedor la tiene persistida por su
+      // cuenta (supabase_flutter, en el almacén seguro). No toca la red.
       final SesionModel? remota;
       try {
         remota = await _remote.obtenerSesionActual();
@@ -183,7 +191,13 @@ final class AuthRepositoryImpl implements AuthRepository {
         });
         return const Right(null);
       }
-      if (remota == null) return const Right(null);
+      if (remota == null) {
+        if (!_remote.tomarVencimientoPorInactividad()) return const Right(null);
+        _log.info(LogModulo.auth, 'SESION_EXPIRADA', 'sesión vencida por inactividad al arrancar', {
+          'motivo': MotivoExpiracion.inactividad.name,
+        });
+        return const Left(FailureSesionExpiradaPorInactividad());
+      }
 
       await _local.guardarSesion(remota);
       _log.info(LogModulo.auth, 'SESION_RESTAURADA', 'sesión restaurada del proveedor', {
@@ -295,6 +309,97 @@ final class AuthRepositoryImpl implements AuthRepository {
     return const Right(unit);
   }
 
+  /// El refresh en curso, si hay uno: las llamadas simultáneas lo comparten (HU-AUTH-007, "coordinar
+  /// refresh único").
+  Future<Either<Failure, Sesion>>? _renovacionEnCurso;
+
+  @override
+  Future<Either<Failure, Sesion>> renovarSesion() =>
+      _renovacionEnCurso ??= _renovar().whenComplete(() => _renovacionEnCurso = null);
+
+  Future<Either<Failure, Sesion>> _renovar() async {
+    try {
+      final sesion = await _remote.renovarSesion();
+      await _local.guardarSesion(sesion);
+      _log.info(LogModulo.auth, 'SESION_RENOVADA', 'JWT renovado', {'user_id': sesion.usuarioId});
+      return Right(sesion.toEntity());
+    } on SinConexionException {
+      // Se mantiene la sesión anterior; el próximo request con red la renueva.
+      _log.info(LogModulo.auth, 'SESION_RENOVAR_OFFLINE', 'sin red: se mantiene la sesión');
+      return const Left(FailureSinConexion());
+    } on SesionRevocadaException {
+      _log.warn(LogModulo.auth, 'SESION_REVOCADA', 'el servidor ya no acepta la sesión');
+      return const Left(FailureSesionRevocada());
+    } on AuthRemoteException catch (e) {
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'SESION_RENOVAR_FAIL', 'refresh rechazado', {
+        'codigo': failure.codigo,
+      });
+      return Left(failure);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'SESION_RENOVAR_FAIL',
+        'error inesperado en refresh',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Stream<MotivoExpiracion> get expiraciones => _remote.expiraciones;
+
+  @override
+  Future<Either<Failure, Unit>> expirarSesion(MotivoExpiracion motivo) async {
+    try {
+      final guardada = await _local.leerSesion();
+      await _local.borrarSesion();
+      // Ya se está atendiendo: que el próximo arranque no lo vuelva a avisar.
+      if (motivo == MotivoExpiracion.inactividad) _remote.tomarVencimientoPorInactividad();
+      // Si el cliente del proveedor todavía la tiene (vencida por inactividad con la app
+      // abierta), se suelta sin esperar a la red: con red, además, se revoca.
+      final enCliente = _sesionEnElCliente();
+      if (enCliente != null) unawaited(_soltarDelCliente(enCliente));
+      _log.info(LogModulo.auth, 'SESION_EXPIRADA', 'sesión descartada', {
+        'user_id': guardada?.usuarioId,
+        'motivo': motivo.name,
+      });
+      return const Right(unit);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'SESION_EXPIRAR_FAIL',
+        'no se pudo descartar la sesión',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  SesionModel? _sesionEnElCliente() {
+    try {
+      return _remote.sesionEnElCliente();
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _soltarDelCliente(SesionModel sesion) async {
+    try {
+      await _remote.cerrarSesion(sesion.accessToken);
+    } on Object catch (e) {
+      // Sin red o con el token ya rechazado: la copia local del proveedor ya se soltó igual.
+      _log.debug(LogModulo.auth, 'SESION_SOLTAR', 'no se pudo revocar la sesión vencida', {
+        'error': e.runtimeType.toString(),
+      });
+    }
+  }
+
   @override
   Future<Either<Failure, Unit>> reenviarVerificacion({required String email}) async {
     try {
@@ -331,6 +436,7 @@ final class AuthRepositoryImpl implements AuthRepository {
     CuentaPendienteException() => const FailureCuentaPendiente(),
     EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
+    SesionRevocadaException() => const FailureSesionRevocada(),
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
     ),

@@ -232,11 +232,16 @@ final class CustodiaClaveDb {
   }
 
   /// Lo que [reconstruirAlmacen] vuelve a escribir tal cual: todo lo del almacén que no es de la DB.
-  /// El consentimiento de S10 (no se vuelve a preguntar) y el último estado de cuenta (HU-AUTH-008:
-  /// es lo que usa el gate de la raíz cuando no hay red).
+  /// El consentimiento de S10 (no se vuelve a preguntar), el último estado de cuenta (HU-AUTH-008:
+  /// es lo que usa el gate de la raíz cuando no hay red) y la sesión de HU-AUTH-007: la sesión de
+  /// Supabase, el reloj monotónico que mide su ventana y la marca de migrada (sin ella, una copia
+  /// vieja de SharedPreferences volvería a migrarse).
   static const Set<ClaveSegura> _seConservanAlReconstruir = {
     ClaveSegura.consentimientoAlmacenSoftware,
     ClaveSegura.estadoCuenta,
+    ClaveSegura.sesionAuth,
+    ClaveSegura.relojSesion,
+    ClaveSegura.sesionMigrada,
   };
 
   /// Los valores de [_seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja

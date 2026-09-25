@@ -10,10 +10,13 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto que lanza una excepción fija en `iniciarSesion` — para ver el banner de "email sin
 /// confirmar" sin depender de Supabase real (eso ya lo cubre el test unitario del data source).
-final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
+final class _RemoteQueLanzaAlIniciar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteQueLanzaAlIniciar(this.excepcion);
 
   final AuthRemoteException excepcion;
