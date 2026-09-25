@@ -108,7 +108,6 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
       mensaje == null
           ? FailureServidor(status: status)
           : FailureServidor(status: status, mensaje: mensaje),
-    CredencialesInvalidasException() ||
-    EmailYaRegistradoException() => const FailureInesperado(),
+    CredencialesInvalidasException() || EmailYaRegistradoException() => const FailureInesperado(),
   };
 }
