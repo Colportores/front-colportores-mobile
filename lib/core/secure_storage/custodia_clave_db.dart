@@ -209,8 +209,19 @@ final class CustodiaClaveDb {
 
   /// Recuperación guiada de ADR-006: con la DEK ya desenvuelta con la contraseña (y probada contra
   /// la DB), limpia el almacén (`borrarTodo`) y lo reescribe con la marca y esa DEK. Conserva lo
-  /// que no es de la DB ([_seConservanAlReconstruir]) que se pueda leer. **No** toca el archivo de
+  /// que no es de la DB ([seConservanAlReconstruir]) que se pueda leer. **No** toca el archivo de
   /// la DB ni el envoltorio. No destruye [dek]: sigue siendo de quien la pasó.
+  ///
+  /// Lo conservado se reescribe **solo si no volvió a aparecer** (#122). Eso cubre un solo orden:
+  /// el refresco automático de Supabase guarda una sesión nueva (o adelanta el reloj) **después**
+  /// de `borrarTodo`, y no se pisa con la vieja (pisarla haría que el servidor detecte un refresh
+  /// token reutilizado y cierre la sesión). **No** cubre:
+  /// - un refresco entre `_leerConservables` y `borrarTodo`: se borra la sesión nueva y se reescribe
+  ///   la vieja, con el refresh token ya usado;
+  /// - un cierre de sesión en el medio: la sesión leída antes vuelve a escribirse (ya pasaba antes
+  ///   de #122).
+  /// Sin transacciones en el Keystore, cerrar esas ventanas es dejar de reescribir la sesión, el
+  /// reloj y la marca de migrada: lo decide Cristian.
   ///
   /// **La marca va antes que la DEK.** Si se corta en el medio queda "marca sin DEK" o nada, y con
   /// la DB en disco los dos llevan a la recuperación guiada. Al revés podría quedar "DEK sin marca",
@@ -222,7 +233,7 @@ final class CustodiaClaveDb {
     await _almacen.escribir(ClaveSegura.dbInicializada, _marcaInicializada);
     await _almacen.escribir(ClaveSegura.dekDb, base64Encode(dek.bytes));
     for (final MapEntry(key: clave, value: valor) in conservados.entries) {
-      await _almacen.escribir(clave, valor);
+      if (await _almacen.leer(clave) == null) await _almacen.escribir(clave, valor);
     }
     _log.warn(
       LogModulo.db,
@@ -236,7 +247,7 @@ final class CustodiaClaveDb {
   /// es lo que usa el gate de la raíz cuando no hay red) y la sesión de HU-AUTH-007: la sesión de
   /// Supabase, el reloj monotónico que mide su ventana y la marca de migrada (sin ella, una copia
   /// vieja de SharedPreferences volvería a migrarse).
-  static const Set<ClaveSegura> _seConservanAlReconstruir = {
+  static const Set<ClaveSegura> seConservanAlReconstruir = {
     ClaveSegura.consentimientoAlmacenSoftware,
     ClaveSegura.estadoCuenta,
     ClaveSegura.sesionAuth,
@@ -244,12 +255,12 @@ final class CustodiaClaveDb {
     ClaveSegura.sesionMigrada,
   };
 
-  /// Los valores de [_seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
+  /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
   /// leer se pierde (nunca se inventa un valor): el consentimiento se vuelve a preguntar y el estado
   /// de cuenta se vuelve a pedir al backend.
   Future<Map<ClaveSegura, String>> _leerConservables() async {
     final conservados = <ClaveSegura, String>{};
-    for (final clave in _seConservanAlReconstruir) {
+    for (final clave in seConservanAlReconstruir) {
       try {
         final valor = await _almacen.leer(clave);
         if (valor != null) conservados[clave] = valor;
@@ -274,16 +285,61 @@ final class CustodiaClaveDb {
   ///
   /// El envoltorio se borra **aunque el almacén falle** (un Keystore roto no puede dejarlo en
   /// disco): vive fuera del almacén y la DB que cifraba ya no está. Si falla algo, se relanza.
+  ///
+  /// No toca lo que no es de la DB: "empezar de nuevo" y la limpieza pasan con el usuario adentro.
+  /// El borrado de datos (HU-AUTH-010) usa [olvidarDatosDelUsuario].
   Future<void> olvidar() async {
     try {
-      await _almacen.borrar(ClaveSegura.dbInicializada);
-      await _almacen.borrar(ClaveSegura.dekDb);
-      await _almacen.borrar(ClaveSegura.consentimientoAlmacenSoftware);
+      for (final clave in seBorranAlOlvidar) {
+        await _almacen.borrar(clave);
+      }
     } finally {
       await _archivo.borrar();
     }
     _log.warn(LogModulo.db, 'DEK_OLVIDADA', 'DEK, envoltorio y marca de inicialización borrados');
   }
+
+  /// Lo que [olvidar] borra del almacén, **en este orden**: marca, DEK y consentimiento de S10.
+  static const List<ClaveSegura> seBorranAlOlvidar = [
+    ClaveSegura.dbInicializada,
+    ClaveSegura.dekDb,
+    ClaveSegura.consentimientoAlmacenSoftware,
+  ];
+
+  /// Borrado de datos locales (HU-AUTH-010, #122): [olvidar] y, después, lo que el almacén guarda
+  /// del usuario fuera de la DB ([seBorranAlBorrarDatos]). Si algo falla, lanza, y reintentar es
+  /// seguro: borrar lo que ya no está no falla.
+  ///
+  /// Quedan fuera, a propósito ([quedanFueraDelBorradoDeDatos]):
+  /// - `sesionAuth`: la borra el cierre de sesión que sigue al borrado (`BorrarDatosLocalesUseCase`).
+  ///   Borrarla antes dejaría al usuario adentro en pantalla y afuera al reabrir si ese cierre falla,
+  ///   que es justo el caso en que el use case le ofrece reintentar.
+  /// - `sesionMigrada`: no tiene datos del usuario, y sin ella una copia vieja de la sesión que haya
+  ///   quedado en SharedPreferences se volvería a migrar.
+  Future<void> olvidarDatosDelUsuario() async {
+    await olvidar();
+    for (final clave in seBorranAlBorrarDatos) {
+      await _almacen.borrar(clave);
+    }
+    _log.warn(
+      LogModulo.db,
+      'DATOS_USUARIO_OLVIDADOS',
+      'estado de cuenta y reloj de sesión borrados',
+    );
+  }
+
+  /// Lo que [olvidarDatosDelUsuario] borra además de lo de [olvidar]: el último estado de cuenta
+  /// (lleva el id del usuario) y el reloj de la sesión (el último momento en que se usó la app).
+  static const List<ClaveSegura> seBorranAlBorrarDatos = [
+    ClaveSegura.estadoCuenta,
+    ClaveSegura.relojSesion,
+  ];
+
+  /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].
+  static const List<ClaveSegura> quedanFueraDelBorradoDeDatos = [
+    ClaveSegura.sesionAuth,
+    ClaveSegura.sesionMigrada,
+  ];
 
   Uint8List _bytesAleatorios(int cantidad) =>
       Uint8List.fromList(List<int>.generate(cantidad, (_) => _aleatorio.nextInt(256)));
