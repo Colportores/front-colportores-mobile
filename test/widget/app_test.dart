@@ -8,9 +8,12 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_local_dat
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 /// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
 /// devuelve el widget, riverpod_lint lo toma por un scope anidado
@@ -22,6 +25,8 @@ Future<void> _montarApp(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
     ],

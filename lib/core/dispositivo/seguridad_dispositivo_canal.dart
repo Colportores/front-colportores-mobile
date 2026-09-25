@@ -9,9 +9,19 @@ import 'seguridad_dispositivo.dart';
 /// y propio a propósito (ADR-006, S10): lo que pregunta no lo cubre `flutter_secure_storage`.
 ///
 /// Toda falla de la plataforma (`PlatformException`, `MissingPluginException`, una respuesta que
-/// no es la esperada) sale como [SeguridadDispositivoException].
+/// no es la esperada) sale como [SeguridadDispositivoException]. También una plataforma que no
+/// contesta en [tiempoMaximo] (#27): sin ese tope, la preparación de la DB esperaría para siempre y
+/// dejaría esperando a todos los flujos que vienen detrás en `TurnoDbLocal` (revisión del PR #81).
 final class SeguridadDispositivoCanal implements SeguridadDispositivo {
-  SeguridadDispositivoCanal({MethodChannel? canal}) : _canal = canal ?? const MethodChannel(nombre);
+  SeguridadDispositivoCanal({MethodChannel? canal, this.tiempoMaximo = tiempoMaximoPorDefecto})
+    : _canal = canal ?? const MethodChannel(nombre);
+
+  /// Tope por llamada. Las dos preguntas son locales y rápidas; el margen es para un Keystore lento
+  /// que genera la clave de prueba de `nivelAlmacen`. Para confirmar (#27).
+  static const Duration tiempoMaximoPorDefecto = Duration(seconds: 10);
+
+  /// Cuánto se espera cada respuesta de la plataforma.
+  final Duration tiempoMaximo;
 
   /// Nombre del canal, el mismo en Kotlin y en Swift.
   static const String nombre = 'colportores/seguridad_dispositivo';
@@ -40,8 +50,9 @@ final class SeguridadDispositivoCanal implements SeguridadDispositivo {
   Future<T> _invocar<T>(String metodo) async {
     final T? respuesta;
     try {
-      respuesta = await _canal.invokeMethod<T>(metodo);
+      respuesta = await _canal.invokeMethod<T>(metodo).timeout(tiempoMaximo);
     } on Exception catch (e) {
+      // `TimeoutException` también es una `Exception`: la plataforma no contestó a tiempo.
       throw SeguridadDispositivoException(operacion: metodo, causa: e);
     }
     if (respuesta == null) {

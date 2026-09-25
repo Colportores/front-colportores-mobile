@@ -8,10 +8,12 @@ import 'package:colportores_mobile/features/auth/presentation/pages/login_page.d
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto que lanza una excepción fija en `registrar` — para ver el banner del límite de
@@ -93,6 +95,8 @@ Future<void> _montarPagina(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(
         remote ??
             AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
@@ -122,6 +126,8 @@ Future<void> _montarPilaConPantallaInicial(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
     ],
@@ -591,6 +597,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
             authRemoteDataSourceProvider.overrideWithValue(
               AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
             ),

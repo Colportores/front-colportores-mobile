@@ -19,6 +19,7 @@ import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
+import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
 import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
@@ -118,6 +119,10 @@ ReenviarVerificacionUseCase reenviarVerificacionUseCase(Ref ref) =>
 @Riverpod(keepAlive: true)
 ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref ref) =>
     ReintentarRevocacionPendienteUseCase(ref.watch(authRepositoryProvider));
+
+@Riverpod(keepAlive: true)
+ConfirmarPasswordUseCase confirmarPasswordUseCase(Ref ref) =>
+    ConfirmarPasswordUseCase(ref.watch(authRepositoryProvider));
 
 /// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
 @Riverpod(keepAlive: true)

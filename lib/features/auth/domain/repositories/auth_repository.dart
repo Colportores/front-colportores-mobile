@@ -71,6 +71,20 @@ abstract interface class AuthRepository {
   /// `Left(FailureSinConexion)` si sigue sin red (y sigue pendiente).
   Future<Either<Failure, Unit>> reintentarRevocacionPendiente();
 
+  /// Confirma la contraseña de la cuenta de [sesion] con un login nuevo del mismo email
+  /// (HU-AUTH-009: una sesión restaurada no la tiene, y la DB local la necesita). Mismo resultado
+  /// que [iniciarSesion]; la sesión nueva queda persistida.
+  ///
+  /// El login crea otra sesión en el servidor sin cerrar la que reemplaza (revisión del PR #130,
+  /// N3): si sale bien, esa se revoca **sola** (scope local), best-effort y sin esperarla. Se
+  /// revoca con el token que el proveedor tiene **antes** del login —lo renueva solo, así que es
+  /// el vigente—, no con el de [sesion], que es el del arranque y pudo vencer. Nunca la nueva. Si
+  /// la revocación falla, queda un warn y la sesión vieja vive hasta que venza sola.
+  Future<Either<Failure, Sesion>> confirmarPassword({
+    required Sesion sesion,
+    required String password,
+  });
+
   /// Reenvía el email de verificación de una cuenta con confirmación pendiente (HU-AUTH-002).
   Future<Either<Failure, Unit>> reenviarVerificacion({required String email});
 

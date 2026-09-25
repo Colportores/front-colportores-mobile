@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -13,10 +14,18 @@ import 'package:colportores_mobile/features/auth/domain/entities/resultado_regis
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:dartz/dartz.dart';
+import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
+
+class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
+}
 
 /// Remoto roto a propósito: para probar que el repositorio traduce cualquier excepción no
 /// tipada a [FailureInesperado] (no solo las [AuthRemoteException] conocidas), en varios de sus
@@ -879,6 +888,94 @@ void main() {
           expect(remote.revocaciones, [delLogin.accessToken]);
         },
       );
+    });
+  });
+
+  group('AuthRepositoryImpl.confirmarPassword (HU-AUTH-009, revisión del PR #130, N3)', () {
+    late String idDeAna;
+    late Sesion restaurada;
+
+    setUp(() async {
+      idDeAna = (await remote.iniciarSesion(
+        email: 'ana@example.com',
+        password: 'secreto123',
+      )).usuarioId;
+      // La del arranque: su JWT ya venció, el servidor lo rechaza.
+      restaurada = Sesion(
+        usuarioId: idDeAna,
+        email: 'ana@example.com',
+        accessToken: 'token-del-arranque',
+        expiraEn: DateTime.utc(2026, 9, 30),
+      );
+      remote.tokensVencidos.add('token-del-arranque');
+    });
+
+    /// El cliente del proveedor renovó el JWT de esa misma sesión mientras tanto.
+    void clienteRenovado() => remote.enElCliente = SesionModel(
+      usuarioId: idDeAna,
+      email: 'ana@example.com',
+      accessToken: 'token-renovado-por-el-cliente',
+      expiraEn: DateTime.utc(2026, 9, 30),
+    );
+
+    test('revoca el token vigente del cliente, tomado antes del login: ni el vencido del arranque '
+        'ni el de la sesión nueva', () async {
+      clienteRenovado();
+
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
+      );
+      await pumpEventQueue();
+
+      final nueva = resultado.getOrElse(() => throw StateError('debía entrar'));
+      expect(nueva.usuarioId, idDeAna);
+      expect((await local.leerSesion())?.accessToken, nueva.accessToken, reason: 'queda guardada');
+      expect(remote.revocaciones, ['token-renovado-por-el-cliente']);
+      expect(remote.revocaciones, isNot(contains(nueva.accessToken)));
+      expect(remote.llamadasCerrarSesion, 0, reason: 'la sesión nueva del cliente sigue');
+    });
+
+    test(
+      'si el servidor rechaza la revocación (JWT vencido), confirma igual y deja un warn',
+      () async {
+        final salida = _SalidaEnMemoria();
+        final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+        final resultado = await repo.confirmarPassword(sesion: restaurada, password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(resultado.isRight(), isTrue);
+        expect(remote.revocaciones, isEmpty, reason: 'el fake rechaza el token vencido');
+        expect(
+          salida.lineas,
+          anyElement(startsWith('[WARN][AUTH][SESION_REEMPLAZADA_REVOCACION_FAIL]')),
+        );
+      },
+    );
+
+    test('si la revocación lanza algo no tipado, confirma igual', () async {
+      clienteRenovado();
+      remote.fallaAlRevocar = const FormatException('inesperado');
+
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
+      );
+      await pumpEventQueue();
+
+      expect(resultado.isRight(), isTrue);
+      expect(remote.revocaciones, isEmpty);
+    });
+
+    test('con la contraseña incorrecta no entra ni revoca nada', () async {
+      clienteRenovado();
+
+      final resultado = await repository.confirmarPassword(sesion: restaurada, password: 'otra');
+      await pumpEventQueue();
+
+      expect(resultado, const Left<Failure, Sesion>(FailureCredencialesInvalidas()));
+      expect(remote.revocaciones, isEmpty);
     });
   });
 

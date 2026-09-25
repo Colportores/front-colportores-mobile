@@ -62,12 +62,15 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       throw const ServidorException(mensaje: _mensajeEmailNoConfirmado);
     }
 
-    return SesionModel(
+    final sesion = SesionModel(
       usuarioId: _uuidDesde(email),
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
       expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
+    // Como el cliente de Supabase: la sesión del login pasa a ser la suya.
+    if (enElCliente != null) enElCliente = sesion;
+    return sesion;
   }
 
   /// Cuántas veces se solicitó recuperación de contraseña (HU-AUTH-004), por email. Se registra
@@ -143,6 +146,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       email: emailGoogle,
       accessToken: 'token-google-en-memoria',
       expiraEn: PoliticaSesion.expiraEn(_ahora()),
+      entraConPassword: false,
     );
   }
 
@@ -193,9 +197,13 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   @override
   Future<SesionModel?> obtenerSesionActual() async => null;
 
-  /// El fake no tiene un cliente que renueve el token: siempre `null` (se usa la guardada).
+  /// La sesión del cliente del proveedor, que renueva el JWT por su cuenta. Por defecto `null`
+  /// (se usa la guardada); un test la pone para simular ese refresh, y desde ahí cada
+  /// [iniciarSesion] la reemplaza, como en el cliente real.
+  SesionModel? enElCliente;
+
   @override
-  SesionModel? sesionEnElCliente() => null;
+  SesionModel? sesionEnElCliente() => enElCliente;
 
   @override
   Future<void> cerrarSesion(String accessToken) async {
@@ -207,9 +215,21 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// fija: siempre es solo esa sesión (el adaptador de Supabase pasa `SignOutScope.local`).
   final List<String> revocaciones = [];
 
+  /// Si no es `null`, [revocarSesion] lo lanza (sin registrar la revocación): se cortó la red
+  /// justo ahí, o algo inesperado, sin que falle el resto.
+  Exception? fallaAlRevocar;
+
+  /// JWT que el servidor ya no acepta (vencidos): [revocarSesion] los rechaza como Supabase
+  /// (`/logout` con un JWT vencido responde 403 `bad_jwt`).
+  final Set<String> tokensVencidos = {};
+
   @override
   Future<void> revocarSesion(String accessToken) async {
     if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlRevocar case final falla?) throw falla;
+    if (tokensVencidos.contains(accessToken)) {
+      throw const ServidorException(status: 403, mensaje: 'bad_jwt');
+    }
     revocaciones.add(accessToken);
   }
 

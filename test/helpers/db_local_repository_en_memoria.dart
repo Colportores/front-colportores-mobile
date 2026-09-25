@@ -238,3 +238,17 @@ final class VigenciaEnMemoria implements VigenciaSesion {
   @override
   TestigoSesion? tomarTestigo() => haySesion ? testigo : null;
 }
+
+/// Un teléfono con la DB local ya preparada: marca, archivo, DEK en el almacén y envoltorio por
+/// contraseña. Para los tests de la app entera que no prueban la preparación (HU-AUTH-009): abre
+/// directo, también con una sesión restaurada, que con una DB sin envoltorio pediría la contraseña
+/// (revisión del PR #130).
+DbLocalRepositoryEnMemoria dbLocalYaPreparada() {
+  final dek = Uint8List.fromList(List<int>.filled(32, 7));
+  return DbLocalRepositoryEnMemoria()
+    ..marca = MarcaDbLocal.puesta
+    ..archivo = true
+    ..claveDelArchivo = dek
+    ..dekEnAlmacen = dek
+    ..envoltorio = (dek: dek, password: 'Secreto123');
+}

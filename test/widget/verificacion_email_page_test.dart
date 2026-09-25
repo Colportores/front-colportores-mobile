@@ -3,9 +3,12 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
 
 /// [VerificacionEmailPage] aislada (sin [ColportoresApp]) — mismo criterio que
 /// `login_page_test.dart`/`registro_page_test.dart`.
@@ -24,6 +27,8 @@ Future<void> _montarPagina(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
     ],
@@ -50,6 +55,8 @@ Future<void> _montarPilaConPantallaInicial(
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(
         AuthRemoteDataSourceEnMemoria(credenciales: const {}),
       ),

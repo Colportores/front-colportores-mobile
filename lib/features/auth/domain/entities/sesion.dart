@@ -12,6 +12,7 @@ class Sesion extends Equatable {
     required this.email,
     required this.accessToken,
     required DateTime expiraEn,
+    this.entraConPassword = true,
   }) : expiraEn = expiraEn.toUtc();
 
   /// UUID del usuario (`auth.users.id` = `public.usuario.id`). Es lo único que se loguea.
@@ -32,6 +33,12 @@ class Sesion extends Equatable {
   /// desigual con el mismo `hashCode`.
   final DateTime expiraEn;
 
+  /// Si la cuenta puede entrar con email y contraseña (y no solo con Google). Con contraseña, la
+  /// DB local se protege además con un envoltorio por contraseña (ADR-006): sin él, si el almacén
+  /// seguro falla solo queda "empezar de nuevo". Ante la duda, `true`: se pide la contraseña
+  /// (revisión del PR #130).
+  final bool entraConPassword;
+
   /// `true` si la sesión sigue válida en el instante [ahora] (inyectable para tests), con la
   /// tolerancia de reloj de [PoliticaSesion].
   bool estaVigente({DateTime? ahora}) => !PoliticaSesion.vencida(expiraEn, ahora ?? DateTime.now());
@@ -43,5 +50,5 @@ class Sesion extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [usuarioId, email, accessToken, expiraEn];
+  List<Object?> get props => [usuarioId, email, accessToken, expiraEn, entraConPassword];
 }
