@@ -13,6 +13,7 @@ import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
+import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
 import '../../domain/usecases/registrar_usuario_use_case.dart';
@@ -240,14 +241,13 @@ class SesionNotifier extends _$SesionNotifier {
   /// la contraseña queda para la preparación. Si falla, **no** toca la sesión: devuelve el
   /// [Failure] (contraseña incorrecta, sin red) para mostrarlo en el formulario.
   ///
-  /// El login crea una sesión nueva en el servidor sin cerrar la restaurada: esa se revoca aparte,
-  /// best-effort y sin esperarla (revisión del PR #130, N3). Si no se puede, queda un warn en el
-  /// log y la preparación sigue igual.
+  /// La sesión restaurada se revoca en el servidor, best-effort y sin esperarla (N3, ver
+  /// `ConfirmarPasswordUseCase`): si no se puede, la preparación sigue igual.
   Future<Failure?> confirmarPassword(String password) async {
     final actual = state.value;
     if (actual == null) return const FailureSesionCerrada();
-    final resultado = await ref.read(iniciarSesionUseCaseProvider)(
-      IniciarSesionParams(email: actual.email, password: password),
+    final resultado = await ref.read(confirmarPasswordUseCaseProvider)(
+      ConfirmarPasswordParams(sesion: actual, password: password),
     );
     return resultado.fold((falla) => falla, (sesion) {
       if (sesion.usuarioId != actual.usuarioId) {
@@ -256,7 +256,6 @@ class SesionNotifier extends _$SesionNotifier {
       }
       ref.read(passwordParaDbLocalProvider).recordar(password);
       state = AsyncData(sesion);
-      unawaited(ref.read(revocarSesionReemplazadaUseCaseProvider)(actual));
       return null;
     });
   }

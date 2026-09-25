@@ -164,41 +164,46 @@ void main() {
       },
     );
 
-    /// Una sesión que ya estaba guardada al abrir la app, con su propio token: la que el login de
-    /// la confirmación reemplaza.
-    Future<String> guardadaAlAbrir() async {
+    /// Una sesión que ya estaba guardada al abrir la app. El estado se queda con el JWT del
+    /// arranque; mientras la pantalla pide la contraseña, el cliente del proveedor lo renueva y el
+    /// del arranque vence (el servidor lo rechaza). Devuelve el token renovado, el vigente.
+    Future<String> restauradaYRenovada() async {
       final delServidor = await AuthRemoteDataSourceEnMemoria(
         credenciales: const {_email: _password},
       ).iniciarSesion(email: _email, password: _password);
-      await local.guardarSesion(
-        SesionModel(
-          usuarioId: delServidor.usuarioId,
-          email: _email,
-          accessToken: 'token-restaurado',
-          expiraEn: delServidor.expiraEn,
-        ),
+      SesionModel conToken(String token) => SesionModel(
+        usuarioId: delServidor.usuarioId,
+        email: _email,
+        accessToken: token,
+        expiraEn: delServidor.expiraEn,
       );
-      expect((await container.read(sesionProvider.future))?.accessToken, 'token-restaurado');
-      return 'token-restaurado';
+      await local.guardarSesion(conToken('token-del-arranque'));
+      expect((await container.read(sesionProvider.future))?.accessToken, 'token-del-arranque');
+      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+
+      remote
+        ..enElCliente = conToken('token-renovado-por-el-cliente')
+        ..tokensVencidos.add('token-del-arranque');
+      return 'token-renovado-por-el-cliente';
     }
 
-    test('al confirmar la contraseña, revoca en el servidor la sesión restaurada, no la nueva '
-        '(N3)', () async {
-      final restaurada = await guardadaAlAbrir();
-      expect(await terminada(), isA<PreparacionDbLocalFallida>());
+    test('al confirmar la contraseña, revoca en el servidor la sesión restaurada con su token '
+        'vigente, nunca la nueva (N3)', () async {
+      final vigente = await restauradaYRenovada();
 
       await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
       await pumpEventQueue();
 
       expect(container.read(preparacionDbLocalProvider), isA<DbLocalLista>());
-      expect(remote.revocaciones, [restaurada]);
-      expect(container.read(sesionProvider).value?.accessToken, isNot(restaurada));
+      expect(remote.revocaciones, [vigente]);
+      final nueva = container.read(sesionProvider).value!.accessToken;
+      expect(nueva, isNot(anyOf(vigente, 'token-del-arranque')));
+      expect(remote.revocaciones, isNot(contains(nueva)));
     });
 
     test('si la revocación de la sesión restaurada falla, la DB igual queda lista (N3)', () async {
+      await restauradaYRenovada();
       remote.fallaAlRevocar = const SinConexionException();
-      await guardadaAlAbrir();
-      expect(await terminada(), isA<PreparacionDbLocalFallida>());
 
       await container.read(preparacionDbLocalProvider.notifier).confirmarPassword(_password);
       await pumpEventQueue();
