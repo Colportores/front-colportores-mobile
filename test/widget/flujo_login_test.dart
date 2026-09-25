@@ -10,10 +10,13 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Remoto que lanza una excepción fija en `iniciarSesion` — para ver el banner de "email sin
 /// confirmar" sin depender de Supabase real (eso ya lo cubre el test unitario del data source).
-final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
+final class _RemoteQueLanzaAlIniciar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteQueLanzaAlIniciar(this.excepcion);
 
   final AuthRemoteException excepcion;
@@ -38,6 +41,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() async => null;
 
   @override
+  SesionModel? sesionEnElCliente() => null;
+
+  @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
 
   @override
@@ -48,6 +54,9 @@ final class _RemoteQueLanzaAlIniciar implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
@@ -212,7 +221,9 @@ void main() {
       await tester.enterText(find.byKey(const Key('registro_email')), 'lucia.silva@correo.com');
       await tester.enterText(find.byKey(const Key('registro_password')), 'Secreto123');
       await tester.tap(find.byKey(const Key('registro_terminos')));
+      await tester.tap(find.byKey(const Key('registro_trade_off')));
       await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
       await tester.tap(find.byKey(const Key('registro_continuar')));
       await tester.pumpAndSettle();
 

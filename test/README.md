@@ -82,7 +82,7 @@ cubierto solo o si alguien tiene que acordarse de sumarlo a mano:
 
 | Archivo | Qué verifica | Cómo |
 |---|---|---|
-| [`dominio_puro_test.dart`](unit/arquitectura/dominio_puro_test.dart) | ADR-009: ningún archivo bajo `*/domain/` (features) ni `core/{domain,error,usecases}` importa Flutter, Riverpod, Drift, Supabase o HTTP. | **Barre el árbol**: `_directoriosDeDominio()` + `listSync(recursive: true)` sobre `lib/`. Un archivo nuevo queda cubierto solo, sin tocar el test. |
+| [`dominio_puro_test.dart`](unit/arquitectura/dominio_puro_test.dart) | ADR-009: ningún archivo bajo `*/domain/` (features) ni `core/{domain,error,usecases}` importa Flutter, Riverpod, Drift, Supabase o HTTP. | **Barre el árbol**: `_directoriosDeDominio()` + [`leerArbolDartResiliente`](helpers/lectura_resiliente_arbol.dart) sobre `lib/` (issue #83: un solo recorrido con `dir.list(recursive: true)` y reintento ante una carrera entre listar y leer — antes usaba `listSync` sobre una foto del árbol y fallaba de forma intermitente). Un archivo nuevo queda cubierto solo, sin tocar el test. |
 | [`fechas_utc_test.dart`](unit/arquitectura/fechas_utc_test.dart) | Toda entidad *conocida* normaliza sus `DateTime` a UTC en el constructor (evita el bug de `hashCode` que no distingue `isUtc`). | **Lista manual**: un `import` y un caso por entidad, escritos a mano. No escanea nada. |
 | [`sin_pii_en_tostring_test.dart`](unit/arquitectura/sin_pii_en_tostring_test.dart) | convenciones-desarrollo.md §7.5: ninguna entidad *conocida* con campos sensibles filtra PII por `toString()` (fuerza `EquatableConfig.stringify = true`, el peor caso). | **Lista manual**, igual que el anterior: un caso por entidad ya agregada a mano. No escanea nada. |
 
@@ -157,6 +157,13 @@ Donde otra skill mencione mockito, en este repo es mocktail.
 
 `test/helpers/logger_mudo.dart` es el ejemplo de fixture compartida: un `AppLogger` con nivel
 `off` para no ensuciar la salida de los tests que reciben un logger inyectado.
+
+`test/helpers/lectura_resiliente_arbol.dart` (issue #83) es el otro helper compartido: recorre un
+directorio y lee cada `.dart` de forma resiliente a la carrera (TOCTOU) entre listar el árbol y
+leer un archivo. Lo usa `dominio_puro_test.dart` (§5) y cualquier test futuro que recorra el árbol
+de `lib/`. Tiene su propio test,
+[`lectura_resiliente_arbol_test.dart`](helpers/lectura_resiliente_arbol_test.dart), que simula la
+carrera inyectando el lector en vez de depender de una carrera real del filesystem.
 
 ## 7. Cobertura
 

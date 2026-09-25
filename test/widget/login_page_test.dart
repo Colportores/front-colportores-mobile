@@ -8,11 +8,12 @@ import 'package:colportores_mobile/features/auth/presentation/providers/sesion_n
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/remoto_sin_sesion_deslizante.dart';
 
 /// Envoltorio de test: agrega una demora real antes de delegar al fake en memoria, para poder
 /// observar el estado "cargando" de la UI (con el fake sin demora, la Future ya resuelve dentro
 /// del mismo pump y no hay forma de atrapar el estado intermedio).
-class _RemoteConDemora implements AuthRemoteDataSource {
+class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataSource {
   _RemoteConDemora(this._interno);
 
   final AuthRemoteDataSourceEnMemoria _interno;
@@ -51,6 +52,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
   Future<SesionModel?> obtenerSesionActual() => _interno.obtenerSesionActual();
 
   @override
+  SesionModel? sesionEnElCliente() => _interno.sesionEnElCliente();
+
+  @override
   Future<void> cerrarSesion(String accessToken) => _interno.cerrarSesion(accessToken);
 
   @override
@@ -61,6 +65,9 @@ class _RemoteConDemora implements AuthRemoteDataSource {
 
   @override
   Stream<void> get erroresVerificacionEmail => _interno.erroresVerificacionEmail;
+
+  @override
+  Stream<void> get verificacionesExitosas => _interno.verificacionesExitosas;
 
   @override
   Future<void> solicitarRecuperacionPassword(String email) =>

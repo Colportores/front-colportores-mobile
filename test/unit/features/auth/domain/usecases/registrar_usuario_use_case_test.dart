@@ -28,6 +28,7 @@ void main() {
     email: 'ana@example.com',
     password: 'Secreto123',
     aceptaTerminos: true,
+    aceptaTradeOffE2E: true,
   );
 
   setUp(() {
@@ -61,6 +62,7 @@ void main() {
             email: '  Ana@Example.COM ',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -94,6 +96,7 @@ void main() {
               email: 'José.Pérez@example.com',
               password: 'Secreto123',
               aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
             ),
           );
 
@@ -146,6 +149,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -161,6 +165,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -176,6 +181,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -191,6 +197,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -206,6 +213,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -221,6 +229,7 @@ void main() {
             email: 'no-es-un-email',
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -236,6 +245,7 @@ void main() {
             email: datosValidos.email,
             password: 'secretito',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -255,6 +265,7 @@ void main() {
             email: datosValidos.email,
             password: 'Ab1defg',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -270,10 +281,28 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: false,
+            aceptaTradeOffE2E: true,
           ),
         );
 
         expect(campos, {'aceptaTerminos': 'Tenés que aceptar los términos.'});
+      });
+
+      // Issue #85 (R-AU05): segunda casilla obligatoria, independiente de la de términos.
+      test('cuando no acepta el trade-off E2E, marca el campo aceptaTradeOffE2E', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: datosValidos.password,
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: false,
+          ),
+        );
+
+        expect(campos, {'aceptaTradeOffE2E': 'Tenés que aceptar el trade-off de tu contraseña.'});
       });
 
       test('cuando todos los datos son inválidos, reporta todos los campos a la vez', () async {
@@ -285,12 +314,21 @@ void main() {
             email: '',
             password: '',
             aceptaTerminos: false,
+            aceptaTradeOffE2E: false,
           ),
         );
 
         expect(
           campos.keys,
-          containsAll(['nombre', 'apellido', 'cedula', 'email', 'password', 'aceptaTerminos']),
+          containsAll([
+            'nombre',
+            'apellido',
+            'cedula',
+            'email',
+            'password',
+            'aceptaTerminos',
+            'aceptaTradeOffE2E',
+          ]),
         );
       });
     });

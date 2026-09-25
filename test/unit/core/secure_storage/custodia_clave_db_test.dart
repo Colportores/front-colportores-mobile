@@ -352,6 +352,31 @@ void main() {
       expect(almacen.contenido[ClaveSegura.consentimientoAlmacenSoftware], 'true');
     });
 
+    test('conserva tal cual el último estado de cuenta (HU-AUTH-008)', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:pendiente');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'u-1:pendiente');
+      expect((await custodia.leerDek())!.bytes, dek.bytes);
+    });
+
+    test('conserva tal cual la sesión, su reloj y la marca de migrada (HU-AUTH-007): recuperar '
+        'los datos no cierra la sesión', () async {
+      final dek = custodia.generarDek();
+      const sesion = '{"access_token":"a","refresh_token":"r"}';
+      await almacen.escribir(ClaveSegura.sesionAuth, sesion);
+      await almacen.escribir(ClaveSegura.relojSesion, '2026-09-25T12:00:00.000Z');
+      await almacen.escribir(ClaveSegura.sesionMigrada, 'true');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.sesionAuth], sesion);
+      expect(almacen.contenido[ClaveSegura.relojSesion], '2026-09-25T12:00:00.000Z');
+      expect(almacen.contenido[ClaveSegura.sesionMigrada], 'true');
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {

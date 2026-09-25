@@ -1,13 +1,20 @@
 // Test de la capa data contra Supabase Auth mockeado (mocktail sobre GoTrueClient).
 // Importa supabase_flutter (que arrastra Flutter), así que usa flutter_test y no `test`.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:colportores_mobile/core/config/config_supabase.dart';
+import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
+import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source_supabase.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/registro_enlaces_auth.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/politica_sesion.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -87,10 +94,14 @@ void main() {
   AuthRemoteDataSourceSupabase dataSource({
     LanzadorOAuth? lanzarOAuth,
     Duration esperaOAuth = const Duration(seconds: 1),
+    Stream<Uri>? enlaces,
+    AlmacenSesionSupabase? sesionPersistida,
   }) => AuthRemoteDataSourceSupabase(
     auth,
     lanzarOAuth: lanzarOAuth,
     esperaOAuth: esperaOAuth,
+    enlacesEntrantes: enlaces ?? const Stream<Uri>.empty(),
+    sesionPersistida: sesionPersistida,
     registroEnlaces: registro,
     logger: loggerMudo(),
   );
@@ -115,9 +126,11 @@ void main() {
     test(
       'dado credenciales válidas, cuando entra, mapea la sesión de Supabase a SesionModel',
       () async {
+        final emitida = DateTime.utc(2026, 9, 4, 19);
+        final token = jwtEmitidoEn(emitida);
         when(
           () => auth.signInWithPassword(email: 'ana@example.com', password: 'secreto123'),
-        ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
+        ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase(accessToken: token)));
 
         final sesion = await dataSource().iniciarSesion(
           email: 'ana@example.com',
@@ -126,8 +139,9 @@ void main() {
 
         expect(sesion.usuarioId, usuarioId);
         expect(sesion.email, 'ana@example.com');
-        expect(sesion.accessToken, 'jwt');
-        expect(sesion.expiraEn, expiraEn);
+        expect(sesion.accessToken, token);
+        // HU-AUTH-007: la ventana de 30 días arranca cuando el servidor emitió el JWT.
+        expect(sesion.expiraEn, emitida.add(PoliticaSesion.inactividadMaxima));
       },
     );
 
@@ -377,14 +391,14 @@ void main() {
       password: 'secreto123',
     );
 
-    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo, y devuelve '
-        'la sesión', () async {
+    test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo propio de '
+        'verificación (issue #84), y devuelve la sesión', () async {
       when(
         () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
           data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
-          emailRedirectTo: ConfigSupabase.redirectOAuth,
+          emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
         ),
       ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
 
@@ -470,32 +484,138 @@ void main() {
       verifyNever(() => auth.refreshSession());
     });
 
-    test('dado una sesión vencida, la refresca y devuelve la nueva', () async {
+    test('Escenario: Refresh offline con JWT vigente — con el JWT de acceso vencido la devuelve '
+        'igual, sin intentar el refresh (lo hace el proveedor cuando vuelve la red)', () async {
       when(() => auth.currentSession).thenReturn(sesionSupabase(vencida: true));
-      final nueva = sesionSupabase(accessToken: 'jwt-nuevo');
-      when(() => auth.refreshSession()).thenAnswer((_) async => respuestaCon(sesion: nueva));
 
       final sesion = await dataSource().obtenerSesionActual();
 
-      expect(sesion?.accessToken, 'jwt-nuevo');
+      expect(sesion?.usuarioId, usuarioId);
+      verifyNever(() => auth.refreshSession());
     });
 
-    test('dado una sesión vencida y sin red, lanza SinConexionException', () {
-      when(() => auth.currentSession).thenReturn(sesionSupabase(vencida: true));
-      when(() => auth.refreshSession()).thenThrow(AuthRetryableFetchException(message: 'x'));
-
-      expect(() => dataSource().obtenerSesionActual(), throwsA(isA<SinConexionException>()));
-    });
-
-    test('dado una sesión sin expiresAt, estima la expiración con expiresIn', () async {
-      final sesion = sesionSupabase(email: null)..expiresAt = null;
-      when(() => auth.currentSession).thenReturn(sesion);
+    test('dado un JWT sin `iat` legible, la ventana de 30 días arranca ahora', () async {
+      when(() => auth.currentSession).thenReturn(sesionSupabase(email: null));
       final antes = DateTime.now().toUtc();
 
       final modelo = await dataSource().obtenerSesionActual();
 
       expect(modelo?.email, '');
-      expect(modelo?.expiraEn.isAfter(antes.add(const Duration(minutes: 59))), isTrue);
+      expect(modelo?.expiraEn.isBefore(antes.add(PoliticaSesion.inactividadMaxima)), isFalse);
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.renovarSesion (HU-AUTH-007)', () {
+    test('Escenario: Refresh transparente con uso regular — devuelve la sesión nueva', () async {
+      final emitida = DateTime.utc(2026, 9, 23, 10);
+      final nueva = sesionSupabase(accessToken: jwtEmitidoEn(emitida));
+      when(() => auth.refreshSession()).thenAnswer((_) async => respuestaCon(sesion: nueva));
+
+      final sesion = await dataSource().renovarSesion();
+
+      expect(sesion.accessToken, nueva.accessToken);
+      expect(sesion.expiraEn, emitida.add(PoliticaSesion.inactividadMaxima));
+    });
+
+    test('sin red, lanza SinConexionException (la sesión sigue)', () {
+      when(() => auth.refreshSession()).thenThrow(AuthRetryableFetchException(message: 'x'));
+
+      expect(() => dataSource().renovarSesion(), throwsA(isA<SinConexionException>()));
+    });
+
+    test('Escenario: Edge - backend revocó la sesión — un rechazo del servidor es '
+        'SesionRevocadaException', () {
+      when(() => auth.refreshSession()).thenThrow(
+        const AuthApiException(
+          'Invalid Refresh Token',
+          statusCode: '400',
+          code: 'refresh_token_not_found',
+        ),
+      );
+
+      expect(() => dataSource().renovarSesion(), throwsA(isA<SesionRevocadaException>()));
+    });
+
+    test('si el servidor no devuelve sesión, también es SesionRevocadaException', () {
+      when(() => auth.refreshSession()).thenAnswer((_) async => respuestaCon());
+
+      expect(() => dataSource().renovarSesion(), throwsA(isA<SesionRevocadaException>()));
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.expiraciones (HU-AUTH-007)', () {
+    test('cuando gotrue suelta la sesión porque el servidor rechazó el refresh, emite revocada; un '
+        'logout del usuario no emite nada', () async {
+      final motivos = <MotivoExpiracion>[];
+      final suscripcion = dataSource().expiraciones.listen(motivos.add);
+      addTearDown(suscripcion.cancel);
+
+      cambios
+        ..add(
+          const AuthState(
+            AuthChangeEvent.signedOut,
+            null,
+            signOutReason: SignOutReason.userInitiated,
+          ),
+        )
+        ..add(
+          const AuthState(
+            AuthChangeEvent.signedOut,
+            null,
+            signOutReason: SignOutReason.sessionExpired,
+          ),
+        )
+        ..addError(const AuthException('otro flujo'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(motivos, [MotivoExpiracion.revocada]);
+    });
+
+    test('cuando el almacén descarta la sesión por inactividad al volver a la app, emite '
+        'inactividad y tomarVencimientoPorInactividad lo dice una sola vez', () async {
+      final almacen = AlmacenSeguroEnMemoria({
+        ClaveSegura.sesionAuth: jsonEncode({
+          'access_token': jwtEmitidoEn(DateTime.utc(2026, 8, 1)),
+        }),
+      });
+      final persistida = AlmacenSesionSupabase(
+        almacen,
+        RelojSesionEnMemoria(sistema: () => DateTime.utc(2026, 9, 23)),
+        logger: loggerMudo(),
+      );
+      final ds = dataSource(sesionPersistida: persistida);
+      final motivos = <MotivoExpiracion>[];
+      final suscripcion = ds.expiraciones.listen(motivos.add);
+      addTearDown(suscripcion.cancel);
+
+      expect(await persistida.accessToken(), isNull);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(motivos, [MotivoExpiracion.inactividad]);
+      expect(ds.tomarVencimientoPorInactividad(), isTrue);
+      expect(ds.tomarVencimientoPorInactividad(), isFalse);
+    });
+
+    test('sin almacén de sesión (fakes), nunca venció nada al arrancar', () {
+      expect(dataSource().tomarVencimientoPorInactividad(), isFalse);
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase.sesionEnElCliente', () {
+    test('devuelve la sesión que el cliente tiene ahora, sin refrescar ni tocar la red', () {
+      when(() => auth.currentSession).thenReturn(sesionSupabase(accessToken: 'jwt-renovado'));
+
+      final sesion = dataSource().sesionEnElCliente();
+
+      expect(sesion?.accessToken, 'jwt-renovado');
+      expect(sesion?.usuarioId, usuarioId);
+      verifyNever(() => auth.refreshSession());
+    });
+
+    test('sin sesión en el cliente, devuelve null', () {
+      when(() => auth.currentSession).thenReturn(null);
+
+      expect(dataSource().sesionEnElCliente(), isNull);
     });
   });
 
@@ -758,6 +878,78 @@ void main() {
     });
   });
 
+  group('AuthRemoteDataSourceSupabase.verificacionesExitosas', () {
+    test('deep link a /verificado seguido de signedIn: emite el evento', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final futuro = dataSource(enlaces: enlaces.stream).verificacionesExitosas.first;
+
+      enlaces.add(Uri.parse('io.supabase.colportores://login-callback/verificado'));
+      await Future<void>.delayed(Duration.zero);
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+
+      await expectLater(futuro, completes);
+    });
+
+    test(
+      'signedIn sin haber visto antes el deep link a /verificado: no emite (login/registro normal)',
+      () async {
+        final enlaces = StreamController<Uri>();
+        addTearDown(enlaces.close);
+        final eventos = <void>[];
+        final suscripcion = dataSource(
+          enlaces: enlaces.stream,
+        ).verificacionesExitosas.listen(eventos.add);
+        addTearDown(suscripcion.cancel);
+
+        cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+        await Future<void>.delayed(Duration.zero);
+
+        expect(eventos, isEmpty);
+      },
+    );
+
+    test('deep link a otro path (el del OAuth): no emite', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final eventos = <void>[];
+      final suscripcion = dataSource(
+        enlaces: enlaces.stream,
+      ).verificacionesExitosas.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      enlaces.add(Uri.parse(ConfigSupabase.redirectOAuth));
+      await Future<void>.delayed(Duration.zero);
+      cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+
+    test('ignora errores del stream (p. ej. otp_expired)', () async {
+      final enlaces = StreamController<Uri>();
+      addTearDown(enlaces.close);
+      final eventos = <void>[];
+      final suscripcion = dataSource(
+        enlaces: enlaces.stream,
+      ).verificacionesExitosas.listen(eventos.add);
+      addTearDown(suscripcion.cancel);
+
+      enlaces.add(Uri.parse('io.supabase.colportores://login-callback/verificado'));
+      await Future<void>.delayed(Duration.zero);
+      cambios.addError(
+        const AuthApiException(
+          'Email link is invalid or has expired',
+          statusCode: 'otp_expired',
+          code: 'access_denied',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, isEmpty);
+    });
+  });
+
   group('AuthRemoteDataSourceSupabase — recuperación de contraseña (HU-AUTH-005)', () {
     group('enlacesRecuperacion', () {
       test('dado el evento passwordRecovery, emite un enlace válido', () async {
@@ -887,4 +1079,12 @@ void main() {
       verifyNever(() => auth.signOut(scope: SignOutScope.global));
     });
   });
+}
+
+/// Un JWT con el `iat` en [emitido] (la firma no importa: la app no la valida).
+String jwtEmitidoEn(DateTime emitido) {
+  String parte(Map<String, Object?> datos) =>
+      base64Url.encode(utf8.encode(jsonEncode(datos))).replaceAll('=', '');
+  final iat = emitido.millisecondsSinceEpoch ~/ 1000;
+  return '${parte({'alg': 'HS256', 'typ': 'JWT'})}.${parte({'sub': 'u', 'iat': iat})}.firma';
 }

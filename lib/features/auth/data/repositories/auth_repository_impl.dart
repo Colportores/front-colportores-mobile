@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/motivo_expiracion.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
@@ -118,7 +121,18 @@ final class AuthRepositoryImpl implements AuthRepository {
       return Right(ResultadoRegistro(sesion: sesion.toEntity(), email: email));
     } on AuthRemoteException catch (e) {
       final failure = _traducir(e);
-      _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {'codigo': failure.codigo});
+      // "Edge - fallo intermitente del backend" (HU-AUTH-001, issue #90): registro propio del
+      // NetworkFailure con el status, sin PII (nunca nombre ni email) — el criterio de aceptación
+      // lo pide aparte del genérico REGISTRO_FAIL.
+      if (e is ServidorException && e.status != null && e.status! >= 500) {
+        _log.warn(LogModulo.auth, 'REGISTRO_5XX', 'fallo intermitente del backend', {
+          'status': e.status,
+        });
+      } else {
+        _log.warn(LogModulo.auth, 'REGISTRO_FAIL', 'registro rechazado', {
+          'codigo': failure.codigo,
+        });
+      }
       return Left(failure);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'REGISTRO_FAIL', 'error inesperado en registro', const {}, e, st);
@@ -158,11 +172,16 @@ final class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, Sesion?>> sesionActual() async {
     try {
       final local = await _local.leerSesion();
-      if (local != null) return Right(local.toEntity());
+      if (local != null) {
+        // El proveedor renueva el JWT solo: si su sesión es del mismo usuario, esa es la vigente,
+        // y reemplaza a la guardada (HU-AUTH-007, "Refresh transparente").
+        final vigente = _sesionVigente(local);
+        if (!identical(vigente, local)) await _local.guardarSesion(vigente);
+        return Right(vigente.toEntity());
+      }
 
-      // Sin sesión local (p. ej. tras reiniciar la app): el proveedor puede tenerla persistida
-      // por su cuenta (supabase_flutter). Si no se puede consultar (sin red y token vencido),
-      // se arranca deslogueado; la política de "sliding session" offline es HU-AUTH-006.
+      // Sin sesión local (p. ej. tras reiniciar la app): el proveedor la tiene persistida por su
+      // cuenta (supabase_flutter, en el almacén seguro). No toca la red.
       final SesionModel? remota;
       try {
         remota = await _remote.obtenerSesionActual();
@@ -172,7 +191,13 @@ final class AuthRepositoryImpl implements AuthRepository {
         });
         return const Right(null);
       }
-      if (remota == null) return const Right(null);
+      if (remota == null) {
+        if (!_remote.tomarVencimientoPorInactividad()) return const Right(null);
+        _log.info(LogModulo.auth, 'SESION_EXPIRADA', 'sesión vencida por inactividad al arrancar', {
+          'motivo': MotivoExpiracion.inactividad.name,
+        });
+        return const Left(FailureSesionExpiradaPorInactividad());
+      }
 
       await _local.guardarSesion(remota);
       _log.info(LogModulo.auth, 'SESION_RESTAURADA', 'sesión restaurada del proveedor', {
@@ -197,9 +222,12 @@ final class AuthRepositoryImpl implements AuthRepository {
     // Todo adentro del `try`: una falla al leer la sesión o una excepción no prevista del remoto
     // no puede saltearse el log ni el borrado local (#54).
     try {
-      final sesion = await _local.leerSesion();
+      final guardada = await _local.leerSesion();
       var resultado = ResultadoCierreSesion.completo;
-      if (sesion != null) {
+      if (guardada != null) {
+        // Antes de `signOut`, que suelta la sesión del cliente: la que queda pendiente de revocar
+        // tiene que llevar el token vigente, no el del login (#102).
+        final sesion = _sesionVigente(guardada);
         try {
           await _remote.cerrarSesion(sesion.accessToken);
         } on SinConexionException {
@@ -224,7 +252,7 @@ final class AuthRepositoryImpl implements AuthRepository {
 
       await _local.borrarSesion();
       _log.info(LogModulo.auth, 'LOGOUT_OK', 'sesión cerrada', {
-        'user_id': sesion?.usuarioId,
+        'user_id': guardada?.usuarioId,
         'revocacion_pendiente': resultado == ResultadoCierreSesion.revocacionPendiente,
       });
       return Right(resultado);
@@ -232,6 +260,26 @@ final class AuthRepositoryImpl implements AuthRepository {
       _log.error(LogModulo.auth, 'LOGOUT_FAIL', 'no se pudo borrar la sesión', const {}, e, st);
       return Left(FailureInesperado(causa: e));
     }
+  }
+
+  /// La sesión que tiene el cliente del proveedor ahora, si es del mismo usuario que [guardada];
+  /// si no, [guardada].
+  ///
+  /// `supabase_flutter` renueva el JWT solo (`autoRefreshToken`), así que el `accessToken` que se
+  /// guardó en el login puede estar vencido o reemplazado: revocar ese más tarde no cerraría la
+  /// sesión que sigue viva en el servidor. Se lee **sin refrescar ni tocar la red**: el logout no
+  /// puede quedar esperando a la red (si matan la app en el medio, la sesión sobreviviría;
+  /// revisión de #107). Si el cliente no la puede dar, se usa la guardada.
+  SesionModel _sesionVigente(SesionModel guardada) {
+    try {
+      final actual = _remote.sesionEnElCliente();
+      if (actual != null && actual.usuarioId == guardada.usuarioId) return actual;
+    } on Object catch (e) {
+      _log.debug(LogModulo.auth, 'LOGOUT_TOKEN_VIGENTE', 'se usa el token guardado', {
+        'error': e.runtimeType.toString(),
+      });
+    }
+    return guardada;
   }
 
   @override
@@ -259,6 +307,97 @@ final class AuthRepositoryImpl implements AuthRepository {
     // Solo si nadie la reemplazó mientras tanto (otro logout sin red durante el `await`).
     if (identical(_revocacionPendiente, pendiente)) _revocacionPendiente = null;
     return const Right(unit);
+  }
+
+  /// El refresh en curso, si hay uno: las llamadas simultáneas lo comparten (HU-AUTH-007, "coordinar
+  /// refresh único").
+  Future<Either<Failure, Sesion>>? _renovacionEnCurso;
+
+  @override
+  Future<Either<Failure, Sesion>> renovarSesion() =>
+      _renovacionEnCurso ??= _renovar().whenComplete(() => _renovacionEnCurso = null);
+
+  Future<Either<Failure, Sesion>> _renovar() async {
+    try {
+      final sesion = await _remote.renovarSesion();
+      await _local.guardarSesion(sesion);
+      _log.info(LogModulo.auth, 'SESION_RENOVADA', 'JWT renovado', {'user_id': sesion.usuarioId});
+      return Right(sesion.toEntity());
+    } on SinConexionException {
+      // Se mantiene la sesión anterior; el próximo request con red la renueva.
+      _log.info(LogModulo.auth, 'SESION_RENOVAR_OFFLINE', 'sin red: se mantiene la sesión');
+      return const Left(FailureSinConexion());
+    } on SesionRevocadaException {
+      _log.warn(LogModulo.auth, 'SESION_REVOCADA', 'el servidor ya no acepta la sesión');
+      return const Left(FailureSesionRevocada());
+    } on AuthRemoteException catch (e) {
+      final failure = _traducir(e);
+      _log.warn(LogModulo.auth, 'SESION_RENOVAR_FAIL', 'refresh rechazado', {
+        'codigo': failure.codigo,
+      });
+      return Left(failure);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'SESION_RENOVAR_FAIL',
+        'error inesperado en refresh',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Stream<MotivoExpiracion> get expiraciones => _remote.expiraciones;
+
+  @override
+  Future<Either<Failure, Unit>> expirarSesion(MotivoExpiracion motivo) async {
+    try {
+      final guardada = await _local.leerSesion();
+      await _local.borrarSesion();
+      // Ya se está atendiendo: que el próximo arranque no lo vuelva a avisar.
+      if (motivo == MotivoExpiracion.inactividad) _remote.tomarVencimientoPorInactividad();
+      // Si el cliente del proveedor todavía la tiene (vencida por inactividad con la app
+      // abierta), se suelta sin esperar a la red: con red, además, se revoca.
+      final enCliente = _sesionEnElCliente();
+      if (enCliente != null) unawaited(_soltarDelCliente(enCliente));
+      _log.info(LogModulo.auth, 'SESION_EXPIRADA', 'sesión descartada', {
+        'user_id': guardada?.usuarioId,
+        'motivo': motivo.name,
+      });
+      return const Right(unit);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.auth,
+        'SESION_EXPIRAR_FAIL',
+        'no se pudo descartar la sesión',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  SesionModel? _sesionEnElCliente() {
+    try {
+      return _remote.sesionEnElCliente();
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _soltarDelCliente(SesionModel sesion) async {
+    try {
+      await _remote.cerrarSesion(sesion.accessToken);
+    } on Object catch (e) {
+      // Sin red o con el token ya rechazado: la copia local del proveedor ya se soltó igual.
+      _log.debug(LogModulo.auth, 'SESION_SOLTAR', 'no se pudo revocar la sesión vencida', {
+        'error': e.runtimeType.toString(),
+      });
+    }
   }
 
   @override
@@ -289,11 +428,15 @@ final class AuthRepositoryImpl implements AuthRepository {
   @override
   Stream<void> get erroresVerificacionEmail => _remote.erroresVerificacionEmail;
 
+  @override
+  Stream<void> get verificacionesExitosas => _remote.verificacionesExitosas;
+
   static Failure _traducir(AuthRemoteException e) => switch (e) {
     CredencialesInvalidasException() => const FailureCredencialesInvalidas(),
     CuentaPendienteException() => const FailureCuentaPendiente(),
     EmailYaRegistradoException() => const FailureEmailYaRegistrado(),
     SinConexionException() => const FailureSinConexion(),
+    SesionRevocadaException() => const FailureSesionRevocada(),
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
     ),

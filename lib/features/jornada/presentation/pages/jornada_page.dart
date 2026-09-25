@@ -13,6 +13,7 @@ import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
+import 'corregir_jornada_page.dart';
 
 /// Texto literal del criterio de aceptación "Bloqueo - jornada ya activa" (HU-JOR-001).
 const textoBloqueoJornadaActiva = 'Tenés una jornada en curso. Cerrala antes de iniciar otra.';
@@ -38,7 +39,8 @@ class JornadaPage extends ConsumerStatefulWidget {
 }
 
 class _JornadaPageState extends ConsumerState<JornadaPage> {
-  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta.
+  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta, al cambiar
+  /// el minuto.
   Timer? _tic;
 
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
@@ -56,11 +58,36 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// La jornada que se acaba de cerrar, para el resumen; se va al iniciar otra.
   Jornada? _finalizada;
 
+  /// El "ahora" con el que se armó la pantalla que el colportor está viendo (lo actualiza cada
+  /// `build`). La hora elegida se calcula con este instante y no con el del toque: si entre el
+  /// último refresco y el toque cambió el minuto, se guardaría un minuto más que lo que mostraba la
+  /// etiqueta (#102). Si la hora mostrada quedó fuera de rango, el caso de uso la rechaza con el
+  /// rango explícito; nunca se ajusta en silencio.
+  DateTime? _ahoraMostrado;
+
   @override
   void initState() {
     super.initState();
-    _tic = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() {});
+    _programarTic();
+  }
+
+  /// Redibuja justo cuando cambia el minuto: así "Ahora · 14:35", la hora elegida y lo que se
+  /// guarda (que sale del mismo instante, ver [_ahoraMostrado]) nunca quedan un minuto atrás del
+  /// reloj del teléfono (revisión de #107).
+  void _programarTic() {
+    final ahora = ref.read(relojJornadaProvider)();
+    final proximoMinuto = DateTime(
+      ahora.year,
+      ahora.month,
+      ahora.day,
+      ahora.hour,
+      ahora.minute + 1,
+    );
+    final espera = proximoMinuto.difference(ahora);
+    _tic = Timer(espera > Duration.zero ? espera : const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _programarTic();
     });
   }
 
@@ -77,7 +104,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   Future<void> _iniciar() async {
     if (_iniciando) return;
-    final ahora = ref.read(relojJornadaProvider)();
+    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _iniciando = true;
       _error = null;
@@ -108,10 +135,28 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     });
   }
 
-  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio.
+  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio. 0 si la
+  /// jornada es de un día anterior (HU-JOR-002, bug #118): ahí cualquier hora que ofreciera este
+  /// selector caería en el día de HOY, no en el del inicio — el margen normal no corresponde. Con
+  /// 0 el selector no se muestra (`_SelectorHora` lo esconde con `maximo == 0`) y el botón
+  /// "Cambiar" queda deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
+  /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
   static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
+    final margen = FinalizarJornadaUseCase.margenHaciaAtras.inMinutes;
+    final hace30 = _menosMinutos(ahora, margen);
+    final desde = jornada.inicio.isAfter(hace30) ? jornada.inicio : hace30;
+    if (_caeEnOtroDia(jornada.inicio, desde)) return 0;
     final desdeInicio = _menosMinutos(ahora, 0).difference(jornada.inicio).inMinutes;
-    return desdeInicio.clamp(0, FinalizarJornadaUseCase.margenHaciaAtras.inMinutes);
+    return desdeInicio.clamp(0, margen);
+  }
+
+  /// Si [instante] cae en un día calendario posterior al de [inicio], en la zona del dispositivo.
+  /// Espejo de `FinalizarJornadaUseCase._caeEnOtroDia` (privado ahí): decide acá si ofrecer el
+  /// selector de "Hora de fin" (#118) con la misma regla que usa el caso de uso para lo mismo.
+  static bool _caeEnOtroDia(DateTime inicio, DateTime instante) {
+    final i = inicio.toLocal();
+    final x = instante.toLocal();
+    return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
   }
 
   /// La hora de fin elegida a mano, al principio de su minuto, o `null` si es "ahora".
@@ -122,7 +167,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   Future<void> _finalizar(Jornada jornada) async {
     if (_finalizando) return;
-    final ahora = ref.read(relojJornadaProvider)();
+    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _finalizando = true;
       _errorFin = null;
@@ -133,6 +178,29 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         .finalizar(hora: _horaElegidaFin(jornada, ahora));
 
     if (!mounted) return;
+
+    // Jornada de un día anterior (#109, HU-JOR-002 "jornada que quedó abierta"): no se corrige
+    // acá mismo —cerrarla con la hora de hoy inventaría un fin—, se ofrece "¿A qué hora
+    // terminaste?" en su propia pantalla. Si vuelve con la jornada ya cerrada, es el mismo cierre
+    // exitoso de siempre.
+    final failure = resultado.fold<Failure?>((failure) => failure, (_) => null);
+    if (failure is FailureJornadaDeDiaAnterior) {
+      setState(() => _finalizando = false);
+      final corregida = await Navigator.of(context).push<Jornada>(
+        MaterialPageRoute(
+          builder: (_) => CorregirJornadaPage(sesion: widget.sesion, inicio: jornada.inicio),
+        ),
+      );
+      if (!mounted || corregida == null) return;
+      setState(() {
+        _finalizada = corregida;
+        _minutosAtrasFin = 0;
+        _ajustandoHoraFin = false;
+        _error = null;
+      });
+      return;
+    }
+
     setState(() {
       _finalizando = false;
       resultado.fold<void>(
@@ -140,7 +208,10 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           // La pantalla se relee y muestra lo que hay guardado.
           FailureSinJornadaActiva() => null,
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
+          // Reloj atrasado: qué pasó y qué hacer (#102).
           FailureValidacion(:final mensaje) => mensaje,
+          // No debería llegar acá: se maneja arriba con la navegación a CorregirJornadaPage.
+          FailureJornadaDeDiaAnterior(:final mensaje) => mensaje,
           Failure() =>
             'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
                 'pasando, cerrá y volvé a abrir la app.',
@@ -161,6 +232,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     final colores = theme.extension<ColoresColportaje>()!;
     final esOscuro = theme.brightness == Brightness.dark;
     final ahora = ref.watch(relojJornadaProvider)();
+    _ahoraMostrado = ahora;
     final estado = ref.watch(jornadaActualProvider(widget.sesion.usuarioId));
     final paddingHorizontal = esOscuro ? 26.0 : 30.0;
 

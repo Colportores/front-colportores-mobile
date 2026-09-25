@@ -16,6 +16,7 @@ final class RegistrarUsuarioParams extends Equatable {
     required this.email,
     required this.password,
     required this.aceptaTerminos,
+    required this.aceptaTradeOffE2E,
   });
 
   final String nombre;
@@ -25,6 +26,11 @@ final class RegistrarUsuarioParams extends Equatable {
   final String password;
   final bool aceptaTerminos;
 
+  /// Segunda casilla obligatoria de HU-AUTH-001 (R-AU05, issue #85): el usuario confirma que
+  /// entendió el trade-off de la DEK envuelta (ADR-006) — sin la contraseña no se puede
+  /// descifrar el backup, aunque conserve el teléfono (el Keystore abre la DB local igual).
+  final bool aceptaTradeOffE2E;
+
   /// [props] lleva cédula, email y la contraseña en texto plano; `EquatableConfig.stringify`
   /// arranca en `true` en debug, así que sin esto cualquier interpolación de estos params
   /// filtraría esos datos (convenciones-desarrollo.md §7.5).
@@ -32,7 +38,15 @@ final class RegistrarUsuarioParams extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [nombre, apellido, cedula, email, password, aceptaTerminos];
+  List<Object?> get props => [
+    nombre,
+    apellido,
+    cedula,
+    email,
+    password,
+    aceptaTerminos,
+    aceptaTradeOffE2E,
+  ];
 }
 
 /// HU-AUTH-001/002 — Registro de cuenta.
@@ -86,6 +100,10 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
 
     if (!params.aceptaTerminos) {
       errores['aceptaTerminos'] = 'Tenés que aceptar los términos.';
+    }
+
+    if (!params.aceptaTradeOffE2E) {
+      errores['aceptaTradeOffE2E'] = 'Tenés que aceptar el trade-off de tu contraseña.';
     }
 
     if (errores.isNotEmpty) return Left(FailureValidacion(campos: errores));

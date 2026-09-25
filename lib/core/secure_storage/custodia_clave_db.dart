@@ -208,21 +208,21 @@ final class CustodiaClaveDb {
   // --- Recuperación y borrado ---
 
   /// Recuperación guiada de ADR-006: con la DEK ya desenvuelta con la contraseña (y probada contra
-  /// la DB), limpia el almacén (`borrarTodo`) y lo reescribe con la marca y esa DEK. Conserva el
-  /// consentimiento de S10 si se puede leer. **No** toca el archivo de la DB ni el envoltorio. No
-  /// destruye [dek]: sigue siendo de quien la pasó.
+  /// la DB), limpia el almacén (`borrarTodo`) y lo reescribe con la marca y esa DEK. Conserva lo
+  /// que no es de la DB ([_seConservanAlReconstruir]) que se pueda leer. **No** toca el archivo de
+  /// la DB ni el envoltorio. No destruye [dek]: sigue siendo de quien la pasó.
   ///
   /// **La marca va antes que la DEK.** Si se corta en el medio queda "marca sin DEK" o nada, y con
   /// la DB en disco los dos llevan a la recuperación guiada. Al revés podría quedar "DEK sin marca",
   /// que el flujo de inicialización toma por una inicialización cortada y descarta: se borraría la
   /// DB del colportor (revisión del PR #81).
   Future<void> reconstruirAlmacen(ClaveDb dek) async {
-    final habiaConsentimiento = await _consentimientoRegistrado();
+    final conservados = await _leerConservables();
     await _almacen.borrarTodo();
     await _almacen.escribir(ClaveSegura.dbInicializada, _marcaInicializada);
     await _almacen.escribir(ClaveSegura.dekDb, base64Encode(dek.bytes));
-    if (habiaConsentimiento) {
-      await _almacen.escribir(ClaveSegura.consentimientoAlmacenSoftware, _aceptado);
+    for (final MapEntry(key: clave, value: valor) in conservados.entries) {
+      await _almacen.escribir(clave, valor);
     }
     _log.warn(
       LogModulo.db,
@@ -231,14 +231,33 @@ final class CustodiaClaveDb {
     );
   }
 
-  /// Si el consentimiento de S10 está registrado. Con el almacén fallando no se puede saber: `false`
-  /// (se vuelve a preguntar si hace falta, nunca se inventa un sí).
-  Future<bool> _consentimientoRegistrado() async {
-    try {
-      return await _almacen.leer(ClaveSegura.consentimientoAlmacenSoftware) == _aceptado;
-    } on AlmacenSeguroException {
-      return false;
+  /// Lo que [reconstruirAlmacen] vuelve a escribir tal cual: todo lo del almacén que no es de la DB.
+  /// El consentimiento de S10 (no se vuelve a preguntar), el último estado de cuenta (HU-AUTH-008:
+  /// es lo que usa el gate de la raíz cuando no hay red) y la sesión de HU-AUTH-007: la sesión de
+  /// Supabase, el reloj monotónico que mide su ventana y la marca de migrada (sin ella, una copia
+  /// vieja de SharedPreferences volvería a migrarse).
+  static const Set<ClaveSegura> _seConservanAlReconstruir = {
+    ClaveSegura.consentimientoAlmacenSoftware,
+    ClaveSegura.estadoCuenta,
+    ClaveSegura.sesionAuth,
+    ClaveSegura.relojSesion,
+    ClaveSegura.sesionMigrada,
+  };
+
+  /// Los valores de [_seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
+  /// leer se pierde (nunca se inventa un valor): el consentimiento se vuelve a preguntar y el estado
+  /// de cuenta se vuelve a pedir al backend.
+  Future<Map<ClaveSegura, String>> _leerConservables() async {
+    final conservados = <ClaveSegura, String>{};
+    for (final clave in _seConservanAlReconstruir) {
+      try {
+        final valor = await _almacen.leer(clave);
+        if (valor != null) conservados[clave] = valor;
+      } on AlmacenSeguroException {
+        // Ilegible: no se conserva.
+      }
     }
+    return conservados;
   }
 
   /// Olvida la marca de inicialización, la DEK del almacén y el consentimiento de S10, **en ese

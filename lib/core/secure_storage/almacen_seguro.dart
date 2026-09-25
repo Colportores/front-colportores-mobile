@@ -18,7 +18,24 @@ enum ClaveSegura {
 
   /// El usuario aceptó seguir con un Keystore por software (Supuesto S10, HU-AUTH-009): la
   /// elección queda registrada acá.
-  consentimientoAlmacenSoftware('keystore_software_aceptado');
+  consentimientoAlmacenSoftware('keystore_software_aceptado'),
+
+  /// Último estado de cuenta que informó el backend, con el usuario (`<uuid>:<estado>`,
+  /// HU-AUTH-008). No es secreto: vive acá para no sumar otro almacenamiento, y así el borrado de
+  /// datos locales (HU-AUTH-010) también lo borra.
+  estadoCuenta('account_state'),
+
+  /// Sesión de Supabase Auth (JWT de acceso + refresh token) tal como la serializa
+  /// `supabase_flutter` (HU-AUTH-007, `AlmacenSesionSupabase`).
+  sesionAuth('auth_session'),
+
+  /// Marca de que la sesión ya se migró desde SharedPreferences: una copia vieja que haya quedado
+  /// ahí no se vuelve a migrar (p. ej. después de un logout).
+  sesionMigrada('auth_session_migrated'),
+
+  /// El instante más alto que vio la app (ISO 8601, UTC): la ventana de la sesión no se mide con
+  /// un reloj que vuelve atrás (HU-AUTH-007, `RelojSesionEnAlmacen`).
+  relojSesion('session_clock');
 
   const ClaveSegura(this.id);
 
@@ -29,9 +46,8 @@ enum ClaveSegura {
 /// Almacén seguro del dispositivo: Android Keystore / iOS Keychain (§8.2.1).
 ///
 /// Es el **único** lugar donde la app guarda material secreto en el equipo, y todo lo que guarda
-/// está inventariado en [ClaveSegura]: la DEK de la DB local, la marca de inicialización y el
-/// consentimiento de S10; la sesión de auth (el JWT) también va a vivir acá cuando
-/// `AuthLocalDataSource` tenga implementación real (ADR-006).
+/// está inventariado en [ClaveSegura]: la DEK de la DB local, la marca de inicialización, el
+/// consentimiento de S10 y la sesión de auth (el JWT y el refresh token, HU-AUTH-007).
 ///
 /// Puerto en Dart puro; la implementación que conoce el plugin es `AlmacenSeguroKeystore` y la de
 /// tests es `AlmacenSeguroEnMemoria`. Igual que los data sources de auth, **el almacén lanza

@@ -11,9 +11,11 @@ import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -190,6 +192,7 @@ void main() {
         final repo = _MockAuthRepository();
         when(repo.sesionActual).thenAnswer((_) async => const Right(null));
         when(repo.reintentarRevocacionPendiente).thenAnswer((_) async => const Right(unit));
+        when(() => repo.expiraciones).thenAnswer((_) => const Stream.empty());
         when(repo.cerrarSesion).thenThrow(const _FallaDeAlmacen());
         final conFallas = ProviderContainer(
           overrides: [
@@ -321,6 +324,7 @@ void main() {
             email: 'ana@example.com',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           );
 
       expect(resultado.isRight(), isTrue);
@@ -349,6 +353,7 @@ void main() {
               email: 'ana@example.com',
               password: 'OtraSecreta1',
               aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
             );
 
         expect(resultado.fold((f) => f, (_) => null), isA<FailureEmailYaRegistrado>());
@@ -375,6 +380,7 @@ void main() {
             email: 'ana@example.com',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           );
 
       expect(resultado.isRight(), isTrue);
@@ -403,6 +409,125 @@ void main() {
       expect(falla, isNull);
       expect(remote.reenviosPorEmail['ana@example.com'], 1);
       expect(container.read(sesionProvider).value, isNull);
+    });
+  });
+
+  group('SesionNotifier — fin de sesión forzado (HU-AUTH-007)', () {
+    late Directory directorio;
+    late DatabaseHelper helper;
+    late AuthRemoteDataSourceEnMemoria remote;
+    late ProviderContainer container;
+
+    setUp(() async {
+      directorio = await Directory.systemTemp.createTemp('colportores_expiracion_test');
+      helper = DatabaseHelper(
+        directorio: () async => directorio,
+        directorioTemporal: () async => directorio,
+        logger: loggerMudo(),
+      );
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
+      container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          databaseHelperProvider.overrideWithValue(helper),
+        ],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await helper.cerrar();
+      await directorio.delete(recursive: true);
+    });
+
+    Future<ClaveDb> entrarConDbAbierta() async {
+      await container.read(sesionProvider.future);
+      await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+      await container.read(dbLocalProvider.notifier).abrir(clave);
+      return clave;
+    }
+
+    for (final (motivo, aviso) in const [
+      (MotivoExpiracion.revocada, FailureSesionRevocada()),
+      (MotivoExpiracion.inactividad, FailureSesionExpiradaPorInactividad()),
+    ]) {
+      test(
+        'dado sesión y DB abierta, cuando la sesión termina por ${motivo.name}, vuelve al login '
+        'con el aviso y cierra la DB sin borrar el archivo (lo que falta sincronizar sigue ahí)',
+        () async {
+          final clave = await entrarConDbAbierta();
+          final archivo = await helper.archivo();
+          expect(archivo.existsSync(), isTrue);
+
+          remote.simularExpiracion(motivo);
+          await pumpEventQueue();
+
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), aviso);
+          expect(helper.abierta, isFalse);
+          expect(clave.destruida, isTrue);
+          expect(archivo.existsSync(), isTrue, reason: 'es un cierre de sesión, no un borrado');
+          expect(remote.llamadasCerrarSesion, 0, reason: 'no espera a la red');
+        },
+      );
+    }
+
+    test('dado un fin de sesión sin nadie adentro (el login ya está a la vista), solo deja el '
+        'aviso', () async {
+      await container.read(sesionProvider.future);
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+      await pumpEventQueue();
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+    });
+
+    test('Escenario: Expiración por inactividad — al arrancar con la sesión descartada por 30 días '
+        'sin uso, queda en el login con el aviso de la HU', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      expect(await container.read(sesionProvider.future), isNull);
+      expect(
+        container.read(avisoSesionProvider)?.mensaje,
+        'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.',
+      );
+    });
+
+    test('al volver a entrar, el aviso desaparece', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+      await container.read(sesionProvider.future);
+
+      await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+
+      expect(container.read(avisoSesionProvider), isNull);
+    });
+
+    test('con Google o con un registro que deja sesión, el aviso también desaparece', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+      expect(container.read(avisoSesionProvider), isNull);
+
+      container.read(avisoSesionProvider.notifier).mostrar(const FailureSesionRevocada());
+      await container
+          .read(sesionProvider.notifier)
+          .registrar(
+            nombre: 'Ana',
+            apellido: 'Pérez',
+            cedula: '12345672',
+            email: 'nueva@example.com',
+            password: 'Secreto123',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          );
+      expect(container.read(avisoSesionProvider), isNull);
     });
   });
 }

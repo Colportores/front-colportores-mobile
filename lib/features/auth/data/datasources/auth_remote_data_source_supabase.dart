@@ -1,12 +1,17 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/enlace_recuperacion.dart';
+import '../../domain/entities/motivo_expiracion.dart';
+import '../../domain/entities/politica_sesion.dart';
 import '../models/sesion_model.dart';
+import 'almacen_sesion_supabase.dart';
 import 'auth_remote_data_source.dart';
+import 'emision_jwt.dart';
 import 'recuperacion_password_remote_data_source.dart';
 import 'registro_enlaces_auth.dart';
 
@@ -22,11 +27,17 @@ typedef LanzadorOAuth = Future<bool> Function(OAuthProvider proveedor, String re
 /// - Google: `signInWithOAuth` abre el navegador del sistema; Supabase vuelve a la app por el
 ///   deep link [ConfigSupabase.redirectOAuth] y `supabase_flutter` (app_links) completa la sesión,
 ///   que se observa por [GoTrueClient.onAuthStateChange].
+/// - Verificación de email (HU-AUTH-002, issue #84): el enlace del correo vuelve por
+///   [ConfigSupabase.redirectVerificacionEmail] (mismo deep link, path propio `/verificado`);
+///   [verificacionesExitosas] cruza ese path (visto con una suscripción propia a `app_links`, en
+///   paralelo a la que arma `supabase_flutter` por su cuenta — el plugin soporta varios
+///   suscriptores) contra el próximo `signedIn` para distinguirlo de un login/registro normal.
 /// - Recuperación de contraseña (HU-AUTH-004/005): el enlace vuelve por
 ///   [ConfigSupabase.redirectRecuperacion]; [RegistroEnlacesAuth] dice de qué flujo es cada deep
 ///   link, porque Supabase manda el mismo error para una verificación y una recuperación vencidas.
-/// - La sesión la persiste `supabase_flutter` (hoy en SharedPreferences; pasarla a
-///   secure_storage vía `FlutterAuthClientOptions.localStorage` es decisión pendiente, ADR-003).
+/// - La sesión la persiste `supabase_flutter` en el almacén seguro ([AlmacenSesionSupabase], que
+///   `main.dart` le pasa como `FlutterAuthClientOptions.localStorage`) y la renueva sola
+///   (`autoRefreshToken`): es el único mecanismo de refresh de la app (HU-AUTH-007).
 ///
 /// Traduce [AuthException] a [AuthRemoteException]; el repositorio las convierte en `Failure`.
 /// Nunca loguea email ni tokens (convenciones §7.5).
@@ -36,18 +47,32 @@ final class AuthRemoteDataSourceSupabase
     this._auth, {
     this._lanzarOAuth,
     this.esperaOAuth = const Duration(minutes: 2),
+    Stream<Uri>? enlacesEntrantes,
+    this._sesionPersistida,
     RegistroEnlacesAuth? registroEnlaces,
     AppLogger? logger,
-  }) : _registro = registroEnlaces ?? RegistroEnlacesAuth.instancia,
-       _log = logger ?? AppLogger.instance;
+  }) : _enlacesEntrantes = enlacesEntrantes ?? AppLinks().uriLinkStream,
+       _registro = registroEnlaces ?? RegistroEnlacesAuth.instancia,
+       _log = logger ?? AppLogger.instance {
+    _verificacionExitosaController = StreamController<void>.broadcast(
+      onListen: _empezarAEscucharVerificacionExitosa,
+      onCancel: _dejarDeEscucharVerificacionExitosa,
+    );
+  }
 
   final GoTrueClient _auth;
+  final AlmacenSesionSupabase? _sesionPersistida;
   final LanzadorOAuth? _lanzarOAuth;
   final RegistroEnlacesAuth _registro;
   final AppLogger _log;
 
   /// Cuánto se espera a que el usuario vuelva del navegador antes de darlo por abandonado.
   final Duration esperaOAuth;
+
+  /// Deep links entrantes (`AppLinks().uriLinkStream` por default; costura para los tests, mismo
+  /// motivo que [LanzadorOAuth]). Incluye el enlace inicial si la app arrancó desde uno (arranque
+  /// en frío) y los que lleguen mientras corre.
+  final Stream<Uri> _enlacesEntrantes;
 
   static const String _mensajeEmailNoConfirmado =
       'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
@@ -85,8 +110,10 @@ final class AuthRemoteDataSourceSupabase
         password: password,
         data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
         // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
-        // no al Site URL (localhost:3000 por default). Ver README § Supabase para el dashboard.
-        emailRedirectTo: ConfigSupabase.redirectOAuth,
+        // no al Site URL (localhost:3000 por default). Path propio `/verificado` (issue #84) para
+        // poder distinguir, del lado de la app, esta confirmación de un login/registro normal.
+        // Ver README § Supabase para el dashboard.
+        emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
       ),
     );
     final sesion = respuesta.session;
@@ -150,15 +177,72 @@ final class AuthRemoteDataSourceSupabase
         authScreenLaunchMode: LaunchMode.externalApplication,
       );
 
+  // Sin refrescar: `Supabase.initialize` ya cargó la sesión guardada (aunque su JWT de acceso haya
+  // vencido) y `autoRefreshToken` la renueva en cuanto hay red. Refrescar acá frenaría el arranque
+  // sin red con los reintentos de gotrue y dejaría al usuario afuera (HU-AUTH-007, "Refresh
+  // offline con JWT vigente").
   @override
-  Future<SesionModel?> obtenerSesionActual() async {
-    final actual = _auth.currentSession;
-    if (actual == null) return null;
-    if (!actual.isExpired) return _aModelo(actual);
+  Future<SesionModel?> obtenerSesionActual() async => sesionEnElCliente();
 
-    final refrescada = await _traduciendo(() => _auth.refreshSession());
-    final sesion = refrescada.session;
-    return sesion == null ? null : _aModelo(sesion);
+  // gotrue comparte un solo refresh entre las llamadas simultáneas con el mismo refresh token
+  // (`_pendingRefreshes`), y es el mismo que usa `autoRefreshToken`: no hay dos mecanismos.
+  // Cualquier rechazo que no sea de red hace que gotrue suelte la sesión (y emita `signedOut` con
+  // `sessionExpired`, que llega a [expiraciones]).
+  @override
+  Future<SesionModel> renovarSesion() async {
+    try {
+      final sesion = (await _auth.refreshSession()).session;
+      if (sesion == null) throw const SesionRevocadaException();
+      return _aModelo(sesion);
+    } on AuthRetryableFetchException {
+      throw const SinConexionException();
+    } on AuthException catch (e) {
+      _log.warn(LogModulo.auth, 'REFRESH_RECHAZADO', 'el servidor rechazó el refresh', {
+        'status': e.statusCode,
+        'code': e.code,
+      });
+      throw const SesionRevocadaException();
+    }
+  }
+
+  @override
+  late final Stream<MotivoExpiracion> expiraciones = _crearExpiraciones();
+
+  Stream<MotivoExpiracion> _crearExpiraciones() {
+    late final StreamController<MotivoExpiracion> controller;
+    StreamSubscription<AuthState>? delCliente;
+    StreamSubscription<void>? delAlmacen;
+    controller = StreamController<MotivoExpiracion>.broadcast(
+      onListen: () {
+        delCliente = _auth.onAuthStateChange.listen(
+          (estado) {
+            if (estado.event == AuthChangeEvent.signedOut &&
+                estado.signOutReason == SignOutReason.sessionExpired) {
+              controller.add(MotivoExpiracion.revocada);
+            }
+          },
+          // Los errores del stream son de otros flujos (deep links); acá no se usan.
+          onError: (Object _, StackTrace _) {},
+        );
+        delAlmacen = _sesionPersistida?.vencimientos.listen(
+          (_) => controller.add(MotivoExpiracion.inactividad),
+        );
+      },
+      onCancel: () {
+        unawaited(delCliente?.cancel());
+        unawaited(delAlmacen?.cancel());
+      },
+    );
+    return controller.stream;
+  }
+
+  @override
+  bool tomarVencimientoPorInactividad() => _sesionPersistida?.tomarVencimiento() ?? false;
+
+  @override
+  SesionModel? sesionEnElCliente() {
+    final actual = _auth.currentSession;
+    return actual == null ? null : _aModelo(actual);
   }
 
   // Siempre `signOut`, aunque [accessToken] no coincida con el del cliente (`autoRefreshToken`
@@ -264,18 +348,56 @@ final class AuthRemoteDataSourceSupabase
   @override
   Future<void> abandonarRecuperacion() => _traduciendo(() => _auth.signOut());
 
-  static SesionModel _aModelo(Session sesion) {
-    final expiraEnSegundos = sesion.expiresAt;
-    final expiraEn = expiraEnSegundos != null
-        ? DateTime.fromMillisecondsSinceEpoch(expiraEnSegundos * 1000, isUtc: true)
-        : DateTime.now().toUtc().add(Duration(seconds: sesion.expiresIn ?? 3600));
-    return SesionModel(
-      usuarioId: sesion.user.id,
-      email: sesion.user.email ?? '',
-      accessToken: sesion.accessToken,
-      expiraEn: expiraEn,
+  late final StreamController<void> _verificacionExitosaController;
+  StreamSubscription<Uri>? _suscripcionEnlaces;
+  StreamSubscription<AuthState>? _suscripcionAuthParaVerificacion;
+
+  /// `true` desde que llega un deep link a `/verificado` hasta el próximo `signedIn` (o hasta que
+  /// se cancela la escucha). Es lo que distingue, del lado de la app, ese `signedIn` de uno de
+  /// login/registro normal — Supabase no los separa por `AuthChangeEvent`.
+  bool _esperandoConfirmacionEmail = false;
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  // Suscripción perezosa (recién al primer `listen`, igual que hace un StreamProvider `keepAlive`
+  // de la app real): así un test que solo ejercita otro método de esta clase no dispara
+  // `AppLinks()` (canal de plataforma) sin necesidad.
+  void _empezarAEscucharVerificacionExitosa() {
+    _esperandoConfirmacionEmail = false;
+    _suscripcionEnlaces = _enlacesEntrantes.listen((uri) {
+      if (uri.path == '/verificado') _esperandoConfirmacionEmail = true;
+    });
+    _suscripcionAuthParaVerificacion = _auth.onAuthStateChange.listen(
+      (estado) {
+        if (!_esperandoConfirmacionEmail) return;
+        if (estado.event == AuthChangeEvent.signedIn && estado.session != null) {
+          _esperandoConfirmacionEmail = false;
+          _verificacionExitosaController.add(null);
+        }
+      },
+      // Los errores del stream (p. ej. `otp_expired`) son cosa de `erroresVerificacionEmail`;
+      // acá no hay nada que hacer con ellos, pero sin `onError` un error no manejado se propaga
+      // como excepción no capturada de la zona (rompe el test/la app igual).
+      onError: (Object _, StackTrace _) {},
     );
   }
+
+  void _dejarDeEscucharVerificacionExitosa() {
+    unawaited(_suscripcionEnlaces?.cancel());
+    unawaited(_suscripcionAuthParaVerificacion?.cancel());
+    _suscripcionEnlaces = null;
+    _suscripcionAuthParaVerificacion = null;
+  }
+
+  /// La ventana de 30 días arranca cuando el servidor emitió el JWT (su `iat`, con el reloj del
+  /// servidor): es la última actividad de red de la sesión (HU-AUTH-007).
+  static SesionModel _aModelo(Session sesion) => SesionModel(
+    usuarioId: sesion.user.id,
+    email: sesion.user.email ?? '',
+    accessToken: sesion.accessToken,
+    expiraEn: PoliticaSesion.expiraEn(emisionDelJwt(sesion.accessToken) ?? DateTime.now()),
+  );
 
   /// Ejecuta [accion] y traduce toda [AuthException] a la [AuthRemoteException] equivalente.
   /// Cualquier otra excepción sube tal cual (el repositorio la convierte en `FailureInesperado`).

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../../../domain/entities/motivo_expiracion.dart';
+import '../../../domain/entities/politica_sesion.dart';
 import '../../../domain/entities/usuario.dart';
 import '../../models/sesion_model.dart';
 import '../auth_local_data_source.dart';
@@ -67,7 +69,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       usuarioId: _uuidDesde(email),
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
   }
 
@@ -86,6 +88,14 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
   }
 
+  /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap de RegistroPage.
+  int llamadasRegistrar = 0;
+
+  /// Si no es `null`, [registrar] no sigue hasta que el test lo complete — para que un segundo
+  /// toque ocurra mientras el primero todavía está en vuelo (sin esto el fake resuelve
+  /// instantáneo y no hay ventana de carrera real que probar).
+  Completer<void>? demoraRegistrar;
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
@@ -94,6 +104,8 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required String email,
     required String password,
   }) async {
+    llamadasRegistrar++;
+    await demoraRegistrar?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
 
@@ -116,7 +128,7 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       usuarioId: usuarioId,
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
   }
 
@@ -133,13 +145,60 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       usuarioId: _uuidDesde(emailGoogle),
       email: emailGoogle,
       accessToken: 'token-google-en-memoria',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
+  }
+
+  /// Si es `true`, [renovarSesion] lanza [SesionRevocadaException] (el servidor ya no acepta la
+  /// sesión, HU-AUTH-007).
+  bool sesionRevocadaEnElServidor = false;
+
+  /// Si está, [renovarSesion] espera a que el test la complete.
+  Completer<void>? demoraAlRenovar;
+
+  int llamadasRenovarSesion = 0;
+  int _renovaciones = 0;
+
+  @override
+  Future<SesionModel> renovarSesion() async {
+    llamadasRenovarSesion++;
+    await demoraAlRenovar?.future;
+    if (simularSinConexion) throw const SinConexionException();
+    if (sesionRevocadaEnElServidor) throw const SesionRevocadaException();
+    _renovaciones++;
+    return SesionModel(
+      usuarioId: _uuidDesde('demo@colportores.app'),
+      email: 'demo@colportores.app',
+      accessToken: 'token-renovado-$_renovaciones',
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
+    );
+  }
+
+  final _expiraciones = StreamController<MotivoExpiracion>.broadcast();
+
+  @override
+  Stream<MotivoExpiracion> get expiraciones => _expiraciones.stream;
+
+  /// Simula que el proveedor terminó la sesión por su cuenta (HU-AUTH-007).
+  void simularExpiracion(MotivoExpiracion motivo) => _expiraciones.add(motivo);
+
+  /// Simula que al arrancar se descartó una sesión guardada por 30 días sin uso.
+  bool vencidaPorInactividadAlArrancar = false;
+
+  @override
+  bool tomarVencimientoPorInactividad() {
+    final vencio = vencidaPorInactividadAlArrancar;
+    vencidaPorInactividadAlArrancar = false;
+    return vencio;
   }
 
   /// El fake no persiste nada entre reinicios: la sesión "recordada" es siempre `null`.
   @override
   Future<SesionModel?> obtenerSesionActual() async => null;
+
+  /// El fake no tiene un cliente que renueve el token: siempre `null` (se usa la guardada).
+  @override
+  SesionModel? sesionEnElCliente() => null;
 
   @override
   Future<void> cerrarSesion(String accessToken) async {
@@ -183,6 +242,18 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
 
   /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
   void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
+
+  final _verificacionExitosaController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  /// Simula que el deep link de verificación volvió válido (issue #84): confirma el email —igual
+  /// que [confirmarEmail]— y emite el evento de éxito.
+  void simularEnlaceVerificacionExitoso(String email) {
+    confirmarEmail(email);
+    _verificacionExitosaController.add(null);
+  }
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

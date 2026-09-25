@@ -1,3 +1,4 @@
+import '../../domain/entities/motivo_expiracion.dart';
 import '../models/sesion_model.dart';
 
 /// Origen remoto de autenticación. La implementación real es `AuthRemoteDataSourceSupabase`
@@ -36,8 +37,28 @@ abstract interface class AuthRemoteDataSource {
   Future<SesionModel> iniciarSesionConGoogle();
 
   /// Sesión que el proveedor tiene persistida en el dispositivo (o `null`). Con Supabase la
-  /// persiste `supabase_flutter` por su cuenta; si está vencida intenta refrescarla.
+  /// persiste `supabase_flutter` en el almacén seguro (`AlmacenSesionSupabase`). No toca la red:
+  /// con el JWT de acceso vencido la devuelve igual (sin red la app sigue trabajando, y el
+  /// proveedor la renueva solo cuando vuelve la red, HU-AUTH-007).
   Future<SesionModel?> obtenerSesionActual();
+
+  /// Renueva el JWT contra el servidor (HU-AUTH-007). Lanza [SinConexionException] sin red (la
+  /// sesión sigue como estaba) o [SesionRevocadaException] si el servidor ya no la acepta.
+  Future<SesionModel> renovarSesion();
+
+  /// Emite cuando el proveedor termina la sesión por su cuenta: el servidor rechazó el refresh
+  /// ([MotivoExpiracion.revocada]) o, al volver a la app, la sesión guardada llevaba 30 días sin
+  /// actividad de red ([MotivoExpiracion.inactividad]).
+  Stream<MotivoExpiracion> get expiraciones;
+
+  /// `true` (una sola vez) si al arrancar se descartó la sesión guardada por 30 días sin
+  /// actividad de red. Pasa antes de que la app se suscriba a [expiraciones].
+  bool tomarVencimientoPorInactividad();
+
+  /// La sesión que el cliente del proveedor tiene **ahora**, tal cual, sin refrescar ni tocar la
+  /// red (o `null`). Con Supabase es `currentSession`: `autoRefreshToken` la renueva sola, así que
+  /// su token puede ser más nuevo que el que se guardó en el login.
+  SesionModel? sesionEnElCliente();
 
   /// Cierra la sesión del cliente: la revoca en el servidor y borra la copia que guarda el
   /// proveedor. Sin red, la copia local se borra igual y lanza [SinConexionException].
@@ -62,8 +83,17 @@ abstract interface class AuthRemoteDataSource {
   /// Cubre el caso donde el usuario abre el enlace sin tener la pantalla de verificación en
   /// pantalla (p. ej. la app estaba cerrada); la raíz de la app (`ColportoresApp`) lo escucha para
   /// llevarlo a esa pantalla en estado "expirado". El caso de éxito (enlace válido) no pasa por
-  /// acá: se resuelve con el flujo normal de "Ya verifiqué mi email" de esa misma pantalla.
+  /// acá: ver [verificacionesExitosas].
   Stream<void> get erroresVerificacionEmail;
+
+  /// Emite cada vez que el deep link de verificación de email (HU-AUTH-002, issue #84) vuelve
+  /// **válido**: llegó un deep link a `ConfigSupabase.redirectVerificacionEmail` (path
+  /// `/verificado`) y a continuación Supabase confirmó el email y creó la sesión (`signedIn`).
+  ///
+  /// Simétrico a [erroresVerificacionEmail]: la raíz de la app (`ColportoresApp`) lo escucha para
+  /// llevar al usuario a la pantalla de verificación en estado "verificado", funcione o no la app
+  /// ya montada (cubre también el arranque en frío desde el enlace).
+  Stream<void> get verificacionesExitosas;
 }
 
 /// Excepciones tipadas del origen remoto. Sin PII en [toString].
@@ -86,6 +116,11 @@ final class EmailYaRegistradoException extends AuthRemoteException {
 
 final class SinConexionException extends AuthRemoteException {
   const SinConexionException();
+}
+
+/// El servidor ya no acepta la sesión: se revocó o venció de su lado (HU-AUTH-007).
+final class SesionRevocadaException extends AuthRemoteException {
+  const SesionRevocadaException();
 }
 
 /// La contraseña no cumple la política de Supabase Auth (`weak_password`).
