@@ -133,7 +133,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
                 child: IntrinsicHeight(

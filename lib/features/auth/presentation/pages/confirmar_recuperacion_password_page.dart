@@ -189,7 +189,7 @@ class _ConfirmarRecuperacionPasswordPageState
       child: Scaffold(
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

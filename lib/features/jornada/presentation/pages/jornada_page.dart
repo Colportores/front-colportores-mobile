@@ -261,7 +261,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(paddingHorizontal, 12, paddingHorizontal, 32),
+              padding: const EdgeInsets.fromLTRB(paddingHorizontal, 12, paddingHorizontal, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
