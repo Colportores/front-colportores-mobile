@@ -171,12 +171,19 @@ final class RepositorioTilesEnMemoria implements PaquetesTilesRepository {
     return fallo == null ? Right(registrados) : Left(fallo);
   }
 
+  /// Con `StreamController` y no `async*`: cancelar un `async*` parado en un `await for` sin
+  /// eventos espera al próximo `yield`, que nunca llega, y el test se cuelga.
   @override
-  Stream<List<PaqueteDescargado>> observarDescargados() async* {
-    yield registrados;
-    await for (final _ in _avisos.stream) {
-      yield registrados;
-    }
+  Stream<List<PaqueteDescargado>> observarDescargados() {
+    final salida = StreamController<List<PaqueteDescargado>>();
+    StreamSubscription<void>? avisos;
+    salida
+      ..onListen = () {
+        salida.add(registrados);
+        avisos = _avisos.stream.listen((_) => salida.add(registrados));
+      }
+      ..onCancel = () => avisos?.cancel();
+    return salida.stream;
   }
 
   @override
