@@ -16,6 +16,7 @@ import 'generated/schema.dart';
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
+import 'generated/schema_v5.dart' as v5;
 
 class _SinSalida extends LogOutput {
   @override
@@ -212,6 +213,101 @@ void main() {
         final espacios = await nuevo.select(nuevo.espacio).get();
         expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
         expect(await nuevo.select(nuevo.ubicacionParDecidido).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado jornadas, ubicaciones, espacios y pares decididos guardados en la versión 4, cuando '
+      'migra a la 5, se conservan todos con los mismos datos y las zonas quedan vacías', () async {
+    // #231: la zona de cada ubicación pasa a salir de su posición, pero la migración no la toca:
+    // la de cada fila la sigue fijando el servidor, que gana.
+    const jornada = v4.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      fin: 1758720000000,
+      acompanianteId: 'col-2',
+      tipoAcompaniamiento: 'CAPACITACION',
+      totalVisitas: 7,
+      totalVentas: 2,
+      createdAt: 1758700000000,
+      updatedAt: 1758720000000,
+      createdBy: 'col-1',
+      syncVersion: 3,
+    );
+    const conZona = v4.UbicacionData(
+      id: 'ub-1',
+      tipo: 'CASA',
+      calle: 'Av. Ñandú',
+      numero: '1234 bis',
+      lat: -34.9,
+      lon: -56.16,
+      ciudadId: 'ciu-1',
+      zonaId: 'zon-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 5,
+    );
+    const sinZonaDeBaja = v4.UbicacionData(
+      id: 'ub-2',
+      tipo: 'EDIFICIO',
+      lat: -34.9000001,
+      lon: -56.1600001,
+      ciudadId: 'ciu-1',
+      createdAt: 1758600000000,
+      updatedAt: 1758650000000,
+      deletedAt: 1758650000000,
+      syncVersion: 0,
+    );
+    const espacio = v4.EspacioData(
+      id: 'esp-1',
+      ubicacionId: 'ub-2',
+      numeroDepto: '3B',
+      piso: '3',
+      descripcion: 'Fondo',
+      createdAt: 1758600000000,
+      updatedAt: 1758600000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+    const par = v4.UbicacionParDecididoData(
+      ubicacionAId: 'ub-1',
+      ubicacionBId: 'ub-2',
+      decision: 'CONSERVAR_AMBOS',
+      decididoEn: 1758660000000,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 4,
+      newVersion: 5,
+      createOld: v4.DatabaseAtV4.new,
+      createNew: v5.DatabaseAtV5.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.jornada, jornada)
+          ..insertAll(viejo.ubicacion, [conZona, sinZonaDeBaja])
+          ..insert(viejo.espacio, espacio)
+          ..insert(viejo.ubicacionParDecidido, par);
+      },
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((f) => f.toJson()).toList(), [jornada.toJson()]);
+        final ubicaciones = await (nuevo.select(
+          nuevo.ubicacion,
+        )..orderBy([(u) => OrderingTerm.asc(u.id)])).get();
+        expect(ubicaciones.map((f) => f.toJson()).toList(), [
+          conZona.toJson(),
+          sinZonaDeBaja.toJson(),
+        ]);
+        final espacios = await nuevo.select(nuevo.espacio).get();
+        expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
+        final pares = await nuevo.select(nuevo.ubicacionParDecidido).get();
+        expect(pares.map((f) => f.toJson()).toList(), [par.toJson()]);
+        expect(await nuevo.select(nuevo.campaniaCiudad).get(), isEmpty);
+        expect(await nuevo.select(nuevo.zona).get(), isEmpty);
+        expect(await nuevo.select(nuevo.zonaVertice).get(), isEmpty);
       },
     );
   });

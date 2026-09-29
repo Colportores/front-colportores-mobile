@@ -19,6 +19,7 @@ import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/zonas_falsas.dart';
 
 void main() {
   final t0 = DateTime.utc(2026, 9, 29, 13, 45, 10, 123);
@@ -65,7 +66,11 @@ void main() {
     encolador = EncoladorSyncEnMemoria();
     local = UbicacionLocalDataSourceDrift(db, encolador: encolador);
     repositorio = UbicacionRepositoryImpl(local, logger: loggerMudo());
-    modificar = ModificarUbicacionUseCase(repositorio, ahora: () => t1);
+    modificar = ModificarUbicacionUseCase(
+      repositorio,
+      ubicador: ubicadorSinZonas(),
+      ahora: () => t1,
+    );
   });
 
   tearDown(() => db.close());
@@ -82,6 +87,7 @@ void main() {
     DateTime? base,
   }) => ModificarUbicacionParams(
     id: id,
+    colportorId: 'col-1',
     tipo: tipo,
     coordenadas: coordenadas,
     baseUpdatedAt: base ?? t0,

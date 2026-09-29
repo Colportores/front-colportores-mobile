@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/ubicador_zona.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_ubicacion_use_case.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
@@ -15,6 +16,7 @@ import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
 import '../../../../../helpers/ubicacion_sin_modificar.dart';
+import '../../../../../helpers/zonas_falsas.dart';
 
 /// Registra lo que recibe y devuelve el alta hecha, salvo que se le fije otra respuesta.
 final class _RepositorioQueAnota
@@ -65,15 +67,20 @@ void main() {
   final ahora = DateTime.utc(2026, 9, 29, 13, 45, 10, 123);
 
   late _RepositorioQueAnota repositorio;
+  late ZonasEnMemoria zonas;
+  late InscripcionesEnMemoria inscripciones;
   late RegistrarUbicacionUseCase registrar;
   late int ids;
 
   setUp(() {
     repositorio = _RepositorioQueAnota();
+    zonas = ZonasEnMemoria();
+    inscripciones = InscripcionesEnMemoria();
     ids = 0;
     registrar = RegistrarUbicacionUseCase(
       repositorio,
       generarId: () => 'id-${++ids}',
+      ubicador: UbicadorZona(zonas, inscripciones),
       ahora: () => ahora,
     );
   });
@@ -230,6 +237,7 @@ void main() {
         registrar = RegistrarUbicacionUseCase(
           repositorio,
           generarId: () => 'id-d1a',
+          ubicador: ubicadorSinZonas(),
           ahora: () => ahora,
           criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
         );
@@ -329,6 +337,64 @@ void main() {
       final texto = params(justificacionDuplicado: 'La casa de Juan Pérez').toString();
 
       expect(texto, isNot(contains('Juan')));
+    });
+
+    group('Zona por posición', () {
+      // Av. Italia 1234 cae en el rectángulo de «z-centro»; la zona «z-este» está al lado.
+      setUp(() {
+        zonas.zonas.addAll([
+          zonaRectangular(
+            'z-centro',
+            latSur: -34.9,
+            latNorte: -34.88,
+            lonOeste: -56.13,
+            lonEste: -56.12,
+          ),
+          zonaRectangular(
+            'z-este',
+            latSur: -34.9,
+            latNorte: -34.88,
+            lonOeste: -56.12,
+            lonEste: -56.11,
+          ),
+        ]);
+        inscripciones.inscripciones.add(inscripcion('col-1', 'camp-1', zonaId: 'z-este'));
+      });
+
+      test('dado un alta dentro de una zona, la ubicación queda con la zona que contiene el punto, '
+          'aunque no sea la del colportor', () async {
+        final r = await registrar(params());
+
+        expect(r.isRight(), isTrue);
+        expect(repositorio.llamadas.single.ubicacion.zonaId, 'z-centro');
+      });
+
+      test('dado un alta fuera de toda zona, la ubicación queda sin zona', () async {
+        final lejos = PuntoCapturado.gps(
+          const LecturaGps(coordenadas: Coordenadas(lat: -34.7, lon: -55.9), precisionMetros: 5),
+        );
+
+        await registrar(params(punto: lejos));
+
+        expect(repositorio.llamadas.single.ubicacion.zonaId, isNull);
+      });
+
+      test('dado que no se pueden leer las zonas, no registra nada y devuelve la falla', () async {
+        zonas.falla = const FailureInesperado();
+
+        final r = await registrar(params());
+
+        expect(r, const Left<Failure, ResultadoAltaUbicacion>(FailureInesperado()));
+        expect(repositorio.llamadas, isEmpty);
+      });
+
+      test('dado un GPS impreciso sin confirmar, no hace falta ubicar el punto', () async {
+        zonas.falla = const FailureInesperado();
+
+        final r = await registrar(params(punto: gpsImpreciso));
+
+        expect(r.getOrElse(() => throw StateError('falla')), isA<AltaConBajaPrecision>());
+      });
     });
   });
 }

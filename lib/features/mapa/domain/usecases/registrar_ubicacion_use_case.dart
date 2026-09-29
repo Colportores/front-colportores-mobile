@@ -9,6 +9,7 @@ import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
+import '../services/ubicador_zona.dart';
 import '../value_objects/punto_capturado.dart';
 
 /// Parámetros de [RegistrarUbicacionUseCase].
@@ -81,11 +82,17 @@ final class RegistrarUbicacionParams extends Equatable {
 /// 3. "Crear igual" con la justificación en blanco: `Left(FailureValidacion)`.
 /// 4. GPS con precisión peor que 50 m y sin confirmar: `Right(AltaConBajaPrecision)`, sin crear
 ///    nada.
-/// 5. Si no, arma la ubicación —`id` UUID v7, `zona_id` en `null` (la asigna el servidor),
-///    auditoría con el colportor como `created_by`— y, si es `CASA`, su espacio default (Supuesto
-///    S13), y se los pasa al repositorio, que valida duplicados en la misma transacción en la que
-///    guarda y encola el sync. Con "Crear igual" solo frenan las candidatas que no lo admiten
-///    (`CriterioDuplicadoUbicacion.alSeguirIgual`, decisión D1 de backend-supabase#24).
+/// 5. Si no, arma la ubicación —`id` UUID v7, `zona_id` = la zona que contiene el punto o `null`
+///    si cae fuera de toda zona ([UbicadorZona]), auditoría con el colportor como `created_by`— y,
+///    si es `CASA`, su espacio default (Supuesto S13), y se los pasa al repositorio, que valida
+///    duplicados en la misma transacción en la que guarda y encola el sync. Con "Crear igual" solo
+///    frenan las candidatas que no lo admiten (`CriterioDuplicadoUbicacion.alSeguirIgual`, decisión
+///    D1 de backend-supabase#24).
+///
+/// La zona se calcula para mostrarla en el momento, también sin conexión; el servidor la vuelve a
+/// calcular al recibir el alta y gana (backend-supabase 0010). Registrar fuera de la zona propia
+/// vale (R-CM04). Si no se pueden leer las zonas o las inscripciones, el alta no se hace: devuelve
+/// esa falla.
 ///
 /// El estado inicial `house_status = "sin_visita"` es la **ausencia** de fila en `house_status`:
 /// esa cache solo admite los 7 colores de §8.4 (ADR-003, `CHECK` de backend-supabase 0001) y se
@@ -95,17 +102,19 @@ final class RegistrarUbicacionParams extends Equatable {
 /// "Offline").
 final class RegistrarUbicacionUseCase
     implements UseCase<ResultadoAltaUbicacion, RegistrarUbicacionParams> {
-  /// [_generarId] y [_criterio] se pasan como `generarId:` y `criterio:` (parámetros nombrados
-  /// privados, Dart ≥ 3.10).
+  /// [_generarId], [_ubicador] y [_criterio] se pasan como `generarId:`, `ubicador:` y `criterio:`
+  /// (parámetros nombrados privados, Dart ≥ 3.10).
   RegistrarUbicacionUseCase(
     this._repository, {
     required this._generarId,
+    required this._ubicador,
     DateTime Function()? ahora,
     this._criterio = const CriterioDuplicadoUbicacion(),
   }) : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _repository;
   final String Function() _generarId;
+  final UbicadorZona _ubicador;
   final DateTime Function() _ahora;
   final CriterioDuplicadoUbicacion _criterio;
 
@@ -154,6 +163,23 @@ final class RegistrarUbicacionUseCase
       return Right(AltaConBajaPrecision(precisionMetros: punto.precisionMetros!));
     }
 
+    final zona = await _ubicador.ubicar(coordenadas, colportorId: colportorId, ciudadId: ciudadId);
+    return zona.fold<Future<Either<Failure, ResultadoAltaUbicacion>>>(
+      (falla) async => Left(falla),
+      (zona) => _registrar(params, ubicacionId, colportorId, ciudadId, zona.zonaId, crearIgual),
+    );
+  }
+
+  Future<Either<Failure, ResultadoAltaUbicacion>> _registrar(
+    RegistrarUbicacionParams params,
+    String ubicacionId,
+    String colportorId,
+    String ciudadId,
+    String? zonaId,
+    bool crearIgual,
+  ) {
+    final punto = params.punto;
+    final coordenadas = punto.coordenadas;
     final ahora = _ahora();
     final ubicacion = Ubicacion(
       id: ubicacionId,
@@ -163,6 +189,7 @@ final class RegistrarUbicacionUseCase
       lat: coordenadas.lat,
       lon: coordenadas.lon,
       ciudadId: ciudadId,
+      zonaId: zonaId,
       auditoria: Auditoria(createdAt: ahora, updatedAt: ahora, createdBy: colportorId),
     );
     final espacio = params.tipo == TipoUbicacion.casa

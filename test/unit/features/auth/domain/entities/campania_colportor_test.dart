@@ -48,5 +48,19 @@ void main() {
 
       expect(cc.estaBorrada, isTrue);
     });
+
+    test('dado un colportor inscripto sin zona, cuando se construye, zonaId es null y no es igual '
+        'a la misma inscripción con zona', () {
+      final sinZona = CampaniaColportor(
+        id: 'cc-1',
+        campaniaId: 'camp-1',
+        usuarioId: 'u-1',
+        metaLibros: 100,
+        auditoria: auditoria,
+      );
+
+      expect(sinZona.zonaId, isNull);
+      expect(sinZona, isNot(equals(construir())));
+    });
   });
 }
