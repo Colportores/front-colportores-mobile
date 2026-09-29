@@ -125,6 +125,31 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   @override
+  Future<UbicacionModel> cambiarBaja(
+    String id, {
+    required DateTime baseUpdatedAt,
+    required DateTime updatedAt,
+    required DateTime? deletedAt,
+  }) => transaction(() async {
+    final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
+    if (fila == null) throw const UbicacionInexistenteException();
+    if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+
+    await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
+      UbicacionesCompanion(updatedAt: Value(updatedAt), deletedAt: Value(deletedAt)),
+    );
+    final guardada = _aModelo(
+      await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingle(),
+    );
+    await _encolador.encolar(
+      'ubicacion',
+      deletedAt == null ? OperacionSync.update : OperacionSync.delete,
+      guardada.toJson(),
+    );
+    return guardada;
+  });
+
+  @override
   Stream<List<UbicacionModel>> observarDelColportor({
     required String colportorId,
     String? ciudadId,

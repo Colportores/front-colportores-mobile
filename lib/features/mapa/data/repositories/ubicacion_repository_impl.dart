@@ -154,6 +154,51 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
   }
 
   @override
+  Future<Either<Failure, Ubicacion>> cambiarBaja(
+    String id, {
+    required bool baja,
+    required DateTime baseUpdatedAt,
+    required DateTime ahora,
+    bool conMotivo = false,
+  }) async {
+    try {
+      final guardada = await _local.cambiarBaja(
+        id,
+        baseUpdatedAt: baseUpdatedAt,
+        updatedAt: ahora,
+        deletedAt: baja ? ahora : null,
+      );
+      _log.info(
+        LogModulo.db,
+        baja ? 'UBICACION_BAJA' : 'UBICACION_REACTIVADA',
+        'baja de ubicación',
+        {'ubicacion_id': id, if (baja) 'con_motivo': conMotivo},
+      );
+      return Right(guardada.toEntity());
+    } on UbicacionInexistenteException {
+      return const Left(FailureUbicacionInexistente());
+    } on UbicacionCambioException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CAMBIO_CONCURRENTE',
+        'la ubicación cambió antes de la baja',
+        {'ubicacion_id': id},
+      );
+      return const Left(FailureUbicacionCambio());
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'UBICACION_BAJA_FAIL',
+        'no se pudo cambiar la baja',
+        {'ubicacion_id': id},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
   Stream<List<Ubicacion>> observarDelColportor({
     required String colportorId,
     String? ciudadId,
