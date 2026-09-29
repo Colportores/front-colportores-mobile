@@ -64,6 +64,17 @@ void main() {
       expect(punto.esImpreciso, isTrue);
     });
 
+    for (final precision in [double.nan, -1.0, double.infinity]) {
+      test('dado una lectura de GPS con precisión $precision, cuando se consulta, cuenta como '
+          'imprecisa', () {
+        final punto = PuntoCapturado.gps(
+          LecturaGps(coordenadas: italia, precisionMetros: precision),
+        );
+
+        expect(punto.esImpreciso, isTrue);
+      });
+    }
+
     test('dado un marcador manual, cuando se consulta, no tiene precisión ni es impreciso', () {
       const punto = PuntoCapturado.manual(italia);
 

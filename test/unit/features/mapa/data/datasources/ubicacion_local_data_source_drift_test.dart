@@ -187,6 +187,24 @@ void main() {
       expect(await filas('espacio'), 0);
     });
 
+    test('dado que falla el segundo encolado (el del espacio), con la ubicación ya insertada y '
+        'encolada, cuando inserta, se revierte todo', () async {
+      encolador
+        ..fallarCon = StateError('motor apagado')
+        ..fallarDespuesDe = 1;
+
+      await expectLater(
+        local.insertar(ubicacion(), espacio: espacio(), duplicados: criterio),
+        throwsStateError,
+      );
+
+      expect(await filas('ubicacion'), 0);
+      expect(await filas('espacio'), 0);
+      // El fake no es transaccional: el job de la ubicación le quedó anotado. Con el motor real,
+      // `stage()` escribe en `sync_queue` dentro de la misma transacción y se revierte con todo.
+      expect(encolador.encolados.map((c) => c.entidad), ['ubicacion']);
+    });
+
     test(
       'dado un tipo que el CHECK no admite, cuando se escribe a mano, la DB lo rechaza',
       () async {
@@ -227,7 +245,7 @@ void main() {
           ciudadId: 'mvd',
           calle: 'Av. Italia',
           numero: '1234',
-          id: id,
+          id: id ?? registrar.nuevoId(),
           justificacionDuplicado: justificacion,
         );
 

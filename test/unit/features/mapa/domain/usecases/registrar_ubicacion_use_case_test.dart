@@ -65,7 +65,7 @@ void main() {
     String? ciudadId = 'mvd',
     String? calle = 'Av. Italia',
     String? numero = '1234',
-    String? id,
+    String id = 'ub-form',
     bool confirmaBajaPrecision = false,
     String? justificacionDuplicado,
     String colportorId = 'col-1',
@@ -90,7 +90,7 @@ void main() {
         expect(repositorio.llamadas, hasLength(1));
         final llamada = repositorio.llamadas.single;
         final u = llamada.ubicacion;
-        expect(u.id, 'id-1');
+        expect(u.id, 'ub-form');
         expect(u.tipo, TipoUbicacion.casa);
         expect((u.calle, u.numero, u.lat, u.lon), ('Av. Italia', '1234', italia.lat, italia.lon));
         expect(u.ciudadId, 'mvd');
@@ -101,8 +101,8 @@ void main() {
         expect(u.auditoria.syncVersion, 0);
 
         final espacio = llamada.espacio!;
-        expect(espacio.id, 'id-2');
-        expect(espacio.ubicacionId, 'id-1');
+        expect(espacio.id, 'id-1');
+        expect(espacio.ubicacionId, 'ub-form');
         expect(espacio.numeroDepto, Espacio.deptoPorDefecto);
         expect(espacio.auditoria.createdBy, 'col-1');
 
@@ -247,6 +247,14 @@ void main() {
           expect(r.fold((f) => f, (_) => null), isA<FailureValidacion>());
         },
       );
+
+      test('dado un id de alta en blanco, cuando registra, devuelve FailureValidacion y no crea '
+          'nada', () async {
+        final r = await registrar(params(id: '  '));
+
+        expect(r.fold((f) => f, (_) => null), isA<FailureValidacion>());
+        expect(repositorio.llamadas, isEmpty);
+      });
 
       test('dado un colportor en blanco, cuando registra, devuelve FailureValidacion', () async {
         final r = await registrar(params(colportorId: ' '));

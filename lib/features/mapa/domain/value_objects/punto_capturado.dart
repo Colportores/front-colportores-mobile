@@ -47,10 +47,12 @@ final class PuntoCapturado extends Equatable {
   /// Solo para [OrigenCoordenadas.gps].
   final double? precisionMetros;
 
-  /// `true` si es una lectura del GPS con precisión peor que [umbralPrecisionMetros].
+  /// `true` si es una lectura del GPS con precisión peor que [umbralPrecisionMetros], o con una
+  /// precisión que no es un número válido (NaN o negativa): ante la duda, se pide confirmación.
   bool get esImpreciso {
     final precision = precisionMetros;
-    return precision != null && precision > umbralPrecisionMetros;
+    if (precision == null) return false;
+    return !(precision >= 0 && precision <= umbralPrecisionMetros);
   }
 
   @override

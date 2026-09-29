@@ -14,13 +14,13 @@ import '../value_objects/punto_capturado.dart';
 /// Parámetros de [RegistrarUbicacionUseCase].
 final class RegistrarUbicacionParams extends Equatable {
   const RegistrarUbicacionParams({
+    required this.id,
     required this.colportorId,
     required this.tipo,
     required this.punto,
     this.ciudadId,
     this.calle,
     this.numero,
-    this.id,
     this.confirmaBajaPrecision = false,
     this.justificacionDuplicado,
   });
@@ -40,10 +40,11 @@ final class RegistrarUbicacionParams extends Equatable {
   final String? calle;
   final String? numero;
 
-  /// El `id` de esta alta. La pantalla lo genera una vez por formulario
+  /// El `id` (UUID v7) de esta alta. Obligatorio: la pantalla lo genera una vez por formulario
   /// ([RegistrarUbicacionUseCase.nuevoId]) y lo repite en cada intento —confirmar la precisión,
-  /// "Crear igual", un doble toque—: así el alta es idempotente. `null` genera uno nuevo.
-  final String? id;
+  /// "Crear igual", un doble toque—, así que el alta es idempotente sin depender de que la vista
+  /// deshabilite el botón.
+  final String id;
 
   /// El colportor ya vio el aviso de baja precisión y eligió continuar.
   final bool confirmaBajaPrecision;
@@ -74,7 +75,7 @@ final class RegistrarUbicacionParams extends Equatable {
 ///
 /// En orden:
 ///
-/// 1. Sin colportor, o con coordenadas en `(0, 0)` o fuera de rango: `Left(FailureValidacion)`.
+/// 1. Sin `id` de alta, sin colportor, o con coordenadas en `(0, 0)` o fuera de rango: `Left(FailureValidacion)`.
 /// 2. Sin `ciudad_id`: `Left(FailureCiudadRequerida)` ("no permite crear la ubicación sin
 ///    `ciudad_id`").
 /// 3. "Crear igual" con la justificación en blanco: `Left(FailureValidacion)`.
@@ -112,6 +113,13 @@ final class RegistrarUbicacionUseCase
 
   @override
   Future<Either<Failure, ResultadoAltaUbicacion>> call(RegistrarUbicacionParams params) async {
+    final ubicacionId = params.id.trim();
+    if (ubicacionId.isEmpty) {
+      return const Left(
+        FailureValidacion(campos: {'id': 'Falta el identificador del alta de la ubicación'}),
+      );
+    }
+
     final colportorId = params.colportorId.trim();
     if (colportorId.isEmpty) {
       return const Left(
@@ -146,7 +154,6 @@ final class RegistrarUbicacionUseCase
     }
 
     final ahora = _ahora();
-    final ubicacionId = _texto(params.id) ?? _generarId();
     final ubicacion = Ubicacion(
       id: ubicacionId,
       tipo: params.tipo,
