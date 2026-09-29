@@ -14,6 +14,8 @@ Future<int?> mostrarHojaHoraInicio(
   required DateTime ahora,
   required int margenMinutos,
   required int minutosAtras,
+  String pregunta = '¿A qué hora empezaste?',
+  String etiquetaCampo = 'HORA DE INICIO',
 }) => showModalBottomSheet<int>(
   context: context,
   isScrollControlled: true,
@@ -23,8 +25,13 @@ Future<int?> mostrarHojaHoraInicio(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) =>
-      HojaHoraInicio(ahora: ahora, margenMinutos: margenMinutos, minutosAtras: minutosAtras),
+  builder: (_) => HojaHoraInicio(
+    ahora: ahora,
+    margenMinutos: margenMinutos,
+    minutosAtras: minutosAtras,
+    pregunta: pregunta,
+    etiquetaCampo: etiquetaCampo,
+  ),
 );
 
 /// La hora de inicio se ajusta de a [pasoMinutos] con −5 / +5; tocando la hora se escribe otra en
@@ -36,9 +43,15 @@ class HojaHoraInicio extends StatefulWidget {
     required this.ahora,
     required this.margenMinutos,
     required this.minutosAtras,
+    this.pregunta = '¿A qué hora empezaste?',
+    this.etiquetaCampo = 'HORA DE INICIO',
   });
 
   static const pasoMinutos = 5;
+
+  /// Título de la hoja y rótulo del campo: la misma hoja sirve para el inicio y para el fin.
+  final String pregunta;
+  final String etiquetaCampo;
 
   final DateTime ahora;
   final int margenMinutos;
@@ -157,7 +170,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
       children: [
         Semantics(
           header: true,
-          child: Text('¿A qué hora empezaste?', style: theme.textTheme.headlineMedium),
+          child: Text(widget.pregunta, style: theme.textTheme.headlineMedium),
         ),
         const SizedBox(height: 4),
         Text(
@@ -189,7 +202,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'HORA DE INICIO',
+                          widget.etiquetaCampo,
                           style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
                         ),
                         FittedBox(
@@ -261,7 +274,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
           ],
           style: theme.textTheme.headlineMedium,
           decoration: InputDecoration(
-            labelText: 'HORA DE INICIO',
+            labelText: widget.etiquetaCampo,
             errorText: error,
             errorMaxLines: 3,
           ),
