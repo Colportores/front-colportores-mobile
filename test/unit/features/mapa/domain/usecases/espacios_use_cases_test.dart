@@ -162,7 +162,7 @@ void main() {
       expect(
         r,
         _ko(
-          FailureValidacion(
+          const FailureValidacion(
             campos: {
               'id': 'Falta el identificador del alta del espacio',
               'ubicacionId': 'Falta la ubicación del espacio',
@@ -235,7 +235,7 @@ void main() {
         expect(
           r,
           _ko(
-            FailureValidacion(
+            const FailureValidacion(
               campos: {
                 'id': 'Falta el espacio a modificar',
                 'numeroDepto': 'Ingresá el número o nombre del espacio.',
