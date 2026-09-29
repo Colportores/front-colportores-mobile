@@ -145,7 +145,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio. 0 si la
   /// jornada es de un día anterior (HU-JOR-002, bug #118): ahí cualquier hora que ofreciera este
   /// selector caería en el día de HOY, no en el del inicio — el margen normal no corresponde. Con
-  /// 0 el selector no se muestra (`_SelectorHora` lo esconde con `maximo == 0`) y el botón
+  /// 0 el selector no se muestra (la fila de fin queda sin toque con `maximo == 0`) y el botón
   /// "Cambiar" queda deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
   /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
   static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
@@ -233,9 +233,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   }
 
   /// El cierre a pantalla completa (vista 21): "Volver al inicio" vuelve a "Hoy", ya sin jornada.
-  Future<void> _mostrarResumen(Jornada cerrada) => Navigator.of(context).push<void>(
-    MaterialPageRoute(builder: (_) => ResumenJornadaPage(jornada: cerrada)),
-  );
+  Future<void> _mostrarResumen(Jornada cerrada) => Navigator.of(
+    context,
+  ).push<void>(MaterialPageRoute(builder: (_) => ResumenJornadaPage(jornada: cerrada)));
 
   @override
   Widget build(BuildContext context) {
@@ -427,9 +427,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           detalle: elegida == null
               ? horaCorta(ahora)
               : 'hace ${_minutosAtrasDe(ahora, elegida)} min',
-          onTap: _finalizando || maximo == 0
-              ? null
-              : () => _elegirHoraFin(ahora, maximo),
+          onTap: _finalizando || maximo == 0 ? null : () => _elegirHoraFin(ahora, maximo),
         ),
         if (_errorFin == null)
           Padding(
