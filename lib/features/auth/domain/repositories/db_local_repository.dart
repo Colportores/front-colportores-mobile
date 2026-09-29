@@ -37,8 +37,17 @@ abstract interface class DbLocalRepository {
   Future<Either<Failure, ClaveDb>> crearDek();
 
   /// Envuelve [dek] con Argon2id([password]) en el archivo del envoltorio, reemplazando el que
-  /// hubiera. Tarda de 1 a 2 s.
+  /// hubiera, y baja la marca de desactualizado. Tarda de 1 a 2 s.
   Future<Either<Failure, Unit>> envolverConPassword(ClaveDb dek, String password);
+
+  /// Marca el envoltorio como desactualizado por un cambio de contraseña de [usuarioId]
+  /// (`EstadoDbLocal.envoltorioDesactualizadoPara`): puede quedar hecho con una contraseña que ya
+  /// no es la de esa cuenta. La baja [envolverConPassword] y la borra [descartar] (#125).
+  Future<Either<Failure, Unit>> marcarEnvoltorioDesactualizado(String usuarioId);
+
+  /// Deja en el log (warn) que el envoltorio desactualizado es de otra cuenta y no se renueva con
+  /// la contraseña de este login (#125, hasta que la DB quede atada a su usuario).
+  void avisarEnvoltorioDeOtraCuenta();
 
   /// Desenvuelve la DEK con Argon2id([password]). `Left(FailurePasswordNoAbreDatos)` si la
   /// contraseña no la abre, `Left(FailureAlmacenSeguroSinRecuperacion)` si no hay envoltorio o no
@@ -62,8 +71,8 @@ abstract interface class DbLocalRepository {
   Future<Either<Failure, Unit>> marcarInicializada();
 
   /// Deja el dispositivo como nuevo: cierra la DB si estaba abierta, borra el archivo y olvida la
-  /// marca, la DEK, el consentimiento de S10 y el envoltorio por contraseña. **Destructivo**: lo
-  /// que hubiera en la DB local no se recupera.
+  /// marca, la DEK, el consentimiento de S10 y el envoltorio por contraseña (con su marca de
+  /// desactualizado). **Destructivo**: lo que hubiera en la DB local no se recupera.
   Future<Either<Failure, Unit>> descartar();
 }
 

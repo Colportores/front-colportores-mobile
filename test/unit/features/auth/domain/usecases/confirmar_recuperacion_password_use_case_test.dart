@@ -1,5 +1,6 @@
 // HU-AUTH-005 — Confirmación de recuperación de contraseña (ADR-006), con el remoto y la DB local
-// en memoria. Dart puro.
+// en memoria. Dart puro. Los casos de #125 siguen con el login y la recuperación guiada que vienen
+// después, sobre el mismo dispositivo simulado.
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -12,7 +13,9 @@ import 'package:colportores_mobile/features/auth/domain/repositories/recuperacio
 import 'package:colportores_mobile/features/auth/domain/services/turno_db_local.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/abandonar_recuperacion_password_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/confirmar_recuperacion_password_use_case.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/inicializar_db_local_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/observar_enlaces_recuperacion_use_case.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/recuperar_db_local_con_password_use_case.dart';
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
@@ -25,6 +28,9 @@ final class _RecuperacionFalsa implements RecuperacionPasswordRepository {
   Failure? fallaAlActualizar;
   Failure? fallaAlCerrarSesiones;
   String? fijada;
+
+  @override
+  String? usuarioId = 'usuario-a';
 
   @override
   Stream<EnlaceRecuperacion> get enlaces => enlacesController.stream;
@@ -98,9 +104,10 @@ void main() {
       final r = await conPassword('NuevaClave1');
 
       expect(r, const Right<Failure, Unit>(unit));
-      expect(dbLocal.llamadas, ['estado', 'leerDek', 'envolver']);
+      expect(dbLocal.llamadas, ['estado', 'marcarDesactualizado', 'leerDek', 'envolver']);
       expect(dbLocal.envoltorio!.password, 'NuevaClave1');
       expect(dbLocal.envoltorio!.dek, List<int>.filled(32, 77));
+      expect(dbLocal.envoltorioDesactualizado, isFalse, reason: 'el envoltorio nuevo la baja');
       expect(dbLocal.archivo, isTrue);
       expect(dbLocal.claveDelArchivo, List<int>.filled(32, 77));
       expect(dbLocal.entregadas.single.destruida, isTrue, reason: 'la DEK no queda viva');
@@ -113,26 +120,15 @@ void main() {
       expect(dbLocal.llamadas, isNot(contains('desenvolver')));
     });
 
-    test('dado que el almacén no deja leer la DEK, la contraseña igual cambió: no se borra nada y '
-        'rige la recuperación guiada en el próximo inicio', () async {
-      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
-
-      final r = await conPassword('NuevaClave1');
-
-      expect(r, const Right<Failure, Unit>(unit));
-      expect(dbLocal.llamadas, isNot(contains('envolver')));
-      expect(dbLocal.envoltorio!.password, 'Vieja1234', reason: 'queda el envoltorio anterior');
-      expect(dbLocal.archivo, isTrue);
-      expect(recuperacion.llamadas, ['actualizar', 'cerrarSesiones']);
-    });
-
-    test('dado que re-envolver falla, la contraseña igual cambió y la DEK no queda viva', () async {
+    test('dado que re-envolver falla, la contraseña igual cambió, la DEK no queda viva y la marca '
+        'queda para el próximo login', () async {
       dbLocal.fallas['envolver'] = const FailureAlmacenSeguro();
 
       final r = await conPassword('NuevaClave1');
 
       expect(r, const Right<Failure, Unit>(unit));
       expect(dbLocal.entregadas.single.destruida, isTrue);
+      expect(dbLocal.envoltorioDesactualizado, isTrue);
     });
 
     test(
@@ -151,6 +147,183 @@ void main() {
         expect(dbLocal.llamadas, contains('envolver'));
       },
     );
+  });
+
+  group('el envoltorio no queda con la contraseña olvidada (#125)', () {
+    const abierta = Right<Failure, ResultadoInicializacionDb>(ResultadoInicializacionDb.abierta);
+    late VigenciaEnMemoria vigencia;
+
+    setUp(() {
+      final dek = Uint8List.fromList(List<int>.filled(32, 77));
+      dbLocal
+        ..marca = MarcaDbLocal.puesta
+        ..archivo = true
+        ..claveDelArchivo = dek
+        ..dekEnAlmacen = dek
+        ..envoltorio = (dek: dek, password: 'Vieja1234');
+      vigencia = VigenciaEnMemoria();
+    });
+
+    /// El login que sigue a la recuperación, con la DB cerrada por la revocación de las sesiones.
+    /// Por defecto, de la cuenta que se recuperó.
+    Future<Either<Failure, ResultadoInicializacionDb>> entrarCon(String password, {String? de}) {
+      dbLocal.abierta = false;
+      final inicializar = InicializarDbLocalUseCase(dbLocal, vigencia, turno);
+      final params = InicializarDbLocalParams(
+        password: password,
+        requiereEnvoltorio: true,
+        usuarioId: de ?? 'usuario-a',
+      );
+      return inicializar(params);
+    }
+
+    /// Después falla el Keystore: el próximo inicio pide la contraseña (recuperación guiada de
+    /// ADR-006), y se prueba con [password].
+    Future<Either<Failure, Unit>> recuperarTrasFallarElKeystore(String password) async {
+      dbLocal
+        ..abierta = false
+        ..fallas['leerDek'] = const FailureAlmacenSeguro();
+      final inicializar = InicializarDbLocalUseCase(dbLocal, vigencia, turno);
+      expect(
+        await inicializar(const InicializarDbLocalParams(requiereEnvoltorio: true)),
+        const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
+      );
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      return recuperar(RecuperarDbLocalParams(password: password));
+    }
+
+    test('dado que Supabase aplica el cambio pero la respuesta se pierde y el colportor sale con '
+        '"atrás", cuando entra con la contraseña nueva, la DEK queda envuelta con ella: si después '
+        'falla el Keystore, esa contraseña recupera los datos', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      expect(await conPassword('NuevaClave1'), const Left<Failure, Unit>(FailureSinConexion()));
+      await AbandonarRecuperacionPasswordUseCase(recuperacion)(const NoParams());
+
+      expect(await entrarCon('NuevaClave1'), abierta);
+
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+      expect(dbLocal.envoltorio!.dek, List<int>.filled(32, 77));
+      expect(dbLocal.envoltorioDesactualizado, isFalse);
+      expect(await recuperarTrasFallarElKeystore('NuevaClave1'), const Right<Failure, Unit>(unit));
+      expect(dbLocal.abiertaCon!.bytes, List<int>.filled(32, 77));
+    });
+
+    test('dado que la app muere durante el Argon2id del re-envoltorio, el próximo login con la '
+        'contraseña nueva la envuelve con ella', () async {
+      dbLocal.argon2idPendiente = Completer<void>();
+      unawaited(conPassword('NuevaClave1'));
+      await dbLocal.pidioArgon2id.future;
+      // La app muere: ese Argon2id no termina nunca, y la app que vuelve a abrir tiene otro turno.
+      dbLocal.argon2idPendiente = null;
+      turno = TurnoDbLocal();
+
+      expect(await entrarCon('NuevaClave1'), abierta);
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    test('dado que el Keystore falla justo al re-envolver y después vuelve a responder, el próximo '
+        'login con la contraseña nueva la envuelve con ella', () async {
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+      expect(await conPassword('NuevaClave1'), const Right<Failure, Unit>(unit));
+      dbLocal.fallas.remove('leerDek');
+
+      expect(await entrarCon('NuevaClave1'), abierta);
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    test('dado que el almacén no deja leer la DEK y sigue sin responder, la contraseña igual '
+        'cambió y rige la recuperación guiada en el próximo inicio: la contraseña anterior abre '
+        'los datos, no se borra nada y el login siguiente renueva el envoltorio', () async {
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+
+      expect(await conPassword('NuevaClave1'), const Right<Failure, Unit>(unit));
+      expect(recuperacion.llamadas, ['actualizar', 'cerrarSesiones']);
+      expect(dbLocal.envoltorio!.password, 'Vieja1234', reason: 'queda el envoltorio anterior');
+
+      expect(
+        await recuperarTrasFallarElKeystore('NuevaClave1'),
+        const Left<Failure, Unit>(FailurePasswordNoAbreDatos()),
+      );
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      expect(
+        await recuperar(const RecuperarDbLocalParams(password: 'Vieja1234')),
+        const Right<Failure, Unit>(unit),
+      );
+      expect(dbLocal.abiertaCon!.bytes, List<int>.filled(32, 77));
+      expect(dbLocal.archivo, isTrue);
+      expect(dbLocal.envoltorioDesactualizado, isTrue);
+
+      dbLocal.fallas.remove('leerDek');
+      expect(await entrarCon('NuevaClave1'), abierta);
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    test('dado un cambio que el servidor rechaza, la marca queda: un intento anterior pudo haber '
+        'entrado sin respuesta', () async {
+      recuperacion.fallaAlActualizar = const FailureServidor();
+
+      await conPassword('NuevaClave1');
+
+      expect(dbLocal.envoltorioDesactualizado, isTrue);
+      expect(dbLocal.envoltorio!.password, 'Vieja1234');
+    });
+
+    test('dado que A cambia su contraseña sin que se renueve el envoltorio y cierra sesión, cuando '
+        'entra B con su contraseña, el envoltorio de A no se toca: lo renueva el próximo login de '
+        'A', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+
+      expect(await entrarCon('ClaveDeB1', de: 'usuario-b'), abierta);
+
+      expect(dbLocal.envoltorio!.password, 'Vieja1234', reason: 'nunca con la contraseña de B');
+      expect(dbLocal.envoltorioDesactualizadoPara, 'usuario-a');
+      expect(dbLocal.llamadas, contains('avisarOtraCuenta'));
+
+      expect(await entrarCon('NuevaClave1'), abierta);
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    test('dado que el Keystore falla en el login con la contraseña nueva y la recuperación guiada '
+        'abre con la anterior, el envoltorio se renueva ahí mismo con la del login', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+      expect(
+        await entrarCon('NuevaClave1'),
+        const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
+      );
+
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      const params = RecuperarDbLocalParams(
+        password: 'Vieja1234',
+        passwordDelLogin: 'NuevaClave1',
+        usuarioId: 'usuario-a',
+      );
+
+      expect(await recuperar(params), const Right<Failure, Unit>(unit));
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+      expect(dbLocal.envoltorio!.dek, List<int>.filled(32, 77));
+      expect(dbLocal.envoltorioDesactualizado, isFalse);
+    });
+
+    test('dada la recuperación guiada tras el login de otra cuenta, no renueva el envoltorio de '
+        'A', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      const params = RecuperarDbLocalParams(
+        password: 'Vieja1234',
+        passwordDelLogin: 'ClaveDeB1',
+        usuarioId: 'usuario-b',
+      );
+
+      expect(await recuperar(params), const Right<Failure, Unit>(unit));
+      expect(dbLocal.envoltorio!.password, 'Vieja1234');
+      expect(dbLocal.envoltorioDesactualizadoPara, 'usuario-a');
+    });
   });
 
   group('validación de la contraseña nueva (misma política que el registro)', () {
@@ -188,7 +361,7 @@ void main() {
 
           expect(await conPassword('NuevaClave1'), Left<Failure, Unit>(falla));
           expect(recuperacion.llamadas, ['actualizar']);
-          expect(dbLocal.llamadas, isEmpty);
+          expect(dbLocal.llamadas, ['estado'], reason: 'sin DB local, solo mira si hay envoltorio');
         },
       );
     }

@@ -426,3 +426,43 @@ final class FailureCiudadFueraDeCatalogo extends Failure {
         codigo: 'UBI_CIUDAD_FUERA_DE_CATALOGO',
       );
 }
+
+/// No hay lugar en el teléfono para el paquete de mapa que se quiere descargar (HU-SYNC-010).
+/// [megabytesRequeridos] es lo que falta bajar: al reanudar descuenta lo que ya está descargado.
+/// El mensaje es el literal de la HU más qué hacer (para confirmar en #189).
+final class FailureEspacioInsuficiente extends Failure {
+  const FailureEspacioInsuficiente({required this.megabytesRequeridos})
+    : super(
+        mensaje:
+            'Espacio insuficiente - se requieren $megabytesRequeridos MB. Liberá espacio en el '
+            'teléfono o elegí una cobertura más chica.',
+        codigo: 'TILES_SIN_ESPACIO',
+      );
+
+  final int megabytesRequeridos;
+
+  @override
+  List<Object?> get props => [...super.props, megabytesRequeridos];
+}
+
+/// Los mapas se descargan solo con Wi-Fi salvo que el colportor autorice datos móviles para esa
+/// descarga (HU-SYNC-010, override manual), y el teléfono está con datos móviles.
+final class FailureDescargaRequiereWifi extends Failure {
+  const FailureDescargaRequiereWifi()
+    : super(
+        mensaje:
+            'Los mapas se descargan solo con Wi-Fi. Conectate a una red Wi-Fi o permití usar '
+            'datos móviles.',
+        codigo: 'TILES_REQUIERE_WIFI',
+      );
+}
+
+/// El paquete descargado no pasó la validación de checksum (HU-SYNC-010): se borró y hay que
+/// descargarlo de nuevo.
+final class FailurePaqueteTilesCorrupto extends Failure {
+  const FailurePaqueteTilesCorrupto()
+    : super(
+        mensaje: 'El mapa se descargó con errores y se descartó. Volvé a descargarlo.',
+        codigo: 'TILES_CHECKSUM',
+      );
+}

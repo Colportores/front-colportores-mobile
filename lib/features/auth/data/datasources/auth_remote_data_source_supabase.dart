@@ -331,6 +331,9 @@ final class AuthRemoteDataSourceSupabase
   );
 
   @override
+  String? get usuarioDeLaRecuperacion => _auth.currentUser?.id;
+
+  @override
   Future<void> actualizarPassword(String nueva) async {
     try {
       await _auth.updateUser(UserAttributes(password: nueva));
