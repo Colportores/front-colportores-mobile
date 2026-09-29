@@ -13,18 +13,25 @@ import '../services/turno_db_local.dart';
 
 /// Parámetros de [RecuperarDbLocalConPasswordUseCase].
 final class RecuperarDbLocalParams extends Equatable {
-  const RecuperarDbLocalParams({required this.password});
+  const RecuperarDbLocalParams({required this.password, this.passwordDelLogin, this.usuarioId});
 
   /// Contraseña que el usuario ingresó en la pantalla de recuperación.
   final String password;
 
-  /// [props] lleva la contraseña en texto plano: sin esto, interpolar los params en un log la
+  /// Contraseña del login que llevó hasta acá, ya validada por el servidor, o `null` si no la hay
+  /// (sesión restaurada, Google). Con ella se renueva un envoltorio desactualizado (#125).
+  final String? passwordDelLogin;
+
+  /// `usuario_id` de la sesión: el envoltorio desactualizado solo se renueva si es de esta cuenta.
+  final String? usuarioId;
+
+  /// [props] lleva las contraseñas en texto plano: sin esto, interpolar los params en un log las
   /// filtraría (convenciones-desarrollo.md §7.5).
   @override
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [password];
+  List<Object?> get props => [password, passwordDelLogin, usuarioId];
 }
 
 /// Recuperación guiada de ADR-006: el almacén seguro falló (o perdió la DEK) con la DB en el
@@ -39,6 +46,10 @@ final class RecuperarDbLocalParams extends Equatable {
 /// 3. Recién ahí limpia el almacén seguro y lo reescribe con la DEK y la marca. Si eso falla, la
 ///    DB queda abierta igual —los datos están— y el almacén se vuelve a reconstruir en la próxima
 ///    recuperación; la falla va al log.
+/// 4. Si el envoltorio quedó desactualizado por un cambio de contraseña de esta misma cuenta (#125)
+///    y hay contraseña del login, lo renueva con ella: si no, la contraseña que acaba de abrir (la
+///    anterior) seguiría siendo la única hasta el próximo login con contraseña, que puede tardar
+///    30 días. Si falla, la DB queda abierta y la marca sigue puesta.
 ///
 /// Sin envoltorio (o ilegible) devuelve [FailureAlmacenSeguroSinRecuperacion]: la UI ofrece
 /// "empezar de nuevo" y pregunta antes de borrar (`EmpezarDeNuevoDbLocalUseCase`). Un envoltorio de
@@ -62,16 +73,20 @@ final class RecuperarDbLocalConPasswordUseCase implements UseCase<Unit, Recupera
     final testigo = _vigencia.tomarTestigo();
     if (testigo == null) return const Left(FailureSesionCerrada());
 
-    return _turno.enExclusiva(() => _recuperar(params.password, testigo));
+    return _turno.enExclusiva(() => _recuperar(params, testigo));
   }
 
-  Future<Either<Failure, Unit>> _recuperar(String password, TestigoSesion testigo) async {
+  Future<Either<Failure, Unit>> _recuperar(
+    RecuperarDbLocalParams params,
+    TestigoSesion testigo,
+  ) async {
     final estado = await _repository.estado();
     if (estado case Left(value: final falla)) return Left(falla);
+    final e = (estado as Right<Failure, EstadoDbLocal>).value;
     // Otro flujo ya la abrió mientras este esperaba el turno.
-    if (estado case Right(value: EstadoDbLocal(abierta: true))) return const Right(unit);
+    if (e.abierta) return const Right(unit);
 
-    final desenvuelta = await _repository.desenvolverConPassword(password);
+    final desenvuelta = await _repository.desenvolverConPassword(params.password);
     if (desenvuelta case Left(value: final falla)) return Left(falla);
     final dek = (desenvuelta as Right<Failure, ClaveDb>).value;
 
@@ -83,6 +98,13 @@ final class RecuperarDbLocalConPasswordUseCase implements UseCase<Unit, Recupera
       if (abierta case Left(value: final falla)) return Left(falla);
 
       await _repository.reconstruirAlmacen(paraElAlmacen);
+
+      final delLogin = params.passwordDelLogin;
+      if (delLogin != null &&
+          e.envoltorioDesactualizado &&
+          e.envoltorioDesactualizadoPara == params.usuarioId) {
+        await _repository.envolverConPassword(paraElAlmacen, delLogin);
+      }
       return const Right(unit);
     } finally {
       paraElAlmacen.destruir();

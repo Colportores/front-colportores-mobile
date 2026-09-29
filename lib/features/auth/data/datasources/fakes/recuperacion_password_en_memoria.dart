@@ -38,6 +38,10 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   int sesionesCerradas = 0;
   int abandonos = 0;
 
+  /// El id de la cuenta que se recupera: es el `usuarioDeLaRecuperacion` mientras haya sesión de
+  /// recuperación.
+  String usuarioId = 'usuario-en-memoria';
+
   /// La contraseña que tiene la cuenta ahora.
   String get passwordActual => _passwordActual;
 
@@ -60,6 +64,9 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
 
   @override
   Stream<EnlaceRecuperacion> get enlacesRecuperacion => _enlaces.stream;
+
+  @override
+  String? get usuarioDeLaRecuperacion => _haySesionDeRecuperacion ? usuarioId : null;
 
   @override
   Future<void> actualizarPassword(String nueva) async {
