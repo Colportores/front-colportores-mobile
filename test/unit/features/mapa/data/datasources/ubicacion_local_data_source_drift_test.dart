@@ -290,4 +290,57 @@ void main() {
       expect(await filas('espacio'), 1);
     });
   });
+
+  group('UbicacionLocalDataSourceDrift.observarDelColportor', () {
+    Future<List<String>> ids({String? ciudadId, bool incluirBajas = false}) async => [
+      for (final u
+          in await local
+              .observarDelColportor(
+                colportorId: 'col-1',
+                ciudadId: ciudadId,
+                incluirBajas: incluirBajas,
+              )
+              .first)
+        u.id,
+    ]..sort();
+
+    test('dado ubicaciones de dos colportores, de dos ciudades y una baja, trae solo las del '
+        'colportor y sin la baja; con incluirBajas la suma; con ciudad, la acota', () async {
+      await local.insertar(ubicacion(id: 'mia'));
+      await local.insertar(ubicacion(id: 'sal', ciudadId: 'sal', lon: -57));
+      await local.insertar(ubicacion(id: 'baja', lon: -58, deletedAt: t0));
+      final ajena = ubicacion(id: 'ajena', lon: -59);
+      await local.insertar(
+        UbicacionModel(
+          id: ajena.id,
+          tipo: ajena.tipo,
+          calle: ajena.calle,
+          numero: ajena.numero,
+          lat: ajena.lat,
+          lon: ajena.lon,
+          ciudadId: ajena.ciudadId,
+          auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-2'),
+        ),
+      );
+
+      expect(await ids(), ['mia', 'sal']);
+      expect(await ids(incluirBajas: true), ['baja', 'mia', 'sal']);
+      expect(await ids(ciudadId: 'sal'), ['sal']);
+    });
+
+    test('es reactivo: un alta posterior vuelve a emitir sin pedir nada', () async {
+      final emisiones = <List<String>>[];
+      final sub = local
+          .observarDelColportor(colportorId: 'col-1')
+          .listen((l) => emisiones.add([for (final u in l) u.id]));
+      await pumpEventQueue();
+
+      await local.insertar(ubicacion(id: 'nueva'));
+      await pumpEventQueue();
+
+      expect(emisiones.first, isEmpty);
+      expect(emisiones.last, ['nueva']);
+      await sub.cancel();
+    });
+  });
 }

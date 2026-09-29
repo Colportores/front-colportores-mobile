@@ -42,6 +42,13 @@ final class _LocalFijo implements UbicacionLocalDataSource {
     if (e != null) throw e;
     return respuesta ?? (ubicacion: ubicacion, yaEstaba: false);
   }
+
+  @override
+  Stream<List<UbicacionModel>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) => const Stream.empty();
 }
 
 void main() {

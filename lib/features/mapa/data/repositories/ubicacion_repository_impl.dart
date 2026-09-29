@@ -70,4 +70,17 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  @override
+  Stream<List<Ubicacion>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) => _local
+      .observarDelColportor(
+        colportorId: colportorId,
+        ciudadId: ciudadId,
+        incluirBajas: incluirBajas,
+      )
+      .map((modelos) => [for (final m in modelos) m.toEntity()]);
 }
