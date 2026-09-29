@@ -35,8 +35,9 @@ abstract interface class UbicacionLocalDataSource {
 
   /// Escribe [nueva] sobre la fila con su mismo `id` y encola el `update` con la fila entera,
   /// **todo en una transacción** (HU-UBI-004; contrato-sync-engine §3). Solo cambian `tipo`,
-  /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `updated_at` y `deleted_at`: el resto de la fila
-  /// (incluida `sync_version`) queda como está.
+  /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `zona_id` (la que calculó el caso de uso por la
+  /// posición, #231), `updated_at` y `deleted_at`: el resto de la fila (incluida `sync_version`)
+  /// queda como está.
   ///
   /// - Sin fila con ese `id`: lanza [UbicacionInexistenteException].
   /// - Si `updated_at` de la fila no es [baseUpdatedAt] (cambió desde que se leyó): no escribe y

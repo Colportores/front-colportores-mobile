@@ -109,6 +109,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         lat: Value(nueva.lat),
         lon: Value(nueva.lon),
         ciudadId: Value(nueva.ciudadId),
+        zonaId: Value(nueva.zonaId),
         updatedAt: Value(nueva.auditoria.updatedAt),
         deletedAt: Value(nueva.auditoria.deletedAt),
       ),

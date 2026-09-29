@@ -23,6 +23,7 @@ import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/zonas_falsas.dart';
 
 /// Metros → grados de latitud con el radio de la Tierra de `Coordenadas`.
 double _grados(double metros) => metros / 111195.08;
@@ -287,6 +288,7 @@ void main() {
       registrar = RegistrarUbicacionUseCase(
         UbicacionRepositoryImpl(local, logger: loggerMudo()),
         generarId: () => 'id-${++ids}',
+        ubicador: ubicadorSinZonas(),
         ahora: () => t0,
       );
     });

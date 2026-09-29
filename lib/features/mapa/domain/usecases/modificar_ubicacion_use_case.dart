@@ -8,6 +8,7 @@ import '../entities/resultado_modificacion_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
+import '../services/ubicador_zona.dart';
 import '../value_objects/coordenadas.dart';
 
 /// Parámetros de [ModificarUbicacionUseCase]: **los valores con los que tiene que quedar** la
@@ -16,6 +17,7 @@ import '../value_objects/coordenadas.dart';
 final class ModificarUbicacionParams extends Equatable {
   const ModificarUbicacionParams({
     required this.id,
+    required this.colportorId,
     required this.tipo,
     required this.coordenadas,
     required this.baseUpdatedAt,
@@ -28,6 +30,10 @@ final class ModificarUbicacionParams extends Equatable {
 
   /// La ubicación que se modifica.
   final String id;
+
+  /// UUID del usuario con la sesión iniciada: quien la mueve. Una ubicación que registró otro
+  /// colportor solo se puede mover dentro de sus zonas (backend-supabase 0010).
+  final String colportorId;
 
   final TipoUbicacion tipo;
   final Coordenadas coordenadas;
@@ -58,6 +64,7 @@ final class ModificarUbicacionParams extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    colportorId,
     tipo,
     coordenadas,
     baseUpdatedAt,
@@ -71,11 +78,11 @@ final class ModificarUbicacionParams extends Equatable {
 
 /// HU-UBI-004 — Modificar ubicación.
 ///
-/// Se pueden editar `tipo`, `calle`, `numero`, `coords` y `ciudad_id`; nada más (`zona_id` es del
-/// servidor, la auditoría la lleva el caso de uso). En orden:
+/// Se pueden editar `tipo`, `calle`, `numero`, `coords` y `ciudad_id`; nada más (la auditoría la
+/// lleva el caso de uso). En orden:
 ///
-/// 1. Sin `id`, con coordenadas en `(0, 0)` o fuera de rango, o una justificación en blanco:
-///    `Left(FailureValidacion)`. Sin `ciudad_id`: `Left(FailureCiudadRequerida)`.
+/// 1. Sin `id` o sin colportor, con coordenadas en `(0, 0)` o fuera de rango, o una justificación
+///    en blanco: `Left(FailureValidacion)`. Sin `ciudad_id`: `Left(FailureCiudadRequerida)`.
 /// 2. La ubicación no está: `Left(FailureUbicacionInexistente)`.
 /// 3. Nada cambió: `Right(ModificacionSinCambios)`, sin escribir ni encolar. Si además la fila ya
 ///    no tiene [ModificarUbicacionParams.baseUpdatedAt] pero tiene **exactamente** los valores
@@ -84,10 +91,14 @@ final class ModificarUbicacionParams extends Equatable {
 ///    Si no es ese caso y la fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
 /// 4. `EDIFICIO` → `CASA`/`NEGOCIO` con espacios activos: `Left(FailureUbicacionConEspacios)`
 ///    (S17). Es un bloqueo, no una confirmación.
-/// 5. Faltan confirmaciones —reactivar una baja (S18), cambiar de ciudad, mover el punto más de
+/// 5. Si se mueve (cambia el punto o la ciudad), la zona pasa a ser la que contiene el punto nuevo,
+///    o `null` fuera de toda zona ([UbicadorZona]); si no se mueve, conserva la que tenía. Si la
+///    ubicación la registró otro colportor y la zona nueva no es una de las de quien la mueve:
+///    `Left(FailureUbicacionAjenaFueraDeZona)`, otro bloqueo (el servidor la rechazaría, 0010).
+/// 6. Faltan confirmaciones —reactivar una baja (S18), cambiar de ciudad, mover el punto más de
 ///    [umbralDesplazamientoMetros]—: `Right(ModificacionRequiereConfirmacion)` con **todas** las
 ///    que faltan, sin escribir.
-/// 6. Se escribe con `updated_at` = ahora (y `deleted_at` en `null` si se reactivó). El
+/// 7. Se escribe con `updated_at` = ahora (y `deleted_at` en `null` si se reactivó). El
 ///    repositorio, en la misma transacción, re-valida duplicados si cambió la calle, el número, el
 ///    punto, la ciudad o se reactiva (salvo con justificación), verifica que la fila no haya
 ///    cambiado desde que se leyó y encola el `update`.
@@ -103,8 +114,10 @@ final class ModificarUbicacionParams extends Equatable {
 /// Todo es local: sin red la modificación se aplica igual y el sync queda en la cola.
 final class ModificarUbicacionUseCase
     implements UseCase<ResultadoModificacionUbicacion, ModificarUbicacionParams> {
+  /// [_ubicador] y [_criterio] se pasan como `ubicador:` y `criterio:`.
   ModificarUbicacionUseCase(
     this._repository, {
+    required this._ubicador,
     DateTime Function()? ahora,
     this._criterio = const CriterioDuplicadoUbicacion(),
   }) : _ahora = ahora ?? DateTime.now;
@@ -113,6 +126,7 @@ final class ModificarUbicacionUseCase
   static const umbralDesplazamientoMetros = 100.0;
 
   final UbicacionRepository _repository;
+  final UbicadorZona _ubicador;
   final DateTime Function() _ahora;
   final CriterioDuplicadoUbicacion _criterio;
 
@@ -124,6 +138,13 @@ final class ModificarUbicacionUseCase
     if (id.isEmpty) {
       return const Left(
         FailureValidacion(campos: {'id': 'Falta la ubicación que se quiere modificar'}),
+      );
+    }
+    if (params.colportorId.trim().isEmpty) {
+      return const Left(
+        FailureValidacion(
+          campos: {'colportorId': 'No hay un colportor para modificar la ubicación'},
+        ),
       );
     }
     if (params.coordenadas.sonCero || !params.coordenadas.estanEnRango) {
@@ -185,6 +206,22 @@ final class ModificarUbicacionUseCase
       if (bloqueo != null) return Left(bloqueo);
     }
 
+    var zonaId = actual.zonaId;
+    if (cambioPunto || cambioCiudad) {
+      final colportorId = params.colportorId.trim();
+      final zona = await _ubicador.ubicar(
+        coordenadas,
+        colportorId: colportorId,
+        ciudadId: ciudadId,
+      );
+      final bloqueo = zona.fold<Failure?>((falla) => falla, (zona) {
+        zonaId = zona.zonaId;
+        final ajena = actual.auditoria.createdBy != colportorId;
+        return ajena && !zona.esDeMisZonas ? const FailureUbicacionAjenaFueraDeZona() : null;
+      });
+      if (bloqueo != null) return Left(bloqueo);
+    }
+
     final desplazamiento = cambioPunto ? actual.coordenadas.distanciaMetrosA(coordenadas) : 0.0;
     final pendientes = {
       if (actual.estaBorrada && !params.confirmadas.contains(ConfirmacionModificacion.reactivar))
@@ -215,7 +252,7 @@ final class ModificarUbicacionUseCase
       lat: coordenadas.lat,
       lon: coordenadas.lon,
       ciudadId: ciudadId,
-      zonaId: actual.zonaId,
+      zonaId: zonaId,
       auditoria: actual.auditoria.copyWith(
         updatedAt: _ahora(),
         deletedAt: reactiva ? null : actual.auditoria.deletedAt,
