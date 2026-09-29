@@ -19,8 +19,10 @@ void main() {
   late ProviderContainer container;
 
   setUp(() {
-    errores = StreamController<void>();
-    exitosas = StreamController<void>();
+    // Broadcast: el `close()` de uno que nunca tuvo oyente no completa, y cada test escucha uno
+    // solo de los dos.
+    errores = StreamController<void>.broadcast();
+    exitosas = StreamController<void>.broadcast();
     final repository = _MockAuthRepository();
     when(() => repository.erroresVerificacionEmail).thenAnswer((_) => errores.stream);
     when(() => repository.verificacionesExitosas).thenAnswer((_) => exitosas.stream);
