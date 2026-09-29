@@ -239,6 +239,39 @@ void main() {
       );
     });
 
+    test('dado un 206 con otro rango que el pedido, descarta el cuerpo y falla con '
+        'FailureServidor', () async {
+      servidor.corrimiento = 100;
+
+      await descargar();
+
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaFallida(paquete.id, const FailureServidor(status: 206)),
+      );
+      expect(servidor.cancelados, 1);
+      expect(archivos.contenido, isEmpty);
+    });
+
+    test('dado un 416 al reanudar, borra el .part y baja una vez más desde cero', () async {
+      archivos.contenido[parcial] = List.filled(2000, 9);
+      servidor.rechazarRango = true;
+
+      await descargar();
+
+      expect(servidor.pedidos, [2000, 0]);
+      expectCompleta();
+    });
+
+    test('dado un checksum del catálogo en mayúsculas, lo compara normalizado', () async {
+      final mayusculas = paqueteDe(bytes, checksum: checksumDe(bytes).toUpperCase());
+
+      await descargador.descargar(mayusculas);
+      await descargador.esperar(mayusculas.id);
+
+      expect(descargador.estadoDe(mayusculas.id), isA<DescargaCompletada>());
+    });
+
     test('dado que no se puede registrar, falla con ese Failure', () async {
       repositorio.falloRegistrar = const FailureInesperado(causa: 'disco');
 
@@ -310,6 +343,23 @@ void main() {
       await esperarReanudacion();
       expect(servidor.pedidos, [0, 2000]);
       expectCompleta();
+    });
+
+    test('dado que pauso y en el mismo momento se va la red, la pausa sigue siendo mía y no se '
+        'retoma sola al volver el Wi-Fi', () async {
+      await arrancarColgada();
+
+      final pausa = descargador.pausar(paquete.id);
+      conectividad.cambiarA(TipoConexion.sinConexion);
+      await pausa;
+      conectividad.cambiarA(TipoConexion.wifi);
+      await esperarReanudacion();
+
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaPausada(paquete.id, motivo: MotivoPausa.usuario, recibidos: 2000, total: 5500),
+      );
+      expect(servidor.pedidos, [0]);
     });
 
     test('dado que pausé una descarga que esperaba la conexión, ya no sigue sola', () async {

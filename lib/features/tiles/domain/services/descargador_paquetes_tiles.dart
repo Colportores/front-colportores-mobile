@@ -17,6 +17,8 @@ import 'puertos_descarga.dart';
 ///   otras descargas en curso): si no alcanza, `Left(FailureEspacioInsuficiente)`.
 /// - Baja al `.part`. Reanudar pide desde el tamaño del `.part` (HTTP Range); si el servidor no
 ///   soporta `Range` y manda el archivo entero (200 en vez de 206), el `.part` se reescribe.
+/// - Un 416 con `.part` borra el `.part` y pide una vez más desde cero. Un 206 con otro rango que
+///   el pedido falla con `FailureServidor(status: 206)`.
 /// - Al terminar valida el checksum. Si coincide, renombra el `.part` al `.pmtiles` y lo registra
 ///   en el repositorio: desde ahí el mapa lo usa. Si no, borra el `.part`. Un corte nunca deja un
 ///   archivo que se tome por válido.
@@ -97,7 +99,9 @@ final class DescargadorPaquetesTiles {
   }
 
   /// Pausa la descarga de [paqueteId] y deja el `.part` para reanudarla con [descargar]. Si estaba
-  /// en pausa esperando la conexión, deja de seguir sola.
+  /// en pausa esperando la conexión, deja de seguir sola. Si ya terminó de bajar y está validando
+  /// el checksum (`DescargaVerificando`), no la corta: termina en `DescargaCompletada` (o
+  /// `DescargaFallida` si el checksum no coincide).
   Future<void> pausar(String paqueteId) async {
     final descarga = _descargas[paqueteId];
     if (descarga == null) return;
@@ -172,9 +176,11 @@ final class DescargadorPaquetesTiles {
     final parcial = _archivos.rutaParcial(paquete.id);
     try {
       if (d.recibidos < paquete.tamanoBytes && !await _bajar(d, parcial)) return;
+      // Una pausa pedida desde acá no corta: la validación sigue y termina en completada o
+      // fallida.
       _emitir(d, DescargaVerificando(paquete.id));
       final calculado = await _checksum.calcular(parcial);
-      if (calculado != paquete.checksum) {
+      if (_normalizado(calculado) != _normalizado(paquete.checksum)) {
         await _archivos.borrar(parcial);
         d.recibidos = 0;
         _emitir(d, DescargaFallida(paquete.id, const FailurePaqueteTilesCorrupto()));
@@ -204,7 +210,7 @@ final class DescargadorPaquetesTiles {
     final paquete = d.paquete;
     final RespuestaDescarga respuesta;
     try {
-      respuesta = await _cliente.pedir(paquete.origen, desde: d.recibidos);
+      respuesta = await _pedir(d, parcial);
     } on ErrorRedTiles {
       _emitirPausa(d, d.pausaPedida ?? MotivoPausa.sinConexion);
       return false;
@@ -215,7 +221,10 @@ final class DescargadorPaquetesTiles {
       return false;
     }
     if (respuesta.desde != 0 && respuesta.desde != d.recibidos) {
-      throw StateError('el servidor respondió desde ${respuesta.desde}, se pidió ${d.recibidos}');
+      // Un 206 con otro rango que el pedido no se puede anexar: se descarta y falla como error
+      // del servidor.
+      await respuesta.bytes.listen(null).cancel();
+      throw const ErrorServidorTiles(206);
     }
     // Con 200 (sin soporte de Range) llega el archivo entero: el `.part` se reescribe desde cero.
     final anexar = respuesta.desde > 0;
@@ -237,6 +246,20 @@ final class DescargadorPaquetesTiles {
         _emitir(d, DescargaFallida(paquete.id, const FailurePaqueteTilesCorrupto()));
     }
     return false;
+  }
+
+  /// Pide lo que falta. Un 416 con `.part` (el archivo cambió en el servidor, o el `.part` no es de
+  /// este archivo) borra el `.part` y pide una sola vez más, desde cero.
+  Future<RespuestaDescarga> _pedir(_Descarga d, String parcial) async {
+    final origen = d.paquete.origen;
+    try {
+      return await _cliente.pedir(origen, desde: d.recibidos);
+    } on ErrorServidorTiles catch (e) {
+      if (e.status != 416 || d.recibidos == 0) rethrow;
+      await _archivos.borrar(parcial);
+      d.recibidos = 0;
+      return _cliente.pedir(origen, desde: 0);
+    }
   }
 
   /// Escribe los pedazos en el `.part` hasta que el cuerpo termina, se corta, se pasa del tamaño
@@ -272,8 +295,10 @@ final class DescargadorPaquetesTiles {
   }
 
   /// Corta el intento en curso de [d] con una pausa por [motivo] y espera a que cierre el `.part`.
+  /// Una pausa del colportor no se pisa: si mientras se cierra se va la red, sigue siendo suya y
+  /// no se retoma sola.
   Future<void> _detener(_Descarga d, MotivoPausa motivo) async {
-    d.pausaPedida = motivo;
+    if (d.pausaPedida != MotivoPausa.usuario) d.pausaPedida = motivo;
     d.cortar?.call(_Fin.pausado);
     await d.intento?.future;
   }
@@ -323,6 +348,10 @@ final class DescargadorPaquetesTiles {
       TipoConexion.sinConexion => const FailureSinConexion(),
     };
   }
+
+  /// Los checksums se comparan en hex minúscula, sin espacios, para que un hex en mayúsculas no
+  /// cuente como distinto. El algoritmo y el formato del catálogo siguen abiertos (#189).
+  static String _normalizado(String checksum) => checksum.trim().toLowerCase();
 
   static MotivoPausa _motivoPorPerder(TipoConexion conexion) => switch (conexion) {
     TipoConexion.sinConexion => MotivoPausa.sinConexion,

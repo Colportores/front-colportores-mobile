@@ -94,7 +94,8 @@ String checksumDe(List<int> bytes) {
   for (final b in bytes) {
     hash = (hash * 31 + b) & 0x3fffffff;
   }
-  return '${bytes.length}:$hash';
+  // En hex minúscula, con letras seguro (`ab`), para probar que la comparación normaliza.
+  return 'ab${bytes.length.toRadixString(16)}${hash.toRadixString(16)}';
 }
 
 /// Servidor de paquetes: responde 206 desde el byte pedido, o 200 con todo si ![soportaRange].
@@ -102,15 +103,22 @@ String checksumDe(List<int> bytes) {
 /// - [cortarDespuesDe]: el próximo cuerpo manda esos bytes y se corta con [ErrorRedTiles].
 /// - [retenerDespuesDe]: el próximo cuerpo manda esos bytes y queda abierto (una descarga
 ///   colgada, para pausarla); el test lo maneja con [abierto].
+/// - [rechazarRango]: responde 416 a todo pedido desde un byte mayor que 0.
+/// - [corrimiento]: el 206 dice empezar en `desde + corrimiento` (otro rango que el pedido).
 final class ServidorFalso implements ClienteDescargaRango {
   final archivos = <Uri, List<int>>{};
   final pedidos = <int>[];
   bool soportaRange = true;
   bool sinRed = false;
+  bool rechazarRango = false;
   int? statusError;
   int? cortarDespuesDe;
   int? retenerDespuesDe;
+  int corrimiento = 0;
   int tamanoPedazo = 1000;
+
+  /// Cuerpos cuya suscripción se canceló (el test que lo mira no deja llegar ninguno al final).
+  int cancelados = 0;
 
   /// Bytes de más que agrega al final del cuerpo (un servidor que manda otra cosa).
   int sobrante = 0;
@@ -121,15 +129,21 @@ final class ServidorFalso implements ClienteDescargaRango {
     pedidos.add(desde);
     if (sinRed) throw const ErrorRedTiles();
     if (statusError case final status?) throw ErrorServidorTiles(status);
+    if (rechazarRango && desde > 0) throw const ErrorServidorTiles(416);
     final archivo = archivos[origen];
     if (archivo == null) throw const ErrorServidorTiles(404);
     final inicio = soportaRange ? desde : 0;
     final resto = [...archivo.sublist(inicio), ...List.filled(sobrante, 7)];
-    return RespuestaDescarga(desde: inicio, bytes: _cuerpo(resto));
+    final dice = soportaRange ? desde + corrimiento : 0;
+    return RespuestaDescarga(desde: dice, bytes: _cuerpo(resto));
   }
 
   Stream<List<int>> _cuerpo(List<int> resto) {
-    final cuerpo = StreamController<List<int>>();
+    final cuerpo = StreamController<List<int>>(
+      onCancel: () {
+        cancelados++;
+      },
+    );
     final corte = cortarDespuesDe;
     final retener = retenerDespuesDe;
     cortarDespuesDe = null;
