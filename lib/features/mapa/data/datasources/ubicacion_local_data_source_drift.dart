@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
@@ -50,13 +51,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (existente != null) return (ubicacion: _aModelo(existente), yaEstaba: true);
 
     if (duplicados != null) {
-      final cercanas = await _activasCerca(ubicacion, CriterioDuplicadoUbicacion.radioMetros);
-      final candidatas = duplicados.candidatas(ubicacion, cercanas);
-      if (candidatas.isNotEmpty) {
-        throw UbicacionDuplicadaException([
-          for (final candidata in candidatas) UbicacionModel.fromEntity(candidata),
-        ]);
-      }
+      final candidatas = await _candidatas(ubicacion, duplicados);
+      if (candidatas.isNotEmpty) throw UbicacionDuplicadaException(candidatas);
     }
 
     await into(ubicaciones).insert(_aFila(ubicacion));
@@ -96,13 +92,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
 
     if (duplicados != null) {
-      final cercanas = await _activasCerca(nueva, CriterioDuplicadoUbicacion.radioMetros);
-      final candidatas = duplicados.candidatas(nueva, cercanas);
-      if (candidatas.isNotEmpty) {
-        throw UbicacionDuplicadaException([
-          for (final candidata in candidatas) UbicacionModel.fromEntity(candidata),
-        ]);
-      }
+      final candidatas = await _candidatas(nueva, duplicados);
+      if (candidatas.isNotEmpty) throw UbicacionDuplicadaException(candidatas);
     }
 
     await (update(ubicaciones)..where((u) => u.id.equals(nueva.id))).write(
@@ -207,26 +198,43 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     cantidadEspacios: cantidadEspacios,
   );
 
-  /// Ubicaciones activas de la misma ciudad dentro de un recuadro que contiene el círculo de
-  /// [radioMetros] alrededor de [centro] (con margen). El filtro exacto por distancia lo hace el
-  /// criterio; el recuadro solo acota lo que se lee, usando el índice `(ciudad_id, lat)`.
-  Future<List<UbicacionModel>> _activasCerca(UbicacionModel centro, double radioMetros) async {
-    final margen = radioMetros * 1.5;
-    final dLat = margen / _metrosPorGrado;
+  /// Las candidatas de [criterio] para [centro] entre las ubicaciones activas del teléfono.
+  ///
+  /// La consulta solo acota lo que se lee; la regla exacta la aplica el criterio en Dart. Trae:
+  ///
+  /// - las que caen en un recuadro que contiene el círculo de `CriterioDuplicadoUbicacion.
+  ///   radioMetros` alrededor de [centro] (con margen), de cualquier ciudad; y
+  /// - si [centro] tiene calle y número, las de su ciudad con el mismo número (`lower(trim(…))`
+  ///   de los dos lados, así que el `lower` de SQLite, que solo pasa a minúsculas el ASCII, es
+  ///   parejo). Un número que difiere solo en mayúsculas no ASCII ("12 Ñ" y "12 ñ") no sale acá:
+  ///   lo encuentra el scan de "Posibles duplicados", que compara en Dart.
+  Future<List<CandidataDuplicado>> _candidatas(
+    UbicacionModel centro,
+    CriterioDuplicadoUbicacion criterio,
+  ) async {
+    const margen = CriterioDuplicadoUbicacion.radioMetros * 1.5;
+    const dLat = margen / _metrosPorGrado;
     final cosLat = math.cos(centro.lat * math.pi / 180).abs();
+    final numero = centro.numero;
     final consulta = select(ubicaciones)
-      ..where(
-        (u) =>
-            u.ciudadId.equals(centro.ciudadId) &
-            u.deletedAt.isNull() &
-            u.lat.isBetweenValues(centro.lat - dLat, centro.lat + dLat),
-      );
-    // Cerca de los polos un grado de longitud mide casi nada: ahí no se acota por longitud.
-    if (cosLat > 0.01) {
-      final dLon = margen / (_metrosPorGrado * cosLat);
-      consulta.where((u) => u.lon.isBetweenValues(centro.lon - dLon, centro.lon + dLon));
-    }
-    return [for (final fila in await consulta.get()) _aModelo(fila)];
+      ..where((u) {
+        var cerca = u.lat.isBetweenValues(centro.lat - dLat, centro.lat + dLat);
+        // Cerca de los polos un grado de longitud mide casi nada: ahí no se acota por longitud.
+        if (cosLat > 0.01) {
+          final dLon = margen / (_metrosPorGrado * cosLat);
+          cerca = cerca & u.lon.isBetweenValues(centro.lon - dLon, centro.lon + dLon);
+        }
+        final mismoNumero = centro.calle == null || numero == null
+            ? const Constant(false)
+            : u.ciudadId.equals(centro.ciudadId) &
+                  u.calle.isNotNull() &
+                  u.numero.trim().lower().equalsExp(Variable(numero).trim().lower());
+        return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismoNumero);
+      });
+    final filas = await consulta.get();
+    return criterio.candidatas(centro.toEntity(), [
+      for (final fila in filas) _aModelo(fila).toEntity(),
+    ]);
   }
 
   static UbicacionesCompanion _aFila(UbicacionModel u) => UbicacionesCompanion.insert(

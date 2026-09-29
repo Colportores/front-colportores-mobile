@@ -5,6 +5,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
@@ -125,20 +126,40 @@ void main() {
       expect(salida.lineas.single, startsWith('[INFO][DB][UBICACION_YA_REGISTRADA]'));
     });
 
-    test('dado candidatas a duplicado, devuelve AltaConDuplicados con entidades y loguea sus ids '
-        'sin la dirección', () async {
-      final candidata = UbicacionModel.fromEntity(ubicacion);
+    test('dado candidatas a duplicado, devuelve AltaConDuplicados con ellas y loguea sus ids y '
+        'motivos sin la dirección', () async {
+      final candidata = CandidataDuplicado(
+        ubicacion: ubicacion,
+        motivo: MotivoDuplicado.mismaDireccion,
+        distanciaMetros: 120,
+        admiteConservarAmbos: true,
+      );
       final local = _LocalFijo(error: UbicacionDuplicadaException([candidata]));
 
       final r = await repositorio(
         local,
       ).registrar(ubicacion, origen: OrigenCoordenadas.gps, duplicados: criterio);
 
-      final resultado = r.getOrElse(() => throw StateError('falló'));
-      expect(resultado, AltaConDuplicados(candidatas: [ubicacion]));
-      expect((resultado as AltaConDuplicados).candidatas.single.runtimeType, Ubicacion);
+      expect(
+        r.getOrElse(() => throw StateError('falló')),
+        AltaConDuplicados(candidatas: [candidata]),
+      );
       expect(salida.lineas.single, contains('"candidatas":["ub-1"]'));
+      expect(salida.lineas.single, contains('"motivos":["mismaDireccion"]'));
       expect(salida.lineas.single, isNot(contains('Italia')));
+    });
+
+    test('dado "Crear igual" con D1 en la opción (a) (criterio que solo frena la misma dirección), '
+        'cuando guarda, el log lo marca como crear igual', () async {
+      final alSeguirIgual = const CriterioDuplicadoUbicacion(
+        mismaDireccionAdmiteConservarAmbos: false,
+      ).alSeguirIgual;
+
+      await repositorio(
+        _LocalFijo(),
+      ).registrar(ubicacion, origen: OrigenCoordenadas.gps, duplicados: alSeguirIgual);
+
+      expect(salida.lineas.single, contains('"crear_igual":true'));
     });
 
     test(
@@ -154,7 +175,14 @@ void main() {
     );
 
     test('la excepción de duplicado no imprime la dirección de las candidatas', () {
-      final e = UbicacionDuplicadaException([UbicacionModel.fromEntity(ubicacion)]);
+      final e = UbicacionDuplicadaException([
+        CandidataDuplicado(
+          ubicacion: ubicacion,
+          motivo: MotivoDuplicado.cercania,
+          distanciaMetros: 3,
+          admiteConservarAmbos: true,
+        ),
+      ]);
 
       expect(e.toString(), 'UbicacionDuplicadaException(1)');
     });

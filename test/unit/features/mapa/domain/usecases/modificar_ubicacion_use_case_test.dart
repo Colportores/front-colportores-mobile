@@ -1,6 +1,7 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
@@ -254,10 +255,28 @@ void main() {
       expect(repo.escrituras.single.duplicados, isNull);
     });
 
+    test('dado D1 en la opción (a) y "seguir igual", cuando modifica, busca solo las candidatas '
+        'que no admiten conservar las dos', () async {
+      modificar = ModificarUbicacionUseCase(
+        repo,
+        ahora: () => t1,
+        criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
+      );
+
+      await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
+
+      expect(repo.escrituras.single.duplicados?.esSeguirIgual, isTrue);
+    });
+
     test(
       'dado que el repositorio encuentra candidatas, cuando modifica, las devuelve tal cual',
       () async {
-        final otra = ubicacion(numero: '1236');
+        final otra = CandidataDuplicado(
+          ubicacion: ubicacion(numero: '1236'),
+          motivo: MotivoDuplicado.cercania,
+          distanciaMetros: 3,
+          admiteConservarAmbos: true,
+        );
         repo.respuesta = Right(ModificacionConDuplicados(candidatas: [otra]));
 
         expect(await ok(params(numero: '1236')), ModificacionConDuplicados(candidatas: [otra]));

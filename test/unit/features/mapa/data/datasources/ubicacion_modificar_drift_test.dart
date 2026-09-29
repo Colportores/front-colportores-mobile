@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/modificar_ubicacion_use_case.dart';
@@ -255,17 +256,19 @@ void main() {
   group('Re-chequeo de duplicados', () {
     setUp(() async {
       await local.insertar(ubicacion());
-      // Otra casa a ~10 m con el número 1236: editar la primera a "1236" la deja como duplicado.
+      // Otra casa a ~10 m con el número 1236: editar la primera a "1236" la deja con la misma
+      // dirección (calle, número y ciudad).
       await local.insertar(ubicacion(id: 'ub-2', numero: '1236', punto: alNorte(10)));
       encolador.encolados.clear();
     });
 
-    test('dado que la edición la deja a 10 m de otra igual, cuando modifica, devuelve la candidata '
-        '(nunca ella misma) y no escribe ni encola', () async {
+    test('dado que la edición la deja con la misma dirección que otra, cuando modifica, devuelve '
+        'la candidata (nunca ella misma) y no escribe ni encola', () async {
       final r = await ok(params(numero: '1236'));
 
       expect(r, isA<ModificacionConDuplicados>());
-      expect((r as ModificacionConDuplicados).candidatas.map((c) => c.id), ['ub-2']);
+      final candidata = (r as ModificacionConDuplicados).candidatas.single;
+      expect((candidata.ubicacion.id, candidata.motivo), ('ub-2', MotivoDuplicado.mismaDireccion));
       expect((await guardada()).numero, '1234');
       expect(encolador.encolados, isEmpty);
     });
@@ -286,7 +289,9 @@ void main() {
         )..where((u) => u.id.equals('ub-2'))).write(UbicacionesCompanion(deletedAt: Value(t0)));
         expect(await ok(params(numero: '1236')), isA<UbicacionModificada>());
 
-        await local.insertar(ubicacion(id: 'ub-3', numero: '77', ciudadId: 'sal'));
+        await local.insertar(
+          ubicacion(id: 'ub-3', numero: '77', ciudadId: 'sal', punto: alNorte(300)),
+        );
         expect(await ok(params(numero: '77', base: t1)), isA<UbicacionModificada>());
       },
     );

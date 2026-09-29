@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import 'duplicado_ubicacion.dart';
 import 'espacio.dart';
 import 'ubicacion.dart';
 
@@ -45,14 +46,15 @@ final class AltaConBajaPrecision extends ResultadoAltaUbicacion {
   List<Object?> get props => [precisionMetros];
 }
 
-/// Hay ubicaciones activas que parecen la misma (HU-UBI-001, "Detección de duplicado"): no se creó
-/// la nueva. La pantalla muestra la candidata con vista previa y "Reutilizar esta", "Crear igual"
-/// (repite el pedido con una justificación) o "Cancelar".
+/// Hay ubicaciones activas que parecen la misma (HU-UBI-001, "Detección de duplicado"; regla de
+/// HU-UBI-006): no se creó la nueva. La pantalla (vista 04) muestra las candidatas con vista previa
+/// y "Reutilizar esta", "Crear igual" (repite el pedido con una justificación; solo si todas lo
+/// admiten, [CandidataDuplicado.admiteConservarAmbos]) o "Cancelar".
 final class AltaConDuplicados extends ResultadoAltaUbicacion {
   const AltaConDuplicados({required this.candidatas});
 
   /// De la más cercana a la más lejana; nunca vacía.
-  final List<Ubicacion> candidatas;
+  final List<CandidataDuplicado> candidatas;
 
   @override
   List<Object?> get props => [candidatas];

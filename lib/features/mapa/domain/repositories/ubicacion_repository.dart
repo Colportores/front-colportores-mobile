@@ -19,7 +19,9 @@ abstract interface class UbicacionRepository {
   ///   [AltaRegistrada] con la que estaba (alta idempotente ante doble toque, HU-UBI-001).
   /// - Si llega [duplicados], busca candidatas con ese criterio **dentro de la misma
   ///   transacción** (HU-UBI-001) y, si hay, no escribe nada y devuelve [AltaConDuplicados].
-  ///   `null` es "crear igual": el colportor ya vio las candidatas y eligió seguir.
+  ///   "Crear igual" (el colportor ya vio las candidatas y eligió seguir) llega como
+  ///   `CriterioDuplicadoUbicacion.alSeguirIgual`: `null`, o un criterio que solo frena las
+  ///   candidatas que no admiten conservar las dos.
   ///
   /// Nunca devuelve [AltaConBajaPrecision]: eso lo decide el caso de uso antes de escribir.
   ///
@@ -47,8 +49,8 @@ abstract interface class UbicacionRepository {
   ///   fila ya cambió (otra edición, o el sync entrante), no escribe nada y devuelve
   ///   [FailureUbicacionCambio]. Si la fila no existe, [FailureUbicacionInexistente].
   /// - Si llega [duplicados], busca candidatas con ese criterio **dentro de la misma
-  ///   transacción** y, si hay, no escribe nada y devuelve [ModificacionConDuplicados]. `null` es
-  ///   "seguir igual": el colportor ya las vio.
+  ///   transacción** y, si hay, no escribe nada y devuelve [ModificacionConDuplicados]. "Seguir
+  ///   igual" (el colportor ya las vio) llega como `CriterioDuplicadoUbicacion.alSeguirIgual`.
   ///
   /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
   /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).

@@ -223,12 +223,16 @@ final class ModificarUbicacionUseCase
     );
 
     // Solo lo que cambia el criterio de duplicado (ciudad, dirección, punto) —o volver a estar
-    // activa— justifica volver a buscar.
+    // activa— justifica volver a buscar. "Seguir igual" solo pasa las candidatas que lo admiten.
     final buscaDuplicados = cambioPunto || cambioCiudad || cambioDireccion || reactiva;
     final resultado = await _repository.modificar(
       nueva,
       baseUpdatedAt: params.baseUpdatedAt,
-      duplicados: buscaDuplicados && !seguirIgual ? _criterio : null,
+      duplicados: !buscaDuplicados
+          ? null
+          : seguirIgual
+          ? _criterio.alSeguirIgual
+          : _criterio,
     );
     return resultado.map(
       (r) => r is UbicacionModificada
