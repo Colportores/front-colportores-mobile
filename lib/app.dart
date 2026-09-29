@@ -40,7 +40,7 @@ class ColportoresApp extends ConsumerWidget {
     // puede llevar al usuario ahí. `erroresVerificacionEmailProvider` es `keepAlive`: esto se
     // suscribe una sola vez por vida de la app (`ColportoresApp` es la raíz, siempre montada).
     ref.listen(erroresVerificacionEmailProvider, (previous, next) {
-      if (next is! AsyncData<void>) return;
+      if (next is! AsyncData<EventoVerificacionEmail>) return;
       unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
     });
 
@@ -53,7 +53,7 @@ class ColportoresApp extends ConsumerWidget {
     // código por sesión (red) tarda lo suficiente como para que este listener ya esté suscripto
     // cuando el evento llega.
     ref.listen(verificacionesExitosasProvider, (previous, next) {
-      if (next is! AsyncData<void>) return;
+      if (next is! AsyncData<EventoVerificacionEmail>) return;
       _navegarAVerificacion(context, EstadoVerificacionEmail.verificado);
     });
 

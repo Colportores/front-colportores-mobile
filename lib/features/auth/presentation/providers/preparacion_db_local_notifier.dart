@@ -127,7 +127,11 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     final r = ref;
     state = const RecuperandoDbLocal();
     final resultado = await r.read(recuperarDbLocalConPasswordUseCaseProvider)(
-      RecuperarDbLocalParams(password: password),
+      RecuperarDbLocalParams(
+        password: password,
+        passwordDelLogin: r.read(passwordParaDbLocalProvider).actual,
+        usuarioId: r.read(sesionProvider).value?.usuarioId,
+      ),
     );
     if (!r.mounted) return;
     state = resultado.fold(
@@ -191,6 +195,7 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
         alAvanzar: (paso) {
           if (r.mounted) state = PreparandoDbLocal(paso: paso);
         },
+        usuarioId: r.read(sesionProvider).value?.usuarioId,
       ),
     );
     if (!r.mounted) return;

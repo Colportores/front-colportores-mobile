@@ -27,6 +27,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   Stream<EnlaceRecuperacion> get enlaces => _remote.enlacesRecuperacion;
 
   @override
+  String? get usuarioId => _remote.usuarioDeLaRecuperacion;
+
+  @override
   Future<Either<Failure, Unit>> actualizarPassword(String nueva) async {
     try {
       await _remote.actualizarPassword(nueva);

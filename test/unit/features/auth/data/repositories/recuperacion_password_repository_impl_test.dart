@@ -42,6 +42,14 @@ void main() {
     expect(await futuro, EnlaceRecuperacion.vencido);
   });
 
+  test('el usuario es el de la sesión de recuperación; sin sesión, null (#125)', () {
+    expect(repo.usuarioId, 'usuario-en-memoria');
+
+    remoto.vencerSesionDeRecuperacion();
+
+    expect(repo.usuarioId, isNull);
+  });
+
   group('actualizarPassword', () {
     test(
       'con la sesión del enlace, fija la contraseña y deja el evento de la HU en el log',
@@ -229,6 +237,9 @@ void main() {
 final class _RemotoRoto implements RecuperacionPasswordRemoteDataSource {
   @override
   Stream<EnlaceRecuperacion> get enlacesRecuperacion => const Stream.empty();
+
+  @override
+  String? get usuarioDeLaRecuperacion => null;
 
   @override
   Future<void> actualizarPassword(String nueva) async => throw StateError('boom');
