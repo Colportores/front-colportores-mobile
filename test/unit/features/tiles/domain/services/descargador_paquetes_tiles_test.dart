@@ -382,7 +382,8 @@ void main() {
 extension on PaqueteTiles {
   /// El mismo paquete con otro tamaño declarado (para los chequeos de espacio).
   PaqueteTiles copiaConTamano(int tamano) => PaqueteTiles(
-    id: id,
+    // `this.` porque el `id` suelto es la función identidad de dartz.
+    id: this.id,
     nivel: nivel,
     ambitoId: ambitoId,
     nombre: nombre,

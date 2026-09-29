@@ -36,7 +36,7 @@ void main() {
   });
 
   group('ListarCoberturaTilesUseCase', () {
-    final listar = ListarCoberturaTilesUseCase.new;
+    const listar = ListarCoberturaTilesUseCase.new;
 
     test('dado el catálogo y lo descargado, arma una opción por nivel y aparta los descargados de '
         'otro lugar', () async {
@@ -74,7 +74,7 @@ void main() {
   });
 
   group('SugerirPaqueteTilesUseCase — HU-CAM-005', () {
-    final sugerir = SugerirPaqueteTilesUseCase.new;
+    const sugerir = SugerirPaqueteTilesUseCase.new;
 
     test('dado que cambié de lugar sin paquete, sugiere el de la zona', () async {
       expect(await sugerir(repositorio)(ambito), Right<Failure, PaqueteTiles?>(zona));
