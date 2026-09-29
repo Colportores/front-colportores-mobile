@@ -49,6 +49,21 @@ abstract interface class UbicacionLocalDataSource {
     CriterioDuplicadoUbicacion? duplicados,
   });
 
+  /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con
+  /// `updated_at` = [updatedAt], y encola —**todo en una transacción**, HU-UBI-005— el `delete`
+  /// (tombstone) si [deletedAt] no es `null` o el `update` si reactiva, con la fila entera. No
+  /// toca los espacios ni el resto de la fila (incluida `sync_version`).
+  ///
+  /// - Sin fila con ese `id`: [UbicacionInexistenteException].
+  /// - Si `updated_at` de la fila no es [baseUpdatedAt]: [UbicacionCambioException].
+  /// - Si el encolado falla, la transacción se revierte.
+  Future<UbicacionModel> cambiarBaja(
+    String id, {
+    required DateTime baseUpdatedAt,
+    required DateTime updatedAt,
+    required DateTime? deletedAt,
+  });
+
   /// Ubicaciones cuyo `created_by` es [colportorId] (filtro opcional por [ciudadId]), con las bajas
   /// solo si [incluirBajas]. Emite de nuevo ante cualquier cambio de la tabla (stream Drift, §8.8).
   Stream<List<UbicacionModel>> observarDelColportor({

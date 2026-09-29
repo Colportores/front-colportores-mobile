@@ -21,6 +21,14 @@ mixin UbicacionRepositorySinModificar {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
   }) => throw UnimplementedError();
+
+  Future<Either<Failure, Ubicacion>> cambiarBaja(
+    String id, {
+    required bool baja,
+    required DateTime baseUpdatedAt,
+    required DateTime ahora,
+    bool conMotivo = false,
+  }) => throw UnimplementedError();
 }
 
 /// Lo mismo para los fakes de [UbicacionLocalDataSource].
@@ -28,6 +36,13 @@ mixin UbicacionLocalSinModificar {
   Future<UbicacionModel?> obtener(String id) => throw UnimplementedError();
 
   Future<int> contarEspaciosActivos(String ubicacionId) => throw UnimplementedError();
+
+  Future<UbicacionModel> cambiarBaja(
+    String id, {
+    required DateTime baseUpdatedAt,
+    required DateTime updatedAt,
+    required DateTime? deletedAt,
+  }) => throw UnimplementedError();
 
   Future<UbicacionModel> actualizar(
     UbicacionModel nueva, {

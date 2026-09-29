@@ -414,3 +414,15 @@ final class FailureUbicacionCambio extends Failure {
         codigo: 'UBI_CAMBIO_CONCURRENTE',
       );
 }
+
+/// No se puede reactivar una ubicación cuya ciudad ya no está en el catálogo (HU-UBI-005, caso
+/// borde). Texto propio: la HU dice "bloquear y pedir actualización del catálogo", sin el aviso.
+final class FailureCiudadFueraDeCatalogo extends Failure {
+  const FailureCiudadFueraDeCatalogo()
+    : super(
+        mensaje:
+            'La ciudad de esta ubicación ya no está en el catálogo. Actualizá el catálogo antes de '
+            'reactivarla.',
+        codigo: 'UBI_CIUDAD_FUERA_DE_CATALOGO',
+      );
+}

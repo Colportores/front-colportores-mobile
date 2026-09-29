@@ -58,6 +58,22 @@ abstract interface class UbicacionRepository {
     CriterioDuplicadoUbicacion? duplicados,
   });
 
+  /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación
+  /// [id] y encola el tombstone (`delete`) o el `update`, en **una sola transacción**
+  /// (HU-UBI-005). Devuelve la ubicación como quedó. Los espacios y las personas no se tocan.
+  ///
+  /// [baseUpdatedAt] es el `updated_at` con el que quien la pidió cargó la ubicación: si la fila
+  /// cambió, no escribe y devuelve [FailureUbicacionCambio]. Sin fila, [FailureUbicacionInexistente].
+  /// [conMotivo] solo va al log (`ubicacion_baja`, R-UB09): el motivo es texto libre y no se
+  /// registra.
+  Future<Either<Failure, Ubicacion>> cambiarBaja(
+    String id, {
+    required bool baja,
+    required DateTime baseUpdatedAt,
+    required DateTime ahora,
+    bool conMotivo = false,
+  });
+
   /// Las ubicaciones del colportor [colportorId] (`created_by`), como stream: emite de nuevo ante
   /// cualquier alta, baja o edición (HU-UBI-002, §8.8). Trae las de baja solo si [incluirBajas].
   /// Los demás filtros y el orden los aplica `ArmadorListaUbicaciones`.
