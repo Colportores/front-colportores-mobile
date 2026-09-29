@@ -26,6 +26,29 @@ abstract interface class UbicacionLocalDataSource {
     CriterioDuplicadoUbicacion? duplicados,
   });
 
+  /// La ubicación [id] (con baja o sin ella) o `null` si no está.
+  Future<UbicacionModel?> obtener(String id);
+
+  /// Cuántos espacios sin baja tiene [ubicacionId].
+  Future<int> contarEspaciosActivos(String ubicacionId);
+
+  /// Escribe [nueva] sobre la fila con su mismo `id` y encola el `update` con la fila entera,
+  /// **todo en una transacción** (HU-UBI-004; contrato-sync-engine §3). Solo cambian `tipo`,
+  /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `updated_at` y `deleted_at`: el resto de la fila
+  /// (incluida `sync_version`) queda como está.
+  ///
+  /// - Sin fila con ese `id`: lanza [UbicacionInexistenteException].
+  /// - Si `updated_at` de la fila no es [baseUpdatedAt] (cambió desde que se leyó): no escribe y
+  ///   lanza [UbicacionCambioException].
+  /// - Si llega [duplicados] y hay candidatas (que nunca incluyen a la misma ubicación): no
+  ///   escribe y lanza [UbicacionDuplicadaException].
+  /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
+  Future<UbicacionModel> actualizar(
+    UbicacionModel nueva, {
+    required DateTime baseUpdatedAt,
+    CriterioDuplicadoUbicacion? duplicados,
+  });
+
   /// Ubicaciones cuyo `created_by` es [colportorId] (filtro opcional por [ciudadId]), con las bajas
   /// solo si [incluirBajas]. Emite de nuevo ante cualquier cambio de la tabla (stream Drift, §8.8).
   Stream<List<UbicacionModel>> observarDelColportor({
@@ -52,4 +75,20 @@ final class UbicacionDuplicadaException implements Exception {
   /// Solo la cantidad: las candidatas llevan dirección y no van a un log.
   @override
   String toString() => 'UbicacionDuplicadaException(${candidatas.length})';
+}
+
+/// La ubicación que se quiso actualizar no existe.
+final class UbicacionInexistenteException implements Exception {
+  const UbicacionInexistenteException();
+
+  @override
+  String toString() => 'UbicacionInexistenteException';
+}
+
+/// La fila cambió entre que se leyó y que se quiso guardar.
+final class UbicacionCambioException implements Exception {
+  const UbicacionCambioException();
+
+  @override
+  String toString() => 'UbicacionCambioException';
 }

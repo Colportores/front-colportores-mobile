@@ -5,6 +5,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
+import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/repositories/ubicacion_repository.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
@@ -66,6 +67,85 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'UBICACION_ALTA_FAIL',
         'no se pudo guardar la ubicación',
         {'ubicacion_id': ubicacion.id},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Ubicacion?>> obtener(String id) async {
+    try {
+      return Right((await _local.obtener(id))?.toEntity());
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'UBICACION_LEER_FAIL',
+        'no se pudo leer la ubicación',
+        {'ubicacion_id': id},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId) async {
+    try {
+      return Right(await _local.contarEspaciosActivos(ubicacionId));
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'UBICACION_ESPACIOS_FAIL',
+        'no se pudieron contar los espacios',
+        {'ubicacion_id': ubicacionId},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
+    Ubicacion nueva, {
+    required DateTime baseUpdatedAt,
+    CriterioDuplicadoUbicacion? duplicados,
+  }) async {
+    try {
+      final guardada = await _local.actualizar(
+        UbicacionModel.fromEntity(nueva),
+        baseUpdatedAt: baseUpdatedAt,
+        duplicados: duplicados,
+      );
+      _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
+        'ubicacion_id': nueva.id,
+        'seguir_igual': duplicados == null,
+      });
+      return Right(UbicacionModificada(ubicacion: guardada.toEntity()));
+    } on UbicacionDuplicadaException catch (e) {
+      _log.info(LogModulo.db, 'UBICACION_DUPLICADA', 'edición frenada por posibles duplicados', {
+        'ubicacion_id': nueva.id,
+        'candidatas': [for (final c in e.candidatas) c.id],
+      });
+      return Right(
+        ModificacionConDuplicados(candidatas: [for (final c in e.candidatas) c.toEntity()]),
+      );
+    } on UbicacionInexistenteException {
+      return const Left(FailureUbicacionInexistente());
+    } on UbicacionCambioException {
+      _log.info(LogModulo.db, 'UBICACION_CAMBIO_CONCURRENTE', 'la ubicación cambió al editarla', {
+        'ubicacion_id': nueva.id,
+      });
+      return const Left(FailureUbicacionCambio());
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'UBICACION_MODIFICAR_FAIL',
+        'no se pudo modificar la ubicación',
+        {'ubicacion_id': nueva.id},
         e,
         st,
       );

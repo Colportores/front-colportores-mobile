@@ -4,6 +4,7 @@ import '../../../../core/error/failure.dart';
 import '../entities/espacio.dart';
 import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
+import '../entities/resultado_modificacion_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
 import '../value_objects/area_mapa.dart';
@@ -29,6 +30,31 @@ abstract interface class UbicacionRepository {
     Ubicacion ubicacion, {
     Espacio? espacio,
     required OrigenCoordenadas origen,
+    CriterioDuplicadoUbicacion? duplicados,
+  });
+
+  /// La ubicación [id], **con baja o sin ella**, o `null` si no está en el teléfono.
+  Future<Either<Failure, Ubicacion?>> obtener(String id);
+
+  /// Cuántos espacios sin baja tiene la ubicación [ubicacionId] (para bloquear el cambio de tipo,
+  /// HU-UBI-004).
+  Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId);
+
+  /// Guarda [nueva] —la ubicación ya modificada: mismo `id`, `updated_at` nuevo— y encola el
+  /// `update` para el sync, en **una sola transacción** (HU-UBI-004; contrato-sync-engine §3).
+  ///
+  /// - [baseUpdatedAt] es el `updated_at` de la ubicación tal como la leyó quien la editó. Si la
+  ///   fila ya cambió (otra edición, o el sync entrante), no escribe nada y devuelve
+  ///   [FailureUbicacionCambio]. Si la fila no existe, [FailureUbicacionInexistente].
+  /// - Si llega [duplicados], busca candidatas con ese criterio **dentro de la misma
+  ///   transacción** y, si hay, no escribe nada y devuelve [ModificacionConDuplicados]. `null` es
+  ///   "seguir igual": el colportor ya las vio.
+  ///
+  /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
+  /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).
+  Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
+    Ubicacion nueva, {
+    required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
   });
 
