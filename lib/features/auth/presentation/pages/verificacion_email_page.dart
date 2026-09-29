@@ -35,6 +35,7 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
     this.email = '',
     this.password,
     this.estadoInicial = EstadoVerificacionEmail.pendiente,
+    @visibleForTesting this.ahora = DateTime.now,
   });
 
   /// Email a verificar. Vacío cuando se llega por un deep link de error sin contexto — ahí el
@@ -48,11 +49,15 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 
   final EstadoVerificacionEmail estadoInicial;
 
+  /// Reloj de la cuenta regresiva del reenvío; se inyecta solo en tests.
+  final DateTime Function() ahora;
+
   @override
   ConsumerState<VerificacionEmailPage> createState() => _VerificacionEmailPageState();
 }
 
-class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
+class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
+    with WidgetsBindingObserver {
   /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope de "máximo 5 por
   /// hora" no se replica acá — Supabase ya lo hace cumplir (~2 emails/hora en el plan free sin
   /// SMTP propio) y ese rechazo llega traducido como cualquier otro rate limit.
@@ -63,29 +68,53 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
   Timer? _timer;
   int _segundosRestantes = 0;
 
+  /// Instante en que vence la espera del reenvío: con la app en segundo plano el `Timer` se
+  /// pausa, así que al volver se recalcula desde la hora real.
+  DateTime? _venceCooldown;
+
   String? _errorEmail;
   String? _errorGeneral;
   String? _mensajeReenvio;
-  bool _enviando = false;
+  bool _reenviando = false;
+  bool _verificando = false;
 
   bool get _emailConocido => widget.email.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _estado = widget.estadoInicial;
     _emailController = TextEditingController(text: widget.email);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _emailController.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final vence = _venceCooldown;
+    if (state != AppLifecycleState.resumed || vence == null || _segundosRestantes <= 0) return;
+    final restanteMs = vence.difference(widget.ahora()).inMilliseconds;
+    setState(() {
+      _segundosRestantes = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
+      if (_segundosRestantes <= 0) _terminarCooldown();
+    });
+  }
+
+  void _terminarCooldown() {
+    _timer?.cancel();
+    _mensajeReenvio = null;
+  }
+
   void _iniciarCooldown() {
     _timer?.cancel();
+    _venceCooldown = widget.ahora().add(_cooldown);
     setState(() => _segundosRestantes = _cooldown.inSeconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -94,15 +123,16 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
       }
       setState(() {
         _segundosRestantes--;
-        if (_segundosRestantes <= 0) timer.cancel();
+        if (_segundosRestantes <= 0) _terminarCooldown();
       });
     });
   }
 
   Future<void> _reenviar() async {
+    if (_reenviando || _verificando || _segundosRestantes > 0) return;
     final email = _emailConocido ? widget.email : _emailController.text.trim();
     setState(() {
-      _enviando = true;
+      _reenviando = true;
       _errorEmail = null;
       _errorGeneral = null;
       _mensajeReenvio = null;
@@ -112,28 +142,27 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
     if (!mounted) return;
     setState(() {
-      _enviando = false;
+      _reenviando = false;
       switch (failure) {
         case null:
           _mensajeReenvio = 'Te reenviamos el correo. Puede tardar unos minutos.';
           _iniciarCooldown();
         case FailureValidacion(:final campos):
           _errorEmail = campos['email'];
-        case FailureSinConexion():
-          _errorGeneral = _textoSinConexion;
-        case Failure(:final mensaje):
-          _errorGeneral = mensaje;
+        case final Failure f:
+          _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
       }
     });
   }
 
   Future<void> _yaVerifique() async {
     final password = widget.password;
-    if (password == null) return;
+    if (password == null || _verificando || _reenviando) return;
 
     setState(() {
-      _enviando = true;
+      _verificando = true;
       _errorGeneral = null;
+      _mensajeReenvio = null;
     });
 
     final failure = await ref
@@ -142,11 +171,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
     if (!mounted) return;
     setState(() {
-      _enviando = false;
+      _verificando = false;
       if (failure == null) {
         _estado = EstadoVerificacionEmail.verificado;
       } else {
-        _errorGeneral = failure.mensaje;
+        _errorGeneral = _textoDeError(
+          failure,
+          'verificar tu cuenta',
+          'No pudimos verificar tu cuenta.',
+        );
       }
     });
   }
@@ -155,9 +188,18 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
   void _volverAlLogin() => Navigator.of(context).pop();
 
-  /// El aviso de "sin conexión" del diseño (propuesta, A08): qué pasa y qué hacer.
-  static const _textoSinConexion =
-      'Necesitás conexión para reenviar el email. Conectate y probá de nuevo.';
+  /// Todo aviso dice qué pasa y qué hacer (criterio de Cristian): sin conexión, un error del
+  /// servidor sin mensaje propio o uno inesperado llevan texto de la pantalla; el resto (rate
+  /// limit, credenciales, validación) ya trae el suyo.
+  static String _textoDeError(Failure failure, String accion, String noPudimos) {
+    return switch (failure) {
+      FailureSinConexion() => 'Necesitás conexión para $accion. Conectate y probá de nuevo.',
+      FailureInesperado() => '$noPudimos Probá de nuevo en unos minutos.',
+      FailureServidor(:final mensaje) when mensaje == const FailureServidor().mensaje =>
+        '$noPudimos Probá de nuevo en unos minutos.',
+      _ => failure.mensaje,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -262,7 +304,13 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
                           ),
                         ],
                         if (!verificado && !_emailConocido)
-                          _CampoEmail(controller: _emailController, errorText: _errorEmail),
+                          _CampoEmail(
+                            controller: _emailController,
+                            errorText: _errorEmail,
+                            onChanged: (_) {
+                              if (_errorEmail != null) setState(() => _errorEmail = null);
+                            },
+                          ),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -295,7 +343,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
     final etiquetaReenviar = conCuentaRegresiva
         ? 'Reenviar en ${_segundosRestantes}s'
         : (expirado ? 'Reenviar email de verificación' : 'Reenviar email');
-    final reenviar = _enviando || conCuentaRegresiva ? null : _reenviar;
+    final ocupado = _reenviando || _verificando;
+    final reenviar = ocupado || conCuentaRegresiva ? null : _reenviar;
 
     return [
       if (_mensajeReenvio case final mensaje?)
@@ -314,8 +363,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
       if (_estado == EstadoVerificacionEmail.pendiente && widget.password != null)
         FilledButton(
           key: const Key('verificacion_email_ya_verifique'),
-          onPressed: _enviando ? null : _yaVerifique,
-          child: _enviando
+          onPressed: ocupado ? null : _yaVerifique,
+          style: _estiloYaVerifique(context),
+          child: _verificando
               ? SizedBox.square(
                   dimension: 20,
                   child: CircularProgressIndicator(
@@ -355,6 +405,16 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
         ),
       ),
     ];
+  }
+
+  /// Con texto grande la etiqueta pasa a dos líneas y los extremos de píldora la recortan: ahí el
+  /// radio baja y el relleno lateral sube.
+  ButtonStyle? _estiloYaVerifique(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return null;
+    return FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
   }
 
   String _titulo() => switch (_estado) {
@@ -423,10 +483,11 @@ class _AvisoVerificacion extends StatelessWidget {
 /// Campo de email editable — mismo criterio visual que `_CampoLogin`/`_CampoRegistro`, pero sin
 /// duplicar esas clases privadas de las otras páginas (conservan su propio archivo).
 class _CampoEmail extends StatelessWidget {
-  const _CampoEmail({required this.controller, this.errorText});
+  const _CampoEmail({required this.controller, this.errorText, this.onChanged});
 
   final TextEditingController controller;
   final String? errorText;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -441,6 +502,7 @@ class _CampoEmail extends StatelessWidget {
         TextField(
           key: const Key('verificacion_email_campo'),
           controller: controller,
+          onChanged: onChanged,
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
           style: theme.textTheme.bodyLarge,

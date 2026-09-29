@@ -202,8 +202,6 @@ void main() {
       expect(remote.reenviosPorEmail.keys, ['lucia.silva@correo.com']);
     });
 
-    // skip: QA #221 — el aviso "El email no es válido" queda pegado mientras el usuario corrige
-    // el correo: recién se va al tocar "Reenviar" otra vez.
     testWidgets('el aviso del campo se va cuando el usuario empieza a corregir', (tester) async {
       _pantalla(tester, const Size(390, 844));
       await _montar(
@@ -220,13 +218,10 @@ void main() {
       await tester.pump();
 
       expect(find.text('El email no es válido'), findsNothing);
-    }, skip: true);
+    });
   });
 
   group('QA #221 — avisos de error', () {
-    // skip: QA #221 — "Ya verifiqué mi email" sin conexión muestra el mensaje genérico del
-    // Failure ("Sin conexión. Reintentá cuando tengas señal") en vez del de la convención de
-    // avisos: "Necesitás conexión para <acción>", como ya hace "Reenviar".
     testWidgets('"Ya verifiqué mi email" sin conexión dice "Necesitás conexión para ..."', (
       tester,
     ) async {
@@ -236,10 +231,8 @@ void main() {
       await _tocar(tester, 'verificacion_email_ya_verifique');
 
       expect(find.textContaining('Necesitás conexión para'), findsOneWidget);
-    }, skip: true);
+    });
 
-    // skip: QA #221 — si el servidor falla al reenviar, el aviso dice solo "El servidor no pudo
-    // procesar la solicitud": no dice qué hacer (Probá de nuevo, más tarde...).
     testWidgets('un error del servidor al reenviar dice qué hacer', (tester) async {
       _pantalla(tester, const Size(390, 844));
       final remote = _remoto()..fallaAlReenviar = const ServidorException(status: 500);
@@ -253,7 +246,7 @@ void main() {
         ),
       );
       expect(aviso.data, matches(RegExp('Prob|Reintent|volv|intent', caseSensitive: false)));
-    }, skip: true);
+    });
 
     testWidgets('un fallo al reenviar deja el botón habilitado para reintentar', (tester) async {
       _pantalla(tester, const Size(390, 844));
@@ -274,8 +267,6 @@ void main() {
   });
 
   group('QA #221 — reflow a 200 %', () {
-    // skip: QA #221 — a 360 dp de ancho y texto 2.0, "Ya verifiqué mi email" pasa a dos líneas y
-    // el botón, con extremos totalmente redondeados, recorta la "Y" y la "e" de los bordes.
     testWidgets('la etiqueta de "Ya verifiqué mi email" no queda recortada por el botón', (
       tester,
     ) async {
@@ -295,7 +286,7 @@ void main() {
           expect((esquina - centro).distance, lessThanOrEqualTo(radio));
         }
       }
-    }, skip: true);
+    });
   });
 
   group('QA #221 — navegación', () {

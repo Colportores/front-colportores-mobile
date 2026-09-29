@@ -24,6 +24,7 @@ Future<void> _montarPagina(
   EstadoVerificacionEmail estadoInicial = EstadoVerificacionEmail.pendiente,
   required AuthRemoteDataSourceEnMemoria remote,
   double escalaTexto = 1,
+  DateTime Function()? ahora,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -38,7 +39,12 @@ Future<void> _montarPagina(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
         child: child!,
       ),
-      home: VerificacionEmailPage(email: email, password: password, estadoInicial: estadoInicial),
+      home: VerificacionEmailPage(
+        email: email,
+        password: password,
+        estadoInicial: estadoInicial,
+        ahora: ahora ?? DateTime.now,
+      ),
     ),
   ),
 );
@@ -270,6 +276,62 @@ void main() {
             .onPressed,
         isNotNull,
       );
+    });
+
+    testWidgets('doble toque en "Reenviar" manda un solo email', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      final boton = find.byKey(const Key('verificacion_email_reenviar'));
+      await tester.tap(boton);
+      await tester.tap(boton);
+      await tester.pumpAndSettle();
+
+      expect(remote.reenviosPorEmail['lucia.silva@correo.com'], 1);
+    });
+
+    testWidgets(
+      'al volver a primer plano la cuenta regresiva sigue la hora real y el aviso se va',
+      (tester) async {
+        var ahora = DateTime(2026, 9, 29, 10);
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+        );
+        await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => ahora);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+        ahora = ahora.add(const Duration(seconds: 45));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar en 15s'), findsOneWidget);
+
+        ahora = ahora.add(const Duration(seconds: 30));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
+      },
+    );
+
+    testWidgets('el aviso de reenvío se va cuando termina la cuenta regresiva', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 60));
+
+      expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
     });
 
     testWidgets('reenviar: rate limit de Supabase muestra el mensaje traducido, sin cooldown', (
