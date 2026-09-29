@@ -1,9 +1,13 @@
 import 'package:drift/drift.dart';
 
 import '../../features/jornada/data/datasources/jornadas_table.dart';
+import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
+import '../../features/mapa/data/datasources/geojson_converter.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
+import '../../features/mapa/data/datasources/zona_vertices_table.dart';
+import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
@@ -24,7 +28,9 @@ part 'app_database.g.dart';
 ///
 /// Las fechas de toda tabla van en epoch ms UTC con [FechaUtcConverter]
 /// (08-conceptos-transversales §8.11), no con columnas `dateTime()` de Drift.
-@DriftDatabase(tables: [Jornadas, Ubicaciones, Espacios, ParesDecididos])
+@DriftDatabase(
+  tables: [Jornadas, Ubicaciones, Espacios, ParesDecididos, CampaniasCiudad, Zonas, ZonaVertices],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -39,10 +45,11 @@ class AppDatabase extends _$AppDatabase {
   /// - 2: `jornada` (#70).
   /// - 3: `ubicacion` y `espacio` (#192).
   /// - 4: `ubicacion_par_decidido`, solo local (#207).
+  /// - 5: `campania_ciudad`, `zona` y `zona_vertice`, réplicas del canal de catálogo (#231).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 4;
+  static const int versionEsquema = 5;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -100,6 +107,16 @@ class AppDatabase extends _$AppDatabase {
     // Solo crea una tabla: las jornadas, ubicaciones y espacios quedan como estaban.
     from3To4: (m, esquema) async {
       await m.createTable(esquema.ubicacionParDecidido);
+    },
+    // Solo crea las réplicas del catálogo, vacías (las llena el pull): las jornadas, ubicaciones,
+    // espacios y pares decididos quedan como estaban.
+    from4To5: (m, esquema) async {
+      await m.createTable(esquema.campaniaCiudad);
+      await m.createIndex(esquema.campaniaCiudadCiudadIdIdx);
+      await m.createTable(esquema.zona);
+      await m.createIndex(esquema.zonaCampaniaCiudadIdx);
+      await m.createTable(esquema.zonaVertice);
+      await m.createIndex(esquema.zonaVerticeZonaIdx);
     },
   );
 }

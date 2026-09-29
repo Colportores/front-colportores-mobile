@@ -17,6 +17,7 @@ final class DarDeBajaUbicacionParams extends Equatable {
     required this.baseUpdatedAt,
     this.motivo,
     this.confirmaPendientes = false,
+    this.conservadaId,
   });
 
   final String id;
@@ -31,11 +32,15 @@ final class DarDeBajaUbicacionParams extends Equatable {
   /// La segunda confirmación, tras ver el resumen de [BajaRequiereConfirmacion].
   final bool confirmaPendientes;
 
+  /// Otra ubicación que tiene que seguir activa **al escribir la baja**, en la misma transacción:
+  /// la que se conserva al marcar un duplicado (HU-UBI-006). Si ya no lo está, la baja no se hace.
+  final String? conservadaId;
+
   @override
   bool get stringify => false;
 
   @override
-  List<Object?> get props => [id, baseUpdatedAt, motivo, confirmaPendientes];
+  List<Object?> get props => [id, baseUpdatedAt, motivo, confirmaPendientes, conservadaId];
 }
 
 /// HU-UBI-005 — Baja de ubicación (soft delete). En orden:
@@ -47,6 +52,8 @@ final class DarDeBajaUbicacionParams extends Equatable {
 ///    `Right(BajaRequiereConfirmacion)` con el resumen; no escribe.
 /// 5. Escribe `deleted_at` = ahora y `updated_at` = ahora y encola el tombstone, en una
 ///    transacción. **No** da de baja los espacios ni las personas (HU: "no se borran en cascada").
+///    Si otro toque la dio de baja mientras tanto, `Right(BajaSinCambios)`. Con
+///    [DarDeBajaUbicacionParams.conservadaId], la transacción exige que esa otra siga activa.
 ///
 /// Como `ModificarUbicacionUseCase`, no toca `sync_version`: el servidor la incrementa (0002).
 final class DarDeBajaUbicacionUseCase
@@ -88,8 +95,13 @@ final class DarDeBajaUbicacionUseCase
           baseUpdatedAt: params.baseUpdatedAt,
           ahora: _ahora(),
           conMotivo: motivo != null && motivo.isNotEmpty,
+          conservadaId: params.conservadaId,
         );
-        return baja.map((u) => UbicacionDadaDeBaja(ubicacion: u));
+        return baja.map<ResultadoBajaUbicacion>(
+          (r) => r.escribio
+              ? UbicacionDadaDeBaja(ubicacion: r.ubicacion)
+              : BajaSinCambios(ubicacion: r.ubicacion),
+        );
       },
     );
   }
@@ -145,12 +157,13 @@ final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbi
       );
       if (falla != null) return Left(falla);
 
-      return _repository.cambiarBaja(
+      final reactivada = await _repository.cambiarBaja(
         id,
         baja: false,
         baseUpdatedAt: params.baseUpdatedAt,
         ahora: _ahora(),
       );
+      return reactivada.map((r) => r.ubicacion);
     });
   }
 }

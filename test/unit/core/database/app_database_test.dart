@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 4);
+      expect(db.schemaVersion, 5);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -47,6 +47,12 @@ void main() {
           'table espacio',
           'index espacio_ubicacion_idx',
           'table ubicacion_par_decidido',
+          'table campania_ciudad',
+          'index campania_ciudad_ciudad_id_idx',
+          'table zona',
+          'index zona_campania_ciudad_idx',
+          'table zona_vertice',
+          'index zona_vertice_zona_idx',
         ]),
       );
     });
@@ -54,7 +60,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":4}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":5}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -94,7 +100,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 4);
+      expect(fila.read<int>('user_version'), 5);
       expect(
         await _esquema(db),
         containsAll([
@@ -102,9 +108,12 @@ void main() {
           'table ubicacion',
           'table espacio',
           'table ubicacion_par_decidido',
+          'table campania_ciudad',
+          'table zona',
+          'table zona_vertice',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":4}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":5}']);
     });
   });
 }

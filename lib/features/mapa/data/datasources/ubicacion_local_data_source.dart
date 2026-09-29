@@ -35,8 +35,9 @@ abstract interface class UbicacionLocalDataSource {
 
   /// Escribe [nueva] sobre la fila con su mismo `id` y encola el `update` con la fila entera,
   /// **todo en una transacción** (HU-UBI-004; contrato-sync-engine §3). Solo cambian `tipo`,
-  /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `updated_at` y `deleted_at`: el resto de la fila
-  /// (incluida `sync_version`) queda como está.
+  /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `zona_id` (la que calculó el caso de uso por la
+  /// posición, #231), `updated_at` y `deleted_at`: el resto de la fila (incluida `sync_version`)
+  /// queda como está.
   ///
   /// - Sin fila con ese `id`: lanza [UbicacionInexistenteException].
   /// - Si `updated_at` de la fila no es [baseUpdatedAt] (cambió desde que se leyó): no escribe y
@@ -55,16 +56,24 @@ abstract interface class UbicacionLocalDataSource {
   /// (tombstone) si [deletedAt] no es `null` o el `update` si reactiva, con la fila entera. No
   /// toca los espacios ni el resto de la fila (incluida `sync_version`).
   ///
+  /// Devuelve la fila como quedó y si se escribió.
+  ///
   /// - Sin fila con ese `id`: [UbicacionInexistenteException].
-  /// - Si la fila ya está de baja (o activa, al reactivar), la devuelve sin escribir ni encolar,
-  ///   con cualquier [baseUpdatedAt]: es el segundo de dos toques que se pisaron.
+  /// - Si llega [conservadaId] —la ubicación que se conserva al marcar un duplicado, HU-UBI-006—,
+  ///   esa otra ubicación tiene que seguir activa **dentro de la misma transacción**: si no está,
+  ///   [UbicacionInexistenteException]; si está de baja, [UbicacionCambioException]. Así dos
+  ///   "marcar duplicado" concurrentes sobre pares que se cruzan no dejan de baja a las dos.
+  /// - Si la fila ya está de baja (o activa, al reactivar), la devuelve con `escribio: false`, sin
+  ///   escribir ni encolar, con cualquier [baseUpdatedAt]: es el segundo de dos toques que se
+  ///   pisaron.
   /// - Si no, y `updated_at` de la fila no es [baseUpdatedAt]: [UbicacionCambioException].
   /// - Si el encolado falla, la transacción se revierte.
-  Future<UbicacionModel> cambiarBaja(
+  Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
     String id, {
     required DateTime baseUpdatedAt,
     required DateTime updatedAt,
     required DateTime? deletedAt,
+    String? conservadaId,
   });
 
   /// Ubicaciones cuyo `created_by` es [colportorId] (filtro opcional por [ciudadId]), con las bajas

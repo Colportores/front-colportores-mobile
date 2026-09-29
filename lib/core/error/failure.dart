@@ -493,3 +493,19 @@ final class FailureDuplicadoMismaDireccion extends Failure {
         codigo: 'UBI_DUPLICADO_MISMA_DIRECCION',
       );
 }
+
+/// Se quiso mover (a otro punto u otra ciudad) una ubicación que registró otro colportor a un lugar
+/// que queda fuera de las zonas asignadas a quien la mueve, o fuera de toda zona. El servidor la
+/// rechaza (backend-supabase 0010, «mover una casa a otra zona: solo casas propias»), así que la
+/// app lo avisa antes de guardar.
+///
+/// Texto para confirmar con Cristian: ni la HU ni las vistas traen uno para este caso (#231).
+final class FailureUbicacionAjenaFueraDeZona extends Failure {
+  const FailureUbicacionAjenaFueraDeZona()
+    : super(
+        mensaje:
+            'Esta ubicación la registró otro colportor y solo podés moverla dentro de tu zona. '
+            'Volvé a ponerla dentro de tu zona o pedile a tu coordinador que la mueva.',
+        codigo: 'UBI_AJENA_FUERA_DE_ZONA',
+      );
+}

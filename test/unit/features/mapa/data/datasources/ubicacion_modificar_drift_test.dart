@@ -7,11 +7,16 @@ import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_data_source.dart';
+import 'package:colportores_mobile/features/mapa/data/models/campania_ciudad_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/data/models/zona_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/data/repositories/zona_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/ubicador_zona.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/modificar_ubicacion_use_case.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:drift/drift.dart' show Value;
@@ -19,6 +24,7 @@ import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/zonas_falsas.dart';
 
 void main() {
   final t0 = DateTime.utc(2026, 9, 29, 13, 45, 10, 123);
@@ -65,7 +71,11 @@ void main() {
     encolador = EncoladorSyncEnMemoria();
     local = UbicacionLocalDataSourceDrift(db, encolador: encolador);
     repositorio = UbicacionRepositoryImpl(local, logger: loggerMudo());
-    modificar = ModificarUbicacionUseCase(repositorio, ahora: () => t1);
+    modificar = ModificarUbicacionUseCase(
+      repositorio,
+      ubicador: ubicadorSinZonas(),
+      ahora: () => t1,
+    );
   });
 
   tearDown(() => db.close());
@@ -82,6 +92,7 @@ void main() {
     DateTime? base,
   }) => ModificarUbicacionParams(
     id: id,
+    colportorId: 'col-1',
     tipo: tipo,
     coordenadas: coordenadas,
     baseUpdatedAt: base ?? t0,
@@ -115,6 +126,79 @@ void main() {
   List<Object?> cambiosEncolados() => [
     for (final c in encolador.encolados) [c.entidad, c.operacion, c.payload],
   ];
+
+  group('Zona por posición, con las zonas en la DB', () {
+    // «z-centro» cubre Italia y hasta 100 m al norte; «z-norte», de 100 a 300 m al norte.
+    const confirmado = {ConfirmacionModificacion.desplazamiento};
+
+    setUp(() async {
+      final auditoria = Auditoria(createdAt: t0, updatedAt: t0);
+      await db
+          .into(db.campaniasCiudad)
+          .insert(
+            CampaniaCiudadModel(
+              id: 'cc-1',
+              campaniaId: 'camp-1',
+              ciudadId: 'mvd',
+              auditoria: auditoria,
+            ).aFila(),
+          );
+      for (final (id, desde, hasta) in [('z-centro', -100.0, 100.0), ('z-norte', 100.0, 300.0)]) {
+        await db
+            .into(db.zonas)
+            .insert(
+              ZonaModel(
+                id: id,
+                nombre: id,
+                campaniaCiudadId: 'cc-1',
+                tipoForma: 'ESQUINAS',
+                poligonoGeojson: rectanguloGeojson(
+                  latSur: alNorte(desde).lat,
+                  latNorte: alNorte(hasta).lat,
+                  lonOeste: -56.13,
+                  lonEste: -56.12,
+                ),
+                auditoria: auditoria,
+              ).aFila(),
+            );
+      }
+      modificar = ModificarUbicacionUseCase(
+        repositorio,
+        ubicador: UbicadorZona(
+          ZonaRepositoryImpl(ZonaLocalDataSourceDrift(db), logger: loggerMudo()),
+          InscripcionesEnMemoria([inscripcion('col-1', 'camp-1', zonaId: 'z-centro')]),
+        ),
+        ahora: () => t1,
+      );
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+    });
+
+    test('dado que mueve el pin a otra zona, guarda y encola la zona nueva', () async {
+      final r = await ok(params(coordenadas: alNorte(150), confirmadas: confirmado));
+
+      expect((r as UbicacionModificada).ubicacion.zonaId, 'z-norte');
+      expect((await guardada()).zonaId, 'z-norte');
+      expect(encolador.encolados.single.payload['zona_id'], 'z-norte');
+    });
+
+    test(
+      'dado que mueve el pin fuera de toda zona, guarda y encola la ubicación sin zona',
+      () async {
+        final r = await ok(params(coordenadas: alNorte(2000), confirmadas: confirmado));
+
+        expect((r as UbicacionModificada).ubicacion.zonaId, isNull);
+        expect((await guardada()).zonaId, isNull);
+        expect(encolador.encolados.single.payload['zona_id'], isNull);
+      },
+    );
+
+    test('dado que no mueve el pin, conserva la zona que tenía', () async {
+      await ok(params(numero: '1236'));
+
+      expect((await guardada()).zonaId, 'zona-9');
+    });
+  });
 
   group('Edición simple de número de calle', () {
     test('dado el número "1234", cuando lo edita a "1236", se aplica local, sube la fila entera '

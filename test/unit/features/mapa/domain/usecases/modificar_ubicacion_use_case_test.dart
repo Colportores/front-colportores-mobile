@@ -6,10 +6,13 @@ import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modif
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/ubicador_zona.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/modificar_ubicacion_use_case.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
+
+import '../../../../../helpers/zonas_falsas.dart';
 
 typedef _Escritura = ({
   Ubicacion nueva,
@@ -91,8 +94,10 @@ void main() {
     Set<ConfirmacionModificacion> confirmadas = const {},
     String? justificacion,
     DateTime? base,
+    String colportorId = 'col-1',
   }) => ModificarUbicacionParams(
     id: id,
+    colportorId: colportorId,
     tipo: tipo,
     coordenadas: coordenadas,
     baseUpdatedAt: base ?? t0,
@@ -104,11 +109,19 @@ void main() {
   );
 
   late _Repositorio repo;
+  late ZonasEnMemoria zonas;
+  late InscripcionesEnMemoria inscripciones;
   late ModificarUbicacionUseCase modificar;
 
   setUp(() {
     repo = _Repositorio(ubicacion());
-    modificar = ModificarUbicacionUseCase(repo, ahora: () => t1);
+    zonas = ZonasEnMemoria();
+    inscripciones = InscripcionesEnMemoria();
+    modificar = ModificarUbicacionUseCase(
+      repo,
+      ubicador: UbicadorZona(zonas, inscripciones),
+      ahora: () => t1,
+    );
   });
 
   Future<ResultadoModificacionUbicacion> ok(ModificarUbicacionParams p) async =>
@@ -118,6 +131,16 @@ void main() {
       (await modificar(p)).swap().getOrElse(() => throw StateError('era un Right'));
 
   group('Validaciones', () {
+    test(
+      'dado un colportor en blanco, cuando modifica, falla la validación sin escribir',
+      () async {
+        final f = await falla(params(colportorId: ' '));
+
+        expect((f as FailureValidacion).campos.keys, ['colportorId']);
+        expect(repo.escrituras, isEmpty);
+      },
+    );
+
     test(
       'dado un id en blanco, cuando modifica, falla la validación sin leer ni escribir',
       () async {
@@ -259,6 +282,7 @@ void main() {
         'que no admiten conservar las dos', () async {
       modificar = ModificarUbicacionUseCase(
         repo,
+        ubicador: ubicadorSinZonas(),
         ahora: () => t1,
         criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
       );
@@ -290,7 +314,7 @@ void main() {
       'texto literal y no se escribe',
       () async {
         repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: 3);
-        modificar = ModificarUbicacionUseCase(repo, ahora: () => t1);
+        modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
 
         for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
           final f = await falla(params(tipo: tipo));
@@ -304,7 +328,7 @@ void main() {
 
     test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
       repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio));
-      modificar = ModificarUbicacionUseCase(repo, ahora: () => t1);
+      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
 
       expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
     });
@@ -318,7 +342,7 @@ void main() {
 
     test('dado un EDIFICIO con espacios, cuando cambia solo el número, no se bloquea', () async {
       repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: 3);
-      modificar = ModificarUbicacionUseCase(repo, ahora: () => t1);
+      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
 
       expect(
         await ok(params(tipo: TipoUbicacion.edificio, numero: '1236')),
@@ -432,5 +456,105 @@ void main() {
 
       expect((await ok(params(numero: '1236')) as UbicacionModificada).reactivada, isFalse);
     });
+  });
+
+  group('Zona por posición', () {
+    // Italia cae en «z-centro»; 150 m al norte, en «z-norte»; 2 km al norte, fuera de toda zona.
+    setUp(() {
+      zonas.zonas.addAll([
+        zonaRectangular(
+          'z-centro',
+          latSur: -34.892,
+          latNorte: italia.lat + 100 / 111195.08,
+          lonOeste: -56.13,
+          lonEste: -56.12,
+        ),
+        zonaRectangular(
+          'z-norte',
+          latSur: italia.lat + 100 / 111195.08,
+          latNorte: italia.lat + 300 / 111195.08,
+          lonOeste: -56.13,
+          lonEste: -56.12,
+        ),
+      ]);
+      inscripciones.inscripciones.add(inscripcion('col-1', 'camp-1', zonaId: 'z-centro'));
+      inscripciones.inscripciones.add(inscripcion('col-2', 'camp-1', zonaId: 'z-centro'));
+    });
+
+    const confirmado = {ConfirmacionModificacion.desplazamiento};
+
+    test('dado que mueve el pin dentro de otra zona, la ubicación queda con esa zona', () async {
+      await ok(params(coordenadas: alNorte(150), confirmadas: confirmado));
+
+      expect(repo.escrituras.single.nueva.zonaId, 'z-norte');
+    });
+
+    test('dado que mueve el pin fuera de toda zona, la ubicación queda sin zona', () async {
+      await ok(params(coordenadas: alNorte(2000), confirmadas: confirmado));
+
+      expect(repo.escrituras.single.nueva.zonaId, isNull);
+    });
+
+    test('dado que cambia la ciudad, la zona se calcula en la ciudad nueva', () async {
+      await ok(params(ciudadId: 'canelones', confirmadas: {ConfirmacionModificacion.cambioCiudad}));
+
+      expect(repo.escrituras.single.nueva.zonaId, isNull);
+    });
+
+    test('dado que no mueve el pin, conserva la zona que tenía', () async {
+      await ok(params(numero: '1236'));
+
+      expect(repo.escrituras.single.nueva.zonaId, 'zona-9');
+    });
+
+    group('una ubicación que registró otro colportor', () {
+      test('movida fuera de las zonas de quien la mueve, se bloquea antes de pedir confirmaciones '
+          'y no escribe nada', () async {
+        final f = await falla(params(colportorId: 'col-2', coordenadas: alNorte(150)));
+
+        expect(f, const FailureUbicacionAjenaFueraDeZona());
+        expect(f.mensaje, contains('pedile a tu coordinador'));
+        expect(repo.escrituras, isEmpty);
+      });
+
+      test('movida fuera de toda zona, se bloquea', () async {
+        final f = await falla(
+          params(colportorId: 'col-2', coordenadas: alNorte(2000), confirmadas: confirmado),
+        );
+
+        expect(f, isA<FailureUbicacionAjenaFueraDeZona>());
+        expect(repo.escrituras, isEmpty);
+      });
+
+      test('movida dentro de una zona de quien la mueve, se guarda con esa zona', () async {
+        await ok(params(colportorId: 'col-2', coordenadas: alNorte(50)));
+
+        expect(repo.escrituras.single.nueva.zonaId, 'z-centro');
+        expect(repo.escrituras.single.nueva.auditoria.createdBy, 'col-1');
+      });
+
+      test('sin moverla, se puede corregir aunque su zona no sea de quien la edita', () async {
+        await ok(params(colportorId: 'col-3', numero: '1236'));
+
+        expect(repo.escrituras.single.nueva.zonaId, 'zona-9');
+      });
+    });
+
+    test('dado que la ubicación propia se mueve fuera de sus zonas, se guarda (solo se bloquean '
+        'las ajenas)', () async {
+      await ok(params(coordenadas: alNorte(150), confirmadas: confirmado));
+
+      expect(repo.escrituras.single.nueva.zonaId, 'z-norte');
+    });
+
+    test(
+      'dado que no se pueden leer las zonas al moverla, devuelve la falla sin escribir',
+      () async {
+        zonas.falla = const FailureInesperado();
+
+        expect(await falla(params(coordenadas: alNorte(50))), const FailureInesperado());
+        expect(repo.escrituras, isEmpty);
+      },
+    );
   });
 }
