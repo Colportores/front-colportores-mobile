@@ -13,9 +13,12 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capt
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
+import '../../../../../helpers/ubicacion_sin_modificar.dart';
 
 /// Registra lo que recibe y devuelve el alta hecha, salvo que se le fije otra respuesta.
-final class _RepositorioQueAnota implements UbicacionRepository {
+final class _RepositorioQueAnota
+    with UbicacionRepositorySinModificar
+    implements UbicacionRepository {
   final llamadas =
       <
         ({

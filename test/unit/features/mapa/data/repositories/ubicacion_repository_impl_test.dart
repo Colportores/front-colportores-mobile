@@ -15,6 +15,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capt
 import 'package:dartz/dartz.dart';
 import 'package:logger/logger.dart';
 import 'package:test/test.dart';
+import '../../../../../helpers/ubicacion_sin_modificar.dart';
 
 class _SalidaEnMemoria extends LogOutput {
   final lineas = <String>[];
@@ -24,7 +25,7 @@ class _SalidaEnMemoria extends LogOutput {
 }
 
 /// Data source que responde lo que se le fije (o lanza [error]).
-final class _LocalFijo implements UbicacionLocalDataSource {
+final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocalDataSource {
   _LocalFijo({this.respuesta, this.error});
 
   final InsercionUbicacion? respuesta;

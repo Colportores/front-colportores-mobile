@@ -380,6 +380,41 @@ final class FailureCiudadRequerida extends Failure {
       );
 }
 
+/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO` teniendo espacios activos (HU-UBI-004,
+/// "Cambio de tipo bloqueado", Supuesto S17). Texto literal del criterio de aceptación.
+final class FailureUbicacionConEspacios extends Failure {
+  const FailureUbicacionConEspacios({required this.cantidadEspacios})
+    : super(
+        mensaje: 'Esta ubicación tiene $cantidadEspacios espacios. Borralos o reubicalos primero.',
+        codigo: 'UBI_CON_ESPACIOS',
+      );
+
+  final int cantidadEspacios;
+
+  @override
+  List<Object?> get props => [...super.props, cantidadEspacios];
+}
+
+/// La ubicación que se quiso modificar no está en el teléfono.
+final class FailureUbicacionInexistente extends Failure {
+  const FailureUbicacionInexistente()
+    : super(
+        mensaje: 'No encontramos esta ubicación en tu teléfono. Volvé a la lista y probá de nuevo.',
+        codigo: 'UBI_INEXISTENTE',
+      );
+}
+
+/// La ubicación cambió (una edición, o el sync entrante) entre que se leyó para modificarla y que
+/// se guardó: se descarta el guardado para no pisar el cambio (HU-UBI-004, "edición concurrente
+/// con sync entrante"). La pantalla la vuelve a leer y el colportor reintenta.
+final class FailureUbicacionCambio extends Failure {
+  const FailureUbicacionCambio()
+    : super(
+        mensaje: 'Esta ubicación cambió mientras la editabas. Abrila de nuevo y repetí el cambio.',
+        codigo: 'UBI_CAMBIO_CONCURRENTE',
+      );
+}
+
 /// No hay lugar en el teléfono para el paquete de mapa que se quiere descargar (HU-SYNC-010).
 /// [megabytesRequeridos] es lo que falta bajar: al reanudar descuenta lo que ya está descargado.
 /// El mensaje es el literal de la HU más qué hacer (para confirmar en #189).

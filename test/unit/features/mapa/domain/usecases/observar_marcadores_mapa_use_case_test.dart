@@ -13,9 +13,10 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
+import '../../../../../helpers/ubicacion_sin_modificar.dart';
 
 /// Repositorio con un stream de marcadores que el test controla.
-final class _RepositorioDeMapa implements UbicacionRepository {
+final class _RepositorioDeMapa with UbicacionRepositorySinModificar implements UbicacionRepository {
   final fuente = StreamController<List<MarcadorMapa>>();
   ({String colportorId, AreaMapa area})? pedido;
 

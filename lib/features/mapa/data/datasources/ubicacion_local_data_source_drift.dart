@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
@@ -65,6 +66,62 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
     }
     return (ubicacion: ubicacion, yaEstaba: false);
+  });
+
+  @override
+  Future<UbicacionModel?> obtener(String id) async {
+    final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
+    return fila == null ? null : _aModelo(fila);
+  }
+
+  @override
+  Future<int> contarEspaciosActivos(String ubicacionId) async {
+    final cantidad = espacios.id.count();
+    final consulta = selectOnly(espacios)
+      ..addColumns([cantidad])
+      ..where(espacios.ubicacionId.equals(ubicacionId) & espacios.deletedAt.isNull());
+    return (await consulta.getSingle()).read(cantidad) ?? 0;
+  }
+
+  /// Leer, comparar, buscar duplicados, escribir y encolar van en una sola transacción, como el
+  /// alta: una escritura concurrente (el sync entrante) se serializa y esta ve su resultado.
+  @override
+  Future<UbicacionModel> actualizar(
+    UbicacionModel nueva, {
+    required DateTime baseUpdatedAt,
+    CriterioDuplicadoUbicacion? duplicados,
+  }) => transaction(() async {
+    final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
+    if (fila == null) throw const UbicacionInexistenteException();
+    if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+
+    if (duplicados != null) {
+      final cercanas = await _activasCerca(nueva, CriterioDuplicadoUbicacion.radioMetros);
+      final candidatas = duplicados.candidatas(nueva, cercanas);
+      if (candidatas.isNotEmpty) {
+        throw UbicacionDuplicadaException([
+          for (final candidata in candidatas) UbicacionModel.fromEntity(candidata),
+        ]);
+      }
+    }
+
+    await (update(ubicaciones)..where((u) => u.id.equals(nueva.id))).write(
+      UbicacionesCompanion(
+        tipo: Value(UbicacionModel.codigoDeTipo(nueva.tipo)),
+        calle: Value(nueva.calle),
+        numero: Value(nueva.numero),
+        lat: Value(nueva.lat),
+        lon: Value(nueva.lon),
+        ciudadId: Value(nueva.ciudadId),
+        updatedAt: Value(nueva.auditoria.updatedAt),
+        deletedAt: Value(nueva.auditoria.deletedAt),
+      ),
+    );
+    final guardada = _aModelo(
+      await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingle(),
+    );
+    await _encolador.encolar('ubicacion', OperacionSync.update, guardada.toJson());
+    return guardada;
   });
 
   @override
