@@ -142,7 +142,11 @@ final class MarcarDuplicadoParams extends Equatable {
 /// 2. La que se conserva no está: `Left(FailureUbicacionInexistente)`; está de baja (el par cambió
 ///    desde el scan): `Left(FailureUbicacionCambio)`. En los dos casos no escribe nada, para no
 ///    dejar a las dos de baja.
-/// 3. Si no, el resultado de la baja de la duplicada, tal cual.
+/// 3. Si no, el resultado de la baja de la duplicada, tal cual. La condición del paso 2 se vuelve
+///    a exigir **dentro de la transacción de la baja** (`conservadaId`): dos acciones concurrentes
+///    sobre pares que se cruzan —conservar C y dar de baja A, conservar A y dar de baja B— pasan
+///    las dos el paso 2, pero si la baja de A escribe primero, la otra encuentra A de baja y no
+///    escribe. Así el resultado es siempre el de hacerlas una después de la otra.
 ///
 /// **Pendiente** (#207): el `reason = "duplicado_de_A"` de la HU va como motivo de la baja
 /// ([motivoBaja]), pero hoy el motivo no se guarda en ningún lado —ni la tabla local ni
@@ -182,6 +186,7 @@ final class MarcarDuplicadoUseCase
             baseUpdatedAt: params.baseUpdatedAtDuplicada,
             motivo: motivoBaja(conservarId),
             confirmaPendientes: params.confirmaPendientes,
+            conservadaId: conservarId,
           ),
         );
       },

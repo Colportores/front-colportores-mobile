@@ -10,6 +10,10 @@ import '../services/criterio_duplicado_ubicacion.dart';
 import '../value_objects/area_mapa.dart';
 import '../value_objects/punto_capturado.dart';
 
+/// La ubicación como quedó después de [UbicacionRepository.cambiarBaja], y si se escribió: `false`
+/// cuando ya estaba como se pedía (dos toques que se pisaron).
+typedef CambioDeBaja = ({Ubicacion ubicacion, bool escribio});
+
 /// Persistencia de las ubicaciones y sus espacios (ADR-001).
 abstract interface class UbicacionRepository {
   /// Guarda [ubicacion] y, si viene, su [espacio] default, en **una sola transacción** que también
@@ -62,18 +66,24 @@ abstract interface class UbicacionRepository {
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación
   /// [id] y encola el tombstone (`delete`) o el `update`, en **una sola transacción**
-  /// (HU-UBI-005). Devuelve la ubicación como quedó. Los espacios y las personas no se tocan.
+  /// (HU-UBI-005). Devuelve la ubicación como quedó y si se escribió ([CambioDeBaja]): si ya
+  /// estaba como se pide, no escribe, no encola ni deja el evento de auditoría. Los espacios y las
+  /// personas no se tocan.
   ///
   /// [baseUpdatedAt] es el `updated_at` con el que quien la pidió cargó la ubicación: si la fila
   /// cambió, no escribe y devuelve [FailureUbicacionCambio]. Sin fila, [FailureUbicacionInexistente].
+  /// Con [conservadaId], esa otra ubicación tiene que seguir activa en la misma transacción (la que
+  /// se conserva al marcar un duplicado): si no está, [FailureUbicacionInexistente]; si está de
+  /// baja, [FailureUbicacionCambio]; en los dos casos no escribe.
   /// [conMotivo] solo va al log (`ubicacion_baja`, R-UB09): el motivo es texto libre y no se
   /// registra.
-  Future<Either<Failure, Ubicacion>> cambiarBaja(
+  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
     bool conMotivo = false,
+    String? conservadaId,
   });
 
   /// Las ubicaciones del colportor [colportorId] (`created_by`), como stream: emite de nuevo ante

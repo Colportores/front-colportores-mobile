@@ -41,7 +41,7 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
   final porId = <String, Ubicacion>{};
   Failure? fallaAlObtener;
   final pedidos = <({String colportorId, bool incluirBajas})>[];
-  final bajas = <({String id, DateTime baseUpdatedAt, bool conMotivo})>[];
+  final bajas = <({String id, DateTime baseUpdatedAt, bool conMotivo, String? conservadaId})>[];
 
   @override
   Stream<List<Ubicacion>> observarDelColportor({
@@ -59,17 +59,23 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
       fallaAlObtener != null ? Left(fallaAlObtener!) : Right(porId[id]);
 
   @override
-  Future<Either<Failure, Ubicacion>> cambiarBaja(
+  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
     bool conMotivo = false,
+    String? conservadaId,
   }) async {
-    bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, conMotivo: conMotivo));
+    bajas.add((
+      id: id,
+      baseUpdatedAt: baseUpdatedAt,
+      conMotivo: conMotivo,
+      conservadaId: conservadaId,
+    ));
     final actual = porId[id]!;
-    return Right(
-      Ubicacion(
+    return Right((
+      ubicacion: Ubicacion(
         id: actual.id,
         tipo: actual.tipo,
         calle: actual.calle,
@@ -79,7 +85,8 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
         ciudadId: actual.ciudadId,
         auditoria: Auditoria(createdAt: _t0, updatedAt: ahora, deletedAt: baja ? ahora : null),
       ),
-    );
+      escribio: true,
+    ));
   }
 
   @override
@@ -279,7 +286,9 @@ void main() {
 
       expect(r, isA<UbicacionDadaDeBaja>());
       expect((r as UbicacionDadaDeBaja).ubicacion.id, 'ub-b');
-      expect(ubicaciones.bajas, [(id: 'ub-b', baseUpdatedAt: _t0, conMotivo: true)]);
+      expect(ubicaciones.bajas, [
+        (id: 'ub-b', baseUpdatedAt: _t0, conMotivo: true, conservadaId: 'ub-a'),
+      ]);
     });
 
     test('dado el par A–B, cuando elige conservar B, da de baja A (se puede elegir cuál '
