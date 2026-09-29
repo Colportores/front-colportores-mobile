@@ -78,10 +78,12 @@ void main() {
     String? numero = '1234',
     Set<ConfirmacionModificacion> confirmadas = const {},
     String? justificacion,
+    DateTime? base,
   }) => ModificarUbicacionParams(
     id: id,
     tipo: tipo,
     coordenadas: coordenadas,
+    baseUpdatedAt: base ?? t0,
     ciudadId: ciudadId,
     calle: calle,
     numero: numero,
@@ -285,7 +287,7 @@ void main() {
         expect(await ok(params(numero: '1236')), isA<UbicacionModificada>());
 
         await local.insertar(ubicacion(id: 'ub-3', numero: '77', ciudadId: 'sal'));
-        expect(await ok(params(numero: '77')), isA<UbicacionModificada>());
+        expect(await ok(params(numero: '77', base: t1)), isA<UbicacionModificada>());
       },
     );
 
@@ -299,6 +301,53 @@ void main() {
   });
 
   group('Transacción y edición concurrente', () {
+    test('dado que el pull trae una corrección entre que abre la edición y guarda, cuando guarda, '
+        'no la pisa: falla como cambio concurrente y no encola', () async {
+      await local.insertar(ubicacion(calle: 'Av Italia'));
+      encolador.encolados.clear();
+      // La pantalla cargó la ubicación con updated_at = t0 y el colportor está editando el número.
+      final entrante = t0.add(const Duration(minutes: 5));
+      await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-1'))).write(
+        UbicacionesCompanion(updatedAt: Value(entrante), calle: const Value('Av. Italia')),
+      );
+
+      final f = await falla(params(calle: 'Av Italia', numero: '1236', base: t0));
+
+      expect(f, const FailureUbicacionCambio());
+      final u = await guardada();
+      expect((u.calle, u.numero), ('Av. Italia', '1234'));
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado el mismo guardado con la base al día, cuando el pull ya trajo la fila, guarda '
+        'sobre esa versión', () async {
+      await local.insertar(ubicacion());
+      final entrante = t0.add(const Duration(minutes: 5));
+      await (db.update(
+        db.ubicaciones,
+      )..where((u) => u.id.equals('ub-1'))).write(UbicacionesCompanion(updatedAt: Value(entrante)));
+
+      final r = await ok(params(numero: '1236', base: entrante));
+
+      expect(r, isA<UbicacionModificada>());
+      expect((await guardada()).numero, '1236');
+    });
+
+    test('dado un doble toque en "Guardar", cuando el segundo llega con la base vieja y la fila ya '
+        'tiene esos valores, es un éxito idempotente y no encola de nuevo', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+
+      final primero = await ok(params(numero: '1236'));
+      final segundo = await ok(params(numero: '1236'));
+
+      expect(primero, isA<UbicacionModificada>());
+      expect(segundo, isA<UbicacionModificada>());
+      expect((segundo as UbicacionModificada).ubicacion.numero, '1236');
+      expect(encolador.encolados, hasLength(1));
+      expect((await guardada()).auditoria.updatedAt, t1);
+    });
+
     test('dado que el encolado falla, cuando modifica, la fila queda como estaba', () async {
       await local.insertar(ubicacion());
       encolador.fallarCon = StateError('motor apagado');

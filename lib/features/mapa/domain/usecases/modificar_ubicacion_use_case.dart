@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
+import '../../../../core/domain/instante.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
@@ -17,6 +18,7 @@ final class ModificarUbicacionParams extends Equatable {
     required this.id,
     required this.tipo,
     required this.coordenadas,
+    required this.baseUpdatedAt,
     this.ciudadId,
     this.calle,
     this.numero,
@@ -29,6 +31,12 @@ final class ModificarUbicacionParams extends Equatable {
 
   final TipoUbicacion tipo;
   final Coordenadas coordenadas;
+
+  /// El `updated_at` de la ubicación **tal como la pantalla la cargó** para editarla, no el de
+  /// ahora: es la base del control de edición concurrente. Si mientras el colportor editaba el
+  /// pull trajo un cambio (una corrección del coordinador), la fila ya no tiene este valor y el
+  /// guardado se rechaza con [FailureUbicacionCambio] en vez de pisarlo.
+  final DateTime baseUpdatedAt;
 
   /// Obligatorio: `null` o en blanco da [FailureCiudadRequerida].
   final String? ciudadId;
@@ -52,6 +60,7 @@ final class ModificarUbicacionParams extends Equatable {
     id,
     tipo,
     coordenadas,
+    baseUpdatedAt,
     ciudadId,
     calle,
     numero,
@@ -68,7 +77,11 @@ final class ModificarUbicacionParams extends Equatable {
 /// 1. Sin `id`, con coordenadas en `(0, 0)` o fuera de rango, o una justificación en blanco:
 ///    `Left(FailureValidacion)`. Sin `ciudad_id`: `Left(FailureCiudadRequerida)`.
 /// 2. La ubicación no está: `Left(FailureUbicacionInexistente)`.
-/// 3. Nada cambió: `Right(ModificacionSinCambios)`, sin escribir ni encolar.
+/// 3. Nada cambió: `Right(ModificacionSinCambios)`, sin escribir ni encolar. Si además la fila ya
+///    no tiene [ModificarUbicacionParams.baseUpdatedAt] pero tiene **exactamente** los valores
+///    pedidos (doble toque en "Guardar": el primero entró), es un éxito idempotente:
+///    `Right(UbicacionModificada)` con la fila tal cual, sin escribir ni encolar.
+///    Si no es ese caso y la fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
 /// 4. `EDIFICIO` → `CASA`/`NEGOCIO` con espacios activos: `Left(FailureUbicacionConEspacios)`
 ///    (S17). Es un bloqueo, no una confirmación.
 /// 5. Faltan confirmaciones —reactivar una baja (S18), cambiar de ciudad, mover el punto más de
@@ -153,9 +166,15 @@ final class ModificarUbicacionUseCase
     final cambioCiudad = ciudadId != actual.ciudadId;
     final cambioDireccion = calle != actual.calle || numero != actual.numero;
     final cambioTipo = params.tipo != actual.tipo;
+    final filaCambio = actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt);
     if (!cambioPunto && !cambioCiudad && !cambioDireccion && !cambioTipo) {
-      return Right(ModificacionSinCambios(ubicacion: actual));
+      return Right(
+        filaCambio
+            ? UbicacionModificada(ubicacion: actual)
+            : ModificacionSinCambios(ubicacion: actual),
+      );
     }
+    if (filaCambio) return const Left(FailureUbicacionCambio());
 
     if (actual.tipo == TipoUbicacion.edificio && params.tipo != TipoUbicacion.edificio) {
       final espacios = await _repository.contarEspaciosActivos(actual.id);
@@ -208,7 +227,7 @@ final class ModificarUbicacionUseCase
     final buscaDuplicados = cambioPunto || cambioCiudad || cambioDireccion || reactiva;
     final resultado = await _repository.modificar(
       nueva,
-      baseUpdatedAt: actual.auditoria.updatedAt,
+      baseUpdatedAt: params.baseUpdatedAt,
       duplicados: buscaDuplicados && !seguirIgual ? _criterio : null,
     );
     return resultado.map(

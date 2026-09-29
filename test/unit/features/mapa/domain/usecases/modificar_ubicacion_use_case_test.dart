@@ -89,10 +89,12 @@ void main() {
     String? numero = '1234',
     Set<ConfirmacionModificacion> confirmadas = const {},
     String? justificacion,
+    DateTime? base,
   }) => ModificarUbicacionParams(
     id: id,
     tipo: tipo,
     coordenadas: coordenadas,
+    baseUpdatedAt: base ?? t0,
     ciudadId: ciudadId,
     calle: calle,
     numero: numero,
@@ -192,6 +194,37 @@ void main() {
       expect(r, ModificacionSinCambios(ubicacion: repo.actual!));
       expect(repo.escrituras, isEmpty);
     });
+  });
+
+  group('Edición concurrente', () {
+    test('dado que la fila cambió desde que la pantalla la cargó, cuando guarda, falla como cambio '
+        'concurrente sin escribir', () async {
+      repo.actual = ubicacion(calle: 'Av. Italia');
+      final cargada = t0.subtract(const Duration(minutes: 5));
+
+      expect(await falla(params(numero: '1236', base: cargada)), const FailureUbicacionCambio());
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado la base con la que se cargó, cuando guarda, se la pasa al repositorio y no la que '
+        'releyó', () async {
+      await ok(params(numero: '1236', base: t0));
+
+      expect(repo.escrituras.single.baseUpdatedAt, t0);
+    });
+
+    test(
+      'dado un doble toque (la fila ya tiene los valores pedidos y otra base), cuando guarda, es '
+      'un éxito idempotente sin escribir',
+      () async {
+        final cargada = t0.subtract(const Duration(minutes: 5));
+
+        final r = await ok(params(base: cargada));
+
+        expect(r, UbicacionModificada(ubicacion: repo.actual!));
+        expect(repo.escrituras, isEmpty);
+      },
+    );
   });
 
   group('Re-chequeo de duplicados', () {
