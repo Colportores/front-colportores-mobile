@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
@@ -132,9 +133,20 @@ void main() {
       expect(await filas('espacio'), 1);
     });
 
-    test('dado "Av. Italia 1234" activa a 15 m, cuando inserta otra con el criterio, lanza '
-        'UbicacionDuplicadaException con la candidata y no escribe nada', () async {
-      final existente = ubicacion(id: 'ub-existente', metrosAlNorte: 15);
+    /// Las candidatas de una [UbicacionDuplicadaException] como `[id, motivo]`.
+    Matcher lanzaCandidatas(List<List<Object>> esperadas) => throwsA(
+      isA<UbicacionDuplicadaException>().having(
+        (e) => [
+          for (final c in e.candidatas) [c.ubicacion.id, c.motivo],
+        ],
+        'candidatas',
+        esperadas,
+      ),
+    );
+
+    test('dado "Av. Italia 1234" activa a 300 m, cuando inserta otra en la misma dirección con el '
+        'criterio, lanza UbicacionDuplicadaException con la candidata y no escribe nada', () async {
+      final existente = ubicacion(id: 'ub-existente', metrosAlNorte: 300);
       await local.insertar(existente);
       encolador.encolados.clear();
 
@@ -143,7 +155,11 @@ void main() {
       await expectLater(
         intento,
         throwsA(
-          isA<UbicacionDuplicadaException>().having((e) => e.candidatas, 'candidatas', [existente]),
+          isA<UbicacionDuplicadaException>().having(
+            (e) => e.candidatas.single.ubicacion,
+            'candidata',
+            existente.toEntity(),
+          ),
         ),
       );
       expect(await filas('ubicacion'), 1);
@@ -151,18 +167,59 @@ void main() {
       expect(encolador.encolados, isEmpty);
     });
 
-    test('dado candidatas en el recuadro pero fuera del radio, de otra ciudad o dadas de baja, '
+    test(
+      'dado la misma dirección con el número en otras mayúsculas y otra dirección a 3 m en otra '
+      'ciudad, cuando inserta, las dos son candidatas, de la más cercana a la más lejana',
+      () async {
+        await local.insertar(ubicacion(id: 'mayusculas', numero: ' 1234 BIS', metrosAlNorte: 300));
+        await local.insertar(
+          ubicacion(id: 'cerca', calle: 'Comercio', ciudadId: 'canelones', metrosAlNorte: 3),
+        );
+
+        await expectLater(
+          local.insertar(ubicacion(numero: '1234 bis'), duplicados: criterio),
+          lanzaCandidatas([
+            ['cerca', MotivoDuplicado.cercania],
+            ['mayusculas', MotivoDuplicado.mismaDireccion],
+          ]),
+        );
+      },
+    );
+
+    test('dado otra dirección a 6 m, otro número, la misma dirección en otra ciudad o una baja, '
         'cuando inserta, no las toma como duplicadas', () async {
-      await local.insertar(ubicacion(id: 'a-40m', metrosAlNorte: 40));
-      await local.insertar(ubicacion(id: 'al-este', lon: -56.125 + 0.0004));
-      await local.insertar(ubicacion(id: 'canelones', ciudadId: 'canelones'));
-      await local.insertar(ubicacion(id: 'baja', deletedAt: t0));
+      await local.insertar(ubicacion(id: 'a-6m', calle: 'Comercio', metrosAlNorte: 6));
+      await local.insertar(ubicacion(id: 'al-este', calle: 'Comercio', lon: -56.125 + 0.0004));
+      await local.insertar(ubicacion(id: 'otro-numero', numero: '1236', metrosAlNorte: 300));
+      await local.insertar(ubicacion(id: 'canelones', ciudadId: 'canelones', metrosAlNorte: 300));
+      await local.insertar(ubicacion(id: 'baja', metrosAlNorte: 1, deletedAt: t0));
 
       final r = await local.insertar(ubicacion(), duplicados: criterio);
 
       expect(r.yaEstaba, isFalse);
-      expect(await filas('ubicacion'), 5);
+      expect(await filas('ubicacion'), 6);
     });
+
+    test(
+      'dado D1 en la opción (a), cuando "Crear igual" inserta junto a una de la misma dirección, '
+      'la frena; junto a una solo cercana, la guarda',
+      () async {
+        final alSeguirIgual = const CriterioDuplicadoUbicacion(
+          mismaDireccionAdmiteConservarAmbos: false,
+        ).alSeguirIgual;
+        await local.insertar(ubicacion(id: 'misma', metrosAlNorte: 300));
+        await local.insertar(ubicacion(id: 'cerca', calle: 'Comercio', metrosAlNorte: 3));
+
+        await expectLater(
+          local.insertar(ubicacion(), duplicados: alSeguirIgual),
+          lanzaCandidatas([
+            ['misma', MotivoDuplicado.mismaDireccion],
+          ]),
+        );
+        final r = await local.insertar(ubicacion(calle: 'Otra'), duplicados: alSeguirIgual);
+        expect(r.yaEstaba, isFalse);
+      },
+    );
 
     test(
       'dado "Crear igual" (sin criterio), cuando inserta junto a un duplicado, la guarda',
@@ -269,7 +326,7 @@ void main() {
       final segunda = await registrar(params());
       final candidatas =
           (segunda.getOrElse(() => throw StateError('falló')) as AltaConDuplicados).candidatas;
-      expect(candidatas.map((c) => c.id), ['id-1']);
+      expect(candidatas.map((c) => c.ubicacion.id), ['id-1']);
       expect(await filas('ubicacion'), 1);
 
       final igual = await registrar(params(justificacion: 'Es otra casa en el mismo padrón'));

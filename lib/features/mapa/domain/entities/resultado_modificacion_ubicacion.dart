@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import 'duplicado_ubicacion.dart';
 import 'ubicacion.dart';
 
 /// Cómo terminó un pedido de modificación de ubicación (HU-UBI-004) que no fue un error.
@@ -76,14 +77,15 @@ final class ModificacionRequiereConfirmacion extends ResultadoModificacionUbicac
   List<Object?> get props => [pendientes, desplazamientoMetros];
 }
 
-/// La edición dejaría a la ubicación cerca de otra que parece la misma (HU-UBI-004, caso borde;
-/// HU-UBI-006): no se escribió nada. La pantalla muestra las candidatas y, si el colportor sigue,
-/// repite el pedido con una justificación.
+/// La edición dejaría a la ubicación con la misma dirección que otra o cerca de otra (HU-UBI-004,
+/// caso borde; HU-UBI-006): no se escribió nada. La pantalla muestra las candidatas (vista 07 con
+/// el aviso de la 04) y, si todas lo admiten ([CandidataDuplicado.admiteConservarAmbos]) y el
+/// colportor sigue, repite el pedido con una justificación.
 final class ModificacionConDuplicados extends ResultadoModificacionUbicacion {
   const ModificacionConDuplicados({required this.candidatas});
 
   /// De la más cercana a la más lejana; nunca vacía. Nunca incluye a la ubicación editada.
-  final List<Ubicacion> candidatas;
+  final List<CandidataDuplicado> candidatas;
 
   @override
   List<Object?> get props => [candidatas];

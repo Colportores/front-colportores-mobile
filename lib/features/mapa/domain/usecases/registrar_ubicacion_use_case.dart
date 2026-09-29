@@ -84,7 +84,8 @@ final class RegistrarUbicacionParams extends Equatable {
 /// 5. Si no, arma la ubicación —`id` UUID v7, `zona_id` en `null` (la asigna el servidor),
 ///    auditoría con el colportor como `created_by`— y, si es `CASA`, su espacio default (Supuesto
 ///    S13), y se los pasa al repositorio, que valida duplicados en la misma transacción en la que
-///    guarda y encola el sync (salvo "Crear igual").
+///    guarda y encola el sync. Con "Crear igual" solo frenan las candidatas que no lo admiten
+///    (`CriterioDuplicadoUbicacion.alSeguirIgual`, decisión D1 de backend-supabase#24).
 ///
 /// El estado inicial `house_status = "sin_visita"` es la **ausencia** de fila en `house_status`:
 /// esa cache solo admite los 7 colores de §8.4 (ADR-003, `CHECK` de backend-supabase 0001) y se
@@ -177,7 +178,7 @@ final class RegistrarUbicacionUseCase
       ubicacion,
       espacio: espacio,
       origen: punto.origen,
-      duplicados: crearIgual ? null : _criterio,
+      duplicados: crearIgual ? _criterio.alSeguirIgual : _criterio,
     );
   }
 

@@ -1,3 +1,4 @@
+import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
@@ -80,12 +81,13 @@ abstract interface class UbicacionLocalDataSource {
   });
 }
 
-/// El alta encontró candidatas a duplicado; el repositorio la traduce a `AltaConDuplicados`.
+/// El alta o la edición encontró candidatas a duplicado; el repositorio la traduce a
+/// `AltaConDuplicados` o `ModificacionConDuplicados`.
 final class UbicacionDuplicadaException implements Exception {
   const UbicacionDuplicadaException(this.candidatas);
 
-  /// De la más cercana a la más lejana.
-  final List<UbicacionModel> candidatas;
+  /// De la más cercana a la más lejana, con entidades de dominio.
+  final List<CandidataDuplicado> candidatas;
 
   /// Solo la cantidad: las candidatas llevan dirección y no van a un log.
   @override

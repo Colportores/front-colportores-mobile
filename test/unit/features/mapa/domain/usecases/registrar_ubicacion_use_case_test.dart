@@ -1,5 +1,6 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
@@ -201,7 +202,12 @@ void main() {
       test(
         'cuando el repositorio encuentra candidatas, devuelve AltaConDuplicados tal cual',
         () async {
-          final candidata = await _unaUbicacion(registrar, params());
+          final candidata = CandidataDuplicado(
+            ubicacion: await _unaUbicacion(registrar, params()),
+            motivo: MotivoDuplicado.mismaDireccion,
+            distanciaMetros: 40,
+            admiteConservarAmbos: true,
+          );
           repositorio.respuesta = Right(AltaConDuplicados(candidatas: [candidata]));
 
           final r = await registrar(params());
@@ -217,6 +223,20 @@ void main() {
         await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
 
         expect(repositorio.llamadas.single.duplicados, isNull);
+      });
+
+      test('con D1 en la opción (a), cuando elige "Crear igual", pide validar solo las candidatas '
+          'que no admiten conservar las dos', () async {
+        registrar = RegistrarUbicacionUseCase(
+          repositorio,
+          generarId: () => 'id-d1a',
+          ahora: () => ahora,
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
+        );
+
+        await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
+
+        expect(repositorio.llamadas.single.duplicados?.esSeguirIgual, isTrue);
       });
 
       test('cuando elige "Crear igual" con la justificación en blanco, devuelve FailureValidacion '

@@ -52,15 +52,16 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'user_id': ubicacion.auditoria.createdBy,
         // `coords_source` de HU-UBI-001: la tabla no tiene la columna (ver [registrar]).
         'coords_source': origen.name,
-        'crear_igual': duplicados == null,
+        'crear_igual': duplicados?.esSeguirIgual ?? true,
       });
       return Right(AltaRegistrada(ubicacion: ubicacion, espacio: espacio));
     } on UbicacionDuplicadaException catch (e) {
       _log.info(LogModulo.db, 'UBICACION_DUPLICADA', 'alta frenada por posibles duplicados', {
         'ubicacion_id': ubicacion.id,
-        'candidatas': [for (final c in e.candidatas) c.id],
+        'candidatas': [for (final c in e.candidatas) c.ubicacion.id],
+        'motivos': [for (final c in e.candidatas) c.motivo.name],
       });
-      return Right(AltaConDuplicados(candidatas: [for (final c in e.candidatas) c.toEntity()]));
+      return Right(AltaConDuplicados(candidatas: e.candidatas));
     } on Object catch (e, st) {
       _log.error(
         LogModulo.db,
@@ -122,17 +123,16 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,
-        'seguir_igual': duplicados == null,
+        'seguir_igual': duplicados?.esSeguirIgual ?? true,
       });
       return Right(UbicacionModificada(ubicacion: guardada.toEntity()));
     } on UbicacionDuplicadaException catch (e) {
       _log.info(LogModulo.db, 'UBICACION_DUPLICADA', 'edición frenada por posibles duplicados', {
         'ubicacion_id': nueva.id,
-        'candidatas': [for (final c in e.candidatas) c.id],
+        'candidatas': [for (final c in e.candidatas) c.ubicacion.id],
+        'motivos': [for (final c in e.candidatas) c.motivo.name],
       });
-      return Right(
-        ModificacionConDuplicados(candidatas: [for (final c in e.candidatas) c.toEntity()]),
-      );
+      return Right(ModificacionConDuplicados(candidatas: e.candidatas));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {

@@ -478,3 +478,18 @@ final class FailurePaqueteTilesCorrupto extends Failure {
         codigo: 'TILES_CHECKSUM',
       );
 }
+
+/// "Conservar ambos" sobre dos ubicaciones con la misma calle, número y ciudad cuando la decisión
+/// D1 (backend-supabase#24) no lo admite (`CriterioDuplicadoUbicacion.
+/// mismaDireccionAdmiteConservarAmbos`): tiene que quedar una sola (HU-UBI-006).
+///
+/// Texto para confirmar con Cristian: la HU y la vista 10 no traen uno para este caso.
+final class FailureDuplicadoMismaDireccion extends Failure {
+  const FailureDuplicadoMismaDireccion()
+    : super(
+        mensaje:
+            'Estas dos ubicaciones tienen la misma dirección y no pueden quedar las dos. Marcá cuál '
+            'es el duplicado o corregí la dirección de una.',
+        codigo: 'UBI_DUPLICADO_MISMA_DIRECCION',
+      );
+}

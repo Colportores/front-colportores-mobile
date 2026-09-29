@@ -22,7 +22,7 @@ final class Coordenadas extends Equatable {
   /// `(0, 0)`: lo que reportan algunos GPS sin fix. HU-UBI-001 lo trata como sin GPS.
   bool get sonCero => lat == 0 && lon == 0;
 
-  /// Distancia en metros sobre la superficie (haversine). A la escala de RF-UB08 (30 m) el error
+  /// Distancia en metros sobre la superficie (haversine). A la escala de RF-UB08 (unos metros) el error
   /// frente al elipsoide es de milímetros.
   double distanciaMetrosA(Coordenadas otra) {
     double rad(double grados) => grados * math.pi / 180;
