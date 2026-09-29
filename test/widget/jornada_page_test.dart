@@ -979,6 +979,41 @@ void main() {
       expect(dataSource.jornadas.single.estaAbierta, isFalse);
     });
 
+    testWidgets('si la jornada la cerró otro teléfono, la hora de fin elegida no pasa a la próxima '
+        'jornada', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final abierta = _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15));
+      final dataSource = _DataSource(iniciales: [abierta]);
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      await tester.pumpAndSettle();
+      await _tocarVeces(tester, 'hoja_hora_menos', 2);
+      await tester.tap(find.text('Usar 14:25'));
+      await tester.pumpAndSettle();
+      expect(find.text('14:25 · hace 10 min'), findsOneWidget);
+
+      // Otro teléfono la cierra; al tocar "Finalizar" esta pantalla se entera.
+      await dataSource.finalizar(
+        JornadaModel.fromEntity(
+          abierta.finalizada(
+            fin: DateTime(2026, 9, 23, 14),
+            actualizadaEn: DateTime(2026, 9, 23, 14),
+          ),
+        ),
+      );
+      await _tocarFinalizar(tester);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+
+      // La próxima jornada arranca sin la hora de fin vieja.
+      await tester.ensureVisible(find.byKey(const Key('jornada_iniciar')));
+      await tester.tap(find.byKey(const Key('jornada_iniciar')));
+      await tester.pumpAndSettle();
+      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.text('Ahora · 14:35'), findsOneWidget);
+      expect(find.text('14:25 · hace 10 min'), findsNothing);
+    });
+
     testWidgets(
       'el backup solo se dispara con Wi-Fi disponible y batería ≥ 30 %',
       // skip: issue #76 — bloqueado por #74. `DisparadorBackupPendiente` (el stub de

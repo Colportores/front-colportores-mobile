@@ -210,8 +210,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       _finalizando = false;
       resultado.fold<void>(
         (failure) => _errorFin = switch (failure) {
-          // La pantalla se relee y muestra lo que hay guardado.
-          FailureSinJornadaActiva() => null,
+          // La pantalla se relee y muestra lo que hay guardado. La hora de fin elegida era de esa
+          // jornada (que cerró otro teléfono): no pasa a la próxima.
+          FailureSinJornadaActiva() => () {
+            _horaFin = null;
+            return null;
+          }(),
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
           // Reloj atrasado: qué pasó y qué hacer (#102).
           FailureValidacion(:final mensaje) => mensaje,
