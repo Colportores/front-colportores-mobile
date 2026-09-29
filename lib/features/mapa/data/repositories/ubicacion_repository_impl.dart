@@ -3,10 +3,12 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
+import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/repositories/ubicacion_repository.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
+import '../../domain/value_objects/area_mapa.dart';
 import '../../domain/value_objects/punto_capturado.dart';
 import '../datasources/ubicacion_local_data_source.dart';
 import '../models/espacio_model.dart';
@@ -70,4 +72,23 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  @override
+  Stream<List<Ubicacion>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) => _local
+      .observarDelColportor(
+        colportorId: colportorId,
+        ciudadId: ciudadId,
+        incluirBajas: incluirBajas,
+      )
+      .map((modelos) => [for (final m in modelos) m.toEntity()]);
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) => _local.observarMarcadoresEnArea(colportorId: colportorId, area: area);
 }
