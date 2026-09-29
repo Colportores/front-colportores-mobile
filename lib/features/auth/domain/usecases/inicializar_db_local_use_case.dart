@@ -44,7 +44,12 @@ final class InicializarDbLocalParams extends Equatable {
     this.requiereEnvoltorio = false,
     this.aceptaAlmacenSoftware = false,
     this.alAvanzar,
+    this.usuarioId,
   });
+
+  /// `usuario_id` de la sesión. Un envoltorio desactualizado (#125) solo se renueva con la
+  /// [password] de la cuenta que lo dejó así; sin el id no se renueva.
+  final String? usuarioId;
 
   /// Contraseña con la que el usuario acaba de autenticarse, o `null` si no hay (login con Google,
   /// sesión restaurada). Solo se usa al crear la DB, para envolver la DEK (ADR-006): sin ella no hay
@@ -71,7 +76,13 @@ final class InicializarDbLocalParams extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [password, requiereEnvoltorio, aceptaAlmacenSoftware, alAvanzar];
+  List<Object?> get props => [
+    password,
+    requiereEnvoltorio,
+    aceptaAlmacenSoftware,
+    alAvanzar,
+    usuarioId,
+  ];
 }
 
 /// HU-AUTH-009 — Inicialización de la DB local cifrada con una DEK aleatoria envuelta (ADR-006).
@@ -82,8 +93,9 @@ final class InicializarDbLocalParams extends Equatable {
 /// Argon2id y sin contraseña. Si algo falla **no se borra nada**: la DB tiene datos del usuario.
 /// Si el login fue con contraseña y el equipo no tiene envoltorio (entró con Google, o se perdió),
 /// lo arma antes de abrir; si eso falla, abre igual. Si el envoltorio quedó **desactualizado** por
-/// un cambio de contraseña que no llegó a re-envolver (HU-AUTH-005, #125), lo renueva con la
-/// contraseña del login **después** de abrir, cuando ya se sabe que la DEK del almacén es la buena.
+/// un cambio de contraseña que no llegó a re-envolver (HU-AUTH-005, #125) y el login es de esa
+/// cuenta, lo renueva con la contraseña del login **después** de abrir, cuando ya se sabe que la
+/// DEK del almacén es la buena. Si el login es de otra cuenta, no lo toca.
 /// Si el almacén falla o perdió la DEK rige la recuperación guiada: con envoltorio por contraseña,
 /// [FailureAlmacenSeguroRecuperable] (sigue `RecuperarDbLocalConPasswordUseCase`); sin él,
 /// [FailureAlmacenSeguroSinRecuperacion] (la UI ofrece "empezar de nuevo" y pregunta).
@@ -215,7 +227,13 @@ final class InicializarDbLocalUseCase
       await _repository.envolverConPassword(dek, password);
     }
     if (password != null && estado.envoltorioDesactualizado) {
-      return _abrirYRenovarEnvoltorio(params, dek, password, testigo);
+      if (estado.envoltorioDesactualizadoPara == params.usuarioId) {
+        return _abrirYRenovarEnvoltorio(params, dek, password, testigo);
+      }
+      // La marca es de otra cuenta (la DB todavía no está atada a su usuario, #26): con esta
+      // contraseña el dueño de los datos no podría recuperarlos. No se toca el envoltorio y la
+      // marca queda para un login de esa cuenta.
+      _repository.avisarEnvoltorioDeOtraCuenta();
     }
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);

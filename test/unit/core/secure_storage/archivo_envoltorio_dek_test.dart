@@ -62,29 +62,29 @@ void main() {
       await expectLater(archivo.borrar(), completes);
     });
 
-    test('dado un envoltorio marcado como desactualizado (#125), escribir otro baja la marca; '
-        'marcar no toca el envoltorio', () async {
+    test('dado un envoltorio marcado como desactualizado (#125), la marca guarda el usuario; '
+        'escribir otro la baja y marcar no toca el envoltorio', () async {
       await archivo.escribir(_envoltorio(1));
-      expect(await archivo.estaDesactualizado(), isFalse);
+      expect(await archivo.desactualizadoPara(), isNull);
 
-      await archivo.marcarDesactualizado();
+      await archivo.marcarDesactualizado('usuario-a');
 
-      expect(await archivo.estaDesactualizado(), isTrue);
+      expect(await archivo.desactualizadoPara(), 'usuario-a');
       expect(await archivo.leer(), _envoltorio(1));
 
       await archivo.escribir(_envoltorio(2));
 
-      expect(await archivo.estaDesactualizado(), isFalse);
+      expect(await archivo.desactualizadoPara(), isNull);
       expect(await archivo.leer(), _envoltorio(2));
     });
 
     test('cuando se borra, se va también la marca de desactualizado', () async {
       await archivo.escribir(_envoltorio(1));
-      await archivo.marcarDesactualizado();
+      await archivo.marcarDesactualizado('usuario-a');
 
       await archivo.borrar();
 
-      expect(await archivo.estaDesactualizado(), isFalse);
+      expect(await archivo.desactualizadoPara(), isNull);
       expect(dir.listSync(), isEmpty);
     });
 
@@ -94,7 +94,7 @@ void main() {
       );
 
       await expectLater(
-        roto.marcarDesactualizado(),
+        roto.marcarDesactualizado('usuario-a'),
         throwsA(isA<ArchivoEnvoltorioException>().having((e) => e.operacion, 'op', 'marcar')),
       );
     });

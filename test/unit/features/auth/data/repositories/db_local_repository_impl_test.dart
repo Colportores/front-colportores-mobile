@@ -160,9 +160,9 @@ void main() {
     expect(_derecha(await repo.estado()).envoltorioDesactualizado, isFalse);
     expect(salida.lineas.join('\n'), isNot(contains('ENVOLTORIO_DESACTUALIZADO')));
 
-    _derecha(await repo.marcarEnvoltorioDesactualizado());
+    _derecha(await repo.marcarEnvoltorioDesactualizado('usuario-a'));
 
-    expect(_derecha(await repo.estado()).envoltorioDesactualizado, isTrue);
+    expect(_derecha(await repo.estado()).envoltorioDesactualizadoPara, 'usuario-a');
     expect(salida.lineas.join('\n'), contains('ENVOLTORIO_DESACTUALIZADO'));
 
     _derecha(await repo.envolverConPassword(dek, 'NuevaClave1'));
@@ -172,9 +172,18 @@ void main() {
   });
 
   test('dada la marca de desactualizado sin envoltorio, el estado no la cuenta', () async {
-    _derecha(await repo.marcarEnvoltorioDesactualizado());
+    _derecha(await repo.marcarEnvoltorioDesactualizado('usuario-a'));
 
     expect(_derecha(await repo.estado()).envoltorioDesactualizado, isFalse);
+  });
+
+  test('el aviso de envoltorio de otra cuenta va al log como warn (#125)', () {
+    final salida = _SalidaEnMemoria();
+    repo = construir(logger: AppLogger(output: salida));
+
+    repo.avisarEnvoltorioDeOtraCuenta();
+
+    expect(salida.lineas.join('\n'), contains('[WARN][DB][ENVOLTORIO_DE_OTRA_CUENTA]'));
   });
 
   test('cuando reconstruye el almacén, la DB vuelve a abrir con la DEK recuperada', () async {

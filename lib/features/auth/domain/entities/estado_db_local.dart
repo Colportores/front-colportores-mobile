@@ -25,7 +25,7 @@ final class EstadoDbLocal extends Equatable {
     required this.marca,
     required this.archivoExiste,
     required this.envoltorioExiste,
-    this.envoltorioDesactualizado = false,
+    this.envoltorioDesactualizadoPara,
     this.abierta = false,
   });
 
@@ -37,20 +37,24 @@ final class EstadoDbLocal extends Equatable {
   /// Si hay una DEK envuelta con la contraseña en este equipo. No dice si se puede abrir.
   final bool envoltorioExiste;
 
-  /// Si hay envoltorio y puede estar hecho con una contraseña que ya no es la de la cuenta: un
-  /// cambio de contraseña (HU-AUTH-005) empezó y no llegó a re-envolver la DEK (#125). El
-  /// próximo login con contraseña lo renueva.
-  final bool envoltorioDesactualizado;
+  /// Con envoltorio: el `usuario_id` de un cambio de contraseña (HU-AUTH-005) que empezó y no
+  /// llegó a re-envolver la DEK (#125), así que el envoltorio puede estar hecho con una contraseña
+  /// que ya no es la de esa cuenta. Lo renueva el próximo login con contraseña **de esa cuenta**.
+  /// `null` si no hay envoltorio o no está desactualizado.
+  final String? envoltorioDesactualizadoPara;
 
   /// Si la DB ya está abierta en esta sesión: otro flujo la inicializó antes (ver `TurnoDbLocal`).
   final bool abierta;
+
+  /// Si el envoltorio quedó desactualizado ([envoltorioDesactualizadoPara]).
+  bool get envoltorioDesactualizado => envoltorioDesactualizadoPara != null;
 
   @override
   List<Object?> get props => [
     marca,
     archivoExiste,
     envoltorioExiste,
-    envoltorioDesactualizado,
+    envoltorioDesactualizadoPara,
     abierta,
   ];
 }

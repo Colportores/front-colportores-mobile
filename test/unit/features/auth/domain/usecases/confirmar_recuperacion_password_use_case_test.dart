@@ -30,6 +30,9 @@ final class _RecuperacionFalsa implements RecuperacionPasswordRepository {
   String? fijada;
 
   @override
+  String? usuarioId = 'usuario-a';
+
+  @override
   Stream<EnlaceRecuperacion> get enlaces => enlacesController.stream;
 
   @override
@@ -162,10 +165,16 @@ void main() {
     });
 
     /// El login que sigue a la recuperación, con la DB cerrada por la revocación de las sesiones.
-    Future<Either<Failure, ResultadoInicializacionDb>> entrarCon(String password) {
+    /// Por defecto, de la cuenta que se recuperó.
+    Future<Either<Failure, ResultadoInicializacionDb>> entrarCon(String password, {String? de}) {
       dbLocal.abierta = false;
       final inicializar = InicializarDbLocalUseCase(dbLocal, vigencia, turno);
-      return inicializar(InicializarDbLocalParams(password: password, requiereEnvoltorio: true));
+      final params = InicializarDbLocalParams(
+        password: password,
+        requiereEnvoltorio: true,
+        usuarioId: de ?? 'usuario-a',
+      );
+      return inicializar(params);
     }
 
     /// Después falla el Keystore: el próximo inicio pide la contraseña (recuperación guiada de
@@ -257,6 +266,63 @@ void main() {
 
       expect(dbLocal.envoltorioDesactualizado, isTrue);
       expect(dbLocal.envoltorio!.password, 'Vieja1234');
+    });
+
+    test('dado que A cambia su contraseña sin que se renueve el envoltorio y cierra sesión, cuando '
+        'entra B con su contraseña, el envoltorio de A no se toca: lo renueva el próximo login de '
+        'A', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+
+      expect(await entrarCon('ClaveDeB1', de: 'usuario-b'), abierta);
+
+      expect(dbLocal.envoltorio!.password, 'Vieja1234', reason: 'nunca con la contraseña de B');
+      expect(dbLocal.envoltorioDesactualizadoPara, 'usuario-a');
+      expect(dbLocal.llamadas, contains('avisarOtraCuenta'));
+
+      expect(await entrarCon('NuevaClave1'), abierta);
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    test('dado que el Keystore falla en el login con la contraseña nueva y la recuperación guiada '
+        'abre con la anterior, el envoltorio se renueva ahí mismo con la del login', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+      expect(
+        await entrarCon('NuevaClave1'),
+        const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
+      );
+
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      const params = RecuperarDbLocalParams(
+        password: 'Vieja1234',
+        passwordDelLogin: 'NuevaClave1',
+        usuarioId: 'usuario-a',
+      );
+
+      expect(await recuperar(params), const Right<Failure, Unit>(unit));
+      expect(dbLocal.envoltorio!.password, 'NuevaClave1');
+      expect(dbLocal.envoltorio!.dek, List<int>.filled(32, 77));
+      expect(dbLocal.envoltorioDesactualizado, isFalse);
+    });
+
+    test('dada la recuperación guiada tras el login de otra cuenta, no renueva el envoltorio de '
+        'A', () async {
+      recuperacion.fallaAlActualizar = const FailureSinConexion();
+      await conPassword('NuevaClave1');
+      dbLocal.fallas['leerDek'] = const FailureAlmacenSeguro();
+
+      final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);
+      const params = RecuperarDbLocalParams(
+        password: 'Vieja1234',
+        passwordDelLogin: 'ClaveDeB1',
+        usuarioId: 'usuario-b',
+      );
+
+      expect(await recuperar(params), const Right<Failure, Unit>(unit));
+      expect(dbLocal.envoltorio!.password, 'Vieja1234');
+      expect(dbLocal.envoltorioDesactualizadoPara, 'usuario-a');
     });
   });
 

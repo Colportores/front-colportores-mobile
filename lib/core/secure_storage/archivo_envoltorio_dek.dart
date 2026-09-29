@@ -10,10 +10,10 @@ import 'envoltorio_dek.dart';
 /// —el de la recuperación guiada, o un Keystore que se rompe— no se la lleva. Es la copia que deja
 /// reconstruir el almacén con la contraseña y la que viaja con el backup.
 ///
-/// Al lado guarda la marca de **desactualizado** (#125): un archivo vacío que dice que el
-/// envoltorio puede estar hecho con una contraseña que ya no es la de la cuenta (un cambio de
-/// contraseña que empezó y no llegó a re-envolver). Vive en disco, como el envoltorio, para que un
-/// Keystore que falla no se la lleve.
+/// Al lado guarda la marca de **desactualizado** (#125): un archivo con el `usuario_id` de quien
+/// empezó a cambiar la contraseña y no llegó a re-envolver, así que el envoltorio puede estar
+/// hecho con una contraseña que ya no es la de esa cuenta. Vive en disco, como el envoltorio, para
+/// que un Keystore que falla no se la lleve.
 ///
 /// Lanza [ArchivoEnvoltorioException] ante fallas de disco y [EnvoltorioCorruptoException] si lo
 /// que hay no se puede interpretar; el consumidor las traduce a `Failure`.
@@ -65,14 +65,17 @@ final class ArchivoEnvoltorioDek {
     }
   }
 
-  /// Si el envoltorio quedó marcado como desactualizado ([marcarDesactualizado]).
-  Future<bool> estaDesactualizado() =>
-      _io('existe', () async => (await _marcaDesactualizado()).exists());
+  /// El `usuario_id` que guardó [marcarDesactualizado], o `null` si el envoltorio no está marcado
+  /// como desactualizado.
+  Future<String?> desactualizadoPara() => _io('marca', () async {
+    final marca = await _marcaDesactualizado();
+    return await marca.exists() ? (await marca.readAsString()).trim() : null;
+  });
 
-  /// Marca el envoltorio como desactualizado: puede estar hecho con una contraseña que ya no es la
-  /// de la cuenta. La baja el próximo [escribir].
-  Future<void> marcarDesactualizado() => _io('marcar', () async {
-    await (await _marcaDesactualizado()).writeAsString('', flush: true);
+  /// Marca el envoltorio como desactualizado por un cambio de contraseña de [usuarioId]: puede
+  /// estar hecho con una contraseña que ya no es la de esa cuenta. La baja el próximo [escribir].
+  Future<void> marcarDesactualizado(String usuarioId) => _io('marcar', () async {
+    await (await _marcaDesactualizado()).writeAsString(usuarioId, flush: true);
   });
 
   /// Borra el envoltorio (y el temporal y la marca de desactualizado, si quedaron). Si no había,
@@ -98,7 +101,7 @@ final class ArchivoEnvoltorioDek {
 final class ArchivoEnvoltorioException implements Exception {
   const ArchivoEnvoltorioException({required this.operacion, this.causa});
 
-  /// `existe`, `leer`, `escribir`, `marcar` o `borrar`.
+  /// `existe`, `leer`, `escribir`, `marca`, `marcar` o `borrar`.
   final String operacion;
 
   final FileSystemException? causa;

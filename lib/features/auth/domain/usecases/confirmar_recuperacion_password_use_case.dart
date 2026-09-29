@@ -52,11 +52,12 @@ final class ConfirmarRecuperacionPasswordParams extends Equatable {
 /// Puede pasar que el servidor aplique el cambio y la respuesta se pierda (la pantalla dice "sin
 /// conexión" y el usuario sale), que el almacén seguro no deje leer la DEK justo ahora o que la app
 /// muera durante el Argon2id. En todos los casos la marca del paso 2 queda puesta, y el próximo
-/// login con contraseña re-envuelve la DEK con esa contraseña (`InicializarDbLocalUseCase`): sin la
-/// marca, el envoltorio quedaría con la contraseña olvidada y, si después fallara el Keystore,
-/// ninguna contraseña que el usuario conoce abriría sus datos. Si hasta ese login el almacén sigue
-/// sin responder, rige la recuperación guiada (ADR-006) con la contraseña anterior: el aviso de
-/// "contraseña que no abre" ya sugiere probar con esa.
+/// login con contraseña **de esa cuenta** re-envuelve la DEK con esa contraseña
+/// (`InicializarDbLocalUseCase`, o `RecuperarDbLocalConPasswordUseCase` si el Keystore falla):
+/// sin la marca, el envoltorio quedaría con la contraseña olvidada y, si después fallara el
+/// Keystore, ninguna contraseña que el usuario conoce abriría sus datos. Si en ese login el almacén
+/// no responde, rige la recuperación guiada (ADR-006) con la contraseña anterior (el aviso de
+/// "contraseña que no abre" ya sugiere probar con esa), y ahí mismo se renueva el envoltorio.
 ///
 /// Una respuesta del servidor que rechaza el cambio no baja la marca: un intento anterior pudo
 /// haber entrado sin respuesta. Una marca de más solo cuesta un Argon2id en el próximo login.
@@ -96,12 +97,19 @@ final class ConfirmarRecuperacionPasswordUseCase
   /// local, cuya DEK hay que re-envolver en el paso 4; sin DB (dispositivo nuevo) no hay nada que
   /// envolver.
   ///
+  /// La marca lleva el `usuario_id` de la cuenta que se recupera: solo un login de esa cuenta la
+  /// usa para re-envolver. Sin sesión de recuperación no hay a quién atarla, y tampoco cambio de
+  /// contraseña (el servidor lo rechaza).
+  ///
   /// Si no se puede marcar, igual se sigue: frenar el cambio de contraseña por eso dejaría al
   /// usuario sin poder entrar a su cuenta. La falla queda en el log.
   Future<bool> _marcarEnvoltorio() async {
     final estado = await _dbLocal.estado();
     if (estado case Right(value: final EstadoDbLocal e)) {
-      if (e.envoltorioExiste) await _dbLocal.marcarEnvoltorioDesactualizado();
+      final usuarioId = _recuperacion.usuarioId;
+      if (e.envoltorioExiste && usuarioId != null) {
+        await _dbLocal.marcarEnvoltorioDesactualizado(usuarioId);
+      }
       return e.archivoExiste && e.marca == MarcaDbLocal.puesta;
     }
     return false;
