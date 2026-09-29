@@ -463,7 +463,7 @@ void main() {
 
       expect(repo.idRecibido, 'ub-1');
       expect(repo.incluirBajasRecibido, isFalse);
-      expect(r, _ok([espacio()]));
+      expect(r.toOption().toNullable(), [espacio()]);
     });
 
     test('dado incluirBajas, lo pasa al repositorio', () async {

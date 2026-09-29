@@ -125,7 +125,7 @@ void main() {
       final local = _LocalFijo(modelo);
       final r = repo(local);
 
-      expect(await r.listar('ub-1', incluirBajas: true), _ok([entidad]));
+      expect((await r.listar('ub-1', incluirBajas: true)).toOption().toNullable(), [entidad]);
       expect(local.incluirBajasRecibido, isTrue);
       expect(await r.contarActivos('ub-1'), _ok(3));
     });
