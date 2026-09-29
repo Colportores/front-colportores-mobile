@@ -15,9 +15,12 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
+import '../../../../../helpers/ubicacion_sin_modificar.dart';
 
 /// Repositorio con un stream que el test controla, y que anota con qué se lo pidió.
-final class _RepositorioReactivo implements UbicacionRepository {
+final class _RepositorioReactivo
+    with UbicacionRepositorySinModificar
+    implements UbicacionRepository {
   final fuente = StreamController<List<Ubicacion>>();
   ({String colportorId, String? ciudadId, bool incluirBajas})? pedido;
 
