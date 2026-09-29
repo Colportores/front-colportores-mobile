@@ -48,6 +48,8 @@ void main() {
     test('sin ubicaciones: vacía, sin más páginas y con los tres tipos en 0', () {
       final r = ArmadorListaUbicaciones.armar(const [], consulta);
       expect(r.estaVacia, isTrue);
+      expect(r.sinUbicaciones, isTrue);
+      expect(r.sinResultados, isFalse);
       expect(r.items, isEmpty);
       expect(r.hayMas, isFalse);
       expect(r.porTipo, {for (final t in TipoUbicacion.values) t: 0});
@@ -66,6 +68,39 @@ void main() {
     test('orden por defecto: updated_at descendente, empate por id', () {
       final todas = [ub('b'), ub('c', minutos: 5), ub('a'), ub('d', minutos: 9)];
       expect(ids(consulta, todas), ['d', 'c', 'a', 'b']);
+    });
+
+    test('vacío contra sin resultados: con ubicaciones y filtros que no matchean no es "sin '
+        'ubicaciones"', () {
+      final todas = [ub('a'), ub('b', ciudad: 'sal')];
+      for (final c in const [
+        ConsultaListaUbicaciones(colportorId: yo, busqueda: 'inexistente'),
+        ConsultaListaUbicaciones(colportorId: yo, ciudadId: 'otra'),
+        ConsultaListaUbicaciones(colportorId: yo, tipos: {TipoUbicacion.edificio}),
+      ]) {
+        final r = ArmadorListaUbicaciones.armar(todas, c);
+        expect(r.estaVacia, isTrue, reason: '$c');
+        expect(r.sinUbicaciones, isFalse, reason: '$c');
+        expect(r.sinResultados, isTrue, reason: '$c');
+      }
+      expect(ArmadorListaUbicaciones.armar(todas, consulta).sinResultados, isFalse);
+    });
+
+    test('las ubicaciones de otro colportor no cuentan como "tengo ubicaciones"', () {
+      final r = ArmadorListaUbicaciones.armar([ub('ajena', dueno: 'col-2')], consulta);
+      expect(r.sinUbicaciones, isTrue);
+    });
+
+    test('todas de baja: con "Mostrar bajas" apagado es sinUbicaciones; encendido, no', () {
+      final bajas = [ub('a', baja: true), ub('b', baja: true)];
+      final apagado = ArmadorListaUbicaciones.armar(bajas, consulta);
+      expect(apagado.sinUbicaciones, isTrue);
+      final encendido = ArmadorListaUbicaciones.armar(
+        bajas,
+        const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true),
+      );
+      expect(encendido.sinUbicaciones, isFalse);
+      expect(encendido.total, 2);
     });
 
     test('sin posición no hay distancias', () {
@@ -254,6 +289,19 @@ void main() {
         ),
         ['medio', 'cerca'],
       );
+    });
+
+    test('un radio cero, negativo o no finito no filtra (se ignora)', () {
+      for (final radio in [0.0, -5.0, double.nan, double.infinity, double.negativeInfinity]) {
+        expect(
+          ids(
+            ConsultaListaUbicaciones(colportorId: yo, posicion: aqui, radioMaxMetros: radio),
+            todas,
+          ),
+          hasLength(3),
+          reason: '$radio',
+        );
+      }
     });
 
     test('el radio sin posición se ignora', () {

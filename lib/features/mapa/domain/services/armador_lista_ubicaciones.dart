@@ -13,14 +13,18 @@ abstract final class ArmadorListaUbicaciones {
   static ListaUbicaciones armar(Iterable<Ubicacion> ubicaciones, ConsultaListaUbicaciones c) {
     final posicion = c.posicionValida;
     final terminos = _terminos(c.busqueda);
-    final radio = posicion == null ? null : c.radioMaxMetros;
+    // Un radio no positivo o no finito (NaN, infinito) no es un filtro: se ignora.
+    final r = c.radioMaxMetros;
+    final radio = posicion == null || r == null || !r.isFinite || r <= 0 ? null : r;
 
     // Todos los filtros menos el de tipo: con esto se cuentan los tipos.
     final candidatas = <ItemListaUbicacion>[];
+    var propias = 0;
     for (final u in ubicaciones) {
       if (u.auditoria.createdBy != c.colportorId) continue;
-      if (c.ciudadId != null && u.ciudadId != c.ciudadId) continue;
       if (u.estaBorrada && !c.incluirBajas) continue;
+      propias++;
+      if (c.ciudadId != null && u.ciudadId != c.ciudadId) continue;
       if (!_coincide(u, terminos)) continue;
       final distancia = posicion?.distanciaMetrosA(u.coordenadas);
       if (radio != null && distancia! > radio) continue;
@@ -49,6 +53,7 @@ abstract final class ArmadorListaUbicaciones {
       porTipo: porTipo,
       hayMas: filtradas.length > limite,
       ordenAplicado: porCercania ? OrdenListaUbicaciones.cercania : OrdenListaUbicaciones.recientes,
+      sinUbicaciones: propias == 0,
     );
   }
 

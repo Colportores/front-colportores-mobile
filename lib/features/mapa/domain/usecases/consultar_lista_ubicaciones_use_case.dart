@@ -9,8 +9,9 @@ import '../services/armador_lista_ubicaciones.dart';
 ///
 /// Filtros (tipo, ciudad, proximidad, bajas), búsqueda por calle + número, orden (recientes o
 /// cercanía), contadores y página de 50 en 50: ver [ConsultaListaUbicaciones] y
-/// `ArmadorListaUbicaciones`. Lista vacía = `ListaUbicaciones.estaVacia`: la vista muestra el
-/// empty state con "Registrar tu primera ubicación".
+/// `ArmadorListaUbicaciones`. El empty state de la HU ("Registrar tu primera
+/// ubicación") va solo con `ListaUbicaciones.sinUbicaciones`; si hay ubicaciones pero los filtros
+/// no dejan ninguna (`sinResultados`), corresponde "sin resultados".
 ///
 /// Todo se resuelve en memoria sobre las ubicaciones del colportor (cientos, no miles). Si la
 /// lista crece o la búsqueda se vuelve lenta, el paso siguiente es FTS5 (R17), sin tocar este
@@ -23,10 +24,6 @@ final class ConsultarListaUbicacionesUseCase
 
   @override
   Stream<ListaUbicaciones> call(ConsultaListaUbicaciones consulta) => _repositorio
-      .observarDelColportor(
-        colportorId: consulta.colportorId,
-        ciudadId: consulta.ciudadId,
-        incluirBajas: consulta.incluirBajas,
-      )
+      .observarDelColportor(colportorId: consulta.colportorId, incluirBajas: consulta.incluirBajas)
       .map((ubicaciones) => ArmadorListaUbicaciones.armar(ubicaciones, consulta));
 }

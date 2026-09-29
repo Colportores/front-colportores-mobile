@@ -65,9 +65,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
-  /// Ubicaciones activas de la misma ciudad dentro de un recuadro que contiene el círculo de
-  /// [radioMetros] alrededor de [centro] (con margen). El filtro exacto por distancia lo hace el
-  /// criterio; el recuadro solo acota lo que se lee, usando el índice `(ciudad_id, lat)`.
   @override
   Stream<List<UbicacionModel>> observarDelColportor({
     required String colportorId,
@@ -80,6 +77,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return consulta.watch().map((filas) => [for (final fila in filas) _aModelo(fila)]);
   }
 
+  /// Ubicaciones activas de la misma ciudad dentro de un recuadro que contiene el círculo de
+  /// [radioMetros] alrededor de [centro] (con margen). El filtro exacto por distancia lo hace el
+  /// criterio; el recuadro solo acota lo que se lee, usando el índice `(ciudad_id, lat)`.
   Future<List<UbicacionModel>> _activasCerca(UbicacionModel centro, double radioMetros) async {
     final margen = radioMetros * 1.5;
     final dLat = margen / _metrosPorGrado;

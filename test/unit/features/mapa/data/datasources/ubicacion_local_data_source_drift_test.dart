@@ -16,6 +16,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplic
 import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_ubicacion_use_case.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -340,6 +341,31 @@ void main() {
 
       expect(emisiones.first, isEmpty);
       expect(emisiones.last, ['nueva']);
+      await sub.cancel();
+    });
+
+    test('es reactivo ante un update: la baja sale de la emisión siguiente y la edición se '
+        'refleja', () async {
+      await local.insertar(ubicacion(id: 'a'));
+      await local.insertar(ubicacion(id: 'b', lon: -58));
+      final emisiones = <List<({String id, String? calle})>>[];
+      final sub = local
+          .observarDelColportor(colportorId: 'col-1')
+          .listen((l) => emisiones.add([for (final u in l) (id: u.id, calle: u.calle)]));
+      await pumpEventQueue();
+      expect(emisiones.last.map((u) => u.id), unorderedEquals(['a', 'b']));
+
+      await (db.update(
+        db.ubicaciones,
+      )..where((u) => u.id.equals('a'))).write(UbicacionesCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+      expect(emisiones.last.map((u) => u.id), ['b']);
+
+      await (db.update(db.ubicaciones)..where((u) => u.id.equals('b'))).write(
+        const UbicacionesCompanion(calle: Value('Otra calle')),
+      );
+      await pumpEventQueue();
+      expect(emisiones.last, [(id: 'b', calle: 'Otra calle')]);
       await sub.cancel();
     });
   });

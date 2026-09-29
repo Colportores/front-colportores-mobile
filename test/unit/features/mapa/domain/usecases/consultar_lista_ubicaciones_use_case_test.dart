@@ -56,14 +56,18 @@ void main() {
     ),
   );
 
-  test('pide al repositorio lo del colportor, la ciudad y las bajas', () async {
-    final repo = _RepositorioReactivo();
-    final sub = ConsultarListaUbicacionesUseCase(repo)(
-      const ConsultaListaUbicaciones(colportorId: 'col-1', ciudadId: 'mvd', incluirBajas: true),
-    ).listen((_) {});
-    expect(repo.pedido, (colportorId: 'col-1', ciudadId: 'mvd', incluirBajas: true));
-    await sub.cancel();
-  });
+  test(
+    'pide al repositorio lo del colportor y las bajas; la ciudad la filtra el armador',
+    () async {
+      final repo = _RepositorioReactivo();
+      final sub = ConsultarListaUbicacionesUseCase(repo)(
+        const ConsultaListaUbicaciones(colportorId: 'col-1', ciudadId: 'mvd', incluirBajas: true),
+      ).listen((_) {});
+      // Sin ciudad: si no, "sinUbicaciones" no podría contar las de otras ciudades.
+      expect(repo.pedido, (colportorId: 'col-1', ciudadId: null, incluirBajas: true));
+      await sub.cancel();
+    },
+  );
 
   test('cada emisión del repositorio vuelve a emitir la lista armada (stream reactivo)', () async {
     final repo = _RepositorioReactivo();
