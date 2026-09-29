@@ -65,6 +65,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
+  @override
+  Stream<List<UbicacionModel>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) {
+    final consulta = select(ubicaciones)..where((u) => u.createdBy.equals(colportorId));
+    if (ciudadId != null) consulta.where((u) => u.ciudadId.equals(ciudadId));
+    if (!incluirBajas) consulta.where((u) => u.deletedAt.isNull());
+    return consulta.watch().map((filas) => [for (final fila in filas) _aModelo(fila)]);
+  }
+
   /// Ubicaciones activas de la misma ciudad dentro de un recuadro que contiene el círculo de
   /// [radioMetros] alrededor de [centro] (con margen). El filtro exacto por distancia lo hace el
   /// criterio; el recuadro solo acota lo que se lee, usando el índice `(ciudad_id, lat)`.

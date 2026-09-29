@@ -35,6 +35,13 @@ final class _RepositorioQueAnota implements UbicacionRepository {
     llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
     return respuesta ?? Right(AltaRegistrada(ubicacion: ubicacion, espacio: espacio));
   }
+
+  @override
+  Stream<List<Ubicacion>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) => const Stream.empty();
 }
 
 void main() {

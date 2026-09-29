@@ -23,6 +23,14 @@ abstract interface class UbicacionLocalDataSource {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
   });
+
+  /// Ubicaciones cuyo `created_by` es [colportorId] (filtro opcional por [ciudadId]), con las bajas
+  /// solo si [incluirBajas]. Emite de nuevo ante cualquier cambio de la tabla (stream Drift, §8.8).
+  Stream<List<UbicacionModel>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  });
 }
 
 /// El alta encontró candidatas a duplicado; el repositorio la traduce a `AltaConDuplicados`.

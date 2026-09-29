@@ -29,4 +29,15 @@ abstract interface class UbicacionRepository {
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
   });
+
+  /// Las ubicaciones del colportor [colportorId] (`created_by`), como stream: emite de nuevo ante
+  /// cualquier alta, baja o edición (HU-UBI-002, §8.8). Trae las de baja solo si [incluirBajas].
+  /// Los demás filtros y el orden los aplica `ArmadorListaUbicaciones`.
+  ///
+  /// Si la lectura falla, el stream termina con el error (el caso de uso lo pasa tal cual).
+  Stream<List<Ubicacion>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  });
 }
