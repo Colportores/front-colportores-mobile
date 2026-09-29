@@ -11,6 +11,9 @@ abstract interface class RecuperacionPasswordRemoteDataSource {
   /// [EnlaceRecuperacion.sinConexion] si fue por falta de red: el enlace sigue sirviendo).
   Stream<EnlaceRecuperacion> get enlacesRecuperacion;
 
+  /// El id del usuario de la sesión de recuperación que dejó el enlace, o `null` si no hay.
+  String? get usuarioDeLaRecuperacion;
+
   /// Fija [nueva] con la sesión de recuperación. Lanza [PasswordIgualALaAnteriorException],
   /// [PasswordDebilException], [SesionDeRecuperacionVencidaException], [SinConexionException] o
   /// [ServidorException].

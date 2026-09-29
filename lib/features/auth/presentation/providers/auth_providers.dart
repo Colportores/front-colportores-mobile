@@ -162,9 +162,17 @@ SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref re
 ObservarErroresVerificacionUseCase observarErroresVerificacionUseCase(Ref ref) =>
     ObservarErroresVerificacionUseCase(ref.watch(authRepositoryProvider));
 
+/// Un evento de verificación de email (un error o un éxito). **Sin `==` a propósito**, y sin
+/// constructor `const` (dos `const` iguales serían la misma instancia): `ref.listen` solo avisa si
+/// el valor cambió, y con `Stream<void>` todos los eventos valían `AsyncData(null)`, así que el
+/// listener de la raíz veía el primero y se perdía los siguientes (#126). Mismo criterio que
+/// `LlegadaEnlaceRecuperacion`.
+final class EventoVerificacionEmail {}
+
 @Riverpod(keepAlive: true)
-Stream<void> erroresVerificacionEmail(Ref ref) =>
-    ref.watch(observarErroresVerificacionUseCaseProvider)(const NoParams());
+Stream<EventoVerificacionEmail> erroresVerificacionEmail(Ref ref) => ref
+    .watch(observarErroresVerificacionUseCaseProvider)(const NoParams())
+    .map((_) => EventoVerificacionEmail());
 
 /// Kept-alive por el mismo motivo que `erroresVerificacionEmailProvider`: la raíz de la app se
 /// suscribe una sola vez, para toda la vida de la app.
@@ -173,5 +181,6 @@ ObservarVerificacionesExitosasUseCase observarVerificacionesExitosasUseCase(Ref 
     ObservarVerificacionesExitosasUseCase(ref.watch(authRepositoryProvider));
 
 @Riverpod(keepAlive: true)
-Stream<void> verificacionesExitosas(Ref ref) =>
-    ref.watch(observarVerificacionesExitosasUseCaseProvider)(const NoParams());
+Stream<EventoVerificacionEmail> verificacionesExitosas(Ref ref) => ref
+    .watch(observarVerificacionesExitosasUseCaseProvider)(const NoParams())
+    .map((_) => EventoVerificacionEmail());
