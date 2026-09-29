@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
@@ -13,7 +15,8 @@ import '../services/turno_db_local.dart';
 /// Pasos que la UI muestra como progreso ("Preparando tu espacio seguro… 1/3, 2/3, 3/3",
 /// HU-AUTH-009). Al crear la DB son los tres, salvo [protegiendoClave] sin contraseña (login con
 /// Google); al abrir una DB existente, [abriendoDb], antecedido por [protegiendoClave] si hay que
-/// armar el envoltorio.
+/// armar el envoltorio. Renovar un envoltorio desactualizado (#125) no suma un paso: su Argon2id
+/// corre después de abrir, dentro de [abriendoDb].
 enum PasoInicializacionDb {
   /// Genera la DEK y la guarda en el almacén seguro.
   generandoClave,
@@ -41,7 +44,12 @@ final class InicializarDbLocalParams extends Equatable {
     this.requiereEnvoltorio = false,
     this.aceptaAlmacenSoftware = false,
     this.alAvanzar,
+    this.usuarioId,
   });
+
+  /// `usuario_id` de la sesión. Un envoltorio desactualizado (#125) solo se renueva con la
+  /// [password] de la cuenta que lo dejó así; sin el id no se renueva.
+  final String? usuarioId;
 
   /// Contraseña con la que el usuario acaba de autenticarse, o `null` si no hay (login con Google,
   /// sesión restaurada). Solo se usa al crear la DB, para envolver la DEK (ADR-006): sin ella no hay
@@ -68,7 +76,13 @@ final class InicializarDbLocalParams extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [password, requiereEnvoltorio, aceptaAlmacenSoftware, alAvanzar];
+  List<Object?> get props => [
+    password,
+    requiereEnvoltorio,
+    aceptaAlmacenSoftware,
+    alAvanzar,
+    usuarioId,
+  ];
 }
 
 /// HU-AUTH-009 — Inicialización de la DB local cifrada con una DEK aleatoria envuelta (ADR-006).
@@ -78,7 +92,10 @@ final class InicializarDbLocalParams extends Equatable {
 /// **DB existente** (marca puesta y archivo en disco): lee la DEK del almacén seguro y abre, sin
 /// Argon2id y sin contraseña. Si algo falla **no se borra nada**: la DB tiene datos del usuario.
 /// Si el login fue con contraseña y el equipo no tiene envoltorio (entró con Google, o se perdió),
-/// lo arma antes de abrir; si eso falla, abre igual.
+/// lo arma antes de abrir; si eso falla, abre igual. Si el envoltorio quedó **desactualizado** por
+/// un cambio de contraseña que no llegó a re-envolver (HU-AUTH-005, #125) y el login es de esa
+/// cuenta, lo renueva con la contraseña del login **después** de abrir, cuando ya se sabe que la
+/// DEK del almacén es la buena. Si el login es de otra cuenta, no lo toca.
 /// Si el almacén falla o perdió la DEK rige la recuperación guiada: con envoltorio por contraseña,
 /// [FailureAlmacenSeguroRecuperable] (sigue `RecuperarDbLocalConPasswordUseCase`); sin él,
 /// [FailureAlmacenSeguroSinRecuperacion] (la UI ofrece "empezar de nuevo" y pregunta).
@@ -209,10 +226,47 @@ final class InicializarDbLocalUseCase
       params.alAvanzar?.call(PasoInicializacionDb.protegiendoClave);
       await _repository.envolverConPassword(dek, password);
     }
+    if (password != null && estado.envoltorioDesactualizado) {
+      if (estado.envoltorioDesactualizadoPara == params.usuarioId) {
+        return _abrirYRenovarEnvoltorio(params, dek, password, testigo);
+      }
+      // La marca es de otra cuenta (la DB todavía no está atada a su usuario, #26): con esta
+      // contraseña el dueño de los datos no podría recuperarlos. No se toca el envoltorio y la
+      // marca queda para un login de esa cuenta.
+      _repository.avisarEnvoltorioDeOtraCuenta();
+    }
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);
     final abierta = await _repository.abrirSiSigueVigente(dek, testigo);
     return abierta.map((_) => ResultadoInicializacionDb.abierta);
+  }
+
+  /// El envoltorio quedó con una contraseña que puede no ser la de la cuenta (#125): se abre con
+  /// la DEK del almacén y **recién después** se vuelve a envolver con [password], que el servidor
+  /// acaba de validar en este login.
+  ///
+  /// Abrir primero comprueba que esa DEK es la de la DB: nunca se pisa un envoltorio que todavía
+  /// puede servir con una DEK que no abre nada. Si abrir falla, el envoltorio y su marca quedan
+  /// como estaban. Si envolver falla, la DB queda abierta igual y la marca sigue puesta para el
+  /// próximo login (la falla ya quedó en el log).
+  Future<Either<Failure, ResultadoInicializacionDb>> _abrirYRenovarEnvoltorio(
+    InicializarDbLocalParams params,
+    ClaveDb dek,
+    String password,
+    TestigoSesion testigo,
+  ) async {
+    // La DB se queda con [dek] al abrir (y la destruye al cerrar sesión): se envuelve una copia.
+    final copia = ClaveDb(Uint8List.fromList(dek.bytes));
+    try {
+      params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);
+      final abierta = await _repository.abrirSiSigueVigente(dek, testigo);
+      if (abierta case Left(value: final falla)) return Left(falla);
+
+      await _repository.envolverConPassword(copia, password);
+      return const Right(ResultadoInicializacionDb.abierta);
+    } finally {
+      copia.destruir();
+    }
   }
 
   Future<Either<Failure, ResultadoInicializacionDb>> _crearDesdeCero(
