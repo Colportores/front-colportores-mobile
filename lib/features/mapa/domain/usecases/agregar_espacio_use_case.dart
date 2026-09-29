@@ -45,12 +45,9 @@ final class AgregarEspacioParams extends Equatable {
 /// Todo es local: sin red el alta se completa y el sync queda en la cola. La ubicación ya se
 /// encoló cuando se creó, así que en la cola siempre va antes que su espacio.
 final class AgregarEspacioUseCase implements UseCase<Espacio, AgregarEspacioParams> {
-  AgregarEspacioUseCase(
-    this._repository, {
-    required String Function() generarId,
-    DateTime Function()? ahora,
-  }) : _generarId = generarId,
-       _ahora = ahora ?? DateTime.now;
+  /// [_generarId] se pasa como `generarId:` (parámetro nombrado privado, Dart ≥ 3.10).
+  AgregarEspacioUseCase(this._repository, {required this._generarId, DateTime Function()? ahora})
+    : _ahora = ahora ?? DateTime.now;
 
   final EspacioRepository _repository;
   final String Function() _generarId;

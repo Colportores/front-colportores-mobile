@@ -18,9 +18,9 @@ import 'package:test/test.dart';
 /// Repositorio que responde lo que se le fije y anota lo que recibe.
 final class _RepoFalso implements EspacioRepository {
   Either<Failure, Espacio>? respuestaEscritura;
-  Either<Failure, EspacioConUbicacion?> respuestaBuscar = const Right(null);
-  Either<Failure, int> respuestaConteo = const Right(2);
-  Either<Failure, List<Espacio>> respuestaListado = const Right([]);
+  Either<Failure, EspacioConUbicacion?> respuestaBuscar = _ok(null);
+  Either<Failure, int> respuestaConteo = _ok(2);
+  Either<Failure, List<Espacio>> respuestaListado = _ok([]);
 
   final llamadas = <String>[];
   Espacio? agregado;
@@ -33,7 +33,7 @@ final class _RepoFalso implements EspacioRepository {
   Future<Either<Failure, Espacio>> agregar(Espacio espacio) async {
     llamadas.add('agregar');
     agregado = espacio;
-    return respuestaEscritura ?? Right(espacio);
+    return respuestaEscritura ?? _ok(espacio);
   }
 
   @override
@@ -97,6 +97,10 @@ final class _PersonasFalsas implements ContadorPersonasEspacio {
   }
 }
 
+Either<Failure, T> _ok<T>(T valor) => Right(valor);
+
+Either<Failure, Never> _ko(Failure fallo) => Left(fallo);
+
 void main() {
   final t0 = DateTime.utc(2026, 9, 1, 13, 45);
   DateTime ahora() => t0;
@@ -146,7 +150,7 @@ void main() {
           auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-1'),
         ),
       );
-      expect(r, Right(repo.agregado));
+      expect(r, _ok(repo.agregado));
     });
 
     test('dado el número en blanco y sin id, ubicación ni colportor, cuando agrega, devuelve '
@@ -157,7 +161,7 @@ void main() {
 
       expect(
         r,
-        const Left(
+        _ko(
           FailureValidacion(
             campos: {
               'id': 'Falta el identificador del alta del espacio',
@@ -173,7 +177,7 @@ void main() {
 
     test('dado que el repositorio rechaza, cuando agrega, devuelve ese fallo', () async {
       const fallo = FailureValidacion(campos: {'numeroDepto': 'repetido'});
-      repo.respuestaEscritura = const Left(fallo);
+      repo.respuestaEscritura = _ko(fallo);
 
       final r = await useCase(
         const AgregarEspacioParams(
@@ -184,7 +188,7 @@ void main() {
         ),
       );
 
-      expect(r, const Left(fallo));
+      expect(r, _ko(fallo));
     });
 
     test('nuevoId devuelve un id del generador', () {
@@ -213,14 +217,14 @@ void main() {
     setUp(() => useCase = ModificarEspacioUseCase(repo, ahora: ahora));
 
     test('dado un número con espacios, cuando modifica, lo pasa limpio con la hora', () async {
-      repo.respuestaEscritura = Right(espacio(numeroDepto: '5C'));
+      repo.respuestaEscritura = _ok(espacio(numeroDepto: '5C'));
 
       final r = await useCase(const ModificarEspacioParams(id: ' esp-1 ', numeroDepto: ' 5C '));
 
       expect(repo.idRecibido, 'esp-1');
       expect(repo.numeroRecibido, '5C');
       expect(repo.ahoraRecibido, t0);
-      expect(r, Right(espacio(numeroDepto: '5C')));
+      expect(r, _ok(espacio(numeroDepto: '5C')));
     });
 
     test(
@@ -230,7 +234,7 @@ void main() {
 
         expect(
           r,
-          const Left(
+          _ko(
             FailureValidacion(
               campos: {
                 'id': 'Falta el espacio a modificar',
@@ -244,7 +248,7 @@ void main() {
     );
 
     test('sin ahora, usa el reloj del sistema', () async {
-      repo.respuestaEscritura = Right(espacio());
+      repo.respuestaEscritura = _ok(espacio());
 
       await ModificarEspacioUseCase(repo)(
         const ModificarEspacioParams(id: 'esp-1', numeroDepto: '5B'),
@@ -259,11 +263,11 @@ void main() {
         DarDeBajaEspacioUseCase(repo, _PersonasFalsas(personas, error: error), ahora: ahora);
 
     void hayEspacio({TipoUbicacion tipo = TipoUbicacion.edificio, DateTime? deletedAt}) {
-      repo.respuestaBuscar = Right((
+      repo.respuestaBuscar = _ok((
         espacio: espacio(deletedAt: deletedAt),
         ubicacion: ubicacion(tipo: tipo),
       ));
-      repo.respuestaEscritura = Right(espacio(deletedAt: t0));
+      repo.respuestaEscritura = _ok(espacio(deletedAt: t0));
     }
 
     test('dado un espacio sin personas, cuando lo da de baja, lo baja', () async {
@@ -273,13 +277,13 @@ void main() {
 
       expect(repo.llamadas, ['darDeBaja']);
       expect(repo.ahoraRecibido, t0);
-      expect(r, Right(BajaRealizada(espacio(deletedAt: t0))));
+      expect(r, _ok(BajaRealizada(espacio(deletedAt: t0))));
     });
 
     test('dado el último espacio activo sin personas, cuando lo da de baja, lo baja: el mínimo '
         'de 1 solo protege a las personas', () async {
       hayEspacio();
-      repo.respuestaConteo = const Right(1);
+      repo.respuestaConteo = _ok(1);
 
       final r = await useCase(0)(const DarDeBajaEspacioParams(id: 'esp-1'));
 
@@ -293,7 +297,7 @@ void main() {
 
       final r = await useCase(2)(const DarDeBajaEspacioParams(id: 'esp-1'));
 
-      expect(r, const Right(BajaRequiereConfirmacion(personas: 2)));
+      expect(r, _ok(const BajaRequiereConfirmacion(personas: 2)));
       expect(
         (r.toOption().toNullable()! as BajaRequiereConfirmacion).aviso,
         'Este espacio tiene 2 personas. Sus datos se conservarán pero el espacio quedará '
@@ -309,20 +313,20 @@ void main() {
         const DarDeBajaEspacioParams(id: 'esp-1', confirmaConPersonas: true),
       );
 
-      expect(r, Right(BajaRealizada(espacio(deletedAt: t0))));
+      expect(r, _ok(BajaRealizada(espacio(deletedAt: t0))));
       expect(repo.llamadas, ['darDeBaja']);
     });
 
     test('dado el único espacio activo con personas, cuando lo da de baja (aun confirmando), lo '
         'bloquea con el mensaje de la HU', () async {
       hayEspacio();
-      repo.respuestaConteo = const Right(1);
+      repo.respuestaConteo = _ok(1);
 
       final r = await useCase(1)(
         const DarDeBajaEspacioParams(id: 'esp-1', confirmaConPersonas: true),
       );
 
-      expect(r, const Left(FailureUltimoEspacioConPersonas()));
+      expect(r, _ko(const FailureUltimoEspacioConPersonas()));
       expect(
         const FailureUltimoEspacioConPersonas().mensaje,
         'No podés borrar el último espacio activo con personas. Agregá otro o reubicá las '
@@ -337,7 +341,7 @@ void main() {
 
       final r = await useCase(3)(const DarDeBajaEspacioParams(id: 'esp-1'));
 
-      expect(r, Right(BajaRealizada(espacio(deletedAt: t0))));
+      expect(r, _ok(BajaRealizada(espacio(deletedAt: t0))));
       expect(repo.llamadas, isEmpty);
     });
 
@@ -348,7 +352,7 @@ void main() {
 
       expect(
         r,
-        Left(
+        _ko(
           FailureValidacion(
             campos: {
               MotivoRechazoEspacio.ubicacionCasa.campo: MotivoRechazoEspacio.ubicacionCasa.mensaje,
@@ -363,7 +367,7 @@ void main() {
 
       expect(
         r,
-        Left(
+        _ko(
           FailureValidacion(
             campos: {
               MotivoRechazoEspacio.espacioInexistente.campo:
@@ -377,17 +381,17 @@ void main() {
     test('dado un id en blanco, devuelve la validación', () async {
       final r = await useCase(0)(const DarDeBajaEspacioParams(id: ' '));
 
-      expect(r, const Left(FailureValidacion(campos: {'id': 'Falta el espacio a dar de baja'})));
+      expect(r, _ko(const FailureValidacion(campos: {'id': 'Falta el espacio a dar de baja'})));
     });
 
     test('dado que falla la búsqueda o el conteo, devuelve ese fallo', () async {
       const fallo = FailureInesperado();
-      repo.respuestaBuscar = const Left(fallo);
-      expect(await useCase(0)(const DarDeBajaEspacioParams(id: 'esp-1')), const Left(fallo));
+      repo.respuestaBuscar = _ko(fallo);
+      expect(await useCase(0)(const DarDeBajaEspacioParams(id: 'esp-1')), _ko(fallo));
 
       hayEspacio();
-      repo.respuestaConteo = const Left(fallo);
-      expect(await useCase(1)(const DarDeBajaEspacioParams(id: 'esp-1')), const Left(fallo));
+      repo.respuestaConteo = _ko(fallo);
+      expect(await useCase(1)(const DarDeBajaEspacioParams(id: 'esp-1')), _ko(fallo));
     });
 
     test('dado que el contador de personas falla, devuelve FailureInesperado', () async {
@@ -401,11 +405,11 @@ void main() {
 
     test('dado que el repositorio falla al escribir, devuelve ese fallo', () async {
       hayEspacio();
-      repo.respuestaEscritura = const Left(FailureInesperado());
+      repo.respuestaEscritura = _ko(const FailureInesperado());
 
       expect(
         await useCase(0)(const DarDeBajaEspacioParams(id: 'esp-1')),
-        const Left(FailureInesperado()),
+        _ko(const FailureInesperado()),
       );
     });
 
@@ -422,7 +426,7 @@ void main() {
 
   group('RestaurarEspacioUseCase', () {
     test('dado un id, cuando restaura, lo pasa con la hora', () async {
-      repo.respuestaEscritura = Right(espacio());
+      repo.respuestaEscritura = _ok(espacio());
 
       final r = await RestaurarEspacioUseCase(repo, ahora: ahora)(
         const RestaurarEspacioParams(id: ' esp-1 '),
@@ -430,18 +434,18 @@ void main() {
 
       expect(repo.idRecibido, 'esp-1');
       expect(repo.ahoraRecibido, t0);
-      expect(r, Right(espacio()));
+      expect(r, _ok(espacio()));
     });
 
     test('dado un id en blanco, devuelve la validación sin llamar al repositorio', () async {
       final r = await RestaurarEspacioUseCase(repo)(const RestaurarEspacioParams(id: ''));
 
-      expect(r, const Left(FailureValidacion(campos: {'id': 'Falta el espacio a restaurar'})));
+      expect(r, _ko(const FailureValidacion(campos: {'id': 'Falta el espacio a restaurar'})));
       expect(repo.llamadas, isEmpty);
     });
 
     test('sin ahora, usa el reloj del sistema', () async {
-      repo.respuestaEscritura = Right(espacio());
+      repo.respuestaEscritura = _ok(espacio());
 
       await RestaurarEspacioUseCase(repo)(const RestaurarEspacioParams(id: 'esp-1'));
 
@@ -451,7 +455,7 @@ void main() {
 
   group('ListarEspaciosUseCase', () {
     test('dado una ubicación, cuando lista, pide los activos por defecto', () async {
-      repo.respuestaListado = Right([espacio()]);
+      repo.respuestaListado = _ok([espacio()]);
 
       final r = await ListarEspaciosUseCase(repo)(
         const ListarEspaciosParams(ubicacionId: ' ub-1 '),
@@ -459,7 +463,7 @@ void main() {
 
       expect(repo.idRecibido, 'ub-1');
       expect(repo.incluirBajasRecibido, isFalse);
-      expect(r, Right([espacio()]));
+      expect(r, _ok([espacio()]));
     });
 
     test('dado incluirBajas, lo pasa al repositorio', () async {
@@ -473,7 +477,7 @@ void main() {
     test('dado una ubicación en blanco, devuelve la validación', () async {
       final r = await ListarEspaciosUseCase(repo)(const ListarEspaciosParams(ubicacionId: ' '));
 
-      expect(r, const Left(FailureValidacion(campos: {'ubicacionId': 'Falta la ubicación'})));
+      expect(r, _ko(const FailureValidacion(campos: {'ubicacionId': 'Falta la ubicación'})));
       expect(repo.llamadas, isEmpty);
     });
   });

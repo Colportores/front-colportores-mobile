@@ -79,6 +79,10 @@ final _ubicacion = UbicacionModel(
   auditoria: Auditoria(createdAt: _t0, updatedAt: _t0, createdBy: 'col-1'),
 );
 
+Either<Failure, T> _ok<T>(T valor) => Right(valor);
+
+Either<Failure, Never> _ko(Failure fallo) => Left(fallo);
+
 void main() {
   final modelo = EspacioModel(
     id: 'esp-1',
@@ -97,15 +101,15 @@ void main() {
 
   group('camino feliz', () {
     test('agregar devuelve la entidad guardada', () async {
-      expect(await repo(_LocalFijo(modelo)).agregar(entidad), Right(entidad));
+      expect(await repo(_LocalFijo(modelo)).agregar(entidad), _ok(entidad));
     });
 
     test('modificar, darDeBaja y restaurar devuelven la entidad', () async {
       final r = repo(_LocalFijo(modelo));
 
-      expect(await r.modificar('esp-1', numeroDepto: '5B', ahora: _t0), Right(entidad));
-      expect(await r.darDeBaja('esp-1', ahora: _t0), Right(entidad));
-      expect(await r.restaurar('esp-1', ahora: _t0), Right(entidad));
+      expect(await r.modificar('esp-1', numeroDepto: '5B', ahora: _t0), _ok(entidad));
+      expect(await r.darDeBaja('esp-1', ahora: _t0), _ok(entidad));
+      expect(await r.restaurar('esp-1', ahora: _t0), _ok(entidad));
     });
 
     test('buscar devuelve el espacio con su ubicación, o null', () async {
@@ -121,9 +125,9 @@ void main() {
       final local = _LocalFijo(modelo);
       final r = repo(local);
 
-      expect(await r.listar('ub-1', incluirBajas: true), Right([entidad]));
+      expect(await r.listar('ub-1', incluirBajas: true), _ok([entidad]));
       expect(local.incluirBajasRecibido, isTrue);
-      expect(await r.contarActivos('ub-1'), const Right(3));
+      expect(await r.contarActivos('ub-1'), _ok(3));
     });
   });
 
@@ -141,7 +145,7 @@ void main() {
 
       expect(
         resultado,
-        Left(
+        _ko(
           FailureValidacion(
             campos: {
               MotivoRechazoEspacio.deptoDuplicado.campo:
