@@ -42,14 +42,27 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
   /// `ENOSPC` en Linux/Android y en iOS/macOS.
   static const int _errnoSinEspacio = 28;
 
+  /// Un envoltorio desactualizado va al log como warn cada vez que se mira: es un re-envoltorio que
+  /// se salteó (#125) y que sigue pendiente hasta el próximo login con contraseña de esa cuenta.
   @override
   Future<Either<Failure, EstadoDbLocal>> estado() => _intentar('estado', () async {
     final archivoExiste = await _helper.existe();
     final envoltorioExiste = await _custodia.hayEnvoltorioPorPassword();
+    String? desactualizadoPara;
+    if (envoltorioExiste) desactualizadoPara = await _custodia.envoltorioDesactualizadoPara();
+    if (desactualizadoPara != null) {
+      _log.warn(
+        LogModulo.db,
+        'ENVOLTORIO_DESACTUALIZADO',
+        're-envoltorio salteado tras un cambio de contraseña: va en el próximo login con ella',
+        {'user_id': desactualizadoPara},
+      );
+    }
     return EstadoDbLocal(
       marca: await _marca(),
       archivoExiste: archivoExiste,
       envoltorioExiste: envoltorioExiste,
+      envoltorioDesactualizadoPara: desactualizadoPara,
       abierta: _helper.abierta,
     );
   });
@@ -103,6 +116,22 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
         await _custodia.envolverConPassword(dek, password);
         return unit;
       });
+
+  @override
+  Future<Either<Failure, Unit>> marcarEnvoltorioDesactualizado(String usuarioId) =>
+      _intentar('marcar_desactualizado', () async {
+        await _custodia.marcarEnvoltorioDesactualizado(usuarioId);
+        return unit;
+      });
+
+  @override
+  void avisarEnvoltorioDeOtraCuenta() {
+    _log.warn(
+      LogModulo.db,
+      'ENVOLTORIO_DE_OTRA_CUENTA',
+      'el envoltorio desactualizado es de otra cuenta: no se renueva con esta contraseña',
+    );
+  }
 
   @override
   Future<Either<Failure, ClaveDb>> desenvolverConPassword(String password) =>
