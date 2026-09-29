@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -77,6 +79,10 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
   bool _enviado = false;
   late final TextEditingController _texto;
 
+  /// El campo con su aviso: con letra grande y el teclado abierto, el aviso de rango puede quedar
+  /// bajo el teclado; al aparecer se lo trae a la vista.
+  final GlobalKey _campoKey = GlobalKey();
+
   /// Al minuto: el selector ofrece minutos enteros (igual que el caso de uso).
   late final DateTime _base = DateTime(
     widget.ahora.year,
@@ -111,6 +117,21 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     _texto.selection = TextSelection(baseOffset: 0, extentOffset: _texto.text.length);
     _escribiendo = true;
   });
+
+  /// Trae el campo (con su aviso) a la parte visible de la hoja, sin mover lo que ya se ve.
+  void _mostrarCampo() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _campoKey.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          contexto,
+          duration: const Duration(milliseconds: 150),
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ),
+      );
+    });
+  }
 
   /// Cierra la hoja con [minutos] hacia atrás, una sola vez.
   void _usar(int minutos) {
@@ -285,27 +306,41 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
           style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
         ),
         const SizedBox(height: 14),
-        TextField(
-          key: const Key('hoja_hora_campo'),
-          controller: _texto,
-          autofocus: true,
-          keyboardType: TextInputType.datetime,
-          textInputAction: TextInputAction.done,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp('[0-9:]')),
-            LengthLimitingTextInputFormatter(5),
-          ],
-          style: theme.textTheme.headlineMedium,
-          decoration: InputDecoration(
-            labelText: widget.etiquetaCampo,
-            errorText: error,
-            errorMaxLines: 3,
-          ),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) {
-            if (_escritoValido) return _usar(_minutosEscritos()!);
-            setState(() => _enviado = true);
+        NotificationListener<SizeChangedLayoutNotification>(
+          // El aviso entra animado: cada vez que el campo cambia de alto se lo vuelve a mostrar.
+          onNotification: (_) {
+            _mostrarCampo();
+            return false;
           },
+          child: SizeChangedLayoutNotifier(
+            key: _campoKey,
+            child: TextField(
+              key: const Key('hoja_hora_campo'),
+              controller: _texto,
+              autofocus: true,
+              keyboardType: TextInputType.datetime,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[0-9:]')),
+                LengthLimitingTextInputFormatter(5),
+              ],
+              style: theme.textTheme.headlineMedium,
+              decoration: InputDecoration(
+                labelText: widget.etiquetaCampo,
+                errorText: error,
+                errorMaxLines: 3,
+              ),
+              onChanged: (_) {
+                setState(() {});
+                _mostrarCampo();
+              },
+              onSubmitted: (_) {
+                if (_escritoValido) return _usar(_minutosEscritos()!);
+                setState(() => _enviado = true);
+                _mostrarCampo();
+              },
+            ),
+          ),
         ),
         const SizedBox(height: 18),
         FilledButton(

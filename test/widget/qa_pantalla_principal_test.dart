@@ -199,8 +199,6 @@ void main() {
       expect(find.textContaining('14:20'), findsWidgets);
     });
 
-    // skip: QA #229 — con texto 2.0 y el teclado abierto en 360x640, el aviso de rango de "Otra
-    // hora" queda cortado bajo el teclado: el colportor no ve hasta qué hora puede elegir.
     testWidgets('con el teclado abierto a texto 2.0 en 360x640, el aviso de rango se ve entero '
         'sin scrollear la hoja', (tester) async {
       _pantalla(tester, const Size(360, 640));
@@ -215,7 +213,7 @@ void main() {
       );
       // El teclado ocupa los últimos 256 dp: el aviso tiene que terminar arriba de él.
       expect(aviso.bottom, lessThanOrEqualTo(640 - 256));
-    }, skip: true);
+    });
   });
 
   group('QA #229 — entradas del campo "Otra hora"', () {
