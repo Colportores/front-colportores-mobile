@@ -15,6 +15,7 @@ import 'package:logger/logger.dart';
 import 'generated/schema.dart';
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
+import 'generated/schema_v4.dart' as v4;
 
 class _SinSalida extends LogOutput {
   @override
@@ -137,4 +138,81 @@ void main() {
       );
     },
   );
+
+  test('dado jornadas, ubicaciones y espacios guardados en la versión 3, cuando migra a la 4, se '
+      'conservan todos con los mismos datos', () async {
+    const jornada = v3.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      fin: 1758720000000,
+      totalVisitas: 7,
+      totalVentas: 2,
+      createdAt: 1758700000000,
+      updatedAt: 1758720000000,
+      createdBy: 'col-1',
+      syncVersion: 3,
+    );
+    const activa = v3.UbicacionData(
+      id: 'ub-1',
+      tipo: 'CASA',
+      calle: 'Av. Ñandú',
+      numero: '1234 bis',
+      lat: -34.9,
+      lon: -56.16,
+      ciudadId: 'ciu-1',
+      zonaId: 'zon-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 5,
+    );
+    const deBaja = v3.UbicacionData(
+      id: 'ub-2',
+      tipo: 'EDIFICIO',
+      lat: -34.91,
+      lon: -56.17,
+      ciudadId: 'ciu-1',
+      createdAt: 1758600000000,
+      updatedAt: 1758650000000,
+      deletedAt: 1758650000000,
+      syncVersion: 0,
+    );
+    const espacio = v3.EspacioData(
+      id: 'esp-1',
+      ubicacionId: 'ub-2',
+      numeroDepto: '3B',
+      piso: '3',
+      descripcion: 'Fondo',
+      createdAt: 1758600000000,
+      updatedAt: 1758600000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 3,
+      newVersion: 4,
+      createOld: v3.DatabaseAtV3.new,
+      createNew: v4.DatabaseAtV4.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.jornada, jornada)
+          ..insertAll(viejo.ubicacion, [activa, deBaja])
+          ..insert(viejo.espacio, espacio);
+      },
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((f) => f.toJson()).toList(), [jornada.toJson()]);
+        final ubicaciones = await (nuevo.select(
+          nuevo.ubicacion,
+        )..orderBy([(u) => OrderingTerm.asc(u.id)])).get();
+        expect(ubicaciones.map((f) => f.toJson()).toList(), [activa.toJson(), deBaja.toJson()]);
+        final espacios = await nuevo.select(nuevo.espacio).get();
+        expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
+        expect(await nuevo.select(nuevo.ubicacionParDecidido).get(), isEmpty);
+      },
+    );
+  });
 }

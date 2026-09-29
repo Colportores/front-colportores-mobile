@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
+import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
@@ -23,7 +24,7 @@ part 'app_database.g.dart';
 ///
 /// Las fechas de toda tabla van en epoch ms UTC con [FechaUtcConverter]
 /// (08-conceptos-transversales §8.11), no con columnas `dateTime()` de Drift.
-@DriftDatabase(tables: [Jornadas, Ubicaciones, Espacios])
+@DriftDatabase(tables: [Jornadas, Ubicaciones, Espacios, ParesDecididos])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -37,10 +38,11 @@ class AppDatabase extends _$AppDatabase {
   /// - 1: sin tablas (#6).
   /// - 2: `jornada` (#70).
   /// - 3: `ubicacion` y `espacio` (#192).
+  /// - 4: `ubicacion_par_decidido`, solo local (#207).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 3;
+  static const int versionEsquema = 4;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -94,6 +96,10 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.ubicacionCiudadIdx);
       await m.createTable(esquema.espacio);
       await m.createIndex(esquema.espacioUbicacionIdx);
+    },
+    // Solo crea una tabla: las jornadas, ubicaciones y espacios quedan como estaban.
+    from3To4: (m, esquema) async {
+      await m.createTable(esquema.ubicacionParDecidido);
     },
   );
 }
