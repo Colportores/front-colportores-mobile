@@ -3,6 +3,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/bloqueo_reenvio_verificacion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -334,28 +335,92 @@ void main() {
       expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
     });
 
-    testWidgets('reenviar: rate limit de Supabase muestra el mensaje traducido, sin cooldown', (
-      tester,
-    ) async {
+    testWidgets('reenviar: rate limit (429) bloquea el botón con candado una hora, con el texto '
+        'de Cristian', (tester) async {
+      var ahora = DateTime(2026, 9, 29, 10);
       final remote =
           AuthRemoteDataSourceEnMemoria(
               credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
             )
             ..fallaAlReenviar = const ServidorException(
+              status: 429,
               mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
             );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => ahora);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+      expect(find.text('Demasiados intentos. Probá nuevamente en una hora.'), findsOneWidget);
+      expect(find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsWidgets);
+      expect(find.text('Reenviar email'), findsOneWidget);
+      final boton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(boton.onPressed, isNull, reason: 'bloqueado, sin cuenta regresiva de 60 s');
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+
+      // A los 59 minutos sigue bloqueado; a los 60 se libera.
+      ahora = ahora.add(const Duration(minutes: 59));
+      await tester.pump(const Duration(minutes: 59));
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+
+      ahora = ahora.add(const Duration(minutes: 1));
+      await tester.pump(const Duration(minutes: 1));
+      expect(find.byKey(const Key('verificacion_email_limite')), findsNothing);
+      final libre = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(libre.onPressed, isNotNull);
+    });
+
+    testWidgets('el bloqueo por límite sobrevive a salir y volver a la pantalla', (tester) async {
+      final ahora = DateTime(2026, 9, 29, 10);
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+            bloqueoReenvioVerificacionProvider.overrideWith(_BloqueadoALas10.new),
+          ],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: VerificacionEmailPage(
+              email: 'lucia.silva@correo.com',
+              password: 'Secreto123',
+              ahora: () => ahora.add(const Duration(minutes: 30)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+      final boton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(boton.onPressed, isNull);
+    });
+
+    testWidgets('un servidor caído (sin 429) no bloquea el reenvío', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..fallaAlReenviar = const ServidorException(status: 500);
       await _montarPagina(tester, remote: remote, password: 'Secreto123');
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const Key('verificacion_email_limite')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
-      expect(
-        find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'),
-        findsOneWidget,
-      );
-      expect(find.text('Reenviar email'), findsOneWidget);
     });
   });
 
@@ -538,4 +603,11 @@ void main() {
       expect(find.byKey(const Key('abrir_verificacion')), findsOneWidget);
     });
   });
+}
+
+/// Bloqueo por límite ya registrado a las 10:00 (una hora), como si el colportor hubiera salido de
+/// la pantalla y vuelto.
+class _BloqueadoALas10 extends BloqueoReenvioVerificacionNotifier {
+  @override
+  DateTime? build() => DateTime(2026, 9, 29, 10).add(bloqueoReenvioVerificacion);
 }

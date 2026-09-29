@@ -96,6 +96,7 @@ void main() {
         remote.simularSinConexion = true;
       case 'límite de reenvíos':
         remote.fallaAlReenviar = const ServidorException(
+          status: 429,
           mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
         );
     }

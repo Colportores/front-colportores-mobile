@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../providers/bloqueo_reenvio_verificacion.dart';
 import '../providers/sesion_notifier.dart';
 
 /// Estado visible de [VerificacionEmailPage] (HU-AUTH-002).
@@ -58,15 +59,26 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 
 class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     with WidgetsBindingObserver {
-  /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope de "máximo 5 por
-  /// hora" no se replica acá — Supabase ya lo hace cumplir (~2 emails/hora en el plan free sin
-  /// SMTP propio) y ese rechazo llega traducido como cualquier otro rate limit.
+  /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope por hora lo hace
+  /// cumplir Supabase; cuando rechaza por límite, el botón queda bloqueado una hora fija
+  /// ([bloqueoReenvioVerificacion], decisión de Cristian 29/09).
   static const Duration _cooldown = Duration(seconds: 60);
+
+  static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
   Timer? _timer;
+  Timer? _timerBloqueo;
   int _segundosRestantes = 0;
+
+  /// Instante en que termina el bloqueo por límite de reenvíos (`null` si no hay).
+  DateTime? _bloqueadoHasta;
+
+  bool get _bloqueado {
+    final hasta = _bloqueadoHasta;
+    return hasta != null && widget.ahora().isBefore(hasta);
+  }
 
   /// Instante en que vence la espera del reenvío: con la app en segundo plano el `Timer` se
   /// pausa, así que al volver se recalcula desde la hora real.
@@ -86,24 +98,46 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     WidgetsBinding.instance.addObserver(this);
     _estado = widget.estadoInicial;
     _emailController = TextEditingController(text: widget.email);
+    _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
+    _programarDesbloqueo();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _timerBloqueo?.cancel();
     _emailController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _bloqueadoHasta != null) {
+      setState(_programarDesbloqueo);
+    }
     final vence = _venceCooldown;
     if (state != AppLifecycleState.resumed || vence == null || _segundosRestantes <= 0) return;
     final restanteMs = vence.difference(widget.ahora()).inMilliseconds;
     setState(() {
       _segundosRestantes = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
       if (_segundosRestantes <= 0) _terminarCooldown();
+    });
+  }
+
+  /// Agenda el fin del bloqueo por límite; si ya venció, lo limpia.
+  void _programarDesbloqueo() {
+    _timerBloqueo?.cancel();
+    final hasta = _bloqueadoHasta;
+    if (hasta == null) return;
+    final falta = hasta.difference(widget.ahora());
+    if (falta <= Duration.zero) {
+      _bloqueadoHasta = null;
+      return;
+    }
+    _timerBloqueo = Timer(falta, () {
+      if (!mounted) return;
+      setState(() => _bloqueadoHasta = null);
     });
   }
 
@@ -129,7 +163,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   }
 
   Future<void> _reenviar() async {
-    if (_reenviando || _verificando || _segundosRestantes > 0) return;
+    if (_reenviando || _verificando || _segundosRestantes > 0 || _bloqueado) return;
     final email = _emailConocido ? widget.email : _emailController.text.trim();
     setState(() {
       _reenviando = true;
@@ -149,6 +183,10 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           _iniciarCooldown();
         case FailureValidacion(:final campos):
           _errorEmail = campos['email'];
+        case FailureServidor(status: 429):
+          ref.read(bloqueoReenvioVerificacionProvider.notifier).bloquearDesde(widget.ahora());
+          _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
+          _programarDesbloqueo();
         case final Failure f:
           _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
       }
@@ -344,7 +382,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         ? 'Reenviar en ${_segundosRestantes}s'
         : (expirado ? 'Reenviar email de verificación' : 'Reenviar email');
     final ocupado = _reenviando || _verificando;
-    final reenviar = ocupado || conCuentaRegresiva ? null : _reenviar;
+    final bloqueado = _bloqueado;
+    final reenviar = ocupado || conCuentaRegresiva || bloqueado ? null : _reenviar;
 
     return [
       if (_mensajeReenvio case final mensaje?)
@@ -352,6 +391,13 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           key: const Key('verificacion_email_mensaje_reenvio'),
           texto: mensaje,
           icono: Icons.check_circle_outline,
+        ),
+      if (bloqueado)
+        const _AvisoVerificacion(
+          key: Key('verificacion_email_limite'),
+          texto: _textoLimite,
+          icono: Icons.lock_outline,
+          esError: true,
         ),
       if (_errorGeneral case final error?)
         _AvisoVerificacion(
@@ -375,7 +421,14 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                 )
               : const Text('Ya verifiqué mi email'),
         ),
-      if (expirado && widget.password == null)
+      if (bloqueado)
+        OutlinedButton.icon(
+          key: const Key('verificacion_email_reenviar'),
+          onPressed: null,
+          icon: const Icon(Icons.lock_outline),
+          label: Text(etiquetaReenviar),
+        )
+      else if (expirado && widget.password == null)
         FilledButton(
           key: const Key('verificacion_email_reenviar'),
           onPressed: reenviar,
