@@ -55,22 +55,22 @@ class AppDatabase extends _$AppDatabase {
   /// `test/drift/app_database/` migran desde cada versión congelada y comparan con
   /// `SchemaVerifier` (convenciones §9).
   ///
+  /// **Toda la subida va en una transacción, con `user_version` adentro.** Drift 2.34 corre
+  /// `onUpgrade` sin transacción y escribe la versión recién al final, y `createIndex` no usa
+  /// `IF NOT EXISTS`: un corte a mitad de camino (disco lleno, la app matada) dejaría las tablas
+  /// del paso a medias con la versión vieja, y cada apertura siguiente fallaría en el mismo
+  /// `CREATE INDEX` —la DB quedaría inabrible y solo quedaría "Empezar de nuevo", con las jornadas
+  /// sin sincronizar adentro—. En SQLite el DDL es transaccional: si algo falla se revierte todo y
+  /// la próxima apertura reintenta desde la versión de antes.
+  ///
   /// `beforeOpen` agrega el log `[DB][MIGRATION]` de convenciones §7.4.
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
-    onUpgrade: stepByStep(
-      from1To2: (m, esquema) async {
-        await m.createTable(esquema.jornada);
-        await m.createIndex(esquema.jornadaColportorIdx);
-      },
-      from2To3: (m, esquema) async {
-        await m.createTable(esquema.ubicacion);
-        await m.createIndex(esquema.ubicacionCiudadIdx);
-        await m.createTable(esquema.espacio);
-        await m.createIndex(esquema.espacioUbicacionIdx);
-      },
-    ),
+    onUpgrade: (m, desde, hasta) => transaction(() async {
+      await _pasos(m, desde, hasta);
+      await customStatement('PRAGMA user_version = $hasta');
+    }),
     beforeOpen: (detalles) async {
       if (detalles.wasCreated) {
         _log.info(LogModulo.db, 'DB_CREADA', 'esquema inicial creado', {'version': schemaVersion});
@@ -80,6 +80,20 @@ class AppDatabase extends _$AppDatabase {
           'to': detalles.versionNow,
         });
       }
+    },
+  );
+
+  /// Los pasos `N → N+1` contra el esquema congelado de cada versión (`app_database.steps.dart`).
+  static final OnUpgrade _pasos = stepByStep(
+    from1To2: (m, esquema) async {
+      await m.createTable(esquema.jornada);
+      await m.createIndex(esquema.jornadaColportorIdx);
+    },
+    from2To3: (m, esquema) async {
+      await m.createTable(esquema.ubicacion);
+      await m.createIndex(esquema.ubicacionCiudadIdx);
+      await m.createTable(esquema.espacio);
+      await m.createIndex(esquema.espacioUbicacionIdx);
     },
   );
 }

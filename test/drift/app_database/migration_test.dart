@@ -50,6 +50,46 @@ void main() {
     }
   });
 
+  test('dado que la migración 2 → 3 falla en su último paso, no deja nada a medias y la próxima '
+      'apertura migra bien conservando las jornadas', () async {
+    // Un corte a mitad de camino (disco lleno, la app matada) sin transacción dejaba `ubicacion` y
+    // su índice creados con `user_version = 2`: cada apertura siguiente fallaba en el mismo
+    // `CREATE INDEX` y la DB quedaba inabrible. Se simula con un índice que ya ocupa el nombre del
+    // último `CREATE INDEX` del paso.
+    final esquema = await verificador.schemaAt(2);
+    final crudo = esquema.rawDatabase
+      ..execute(
+        'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
+        "VALUES ('jor-1', 'col-1', 1758700000000, 1758700000000, 1758700000000)",
+      )
+      ..execute('CREATE INDEX espacio_ubicacion_idx ON jornada (id)');
+
+    final fallida = _abrir(esquema.newConnection());
+    await expectLater(fallida.customSelect('SELECT 1').get(), throwsA(anything));
+    await fallida.close().catchError((Object _) {});
+
+    List<String> objetosNuevos() => [
+      for (final fila in crudo.select(
+        "SELECT name FROM sqlite_master WHERE name IN ('ubicacion', 'espacio', "
+        "'ubicacion_ciudad_idx')",
+      ))
+        fila['name'] as String,
+    ];
+    expect(objetosNuevos(), isEmpty, reason: 'la transacción revirtió todo el paso');
+    expect(crudo.userVersion, 2);
+    expect(crudo.select('SELECT id FROM jornada').map((f) => f['id']), ['jor-1']);
+
+    crudo.execute('DROP INDEX espacio_ubicacion_idx');
+    final reintento = _abrir(esquema.newConnection());
+    addTearDown(reintento.close);
+
+    await verificador.migrateAndValidate(reintento, 3);
+    expect(
+      (await reintento.customSelect('SELECT id FROM jornada').get()).map((f) => f.data['id']),
+      ['jor-1'],
+    );
+  });
+
   test(
     'dado jornadas guardadas en la versión 2, cuando migra a la 3, se conservan todas',
     () async {
