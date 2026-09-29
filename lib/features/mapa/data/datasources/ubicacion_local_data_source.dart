@@ -1,4 +1,6 @@
+import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
+import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
 
@@ -30,6 +32,13 @@ abstract interface class UbicacionLocalDataSource {
     required String colportorId,
     String? ciudadId,
     bool incluirBajas = false,
+  });
+
+  /// Marcadores de las ubicaciones activas del colportor dentro de [area], con la cantidad de
+  /// espacios sin baja. Es una proyección de lectura (no un modelo de sync): devuelve la entidad.
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
   });
 }
 

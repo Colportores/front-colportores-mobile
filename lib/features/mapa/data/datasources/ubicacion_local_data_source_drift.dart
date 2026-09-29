@@ -5,7 +5,9 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
+import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
 import 'espacios_table.dart';
@@ -76,6 +78,52 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (!incluirBajas) consulta.where((u) => u.deletedAt.isNull());
     return consulta.watch().map((filas) => [for (final fila in filas) _aModelo(fila)]);
   }
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) {
+    if (!area.esValida) return Stream.value(const []);
+    final cantidad = espacios.id.count();
+    final consulta =
+        select(ubicaciones).join([
+            leftOuterJoin(
+              espacios,
+              espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
+            ),
+          ])
+          ..addColumns([cantidad])
+          ..where(
+            ubicaciones.createdBy.equals(colportorId) &
+                ubicaciones.deletedAt.isNull() &
+                ubicaciones.lat.isBetweenValues(area.sur, area.norte),
+          )
+          ..groupBy([ubicaciones.id]);
+    if (area.cruzaAntimeridiano) {
+      consulta.where(
+        ubicaciones.lon.isBiggerOrEqualValue(area.oeste) |
+            ubicaciones.lon.isSmallerOrEqualValue(area.este),
+      );
+    } else {
+      consulta.where(ubicaciones.lon.isBetweenValues(area.oeste, area.este));
+    }
+    return consulta.watch().map(
+      (filas) => [
+        for (final fila in filas) _aMarcador(fila.readTable(ubicaciones), fila.read(cantidad) ?? 0),
+      ],
+    );
+  }
+
+  static MarcadorMapa _aMarcador(UbicacionFila u, int cantidadEspacios) => MarcadorMapa(
+    ubicacionId: u.id,
+    tipo: UbicacionModel.tipoDesdeCodigo(u.tipo),
+    lat: u.lat,
+    lon: u.lon,
+    calle: u.calle,
+    numero: u.numero,
+    cantidadEspacios: cantidadEspacios,
+  );
 
   /// Ubicaciones activas de la misma ciudad dentro de un recuadro que contiene el círculo de
   /// [radioMetros] alrededor de [centro] (con margen). El filtro exacto por distancia lo hace el
