@@ -100,7 +100,11 @@ void main() {
     await repositorio.quitar(paquete.id);
     await dejarCorrer();
 
-    expect(emitidos, [<PaqueteDescargado>[], [descargado], <PaqueteDescargado>[]]);
+    expect(emitidos, [
+      <PaqueteDescargado>[],
+      [descargado],
+      <PaqueteDescargado>[],
+    ]);
     await suscripcion.cancel();
   });
 }
