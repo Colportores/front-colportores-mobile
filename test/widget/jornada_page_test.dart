@@ -384,6 +384,92 @@ void main() {
       expect(find.textContaining('No entendimos'), findsNothing);
     });
 
+    testWidgets('"Otra hora": una hora a medio escribir no se acepta ni marca error hasta '
+        'confirmar; "143" no es 01:43 y "1430" sí', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      final campo = find.byKey(const Key('hoja_hora_campo'));
+
+      await tester.enterText(campo, '14:3');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No entendimos'), findsNothing);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      // Al confirmar con "listo" del teclado, ahí sí se le dice qué falta.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('No entendimos esa hora. Escribila en formato 24 h, por ejemplo 14:20.'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(campo, '143');
+      await tester.pumpAndSettle();
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      await tester.enterText(campo, '1430');
+      await tester.pumpAndSettle();
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNotNull);
+      expect(find.textContaining('No entendimos'), findsNothing);
+    });
+
+    testWidgets('"Otra hora": con el campo vacío dice qué escribir', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Escribí la hora, por ejemplo 14:20.'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+    });
+
+    testWidgets('un doble toque en "Usar" no cierra también la pantalla principal', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+
+      await tester.tap(find.text('Usar 14:35'));
+      await tester.tap(find.text('Usar 14:35'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+    });
+
+    testWidgets('si cambia el minuto con la hoja abierta, se guarda la hora que el colportor vio '
+        'y confirmó, no una corrida', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource();
+      var reloj = _ahora;
+      await _montar(tester, dataSource, reloj: () => reloj);
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '14:20');
+      await tester.pumpAndSettle();
+
+      // Pasa el minuto con la hoja abierta.
+      reloj = DateTime(2026, 9, 23, 14, 36, 5);
+      await tester.tap(find.text('Usar esta hora'));
+      await tester.pumpAndSettle();
+      expect(find.text('14:20 · hace 16 min'), findsOneWidget);
+
+      await tester.tap(find.text('Iniciar jornada'));
+      await tester.pumpAndSettle();
+      expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 14, 20).toUtc());
+    });
+
     testWidgets('"Otra hora": cruzando la medianoche, 23:50 es 20 minutos antes de las 00:10', (
       tester,
     ) async {

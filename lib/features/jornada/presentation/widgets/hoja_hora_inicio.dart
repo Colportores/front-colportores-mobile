@@ -4,19 +4,24 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../formato_jornada.dart';
 
-/// Abre la hoja "¿A qué hora empezaste?" (vista 20, estados A02 y A03) y devuelve cuántos minutos
-/// hacia atrás eligió el colportor (0 = ahora), o `null` si canceló.
+/// Lo que eligió el colportor: la hora como instante absoluto (al minuto) y si es "ahora". Es
+/// absoluta a propósito: si el minuto cambia con la hoja abierta, se guarda la hora que el
+/// colportor vio y confirmó, nunca una corrida en silencio (HU-JOR-001).
+typedef HoraElegida = ({DateTime hora, bool esAhora});
+
+/// Abre la hoja "¿A qué hora empezaste?" (vista 20, estados A02 y A03) y devuelve la hora que
+/// eligió el colportor, o `null` si canceló.
 ///
 /// [ahora] es el instante con el que se armó la pantalla que se está viendo y [margenMinutos] lo
 /// que se puede retroceder (30, el mismo rango que valida `IniciarJornadaUseCase`).
-Future<int?> mostrarHojaHoraInicio(
+Future<HoraElegida?> mostrarHojaHoraInicio(
   BuildContext context, {
   required DateTime ahora,
   required int margenMinutos,
   required int minutosAtras,
   String pregunta = '¿A qué hora empezaste?',
   String etiquetaCampo = 'HORA DE INICIO',
-}) => showModalBottomSheet<int>(
+}) => showModalBottomSheet<HoraElegida>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
@@ -64,6 +69,12 @@ class HojaHoraInicio extends StatefulWidget {
 class _HojaHoraInicioState extends State<HojaHoraInicio> {
   late int _minutos = widget.minutosAtras;
   bool _escribiendo = false;
+
+  /// Ya se eligió: un segundo toque (o "listo" del teclado) no vuelve a cerrar nada.
+  bool _cerrando = false;
+
+  /// Intentó confirmar lo escrito: ahí se le marca todo lo que falta, aunque todavía no sea largo.
+  bool _enviado = false;
   late final TextEditingController _texto;
 
   /// Al minuto: el selector ofrece minutos enteros (igual que el caso de uso).
@@ -101,14 +112,24 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     _escribiendo = true;
   });
 
-  /// Los minutos hacia atrás de lo escrito (`null` si no es una hora 24 h). Si la hora escrita es
-  /// posterior a la actual se toma la de ayer: cruzando la medianoche (00:10 → 23:50) sigue en
-  /// rango; en cualquier otro caso queda lejos y se rechaza.
+  /// Cierra la hoja con [minutos] hacia atrás, una sola vez.
+  void _usar(int minutos) {
+    if (_cerrando) return;
+    _cerrando = true;
+    Navigator.of(context).pop<HoraElegida>((hora: _hora(minutos), esAhora: minutos == 0));
+  }
+
+  /// Los minutos hacia atrás de lo escrito (`null` si no es una hora 24 h completa: `HH:MM`,
+  /// `H:MM` o `HHMM` de 4 dígitos; "143" todavía es una hora a medio escribir). Si la hora
+  /// escrita es posterior a la actual se toma la de ayer: cruzando la medianoche (00:10 → 23:50)
+  /// sigue en rango; en cualquier otro caso queda lejos y se rechaza.
   int? _minutosEscritos() {
-    final coincidencia = RegExp(r'^(\d{1,2}):?(\d{2})$').firstMatch(_texto.text.trim());
+    final coincidencia = RegExp(
+      r'^(?:(\d{1,2}):(\d{2})|(\d{2})(\d{2}))$',
+    ).firstMatch(_texto.text.trim());
     if (coincidencia == null) return null;
-    final hora = int.parse(coincidencia.group(1)!);
-    final minuto = int.parse(coincidencia.group(2)!);
+    final hora = int.parse(coincidencia.group(1) ?? coincidencia.group(3)!);
+    final minuto = int.parse(coincidencia.group(2) ?? coincidencia.group(4)!);
     if (hora > 23 || minuto > 59) return null;
     var escrita = DateTime(_base.year, _base.month, _base.day, hora, minuto);
     if (escrita.isAfter(_base)) {
@@ -120,13 +141,15 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
   /// Qué decirle al colportor de lo escrito, o `null` si está bien (o todavía se está escribiendo).
   String? _errorEscrito() {
     final texto = _texto.text.trim();
-    if (texto.isEmpty) return null;
+    final ejemplo = horaCorta(_hora(widget.margenMinutos ~/ 2));
+    if (texto.isEmpty) return 'Escribí la hora, por ejemplo $ejemplo.';
     final minutos = _minutosEscritos();
     if (minutos == null) {
-      // Mientras tipea ("1", "14") todavía no es un error.
-      if (texto.length < 4) return null;
-      return 'No entendimos esa hora. Escribila en formato 24 h, por ejemplo '
-          '${horaCorta(_hora(widget.margenMinutos ~/ 2))}.';
+      // Mientras tipea ("1", "14:3") todavía no es un error: recién al confirmar, o cuando ya
+      // tiene el largo de una hora completa.
+      final largo = texto.length >= 5 || RegExp(r'^\d{4,}$').hasMatch(texto);
+      if (!_enviado && !largo) return null;
+      return 'No entendimos esa hora. Escribila en formato 24 h, por ejemplo $ejemplo.';
     }
     if (minutos > widget.margenMinutos) {
       return 'La hora tiene que estar entre las $_desdeHasta.';
@@ -233,7 +256,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
         const SizedBox(height: 20),
         FilledButton(
           key: const Key('hoja_hora_usar'),
-          onPressed: () => Navigator.of(context).pop(_minutos),
+          onPressed: () => _usar(_minutos),
           child: Text('Usar $horaElegida'),
         ),
         const SizedBox(height: 10),
@@ -280,13 +303,14 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
           ),
           onChanged: (_) => setState(() {}),
           onSubmitted: (_) {
-            if (_escritoValido) Navigator.of(context).pop(_minutosEscritos());
+            if (_escritoValido) return _usar(_minutosEscritos()!);
+            setState(() => _enviado = true);
           },
         ),
         const SizedBox(height: 18),
         FilledButton(
           key: const Key('hoja_hora_usar_escrita'),
-          onPressed: _escritoValido ? () => Navigator.of(context).pop(_minutosEscritos()) : null,
+          onPressed: _escritoValido ? () => _usar(_minutosEscritos()!) : null,
           child: const Text('Usar esta hora'),
         ),
         const SizedBox(height: 10),
