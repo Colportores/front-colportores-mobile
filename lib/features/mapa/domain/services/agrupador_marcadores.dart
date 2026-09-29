@@ -9,8 +9,8 @@ import '../value_objects/coordenadas.dart';
 /// y cada celda de [radioPxPorDefecto] píxeles de lado es un grupo. Es determinista (mismos
 /// marcadores y zoom, mismos grupos y mismo orden), barato (O(n)) y no depende de ninguna
 /// librería de mapa, así que sirve para los cientos de marcadores de RR-04/R19. La grilla se define
-/// en grados de latitud sin corregir la proyección: cerca de los polos las celdas son más chicas
-/// de lo que parece; a las latitudes de trabajo (Uruguay) no importa.
+/// en grados de latitud sin corregir la proyección: en Mercator, cerca de los polos las celdas se
+/// ven más altas (no más chicas); a las latitudes de trabajo (Uruguay) no importa.
 ///
 /// A un zoom en que ninguno se superpone, cada marcador queda en su grupo individual.
 abstract final class AgrupadorMarcadores {

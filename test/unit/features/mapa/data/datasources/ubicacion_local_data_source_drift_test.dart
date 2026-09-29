@@ -449,6 +449,27 @@ void main() {
       expect(await ids(invalida), isEmpty);
     });
 
+    test('en el antimeridiano, el OR de longitud respeta baja, dueño y latitud', () async {
+      await local.insertar(ubicacion(id: 'viva', lon: 179.5));
+      await local.insertar(ubicacion(id: 'baja', lon: 179.5, deletedAt: t0));
+      await local.insertar(ubicacion(id: 'fuera-de-lat', lon: 179.5, metrosAlNorte: 200000));
+      final ajena = ubicacion(id: 'ajena', lon: 179.5);
+      await local.insertar(
+        UbicacionModel(
+          id: ajena.id,
+          tipo: ajena.tipo,
+          calle: ajena.calle,
+          numero: ajena.numero,
+          lat: ajena.lat,
+          lon: ajena.lon,
+          ciudadId: ajena.ciudadId,
+          auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-2'),
+        ),
+      );
+      const cruza = AreaMapa(sur: -35, oeste: 179, norte: -34, este: -179);
+      expect(await ids(cruza), ['viva']);
+    });
+
     test('es reactivo: un alta, una baja y un espacio nuevo vuelven a emitir', () async {
       final emisiones = <List<({String id, int espacios})>>[];
       final sub = local
