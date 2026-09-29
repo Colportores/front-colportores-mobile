@@ -55,7 +55,9 @@ abstract interface class UbicacionLocalDataSource {
   /// toca los espacios ni el resto de la fila (incluida `sync_version`).
   ///
   /// - Sin fila con ese `id`: [UbicacionInexistenteException].
-  /// - Si `updated_at` de la fila no es [baseUpdatedAt]: [UbicacionCambioException].
+  /// - Si la fila ya está de baja (o activa, al reactivar), la devuelve sin escribir ni encolar,
+  ///   con cualquier [baseUpdatedAt]: es el segundo de dos toques que se pisaron.
+  /// - Si no, y `updated_at` de la fila no es [baseUpdatedAt]: [UbicacionCambioException].
   /// - Si el encolado falla, la transacción se revierte.
   Future<UbicacionModel> cambiarBaja(
     String id, {

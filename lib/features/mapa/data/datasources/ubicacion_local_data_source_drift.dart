@@ -138,6 +138,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
+    // Ya está como se pide (dos toques que se pisaron: el primero ganó la transacción). Antes del
+    // CAS, porque el primero ya cambió `updated_at`.
+    if ((fila.deletedAt != null) == (deletedAt != null)) return _aModelo(fila);
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
 
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
