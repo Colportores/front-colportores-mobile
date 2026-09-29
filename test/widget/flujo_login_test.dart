@@ -136,7 +136,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Email o contraseña incorrectos'), findsOneWidget);
-      expect(find.byKey(const Key('inicio_email')), findsNothing);
+      expect(find.byKey(const Key('inicio_principal')), findsNothing);
     });
 
     testWidgets('cuando no hay conexión, avisa sin exponer detalles', (tester) async {
@@ -165,8 +165,7 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
-      expect(find.text('ana@example.com'), findsOneWidget);
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('inicio_configuracion')));
       await tester.pumpAndSettle();
@@ -233,7 +232,7 @@ void main() {
 
       // No volvió al login ni entró directo: pasó a la pantalla de verificación pendiente.
       expect(find.byKey(const Key('login_enviar')), findsNothing);
-      expect(find.byKey(const Key('inicio_email')), findsNothing);
+      expect(find.byKey(const Key('inicio_principal')), findsNothing);
       expect(find.textContaining('lucia.silva@correo.com'), findsWidgets);
       expect(find.byKey(const Key('verificacion_email_ya_verifique')), findsOneWidget);
 
@@ -246,8 +245,7 @@ void main() {
       await tester.tap(find.byKey(const Key('verificacion_email_continuar')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
-      expect(find.text('lucia.silva@correo.com'), findsOneWidget);
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
     });
   });
 }

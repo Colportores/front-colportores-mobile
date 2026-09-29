@@ -87,11 +87,11 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
 
       // Empuja una ruta arriba de "/" (InicioPage) para que "la pila queda intacta" pruebe algo:
       // sin esto, "/" es la única ruta y un `popUntil((r) => r.isFirst)` de más sería invisible.
-      final elemento = tester.element(find.byKey(const Key('inicio_email')));
+      final elemento = tester.element(find.byKey(const Key('inicio_principal')));
       unawaited(
         Navigator.of(elemento).push(
           MaterialPageRoute<void>(
@@ -145,7 +145,7 @@ void main() {
 
         // Había sesión: el evento era de un enlace viejo. Entra directo a Inicio, nunca pasó por
         // la pantalla de verificación.
-        expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
         expect(find.byKey(const Key('verificacion_email_titulo')), findsNothing);
       },
     );
@@ -243,7 +243,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Bloqueado: ni entra a Inicio ni queda "logueado a medias" en ninguna otra pantalla.
-        expect(find.byKey(const Key('inicio_email')), findsNothing);
+        expect(find.byKey(const Key('inicio_principal')), findsNothing);
         expect(find.byKey(const Key('login_error_general')), findsOneWidget);
         expect(
           find.textContaining('verificar tu correo'),
@@ -277,13 +277,13 @@ void main() {
         await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
         await tester.tap(find.byKey(const Key('login_enviar')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('inicio_email')), findsNothing);
+        expect(find.byKey(const Key('inicio_principal')), findsNothing);
 
         remote.confirmarEmail('lucia.silva@correo.com');
         await tester.tap(find.byKey(const Key('login_enviar')));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
       },
     );
   });

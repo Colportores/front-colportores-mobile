@@ -6,33 +6,38 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
-import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../domain/entities/jornada.dart';
 import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
+import '../widgets/hoja_hora_inicio.dart';
 import 'corregir_jornada_page.dart';
 
 /// Texto literal del criterio de aceptación "Bloqueo - jornada ya activa" (HU-JOR-001).
 const textoBloqueoJornadaActiva = 'Tenés una jornada en curso. Cerrala antes de iniciar otra.';
 
-/// Pantalla principal: la jornada de trabajo del colportor (HU-JOR-001 y HU-JOR-002).
+/// "Hoy": la jornada de trabajo del colportor (HU-JOR-001 y HU-JOR-002), según la vista 20 del
+/// diseño (#229). Es el contenido de la primera pestaña de `InicioPage`, que pone la barra
+/// superior y la inferior.
 ///
-/// Sin jornada muestra "Iniciar jornada" (con la hora ajustable hasta 30 minutos hacia atrás);
-/// con una en curso cambia a "Jornada activa", bloquea iniciar otra y ofrece "Finalizar jornada"
-/// (con la hora de fin ajustable hasta 30 minutos hacia atrás, sin pasar del inicio). Al
-/// finalizar muestra el resumen: por ahora solo las horas; casas visitadas, ventas y cobros
-/// llegan con sus módulos (#74, #75). Va sin diseño de Claude Design, con el tema y los
-/// componentes de login/registro (decisión del 22/09 para las vistas del Sprint 4).
+/// Sin jornada muestra la hora de inicio como fila tocable (abre la hoja donde se ajusta de a 5
+/// minutos, hasta 30 hacia atrás) e "Iniciar jornada" al pie; con una en curso, cuánto lleva,
+/// "Abrir el mapa" y "Finalizar jornada" (con la hora de fin ajustable hasta 30 minutos hacia
+/// atrás, sin pasar del inicio). Al finalizar muestra el resumen: por ahora solo las horas; casas
+/// visitadas, ventas y cobros llegan con sus módulos (#74, #75).
 ///
 /// Todo es local (offline-first): iniciar o finalizar la jornada no necesita conexión, así que no
 /// hay aviso de "sin conexión".
 class JornadaPage extends ConsumerStatefulWidget {
-  const JornadaPage({super.key, required this.sesion});
+  const JornadaPage({super.key, required this.sesion, this.onAbrirMapa});
 
   final Sesion sesion;
+
+  /// "Abrir el mapa" de la jornada activa: la estructura de la app (`InicioPage`) cambia de
+  /// pestaña. Sin él (en un test aislado) el botón no hace nada.
+  final VoidCallback? onAbrirMapa;
 
   @override
   ConsumerState<JornadaPage> createState() => _JornadaPageState();
@@ -45,8 +50,11 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
   int _minutosAtras = 0;
-  bool _ajustandoHora = false;
   bool _iniciando = false;
+
+  /// Se intentó iniciar y resultó que ya hay una jornada abierta (otro teléfono, otra sesión):
+  /// se muestra el bloqueo de la HU (A07) hasta que el colportor vaya a la jornada en curso.
+  bool _bloqueadaPorEnCurso = false;
   String? _error;
 
   /// Cuántos minutos hacia atrás eligió el colportor para el fin (0 = ahora).
@@ -120,17 +128,16 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       switch (failure) {
         case null:
           _minutosAtras = 0;
-          _ajustandoHora = false;
           _finalizada = null;
         case FailureJornadaActiva():
-          // La pantalla se relee y pasa a "Jornada activa", que ya muestra el bloqueo literal.
-          break;
+          // La pantalla se relee con la jornada que ya estaba abierta y muestra el bloqueo literal.
+          _bloqueadaPorEnCurso = true;
         case FailureHoraFueraDeRango(:final mensaje):
           _error = '$mensaje Elegí otra hora y volvé a intentar.';
         case Failure():
           _error =
               'No pudimos guardar el inicio de tu jornada. Probá de nuevo; si sigue pasando, '
-              'cerrá y volvé a abrir la app.';
+              'avisale a tu coordinador.';
       }
     });
   }
@@ -221,6 +228,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           _minutosAtrasFin = 0;
           _ajustandoHoraFin = false;
           _error = null;
+          _bloqueadaPorEnCurso = false;
         },
       );
     });
@@ -228,72 +236,33 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
     final ahora = ref.watch(relojJornadaProvider)();
     _ahoraMostrado = ahora;
     final estado = ref.watch(jornadaActualProvider(widget.sesion.usuarioId));
-    const paddingHorizontal = 30.0;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        foregroundColor: theme.colorScheme.onSurface,
-        surfaceTintColor: Colors.transparent,
-        scrolledUnderElevation: 0,
-        titleSpacing: paddingHorizontal,
-        title: const _Marca(),
-        actions: [
-          // Cerrar sesión (con confirmación) y borrar datos viven en Configuración (HU-AUTH-006/010).
-          IconButton(
-            key: const Key('inicio_configuracion'),
-            tooltip: 'Configuración',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context).push(ConfiguracionPage.ruta()),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(paddingHorizontal, 12, paddingHorizontal, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    fechaLarga(ahora).toUpperCase(),
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Tu jornada', style: theme.textTheme.headlineMedium),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.sesion.email,
-                    key: const Key('inicio_email'),
-                    style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
-                  ),
-                  const SizedBox(height: 28),
-                  estado.when(
-                    loading: () => const _Cargando(),
-                    error: (_, _) => _ErrorAlLeer(
-                      onReintentar: () =>
-                          ref.invalidate(jornadaActualProvider(widget.sesion.usuarioId)),
-                    ),
-                    data: (jornada) => jornada == null
-                        ? _sinJornada(context, ahora)
-                        : _JornadaActiva(
-                            jornada: jornada,
-                            ahora: ahora,
-                            finalizar: _accionesFin(jornada, ahora),
-                          ),
-                  ),
-                ],
-              ),
+    return SafeArea(
+      top: false,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: estado.when(
+            loading: () => const _Cargando(),
+            error: (_, _) => _ErrorAlLeer(
+              onReintentar: () => ref.invalidate(jornadaActualProvider(widget.sesion.usuarioId)),
+            ),
+            data: (jornada) => _Cuerpo(
+              // La cabecera va arriba y las acciones al pie; en el medio queda el aire.
+              cabecera: jornada == null
+                  ? _cabeceraSinJornada(ahora)
+                  : _bloqueadaPorEnCurso
+                  ? _Cabecera(ahora: ahora)
+                  : _cabeceraActiva(jornada, ahora),
+              acciones: jornada == null
+                  ? _accionesSinJornada(context, ahora)
+                  : _bloqueadaPorEnCurso
+                  ? _accionesBloqueada(jornada)
+                  : _accionesFin(jornada, ahora),
             ),
           ),
         ),
@@ -301,64 +270,140 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     );
   }
 
-  Widget _sinJornada(BuildContext context, DateTime ahora) {
-    final elegida = _horaElegida(ahora);
-    final textoHora = elegida == null
-        ? 'Ahora · ${horaCorta(ahora)}'
-        : '${horaCorta(elegida)} · hace $_minutosAtras min';
+  Widget _cabeceraSinJornada(DateTime ahora) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Cabecera(
+        ahora: ahora,
+        estado: 'Sin jornada',
+        titulo: 'Sin jornada en curso',
+        detalle: 'Marcá el inicio cuando salgas a trabajar.',
+      ),
+      if (_finalizada case final finalizada?) ...[
+        const SizedBox(height: 22),
+        _ResumenJornada(jornada: finalizada),
+      ],
+    ],
+  );
+
+  /// "Jornada activa": desde qué hora y cuánto lleva.
+  Widget _cabeceraActiva(Jornada jornada, DateTime ahora) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    final esquema = theme.colorScheme;
+    final transcurrido = ahora.difference(jornada.inicio);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_finalizada case final finalizada?) ...[
-          _ResumenJornada(jornada: finalizada),
-          const SizedBox(height: 14),
-        ],
-        const _TarjetaEstado(
-          icono: Icons.wb_sunny_outlined,
-          titulo: 'Sin jornada en curso',
-          detalle: 'Marcá el inicio cuando salgas a trabajar.',
-        ),
-        const SizedBox(height: 14),
-        _SelectorHora(
-          etiqueta: 'HORA DE INICIO',
-          prefijoSemantico: 'Inicio',
-          ayuda:
-              'Podés marcar el inicio hasta ${IniciarJornadaUseCase.margenHaciaAtras.inMinutes} '
-              'minutos hacia atrás.',
-          maximo: IniciarJornadaUseCase.margenHaciaAtras.inMinutes,
-          textoHora: textoHora,
-          ajustando: _ajustandoHora,
-          minutosAtras: _minutosAtras,
-          horaPara: (minutos) =>
-              minutos == 0 ? horaCorta(ahora) : horaCorta(_menosMinutos(ahora, minutos)),
-          onAlternar: _iniciando ? null : () => setState(() => _ajustandoHora = !_ajustandoHora),
-          onCambiar: (minutos) => setState(() {
-            _minutosAtras = minutos;
-            _error = null;
-          }),
+        _Cabecera(
+          ahora: ahora,
+          estado: 'En curso',
+          estadoActivo: true,
+          titulo: 'Jornada activa',
+          detalle: 'Desde las ${horaCorta(jornada.inicio)}',
         ),
         const SizedBox(height: 22),
-        if (_error case final error?) ...[
-          _Aviso(key: const Key('jornada_error'), texto: error, esError: true),
-          const SizedBox(height: 14),
-        ],
-        FilledButton.icon(
-          key: const Key('jornada_iniciar'),
-          onPressed: _iniciando ? null : _iniciar,
-          icon: _iniciando
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(_iniciando ? 'Iniciando…' : 'Iniciar jornada'),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: esquema.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: colores.borde),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('LLEVÁS', style: theme.textTheme.labelSmall?.copyWith(color: colores.gris)),
+              const SizedBox(height: 4),
+              Text(
+                transcurrido.isNegative ? 'menos de 1 min' : duracionCorta(transcurrido),
+                key: const Key('jornada_transcurrido'),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontSize: 44,
+                  color: esquema.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  /// Hora de fin + "Finalizar jornada", dentro de "Jornada activa" (HU-JOR-002).
+  Widget _accionesSinJornada(BuildContext context, DateTime ahora) {
+    final elegida = _horaElegida(ahora);
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 10,
+      children: [
+        if (_error case final error?)
+          _Aviso(key: const Key('jornada_error'), texto: error, esError: true),
+        _FilaHoraInicio(
+          hora: elegida == null ? 'Ahora' : horaCorta(elegida),
+          detalle: elegida == null ? horaCorta(ahora) : 'hace $_minutosAtras min',
+          onTap: _iniciando ? null : () => _elegirHora(ahora),
+        ),
+        if (_error == null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'Podés marcar el inicio hasta ${IniciarJornadaUseCase.margenHaciaAtras.inMinutes} '
+              'minutos hacia atrás.',
+              style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris, fontSize: 12.5),
+            ),
+          ),
+        const SizedBox(height: 4),
+        FilledButton(
+          key: const Key('jornada_iniciar'),
+          onPressed: _iniciando ? null : _iniciar,
+          child: _iniciando ? const _ConEspera('Iniciando…') : const Text('Iniciar jornada'),
+        ),
+      ],
+    );
+  }
+
+  /// Otra jornada quedó abierta (por ejemplo, sincronizada desde otro teléfono) y el colportor
+  /// intentó iniciar: se bloquea con el texto literal de la HU y se ofrece ir a la que está en curso.
+  Widget _accionesBloqueada(Jornada jornada) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 10,
+    children: [
+      const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
+      OutlinedButton(
+        key: const Key('jornada_ver_en_curso'),
+        onPressed: () => setState(() => _bloqueadaPorEnCurso = false),
+        child: Text('Ver jornada en curso · desde ${horaCorta(jornada.inicio)}'),
+      ),
+      const SizedBox(height: 4),
+      FilledButton.icon(
+        key: const Key('jornada_iniciar'),
+        onPressed: null,
+        icon: const Icon(Icons.lock_outline, size: 16),
+        label: const Text('Iniciar jornada'),
+      ),
+    ],
+  );
+
+  Future<void> _elegirHora(DateTime ahora) async {
+    final elegida = await mostrarHojaHoraInicio(
+      context,
+      ahora: ahora,
+      margenMinutos: IniciarJornadaUseCase.margenHaciaAtras.inMinutes,
+      minutosAtras: _minutosAtras,
+    );
+    if (!mounted || elegida == null) return;
+    setState(() {
+      _minutosAtras = elegida;
+      _error = null;
+    });
+  }
+
+  /// Al pie de "Jornada activa": la hora de fin (HU-JOR-002; el diseño de la vista 20 no la
+  /// dibuja, la vista de finalizar es otro issue), "Abrir el mapa" y "Finalizar jornada".
   Widget _accionesFin(Jornada jornada, DateTime ahora) {
     final maximo = _maximoAtrasFin(jornada, ahora);
     final elegida = _horaElegidaFin(jornada, ahora);
@@ -370,6 +415,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 10,
       children: [
         _SelectorHora(
           sufijoKey: '_fin',
@@ -392,21 +438,19 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
             _errorFin = null;
           }),
         ),
-        const SizedBox(height: 22),
-        if (_errorFin case final error?) ...[
+        if (_errorFin case final error?)
           _Aviso(key: const Key('jornada_error_fin'), texto: error, esError: true),
-          const SizedBox(height: 14),
-        ],
+        const SizedBox(height: 4),
         FilledButton.icon(
+          key: const Key('jornada_abrir_mapa'),
+          onPressed: widget.onAbrirMapa,
+          icon: const Icon(Icons.map_outlined),
+          label: const Text('Abrir el mapa'),
+        ),
+        OutlinedButton(
           key: const Key('jornada_finalizar'),
           onPressed: _finalizando ? null : () => _finalizar(jornada),
-          icon: _finalizando
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.stop_rounded),
-          label: Text(_finalizando ? 'Finalizando…' : 'Finalizar jornada'),
+          child: _finalizando ? const _ConEspera('Finalizando…') : const Text('Finalizar jornada'),
         ),
       ],
     );
@@ -421,57 +465,150 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   ).subtract(Duration(minutes: minutos));
 }
 
-/// Marca de la app en la barra: el mismo cuadrado + "COLPORTAJE" del login claro (1b).
-class _Marca extends StatelessWidget {
-  const _Marca();
+/// Estructura común de "Hoy": la [cabecera] arriba, las [acciones] al pie (al alcance del pulgar) y
+/// el aire en el medio. Con letra grande o pantalla baja, todo scrollea junto.
+class _Cuerpo extends StatelessWidget {
+  const _Cuerpo({required this.cabecera, required this.acciones});
+
+  final Widget cabecera;
+  final Widget acciones;
+
+  @override
+  Widget build(BuildContext context) => _PieFijoScrolleable(
+    padding: const EdgeInsets.fromLTRB(20, 26, 20, 18),
+    hijos: [
+      Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 24), child: cabecera),
+      acciones,
+    ],
+  );
+}
+
+/// Columna que ocupa toda la altura disponible (con [hijos] separados: el primero arriba, el
+/// último al pie) y scrollea entera si no entra. Sin `IntrinsicHeight`: mide el alto con el que
+/// la pantalla la arma.
+class _PieFijoScrolleable extends StatelessWidget {
+  const _PieFijoScrolleable({required this.padding, required this.hijos});
+
+  final EdgeInsets padding;
+  final List<Widget> hijos;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, restricciones) => SingleChildScrollView(
+      padding: padding,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: (restricciones.maxHeight - padding.vertical).clamp(0, double.infinity),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: hijos,
+        ),
+      ),
+    ),
+  );
+}
+
+/// Fecha, estado (chip), título y detalle de "Hoy". Sin [estado] ni [titulo] es solo la fecha.
+class _Cabecera extends StatelessWidget {
+  const _Cabecera({
+    required this.ahora,
+    this.estado,
+    this.estadoActivo = false,
+    this.titulo = 'Sin jornada en curso',
+    this.detalle = 'Marcá el inicio cuando salgas a trabajar.',
+  });
+
+  final DateTime ahora;
+  final String? estado;
+  final bool estadoActivo;
+  final String titulo;
+  final String detalle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ExcludeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    final colores = theme.extension<ColoresColportaje>()!;
+    final esquema = theme.colorScheme;
+    final colorEstado = estadoActivo ? esquema.primary : colores.gris;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 12,
+      children: [
+        Text(
+          fechaLarga(ahora).toUpperCase(),
+          key: const Key('jornada_fecha'),
+          style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+        ),
+        if (estado case final estado?)
           Container(
-            width: 22,
-            height: 22,
+            key: const Key('jornada_chip'),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              'COLPORTAJE',
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelMedium?.copyWith(
-                letterSpacing: 2.4,
-                color: theme.colorScheme.primary,
+              color: estadoActivo ? esquema.primary.withValues(alpha: .08) : null,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: estadoActivo ? esquema.primary : colores.bordeInput,
+                width: 1.5,
               ),
             ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 7,
+              children: [
+                ExcludeSemantics(
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: estadoActivo ? colorEstado : null,
+                      border: estadoActivo ? null : Border.all(color: colorEstado, width: 1.5),
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: Text(
+                    estado,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: estadoActivo ? FontWeight.w600 : FontWeight.w500,
+                      color: estadoActivo ? esquema.primary : esquema.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            titulo,
+            key: const Key('jornada_estado'),
+            style: theme.textTheme.headlineMedium,
+          ),
+        ),
+        Text(
+          detalle,
+          key: const Key('jornada_detalle'),
+          style: theme.textTheme.bodyLarge?.copyWith(color: esquema.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }
 
-/// Tarjeta del estado de la jornada. [activa] la pinta con el color primario del tema.
-class _TarjetaEstado extends StatelessWidget {
-  const _TarjetaEstado({
-    required this.icono,
-    required this.titulo,
-    required this.detalle,
-    this.activa = false,
-    this.extra = const [],
-  });
+/// La hora de inicio como fila tocable: abre la hoja donde se ajusta (A01 del diseño).
+class _FilaHoraInicio extends StatelessWidget {
+  const _FilaHoraInicio({required this.hora, required this.detalle, required this.onTap});
 
-  final IconData icono;
-  final String titulo;
+  /// "Ahora" o la hora elegida ("14:25").
+  final String hora;
+
+  /// La hora actual si es "Ahora", o "hace 10 min".
   final String detalle;
-  final bool activa;
-  final List<Widget> extra;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -479,100 +616,78 @@ class _TarjetaEstado extends StatelessWidget {
     final colores = theme.extension<ColoresColportaje>()!;
     final esquema = theme.colorScheme;
 
-    final fondo = activa ? esquema.primary : esquema.surfaceContainerHighest;
-    final texto = activa ? esquema.onPrimary : esquema.onSurface;
-    final textoSecundario = activa ? esquema.onPrimary : colores.gris;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: BorderRadius.circular(20),
-        border: activa ? null : Border.all(color: colores.borde, width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: activa
-                  ? esquema.onPrimary.withValues(alpha: .14)
-                  : esquema.primary.withValues(alpha: .1),
-            ),
-            child: Icon(icono, color: activa ? esquema.onPrimary : esquema.primary),
+    return Material(
+      color: esquema.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        key: const Key('jornada_ajustar_hora'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 60),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colores.borde),
           ),
-          const SizedBox(height: 16),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              titulo,
-              key: const Key('jornada_estado'),
-              style: theme.textTheme.headlineMedium?.copyWith(fontSize: 24, color: texto),
-            ),
+          child: Row(
+            spacing: 12,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 3,
+                  children: [
+                    Text(
+                      'HORA DE INICIO',
+                      style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+                    ),
+                    Text.rich(
+                      key: const Key('jornada_hora'),
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: hora,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          TextSpan(text: ' · $detalle'),
+                        ],
+                      ),
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                'Cambiar ›',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: esquema.primary,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(detalle, style: theme.textTheme.bodyLarge?.copyWith(color: textoSecundario)),
-          ...extra,
-        ],
+        ),
       ),
     );
   }
 }
 
-/// "Jornada activa": desde qué hora y cuánto lleva, cómo finalizarla ([finalizar]) y el bloqueo
-/// de iniciar otra.
-class _JornadaActiva extends StatelessWidget {
-  const _JornadaActiva({required this.jornada, required this.ahora, required this.finalizar});
+/// El texto de un botón que está trabajando: círculo girando + [texto].
+class _ConEspera extends StatelessWidget {
+  const _ConEspera(this.texto);
 
-  final Jornada jornada;
-  final DateTime ahora;
-  final Widget finalizar;
+  final String texto;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final esquema = theme.colorScheme;
-    final transcurrido = ahora.difference(jornada.inicio);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _TarjetaEstado(
-          activa: true,
-          icono: Icons.directions_walk_rounded,
-          titulo: 'Jornada activa',
-          detalle: 'Desde las ${horaCorta(jornada.inicio)}',
-          extra: [
-            const SizedBox(height: 18),
-            Divider(color: esquema.onPrimary.withValues(alpha: .25)),
-            const SizedBox(height: 14),
-            Text('LLEVÁS', style: theme.textTheme.labelMedium?.copyWith(color: esquema.onPrimary)),
-            const SizedBox(height: 4),
-            Text(
-              transcurrido.isNegative ? 'menos de 1 min' : duracionCorta(transcurrido),
-              key: const Key('jornada_transcurrido'),
-              style: theme.textTheme.headlineMedium?.copyWith(color: esquema.onPrimary),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        finalizar,
-        const SizedBox(height: 22),
-        FilledButton.icon(
-          key: const Key('jornada_iniciar'),
-          onPressed: null,
-          icon: const Icon(Icons.lock_outline),
-          label: const Text('Iniciar jornada'),
-        ),
-        const SizedBox(height: 14),
-        const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    spacing: 10,
+    children: [
+      const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      Flexible(child: Text(texto)),
+    ],
+  );
 }
 
 /// La hora de inicio o de fin: "ahora" por defecto, o hasta [maximo] minutos hacia atrás con el
@@ -787,10 +902,10 @@ class _Cargando extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
+    return Center(
       key: const Key('jornada_cargando'),
-      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
@@ -801,7 +916,7 @@ class _Cargando extends StatelessWidget {
   }
 }
 
-/// No se pudo leer la jornada guardada: qué pasó y qué hacer, con "Reintentar".
+/// No se pudo leer la jornada guardada (A06): qué pasó y qué hacer, con "Reintentar".
 class _ErrorAlLeer extends StatelessWidget {
   const _ErrorAlLeer({required this.onReintentar});
 
@@ -809,22 +924,52 @@ class _ErrorAlLeer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _Aviso(
-          key: Key('jornada_error_lectura'),
-          esError: true,
-          texto:
-              'No pudimos leer tu jornada. Tocá "Reintentar"; si sigue pasando, cerrá y volvé a '
-              'abrir la app.',
+    final theme = Theme.of(context);
+    final esquema = theme.colorScheme;
+
+    return _PieFijoScrolleable(
+      padding: const EdgeInsets.fromLTRB(30, 0, 30, 18),
+      hijos: [
+        const SizedBox.shrink(),
+        Semantics(
+          liveRegion: true,
+          container: true,
+          key: const Key('jornada_error_lectura'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              ExcludeSemantics(
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: esquema.error, width: 1.5),
+                  ),
+                  child: Text(
+                    '!',
+                    style: theme.textTheme.headlineMedium?.copyWith(color: esquema.error),
+                  ),
+                ),
+              ),
+              Text('No pudimos leer tu jornada.', style: theme.textTheme.headlineMedium),
+              Text(
+                'Tocá “Reintentar” para volver a cargarla. Tus datos siguen guardados en este '
+                'teléfono.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: esquema.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        OutlinedButton.icon(
+        FilledButton(
           key: const Key('jornada_reintentar'),
           onPressed: onReintentar,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Reintentar'),
+          child: const Text('Reintentar'),
         ),
       ],
     );
