@@ -533,6 +533,76 @@ void main() {
         const Left<Failure, ResultadoInicializacionDb>(FailureInesperado()),
       );
     });
+
+    group('envoltorio desactualizado por un cambio de contraseña (#125)', () {
+      setUp(() {
+        final dek = Uint8List.fromList(List<int>.filled(32, 77));
+        repo
+          ..claveDelArchivo = dek
+          ..envoltorio = (dek: dek, password: 'Vieja1234')
+          ..envoltorioDesactualizado = true;
+      });
+
+      test('dado un login con contraseña, abre con la DEK del almacén y recién después la envuelve '
+          'con esa contraseña; la marca baja', () async {
+        final r = await inicializar();
+
+        expect(r, abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'abrir', 'envolver']);
+        expect(repo.envoltorio!.password, 'secreto123');
+        expect(repo.envoltorio!.dek, List<int>.filled(32, 77), reason: 'envuelve la DEK de la DB');
+        expect(repo.envoltorioDesactualizado, isFalse);
+        expect(pasos, [PasoInicializacionDb.abriendoDb]);
+        expect(repo.aEnvolver.single.destruida, isTrue, reason: 'la copia no queda viva');
+        expect(repo.abiertaCon!.destruida, isFalse, reason: 'la DEK de la DB sigue siendo de ella');
+      });
+
+      test('dada una DEK del almacén que no abre la DB, deja el envoltorio y la marca', () async {
+        repo.claveDelArchivo = Uint8List.fromList(List<int>.filled(32, 5));
+
+        final r = await inicializar();
+
+        expect(r, const Left<Failure, ResultadoInicializacionDb>(FailureClaveDbIncorrecta()));
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorio!.password, 'Vieja1234');
+        expect(repo.envoltorioDesactualizado, isTrue);
+        expect(repo.llamadas, isNot(contains('descartar')));
+      });
+
+      test('dado que envolver falla, abre igual y la marca queda para el próximo login', () async {
+        repo.fallas['envolver'] = const FailureAlmacenSeguro();
+
+        expect(await inicializar(), abierta);
+        expect(repo.abierta, isTrue);
+        expect(repo.envoltorio!.password, 'Vieja1234');
+        expect(repo.envoltorioDesactualizado, isTrue);
+        expect(repo.aEnvolver.single.destruida, isTrue);
+      });
+
+      test('dada una sesión restaurada (sin contraseña), abre sin tocar el envoltorio: la marca '
+          'espera un login con contraseña', () async {
+        expect(await inicializar(password: null, requiereEnvoltorio: true), abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'abrir']);
+        expect(repo.envoltorioDesactualizado, isTrue);
+      });
+
+      test('dado un logout mientras lee la DEK, no abre ni envuelve', () async {
+        repo.lecturaPendiente = Completer<void>();
+
+        final enCurso = inicializar();
+        await Future<void>.delayed(Duration.zero);
+        vigencia.cerrarSesion();
+        repo.lecturaPendiente!.complete();
+
+        expect(
+          await enCurso,
+          const Left<Failure, ResultadoInicializacionDb>(FailureSesionCerrada()),
+        );
+        expect(repo.llamadas, isNot(contains('abrir')));
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorioDesactualizado, isTrue);
+      });
+    });
   });
 
   group('recuperación guiada (ADR-006): el almacén falla con la DB en disco', () {

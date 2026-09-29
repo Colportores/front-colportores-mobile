@@ -62,6 +62,43 @@ void main() {
       await expectLater(archivo.borrar(), completes);
     });
 
+    test('dado un envoltorio marcado como desactualizado (#125), escribir otro baja la marca; '
+        'marcar no toca el envoltorio', () async {
+      await archivo.escribir(_envoltorio(1));
+      expect(await archivo.estaDesactualizado(), isFalse);
+
+      await archivo.marcarDesactualizado();
+
+      expect(await archivo.estaDesactualizado(), isTrue);
+      expect(await archivo.leer(), _envoltorio(1));
+
+      await archivo.escribir(_envoltorio(2));
+
+      expect(await archivo.estaDesactualizado(), isFalse);
+      expect(await archivo.leer(), _envoltorio(2));
+    });
+
+    test('cuando se borra, se va también la marca de desactualizado', () async {
+      await archivo.escribir(_envoltorio(1));
+      await archivo.marcarDesactualizado();
+
+      await archivo.borrar();
+
+      expect(await archivo.estaDesactualizado(), isFalse);
+      expect(dir.listSync(), isEmpty);
+    });
+
+    test('dado un directorio que no existe, marcar lanza ArchivoEnvoltorioException', () async {
+      final roto = ArchivoEnvoltorioDek(
+        directorio: () async => Directory(p.join(dir.path, 'no', 'existe')),
+      );
+
+      await expectLater(
+        roto.marcarDesactualizado(),
+        throwsA(isA<ArchivoEnvoltorioException>().having((e) => e.operacion, 'op', 'marcar')),
+      );
+    });
+
     test('dado un archivo que no es un envoltorio, cuando se lee, lanza '
         'EnvoltorioCorruptoException', () async {
       await enDisco().writeAsString('basura');

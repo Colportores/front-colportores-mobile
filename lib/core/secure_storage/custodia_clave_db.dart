@@ -96,6 +96,16 @@ final class CustodiaClaveDb {
   /// Si hay una DEK envuelta con la contraseña en este equipo. No dice si se puede abrir.
   Future<bool> hayEnvoltorioPorPassword() => _archivo.existe();
 
+  /// Si el envoltorio puede estar hecho con una contraseña que ya no es la de la cuenta: un cambio
+  /// de contraseña (HU-AUTH-005) empezó y no llegó a re-envolver (#125). Lo baja el próximo
+  /// [envolverConPassword].
+  Future<bool> envoltorioDesactualizado() => _archivo.estaDesactualizado();
+
+  /// Marca el envoltorio como desactualizado, **antes** de cambiar la contraseña: si la respuesta
+  /// del servidor se pierde o la app muere antes de re-envolver, el próximo login con contraseña
+  /// sabe que tiene que hacerlo (#125). [olvidar] también la borra.
+  Future<void> marcarEnvoltorioDesactualizado() => _archivo.marcarDesactualizado();
+
   /// Envuelve [dek] con Argon2id([password]) y lo guarda en el archivo del envoltorio, reemplazando
   /// el anterior. Usa una sal nueva cada vez y los parámetros de ADR-006, que quedan en la cabecera.
   ///

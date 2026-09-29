@@ -151,6 +151,32 @@ void main() {
     );
   });
 
+  test('dado un envoltorio marcado como desactualizado (#125), el estado lo dice con un warn en el '
+      'log, y envolver otra vez lo baja', () async {
+    final salida = _SalidaEnMemoria();
+    repo = construir(logger: AppLogger(output: salida));
+    final dek = _derecha(await repo.crearDek());
+    _derecha(await repo.envolverConPassword(dek, 'Vieja1234'));
+    expect(_derecha(await repo.estado()).envoltorioDesactualizado, isFalse);
+    expect(salida.lineas.join('\n'), isNot(contains('ENVOLTORIO_DESACTUALIZADO')));
+
+    _derecha(await repo.marcarEnvoltorioDesactualizado());
+
+    expect(_derecha(await repo.estado()).envoltorioDesactualizado, isTrue);
+    expect(salida.lineas.join('\n'), contains('ENVOLTORIO_DESACTUALIZADO'));
+
+    _derecha(await repo.envolverConPassword(dek, 'NuevaClave1'));
+
+    expect(_derecha(await repo.estado()).envoltorioDesactualizado, isFalse);
+    expect(_derecha(await repo.desenvolverConPassword('NuevaClave1')).bytes, dek.bytes);
+  });
+
+  test('dada la marca de desactualizado sin envoltorio, el estado no la cuenta', () async {
+    _derecha(await repo.marcarEnvoltorioDesactualizado());
+
+    expect(_derecha(await repo.estado()).envoltorioDesactualizado, isFalse);
+  });
+
   test('cuando reconstruye el almacén, la DB vuelve a abrir con la DEK recuperada', () async {
     final dek = _derecha(await repo.crearDek());
     final recuperada = copia(dek);
