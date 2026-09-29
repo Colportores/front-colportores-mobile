@@ -23,6 +23,7 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   required int minutosAtras,
   String pregunta = '¿A qué hora empezaste?',
   String etiquetaCampo = 'HORA DE INICIO',
+  bool mostrarRelativo = true,
 }) => showModalBottomSheet<HoraElegida>(
   context: context,
   isScrollControlled: true,
@@ -38,6 +39,7 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
     minutosAtras: minutosAtras,
     pregunta: pregunta,
     etiquetaCampo: etiquetaCampo,
+    mostrarRelativo: mostrarRelativo,
   ),
 );
 
@@ -52,6 +54,7 @@ class HojaHoraInicio extends StatefulWidget {
     required this.minutosAtras,
     this.pregunta = '¿A qué hora empezaste?',
     this.etiquetaCampo = 'HORA DE INICIO',
+    this.mostrarRelativo = true,
   });
 
   static const pasoMinutos = 5;
@@ -59,6 +62,10 @@ class HojaHoraInicio extends StatefulWidget {
   /// Título de la hoja y rótulo del campo: la misma hoja sirve para el inicio y para el fin.
   final String pregunta;
   final String etiquetaCampo;
+
+  /// "Ahora" / "Hace N min" bajo la hora: solo tiene sentido cuando [ahora] es de verdad el
+  /// momento actual (no en la corrección de una jornada de otro día, donde es el fin de ese día).
+  final bool mostrarRelativo;
 
   final DateTime ahora;
   final int margenMinutos;
@@ -256,10 +263,11 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                             style: theme.textTheme.headlineMedium?.copyWith(fontSize: 40),
                           ),
                         ),
-                        Text(
-                          _minutos == 0 ? 'Ahora' : 'Hace $_minutos min',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                        if (widget.mostrarRelativo)
+                          Text(
+                            _minutos == 0 ? 'Ahora' : 'Hace $_minutos min',
+                            style: theme.textTheme.bodyMedium,
+                          ),
                       ],
                     ),
                   ),

@@ -110,11 +110,9 @@ Future<void> _montar(
         navigatorKey: _navigatorKey,
         theme: tema ?? temaClaro(),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(escalaEfectiva.valor),
-            // Sin AM/PM: el selector de hora del sistema queda en 24 h, hora antes que minuto.
-            alwaysUse24HourFormat: true,
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(escalaEfectiva.valor)),
           child: child!,
         ),
         home: const Scaffold(),
@@ -148,19 +146,20 @@ void _pantalla(WidgetTester tester, Size tamanio) {
   addTearDown(tester.view.reset);
 }
 
-/// Abre el selector de hora del sistema, lo pasa a modo texto (más estable en tests que arrastrar
-/// el dial) y confirma [hora]:[minuto].
-Future<void> _elegirHora(WidgetTester tester, int hora, int minuto) async {
-  // A 360x740 con textScaler 2.0 el botón queda fuera del viewport por defecto (la pantalla es
-  // un `ListView`, scrollea).
+/// Abre la hoja de hora, escribe [hora]:[minuto] en "Otra hora" y, si [confirmar], la usa.
+Future<void> _elegirHora(WidgetTester tester, int hora, int minuto, {bool confirmar = true}) async {
+  // A 360x740 con textScaler 2.0 el botón queda fuera del viewport por defecto (la pantalla
+  // scrollea).
   await tester.ensureVisible(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byIcon(Icons.keyboard_outlined));
+  await tester.tap(find.byKey(const Key('hoja_hora_valor')));
   await tester.pumpAndSettle();
-  await tester.enterText(find.byType(TextFormField).at(0), '$hora');
-  await tester.enterText(find.byType(TextFormField).at(1), '$minuto');
-  await tester.tap(find.text('OK'));
+  final texto = '${hora.toString().padLeft(2, '0')}:${minuto.toString().padLeft(2, '0')}';
+  await tester.enterText(find.byKey(const Key('hoja_hora_campo')), texto);
+  await tester.pumpAndSettle();
+  if (!confirmar) return;
+  await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
   await tester.pumpAndSettle();
 }
 
@@ -210,24 +209,19 @@ void main() {
     });
 
     testWidgets('hora fuera de rango — a la misma hora del inicio (no es estrictamente '
-        'posterior): rechaza con el rango explícito y no cierra la jornada', (tester) async {
+        'posterior): la hoja rechaza con el rango explícito y no deja elegirla', (tester) async {
       final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
       await _montar(tester, dataSource);
       await _abrirCorregir(tester);
 
       // El inicio fue a las 18:00: elegir esa misma hora no vale (el rango excluye el inicio).
-      await _elegirHora(tester, 18, 0);
-      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-      await tester.pumpAndSettle();
+      await _elegirHora(tester, 18, 0, confirmar: false);
 
+      expect(find.text('La hora tiene que estar entre las 18:01 y las 23:59.'), findsOneWidget);
       expect(
-        find.text(
-          'La hora tiene que estar entre las 18:00 y las 23:59. Elegí otra hora y volvé a '
-          'intentar.',
-        ),
-        findsOneWidget,
+        tester.widget<FilledButton>(find.byKey(const Key('hoja_hora_usar_escrita'))).onPressed,
+        isNull,
       );
-      expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
   });
@@ -265,7 +259,13 @@ void main() {
       await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Ocurrió un error inesperado'), findsOneWidget);
+      expect(
+        find.text(
+          'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
+          'pasando, avisale a tu coordinador.',
+        ),
+        findsOneWidget,
+      );
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
       expect(_botonCerrar(tester).onPressed, isNotNull);
 
@@ -301,10 +301,7 @@ void main() {
         case 'hora elegida':
           await _elegirHora(tester, 20, 30);
         case 'error de rango':
-          await _elegirHora(tester, 18, 0);
-          await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
-          await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-          await tester.pumpAndSettle();
+          await _elegirHora(tester, 18, 0, confirmar: false);
       }
     }
 
@@ -324,10 +321,7 @@ void main() {
       });
 
       testWidgets('$estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
-        // El estado se arma a tamaño normal: a 360x740 con el texto al 200 % el diálogo del
-        // selector de hora del *sistema* puede desbordar (ajeno a esta pantalla) antes de que
-        // termine de abrirse. Lo que audita este test es el layout de `CorregirJornadaPage` ya
-        // con el estado puesto, no el picker de Flutter.
+        // El estado se arma a tamaño normal y después se sube el texto al 200 %.
         final escala = _Escala(1);
         await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]), escala: escala);
         await _abrirCorregir(tester);

@@ -1100,12 +1100,11 @@ void main() {
 
       await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
       await tester.pumpAndSettle();
-      // Selector de hora del sistema: modo texto (más estable en tests que arrastrar el dial).
-      await tester.tap(find.byIcon(Icons.keyboard_outlined));
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(0), '20');
-      await tester.enterText(find.byType(TextFormField).at(1), '30');
-      await tester.tap(find.text('OK'));
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '20:30');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));

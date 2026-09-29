@@ -122,14 +122,20 @@ Future<void> _tocarSinEsperar(WidgetTester tester, String key) async {
   await tester.pump();
 }
 
-/// Elige [hora]:[minuto] en el selector del sistema (modo texto, más estable que el dial).
-Future<void> _elegirHoraDelSistema(WidgetTester tester, String hora, String minuto) async {
+/// Abre la hoja de "¿A qué hora terminaste?" y escribe [hora]:[minuto] en "Otra hora", sin confirmar.
+Future<void> _escribirHoraEnLaHoja(WidgetTester tester, String hora, String minuto) async {
   await _tocar(tester, 'corregir_jornada_elegir_hora');
-  await tester.tap(find.byIcon(Icons.keyboard_outlined));
   await tester.pumpAndSettle();
-  await tester.enterText(find.byType(TextFormField).at(0), hora);
-  await tester.enterText(find.byType(TextFormField).at(1), minuto);
-  await tester.tap(find.text('OK'));
+  await _tocar(tester, 'hoja_hora_valor');
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '$hora:$minuto');
+  await tester.pumpAndSettle();
+}
+
+/// Elige [hora]:[minuto] en la hoja (escribiéndola en "Otra hora") y la confirma.
+Future<void> _elegirHoraEnLaHoja(WidgetTester tester, String hora, String minuto) async {
+  await _escribirHoraEnLaHoja(tester, hora, minuto);
+  await _tocar(tester, 'hoja_hora_usar_escrita');
   await tester.pumpAndSettle();
 }
 
@@ -145,12 +151,12 @@ void main() {
     'error al guardar el fin',
     'resumen',
     'sin cerrar',
-    'sin cerrar con error',
+    'sin cerrar con hora fuera de rango',
   ];
 
   Future<void> preparar(WidgetTester tester, String estado, double escala, Size tam) async {
     final ds = switch (estado) {
-      'sin cerrar' || 'sin cerrar con error' => _ayer(),
+      'sin cerrar' || 'sin cerrar con hora fuera de rango' => _ayer(),
       _ => _DataSource(iniciales: [_abiertaDesde(DateTime(2026, 9, 29, 13, 20))]),
     };
     await _montar(tester, ds, escala: escala);
@@ -174,12 +180,9 @@ void main() {
         await _tocar(tester, 'jornada_finalizar');
       case 'sin cerrar':
         await _tocar(tester, 'jornada_finalizar');
-      case 'sin cerrar con error':
+      case 'sin cerrar con hora fuera de rango':
         await _tocar(tester, 'jornada_finalizar');
-        await _elegirHoraDelSistema(tester, '14', '35');
-        // El desborde del diálogo del sistema a texto 2.0 tiene su propio test.
-        tester.takeException();
-        await _tocar(tester, 'corregir_jornada_cerrar');
+        await _escribirHoraEnLaHoja(tester, '14', '35');
     }
   }
 
@@ -269,34 +272,33 @@ void main() {
     });
   });
 
-  group('QA #230 — selector de hora del sistema a texto 2.0', () {
+  group('QA #230 — hoja de hora de "Jornada sin cerrar" a texto 2.0', () {
     for (final (nombre, tam) in [
       ('360x640', const Size(360, 640)),
       ('412x915', const Size(412, 915)),
     ]) {
-      testWidgets('el diálogo en modo dial en $nombre no desborda', (tester) async {
+      testWidgets('la hoja de ajuste en $nombre no desborda', (tester) async {
         _pantalla(tester, tam);
         await _montar(tester, _ayer(), escala: 2);
         await tester.pumpAndSettle();
         await _tocar(tester, 'jornada_finalizar');
         await _tocar(tester, 'corregir_jornada_elegir_hora');
+        await tester.pumpAndSettle();
 
+        expect(find.byKey(const Key('hoja_hora_ajuste')), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
 
-      // skip: QA #230 — a texto 2.0 el selector de hora del sistema en modo texto (el que se abre
-      // al tocar el teclado) desborda 108 px en vertical: el botón OK queda fuera del diálogo.
-      testWidgets('el diálogo en modo texto en $nombre no desborda', (tester) async {
+      testWidgets('la hoja en "Otra hora" en $nombre no desborda', (tester) async {
         _pantalla(tester, tam);
         await _montar(tester, _ayer(), escala: 2);
         await tester.pumpAndSettle();
         await _tocar(tester, 'jornada_finalizar');
-        await _tocar(tester, 'corregir_jornada_elegir_hora');
-        await tester.tap(find.byIcon(Icons.keyboard_outlined));
-        await tester.pumpAndSettle();
+        await _escribirHoraEnLaHoja(tester, '14', '35');
 
+        expect(find.byKey(const Key('hoja_hora_otra')), findsOneWidget);
         expect(tester.takeException(), isNull);
-      }, skip: true);
+      });
     }
   });
 
@@ -326,18 +328,17 @@ void main() {
       await _montar(tester, ds);
       await tester.pumpAndSettle();
       await _tocar(tester, 'jornada_finalizar');
-      await _elegirHoraDelSistema(tester, '14', '35');
-      await _tocar(tester, 'corregir_jornada_cerrar');
+      await _escribirHoraEnLaHoja(tester, '14', '35');
 
-      expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
-      expect(find.textContaining('Elegí otra hora y volvé a intentar.'), findsOneWidget);
+      // La hoja la rechaza con el rango y no deja confirmarla: nada se ajusta en silencio.
+      expect(find.text('La hora tiene que estar entre las 14:36 y las 23:59.'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('hoja_hora_usar_escrita'))).onPressed,
+        isNull,
+      );
       expect(ds.jornadas.single.estaAbierta, isTrue);
-      // La hora elegida no se pierde.
-      expect(find.text('14:35'), findsWidgets);
     });
 
-    // skip: QA #230 — si el cierre de la jornada sin cerrar falla por un error del sistema, el aviso
-    // muestra el mensaje genérico del Failure ("Ocurrió un error inesperado"): no dice qué hacer.
     testWidgets('un fallo al cerrar la jornada sin cerrar dice qué pasó y qué hacer', (
       tester,
     ) async {
@@ -346,7 +347,7 @@ void main() {
       await _montar(tester, ds);
       await tester.pumpAndSettle();
       await _tocar(tester, 'jornada_finalizar');
-      await _elegirHoraDelSistema(tester, '18', '10');
+      await _elegirHoraEnLaHoja(tester, '18', '10');
       await _tocar(tester, 'corregir_jornada_cerrar');
 
       final aviso = tester.widget<Text>(
@@ -357,6 +358,6 @@ void main() {
       );
       expect(aviso.data, matches(RegExp('Prob|Reintent|volv|intent', caseSensitive: false)));
       expect(ds.jornadas.single.estaAbierta, isTrue);
-    }, skip: true);
+    });
   });
 }

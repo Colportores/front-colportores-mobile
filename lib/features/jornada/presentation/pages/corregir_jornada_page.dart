@@ -7,6 +7,7 @@ import '../../../auth/domain/entities/sesion.dart';
 import '../../domain/entities/jornada.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
+import '../widgets/hoja_hora_inicio.dart';
 
 /// "¿A qué hora terminaste?" (HU-JOR-002, "Jornada que quedó abierta"): corrige una jornada que
 /// quedó abierta de un día anterior, con una hora elegida a mano entre el inicio (excluido) y
@@ -41,15 +42,45 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     return DateTime(base.year, base.month, base.day, elegida.hour, elegida.minute);
   }
 
+  /// Las 23:59 del día de la jornada: el tope del rango, y la referencia de la hoja.
+  DateTime get _finDelDia {
+    final base = _inicioLocal;
+    return DateTime(base.year, base.month, base.day, 23, 59);
+  }
+
+  /// Minutos entre el primer minuto válido (el siguiente al inicio: el inicio se excluye) y las
+  /// 23:59.
+  int get _minutosDeRango {
+    final inicio = _inicioLocal;
+    final inicioAlMinuto = DateTime(
+      inicio.year,
+      inicio.month,
+      inicio.day,
+      inicio.hour,
+      inicio.minute,
+    );
+    return (_finDelDia.difference(inicioAlMinuto).inMinutes - 1).clamp(0, 24 * 60);
+  }
+
+  /// La hoja propia (la misma que Hoy) en vez del selector del sistema: valida el rango sin
+  /// ajustar nada en silencio y aguanta el texto al 200 %.
   Future<void> _elegirHora() async {
-    final elegida = await showTimePicker(
-      context: context,
-      initialTime: _horaElegida ?? TimeOfDay.fromDateTime(_inicioLocal),
-      helpText: 'A QUÉ HORA TERMINASTE',
+    final maximo = _minutosDeRango;
+    final actual = _horaCompleta;
+    final elegida = await mostrarHojaHoraInicio(
+      context,
+      ahora: _finDelDia,
+      margenMinutos: maximo,
+      minutosAtras: actual == null
+          ? maximo
+          : _finDelDia.difference(actual).inMinutes.clamp(0, maximo),
+      pregunta: '¿A qué hora terminaste?',
+      etiquetaCampo: 'HORA DE FIN',
+      mostrarRelativo: false,
     );
     if (elegida == null || !mounted) return;
     setState(() {
-      _horaElegida = elegida;
+      _horaElegida = TimeOfDay.fromDateTime(elegida.hora);
       _error = null;
     });
   }
@@ -74,6 +105,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
         _cerrando = false;
         _error = switch (failure) {
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
+          // Un fallo del sistema al guardar: qué pasó y qué hacer (el mismo texto que Hoy).
+          FailureInesperado() || FailureServidor() || FailureSinConexion() =>
+            'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
+                'pasando, avisale a tu coordinador.',
           Failure(:final mensaje) => mensaje,
         };
       }),
