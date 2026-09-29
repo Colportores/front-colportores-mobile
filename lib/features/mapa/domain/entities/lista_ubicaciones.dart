@@ -54,8 +54,7 @@ final class ListaUbicaciones extends Equatable {
   /// El colportor no tiene **ninguna** ubicación que mostrar, antes de aplicar la búsqueda, la
   /// ciudad, el radio y el tipo. Solo esto justifica el empty state de la HU con "Registrar tu
   /// primera ubicación". Sí respeta el toggle de bajas: si todas sus ubicaciones están dadas de
-  /// baja y "Mostrar bajas" está apagado, es `true` (no hay nada que listar) y la vista puede
-  /// ofrecer activar el toggle en vez de, o además de, el CTA de alta.
+  /// baja y "Mostrar bajas" está apagado, es `true` (no hay nada que listar).
   final bool sinUbicaciones;
 
   /// No hay filas que mostrar (`total == 0`), sea por [sinUbicaciones] o por los filtros.
