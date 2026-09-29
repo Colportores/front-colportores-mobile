@@ -80,6 +80,8 @@ docker compose -f compose.dev.yml run --rm flutter dart run build_runner build  
 docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 ```
 
+- **Imagen y cachés compartidas.** `-p <nombre>` propio está bien para aislar contenedores, `build/` y `android/.gradle`; la imagen (`front-colportores-mobile-dev:latest`) y las cachés de pub y Gradle (`front-colportores-mobile_pub_cache`, `front-colportores-mobile_gradle_cache`) son compartidas por todos los proyectos.
+  `docker compose build` solo cuando cambia `dockerfile.dev` (y nunca `down -v` sobre esas cachés).
 - `build/` y `android/.gradle` viven en volúmenes Linux (D8/dex falla sobre el bind mount de Windows). Para sacar el APK al host:
   `docker run --rm -v front-colportores-mobile_build_out:/b -v "$PWD":/out alpine cp /b/app/outputs/flutter-apk/app-debug.apk /out/`
 - `*.g.dart` **no se commitea**: se genera con `build_runner` (CI lo hace en cada corrida).
