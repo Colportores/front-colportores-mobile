@@ -1,6 +1,7 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -64,6 +65,21 @@ void main() {
       );
 
       expect(ubicacion.estaBorrada, isTrue);
+    });
+
+    test('dado un alta por marcador manual sin dirección ni zona, cuando se construye, calle, '
+        'número y zona quedan en null', () {
+      final ubicacion = Ubicacion(
+        id: 'ub-2',
+        tipo: TipoUbicacion.negocio,
+        lat: -34.9,
+        lon: -56.1,
+        ciudadId: 'ciudad-1',
+        auditoria: auditoria,
+      );
+
+      expect((ubicacion.calle, ubicacion.numero, ubicacion.zonaId), (null, null, null));
+      expect(ubicacion.coordenadas, const Coordenadas(lat: -34.9, lon: -56.1));
     });
   });
 }

@@ -26,8 +26,8 @@ final class IniciarJornadaParams extends Equatable {
 /// 1. Si el colportor ya tiene una jornada en curso devuelve `Left(FailureJornadaActiva)` ("solo
 ///    una jornada activa a la vez"). El repositorio vuelve a garantizarlo al escribir, para el
 ///    caso de dos inicios casi simultáneos (ver [JornadaRepository.crear]).
-/// 2. Si no, crea la jornada con `inicio = now()` en UTC y truncado al milisegundo (la precisión
-///    de la DB local, ver [_alMilisegundo]), `id` UUID v7 generado localmente
+/// 2. Si no, crea la jornada con `inicio = now()` (la entidad la guarda en UTC y truncada al
+///    milisegundo, ver `instanteMs`), `id` UUID v7 generado localmente
 ///    (esquema-datos.md §Principios 2) y la auditoría con el colportor como `created_by`.
 /// 3. Si llega [IniciarJornadaParams.hora], la jornada empieza a esa hora, siempre que esté entre
 ///    `now − 30 min` y `now` (HU-JOR-001: "editable hasta 30 minutos hacia atrás", sin horas
@@ -55,7 +55,7 @@ final class IniciarJornadaUseCase implements UseCase<Jornada, IniciarJornadaPara
   @override
   Future<Either<Failure, Jornada>> call(IniciarJornadaParams params) async {
     // La hora del toque, no la de después de consultar la DB.
-    final ahora = _alMilisegundo(_ahora());
+    final ahora = _ahora();
     final colportorId = params.colportorId.trim();
 
     if (colportorId.isEmpty) {
@@ -70,7 +70,7 @@ final class IniciarJornadaUseCase implements UseCase<Jornada, IniciarJornadaPara
       inicio = ahora;
     } else {
       final desde = _alMinuto(ahora.subtract(margenHaciaAtras));
-      final hora = _alMilisegundo(elegida);
+      final hora = elegida;
       if (hora.isBefore(desde) || hora.isAfter(ahora)) {
         return Left(FailureHoraFueraDeRango(desde: desde, hasta: ahora));
       }
@@ -92,19 +92,6 @@ final class IniciarJornadaUseCase implements UseCase<Jornada, IniciarJornadaPara
       return _repository.crear(jornada);
     });
   }
-
-  /// [fecha] en UTC y sin lo que haya por debajo del milisegundo.
-  ///
-  /// La DB local guarda las fechas en epoch ms (08-conceptos-transversales §8.11; el
-  /// `FechaUtcConverter` descarta los microsegundos al guardar). Sin truncar acá, la jornada que
-  /// devuelve el caso de uso tendría microsegundos y la que se relee de la DB no —`==` daría
-  /// `false` para la misma fila—, y `JornadaModel.toJson()` mandaría al cloud `.123999Z` mientras
-  /// el dispositivo tiene `.123`.
-  ///
-  /// Se aplica en el origen de la fecha, no en los constructores de `Jornada`/`Auditoria` (que
-  /// ya normalizan a UTC): ver el comentario de la revisión en #70.
-  static DateTime _alMilisegundo(DateTime fecha) =>
-      DateTime.fromMillisecondsSinceEpoch(fecha.millisecondsSinceEpoch, isUtc: true);
 
   /// [fecha] en UTC, al principio de su minuto.
   static DateTime _alMinuto(DateTime fecha) {

@@ -332,6 +332,54 @@ final class FailureSesionCerrada extends Failure {
       );
 }
 
+/// Por qué no hay una lectura de GPS utilizable (HU-UBI-001: "denegado, sin señal").
+enum MotivoSinGps {
+  /// El colportor no dio (o sacó) el permiso de ubicación.
+  permisoDenegado,
+
+  /// La ubicación del teléfono está apagada.
+  servicioApagado,
+
+  /// No llegó una posición a tiempo, o llegó `(0, 0)`, que se trata como sin GPS (caso borde de
+  /// HU-UBI-001).
+  sinSenal,
+}
+
+/// No hay GPS para el alta de ubicación (HU-UBI-001, "Alta sin GPS - colocación manual"): el alta
+/// sigue con el marcador puesto a mano en el mapa. [motivo] le deja a la pantalla elegir el camino
+/// (pedir el permiso, prender la ubicación o marcar a mano).
+///
+/// Texto para confirmar con Cristian: la HU no trae uno.
+final class FailureGpsNoDisponible extends Failure {
+  const FailureGpsNoDisponible({required this.motivo})
+    : super(
+        mensaje:
+            'No pudimos tomar tu ubicación por GPS. Tocá "Marcar en el mapa" para ubicar el '
+            'punto a mano.',
+        codigo: 'UBI_SIN_GPS',
+      );
+
+  final MotivoSinGps motivo;
+
+  @override
+  List<Object?> get props => [...super.props, motivo];
+}
+
+/// El alta de ubicación llegó sin `ciudad_id` (HU-UBI-001, "Error - ciudad no en catálogo": "no
+/// permite crear la ubicación sin `ciudad_id`"). La pantalla ofrece "Seleccionar ciudad
+/// manualmente" o "Solicitar alta de ciudad al administrador".
+///
+/// Texto para confirmar con Cristian: la HU nombra las dos acciones, no el aviso.
+final class FailureCiudadRequerida extends Failure {
+  const FailureCiudadRequerida()
+    : super(
+        mensaje:
+            'No encontramos la ciudad de este punto en el catálogo. Seleccionala a mano o pedile '
+            'al administrador que la dé de alta.',
+        codigo: 'UBI_SIN_CIUDAD',
+      );
+}
+
 /// No hay lugar en el teléfono para el paquete de mapa que se quiere descargar (HU-SYNC-010).
 /// [megabytesRequeridos] es lo que falta bajar: al reanudar descuenta lo que ya está descargado.
 /// El mensaje es el literal de la HU más qué hacer (para confirmar en #189).

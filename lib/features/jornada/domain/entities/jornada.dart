@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/domain/instante.dart';
 
 /// Período de trabajo de un colportor (esquema-datos.md §Operaciones de campo, tabla
 /// `jornada`). El esquema no define una máquina de estados para esta entidad (§Estados solo
@@ -17,8 +18,8 @@ class Jornada extends Equatable {
     this.totalVisitas = 0,
     this.totalVentas = 0,
     required this.auditoria,
-  }) : inicio = inicio.toUtc(),
-       fin = fin?.toUtc();
+  }) : inicio = instanteMs(inicio),
+       fin = fin == null ? null : instanteMs(fin);
 
   final String id;
 

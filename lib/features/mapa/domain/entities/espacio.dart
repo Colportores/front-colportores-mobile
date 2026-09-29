@@ -15,6 +15,15 @@ class Espacio extends Equatable {
     required this.auditoria,
   });
 
+  /// `numero_depto` del espacio default que el alta crea para una casa (HU-UBI-001, Supuesto
+  /// S13).
+  ///
+  /// ADR-001 y esquema-datos.md dicen `NULL` ("para casa y negocio es uno solo, con
+  /// `numero_depto` nulo"); la HU y el issue #192 dicen `"—"`. Se sigue al modelo de datos, que es
+  /// lo que el cloud recibe; el `"—"` queda como lo que muestra la pantalla. Para confirmar en
+  /// #192: cambiarlo es cambiar esta constante.
+  static const String? deptoPorDefecto = null;
+
   final String id;
 
   /// FK a `ubicacion.id`.
