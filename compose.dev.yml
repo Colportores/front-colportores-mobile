@@ -8,6 +8,8 @@ services:
     build:
       context: .
       dockerfile: dockerfile.dev
+    # Una imagen por repo, la misma con cualquier `-p`: no se reconstruye salvo que cambie dockerfile.dev.
+    image: front-colportores-mobile-dev:latest
     volumes:
       - .:/app
       - pub_cache:/pub-cache
@@ -19,7 +21,11 @@ services:
     working_dir: /app
 
 volumes:
+  # Cachés de descarga: compartidas por todos los proyectos de compose (`-p`), con nombre fijo.
   pub_cache:
+    name: front-colportores-mobile_pub_cache
   gradle_cache:
+    name: front-colportores-mobile_gradle_cache
+  # Aislados por proyecto (sin `name:`): dos agentes a la vez se pisarían.
   build_out:
   android_gradle:
