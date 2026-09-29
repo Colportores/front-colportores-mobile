@@ -263,7 +263,7 @@ void main() {
 
       await tester.pump(const Duration(seconds: 60));
 
-      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.text('Reenviar email'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(find.byKey(const Key('verificacion_email_reenviar')))
@@ -293,7 +293,7 @@ void main() {
         find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'),
         findsOneWidget,
       );
-      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.text('Reenviar email'), findsOneWidget);
     });
   });
 
@@ -329,6 +329,129 @@ void main() {
 
       expect(find.byKey(const Key('verificacion_email_campo')), findsNothing);
     });
+  });
+
+  group('VerificacionEmailPage — vista 12', () {
+    testWidgets('A01 pendiente: correo destacado en una tarjeta, textos del diseño y acciones al '
+        'pie', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      expect(find.text('VERIFICACIÓN DE EMAIL'), findsOneWidget);
+      expect(find.text('Verificá tu cuenta'), findsOneWidget);
+      expect(find.text('Te enviamos un correo a'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('verificacion_email_tarjeta')),
+          matching: find.text('lucia.silva@correo.com'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Abrí el enlace para verificar tu cuenta.'), findsOneWidget);
+      expect(find.text('Si no lo encontrás, revisá la carpeta de spam.'), findsOneWidget);
+      expect(find.text('Ya verifiqué mi email'), findsOneWidget);
+      expect(find.text('Reenviar email'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+      // Las acciones van al pie, en este orden.
+      final ya = tester.getTopLeft(find.byKey(const Key('verificacion_email_ya_verifique'))).dy;
+      final reenviar = tester.getTopLeft(find.byKey(const Key('verificacion_email_reenviar'))).dy;
+      final volver = tester.getTopLeft(find.byKey(const Key('verificacion_email_volver_login'))).dy;
+      expect(ya, lessThan(reenviar));
+      expect(reenviar, lessThan(volver));
+      expect(volver, greaterThan(650));
+    });
+
+    testWidgets('A02 reenviado: el aviso de éxito reemplaza el texto y la cuenta regresiva muestra '
+        'su barra de avance', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Te reenviamos el correo. Puede tardar unos minutos.'), findsOneWidget);
+      expect(find.text('Te enviamos un correo a'), findsNothing);
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+      final progreso = tester.widget<LinearProgressIndicator>(
+        find.byKey(const Key('verificacion_email_progreso')),
+      );
+      expect(progreso.value, 1);
+
+      await tester.pump(const Duration(seconds: 15));
+      expect(find.text('Reenviar en 45s'), findsOneWidget);
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(find.byKey(const Key('verificacion_email_progreso')))
+            .value,
+        0.75,
+      );
+    });
+
+    testWidgets('A08 sin conexión al reenviar: dice qué pasa y qué hacer, sin cooldown', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..simularSinConexion = true;
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Necesitás conexión para reenviar el email. Conectate y probá de nuevo.'),
+        findsOneWidget,
+      );
+      expect(find.text('Reenviar email'), findsOneWidget);
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+    });
+
+    testWidgets('A04 enlace expirado: título, apoyo con el correo y "Reenviar email de '
+        'verificación"', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, estadoInicial: EstadoVerificacionEmail.expirado);
+      await tester.pumpAndSettle();
+
+      expect(find.text('El enlace expiró'), findsOneWidget);
+      expect(
+        find.text(
+          'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a lucia.silva@correo.com.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+    });
+
+    testWidgets(
+      'A07 verificado: sin la etiqueta de verificación, con el mensaje literal de la HU',
+      (tester) async {
+        await _montarPilaConPantallaInicial(
+          tester,
+          estadoInicial: EstadoVerificacionEmail.verificado,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Email verificado'), findsOneWidget);
+        expect(find.text('VERIFICACIÓN DE EMAIL'), findsNothing);
+        expect(find.text('Continuar'), findsOneWidget);
+      },
+    );
   });
 
   group('VerificacionEmailPage — estado verificado', () {
