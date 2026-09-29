@@ -26,14 +26,17 @@ environment:
 # muestra los diagnósticos de plugins. `custom_lint` salió: su 0.8.1 quedó en analyzer ^8, no
 # convivía con `drift_dev` y desde riverpod_lint 3.1.0 ya no corría ninguna regla.
 #
-# Nota: `drift_dev` queda en 2.34.0 (y `drift` en 2.34.x) porque `flutter_test` 3.44 fija
-# `test_api` 0.7.11 → `test` 1.31 → analyzer < 13, y drift_dev ≥ 2.34.1 pide analyzer ^13. Al
-# subir Flutter se destraba solo.
+# Nota: `drift_dev` queda en 2.34.0 porque `flutter_test` 3.44 fija `test_api` 0.7.11 → `test`
+# 1.31 → analyzer < 13, y drift_dev ≥ 2.34.1 pide analyzer ^13. `drift` va fijo en 2.34.0, su
+# pareja: `drift_dev make-migrations` y `SchemaVerifier` no compilan con drift 2.34.1 a 2.34.4
+# (decisión de Cristian del 23/09 en #70; lo que se pierde es de web, `rowid` de tablas virtuales
+# y `MultiExecutor`, que la app no usa). Al subir Flutter a 3.47 o más (destraba analyzer 13) se
+# vuelve a `^` y se sube `drift_dev`.
 dependencies:
   app_links: ^7.2.1          # deep link propio de verificación de email (#84) — antes transitiva
                               # vía supabase_flutter, ahora también uso directo en AuthRemoteDataSourceSupabase
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
-  drift: ^2.34.1            # DB local (ADR-007); cifrada con SQLCipher (ADR-003) — ver `hooks` abajo
+  drift: 2.34.0             # DB local (ADR-009); cifrada con SQLCipher (ADR-006) — fijo: ver nota arriba
   drift_flutter: ^0.3.1     # driftDatabase(): archivo, isolate de fondo y temp dir de sqlite en Android
   equatable: ^2.1.0
   flutter:
