@@ -49,7 +49,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   Timer? _tic;
 
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
-  int _minutosAtras = 0;
+  DateTime? _horaInicio;
   bool _iniciando = false;
 
   /// Se intentó iniciar y resultó que ya hay una jornada abierta (otro teléfono, otra sesión):
@@ -105,10 +105,14 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     super.dispose();
   }
 
-  /// La hora elegida a mano, al principio de su minuto (el selector ofrece minutos enteros), o
-  /// `null` si es "ahora".
-  DateTime? _horaElegida(DateTime ahora) =>
-      _minutosAtras == 0 ? null : _menosMinutos(ahora, _minutosAtras);
+  /// La hora elegida a mano (el instante que el colportor vio y confirmó en la hoja), o `null` si
+  /// es "ahora". Es absoluta: no se corre si cambia el minuto; si con el tiempo quedó fuera de
+  /// rango, el caso de uso la rechaza con el rango explícito (nunca se ajusta en silencio).
+  DateTime? _horaElegida(DateTime ahora) => _horaInicio;
+
+  /// Cuántos minutos hacia atrás está [hora] del [ahora] mostrado (al minuto).
+  static int _minutosAtrasDe(DateTime ahora, DateTime hora) =>
+      _menosMinutos(ahora, 0).difference(hora).inMinutes;
 
   Future<void> _iniciar() async {
     if (_iniciando) return;
@@ -127,7 +131,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       _iniciando = false;
       switch (failure) {
         case null:
-          _minutosAtras = 0;
+          _horaInicio = null;
           _finalizada = null;
         case FailureJornadaActiva():
           // La pantalla se relee con la jornada que ya estaba abierta y muestra el bloqueo literal.
@@ -344,7 +348,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           _Aviso(key: const Key('jornada_error'), texto: error, esError: true),
         _FilaHoraInicio(
           hora: elegida == null ? 'Ahora' : horaCorta(elegida),
-          detalle: elegida == null ? horaCorta(ahora) : 'hace $_minutosAtras min',
+          detalle: elegida == null
+              ? horaCorta(ahora)
+              : 'hace ${_minutosAtrasDe(ahora, elegida)} min',
           onTap: _iniciando ? null : () => _elegirHora(ahora),
         ),
         if (_error == null)
@@ -389,15 +395,17 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   );
 
   Future<void> _elegirHora(DateTime ahora) async {
+    final margen = IniciarJornadaUseCase.margenHaciaAtras.inMinutes;
+    final actual = _horaInicio;
     final elegida = await mostrarHojaHoraInicio(
       context,
       ahora: ahora,
-      margenMinutos: IniciarJornadaUseCase.margenHaciaAtras.inMinutes,
-      minutosAtras: _minutosAtras,
+      margenMinutos: margen,
+      minutosAtras: actual == null ? 0 : _minutosAtrasDe(ahora, actual).clamp(0, margen),
     );
     if (!mounted || elegida == null) return;
     setState(() {
-      _minutosAtras = elegida;
+      _horaInicio = elegida.esAhora ? null : elegida.hora;
       _error = null;
     });
   }
