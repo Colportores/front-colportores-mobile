@@ -368,25 +368,126 @@ void main() {
         deletedAt: t1,
       );
 
-      expect(r, ubicacion(deletedAt: t0));
+      expect(r, (ubicacion: ubicacion(deletedAt: t0), escribio: false));
       expect(await guardada(), ubicacion(deletedAt: t0));
       expect(encolador.encolados, isEmpty);
     });
 
+    test('dado una baja que escribe, devuelve escribio en true', () async {
+      await local.insertar(ubicacion());
+
+      final r = await local.cambiarBaja('ub-1', baseUpdatedAt: t0, updatedAt: t1, deletedAt: t1);
+
+      expect(r.escribio, isTrue);
+      expect(r.ubicacion.auditoria.deletedAt, t1);
+    });
+
     test(
       'dado dos toques en "Dar de baja" que se pisan (los dos pasan el chequeo del caso de uso), '
-      'cuando terminan, los dos devuelven la baja y hay un solo tombstone',
+      'cuando terminan, uno la da de baja, el otro no cambia nada y hay un solo tombstone y un solo '
+      'evento de baja en el log',
       () async {
+        final salida = _SalidaEnMemoria();
+        final conLog = DarDeBajaUbicacionUseCase(
+          UbicacionRepositoryImpl(local, logger: AppLogger(output: salida)),
+          pendientes,
+          ahora: () => t1,
+        );
         await local.insertar(ubicacion());
         encolador.encolados.clear();
 
-        final resultados = await Future.wait([darDeBaja(baja()), darDeBaja(baja())]);
+        final resultados = await Future.wait([conLog(baja()), conLog(baja())]);
 
-        expect(resultados.every((r) => r.isRight()), isTrue);
+        expect(pendientes.consultas, 2, reason: 'los dos pasaron el chequeo previo: hubo carrera');
+        expect(
+          resultados.map((r) => r.getOrElse(() => throw StateError('era un Left')).runtimeType),
+          unorderedEquals([UbicacionDadaDeBaja, BajaSinCambios]),
+        );
         expect(encolador.encolados.map((c) => c.operacion), [OperacionSync.delete]);
         expect((await guardada()).auditoria.deletedAt, t1);
+        expect(salida.lineas.where((l) => l.contains('[UBICACION_BAJA]')), hasLength(1));
+        expect(salida.lineas.where((l) => l.contains('[UBICACION_YA_DE_BAJA]')), hasLength(1));
       },
     );
+
+    group('con una ubicación que tiene que seguir activa (la que se conserva)', () {
+      Future<void> conservada({DateTime? deletedAt}) => local.insertar(
+        UbicacionModel(
+          id: 'ub-a',
+          tipo: TipoUbicacion.casa,
+          lat: -34.9,
+          lon: -56.1,
+          ciudadId: 'mvd',
+          auditoria: Auditoria(createdAt: t0, updatedAt: t0, deletedAt: deletedAt),
+        ),
+      );
+
+      test('si sigue activa, da de baja la otra', () async {
+        await local.insertar(ubicacion());
+        await conservada();
+
+        final r = await local.cambiarBaja(
+          'ub-1',
+          baseUpdatedAt: t0,
+          updatedAt: t1,
+          deletedAt: t1,
+          conservadaId: 'ub-a',
+        );
+
+        expect(r.escribio, isTrue);
+      });
+
+      test('si quedó de baja, lanza UbicacionCambioException sin escribir ni encolar', () async {
+        await local.insertar(ubicacion());
+        await conservada(deletedAt: t0);
+        encolador.encolados.clear();
+
+        await expectLater(
+          local.cambiarBaja(
+            'ub-1',
+            baseUpdatedAt: t0,
+            updatedAt: t1,
+            deletedAt: t1,
+            conservadaId: 'ub-a',
+          ),
+          throwsA(isA<UbicacionCambioException>()),
+        );
+        expect(await guardada(), ubicacion());
+        expect(encolador.encolados, isEmpty);
+      });
+
+      test('si ya no está, lanza UbicacionInexistenteException sin escribir', () async {
+        await local.insertar(ubicacion());
+
+        await expectLater(
+          local.cambiarBaja(
+            'ub-1',
+            baseUpdatedAt: t0,
+            updatedAt: t1,
+            deletedAt: t1,
+            conservadaId: 'ub-a',
+          ),
+          throwsA(isA<UbicacionInexistenteException>()),
+        );
+        expect(await guardada(), ubicacion());
+      });
+
+      test('si quedó de baja, tampoco toma el camino del doble toque', () async {
+        await local.insertar(ubicacion(deletedAt: t0));
+        await conservada(deletedAt: t0);
+
+        await expectLater(
+          local.cambiarBaja(
+            'ub-1',
+            baseUpdatedAt: t0,
+            updatedAt: t1,
+            deletedAt: t1,
+            conservadaId: 'ub-a',
+          ),
+          throwsA(isA<UbicacionCambioException>()),
+        );
+      });
+    });
 
     test('dado una reactivación, cuando se loguea, dice "reactivada" y no "baja"', () async {
       final salida = _SalidaEnMemoria();
@@ -398,6 +499,21 @@ void main() {
       expect(
         salida.lineas.single,
         startsWith('[INFO][DB][UBICACION_REACTIVADA] ubicación reactivada'),
+      );
+    });
+
+    test('dado una reactivación de una ubicación ya activa, no deja el evento de reactivación y '
+        'devuelve escribio en false', () async {
+      final salida = _SalidaEnMemoria();
+      final repositorio = UbicacionRepositoryImpl(local, logger: AppLogger(output: salida));
+      await local.insertar(ubicacion());
+
+      final r = await repositorio.cambiarBaja('ub-1', baja: false, baseUpdatedAt: t0, ahora: t1);
+
+      expect(r.map((c) => c.escribio), const Right<Failure, bool>(false));
+      expect(
+        salida.lineas.single,
+        startsWith('[INFO][DB][UBICACION_YA_ACTIVA] la ubicación ya estaba activa'),
       );
     });
   });

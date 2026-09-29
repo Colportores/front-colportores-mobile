@@ -121,17 +121,27 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   @override
-  Future<UbicacionModel> cambiarBaja(
+  Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
     String id, {
     required DateTime baseUpdatedAt,
     required DateTime updatedAt,
     required DateTime? deletedAt,
+    String? conservadaId,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
+    if (conservadaId != null) {
+      final conservada = await (select(
+        ubicaciones,
+      )..where((u) => u.id.equals(conservadaId))).getSingleOrNull();
+      if (conservada == null) throw const UbicacionInexistenteException();
+      if (conservada.deletedAt != null) throw const UbicacionCambioException();
+    }
     // Ya está como se pide (dos toques que se pisaron: el primero ganó la transacción). Antes del
     // CAS, porque el primero ya cambió `updated_at`.
-    if ((fila.deletedAt != null) == (deletedAt != null)) return _aModelo(fila);
+    if ((fila.deletedAt != null) == (deletedAt != null)) {
+      return (ubicacion: _aModelo(fila), escribio: false);
+    }
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
 
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
@@ -145,7 +155,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       deletedAt == null ? OperacionSync.update : OperacionSync.delete,
       guardada.toJson(),
     );
-    return guardada;
+    return (ubicacion: guardada, escribio: true);
   });
 
   @override

@@ -28,9 +28,13 @@ import '../../../../../helpers/logger_mudo.dart';
 
 final class _Pendientes implements ConsultorPendientesUbicacion {
   PendientesUbicacion pendientes = PendientesUbicacion.ninguno;
+  var consultas = 0;
 
   @override
-  Future<Either<Failure, PendientesUbicacion>> de(String ubicacionId) async => Right(pendientes);
+  Future<Either<Failure, PendientesUbicacion>> de(String ubicacionId) async {
+    consultas++;
+    return Right(pendientes);
+  }
 }
 
 final class _SalidaEnMemoria extends LogOutput {
@@ -167,6 +171,45 @@ void main() {
       expect(r.getOrElse(() => throw StateError('falló')), isA<BajaRequiereConfirmacion>());
       expect((await ubicaciones.obtener('ub-b'))!.auditoria.deletedAt, isNull);
       expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado dos "marcar duplicado" concurrentes sobre pares que se cruzan (conservar C y dar de '
+        'baja A; conservar A y dar de baja B), cuando terminan, no quedan A y B de baja', () async {
+      await sembrarPar();
+      await ubicaciones.insertar(ubicacion('ub-c', metrosAlNorte: 2));
+      encolador.encolados.clear();
+
+      final resultados = await Future.wait([
+        marcar(
+          MarcarDuplicadoParams(
+            conservarId: 'ub-c',
+            duplicadaId: 'ub-a',
+            baseUpdatedAtDuplicada: t0,
+          ),
+        ),
+        marcar(
+          MarcarDuplicadoParams(
+            conservarId: 'ub-a',
+            duplicadaId: 'ub-b',
+            baseUpdatedAtDuplicada: t0,
+          ),
+        ),
+      ]);
+
+      expect(pendientes.consultas, 2, reason: 'las dos pasaron el chequeo previo: hubo carrera');
+      final deBaja = [
+        for (final id in ['ub-a', 'ub-b', 'ub-c'])
+          if ((await ubicaciones.obtener(id))!.auditoria.estaBorrada) id,
+      ];
+      expect(deBaja, hasLength(1));
+      expect(encolador.encolados, hasLength(1));
+      expect(
+        resultados.where(
+          (r) => r == const Left<Failure, ResultadoBajaUbicacion>(FailureUbicacionCambio()),
+        ),
+        hasLength(1),
+      );
+      expect(deBaja.single, 'ub-a', reason: 'la primera en escribir da de baja A');
     });
   });
 

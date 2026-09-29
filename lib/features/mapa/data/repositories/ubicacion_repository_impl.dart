@@ -154,27 +154,39 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
   }
 
   @override
-  Future<Either<Failure, Ubicacion>> cambiarBaja(
+  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
     bool conMotivo = false,
+    String? conservadaId,
   }) async {
     try {
-      final guardada = await _local.cambiarBaja(
+      final (:ubicacion, :escribio) = await _local.cambiarBaja(
         id,
         baseUpdatedAt: baseUpdatedAt,
         updatedAt: ahora,
         deletedAt: baja ? ahora : null,
+        conservadaId: conservadaId,
       );
-      _log.info(
-        LogModulo.db,
-        baja ? 'UBICACION_BAJA' : 'UBICACION_REACTIVADA',
-        baja ? 'ubicación dada de baja' : 'ubicación reactivada',
-        {'ubicacion_id': id, if (baja) 'con_motivo': conMotivo},
-      );
-      return Right(guardada.toEntity());
+      // Un solo evento de auditoría por baja (R-UB09): el segundo de dos toques no escribió.
+      if (escribio) {
+        _log.info(
+          LogModulo.db,
+          baja ? 'UBICACION_BAJA' : 'UBICACION_REACTIVADA',
+          baja ? 'ubicación dada de baja' : 'ubicación reactivada',
+          {'ubicacion_id': id, if (baja) 'con_motivo': conMotivo},
+        );
+      } else {
+        _log.info(
+          LogModulo.db,
+          baja ? 'UBICACION_YA_DE_BAJA' : 'UBICACION_YA_ACTIVA',
+          baja ? 'la ubicación ya estaba de baja' : 'la ubicación ya estaba activa',
+          {'ubicacion_id': id},
+        );
+      }
+      return Right((ubicacion: ubicacion.toEntity(), escribio: escribio));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {
