@@ -63,35 +63,35 @@ void main() {
       expect(triangulo.cubre(_p(3.3, 6.71)), isFalse);
     });
 
-    test(
-      'dado un punto que el redondeo pone sobre un lado pero está apenas afuera, no lo cubre',
-      () {
-        // Con double, la orientación de (0.3, 0.1) respecto del lado (3, 1) → (0, 0) da 0; con la
-        // cuenta exacta, el punto queda arriba de la recta: afuera del triángulo de abajo y adentro
-        // del de arriba. Lo mismo que decide ST_Covers.
-        final abajo = _geometria(
-          _poligono([
-            [
-              [0, 0],
-              [3, 0],
-              [3, 1],
-            ],
-          ]),
-        );
-        final arriba = _geometria(
-          _poligono([
-            [
-              [0, 0],
-              [3, 1],
-              [0, 1],
-            ],
-          ]),
-        );
+    test('dado un punto que el redondeo en double pone sobre un lado, cuenta como borde, igual que '
+        'ST_Covers', () {
+      // Con aritmética exacta, (0.3, 0.1) queda apenas arriba de la recta de (0, 0) a (3, 1). Pero
+      // determineSide de PostGIS, en double, da 0.0 para el lado (3, 1) → (0, 0) del triángulo de
+      // abajo: el servidor lo toma como borde y lo cubre. En el de arriba queda adentro. La app
+      // tiene que decidir lo mismo que el servidor, así que los dos lo cubren.
+      final abajo = _geometria(
+        _poligono([
+          [
+            [0, 0],
+            [3, 0],
+            [3, 1],
+          ],
+        ]),
+      );
+      final arriba = _geometria(
+        _poligono([
+          [
+            [0, 0],
+            [3, 1],
+            [0, 1],
+          ],
+        ]),
+      );
 
-        expect(abajo.cubre(_p(0.3, 0.1)), isFalse);
-        expect(arriba.cubre(_p(0.3, 0.1)), isTrue);
-      },
-    );
+      expect(abajo.cubre(_p(0.3, 0.1)), isTrue);
+      expect(arriba.cubre(_p(0.3, 0.1)), isTrue);
+      expect(abajo.cubre(_p(0.3, 0.11)), isFalse);
+    });
 
     group('dado un polígono cóncavo en L', () {
       final ele = _geometria(
@@ -203,7 +203,26 @@ void main() {
   });
 
   group('GeometriaZona.desdeGeojson', () {
-    test('acepta números enteros y decimales y el anillo sin cerrar', () {
+    test('un punto repetido (un lado de largo cero) no cambia lo que cubre', () {
+      final repetido = _geometria(
+        _poligono([
+          [
+            [0, 0],
+            [10, 0],
+            [10, 0],
+            [10, 10],
+            [0, 10],
+            [0, 0],
+          ],
+        ]),
+      );
+
+      expect(repetido.cubre(_p(5, 5)), isTrue);
+      expect(repetido.cubre(_p(10, 0)), isTrue);
+      expect(repetido.cubre(_p(11, 0)), isFalse);
+    });
+
+    test('acepta números enteros y decimales, y cierra el anillo que llega abierto', () {
       final abierto = _geometria(
         _poligono([
           [
@@ -214,7 +233,8 @@ void main() {
         ]),
       );
 
-      expect(abierto.poligonos.single.single, hasLength(3));
+      expect(abierto.poligonos.single.single, hasLength(4));
+      expect(abierto.poligonos.single.single.last, abierto.poligonos.single.single.first);
       expect(abierto.cubre(_p(9, 1)), isTrue);
     });
 

@@ -10,16 +10,23 @@ import 'coordenadas.dart';
 /// borde incluido**, así que un punto justo en la calle que separa dos zonas lo cubren las dos (el
 /// desempate lo hace `ZonaPorPosicion`).
 ///
-/// Las cuentas son exactas: la orientación de un punto respecto de un lado se calcula en `double` y,
-/// solo cuando el resultado queda dentro del error de redondeo, con enteros exactos. Si no, un
-/// punto sobre un lado diagonal podía quedar adentro o afuera según el redondeo, y la app mostraría
-/// otra zona que el servidor.
+/// **Misma regla que PostGIS**, no una más exacta: para un punto contra un polígono, `ST_Covers`
+/// usa `point_in_ring` (`lwgeom_functions_analytic.c`, PostGIS 3.3), que calcula de qué lado del
+/// lado está el punto con `determineSide` en `double` y toma el borde con `side == 0.0`. Se porta
+/// literal, con el mismo orden de operandos, así el redondeo da lo mismo que en el servidor: un
+/// punto que el `double` pone sobre un lado cuenta como borde aunque, con aritmética exacta, quede
+/// apenas afuera. La única diferencia posible es que el compilador de C del servidor contraiga
+/// `a * b - c * d` en una FMA (en otra arquitectura); Dart no lo hace.
 final class GeometriaZona extends Equatable {
   const GeometriaZona._(this.poligonos);
 
-  /// Cada polígono es su anillo exterior seguido de sus huecos; cada anillo, sus puntos en orden
-  /// (cerrado o no: el último punto se une con el primero).
+  /// Cada polígono es su anillo exterior seguido de sus huecos; cada anillo, sus puntos en orden y
+  /// **cerrado** (el último igual al primero: si el GeoJSON no lo cierra, se cierra al leerlo, como
+  /// hace PostGIS).
   final List<List<List<Coordenadas>>> poligonos;
+
+  /// Los lados más cortos que esto (al cuadrado) no cuentan: `point_in_ring` los saltea.
+  static const double _largoMinimoAlCuadrado = 1e-12 * 1e-12;
 
   /// La geometría de [geojson] (el objeto ya decodificado), o `null` si no es un `Polygon` ni un
   /// `MultiPolygon` bien formado: anillos de al menos 3 puntos, cada punto `[lon, lat]` numérico.
@@ -47,13 +54,7 @@ final class GeometriaZona extends Equatable {
 
   /// `true` si [punto] está adentro de algún polígono o sobre su borde (el exterior o el de un
   /// hueco). Un punto dentro de un hueco queda afuera.
-  bool cubre(Coordenadas punto) => poligonos.any((anillos) => _cubre(anillos, punto));
-
-  static bool _cubre(List<List<Coordenadas>> anillos, Coordenadas punto) {
-    if (anillos.any((anillo) => _enBorde(anillo, punto))) return true;
-    if (!_adentro(anillos.first, punto)) return false;
-    return !anillos.skip(1).any((hueco) => _adentro(hueco, punto));
-  }
+  bool cubre(Coordenadas punto) => poligonos.any((anillos) => _enPoligono(anillos, punto) >= 0);
 
   static List<List<Coordenadas>>? _poligono(Object? crudo) {
     if (crudo is! List<Object?> || crudo.isEmpty) return null;
@@ -75,87 +76,54 @@ final class GeometriaZona extends Equatable {
       if (lon is! num || lat is! num) return null;
       puntos.add(Coordenadas(lat: lat.toDouble(), lon: lon.toDouble()));
     }
+    if (puntos.first != puntos.last) puntos.add(puntos.first);
     return puntos;
   }
 
-  /// Los lados del anillo: de cada punto al siguiente, y del último al primero.
-  static Iterable<(Coordenadas, Coordenadas)> _lados(List<Coordenadas> anillo) sync* {
-    for (var i = 0; i < anillo.length; i++) {
-      yield (anillo[i], anillo[(i + 1) % anillo.length]);
+  /// `point_in_polygon` de PostGIS: -1 afuera, 0 en el borde, 1 adentro. Afuera del exterior es
+  /// afuera; adentro de un hueco, afuera; en el borde de un hueco, borde.
+  static int _enPoligono(List<List<Coordenadas>> anillos, Coordenadas p) {
+    final exterior = _enAnillo(anillos.first, p);
+    if (exterior == -1) return -1;
+    for (final hueco in anillos.skip(1)) {
+      final enHueco = _enAnillo(hueco, p);
+      if (enHueco == 1) return -1;
+      if (enHueco == 0) return 0;
     }
+    return exterior;
   }
 
-  static bool _enBorde(List<Coordenadas> anillo, Coordenadas p) {
-    for (final (a, b) in _lados(anillo)) {
-      if (_orientacion(a, b, p) == 0 &&
-          p.lon >= _min(a.lon, b.lon) &&
-          p.lon <= _max(a.lon, b.lon) &&
-          p.lat >= _min(a.lat, b.lat) &&
-          p.lat <= _max(a.lat, b.lat)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Número de vueltas (Sunday): distinto de cero si [p] está adentro. Se llama solo con [p] fuera
-  /// del borde, así que un punto justo sobre un lado nunca llega acá.
-  static bool _adentro(List<Coordenadas> anillo, Coordenadas p) {
+  /// `point_in_ring` de PostGIS: número de vueltas, con el borde (`side == 0.0` y el punto dentro
+  /// del recuadro del lado) primero. -1 afuera, 0 en el borde, 1 adentro.
+  static int _enAnillo(List<Coordenadas> anillo, Coordenadas p) {
     var vueltas = 0;
-    for (final (a, b) in _lados(anillo)) {
-      if (a.lat <= p.lat) {
-        if (b.lat > p.lat && _orientacion(a, b, p) > 0) vueltas++;
-      } else if (b.lat <= p.lat && _orientacion(a, b, p) < 0) {
+    for (var i = 0; i < anillo.length - 1; i++) {
+      final s1 = anillo[i];
+      final s2 = anillo[i + 1];
+      final lado = _determineSide(s1, s2, p);
+      final dx = s2.lon - s1.lon;
+      final dy = s2.lat - s1.lat;
+      if (dx * dx + dy * dy < _largoMinimoAlCuadrado) continue;
+      if (lado == 0.0 && _enRecuadro(s1, s2, p)) return 0;
+      if (lado > 0 && s1.lat <= p.lat && p.lat < s2.lat) {
+        vueltas++;
+      } else if (lado < 0 && s2.lat <= p.lat && p.lat < s1.lat) {
         vueltas--;
       }
     }
-    return vueltas != 0;
+    return vueltas == 0 ? -1 : 1;
   }
 
-  static double _min(double x, double y) => x < y ? x : y;
-  static double _max(double x, double y) => x > y ? x : y;
+  /// `determineSide` de PostGIS, literal (x = lon, y = lat): positivo si [p] está a la izquierda
+  /// de [s1]→[s2], negativo a la derecha, 0.0 sobre la recta.
+  static double _determineSide(Coordenadas s1, Coordenadas s2, Coordenadas p) =>
+      (s2.lon - s1.lon) * (p.lat - s1.lat) - (p.lon - s1.lon) * (s2.lat - s1.lat);
 
-  /// 2⁻⁵³: la mitad de la distancia entre 1 y el `double` siguiente.
-  static const double _epsilon = 1.1102230246251565e-16;
-
-  /// Cota del error de redondeo de la orientación en `double` (Shewchuk, «Adaptive Precision
-  /// Floating-Point Arithmetic», `ccwerrboundA`).
-  static const double _cotaError = (3 + 16 * _epsilon) * _epsilon;
-
-  /// Signo de la orientación de [c] respecto del lado [a]→[b] (x = lon, y = lat): 1 a la izquierda,
-  /// -1 a la derecha, 0 sobre la recta.
-  static int _orientacion(Coordenadas a, Coordenadas b, Coordenadas c) {
-    final izquierda = (a.lon - c.lon) * (b.lat - c.lat);
-    final derecha = (a.lat - c.lat) * (b.lon - c.lon);
-    final determinante = izquierda - derecha;
-    final cota = _cotaError * (izquierda.abs() + derecha.abs());
-    if (determinante > cota) return 1;
-    if (-determinante > cota) return -1;
-    return _orientacionExacta(a, b, c);
-  }
-
-  /// La misma cuenta con enteros: todo `double` finito es un entero dividido por una potencia de 2,
-  /// así que con el mismo divisor para las seis coordenadas el signo sale exacto.
-  static int _orientacionExacta(Coordenadas a, Coordenadas b, Coordenadas c) {
-    final racionales = [
-      for (final v in [a.lon, a.lat, b.lon, b.lat, c.lon, c.lat]) _racional(v),
-    ];
-    final exponente = racionales.map((r) => r.exponente).reduce((x, y) => x > y ? x : y);
-    final [ax, ay, bx, by, cx, cy] = [
-      for (final r in racionales) r.numerador << (exponente - r.exponente),
-    ];
-    return ((ax - cx) * (by - cy) - (ay - cy) * (bx - cx)).sign;
-  }
-
-  /// [valor] = `numerador / 2^exponente`, exacto: multiplicar por 2 no redondea.
-  static ({BigInt numerador, int exponente}) _racional(double valor) {
-    var escalado = valor;
-    var exponente = 0;
-    while (escalado != escalado.truncateToDouble()) {
-      escalado *= 2;
-      exponente++;
-    }
-    return (numerador: BigInt.from(escalado), exponente: exponente);
+  /// `isOnSegment` de PostGIS: [p] dentro del recuadro del lado, bordes incluidos.
+  static bool _enRecuadro(Coordenadas s1, Coordenadas s2, Coordenadas p) {
+    final (minX, maxX) = s1.lon > s2.lon ? (s2.lon, s1.lon) : (s1.lon, s2.lon);
+    final (minY, maxY) = s1.lat > s2.lat ? (s2.lat, s1.lat) : (s1.lat, s2.lat);
+    return p.lon >= minX && p.lon <= maxX && p.lat >= minY && p.lat <= maxY;
   }
 
   @override
