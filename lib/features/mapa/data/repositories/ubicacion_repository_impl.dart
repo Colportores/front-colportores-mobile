@@ -171,7 +171,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       _log.info(
         LogModulo.db,
         baja ? 'UBICACION_BAJA' : 'UBICACION_REACTIVADA',
-        'baja de ubicación',
+        baja ? 'ubicación dada de baja' : 'ubicación reactivada',
         {'ubicacion_id': id, if (baja) 'con_motivo': conMotivo},
       );
       return Right(guardada.toEntity());
@@ -181,7 +181,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       _log.info(
         LogModulo.db,
         'UBICACION_CAMBIO_CONCURRENTE',
-        'la ubicación cambió antes de la baja',
+        baja ? 'la ubicación cambió antes de la baja' : 'la ubicación cambió antes de reactivarla',
         {'ubicacion_id': id},
       );
       return const Left(FailureUbicacionCambio());

@@ -3,8 +3,10 @@
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
@@ -17,6 +19,7 @@ import 'package:colportores_mobile/features/mapa/domain/usecases/baja_ubicacion_
 import 'package:dartz/dartz.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
@@ -31,6 +34,13 @@ final class _Pendientes implements ConsultorPendientesUbicacion {
     consultas++;
     return falla != null ? Left(falla!) : Right(pendientes);
   }
+}
+
+final class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
 }
 
 final class _Catalogo implements CatalogoCiudades {
@@ -304,6 +314,91 @@ void main() {
       final r = await reactivar(ReactivarUbicacionParams(id: 'nada', baseUpdatedAt: t0));
 
       expect(r, const Left<Failure, Ubicacion>(FailureUbicacionInexistente()));
+    });
+  });
+
+  group('UbicacionLocalDataSourceDrift.cambiarBaja (sin el chequeo previo del caso de uso)', () {
+    final vieja = t0.subtract(const Duration(minutes: 1));
+
+    test('dado una baseUpdatedAt vieja, cuando da de baja, lanza UbicacionCambioException sin '
+        'escribir ni encolar', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+
+      await expectLater(
+        local.cambiarBaja('ub-1', baseUpdatedAt: vieja, updatedAt: t1, deletedAt: t1),
+        throwsA(isA<UbicacionCambioException>()),
+      );
+      expect(await guardada(), ubicacion());
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado una baseUpdatedAt vieja, cuando reactiva, lanza UbicacionCambioException sin '
+        'escribir ni encolar', () async {
+      await local.insertar(ubicacion(deletedAt: t0));
+      encolador.encolados.clear();
+
+      await expectLater(
+        local.cambiarBaja('ub-1', baseUpdatedAt: vieja, updatedAt: t1, deletedAt: null),
+        throwsA(isA<UbicacionCambioException>()),
+      );
+      expect(await guardada(), ubicacion(deletedAt: t0));
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test(
+      'dado un id que no está, cuando cambia la baja, lanza UbicacionInexistenteException',
+      () async {
+        await expectLater(
+          local.cambiarBaja('nada', baseUpdatedAt: t0, updatedAt: t1, deletedAt: t1),
+          throwsA(isA<UbicacionInexistenteException>()),
+        );
+      },
+    );
+
+    test('dado una fila que ya está como se pide, cuando cambia la baja con cualquier base, la '
+        'devuelve sin escribir ni encolar', () async {
+      await local.insertar(ubicacion(deletedAt: t0));
+      encolador.encolados.clear();
+
+      final r = await local.cambiarBaja(
+        'ub-1',
+        baseUpdatedAt: t1.add(const Duration(days: 1)),
+        updatedAt: t1,
+        deletedAt: t1,
+      );
+
+      expect(r, ubicacion(deletedAt: t0));
+      expect(await guardada(), ubicacion(deletedAt: t0));
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test(
+      'dado dos toques en "Dar de baja" que se pisan (los dos pasan el chequeo del caso de uso), '
+      'cuando terminan, los dos devuelven la baja y hay un solo tombstone',
+      () async {
+        await local.insertar(ubicacion());
+        encolador.encolados.clear();
+
+        final resultados = await Future.wait([darDeBaja(baja()), darDeBaja(baja())]);
+
+        expect(resultados.every((r) => r.isRight()), isTrue);
+        expect(encolador.encolados.map((c) => c.operacion), [OperacionSync.delete]);
+        expect((await guardada()).auditoria.deletedAt, t1);
+      },
+    );
+
+    test('dado una reactivación, cuando se loguea, dice "reactivada" y no "baja"', () async {
+      final salida = _SalidaEnMemoria();
+      final repositorio = UbicacionRepositoryImpl(local, logger: AppLogger(output: salida));
+      await local.insertar(ubicacion(deletedAt: t0));
+
+      await repositorio.cambiarBaja('ub-1', baja: false, baseUpdatedAt: t0, ahora: t1);
+
+      expect(
+        salida.lineas.single,
+        startsWith('[INFO][DB][UBICACION_REACTIVADA] ubicación reactivada'),
+      );
     });
   });
 }
