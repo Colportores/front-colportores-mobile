@@ -37,12 +37,14 @@ void main() {
     String? password = 'secreto123',
     bool requiereEnvoltorio = false,
     bool aceptaAlmacenSoftware = false,
+    String? usuarioId = 'usuario-a',
   }) => useCase(
     InicializarDbLocalParams(
       password: password,
       requiereEnvoltorio: requiereEnvoltorio,
       aceptaAlmacenSoftware: aceptaAlmacenSoftware,
       alAvanzar: pasos.add,
+      usuarioId: usuarioId,
     ),
   );
 
@@ -532,6 +534,93 @@ void main() {
         await inicializar(),
         const Left<Failure, ResultadoInicializacionDb>(FailureInesperado()),
       );
+    });
+
+    group('envoltorio desactualizado por un cambio de contraseña (#125)', () {
+      setUp(() {
+        final dek = Uint8List.fromList(List<int>.filled(32, 77));
+        repo
+          ..claveDelArchivo = dek
+          ..envoltorio = (dek: dek, password: 'Vieja1234')
+          ..envoltorioDesactualizadoPara = 'usuario-a';
+      });
+
+      test('dado un login con contraseña de la cuenta de la marca, abre con la DEK del almacén y '
+          'recién después la envuelve con esa contraseña; la marca baja', () async {
+        final r = await inicializar();
+
+        expect(r, abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'abrir', 'envolver']);
+        expect(repo.envoltorio!.password, 'secreto123');
+        expect(repo.envoltorio!.dek, List<int>.filled(32, 77), reason: 'envuelve la DEK de la DB');
+        expect(repo.envoltorioDesactualizado, isFalse);
+        expect(pasos, [PasoInicializacionDb.abriendoDb]);
+        expect(repo.aEnvolver.single.destruida, isTrue, reason: 'la copia no queda viva');
+        expect(repo.abiertaCon!.destruida, isFalse, reason: 'la DEK de la DB sigue siendo de ella');
+      });
+
+      test('dado un login con contraseña de otra cuenta (la DB todavía no está atada a su '
+          'usuario), abre sin tocar el envoltorio: la marca queda y va un warn', () async {
+        final r = await inicializar(usuarioId: 'usuario-b');
+
+        expect(r, abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'avisarOtraCuenta', 'abrir']);
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorio!.password, 'Vieja1234');
+        expect(repo.envoltorioDesactualizadoPara, 'usuario-a');
+      });
+
+      test('dado un login con contraseña sin usuario_id, no toca el envoltorio', () async {
+        expect(await inicializar(usuarioId: null), abierta);
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorioDesactualizadoPara, 'usuario-a');
+      });
+
+      test('dada una DEK del almacén que no abre la DB, deja el envoltorio y la marca', () async {
+        repo.claveDelArchivo = Uint8List.fromList(List<int>.filled(32, 5));
+
+        final r = await inicializar();
+
+        expect(r, const Left<Failure, ResultadoInicializacionDb>(FailureClaveDbIncorrecta()));
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorio!.password, 'Vieja1234');
+        expect(repo.envoltorioDesactualizado, isTrue);
+        expect(repo.llamadas, isNot(contains('descartar')));
+      });
+
+      test('dado que envolver falla, abre igual y la marca queda para el próximo login', () async {
+        repo.fallas['envolver'] = const FailureAlmacenSeguro();
+
+        expect(await inicializar(), abierta);
+        expect(repo.abierta, isTrue);
+        expect(repo.envoltorio!.password, 'Vieja1234');
+        expect(repo.envoltorioDesactualizado, isTrue);
+        expect(repo.aEnvolver.single.destruida, isTrue);
+      });
+
+      test('dada una sesión restaurada (sin contraseña), abre sin tocar el envoltorio: la marca '
+          'espera un login con contraseña', () async {
+        expect(await inicializar(password: null, requiereEnvoltorio: true), abierta);
+        expect(repo.llamadas, ['estado', 'leerDek', 'abrir']);
+        expect(repo.envoltorioDesactualizado, isTrue);
+      });
+
+      test('dado un logout mientras lee la DEK, no abre ni envuelve', () async {
+        repo.lecturaPendiente = Completer<void>();
+
+        final enCurso = inicializar();
+        await Future<void>.delayed(Duration.zero);
+        vigencia.cerrarSesion();
+        repo.lecturaPendiente!.complete();
+
+        expect(
+          await enCurso,
+          const Left<Failure, ResultadoInicializacionDb>(FailureSesionCerrada()),
+        );
+        expect(repo.llamadas, isNot(contains('abrir')));
+        expect(repo.aEnvolver, isEmpty);
+        expect(repo.envoltorioDesactualizado, isTrue);
+      });
     });
   });
 

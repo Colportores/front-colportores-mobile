@@ -42,7 +42,17 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
   /// Bytes de la DEK envuelta y la contraseña con que se envolvió, o `null` si no hay envoltorio.
   ({Uint8List dek, String password})? envoltorio;
 
+  /// La marca de desactualizado del envoltorio (#125), con el `usuario_id` de quien la dejó. Como
+  /// en `ArchivoEnvoltorioDek`: la pone [marcarEnvoltorioDesactualizado], la baja un envoltorio
+  /// nuevo y la borra [descartar]; el estado solo la muestra si hay envoltorio.
+  String? envoltorioDesactualizadoPara;
+
+  bool get envoltorioDesactualizado => envoltorioDesactualizadoPara != null;
+
   final llamadas = <String>[];
+
+  /// Las DEK que recibió [envolverConPassword], en orden.
+  final aEnvolver = <ClaveDb>[];
 
   /// Las DEK entregadas (creadas, leídas o desenvueltas), en orden.
   final entregadas = <ClaveDb>[];
@@ -51,8 +61,9 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
   ClaveDb? abiertaCon;
 
   /// Falla a devolver por operación: `estado`, `bloqueo`, `nivel`, `consentimiento`, `leerDek`,
-  /// `crearDek`, `envolver`, `desenvolver`, `abrir`, `marcar`, `descartar`. La reconstrucción del
-  /// almacén se corta con [reconstruccionSeCortaEn].
+  /// `crearDek`, `envolver`, `marcarDesactualizado`, `desenvolver`, `abrir`, `marcar`,
+  /// `descartar`. La reconstrucción del almacén se corta con [reconstruccionSeCortaEn].
+  /// [avisarEnvoltorioDeOtraCuenta] queda en [llamadas] como `avisarOtraCuenta`.
   final fallas = <String, Failure>{};
 
   /// Escritura de la reconstrucción del almacén en la que el Keystore falla: 1 = la primera (la
@@ -90,6 +101,7 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
       marca: marca,
       archivoExiste: archivo,
       envoltorioExiste: envoltorio != null,
+      envoltorioDesactualizadoPara: envoltorio != null ? envoltorioDesactualizadoPara : null,
       abierta: abierta,
     ),
   );
@@ -132,13 +144,25 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
 
   @override
   Future<Either<Failure, Unit>> envolverConPassword(ClaveDb dek, String password) async {
+    aEnvolver.add(dek);
     final bytes = Uint8List.fromList(dek.bytes);
     await _argon2id();
     return _o('envolver', () {
       envoltorio = (dek: bytes, password: password);
+      envoltorioDesactualizadoPara = null;
       return unit;
     });
   }
+
+  @override
+  Future<Either<Failure, Unit>> marcarEnvoltorioDesactualizado(String usuarioId) async =>
+      _o('marcarDesactualizado', () {
+        envoltorioDesactualizadoPara = usuarioId;
+        return unit;
+      });
+
+  @override
+  void avisarEnvoltorioDeOtraCuenta() => llamadas.add('avisarOtraCuenta');
 
   @override
   Future<Either<Failure, ClaveDb>> desenvolverConPassword(String password) async {
@@ -212,6 +236,7 @@ final class DbLocalRepositoryEnMemoria implements DbLocalRepository {
     marca = MarcaDbLocal.ausente;
     dekEnAlmacen = null;
     envoltorio = null;
+    envoltorioDesactualizadoPara = null;
     consentimiento = false;
     return unit;
   });

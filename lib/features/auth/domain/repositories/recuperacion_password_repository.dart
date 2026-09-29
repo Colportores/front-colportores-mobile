@@ -9,6 +9,9 @@ abstract interface class RecuperacionPasswordRepository {
   /// Cada enlace de recuperación que llega a la app, válido o no.
   Stream<EnlaceRecuperacion> get enlaces;
 
+  /// El `usuario_id` de la cuenta que abrió el enlace, o `null` si no hay sesión de recuperación.
+  String? get usuarioId;
+
   /// Fija [nueva] como contraseña de la cuenta, con la sesión que abrió el enlace.
   /// `Left(FailureEnlaceRecuperacionVencido)` si esa sesión ya no sirve.
   ///
