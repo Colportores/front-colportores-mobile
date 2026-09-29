@@ -6,9 +6,11 @@ import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart'
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:dartz/dartz.dart';
 import 'package:logger/logger.dart';
@@ -42,6 +44,12 @@ final class _LocalFijo implements UbicacionLocalDataSource {
     if (e != null) throw e;
     return respuesta ?? (ubicacion: ubicacion, yaEstaba: false);
   }
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) => const Stream.empty();
 
   @override
   Stream<List<UbicacionModel>> observarDelColportor({

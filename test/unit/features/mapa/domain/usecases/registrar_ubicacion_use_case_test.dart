@@ -1,11 +1,13 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_ubicacion_use_case.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:dartz/dartz.dart';
@@ -24,6 +26,12 @@ final class _RepositorioQueAnota implements UbicacionRepository {
         })
       >[];
   Either<Failure, ResultadoAltaUbicacion>? respuesta;
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) => const Stream.empty();
 
   @override
   Future<Either<Failure, ResultadoAltaUbicacion>> registrar(

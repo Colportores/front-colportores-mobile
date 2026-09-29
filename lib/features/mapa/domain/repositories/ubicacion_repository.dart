@@ -2,9 +2,11 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../entities/espacio.dart';
+import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
+import '../value_objects/area_mapa.dart';
 import '../value_objects/punto_capturado.dart';
 
 /// Persistencia de las ubicaciones y sus espacios (ADR-001).
@@ -39,5 +41,14 @@ abstract interface class UbicacionRepository {
     required String colportorId,
     String? ciudadId,
     bool incluirBajas = false,
+  });
+
+  /// Los marcadores del mapa: ubicaciones **activas** (sin baja) del colportor [colportorId]
+  /// (`created_by`) dentro de [area], con su número de espacios sin baja (HU-UBI-003). Reactivo:
+  /// emite de nuevo ante cualquier cambio de ubicaciones o espacios. Un área no válida da lista
+  /// vacía. Sin `house_status`: ver [MarcadorMapa].
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
   });
 }

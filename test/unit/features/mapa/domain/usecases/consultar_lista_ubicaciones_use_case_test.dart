@@ -5,11 +5,13 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/consulta_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/consultar_lista_ubicaciones_use_case.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
@@ -28,6 +30,12 @@ final class _RepositorioReactivo implements UbicacionRepository {
     pedido = (colportorId: colportorId, ciudadId: ciudadId, incluirBajas: incluirBajas);
     return fuente.stream;
   }
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) => const Stream.empty();
 
   @override
   Future<Either<Failure, ResultadoAltaUbicacion>> registrar(
