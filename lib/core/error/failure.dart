@@ -380,6 +380,18 @@ final class FailureCiudadRequerida extends Failure {
       );
 }
 
+/// HU-UBI-007, "único espacio activo con personas": no se puede dar de baja el último espacio
+/// activo de un edificio o negocio si tiene personas. El mensaje es el que fija la HU.
+final class FailureUltimoEspacioConPersonas extends Failure {
+  const FailureUltimoEspacioConPersonas()
+    : super(
+        mensaje:
+            'No podés borrar el último espacio activo con personas. Agregá otro o reubicá las '
+            'personas primero.',
+        codigo: 'ESPACIO_ULTIMO_CON_PERSONAS',
+      );
+}
+
 /// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO` teniendo espacios activos (HU-UBI-004,
 /// "Cambio de tipo bloqueado", Supuesto S17). Texto literal del criterio de aceptación.
 final class FailureUbicacionConEspacios extends Failure {

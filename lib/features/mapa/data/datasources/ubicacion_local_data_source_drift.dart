@@ -8,15 +8,20 @@ import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/entities/motivo_rechazo_espacio.dart';
+import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
+import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
 
 part 'ubicacion_local_data_source_drift.g.dart';
+
+typedef _Motivo = MotivoRechazoEspacio;
 
 /// [UbicacionLocalDataSource] sobre las tablas `ubicacion` ([Ubicaciones]) y `espacio`
 /// ([Espacios]) de la DB cifrada.
@@ -27,7 +32,7 @@ part 'ubicacion_local_data_source_drift.g.dart';
 @DriftAccessor(tables: [Ubicaciones, Espacios])
 final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
-    implements UbicacionLocalDataSource {
+    implements UbicacionLocalDataSource, EspacioLocalDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
   UbicacionLocalDataSourceDrift(super.attachedDatabase, {required this._encolador});
 
@@ -275,6 +280,162 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     lon: fila.lon,
     ciudadId: fila.ciudadId,
     zonaId: fila.zonaId,
+    auditoria: Auditoria(
+      createdAt: fila.createdAt,
+      updatedAt: fila.updatedAt,
+      createdBy: fila.createdBy,
+      deletedAt: fila.deletedAt,
+      syncVersion: fila.syncVersion,
+    ),
+  );
+
+  // ---- EspacioLocalDataSource (HU-UBI-007): métodos nuevos al final para no chocar con #201. ----
+
+  @override
+  Future<InsercionEspacio> insertarEspacio(EspacioModel espacio) => transaction(() async {
+    final existente = await _espacioPorId(espacio.id);
+    if (existente != null) return (espacio: _aModeloEspacio(existente), yaEstaba: true);
+
+    await _exigirUbicacionGestionable(espacio.ubicacionId, exigirActiva: true);
+    await _exigirSinDuplicado(espacio.ubicacionId, espacio.numeroDepto);
+    await into(espacios).insert(_aFilaEspacio(espacio));
+    await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
+    return (espacio: espacio, yaEstaba: false);
+  });
+
+  @override
+  Future<EspacioModel> actualizarNumeroDepto(
+    String id, {
+    required String numeroDepto,
+    required DateTime ahora,
+  }) => transaction(() async {
+    final fila = await _espacioActivoOLanzar(id);
+    await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: false);
+    if (fila.numeroDepto == numeroDepto) return _aModeloEspacio(fila);
+
+    await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    return _escribirEspacio(
+      id,
+      EspaciosCompanion(numeroDepto: Value(numeroDepto), updatedAt: Value(instanteMs(ahora))),
+    );
+  });
+
+  @override
+  Future<EspacioModel> darDeBajaEspacio(String id, {required DateTime ahora}) async {
+    return transaction(() async {
+      final fila = await _espacioPorId(id);
+      if (fila == null) throw const EspacioRechazadoException(_Motivo.espacioInexistente);
+      await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: false);
+      if (fila.deletedAt != null) return _aModeloEspacio(fila);
+
+      final instante = instanteMs(ahora);
+      return _escribirEspacio(
+        id,
+        EspaciosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+    });
+  }
+
+  @override
+  Future<EspacioModel> restaurarEspacio(String id, {required DateTime ahora}) async {
+    return transaction(() async {
+      final fila = await _espacioPorId(id);
+      if (fila == null) throw const EspacioRechazadoException(_Motivo.espacioInexistente);
+      if (fila.deletedAt == null) return _aModeloEspacio(fila);
+
+      await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: true);
+      await _exigirSinDuplicado(fila.ubicacionId, fila.numeroDepto, excluirId: id);
+      return _escribirEspacio(
+        id,
+        EspaciosCompanion(deletedAt: const Value(null), updatedAt: Value(instanteMs(ahora))),
+      );
+    });
+  }
+
+  @override
+  Future<({EspacioModel espacio, UbicacionModel ubicacion})?> buscarEspacio(String id) async {
+    final fila = await _espacioPorId(id);
+    if (fila == null) return null;
+    final ubicacion = await _ubicacionPorId(fila.ubicacionId);
+    // Sin FK (el pull no garantiza el orden): un espacio huérfano se trata como inexistente.
+    if (ubicacion == null) return null;
+    return (espacio: _aModeloEspacio(fila), ubicacion: _aModelo(ubicacion));
+  }
+
+  @override
+  Future<List<EspacioModel>> listarEspacios(String ubicacionId, {bool incluirBajas = false}) async {
+    final consulta = select(espacios)
+      ..where((e) => e.ubicacionId.equals(ubicacionId))
+      ..orderBy([(e) => OrderingTerm.asc(e.numeroDepto), (e) => OrderingTerm.asc(e.createdAt)]);
+    if (!incluirBajas) consulta.where((e) => e.deletedAt.isNull());
+    return [for (final fila in await consulta.get()) _aModeloEspacio(fila)];
+  }
+
+  // `contarEspaciosActivos` de EspacioLocalDataSource lo cumple el de UbicacionLocalDataSource
+  // (misma firma, HU-UBI-004), más arriba.
+
+  Future<EspacioFila?> _espacioPorId(String id) =>
+      (select(espacios)..where((e) => e.id.equals(id))).getSingleOrNull();
+
+  Future<UbicacionFila?> _ubicacionPorId(String id) =>
+      (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
+
+  Future<EspacioFila> _espacioActivoOLanzar(String id) async {
+    final fila = await _espacioPorId(id);
+    if (fila == null) throw const EspacioRechazadoException(_Motivo.espacioInexistente);
+    if (fila.deletedAt != null) throw const EspacioRechazadoException(_Motivo.espacioDeBaja);
+    return fila;
+  }
+
+  /// La ubicación tiene que existir y no ser `CASA` (su espacio default no se gestiona); con
+  /// [exigirActiva], además no puede estar dada de baja.
+  Future<void> _exigirUbicacionGestionable(String ubicacionId, {required bool exigirActiva}) async {
+    final ubicacion = await _ubicacionPorId(ubicacionId);
+    if (ubicacion == null) throw const EspacioRechazadoException(_Motivo.ubicacionInexistente);
+    if (UbicacionModel.tipoDesdeCodigo(ubicacion.tipo) == TipoUbicacion.casa) {
+      throw const EspacioRechazadoException(_Motivo.ubicacionCasa);
+    }
+    if (exigirActiva && ubicacion.deletedAt != null) {
+      throw const EspacioRechazadoException(_Motivo.ubicacionDeBaja);
+    }
+  }
+
+  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios en los
+  /// bordes ni distinción de mayúsculas). Un número `null` no se compara.
+  Future<void> _exigirSinDuplicado(
+    String ubicacionId,
+    String? numeroDepto, {
+    String? excluirId,
+  }) async {
+    final clave = _claveDepto(numeroDepto);
+    if (clave == null) return;
+    final activos = await (select(
+      espacios,
+    )..where((e) => e.ubicacionId.equals(ubicacionId) & e.deletedAt.isNull())).get();
+    if (activos.any((e) => e.id != excluirId && _claveDepto(e.numeroDepto) == clave)) {
+      throw const EspacioRechazadoException(_Motivo.deptoDuplicado);
+    }
+  }
+
+  static String? _claveDepto(String? numeroDepto) {
+    final limpio = numeroDepto?.trim().toLowerCase();
+    return limpio == null || limpio.isEmpty ? null : limpio;
+  }
+
+  /// Aplica [cambios] a [id], lee la fila resultante y encola su `update` con la fila entera.
+  Future<EspacioModel> _escribirEspacio(String id, EspaciosCompanion cambios) async {
+    await (update(espacios)..where((e) => e.id.equals(id))).write(cambios);
+    final modelo = _aModeloEspacio((await _espacioPorId(id))!);
+    await _encolador.encolar('espacio', OperacionSync.update, modelo.toJson());
+    return modelo;
+  }
+
+  static EspacioModel _aModeloEspacio(EspacioFila fila) => EspacioModel(
+    id: fila.id,
+    ubicacionId: fila.ubicacionId,
+    numeroDepto: fila.numeroDepto,
+    piso: fila.piso,
+    descripcion: fila.descripcion,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
