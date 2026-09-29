@@ -7,13 +7,13 @@ import 'dart:async';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
+import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source.dart';
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
 import 'package:colportores_mobile/features/jornada/domain/entities/jornada.dart';
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/presentation/pages/corregir_jornada_page.dart';
-import 'package:colportores_mobile/features/jornada/presentation/pages/jornada_page.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,7 +123,7 @@ Future<void> _montar(
         ),
         child: child!,
       ),
-      home: JornadaPage(sesion: _sesion),
+      home: InicioPage(sesion: _sesion),
     ),
   ),
 );
@@ -137,8 +137,35 @@ void _pantalla(WidgetTester tester, Size tamanio) {
 FilledButton _botonIniciar(WidgetTester tester) =>
     tester.widget<FilledButton>(find.byKey(const Key('jornada_iniciar')));
 
-FilledButton _botonFinalizar(WidgetTester tester) =>
-    tester.widget<FilledButton>(find.byKey(const Key('jornada_finalizar')));
+OutlinedButton _botonFinalizar(WidgetTester tester) =>
+    tester.widget<OutlinedButton>(find.byKey(const Key('jornada_finalizar')));
+
+/// El `onPressed` del botón con esa key (o del botón que ella envuelve): `null` = deshabilitado.
+VoidCallback? _boton(WidgetTester tester, String key) {
+  final buscado = find.byKey(Key(key));
+  if (tester.widget(buscado) case final ButtonStyleButton boton) return boton.onPressed;
+  return tester
+      .widget<ButtonStyleButton>(
+        find.descendant(
+          of: buscado,
+          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+        ),
+      )
+      .onPressed;
+}
+
+Future<void> _abrirHoja(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora')));
+  await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tocarVeces(WidgetTester tester, String key, int veces) async {
+  for (var i = 0; i < veces; i++) {
+    await tester.tap(find.byKey(Key(key)));
+    await tester.pumpAndSettle();
+  }
+}
 
 Future<void> _tocarFinalizar(WidgetTester tester) async {
   await tester.ensureVisible(find.byKey(const Key('jornada_finalizar')));
@@ -170,38 +197,32 @@ void main() {
       expect(find.text('Sin jornada en curso'), findsNothing);
     });
 
-    testWidgets('Escenario: Bloqueo - jornada ya activa — Dado que tengo jornada activa, Cuando '
-        'intento iniciar otra, Entonces la UI bloquea "Tenés una jornada en curso. Cerrala antes '
-        'de iniciar otra."', (tester) async {
+    testWidgets('Escenario: Bloqueo - jornada ya activa — Dado que tengo jornada activa, la '
+        'pantalla es "Jornada activa" y no ofrece iniciar otra', (tester) async {
       _pantalla(tester, const Size(390, 844));
       final dataSource = _DataSource(
         iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
       );
       await _montar(tester, dataSource);
       await tester.pumpAndSettle();
+
       expect(find.text('Jornada activa'), findsOneWidget);
       expect(find.text('Desde las 13:15'), findsOneWidget);
       expect(find.text('1 h 20 min'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('jornada_iniciar')), warnIfMissed: false);
-      await tester.pumpAndSettle();
-
-      expect(_botonIniciar(tester).onPressed, isNull);
-      expect(
-        find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('jornada_iniciar')), findsNothing);
+      expect(find.text('Iniciar jornada'), findsNothing);
       expect(dataSource.jornadas, hasLength(1));
     });
 
-    testWidgets('Escenario: Bloqueo - jornada ya activa — si otra jornada se abrió mientras la '
-        'pantalla mostraba "Sin jornada en curso", al presionar "Iniciar jornada" la UI bloquea '
-        '"Tenés una jornada en curso. Cerrala antes de iniciar otra." y pasa a "Jornada activa"', (
+    testWidgets('Escenario: Bloqueo - jornada ya activa — Dado que tengo jornada activa (abierta '
+        'mientras la pantalla mostraba "Sin jornada en curso"), Cuando intento iniciar otra, '
+        'Entonces la UI bloquea "Tenés una jornada en curso. Cerrala antes de iniciar otra."', (
       tester,
     ) async {
       _pantalla(tester, const Size(390, 844));
-      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 14))])
-        ..lecturasSinVer = 1;
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 8, 10))],
+      )..lecturasSinVer = 1;
       await _montar(tester, dataSource);
       await tester.pumpAndSettle();
       expect(find.text('Sin jornada en curso'), findsOneWidget);
@@ -209,38 +230,46 @@ void main() {
       await tester.tap(find.text('Iniciar jornada'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Jornada activa'), findsOneWidget);
-      expect(find.text('Desde las 14:00'), findsOneWidget);
       expect(
         find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'),
         findsOneWidget,
       );
+      expect(find.text('Ver jornada en curso · desde 08:10'), findsOneWidget);
+      expect(_botonIniciar(tester).onPressed, isNull);
+      expect(find.text('Jornada activa'), findsNothing);
       expect(dataSource.jornadas, hasLength(1));
+
+      await tester.tap(find.text('Ver jornada en curso · desde 08:10'));
+      await tester.pumpAndSettle();
+      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.text('Desde las 08:10'), findsOneWidget);
+      expect(find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'), findsNothing);
     });
   });
 
   group('Hora de inicio (hasta 30 minutos hacia atrás)', () {
-    testWidgets('el selector solo ofrece de 30 minutos atrás a ahora, y la jornada empieza a la '
-        'hora elegida', (tester) async {
+    testWidgets('la hoja ofrece de a 5 minutos entre 30 minutos atrás y ahora, y la jornada '
+        'empieza a la hora elegida', (tester) async {
       _pantalla(tester, const Size(390, 844));
       final dataSource = _DataSource();
       await _montar(tester, dataSource);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
-      await tester.pumpAndSettle();
-      final selector = tester.widget<Slider>(find.byKey(const Key('jornada_selector_hora')));
-      expect(selector.min, -30);
-      expect(selector.max, 0);
-      expect(selector.divisions, 30);
+      await _abrirHoja(tester);
+      expect(find.text('¿A qué hora empezaste?'), findsOneWidget);
+      expect(find.text('Entre las 14:05 y las 14:35.'), findsOneWidget);
+      expect(find.text('Ahora'), findsWidgets);
+      expect(_boton(tester, 'hoja_hora_mas'), isNull, reason: '+5 no pasa de ahora');
 
-      selector.onChanged!(-10);
+      await _tocarVeces(tester, 'hoja_hora_menos', 2);
+      expect(find.text('14:25'), findsOneWidget);
+      expect(find.text('Hace 10 min'), findsOneWidget);
+      expect(find.text('Usar 14:25'), findsOneWidget);
+
+      await tester.tap(find.text('Usar 14:25'));
       await tester.pumpAndSettle();
+      expect(find.text('¿A qué hora empezaste?'), findsNothing);
       expect(find.text('14:25 · hace 10 min'), findsOneWidget);
-
-      await tester.tap(find.text('Listo'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('jornada_selector_hora')), findsNothing);
 
       await tester.tap(find.text('Iniciar jornada'));
       await tester.pumpAndSettle();
@@ -248,6 +277,220 @@ void main() {
       expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 14, 25).toUtc());
       expect(find.text('Desde las 14:25'), findsOneWidget);
       expect(find.text('10 min'), findsOneWidget);
+    });
+
+    testWidgets('−5 se detiene a los 30 minutos y +5 vuelve hasta ahora', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      await _tocarVeces(tester, 'hoja_hora_menos', 6);
+      expect(find.text('14:05'), findsOneWidget);
+      expect(find.text('Hace 30 min'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_menos'), isNull);
+
+      await _tocarVeces(tester, 'hoja_hora_mas', 1);
+      expect(find.text('14:10'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_menos'), isNotNull);
+    });
+
+    testWidgets('Cancelar deja la hora como estaba', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      await _tocarVeces(tester, 'hoja_hora_menos', 3);
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ahora · 14:35'), findsOneWidget);
+    });
+
+    testWidgets('"Otra hora": una hora dentro del rango se usa tal cual', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource();
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      expect(find.text('Otra hora'), findsOneWidget);
+      expect(find.text('Escribila en formato 24 h.'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '14:20');
+      await tester.pumpAndSettle();
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNotNull);
+      await tester.tap(find.text('Usar esta hora'));
+      await tester.pumpAndSettle();
+      expect(find.text('14:20 · hace 15 min'), findsOneWidget);
+
+      await tester.tap(find.text('Iniciar jornada'));
+      await tester.pumpAndSettle();
+      expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 14, 20).toUtc());
+    });
+
+    testWidgets('"Otra hora": fuera de rango se rechaza con el rango explícito, sin ajustar en '
+        'silencio', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '13:50');
+      await tester.pumpAndSettle();
+
+      expect(find.text('La hora tiene que estar entre las 14:05 y las 14:35.'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      // Una hora futura tampoco vale.
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '14:40');
+      await tester.pumpAndSettle();
+      expect(find.text('La hora tiene que estar entre las 14:05 y las 14:35.'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      await tester.tap(find.text('Volver'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿A qué hora empezaste?'), findsOneWidget);
+      expect(find.text('Ahora'), findsWidgets);
+    });
+
+    testWidgets('"Otra hora": lo que no es una hora de 24 h dice qué pasó y qué hacer', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '99:99');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('No entendimos esa hora. Escribila en formato 24 h, por ejemplo 14:20.'),
+        findsOneWidget,
+      );
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      // Mientras todavía está escribiendo no se le marca error.
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '14');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No entendimos'), findsNothing);
+    });
+
+    testWidgets('"Otra hora": una hora a medio escribir no se acepta ni marca error hasta '
+        'confirmar; "143" no es 01:43 y "1430" sí', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      final campo = find.byKey(const Key('hoja_hora_campo'));
+
+      await tester.enterText(campo, '14:3');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No entendimos'), findsNothing);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      // Al confirmar con "listo" del teclado, ahí sí se le dice qué falta.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('No entendimos esa hora. Escribila en formato 24 h, por ejemplo 14:20.'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(campo, '143');
+      await tester.pumpAndSettle();
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+
+      await tester.enterText(campo, '1430');
+      await tester.pumpAndSettle();
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNotNull);
+      expect(find.textContaining('No entendimos'), findsNothing);
+    });
+
+    testWidgets('"Otra hora": con el campo vacío dice qué escribir', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Escribí la hora, por ejemplo 14:20.'), findsOneWidget);
+      expect(_boton(tester, 'hoja_hora_usar_escrita'), isNull);
+    });
+
+    testWidgets('un doble toque en "Usar" no cierra también la pantalla principal', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+
+      await tester.tap(find.text('Usar 14:35'));
+      await tester.tap(find.text('Usar 14:35'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+    });
+
+    testWidgets('si cambia el minuto con la hoja abierta, se guarda la hora que el colportor vio '
+        'y confirmó, no una corrida', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource();
+      var reloj = _ahora;
+      await _montar(tester, dataSource, reloj: () => reloj);
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '14:20');
+      await tester.pumpAndSettle();
+
+      // Pasa el minuto con la hoja abierta.
+      reloj = DateTime(2026, 9, 23, 14, 36, 5);
+      await tester.tap(find.text('Usar esta hora'));
+      await tester.pumpAndSettle();
+      expect(find.text('14:20 · hace 16 min'), findsOneWidget);
+
+      await tester.tap(find.text('Iniciar jornada'));
+      await tester.pumpAndSettle();
+      expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 14, 20).toUtc());
+    });
+
+    testWidgets('"Otra hora": cruzando la medianoche, 23:50 es 20 minutos antes de las 00:10', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource();
+      await _montar(tester, dataSource, reloj: () => DateTime(2026, 9, 24, 0, 10, 20));
+      await tester.pumpAndSettle();
+
+      await _abrirHoja(tester);
+      expect(find.text('Entre las 23:40 y las 00:10.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '23:50');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Usar esta hora'));
+      await tester.pumpAndSettle();
+      expect(find.text('23:50 · hace 20 min'), findsOneWidget);
+
+      await tester.tap(find.text('Iniciar jornada'));
+      await tester.pumpAndSettle();
+      expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 23, 50).toUtc());
     });
 
     testWidgets('si la hora quedó fuera de rango al tocar, se rechaza con el rango explícito y no '
@@ -259,9 +502,9 @@ void main() {
       var reloj = _ahora;
       await _montar(tester, dataSource, reloj: () => reloj);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
-      await tester.pumpAndSettle();
-      tester.widget<Slider>(find.byKey(const Key('jornada_selector_hora'))).onChanged!(-30);
+      await _abrirHoja(tester);
+      await _tocarVeces(tester, 'hoja_hora_menos', 6);
+      await tester.tap(find.text('Usar 14:05'));
       await tester.pumpAndSettle();
       expect(find.text('14:05 · hace 30 min'), findsOneWidget);
 
@@ -287,9 +530,9 @@ void main() {
       var reloj = _ahora;
       await _montar(tester, dataSource, reloj: () => reloj);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
-      await tester.pumpAndSettle();
-      tester.widget<Slider>(find.byKey(const Key('jornada_selector_hora'))).onChanged!(-10);
+      await _abrirHoja(tester);
+      await _tocarVeces(tester, 'hoja_hora_menos', 2);
+      await tester.tap(find.text('Usar 14:25'));
       await tester.pumpAndSettle();
       expect(find.text('14:25 · hace 10 min'), findsOneWidget);
 
@@ -300,6 +543,59 @@ void main() {
 
       expect(dataSource.jornadas.single.inicio, DateTime(2026, 9, 23, 14, 25).toUtc());
       expect(find.text('Desde las 14:25'), findsOneWidget);
+    });
+  });
+
+  group('Estructura de la app (barra inferior)', () {
+    testWidgets('la barra tiene Hoy · Mapa · Lista · Agenda · Ventas, con "Hoy" primero y '
+        'Configuración en el engranaje', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      final barra = find.byKey(const Key('inicio_barra'));
+      for (final etiqueta in ['Hoy', 'Mapa', 'Lista', 'Agenda', 'Ventas']) {
+        expect(find.descendant(of: barra, matching: find.text(etiqueta)), findsOneWidget);
+      }
+      expect(tester.widget<NavigationBar>(barra).selectedIndex, 0, reason: 'arranca en "Hoy"');
+      expect(find.byTooltip('Configuración'), findsOneWidget);
+    });
+
+    testWidgets('cada pestaña sin HU todavía queda vacía y no pierde lo elegido en "Hoy"', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+      await _abrirHoja(tester);
+      await _tocarVeces(tester, 'hoja_hora_menos', 2);
+      await tester.tap(find.text('Usar 14:25'));
+      await tester.pumpAndSettle();
+
+      for (final pestana in ['mapa', 'lista', 'agenda', 'ventas']) {
+        await tester.tap(find.byKey(Key('inicio_pestana_$pestana')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(Key('pestana_$pestana')), findsOneWidget);
+        expect(find.text('Sin jornada en curso').hitTestable(), findsNothing);
+      }
+
+      await tester.tap(find.byKey(const Key('inicio_pestana_hoy')));
+      await tester.pumpAndSettle();
+      expect(find.text('14:25 · hace 10 min'), findsOneWidget);
+    });
+
+    testWidgets('"Abrir el mapa" lleva a la pestaña Mapa', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 14, 35))],
+      );
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Abrir el mapa'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<NavigationBar>(find.byKey(const Key('inicio_barra'))).selectedIndex, 1);
     });
   });
 
@@ -328,11 +624,11 @@ void main() {
 
       expect(
         find.text(
-          'No pudimos leer tu jornada. Tocá "Reintentar"; si sigue pasando, cerrá y volvé a '
-          'abrir la app.',
+          'Tocá “Reintentar” para volver a cargarla. Tus datos siguen guardados en este teléfono.',
         ),
         findsOneWidget,
       );
+      expect(find.text('No pudimos leer tu jornada.'), findsOneWidget);
       expect(find.byKey(const Key('jornada_iniciar')), findsNothing);
 
       dataSource.errorAlLeer = null;
@@ -354,8 +650,8 @@ void main() {
 
       expect(
         find.text(
-          'No pudimos guardar el inicio de tu jornada. Probá de nuevo; si sigue pasando, cerrá y '
-          'volvé a abrir la app.',
+          'No pudimos guardar el inicio de tu jornada. Probá de nuevo; si sigue pasando, avisale a '
+          'tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -389,15 +685,40 @@ void main() {
       expect(dataSource.jornadas, hasLength(1));
     });
 
-    testWidgets('muestra la fecha de hoy y el correo de la sesión', (tester) async {
+    testWidgets('sin jornada: fecha de hoy, estado "Sin jornada", la hora como fila y el botón al '
+        'pie', (tester) async {
       _pantalla(tester, const Size(390, 844));
       await _montar(tester, _DataSource());
       await tester.pumpAndSettle();
 
       expect(find.text('MIÉRCOLES 23 DE SEPTIEMBRE'), findsOneWidget);
-      expect(find.text('lucia.silva@correo.com'), findsOneWidget);
+      expect(find.text('Sin jornada'), findsOneWidget);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+      expect(find.text('Marcá el inicio cuando salgas a trabajar.'), findsOneWidget);
+      expect(find.text('HORA DE INICIO'), findsOneWidget);
+      expect(find.text('Cambiar ›'), findsOneWidget);
+      expect(find.text('Podés marcar el inicio hasta 30 minutos hacia atrás.'), findsOneWidget);
+      // El botón queda al pie, arriba de la barra inferior.
+      final boton = tester.getBottomLeft(find.byKey(const Key('jornada_iniciar'))).dy;
+      final barra = tester.getTopLeft(find.byKey(const Key('inicio_barra'))).dy;
+      expect(boton, lessThanOrEqualTo(barra));
+      expect(barra - boton, lessThan(40));
       // Cerrar sesión vive en Configuración (HU-AUTH-006).
       expect(find.byTooltip('Configuración'), findsOneWidget);
+    });
+
+    testWidgets('jornada activa: estado "En curso", desde qué hora y cuánto lleva', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13, 15))],
+      );
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      expect(find.text('En curso'), findsOneWidget);
+      expect(find.text('LLEVÁS'), findsOneWidget);
+      expect(find.text('Abrir el mapa'), findsOneWidget);
+      expect(find.text('Finalizar jornada'), findsOneWidget);
     });
 
     testWidgets(
@@ -751,14 +1072,41 @@ void main() {
   });
 
   group('Accesibilidad', () {
-    const estados = ['sin jornada', 'jornada activa', 'jornada finalizada'];
+    const estados = [
+      'sin jornada',
+      'hoja de ajuste',
+      'otra hora fuera de rango',
+      'iniciando',
+      'error al guardar',
+      'error de carga',
+      'ya en curso',
+      'jornada activa',
+      'jornada finalizada',
+    ];
 
     /// Deja la pantalla en [estado], con el selector de hora abierto cuando lo hay.
-    Future<void> prepararEstado(WidgetTester tester, String estado) async {
+    Future<void> prepararEstado(WidgetTester tester, String estado, _DataSource dataSource) async {
       switch (estado) {
-        case 'sin jornada':
-          await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora')));
-          await tester.tap(find.byKey(const Key('jornada_ajustar_hora')));
+        case 'hoja de ajuste':
+          await _abrirHoja(tester);
+          await _tocarVeces(tester, 'hoja_hora_menos', 2);
+        case 'otra hora fuera de rango':
+          await _abrirHoja(tester);
+          await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '13:50');
+        case 'iniciando':
+          dataSource.demoraInsercion = Completer<void>();
+          await tester.ensureVisible(find.byKey(const Key('jornada_iniciar')));
+          await tester.tap(find.byKey(const Key('jornada_iniciar')));
+          await tester.pump();
+        case 'error al guardar':
+          dataSource.errorAlInsertar = StateError('disco lleno');
+          await tester.ensureVisible(find.byKey(const Key('jornada_iniciar')));
+          await tester.tap(find.byKey(const Key('jornada_iniciar')));
+        case 'ya en curso':
+          await tester.ensureVisible(find.byKey(const Key('jornada_iniciar')));
+          await tester.tap(find.byKey(const Key('jornada_iniciar')));
         case 'jornada activa':
           await tester.ensureVisible(find.byKey(const Key('jornada_ajustar_hora_fin')));
           await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
@@ -766,20 +1114,29 @@ void main() {
           await tester.ensureVisible(find.byKey(const Key('jornada_finalizar')));
           await tester.tap(find.byKey(const Key('jornada_finalizar')));
       }
+      if (estado == 'iniciando') return;
       await tester.pumpAndSettle();
     }
 
-    _DataSource dataSourcePara(String estado) => _DataSource(
-      iniciales: [if (estado != 'sin jornada') _jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))],
-    );
+    _DataSource dataSourcePara(String estado) => switch (estado) {
+      'jornada activa' || 'jornada finalizada' => _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 13))],
+      ),
+      'ya en curso' => _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 8, 10))],
+      )..lecturasSinVer = 1,
+      'error de carga' => _DataSource()..errorAlLeer = StateError('db ilegible'),
+      _ => _DataSource(),
+    };
 
     for (final estado in estados) {
       testWidgets('$estado: tamaño de toque, etiquetas y contraste', (tester) async {
         final semantica = tester.ensureSemantics();
         _pantalla(tester, const Size(390, 844));
-        await _montar(tester, dataSourcePara(estado));
+        final dataSource = dataSourcePara(estado);
+        await _montar(tester, dataSource);
         await tester.pumpAndSettle();
-        await prepararEstado(tester, estado);
+        await prepararEstado(tester, estado, dataSource);
 
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
@@ -790,9 +1147,10 @@ void main() {
 
       testWidgets('$estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
         _pantalla(tester, const Size(360, 740));
-        await _montar(tester, dataSourcePara(estado), escalaTexto: 2);
+        final dataSource = dataSourcePara(estado);
+        await _montar(tester, dataSource, escalaTexto: 2);
         await tester.pumpAndSettle();
-        await prepararEstado(tester, estado);
+        await prepararEstado(tester, estado, dataSource);
 
         expect(tester.takeException(), isNull);
       });

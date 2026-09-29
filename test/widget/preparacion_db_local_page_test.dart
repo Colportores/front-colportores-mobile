@@ -16,7 +16,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/password_para_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
-import 'package:colportores_mobile/features/jornada/presentation/pages/jornada_page.dart';
+import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +28,7 @@ const _password = 'Secreto123';
 
 late DbLocalRepositoryEnMemoria _db;
 
-Finder get _principal => find.byType(JornadaPage);
+Finder get _principal => find.byType(InicioPage);
 Finder get _preparacion => find.byType(PreparacionDbLocalPage);
 Finder _boton(String key) => find.byKey(Key(key));
 

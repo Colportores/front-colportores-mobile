@@ -18,7 +18,7 @@ import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
-import 'features/jornada/presentation/pages/jornada_page.dart';
+import 'features/inicio/presentation/pages/inicio_page.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -90,7 +90,7 @@ class ColportoresApp extends ConsumerWidget {
 
 /// Decide si hay que llevar al usuario a [VerificacionEmailPage] en estado expirado, con el mismo
 /// criterio que `home:` en [ColportoresApp.build] usa para elegir entre [LoginPage] e
-/// [JornadaPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
+/// [InicioPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
 /// sí. La diferencia con leer `sesion.value` directamente (bug de la ronda anterior) es esperar a
 /// que `sesionProvider` termine de resolver: en un arranque en frío desde el enlace, Supabase ya
 /// procesó el deep link durante `Supabase.initialize()` (antes de `runApp`), pero
@@ -179,7 +179,7 @@ class _Principal extends ConsumerWidget {
 
   Widget _porEstadoDeCuenta(WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
     AsyncData(value: final estado) when estado == null || estado.accedeAModulosDeCampo =>
-      JornadaPage(sesion: sesion),
+      InicioPage(sesion: sesion),
     AsyncData(value: final estado) => EsperandoAsignacionPage(estado: estado),
     AsyncError(:final error) => EsperandoAsignacionPage(
       falla: error is Failure ? error : FailureInesperado(causa: error),

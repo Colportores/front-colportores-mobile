@@ -263,7 +263,7 @@ void main() {
       await tester.tap(find.byKey(const Key('configuracion_atras')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
       expect(container.read(sesionProvider).value, isNotNull);
     });
 
@@ -328,7 +328,7 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
         expect(container.read(sesionProvider).value, isNotNull, reason: 'no cerró la sesión');
-        expect(find.byKey(const Key('inicio_email')), findsOneWidget);
+        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
       });
     });
 

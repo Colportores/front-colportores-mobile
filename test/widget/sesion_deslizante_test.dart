@@ -22,7 +22,7 @@ const _revocada = 'Tu sesión se cerró desde el servidor. Iniciá sesión nueva
 
 final _aviso = find.byKey(const Key('login_aviso_sesion'));
 final _login = find.byKey(const Key('login_enviar'));
-final _principal = find.byKey(const Key('inicio_email'));
+final _principal = find.byKey(const Key('inicio_principal'));
 
 /// Una sesión guardada que el servidor renovó por última vez hace [sinUso].
 SesionModel _sesionSinUsoDesde(Duration sinUso) => SesionModel(

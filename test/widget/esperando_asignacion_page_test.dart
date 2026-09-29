@@ -24,7 +24,7 @@ import '../helpers/db_local_repository_en_memoria.dart';
 
 final _titulo = find.byKey(const Key('espera_titulo'));
 final _actualizar = find.byKey(const Key('espera_actualizar'));
-final _principal = find.byKey(const Key('inicio_email'));
+final _principal = find.byKey(const Key('inicio_principal'));
 final _login = find.byKey(const Key('login_enviar'));
 
 /// Teléfono sin nada guardado: el cierre de sesión pide la confirmación común.
