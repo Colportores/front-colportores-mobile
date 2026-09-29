@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import '../instante.dart';
+
 /// Centinela de [Auditoria.copyWith]: distingue "no se pasó el argumento" de "se pasó `null`".
 const Object _sinCambio = Object();
 
@@ -13,7 +15,8 @@ const Object _sinCambio = Object();
 /// pero `hashCode` no: la misma fila hidratada desde la DB local (`isUtc: false`) y desde el
 /// cloud (`DateTime.parse('…Z')`, `isUtc: true`) daría desigual con el mismo `hashCode` — rompe
 /// `Set`/`Map` y le muestra al sync engine un cambio fantasma en cada pull. El constructor
-/// normaliza con `toUtc()`, así que el invariante no depende de que cada llamador se acuerde.
+/// normaliza con [instanteMs] (UTC y truncado al milisegundo, la precisión de la DB local), así
+/// que el invariante no depende de que cada llamador se acuerde.
 class Auditoria extends Equatable {
   Auditoria({
     required DateTime createdAt,
@@ -21,9 +24,9 @@ class Auditoria extends Equatable {
     this.createdBy,
     DateTime? deletedAt,
     this.syncVersion = 0,
-  }) : createdAt = createdAt.toUtc(),
-       updatedAt = updatedAt.toUtc(),
-       deletedAt = deletedAt?.toUtc();
+  }) : createdAt = instanteMs(createdAt),
+       updatedAt = instanteMs(updatedAt),
+       deletedAt = deletedAt == null ? null : instanteMs(deletedAt);
 
   /// Siempre en UTC — ver el invariante en el doc de la clase.
   final DateTime createdAt;
