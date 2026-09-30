@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/dispositivo/abridor_ajustes_sistema.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
@@ -64,6 +65,12 @@ abstract final class TextosPreparacionDbLocal {
   static const rutaBloqueo = 'Ajustes > Seguridad > Bloqueo de pantalla';
   static const elegiBloqueo = 'Elegí PIN, patrón o contraseña y volvé a la app.';
   static const yaLoConfigure = 'Ya lo configuré';
+  static const abrirAjustes = 'Abrir Ajustes';
+  static const abrirAlmacenamiento = 'Abrir almacenamiento';
+
+  /// Propuesta: si la plataforma no pudo abrir los ajustes, el usuario sabe cómo llegar a mano.
+  static const noPudimosAbrirAjustes =
+      'No pudimos abrir los ajustes. Abrilos a mano desde el menú del teléfono.';
 
   static const consentimientoEyebrow = 'PASO 2 DE 3 · EN PAUSA';
   static const consentimientoTitulo = 'Antes de seguir';
@@ -129,6 +136,42 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   bool _mostrarPassword = false;
   bool _mostrarComoActualizar = false;
   bool _entiendeRiesgo = false;
+
+  /// «Abrir Ajustes» / «Abrir almacenamiento» en curso (guarda contra el doble toque) y, si no se
+  /// pudo abrir, el aviso.
+  bool _abriendoAjustes = false;
+  String? _avisoAjustes;
+
+  @override
+  void didUpdateWidget(PreparacionDbLocalPage anterior) {
+    super.didUpdateWidget(anterior);
+    // Al cambiar de pantalla y volver, nada queda marcado de la vez anterior: el consentimiento
+    // hay que darlo de nuevo, y el aviso de los ajustes ya no aplica.
+    if (anterior.estado.runtimeType != widget.estado.runtimeType ||
+        _falloDistinto(anterior.estado, widget.estado)) {
+      _entiendeRiesgo = false;
+      _avisoAjustes = null;
+    }
+  }
+
+  static bool _falloDistinto(EstadoPreparacionDbLocal a, EstadoPreparacionDbLocal b) =>
+      a is PreparacionDbLocalFallida &&
+      b is PreparacionDbLocalFallida &&
+      a.falla.runtimeType != b.falla.runtimeType;
+
+  Future<void> _abrirAjustes(Future<bool> Function(AbridorAjustesSistema) abrir) async {
+    if (_abriendoAjustes) return;
+    setState(() {
+      _abriendoAjustes = true;
+      _avisoAjustes = null;
+    });
+    final abierta = await abrir(ref.read(abridorAjustesSistemaProvider));
+    if (!mounted) return;
+    setState(() {
+      _abriendoAjustes = false;
+      if (!abierta) _avisoAjustes = TextosPreparacionDbLocal.noPudimosAbrirAjustes;
+    });
+  }
 
   PreparacionDbLocalNotifier get _notifier => ref.read(preparacionDbLocalProvider.notifier);
 
@@ -325,9 +368,17 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
             Text(TextosPreparacionDbLocal.elegiBloqueo, style: theme.textTheme.bodyMedium),
           ],
         ),
+        if (_avisoAjustes case final aviso?) _avisoAjustesWidget(theme, aviso),
       ],
       acciones: [
         FilledButton(
+          key: const Key('preparacion_db_abrir_ajustes'),
+          onPressed: _abriendoAjustes
+              ? null
+              : () => unawaited(_abrirAjustes((a) => a.abrirSeguridad())),
+          child: const Text(TextosPreparacionDbLocal.abrirAjustes),
+        ),
+        OutlinedButton(
           key: const Key('preparacion_db_reintentar'),
           onPressed: () => unawaited(_notifier.reintentar()),
           child: const Text(TextosPreparacionDbLocal.yaLoConfigure),
@@ -554,12 +605,20 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         ),
       ),
       Text(TextosPreparacionDbLocal.sinEspacioQueHacer, style: theme.textTheme.bodyLarge),
+      if (_avisoAjustes case final aviso?) _avisoAjustesWidget(theme, aviso),
     ],
     acciones: [
       FilledButton(
         key: const Key('preparacion_db_reintentar'),
         onPressed: () => unawaited(_notifier.reintentar()),
         child: const Text('Reintentar'),
+      ),
+      OutlinedButton(
+        key: const Key('preparacion_db_abrir_almacenamiento'),
+        onPressed: _abriendoAjustes
+            ? null
+            : () => unawaited(_abrirAjustes((a) => a.abrirAlmacenamiento())),
+        child: const Text(TextosPreparacionDbLocal.abrirAlmacenamiento),
       ),
       _botonCerrarSesion(),
     ],
@@ -582,6 +641,15 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       ),
       _botonCerrarSesion(),
     ],
+  );
+
+  Widget _avisoAjustesWidget(ThemeData theme, String texto) => Semantics(
+    liveRegion: true,
+    child: Text(
+      texto,
+      key: const Key('preparacion_db_aviso_ajustes'),
+      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+    ),
   );
 
   Widget _titulo(ThemeData theme, String texto) =>

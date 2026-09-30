@@ -2,7 +2,9 @@ package com.colportores.colportores_mobile
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
@@ -25,6 +27,8 @@ class MainActivity : FlutterActivity() {
      *
      * - `bloqueoPantalla` → si hay PIN, patrón, contraseña o biometría (`isDeviceSecure`).
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
+     * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` → abre esa pantalla de los ajustes
+     *   (vista 13, #222) y devuelve si pudo.
      *
      * Nunca devuelve material secreto: la clave de prueba se crea y se borra acá mismo.
      */
@@ -34,6 +38,9 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "bloqueoPantalla" -> result.success(tieneBloqueoPantalla())
                     "nivelAlmacen" -> result.success(nivelAlmacen())
+                    "abrirAjustesSeguridad" -> result.success(abrirAjustes(Settings.ACTION_SECURITY_SETTINGS))
+                    "abrirAjustesAlmacenamiento" ->
+                        result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -41,6 +48,22 @@ class MainActivity : FlutterActivity() {
                 result.error("SEGURIDAD_DISPOSITIVO", e.javaClass.simpleName, null)
             }
         }
+    }
+
+    /**
+     * Abre la pantalla de ajustes [accion]; si el equipo no la tiene, los ajustes generales. Devuelve
+     * `false` si ninguna abre: la app le dice al usuario cómo llegar a mano.
+     */
+    private fun abrirAjustes(accion: String): Boolean {
+        for (candidata in listOf(accion, Settings.ACTION_SETTINGS)) {
+            try {
+                startActivity(Intent(candidata).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                // Sigue con la siguiente.
+            }
+        }
+        return false
     }
 
     private fun tieneBloqueoPantalla(): Boolean {

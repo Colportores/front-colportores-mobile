@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/dispositivo/abridor_ajustes_sistema.dart';
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -31,6 +32,27 @@ const _password = 'Secreto123';
 
 late DbLocalRepositoryEnMemoria _db;
 
+/// El abridor de ajustes, con lo que devolvió cada apertura y una espera para el doble toque.
+final class _AbridorFalso implements AbridorAjustesSistema {
+  final llamadas = <String>[];
+  bool resultado = true;
+  Completer<void>? espera;
+
+  Future<bool> _abrir(String cual) async {
+    llamadas.add(cual);
+    await espera?.future;
+    return resultado;
+  }
+
+  @override
+  Future<bool> abrirSeguridad() => _abrir('seguridad');
+
+  @override
+  Future<bool> abrirAlmacenamiento() => _abrir('almacenamiento');
+}
+
+late _AbridorFalso _ajustes;
+
 Finder get _principal => find.byType(InicioPage);
 Finder get _preparacion => find.byType(PreparacionDbLocalPage);
 Finder _boton(String key) => find.byKey(Key(key));
@@ -49,6 +71,7 @@ Future<ProviderContainer> _entrar(
       ),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
       dbLocalRepositoryProvider.overrideWithValue(_db),
+      abridorAjustesSistemaProvider.overrideWithValue(_ajustes),
     ],
   );
   addTearDown(container.dispose);
@@ -96,7 +119,10 @@ void _dbExistente({required bool dekEnAlmacen, required bool conEnvoltorio}) {
 }
 
 void main() {
-  setUp(() => _db = DbLocalRepositoryEnMemoria());
+  setUp(() {
+    _db = DbLocalRepositoryEnMemoria();
+    _ajustes = _AbridorFalso();
+  });
 
   group('HU-AUTH-009 — criterios de aceptación', () {
     testWidgets('Escenario: Inicialización exitosa — muestra el progreso ("Preparando tu espacio '
@@ -543,6 +569,171 @@ void main() {
     });
   });
 
+  group('Acciones y casos límite (#222)', () {
+    Finder aviso() => _boton('preparacion_db_aviso_ajustes');
+
+    testWidgets('A04 «Abrir Ajustes» abre los ajustes de seguridad y no cambia la pantalla', (
+      tester,
+    ) async {
+      _db.bloqueoPantalla = false;
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_abrir_ajustes');
+
+      expect(_ajustes.llamadas, ['seguridad']);
+      expect(aviso(), findsNothing);
+      expect(find.text('Activá el bloqueo de pantalla'), findsOneWidget);
+    });
+
+    testWidgets('A04 si no se pueden abrir los ajustes, lo dice y deja reintentar', (tester) async {
+      _db.bloqueoPantalla = false;
+      _ajustes.resultado = false;
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_abrir_ajustes');
+
+      expect(find.text(TextosPreparacionDbLocal.noPudimosAbrirAjustes), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_abrir_ajustes'), isTrue);
+
+      _ajustes.resultado = true;
+      await _tocar(tester, 'preparacion_db_abrir_ajustes');
+      expect(_ajustes.llamadas, ['seguridad', 'seguridad']);
+      expect(aviso(), findsNothing);
+    });
+
+    testWidgets('A04 doble toque en «Abrir Ajustes»: una sola apertura', (tester) async {
+      _db.bloqueoPantalla = false;
+      _ajustes.espera = Completer<void>();
+      await _entrar(tester);
+
+      await tester.tap(_boton('preparacion_db_abrir_ajustes'));
+      await tester.pump();
+      expect(_botonHabilitado(tester, 'preparacion_db_abrir_ajustes'), isFalse);
+      await tester.tap(_boton('preparacion_db_abrir_ajustes'), warnIfMissed: false);
+      await tester.pump();
+      expect(_ajustes.llamadas, ['seguridad']);
+
+      _ajustes.espera!.complete();
+      await tester.pumpAndSettle();
+      expect(_botonHabilitado(tester, 'preparacion_db_abrir_ajustes'), isTrue);
+    });
+
+    testWidgets('A04 «Ya lo configuré» con el bloqueo puesto termina la preparación; doble toque '
+        'no prepara dos veces', (tester) async {
+      _db.bloqueoPantalla = false;
+      await _entrar(tester);
+      _db.bloqueoPantalla = true;
+
+      await tester.tap(_boton('preparacion_db_reintentar'));
+      await tester.tap(_boton('preparacion_db_reintentar'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_db.llamadas.where((l) => l == 'crearDek'), hasLength(1));
+    });
+
+    testWidgets('A04 si el reintento vuelve a fallar, la pantalla sigue con los botones '
+        'habilitados (nada queda trabado)', (tester) async {
+      _db.bloqueoPantalla = false;
+      await _entrar(tester);
+
+      for (var i = 0; i < 2; i++) {
+        await _tocar(tester, 'preparacion_db_reintentar');
+        expect(find.text('Activá el bloqueo de pantalla'), findsOneWidget);
+        expect(_boton('preparacion_db_reintentar'), findsOneWidget);
+        expect(_botonHabilitado(tester, 'preparacion_db_abrir_ajustes'), isTrue);
+      }
+    });
+
+    testWidgets('A05 salir y volver a la advertencia: el consentimiento no queda marcado', (
+      tester,
+    ) async {
+      _db.nivel = NivelAlmacenSeguro.software;
+      await _entrar(tester);
+      await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isTrue);
+
+      await _tocar(tester, 'preparacion_db_cancelar_riesgo');
+      await _tocar(tester, 'preparacion_db_continuar_con_este');
+
+      expect(
+        tester.widget<CheckboxListTile>(_boton('preparacion_db_entiendo_riesgo')).value,
+        isFalse,
+      );
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isFalse);
+    });
+
+    testWidgets('A05 doble toque en «Continuar»: crea la DB una sola vez', (tester) async {
+      _db.nivel = NivelAlmacenSeguro.software;
+      await _entrar(tester);
+      await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+
+      await tester.tap(_boton('preparacion_db_aceptar_riesgo'));
+      await tester.tap(_boton('preparacion_db_aceptar_riesgo'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_db.llamadas.where((l) => l == 'crearDek'), hasLength(1));
+    });
+
+    testWidgets('A06 «Reintentar desde cero» que vuelve a fallar deja reintentar otra vez', (
+      tester,
+    ) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_reintentar');
+      expect(find.text('No se pudo terminar'), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_reintentar'), isTrue);
+
+      _db.fallas.remove('crearDek');
+      await _tocar(tester, 'preparacion_db_reintentar');
+      expect(_principal, findsOneWidget);
+    });
+
+    testWidgets('A07 «Abrir almacenamiento» abre los ajustes de almacenamiento; si falla, lo '
+        'dice', (tester) async {
+      _db.fallas['abrir'] = const FailureSinEspacio();
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_abrir_almacenamiento');
+      expect(_ajustes.llamadas, ['almacenamiento']);
+      expect(aviso(), findsNothing);
+
+      _ajustes.resultado = false;
+      await _tocar(tester, 'preparacion_db_abrir_almacenamiento');
+      expect(find.text(TextosPreparacionDbLocal.noPudimosAbrirAjustes), findsOneWidget);
+      expect(_boton('preparacion_db_reintentar'), findsOneWidget);
+    });
+
+    testWidgets('A08 «Actualizar» tocado dos veces muestra el cómo una sola vez', (tester) async {
+      _dbExistente(dekEnAlmacen: true, conEnvoltorio: true);
+      _db.fallas['abrir'] = const FailureEsquemaPosterior();
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_actualizar');
+      await _tocar(tester, 'preparacion_db_actualizar');
+
+      expect(find.text(TextosPreparacionDbLocal.actualizarComo), findsOneWidget);
+    });
+
+    testWidgets('el campo de contraseña acepta un texto muy largo sin overflow al 200 %', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _entrar(tester, restaurada: true);
+
+      await tester.enterText(_boton('preparacion_db_password'), 'a' * 400);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('Accesibilidad', () {
     // Cada estado de la pantalla, preparado sobre el fake.
     final estados = <String, Future<void> Function(WidgetTester)>{
@@ -594,9 +785,21 @@ void main() {
         await tester.enterText(_boton('preparacion_db_password'), 'equivocada');
         await _tocar(tester, 'preparacion_db_confirmar_password');
       },
+      'sin bloqueo con aviso de ajustes': (tester) async {
+        _db.bloqueoPantalla = false;
+        _ajustes.resultado = false;
+        await _entrar(tester);
+        await _tocar(tester, 'preparacion_db_abrir_ajustes');
+      },
       'sin espacio': (tester) async {
         _db.fallas['abrir'] = const FailureSinEspacio();
         await _entrar(tester);
+      },
+      'sin espacio con aviso de ajustes': (tester) async {
+        _db.fallas['abrir'] = const FailureSinEspacio();
+        _ajustes.resultado = false;
+        await _entrar(tester);
+        await _tocar(tester, 'preparacion_db_abrir_almacenamiento');
       },
       'esquema posterior': (tester) async {
         _dbExistente(dekEnAlmacen: true, conEnvoltorio: true);
@@ -622,6 +825,27 @@ void main() {
         _db.argon2idPendiente?.complete();
         handle.dispose();
       });
+
+      for (final (tam, escala) in [
+        (const Size(360, 640), 1.0),
+        (const Size(360, 640), 2.0),
+        (const Size(412, 915), 1.0),
+        (const Size(412, 915), 2.0),
+      ]) {
+        testWidgets('$nombre: sin overflow en ${tam.width.toInt()}x${tam.height.toInt()} con texto '
+            '$escala', (tester) async {
+          tester.view.physicalSize = tam;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          tester.platformDispatcher.textScaleFactorTestValue = escala;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await preparar(tester);
+
+          expect(_preparacion, findsOneWidget);
+          expect(tester.takeException(), isNull);
+          _db.argon2idPendiente?.complete();
+        });
+      }
 
       testWidgets('$nombre: sin overflow con el texto al 200 % en 360x740', (tester) async {
         tester.view.physicalSize = const Size(360, 740);
