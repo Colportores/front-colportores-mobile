@@ -327,6 +327,43 @@ void main() {
       expect(find.byType(RecuperacionPasswordPage), findsNothing);
     });
 
+    testWidgets('A05 al volver de segundo plano la cuenta regresiva sigue la hora real, sin perder '
+        'el cooldown', (tester) async {
+      var ahora = DateTime(2026, 9, 30, 10);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          ],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: RecuperacionPasswordPage(ahora: () => ahora),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+      await _tocar(tester, 'recuperacion_password_enviar');
+      await tester.pumpAndSettle();
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+      // Segundo plano 45 s: el timer no corrió, pero el reloj sí.
+      ahora = ahora.add(const Duration(seconds: 45));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Reenviar en 15s'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNull, reason: 'todavía no pasaron los 60 s');
+
+      ahora = ahora.add(const Duration(seconds: 30));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Reenviar enlace'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNotNull);
+    });
+
     testWidgets('A06 sin conexión: «Necesitás conexión…» con la casilla marcada y el botón '
         'habilitado; al volver la conexión, envía', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})

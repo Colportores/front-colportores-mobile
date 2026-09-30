@@ -24,17 +24,25 @@ import '../providers/auth_providers.dart';
 /// distinguirlos. Los errores reales del servicio (sin conexión, falla del servidor) sí llegan
 /// como [Failure] visible, con el mismo tratamiento que el resto del flujo de auth.
 class RecuperacionPasswordPage extends ConsumerStatefulWidget {
-  const RecuperacionPasswordPage({super.key, this.emailInicial});
+  const RecuperacionPasswordPage({
+    super.key,
+    this.emailInicial,
+    @visibleForTesting this.ahora = DateTime.now,
+  });
 
   /// El email con el que arranca el campo, si ya se sabe: la preparación de la DB local la abre
   /// con el de la sesión (revisión del PR #130, N1). Se puede cambiar.
   final String? emailInicial;
 
+  /// El reloj de la cuenta regresiva; los tests lo adelantan.
+  final DateTime Function() ahora;
+
   @override
   ConsumerState<RecuperacionPasswordPage> createState() => _RecuperacionPasswordPageState();
 }
 
-class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordPage> {
+class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordPage>
+    with WidgetsBindingObserver {
   /// HU-AUTH-004: "máximo 1 solicitud por email cada 60 segundos" — mismo patrón que el reenvío
   /// de verificación de email (HU-AUTH-002, `VerificacionEmailPage._cooldown`). El tope de
   /// "5 por hora" no se replica acá: ver dartdoc de [SolicitarRecuperacionPasswordUseCase] y el
@@ -59,6 +67,27 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   Timer? _timer;
   int _segundosRestantes = 0;
 
+  /// Cuándo termina la cuenta regresiva. El timer solo repinta: al volver de segundo plano los
+  /// segundos se recalculan desde acá, porque el timer se atrasa con la app pausada.
+  DateTime? _venceCooldown;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final vence = _venceCooldown;
+    if (state != AppLifecycleState.resumed || vence == null || _segundosRestantes <= 0) return;
+    final restanteMs = vence.difference(widget.ahora()).inMilliseconds;
+    setState(() {
+      _segundosRestantes = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
+      if (_segundosRestantes <= 0) _timer?.cancel();
+    });
+  }
+
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
   bool _enviado = false;
@@ -67,6 +96,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _email.dispose();
     super.dispose();
@@ -74,6 +104,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   void _iniciarCooldown() {
     _timer?.cancel();
+    _venceCooldown = widget.ahora().add(_cooldown);
     setState(() => _segundosRestantes = _cooldown.inSeconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
