@@ -70,7 +70,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
-      expect(find.text('El enlace no es válido'), findsOneWidget);
+      expect(find.text('El enlace expiró'), findsOneWidget);
     });
 
     testWidgets('con sesión activa: no navega ni toca la pila (enlace viejo, ya verificado)', (

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../providers/bloqueo_reenvio_verificacion.dart';
 import '../providers/sesion_notifier.dart';
 
 /// Estado visible de [VerificacionEmailPage] (HU-AUTH-002).
@@ -20,9 +21,8 @@ enum EstadoVerificacionEmail {
   expirado,
 }
 
-/// Pantalla de espera/reenvío de verificación de email (HU-AUTH-002), diseño "Login Colportor"
-/// (reusa los mismos componentes/tema que [LoginPage] y `RegistroPage`: no hay diseño propio para
-/// esta pantalla — decisión de Cristian).
+/// Pantalla de espera/reenvío de verificación de email (HU-AUTH-002), vista 12 del diseño (#221):
+/// el correo destacado en una tarjeta, las acciones al pie y los avisos encima de ellas.
 ///
 /// Reemplaza al banner que antes vivía dentro del login: ahora se llega acá (a) después de un
 /// registro que queda pendiente de verificar ([email] y [password] conocidos, para poder ofrecer
@@ -36,6 +36,7 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
     this.email = '',
     this.password,
     this.estadoInicial = EstadoVerificacionEmail.pendiente,
+    @visibleForTesting this.ahora = DateTime.now,
   });
 
   /// Email a verificar. Vacío cuando se llega por un deep link de error sin contexto — ahí el
@@ -49,44 +50,105 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 
   final EstadoVerificacionEmail estadoInicial;
 
+  /// Reloj de la cuenta regresiva del reenvío; se inyecta solo en tests.
+  final DateTime Function() ahora;
+
   @override
   ConsumerState<VerificacionEmailPage> createState() => _VerificacionEmailPageState();
 }
 
-class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
-  /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope de "máximo 5 por
-  /// hora" no se replica acá — Supabase ya lo hace cumplir (~2 emails/hora en el plan free sin
-  /// SMTP propio) y ese rechazo llega traducido como cualquier otro rate limit.
+class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
+    with WidgetsBindingObserver {
+  /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope por hora lo hace
+  /// cumplir Supabase; cuando rechaza por límite, el botón queda bloqueado una hora fija
+  /// ([bloqueoReenvioVerificacion], decisión de Cristian 29/09).
   static const Duration _cooldown = Duration(seconds: 60);
+
+  static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
   Timer? _timer;
+  Timer? _timerBloqueo;
   int _segundosRestantes = 0;
+
+  /// Instante en que termina el bloqueo por límite de reenvíos (`null` si no hay).
+  DateTime? _bloqueadoHasta;
+
+  bool get _bloqueado {
+    final hasta = _bloqueadoHasta;
+    return hasta != null && widget.ahora().isBefore(hasta);
+  }
+
+  /// Instante en que vence la espera del reenvío: con la app en segundo plano el `Timer` se
+  /// pausa, así que al volver se recalcula desde la hora real.
+  DateTime? _venceCooldown;
 
   String? _errorEmail;
   String? _errorGeneral;
   String? _mensajeReenvio;
-  bool _enviando = false;
+  bool _reenviando = false;
+  bool _verificando = false;
 
   bool get _emailConocido => widget.email.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _estado = widget.estadoInicial;
     _emailController = TextEditingController(text: widget.email);
+    _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
+    _programarDesbloqueo();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _timerBloqueo?.cancel();
     _emailController.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _bloqueadoHasta != null) {
+      setState(_programarDesbloqueo);
+    }
+    final vence = _venceCooldown;
+    if (state != AppLifecycleState.resumed || vence == null || _segundosRestantes <= 0) return;
+    final restanteMs = vence.difference(widget.ahora()).inMilliseconds;
+    setState(() {
+      _segundosRestantes = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
+      if (_segundosRestantes <= 0) _terminarCooldown();
+    });
+  }
+
+  /// Agenda el fin del bloqueo por límite; si ya venció, lo limpia.
+  void _programarDesbloqueo() {
+    _timerBloqueo?.cancel();
+    final hasta = _bloqueadoHasta;
+    if (hasta == null) return;
+    final falta = hasta.difference(widget.ahora());
+    if (falta <= Duration.zero) {
+      _bloqueadoHasta = null;
+      return;
+    }
+    _timerBloqueo = Timer(falta, () {
+      if (!mounted) return;
+      setState(() => _bloqueadoHasta = null);
+    });
+  }
+
+  void _terminarCooldown() {
+    _timer?.cancel();
+    _mensajeReenvio = null;
+  }
+
   void _iniciarCooldown() {
     _timer?.cancel();
+    _venceCooldown = widget.ahora().add(_cooldown);
     setState(() => _segundosRestantes = _cooldown.inSeconds);
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -95,15 +157,16 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
       }
       setState(() {
         _segundosRestantes--;
-        if (_segundosRestantes <= 0) timer.cancel();
+        if (_segundosRestantes <= 0) _terminarCooldown();
       });
     });
   }
 
   Future<void> _reenviar() async {
+    if (_reenviando || _verificando || _segundosRestantes > 0 || _bloqueado) return;
     final email = _emailConocido ? widget.email : _emailController.text.trim();
     setState(() {
-      _enviando = true;
+      _reenviando = true;
       _errorEmail = null;
       _errorGeneral = null;
       _mensajeReenvio = null;
@@ -113,26 +176,31 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
     if (!mounted) return;
     setState(() {
-      _enviando = false;
+      _reenviando = false;
       switch (failure) {
         case null:
-          _mensajeReenvio = 'Te reenviamos el correo a $email.';
+          _mensajeReenvio = 'Te reenviamos el correo. Puede tardar unos minutos.';
           _iniciarCooldown();
         case FailureValidacion(:final campos):
           _errorEmail = campos['email'];
-        case Failure(:final mensaje):
-          _errorGeneral = mensaje;
+        case FailureServidor(status: 429):
+          ref.read(bloqueoReenvioVerificacionProvider.notifier).bloquearDesde(widget.ahora());
+          _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
+          _programarDesbloqueo();
+        case final Failure f:
+          _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
       }
     });
   }
 
   Future<void> _yaVerifique() async {
     final password = widget.password;
-    if (password == null) return;
+    if (password == null || _verificando || _reenviando) return;
 
     setState(() {
-      _enviando = true;
+      _verificando = true;
       _errorGeneral = null;
+      _mensajeReenvio = null;
     });
 
     final failure = await ref
@@ -141,11 +209,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
     if (!mounted) return;
     setState(() {
-      _enviando = false;
+      _verificando = false;
       if (failure == null) {
         _estado = EstadoVerificacionEmail.verificado;
       } else {
-        _errorGeneral = failure.mensaje;
+        _errorGeneral = _textoDeError(
+          failure,
+          'verificar tu cuenta',
+          'No pudimos verificar tu cuenta.',
+        );
       }
     });
   }
@@ -154,115 +226,138 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
 
   void _volverAlLogin() => Navigator.of(context).pop();
 
+  /// Todo aviso dice qué pasa y qué hacer (criterio de Cristian): sin conexión, un error del
+  /// servidor sin mensaje propio o uno inesperado llevan texto de la pantalla; el resto (rate
+  /// limit, credenciales, validación) ya trae el suyo.
+  static String _textoDeError(Failure failure, String accion, String noPudimos) {
+    return switch (failure) {
+      FailureSinConexion() => 'Necesitás conexión para $accion. Conectate y probá de nuevo.',
+      FailureInesperado() => '$noPudimos Probá de nuevo en unos minutos.',
+      FailureServidor(:final mensaje) when mensaje == const FailureServidor().mensaje =>
+        '$noPudimos Probá de nuevo en unos minutos.',
+      _ => failure.mensaje,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const paddingHorizontal = 30.0;
+    final esquema = theme.colorScheme;
+    final colores = theme.extension<ColoresColportaje>()!;
+    final verificado = _estado == EstadoVerificacionEmail.verificado;
+    final expirado = _estado == EstadoVerificacionEmail.expirado;
+    final conAvisoDeReenvio = _mensajeReenvio != null;
 
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
+              padding: const EdgeInsets.fromLTRB(26, 24, 26, 20),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
-                child: IntrinsicHeight(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 40),
-                      Text(
-                        'VERIFICACIÓN DE EMAIL',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _titulo(),
-                        key: const Key('verificacion_email_titulo'),
-                        style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        _mensaje(),
-                        key: const Key('verificacion_email_mensaje'),
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 24),
-                      if (_estado != EstadoVerificacionEmail.verificado) ...[
-                        if (!_emailConocido) ...[
-                          _CampoEmail(controller: _emailController, errorText: _errorEmail),
-                          const SizedBox(height: 16),
-                        ],
-                        if (_mensajeReenvio != null) ...[
-                          Text(
-                            _mensajeReenvio!,
-                            key: const Key('verificacion_email_mensaje_reenvio'),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        if (_errorGeneral != null) ...[
-                          Text(
-                            _errorGeneral!,
-                            key: const Key('verificacion_email_error_general'),
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        OutlinedButton(
-                          key: const Key('verificacion_email_reenviar'),
-                          onPressed: (_enviando || _segundosRestantes > 0) ? null : _reenviar,
-                          child: Text(
-                            _segundosRestantes > 0
-                                ? 'Reenviar en ${_segundosRestantes}s'
-                                : 'Reenviar email de verificación',
-                          ),
-                        ),
-                        if (_estado == EstadoVerificacionEmail.pendiente &&
-                            widget.password != null) ...[
-                          const SizedBox(height: 12),
-                          FilledButton(
-                            key: const Key('verificacion_email_ya_verifique'),
-                            onPressed: _enviando ? null : _yaVerifique,
-                            child: _enviando
-                                ? SizedBox.square(
-                                    dimension: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: theme.colorScheme.onPrimary,
-                                    ),
-                                  )
-                                : const Text('Ya verifiqué mi email'),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        Center(
-                          child: TextButton(
-                            key: const Key('verificacion_email_volver_login'),
-                            onPressed: _volverAlLogin,
-                            child: Text(
-                              'Volver al login',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.secondary,
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 44).clamp(0, double.infinity),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 12,
+                      children: [
+                        const SizedBox(height: 28),
+                        if (verificado || expirado)
+                          ExcludeSemantics(
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: esquema.primary, width: 1.5),
+                              ),
+                              child: Icon(
+                                verificado ? Icons.check : Icons.hourglass_bottom,
+                                color: esquema.primary,
                               ),
                             ),
                           ),
+                        if (!verificado)
+                          Text(
+                            'VERIFICACIÓN DE EMAIL',
+                            style: theme.textTheme.labelSmall?.copyWith(color: esquema.primary),
+                          ),
+                        Text(
+                          _titulo(),
+                          key: const Key('verificacion_email_titulo'),
+                          style: theme.textTheme.headlineMedium,
                         ),
-                      ] else ...[
-                        FilledButton(
-                          key: const Key('verificacion_email_continuar'),
-                          onPressed: _continuar,
-                          child: const Text('Continuar'),
-                        ),
+                        if (!(conAvisoDeReenvio && _emailConocido))
+                          Text(
+                            _mensaje(),
+                            key: const Key('verificacion_email_mensaje'),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: esquema.onSurfaceVariant,
+                              height: 1.5,
+                            ),
+                          ),
+                        if (!verificado && _emailConocido)
+                          Container(
+                            key: const Key('verificacion_email_tarjeta'),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: esquema.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: colores.borde),
+                            ),
+                            child: Row(
+                              spacing: 12,
+                              children: [
+                                ExcludeSemantics(
+                                  child: Icon(Icons.alternate_email, color: esquema.primary),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    widget.email,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_estado == EstadoVerificacionEmail.pendiente &&
+                            _emailConocido &&
+                            !conAvisoDeReenvio) ...[
+                          Text(
+                            'Abrí el enlace para verificar tu cuenta.',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: esquema.onSurfaceVariant,
+                            ),
+                          ),
+                          Text(
+                            'Si no lo encontrás, revisá la carpeta de spam.',
+                            style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+                          ),
+                        ],
+                        if (!verificado && !_emailConocido)
+                          _CampoEmail(
+                            controller: _emailController,
+                            errorText: _errorEmail,
+                            onChanged: (_) {
+                              if (_errorEmail != null) setState(() => _errorEmail = null);
+                            },
+                          ),
                       ],
-                      const Spacer(),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 24),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: 10,
+                      children: [if (!verificado) ..._acciones(context) else _continuarBoton()],
+                    ),
+                  ],
                 ),
               ),
             );
@@ -272,33 +367,180 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage> {
     );
   }
 
+  Widget _continuarBoton() => FilledButton(
+    key: const Key('verificacion_email_continuar'),
+    onPressed: _continuar,
+    child: const Text('Continuar'),
+  );
+
+  /// Los avisos (arriba de las acciones) y las acciones de la espera, según el diseño.
+  List<Widget> _acciones(BuildContext context) {
+    final theme = Theme.of(context);
+    final expirado = _estado == EstadoVerificacionEmail.expirado;
+    final conCuentaRegresiva = _segundosRestantes > 0;
+    final etiquetaReenviar = conCuentaRegresiva
+        ? 'Reenviar en ${_segundosRestantes}s'
+        : (expirado ? 'Reenviar email de verificación' : 'Reenviar email');
+    final ocupado = _reenviando || _verificando;
+    final bloqueado = _bloqueado;
+    final reenviar = ocupado || conCuentaRegresiva || bloqueado ? null : _reenviar;
+
+    return [
+      if (_mensajeReenvio case final mensaje?)
+        _AvisoVerificacion(
+          key: const Key('verificacion_email_mensaje_reenvio'),
+          texto: mensaje,
+          icono: Icons.check_circle_outline,
+        ),
+      if (bloqueado)
+        const _AvisoVerificacion(
+          key: Key('verificacion_email_limite'),
+          texto: _textoLimite,
+          icono: Icons.lock_outline,
+          esError: true,
+        ),
+      if (_errorGeneral case final error?)
+        _AvisoVerificacion(
+          key: const Key('verificacion_email_error_general'),
+          texto: error,
+          icono: Icons.error_outline,
+          esError: true,
+        ),
+      if (_estado == EstadoVerificacionEmail.pendiente && widget.password != null)
+        FilledButton(
+          key: const Key('verificacion_email_ya_verifique'),
+          onPressed: ocupado ? null : _yaVerifique,
+          style: _estiloYaVerifique(context),
+          child: _verificando
+              ? SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.colorScheme.onPrimary,
+                  ),
+                )
+              : const Text('Ya verifiqué mi email'),
+        ),
+      if (bloqueado)
+        OutlinedButton.icon(
+          key: const Key('verificacion_email_reenviar'),
+          onPressed: null,
+          icon: const Icon(Icons.lock_outline),
+          label: Text(etiquetaReenviar),
+        )
+      else if (expirado && widget.password == null)
+        FilledButton(
+          key: const Key('verificacion_email_reenviar'),
+          onPressed: reenviar,
+          child: Text(etiquetaReenviar),
+        )
+      else
+        OutlinedButton(
+          key: const Key('verificacion_email_reenviar'),
+          onPressed: reenviar,
+          child: Text(etiquetaReenviar),
+        ),
+      if (conCuentaRegresiva)
+        ExcludeSemantics(
+          child: LinearProgressIndicator(
+            key: const Key('verificacion_email_progreso'),
+            value: _segundosRestantes / _cooldown.inSeconds,
+            minHeight: 3,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      TextButton(
+        key: const Key('verificacion_email_volver_login'),
+        onPressed: _volverAlLogin,
+        child: Text(
+          'Volver al login',
+          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.secondary),
+        ),
+      ),
+    ];
+  }
+
+  /// Con texto grande la etiqueta pasa a dos líneas y los extremos de píldora la recortan: ahí el
+  /// radio baja y el relleno lateral sube.
+  ButtonStyle? _estiloYaVerifique(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return null;
+    return FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
+  }
+
   String _titulo() => switch (_estado) {
     EstadoVerificacionEmail.pendiente => 'Verificá tu cuenta',
     EstadoVerificacionEmail.verificado => 'Email verificado',
-    EstadoVerificacionEmail.expirado => 'El enlace no es válido',
+    EstadoVerificacionEmail.expirado => 'El enlace expiró',
   };
 
   String _mensaje() => switch (_estado) {
     EstadoVerificacionEmail.pendiente =>
       _emailConocido
-          ? 'Te enviamos un correo a ${widget.email}. Abrí el enlace para verificar tu cuenta. '
-                'Si no lo encontrás, revisá la carpeta de spam.'
+          ? 'Te enviamos un correo a'
           : 'Todavía no verificaste tu cuenta. Revisá tu correo (y la carpeta de spam) o pedí uno '
                 'nuevo.',
     EstadoVerificacionEmail.verificado =>
       'Email verificado. Esperá la asignación de tu coordinador.',
     EstadoVerificacionEmail.expirado =>
-      'El enlace de verificación venció o ya se usó. Pedí uno nuevo para volver a intentarlo.',
+      _emailConocido
+          ? 'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a ${widget.email}.'
+          : 'Pedí uno nuevo y abrilo desde este teléfono.',
   };
+}
+
+/// Aviso encima de las acciones: qué pasó (y qué hacer) sin cambiar de pantalla.
+class _AvisoVerificacion extends StatelessWidget {
+  const _AvisoVerificacion({
+    super.key,
+    required this.texto,
+    required this.icono,
+    this.esError = false,
+  });
+
+  final String texto;
+  final IconData icono;
+  final bool esError;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final esquema = theme.colorScheme;
+    final color = esError ? esquema.error : esquema.primary;
+
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: esquema.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color, width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 12,
+          children: [
+            ExcludeSemantics(child: Icon(icono, color: color)),
+            Expanded(child: Text(texto, style: theme.textTheme.bodyLarge)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Campo de email editable — mismo criterio visual que `_CampoLogin`/`_CampoRegistro`, pero sin
 /// duplicar esas clases privadas de las otras páginas (conservan su propio archivo).
 class _CampoEmail extends StatelessWidget {
-  const _CampoEmail({required this.controller, this.errorText});
+  const _CampoEmail({required this.controller, this.errorText, this.onChanged});
 
   final TextEditingController controller;
   final String? errorText;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -313,6 +555,7 @@ class _CampoEmail extends StatelessWidget {
         TextField(
           key: const Key('verificacion_email_campo'),
           controller: controller,
+          onChanged: onChanged,
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
           style: theme.textTheme.bodyLarge,

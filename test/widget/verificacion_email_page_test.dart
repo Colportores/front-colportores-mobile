@@ -3,6 +3,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/bloqueo_reenvio_verificacion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +25,7 @@ Future<void> _montarPagina(
   EstadoVerificacionEmail estadoInicial = EstadoVerificacionEmail.pendiente,
   required AuthRemoteDataSourceEnMemoria remote,
   double escalaTexto = 1,
+  DateTime Function()? ahora,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -38,7 +40,12 @@ Future<void> _montarPagina(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
         child: child!,
       ),
-      home: VerificacionEmailPage(email: email, password: password, estadoInicial: estadoInicial),
+      home: VerificacionEmailPage(
+        email: email,
+        password: password,
+        estadoInicial: estadoInicial,
+        ahora: ahora ?? DateTime.now,
+      ),
     ),
   ),
 );
@@ -263,7 +270,7 @@ void main() {
 
       await tester.pump(const Duration(seconds: 60));
 
-      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.text('Reenviar email'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(find.byKey(const Key('verificacion_email_reenviar')))
@@ -272,28 +279,148 @@ void main() {
       );
     });
 
-    testWidgets('reenviar: rate limit de Supabase muestra el mensaje traducido, sin cooldown', (
-      tester,
-    ) async {
+    testWidgets('doble toque en "Reenviar" manda un solo email', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      final boton = find.byKey(const Key('verificacion_email_reenviar'));
+      await tester.tap(boton);
+      await tester.tap(boton);
+      await tester.pumpAndSettle();
+
+      expect(remote.reenviosPorEmail['lucia.silva@correo.com'], 1);
+    });
+
+    testWidgets(
+      'al volver a primer plano la cuenta regresiva sigue la hora real y el aviso se va',
+      (tester) async {
+        var ahora = DateTime(2026, 9, 29, 10);
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+        );
+        await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => ahora);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+        ahora = ahora.add(const Duration(seconds: 45));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar en 15s'), findsOneWidget);
+
+        ahora = ahora.add(const Duration(seconds: 30));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
+      },
+    );
+
+    testWidgets('el aviso de reenvío se va cuando termina la cuenta regresiva', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 60));
+
+      expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
+    });
+
+    testWidgets('reenviar: rate limit (429) bloquea el botón con candado una hora, con el texto '
+        'de Cristian', (tester) async {
+      var ahora = DateTime(2026, 9, 29, 10);
       final remote =
           AuthRemoteDataSourceEnMemoria(
               credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
             )
             ..fallaAlReenviar = const ServidorException(
+              status: 429,
               mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
             );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => ahora);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+      expect(find.text('Demasiados intentos. Probá nuevamente en una hora.'), findsOneWidget);
+      expect(find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'), findsNothing);
+      expect(find.byIcon(Icons.lock_outline), findsWidgets);
+      expect(find.text('Reenviar email'), findsOneWidget);
+      final boton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(boton.onPressed, isNull, reason: 'bloqueado, sin cuenta regresiva de 60 s');
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+
+      // A los 59 minutos sigue bloqueado; a los 60 se libera.
+      ahora = ahora.add(const Duration(minutes: 59));
+      await tester.pump(const Duration(minutes: 59));
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+
+      ahora = ahora.add(const Duration(minutes: 1));
+      await tester.pump(const Duration(minutes: 1));
+      expect(find.byKey(const Key('verificacion_email_limite')), findsNothing);
+      final libre = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(libre.onPressed, isNotNull);
+    });
+
+    testWidgets('el bloqueo por límite sobrevive a salir y volver a la pantalla', (tester) async {
+      final ahora = DateTime(2026, 9, 29, 10);
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+            bloqueoReenvioVerificacionProvider.overrideWith(_BloqueadoALas10.new),
+          ],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: VerificacionEmailPage(
+              email: 'lucia.silva@correo.com',
+              password: 'Secreto123',
+              ahora: () => ahora.add(const Duration(minutes: 30)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
+      final boton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('verificacion_email_reenviar')),
+      );
+      expect(boton.onPressed, isNull);
+    });
+
+    testWidgets('un servidor caído (sin 429) no bloquea el reenvío', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..fallaAlReenviar = const ServidorException(status: 500);
       await _montarPagina(tester, remote: remote, password: 'Secreto123');
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const Key('verificacion_email_limite')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
-      expect(
-        find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'),
-        findsOneWidget,
-      );
-      expect(find.text('Reenviar email de verificación'), findsOneWidget);
     });
   });
 
@@ -331,6 +458,129 @@ void main() {
     });
   });
 
+  group('VerificacionEmailPage — vista 12', () {
+    testWidgets('A01 pendiente: correo destacado en una tarjeta, textos del diseño y acciones al '
+        'pie', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      expect(find.text('VERIFICACIÓN DE EMAIL'), findsOneWidget);
+      expect(find.text('Verificá tu cuenta'), findsOneWidget);
+      expect(find.text('Te enviamos un correo a'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('verificacion_email_tarjeta')),
+          matching: find.text('lucia.silva@correo.com'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Abrí el enlace para verificar tu cuenta.'), findsOneWidget);
+      expect(find.text('Si no lo encontrás, revisá la carpeta de spam.'), findsOneWidget);
+      expect(find.text('Ya verifiqué mi email'), findsOneWidget);
+      expect(find.text('Reenviar email'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+      // Las acciones van al pie, en este orden.
+      final ya = tester.getTopLeft(find.byKey(const Key('verificacion_email_ya_verifique'))).dy;
+      final reenviar = tester.getTopLeft(find.byKey(const Key('verificacion_email_reenviar'))).dy;
+      final volver = tester.getTopLeft(find.byKey(const Key('verificacion_email_volver_login'))).dy;
+      expect(ya, lessThan(reenviar));
+      expect(reenviar, lessThan(volver));
+      expect(volver, greaterThan(650));
+    });
+
+    testWidgets('A02 reenviado: el aviso de éxito reemplaza el texto y la cuenta regresiva muestra '
+        'su barra de avance', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Te reenviamos el correo. Puede tardar unos minutos.'), findsOneWidget);
+      expect(find.text('Te enviamos un correo a'), findsNothing);
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+      final progreso = tester.widget<LinearProgressIndicator>(
+        find.byKey(const Key('verificacion_email_progreso')),
+      );
+      expect(progreso.value, 1);
+
+      await tester.pump(const Duration(seconds: 15));
+      expect(find.text('Reenviar en 45s'), findsOneWidget);
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(find.byKey(const Key('verificacion_email_progreso')))
+            .value,
+        0.75,
+      );
+    });
+
+    testWidgets('A08 sin conexión al reenviar: dice qué pasa y qué hacer, sin cooldown', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..simularSinConexion = true;
+      await _montarPagina(tester, remote: remote, password: 'Secreto123');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('verificacion_email_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Necesitás conexión para reenviar el email. Conectate y probá de nuevo.'),
+        findsOneWidget,
+      );
+      expect(find.text('Reenviar email'), findsOneWidget);
+      expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+    });
+
+    testWidgets('A04 enlace expirado: título, apoyo con el correo y "Reenviar email de '
+        'verificación"', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      );
+      await _montarPagina(tester, remote: remote, estadoInicial: EstadoVerificacionEmail.expirado);
+      await tester.pumpAndSettle();
+
+      expect(find.text('El enlace expiró'), findsOneWidget);
+      expect(
+        find.text(
+          'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a lucia.silva@correo.com.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+    });
+
+    testWidgets(
+      'A07 verificado: sin la etiqueta de verificación, con el mensaje literal de la HU',
+      (tester) async {
+        await _montarPilaConPantallaInicial(
+          tester,
+          estadoInicial: EstadoVerificacionEmail.verificado,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Email verificado'), findsOneWidget);
+        expect(find.text('VERIFICACIÓN DE EMAIL'), findsNothing);
+        expect(find.text('Continuar'), findsOneWidget);
+      },
+    );
+  });
+
   group('VerificacionEmailPage — estado verificado', () {
     testWidgets('muestra el mensaje de éxito y "Continuar" cierra la pantalla', (tester) async {
       await _montarPilaConPantallaInicial(
@@ -353,4 +603,11 @@ void main() {
       expect(find.byKey(const Key('abrir_verificacion')), findsOneWidget);
     });
   });
+}
+
+/// Bloqueo por límite ya registrado a las 10:00 (una hora), como si el colportor hubiera salido de
+/// la pantalla y vuelto.
+class _BloqueadoALas10 extends BloqueoReenvioVerificacionNotifier {
+  @override
+  DateTime? build() => DateTime(2026, 9, 29, 10).add(bloqueoReenvioVerificacion);
 }
