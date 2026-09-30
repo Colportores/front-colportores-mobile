@@ -574,6 +574,42 @@ void main() {
   group('Acciones y casos límite (#222)', () {
     Finder aviso() => _boton('preparacion_db_aviso_ajustes');
 
+    testWidgets('con texto al 200 % el título y el aviso bajan de tamaño para no partir palabras '
+        'como «Preparando» o «almacenamiento»', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      double? tamanio(Finder f) => tester.widget<Text>(f).style?.fontSize;
+
+      // Texto 1.0: el tamaño del tema.
+      await _montarEstado(
+        tester,
+        const PreparandoDbLocal(paso: PasoInicializacionDb.protegiendoClave),
+      );
+      final titulo = find.byKey(const Key('preparacion_db_progreso'));
+      final base = Theme.of(tester.element(titulo)).textTheme.headlineMedium!.fontSize!;
+      expect(tamanio(titulo), base);
+
+      // Texto 2.0: más chico que el del tema.
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(const SizedBox());
+      await _montarEstado(
+        tester,
+        const PreparandoDbLocal(paso: PasoInicializacionDb.protegiendoClave),
+      );
+      expect(tamanio(titulo), lessThan(base));
+
+      // El aviso de A05, igual.
+      _db.nivel = NivelAlmacenSeguro.software;
+      await tester.pumpWidget(const SizedBox());
+      await _entrar(tester);
+      final aviso = find.byKey(const Key('preparacion_db_mensaje'));
+      final baseAviso = Theme.of(tester.element(aviso)).textTheme.bodyLarge!.fontSize!;
+      expect(tamanio(aviso), lessThan(baseAviso));
+    });
+
     testWidgets('A04 «Abrir Ajustes» abre los ajustes de seguridad y no cambia la pantalla', (
       tester,
     ) async {

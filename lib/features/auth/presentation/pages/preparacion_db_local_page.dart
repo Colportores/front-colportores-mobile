@@ -323,7 +323,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
           child: Text(
             leyenda,
             key: const Key('preparacion_db_progreso'),
-            style: theme.textTheme.headlineMedium,
+            style: _estiloTitulo(context, theme),
           ),
         ),
         _BarraPasos(hechos: numero ?? 0, etiqueta: leyenda),
@@ -608,7 +608,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         child: Text(
           falla.mensaje,
           key: const Key('preparacion_db_mensaje'),
-          style: theme.textTheme.headlineMedium,
+          style: _estiloTitulo(context, theme),
         ),
       ),
       Text(TextosPreparacionDbLocal.sinEspacioQueHacer, style: theme.textTheme.bodyLarge),
@@ -660,7 +660,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   );
 
   Widget _titulo(ThemeData theme, String texto) =>
-      Semantics(header: true, child: Text(texto, style: theme.textTheme.headlineMedium));
+      Semantics(header: true, child: Text(texto, style: _estiloTitulo(context, theme)));
 
   Widget _mensaje(ThemeData theme, String texto, Key key) => Semantics(
     liveRegion: true,
@@ -876,7 +876,7 @@ class _AvisoAlmacen extends StatelessWidget {
               child: Text(
                 texto,
                 key: const Key('preparacion_db_mensaje'),
-                style: theme.textTheme.bodyLarge,
+                style: _achicarSiHaceFalta(context, theme.textTheme.bodyLarge, 0.8),
               ),
             ),
           ],
@@ -911,3 +911,14 @@ class _IconoEstado extends StatelessWidget {
     );
   }
 }
+
+/// Con texto muy grande (más de 1,5) una palabra larga como «Preparando» o «almacenamiento» no
+/// entra en el ancho y se parte a mitad de palabra: se baja el tamaño, como en los botones de la
+/// vista 12.
+TextStyle? _achicarSiHaceFalta(BuildContext context, TextStyle? estilo, double factor) {
+  if (estilo == null || MediaQuery.textScalerOf(context).scale(1) <= 1.5) return estilo;
+  return estilo.copyWith(fontSize: (estilo.fontSize ?? 14) * factor);
+}
+
+TextStyle? _estiloTitulo(BuildContext context, ThemeData theme) =>
+    _achicarSiHaceFalta(context, theme.textTheme.headlineMedium, 0.72);
