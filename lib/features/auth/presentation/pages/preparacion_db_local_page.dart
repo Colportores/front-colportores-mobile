@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/config/config_soporte.dart';
 import '../../../../core/dispositivo/abridor_ajustes_sistema.dart';
+import '../../../../core/dispositivo/abridor_enlace_externo.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
@@ -71,6 +73,20 @@ abstract final class TextosPreparacionDbLocal {
   /// Propuesta: si la plataforma no pudo abrir los ajustes, el usuario sabe cómo llegar a mano.
   static const noPudimosAbrirAjustes =
       'No pudimos abrir los ajustes. Abrilos a mano desde el menú del teléfono.';
+
+  /// A06: abre el chat de WhatsApp de soporte con el código del error (decisión de Cristian, 30/09).
+  static const contactarSoporte = 'Contactar a soporte';
+
+  /// Propuesta: si no hay nada que abra WhatsApp (ni navegador), el usuario sabe a quién escribir y
+  /// qué decir.
+  static String noPudimosAbrirSoporte(String codigo) =>
+      'No pudimos abrir WhatsApp. Escribile a soporte al ${ConfigSoporte.whatsappVisible} y '
+      'decile este código: $codigo.';
+
+  /// A09 (vista 13).
+  static const interrumpidaTitulo = 'La preparación se cortó';
+  static const pasoCortado = '· cortado';
+  static const empezarDeNuevoInterrumpida = 'Empezar de nuevo';
 
   static const consentimientoEyebrow = 'PASO 2 DE 3 · EN PAUSA';
   static const consentimientoTitulo = 'Antes de seguir';
@@ -142,6 +158,10 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   bool _abriendoAjustes = false;
   String? _avisoAjustes;
 
+  /// «Contactar a soporte» en curso (guarda contra el doble toque) y, si no se pudo abrir, el aviso.
+  bool _abriendoSoporte = false;
+  String? _avisoSoporte;
+
   @override
   void didUpdateWidget(PreparacionDbLocalPage anterior) {
     super.didUpdateWidget(anterior);
@@ -151,6 +171,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         _falloDistinto(anterior.estado, widget.estado)) {
       _entiendeRiesgo = false;
       _avisoAjustes = null;
+      _avisoSoporte = null;
     }
   }
 
@@ -179,6 +200,35 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       }
     }
   }
+
+  Future<void> _contactarSoporte(String codigo) async {
+    if (_abriendoSoporte) return;
+    setState(() {
+      _abriendoSoporte = true;
+      _avisoSoporte = null;
+    });
+    var abierto = false;
+    try {
+      abierto = await ref
+          .read(abridorEnlaceExternoProvider)
+          .abrir(ConfigSoporte.enlaceWhatsapp(codigo));
+    } on Object {
+      // Una falla del abridor es lo mismo que no haber podido abrir: el aviso guía al usuario.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _abriendoSoporte = false;
+          if (!abierto) _avisoSoporte = TextosPreparacionDbLocal.noPudimosAbrirSoporte(codigo);
+        });
+      }
+    }
+  }
+
+  Widget _botonSoporte(String codigo) => OutlinedButton(
+    key: const Key('preparacion_db_contactar_soporte'),
+    onPressed: _abriendoSoporte ? null : () => unawaited(_contactarSoporte(codigo)),
+    child: const Text(TextosPreparacionDbLocal.contactarSoporte),
+  );
 
   PreparacionDbLocalNotifier get _notifier => ref.read(preparacionDbLocalProvider.notifier);
 
@@ -297,6 +347,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         FailureAlmacenSeguroSinRecuperacion() => _sinRecuperacion(theme, falla, reintentos),
         FailureSinBloqueoPantalla() => _sinBloqueo(theme, falla),
         FailureSinEspacio() => _sinEspacio(theme, falla),
+        final FailurePreparacionInterrumpida f => _interrumpida(theme, f),
         _ => _falla(theme, falla),
       },
     // Sin sesión o con la DB lista esta pantalla no se muestra; si llega a verse, es de paso.
@@ -552,6 +603,8 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
             : TextosPreparacionDbLocal.empezarDeNuevoOferta,
         style: theme.textTheme.bodyMedium,
       ),
+      if (_avisoSoporte case final aviso?)
+        _avisoWidget(theme, aviso, 'preparacion_db_aviso_soporte'),
     ],
     acciones: [
       FilledButton(
@@ -567,6 +620,7 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
           onPressed: () => unawaited(_confirmarEmpezarDeNuevo()),
           child: const Text('Empezar de nuevo'),
         ),
+      _botonSoporte(falla.codigo),
       _botonCerrarSesion(),
     ],
   );
@@ -631,6 +685,25 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     ],
   );
 
+  /// A09: la app se cerró a mitad de la preparación. Muestra hasta dónde llegó y ofrece empezar de
+  /// nuevo, que descarta lo parcial (nunca se usó) y vuelve a preparar, sin pedir el login.
+  _VistaPreparacion _interrumpida(ThemeData theme, FailurePreparacionInterrumpida falla) =>
+      _VistaPreparacion(
+        eyebrow: TextosPreparacionDbLocal.primerIngreso,
+        cuerpo: [
+          _titulo(theme, TextosPreparacionDbLocal.interrumpidaTitulo),
+          _mensaje(theme, falla.mensaje, const Key('preparacion_db_mensaje')),
+          _ListaPasos(actual: falla.pasoCortado, cortado: true),
+        ],
+        acciones: [
+          FilledButton(
+            key: const Key('preparacion_db_empezar_interrumpida'),
+            onPressed: () => unawaited(_notifier.empezarDeNuevoInterrumpida()),
+            child: const Text(TextosPreparacionDbLocal.empezarDeNuevoInterrumpida),
+          ),
+        ],
+      );
+
   /// A06: falla del almacenamiento (o inesperada). El texto es el de ADR-006 / la HU.
   _VistaPreparacion _falla(ThemeData theme, Failure falla) => _VistaPreparacion(
     eyebrow: TextosPreparacionDbLocal.espacioSeguro,
@@ -639,6 +712,8 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       _titulo(theme, TextosPreparacionDbLocal.fallaTitulo),
       _mensaje(theme, falla.mensaje, const Key('preparacion_db_mensaje')),
       Text(TextosPreparacionDbLocal.fallaEmpezamosDeCero, style: theme.textTheme.bodyMedium),
+      if (_avisoSoporte case final aviso?)
+        _avisoWidget(theme, aviso, 'preparacion_db_aviso_soporte'),
     ],
     acciones: [
       FilledButton(
@@ -646,15 +721,19 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
         onPressed: () => unawaited(_notifier.reintentar()),
         child: const Text(TextosPreparacionDbLocal.reintentarDesdeCero),
       ),
+      _botonSoporte(falla.codigo),
       _botonCerrarSesion(),
     ],
   );
 
-  Widget _avisoAjustesWidget(ThemeData theme, String texto) => Semantics(
+  Widget _avisoAjustesWidget(ThemeData theme, String texto) =>
+      _avisoWidget(theme, texto, 'preparacion_db_aviso_ajustes');
+
+  Widget _avisoWidget(ThemeData theme, String texto, String clave) => Semantics(
     liveRegion: true,
     child: Text(
       texto,
-      key: const Key('preparacion_db_aviso_ajustes'),
+      key: Key(clave),
       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
     ),
   );
@@ -719,10 +798,14 @@ class _BarraPasos extends StatelessWidget {
 }
 
 /// Los tres pasos con su estado: hecho, en curso (el [actual]) o pendiente.
+///
+/// Con [cortado] (A09), el [actual] es el paso en el que se cortó: los anteriores están hechos, él
+/// lleva la ✕ y «· cortado», y los que siguen quedan pendientes.
 class _ListaPasos extends StatelessWidget {
-  const _ListaPasos({required this.actual});
+  const _ListaPasos({required this.actual, this.cortado = false});
 
   final int actual;
+  final bool cortado;
 
   static const _pasos = [
     TextosPreparacionDbLocal.pasoBloqueo,
@@ -733,7 +816,7 @@ class _ListaPasos extends StatelessWidget {
   String _estado(int i) => i < actual
       ? 'hecho'
       : i == actual
-      ? 'en curso'
+      ? (cortado ? 'cortado' : 'en curso')
       : 'pendiente';
 
   @override
@@ -765,17 +848,32 @@ class _ListaPasos extends StatelessWidget {
                       child: i < actual
                           ? Icon(Icons.check_circle, size: 22, color: theme.colorScheme.primary)
                           : i == actual
-                          ? const CircularProgressIndicator(strokeWidth: 2)
+                          ? (cortado
+                                ? Icon(Icons.cancel, size: 22, color: theme.colorScheme.error)
+                                : const CircularProgressIndicator(strokeWidth: 2))
                           : Icon(Icons.circle_outlined, size: 22, color: colores.gris),
                     ),
                     Expanded(
-                      child: Text(
-                        _pasos[i],
-                        key: Key('preparacion_db_paso_$i'),
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: i == actual ? FontWeight.w600 : FontWeight.w400,
-                          color: i > actual ? colores.gris : null,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _pasos[i],
+                            key: Key('preparacion_db_paso_$i'),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: i == actual ? FontWeight.w600 : FontWeight.w400,
+                              color: i > actual ? colores.gris : null,
+                            ),
+                          ),
+                          if (cortado && i == actual)
+                            Text(
+                              TextosPreparacionDbLocal.pasoCortado,
+                              key: const Key('preparacion_db_paso_cortado'),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

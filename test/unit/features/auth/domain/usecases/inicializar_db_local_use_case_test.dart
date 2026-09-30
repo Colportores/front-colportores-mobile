@@ -37,12 +37,14 @@ void main() {
     String? password = 'secreto123',
     bool requiereEnvoltorio = false,
     bool aceptaAlmacenSoftware = false,
+    bool descartaInterrumpida = false,
     String? usuarioId = 'usuario-a',
   }) => useCase(
     InicializarDbLocalParams(
       password: password,
       requiereEnvoltorio: requiereEnvoltorio,
       aceptaAlmacenSoftware: aceptaAlmacenSoftware,
+      descartaInterrumpida: descartaInterrumpida,
       alAvanzar: pasos.add,
       usuarioId: usuarioId,
     ),
@@ -104,6 +106,7 @@ void main() {
         expect(r, creada);
         expect(repo.llamadas, [
           'estado',
+          'leerDek',
           'bloqueo',
           'nivel',
           'descartar',
@@ -153,7 +156,7 @@ void main() {
         final r = await inicializar();
 
         expect(r, const Left<Failure, ResultadoInicializacionDb>(FailureSinBloqueoPantalla()));
-        expect(repo.llamadas, ['estado', 'bloqueo'], reason: 'no toca nada');
+        expect(repo.llamadas, ['estado', 'leerDek', 'bloqueo'], reason: 'no toca nada');
         expect(pasos, isEmpty);
         final mensaje = const FailureSinBloqueoPantalla().mensaje;
         expect(mensaje, contains('bloqueo de pantalla'));
@@ -175,7 +178,7 @@ void main() {
         'Tu dispositivo tiene almacenamiento menos seguro. Los datos siguen cifrados pero el '
         'nivel de protección es menor.',
       );
-      expect(repo.llamadas, ['estado', 'bloqueo', 'nivel']);
+      expect(repo.llamadas, ['estado', 'leerDek', 'bloqueo', 'nivel']);
     });
 
     test('si acepta, sigue con el mismo almacén y registra la elección', () async {
@@ -184,7 +187,7 @@ void main() {
       expect(r, creada);
       expect(repo.consentimiento, isTrue);
       expect(
-        repo.llamadas.sublist(3, 6),
+        repo.llamadas.sublist(4, 7),
         ['descartar', 'consentimiento', 'crearDek'],
         reason: 'se registra después de limpiar, para que la limpieza no se lo lleve',
       );
@@ -237,14 +240,80 @@ void main() {
   });
 
   group('Escenario: Edge - inicialización interrumpida', () {
-    test('dado un archivo sin marca y con la DEK en el almacén (la app murió a mitad), elimina la '
+    test('dado un archivo sin marca y con la DEK en el almacén (la app murió a mitad), no borra '
+        'nada y avisa que se cortó, con el paso en que se cortó (A09)', () async {
+      repo
+        ..archivo = true
+        ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5))
+        ..envoltorio = (dek: Uint8List(32), password: 'secreto123');
+
+      final r = await inicializar(requiereEnvoltorio: true);
+
+      expect(
+        r,
+        const Left<Failure, ResultadoInicializacionDb>(
+          FailurePreparacionInterrumpida(pasoCortado: 2),
+        ),
+      );
+      expect(repo.llamadas, ['estado', 'leerDek']);
+      expect(repo.archivo, isTrue);
+      expect(repo.dekEnAlmacen, isNotNull);
+      expect(repo.envoltorio, isNotNull);
+      expect(repo.entregadas.single.destruida, isTrue, reason: 'la copia leída no queda viva');
+    });
+
+    test(
+      'sin envoltorio y con contraseña requerida, se cortó protegiendo la clave (paso 2)',
+      () async {
+        repo
+          ..archivo = true
+          ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+
+        final r = await inicializar(requiereEnvoltorio: true);
+
+        expect(
+          r,
+          const Left<Failure, ResultadoInicializacionDb>(
+            FailurePreparacionInterrumpida(pasoCortado: 1),
+          ),
+        );
+      },
+    );
+
+    test('sin archivo pero con la DEK guardada (se cortó antes de crear la base), también avisa '
+        'y no borra nada', () async {
+      repo.dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+
+      final r = await inicializar(requiereEnvoltorio: true);
+
+      expect(r.isLeft(), isTrue);
+      expect(
+        r.swap().getOrElse(() => const FailureInesperado()),
+        isA<FailurePreparacionInterrumpida>(),
+      );
+      expect(repo.llamadas, ['estado', 'leerDek']);
+      expect(repo.dekEnAlmacen, isNotNull);
+    });
+
+    test('sin archivo y con la DEK, tras «Empezar de nuevo» descarta lo parcial y prepara de '
+        'cero', () async {
+      repo.dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+
+      final r = await inicializar(descartaInterrumpida: true);
+
+      expect(r, creada);
+      expect(repo.llamadas, isNot(contains('leerDek')));
+      expect(repo.llamadas, contains('descartar'));
+    });
+
+    test('dado un archivo sin marca y con la DEK en el almacén, tras «Empezar de nuevo» elimina la '
         'DEK envuelta y el archivo parcial y parte de cero', () async {
       repo
         ..archivo = true
         ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5))
         ..envoltorio = (dek: Uint8List(32), password: 'secreto123');
 
-      final r = await inicializar();
+      final r = await inicializar(descartaInterrumpida: true);
 
       expect(r, creada);
       expect(repo.llamadas.take(5), ['estado', 'leerDek', 'bloqueo', 'nivel', 'descartar']);
@@ -373,7 +442,7 @@ void main() {
         final r = await inicializar();
 
         expect(r.isLeft(), isTrue);
-        expect(repo.llamadas, ['estado', 'bloqueo', 'nivel', 'descartar']);
+        expect(repo.llamadas, ['estado', 'leerDek', 'bloqueo', 'nivel', 'descartar']);
       },
     );
 
@@ -392,7 +461,7 @@ void main() {
         await inicializar(),
         const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguro()),
       );
-      expect(repo.llamadas, ['estado', 'bloqueo', 'nivel']);
+      expect(repo.llamadas, ['estado', 'leerDek', 'bloqueo', 'nivel']);
     });
 
     test('dado que la limpieza posterior también falla, devuelve la falla original', () async {

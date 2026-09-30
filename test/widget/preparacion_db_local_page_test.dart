@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/dispositivo/abridor_ajustes_sistema.dart';
+import 'package:colportores_mobile/core/dispositivo/abridor_enlace_externo.dart';
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -55,6 +56,24 @@ final class _AbridorFalso implements AbridorAjustesSistema {
 
 late _AbridorFalso _ajustes;
 
+/// El abridor de enlaces (WhatsApp de soporte): qué enlaces abrió y una espera para el doble toque.
+final class _EnlaceFalso implements AbridorEnlaceExterno {
+  final abiertos = <Uri>[];
+  bool resultado = true;
+  bool lanza = false;
+  Completer<void>? espera;
+
+  @override
+  Future<bool> abrir(Uri enlace) async {
+    abiertos.add(enlace);
+    await espera?.future;
+    if (lanza) throw StateError('el abridor falló');
+    return resultado;
+  }
+}
+
+late _EnlaceFalso _soporte;
+
 Finder get _principal => find.byType(InicioPage);
 Finder get _preparacion => find.byType(PreparacionDbLocalPage);
 Finder _boton(String key) => find.byKey(Key(key));
@@ -74,6 +93,7 @@ Future<ProviderContainer> _entrar(
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
       dbLocalRepositoryProvider.overrideWithValue(_db),
       abridorAjustesSistemaProvider.overrideWithValue(_ajustes),
+      abridorEnlaceExternoProvider.overrideWithValue(_soporte),
     ],
   );
   addTearDown(container.dispose);
@@ -124,6 +144,7 @@ void main() {
   setUp(() {
     _db = DbLocalRepositoryEnMemoria();
     _ajustes = _AbridorFalso();
+    _soporte = _EnlaceFalso();
   });
 
   group('HU-AUTH-009 — criterios de aceptación', () {
@@ -802,6 +823,225 @@ void main() {
     });
   });
 
+  group('Vista 13 — A09 «La preparación se cortó» y «Contactar a soporte»', () {
+    /// Una inicialización que se cortó: el archivo parcial y la DEK, sin la marca de inicializada.
+    void interrumpida({bool conEnvoltorio = true}) {
+      final dek = Uint8List.fromList(List<int>.filled(32, 5));
+      _db
+        ..archivo = true
+        ..dekEnAlmacen = dek
+        ..envoltorio = conEnvoltorio ? (dek: dek, password: _password) : null;
+    }
+
+    Finder cortadoEn(String key) => find.descendant(
+      of: find.ancestor(of: _boton(key), matching: find.byType(Column)).first,
+      matching: find.byKey(const Key('preparacion_db_paso_cortado')),
+    );
+
+    testWidgets('A09: «La preparación se cortó», hasta dónde llegó y «Empezar de nuevo», sin tocar '
+        'nada del teléfono', (tester) async {
+      interrumpida();
+      await _entrar(tester);
+
+      expect(find.text('PRIMER INGRESO EN ESTE TELÉFONO'), findsOneWidget);
+      expect(find.text('La preparación se cortó'), findsOneWidget);
+      expect(
+        find.text(
+          'La app se cerró antes de terminar. Volvemos a empezar desde el paso 1 para que todo '
+          'quede bien.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Revisando el bloqueo de pantalla'), findsOneWidget);
+      expect(find.text('Creando y guardando tu clave'), findsOneWidget);
+      expect(find.text('Creando tu base cifrada'), findsOneWidget);
+      expect(find.text('· cortado'), findsOneWidget);
+      expect(cortadoEn('preparacion_db_paso_2'), findsOneWidget);
+      expect(find.text('Empezar de nuevo'), findsOneWidget);
+      expect(_principal, findsNothing);
+      expect(
+        _db.llamadas,
+        isNot(contains('descartar')),
+        reason: 'antes del toque no se borra nada',
+      );
+      expect(_db.archivo, isTrue);
+      expect(_db.dekEnAlmacen, isNotNull);
+    });
+
+    testWidgets('A09 sin envoltorio: se cortó al proteger la clave (paso 2)', (tester) async {
+      interrumpida(conEnvoltorio: false);
+      await _entrar(tester);
+
+      expect(find.text('La preparación se cortó'), findsOneWidget);
+      expect(cortadoEn('preparacion_db_paso_1'), findsOneWidget);
+    });
+
+    testWidgets('A09 «Empezar de nuevo» limpia lo parcial, prepara de nuevo y sigue a la pantalla '
+        'principal, sin pedir el login', (tester) async {
+      interrumpida();
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_empezar_interrumpida');
+
+      expect(_principal, findsOneWidget);
+      expect(
+        _db.llamadas,
+        containsAllInOrder(['descartar', 'crearDek', 'envolver', 'abrir', 'marcar']),
+      );
+      expect(_db.marca, MarcaDbLocal.puesta);
+      expect(find.text('Iniciar sesión'), findsNothing);
+    });
+
+    testWidgets('A09 con la sesión restaurada pide la contraseña para proteger la base y, al '
+        'confirmarla, termina sin volver a mostrar la interrupción', (tester) async {
+      interrumpida();
+      await _entrar(tester, restaurada: true);
+      expect(find.text('La preparación se cortó'), findsOneWidget);
+
+      await _tocar(tester, 'preparacion_db_empezar_interrumpida');
+      expect(find.text('Confirmá tu contraseña'), findsOneWidget);
+      expect(find.text('La preparación se cortó'), findsNothing);
+      expect(_db.archivo, isTrue, reason: 'hasta tener la contraseña no se toca nada');
+
+      await tester.enterText(_boton('preparacion_db_password'), _password);
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+
+      expect(_principal, findsOneWidget);
+      expect(_db.llamadas, contains('crearDek'));
+    });
+
+    testWidgets('A09 «Empezar de nuevo» tocado dos veces prepara una sola vez', (tester) async {
+      interrumpida();
+      await _entrar(tester);
+
+      await tester.tap(_boton('preparacion_db_empezar_interrumpida'));
+      await tester.tap(_boton('preparacion_db_empezar_interrumpida'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_db.llamadas.where((l) => l == 'crearDek'), hasLength(1));
+    });
+
+    testWidgets('A09 si falla a mitad de «Empezar de nuevo», muestra la falla y deja reintentar, '
+        'sin volver a la interrupción', (tester) async {
+      interrumpida();
+      await _entrar(tester);
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+
+      await _tocar(tester, 'preparacion_db_empezar_interrumpida');
+      expect(find.text('No se pudo terminar'), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_reintentar'), isTrue);
+
+      _db.fallas.remove('crearDek');
+      await _tocar(tester, 'preparacion_db_reintentar');
+      expect(_principal, findsOneWidget);
+    });
+
+    testWidgets('A09 si la app se cierra de nuevo sin tocar nada, al reabrir vuelve a mostrarse y '
+        'nada se perdió', (tester) async {
+      interrumpida();
+      await _entrar(tester);
+      expect(find.text('La preparación se cortó'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await _entrar(tester);
+
+      expect(find.text('La preparación se cortó'), findsOneWidget);
+      expect(_db.llamadas, isNot(contains('descartar')));
+      expect(_db.dekEnAlmacen, isNotNull);
+    });
+
+    testWidgets('A06 «Contactar a soporte» abre el chat de WhatsApp +54 3751 530020 con el código '
+        'del error y ningún dato personal', (tester) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_contactar_soporte');
+
+      final enlace = _soporte.abiertos.single;
+      expect(enlace.scheme, 'https');
+      expect(enlace.host, 'wa.me');
+      expect(enlace.path, '/5493751530020');
+      final texto = enlace.queryParameters['text']!;
+      expect(texto, contains(const FailureAlmacenSeguro().codigo));
+      expect(texto, isNot(contains('@')), reason: 'nada de email ni datos personales');
+      expect(texto, isNot(contains(_email)));
+      expect(_boton('preparacion_db_aviso_soporte'), findsNothing);
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isTrue);
+      expect(_boton('preparacion_db_cerrar_sesion'), findsOneWidget);
+    });
+
+    testWidgets('A06 sin nada que abra WhatsApp dice a quién escribir y con qué código, y el botón '
+        'queda habilitado', (tester) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      _soporte.resultado = false;
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_contactar_soporte');
+
+      final codigo = const FailureAlmacenSeguro().codigo;
+      expect(
+        find.text(
+          'No pudimos abrir WhatsApp. Escribile a soporte al +54 3751 530020 y decile este '
+          'código: $codigo.',
+        ),
+        findsOneWidget,
+      );
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isTrue);
+      expect(_botonHabilitado(tester, 'preparacion_db_reintentar'), isTrue);
+
+      // Un segundo intento con WhatsApp ya disponible limpia el aviso.
+      _soporte.resultado = true;
+      await _tocar(tester, 'preparacion_db_contactar_soporte');
+      expect(_boton('preparacion_db_aviso_soporte'), findsNothing);
+    });
+
+    testWidgets('A06 si el abridor lanza, da el mismo aviso y no deja el botón trabado', (
+      tester,
+    ) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      _soporte.lanza = true;
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_contactar_soporte');
+
+      expect(_boton('preparacion_db_aviso_soporte'), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isTrue);
+    });
+
+    testWidgets('A06 «Contactar a soporte» tocado dos veces abre una sola vez', (tester) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      _soporte.espera = Completer<void>();
+      await _entrar(tester);
+
+      await tester.ensureVisible(_boton('preparacion_db_contactar_soporte'));
+      await tester.tap(_boton('preparacion_db_contactar_soporte'));
+      await tester.pump();
+      await tester.tap(_boton('preparacion_db_contactar_soporte'), warnIfMissed: false);
+      await tester.pump();
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isFalse);
+
+      _soporte.espera!.complete();
+      await tester.pumpAndSettle();
+      expect(_soporte.abiertos, hasLength(1));
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isTrue);
+    });
+
+    testWidgets('«No pudimos abrir tus datos» también ofrece «Contactar a soporte» con su código', (
+      tester,
+    ) async {
+      _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_contactar_soporte');
+
+      expect(
+        _soporte.abiertos.single.queryParameters['text'],
+        contains(const FailureAlmacenSeguroSinRecuperacion().codigo),
+      );
+    });
+  });
+
   group('Accesibilidad', () {
     // Cada estado de la pantalla, preparado sobre el fake.
     final estados = <String, Future<void> Function(WidgetTester)>{
@@ -868,6 +1108,32 @@ void main() {
         _ajustes.resultado = false;
         await _entrar(tester);
         await _tocar(tester, 'preparacion_db_abrir_almacenamiento');
+      },
+      'A09 interrumpida': (tester) async {
+        final dek = Uint8List.fromList(List<int>.filled(32, 5));
+        _db
+          ..archivo = true
+          ..dekEnAlmacen = dek
+          ..envoltorio = (dek: dek, password: _password);
+        await _entrar(tester);
+      },
+      'A09 interrumpida al proteger la clave': (tester) async {
+        _db
+          ..archivo = true
+          ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+        await _entrar(tester);
+      },
+      'falla con aviso de soporte': (tester) async {
+        _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+        _soporte.resultado = false;
+        await _entrar(tester);
+        await _tocar(tester, 'preparacion_db_contactar_soporte');
+      },
+      'sin recuperación con aviso de soporte': (tester) async {
+        _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+        _soporte.resultado = false;
+        await _entrar(tester);
+        await _tocar(tester, 'preparacion_db_contactar_soporte');
       },
       'esquema posterior': (tester) async {
         _dbExistente(dekEnAlmacen: true, conEnvoltorio: true);

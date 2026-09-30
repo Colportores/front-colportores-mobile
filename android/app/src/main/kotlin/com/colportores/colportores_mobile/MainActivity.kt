@@ -3,6 +3,7 @@ package com.colportores.colportores_mobile
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
@@ -30,6 +31,9 @@ class MainActivity : FlutterActivity() {
      * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` → abre esa pantalla de los ajustes
      *   (vista 13, #222) y devuelve si pudo.
      *
+     * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
+     *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
+     *
      * Nunca devuelve material secreto: la clave de prueba se crea y se borra acá mismo.
      */
     private fun registrarCanalSeguridadDispositivo(flutterEngine: FlutterEngine) {
@@ -41,6 +45,7 @@ class MainActivity : FlutterActivity() {
                     "abrirAjustesSeguridad" -> result.success(abrirAjustes(Settings.ACTION_SECURITY_SETTINGS))
                     "abrirAjustesAlmacenamiento" ->
                         result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -68,6 +73,23 @@ class MainActivity : FlutterActivity() {
             // Tampoco abren.
         }
         return false
+    }
+
+    /**
+     * Abre [url] (solo `https://wa.me/...`) con la app que la resuelva: WhatsApp si está instalado
+     * (`wa.me` es un enlace verificado suyo) y, si no, el navegador. `false` si el enlace no es de
+     * `wa.me` o ninguna app lo abre.
+     */
+    private fun abrirEnlace(url: String?): Boolean {
+        if (url == null) return false
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host != "wa.me") return false
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun tieneBloqueoPantalla(): Boolean {

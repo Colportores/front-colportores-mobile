@@ -45,6 +45,7 @@ final class InicializarDbLocalParams extends Equatable {
     this.aceptaAlmacenSoftware = false,
     this.alAvanzar,
     this.usuarioId,
+    this.descartaInterrumpida = false,
   });
 
   /// `usuario_id` de la sesión. Un envoltorio desactualizado (#125) solo se renueva con la
@@ -67,6 +68,11 @@ final class InicializarDbLocalParams extends Equatable {
   /// continuar".
   final bool aceptaAlmacenSoftware;
 
+  /// El usuario ya vio «La preparación se cortó» (A09) y tocó «Empezar de nuevo»: lo que quedó de
+  /// una inicialización interrumpida se descarta y se prepara de cero. Sin esto, una interrumpida
+  /// devuelve [FailurePreparacionInterrumpida] sin tocar nada.
+  final bool descartaInterrumpida;
+
   /// Avisa cada [PasoInicializacionDb] al empezarlo. Se llama en forma sincrónica.
   final void Function(PasoInicializacionDb paso)? alAvanzar;
 
@@ -82,6 +88,7 @@ final class InicializarDbLocalParams extends Equatable {
     aceptaAlmacenSoftware,
     alAvanzar,
     usuarioId,
+    descartaInterrumpida,
   ];
 }
 
@@ -176,10 +183,27 @@ final class InicializarDbLocalUseCase
         case MarcaDbLocal.ausente:
           final interrumpida = await _esInicializacionInterrumpida(e);
           if (interrumpida case Left(value: final falla)) return Left(falla);
+          if (!params.descartaInterrumpida) return Left(_interrumpida(params, e));
+      }
+    } else if (e.marca == MarcaDbLocal.ausente && !params.descartaInterrumpida) {
+      // Sin archivo pero con la DEK guardada: se cortó antes de crear la DB (A09).
+      final leida = await _repository.leerDek();
+      if (leida case Right(value: final ClaveDb dek)) {
+        dek.destruir();
+        return Left(_interrumpida(params, e));
       }
     }
     return _crearDesdeCero(params, testigo);
   }
+
+  /// La falla de una inicialización cortada. Con contraseña requerida y sin envoltorio se cortó
+  /// protegiendo la clave; en cualquier otro caso, creando la base.
+  static Failure _interrumpida(InicializarDbLocalParams params, EstadoDbLocal estado) =>
+      FailurePreparacionInterrumpida(
+        pasoCortado: params.requiereEnvoltorio && !estado.envoltorioExiste
+            ? PasoInicializacionDb.protegiendoClave.index
+            : PasoInicializacionDb.abriendoDb.index,
+      );
 
   /// Archivo sin marca: ¿una inicialización que se cortó, o un almacén que perdió todo con la DB
   /// en disco?

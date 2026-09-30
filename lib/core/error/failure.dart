@@ -246,6 +246,26 @@ final class FailureSinBloqueoPantalla extends Failure {
       );
 }
 
+/// La app se cerró a mitad de la primera preparación de la DB local (HU-AUTH-009, vista 13 A09).
+///
+/// Lo parcial nunca se usó (la marca de "inicializada" va última), así que empezar de nuevo no
+/// pierde nada: la UI lo avisa y ofrece "Empezar de nuevo", sin pedir el login otra vez.
+/// [pasoCortado] es el índice (0 a 2) del paso de la lista en el que se cortó.
+final class FailurePreparacionInterrumpida extends Failure {
+  const FailurePreparacionInterrumpida({this.pasoCortado = 1})
+    : super(
+        mensaje:
+            'La app se cerró antes de terminar. Volvemos a empezar desde el paso 1 para que todo '
+            'quede bien.',
+        codigo: 'DB_PREPARACION_INTERRUMPIDA',
+      );
+
+  final int pasoCortado;
+
+  @override
+  List<Object?> get props => [...super.props, pasoCortado];
+}
+
 /// El Keystore del equipo es por software (Supuesto S10, HU-AUTH-009): hace falta el consentimiento
 /// explícito del usuario para seguir. No es un error: la UI muestra la advertencia (el [mensaje] es
 /// el texto literal de la HU) con "Entiendo el riesgo y quiero continuar" y "Cancelar".
