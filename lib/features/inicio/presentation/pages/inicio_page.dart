@@ -23,8 +23,9 @@ enum PestanaInicio {
 /// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002). Mapa, Lista, Agenda y Ventas todavía no tienen pantalla:
-/// quedan con [PestanaProvisoria], vacía, hasta que llegue la HU de cada una (Mapa #199, Lista
-/// #196). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
+/// quedan con [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue la HU de cada
+/// una (Mapa #199, Lista #196). El atrás del sistema desde esas pestañas vuelve a "Hoy", y desde
+/// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
 class InicioPage extends StatefulWidget {
   const InicioPage({super.key, required this.sesion});
@@ -42,6 +43,16 @@ class _InicioPageState extends State<InicioPage> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _actual == PestanaInicio.hoy,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _ir(PestanaInicio.hoy);
+      },
+      child: _scaffold(context),
+    );
+  }
+
+  Widget _scaffold(BuildContext context) {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
 
@@ -103,16 +114,43 @@ class _InicioPageState extends State<InicioPage> {
   }
 }
 
-/// Pantalla de una pestaña cuya HU todavía no está: no muestra contenido inventado, solo deja
-/// la pestaña navegable. Se reemplaza en el issue de cada HU.
+/// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
+/// pronto.», sin contenido inventado. Se reemplaza en el issue de cada HU.
 class PestanaProvisoria extends StatelessWidget {
   const PestanaProvisoria({super.key, required this.pestana});
 
   final PestanaInicio pestana;
 
   @override
-  Widget build(BuildContext context) =>
-      Semantics(label: pestana.etiqueta, container: true, child: const SizedBox.expand());
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      label: pestana.etiqueta,
+      container: true,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 12,
+            children: [
+              ExcludeSemantics(
+                child: Icon(pestana.icono, size: 48, color: theme.colorScheme.primary),
+              ),
+              Text(
+                'Esta sección llega pronto.',
+                key: const Key('pestana_pronto'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Marca de la app en la barra: la palabra "COLPORTAJE" en mono, como en el diseño.
