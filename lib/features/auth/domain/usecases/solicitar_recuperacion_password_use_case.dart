@@ -36,6 +36,9 @@ final class SolicitarRecuperacionPasswordUseCase
 
   final AuthRepository _repository;
 
+  /// Largo máximo de una dirección (RFC 5321): más que eso no es un email.
+  static const int _largoMaximo = 254;
+
   static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
 
   @override
@@ -45,7 +48,7 @@ final class SolicitarRecuperacionPasswordUseCase
     if (email.isEmpty) {
       return const Left(FailureValidacion(campos: {'email': 'Ingresá tu email'}));
     }
-    if (!_emailRegExp.hasMatch(email)) {
+    if (email.length > _largoMaximo || !_emailRegExp.hasMatch(email)) {
       return const Left(
         FailureValidacion(campos: {'email': 'Revisá el email: parece incompleto.'}),
       );

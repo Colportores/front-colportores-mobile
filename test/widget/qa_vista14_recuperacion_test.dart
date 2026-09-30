@@ -128,8 +128,7 @@ void main() {
       await _montar(tester, remote);
       await _enviarCon(tester, '${'a' * 290}@correo.com');
       expect(find.text(_mensajeNeutro), findsNothing);
-      // skip: QA #223 — un email de 300 caracteres se envía: el caso de uso no limita la longitud.
-    }, skip: true);
+    });
   });
 
   group('QA vista 14 — navegación', () {
@@ -150,8 +149,7 @@ void main() {
       expect(find.byType(RecuperacionPasswordPage), findsOneWidget);
       remote.demoraRecuperacion!.complete();
       await tester.pumpAndSettle();
-      // skip: QA #223 — el atrás del sistema sale de la pantalla mientras envía; la flecha no.
-    }, skip: true);
+    });
 
     testWidgets('salir y volver a entrar: formulario limpio, casilla sin marcar y botón apagado', (
       tester,

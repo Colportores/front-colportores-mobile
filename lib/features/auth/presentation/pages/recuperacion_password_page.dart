@@ -163,16 +163,20 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 0, 28, 26),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: (constraints.maxHeight - 26).clamp(0, double.infinity),
+    // Mientras envía no se sale: ni la flecha ni el atrás del sistema (la solicitud sigue en vuelo).
+    return PopScope(
+      canPop: !_enviando,
+      child: Scaffold(
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(28, 0, 28, 26),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 26).clamp(0, double.infinity),
+                ),
+                child: _enviado ? _exito(context) : _formulario(context),
               ),
-              child: _enviado ? _exito(context) : _formulario(context),
             ),
           ),
         ),
