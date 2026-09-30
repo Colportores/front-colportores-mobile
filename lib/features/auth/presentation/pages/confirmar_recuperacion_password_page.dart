@@ -138,6 +138,25 @@ class _ConfirmarRecuperacionPasswordPageState
     });
   }
 
+  /// «Listo» del teclado: si todavía no se puede guardar, dice qué falta en vez de no hacer nada.
+  void _enviarDesdeTeclado() {
+    if (_guardando) return;
+    if (_puedeGuardar) {
+      unawaited(_guardar());
+      return;
+    }
+    setState(() {
+      if (_nueva.text.isEmpty) {
+        _erroresCampo = const {'password': _faltaNueva};
+      } else if (!_cumple) {
+        _erroresCampo = const {'password': _faltaRequisitos};
+      } else if (_repetida.text.isEmpty) {
+        _erroresCampo = const {'repetida': _faltaRepetida};
+      }
+      // Si no coinciden, el campo ya lo dice.
+    });
+  }
+
   Future<void> _guardar() async {
     if (!_puedeGuardar) return;
     setState(() {
@@ -187,11 +206,16 @@ class _ConfirmarRecuperacionPasswordPageState
   /// también se cierra acá (DB, DEK en memoria), y se muestra la pantalla de éxito (15-A09).
   Future<void> _terminar() async {
     _terminado = true;
-    if (ref.read(sesionProvider).value != null) {
-      await ref.read(sesionProvider.notifier).cerrarSesion();
+    try {
+      if (ref.read(sesionProvider).value != null) {
+        await ref.read(sesionProvider.notifier).cerrarSesion();
+      }
+    } on Object {
+      // La contraseña ya cambió: el éxito se muestra igual; un cierre local que falló no puede
+      // dejar la pantalla trabada en «Guardando…».
+    } finally {
+      if (mounted) setState(() => _guardando = false);
     }
-    if (!mounted) return;
-    setState(() => _guardando = false);
   }
 
   void _alSalir(bool salio) {
@@ -329,6 +353,7 @@ class _ConfirmarRecuperacionPasswordPageState
       FilledButton(
         key: const Key('confirmar_recuperacion_exito_ir_al_login'),
         onPressed: _irAlLogin,
+        style: _estiloTextoGrande(context),
         child: const Text('Ir al login'),
       ),
     ],
@@ -355,6 +380,7 @@ class _ConfirmarRecuperacionPasswordPageState
       FilledButton(
         key: const Key('confirmar_recuperacion_pedir_otro'),
         onPressed: _pedirOtroEnlace,
+        style: _estiloTextoGrande(context),
         child: const Text('Solicitar un enlace nuevo'),
       ),
       const SizedBox(height: 8),
@@ -386,6 +412,7 @@ class _ConfirmarRecuperacionPasswordPageState
       FilledButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
         onPressed: _irAlLogin,
+        style: _estiloTextoGrande(context),
         child: const Text('Volver al login'),
       ),
     ],
@@ -444,7 +471,7 @@ class _ConfirmarRecuperacionPasswordPageState
                   errorText: _erroresCampo['repetida'] ?? (noCoinciden ? _noCoinciden : null),
                   habilitado: !_guardando,
                   accionTeclado: TextInputAction.done,
-                  alEnviar: (_) => _guardar(),
+                  alEnviar: (_) => _enviarDesdeTeclado(),
                   alCambiar: _alCambiar,
                 ),
               ],
@@ -474,7 +501,20 @@ class _ConfirmarRecuperacionPasswordPageState
     );
   }
 
+  /// Con texto grande la etiqueta pasa a dos líneas y los extremos de píldora la recortan: ahí el
+  /// radio baja y el relleno lateral sube (igual que la vista 13).
+  ButtonStyle? _estiloTextoGrande(BuildContext context) {
+    if (!_textoGrande(context)) return null;
+    return FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
+  }
+
   static const _noCoinciden = 'Las contraseñas no coinciden';
+  static const _faltaNueva = 'Escribí la contraseña nueva.';
+  static const _faltaRequisitos = 'Todavía no cumple los requisitos de abajo.';
+  static const _faltaRepetida = 'Repetí la contraseña para confirmar que está bien escrita.';
 
   Widget _botonGuardar(ThemeData theme, ColoresColportaje colores) {
     final scheme = theme.colorScheme;
@@ -485,7 +525,7 @@ class _ConfirmarRecuperacionPasswordPageState
         // 15-A03: gris hasta que cumple; 15-A04: azul con progreso.
         disabledBackgroundColor: _guardando ? scheme.primary : const Color(0xFFE3E7EE),
         disabledForegroundColor: _guardando ? scheme.onPrimary : colores.gris,
-      ),
+      ).merge(_estiloTextoGrande(context)),
       child: _guardando
           ? Row(
               mainAxisSize: MainAxisSize.min,
@@ -499,7 +539,9 @@ class _ConfirmarRecuperacionPasswordPageState
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Flexible(child: Text('Guardando…')),
+                Flexible(
+                  child: Text('Guardando…', style: TextStyle(color: scheme.onPrimary)),
+                ),
               ],
             )
           : const Text('Guardar contraseña'),
@@ -768,6 +810,9 @@ class _AvisoSinConexion extends StatelessWidget {
   }
 }
 
+/// Texto a partir de ~143 %: los botones píldora y el «Mostrar contraseña» como texto no entran.
+bool _textoGrande(BuildContext context) => MediaQuery.textScalerOf(context).scale(14) > 20;
+
 /// Campo de contraseña con "Mostrar contraseña" / "Ocultar contraseña" como texto (canvas 15).
 class _CampoPassword extends StatefulWidget {
   const _CampoPassword({
@@ -799,9 +844,12 @@ class _CampoPassword extends StatefulWidget {
 class _CampoPasswordState extends State<_CampoPassword> {
   bool _mostrar = false;
 
+  void _alternar() => setState(() => _mostrar = !_mostrar);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final etiquetaMostrar = _mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -825,11 +873,19 @@ class _CampoPasswordState extends State<_CampoPassword> {
             errorText: widget.errorText,
             errorMaxLines: 3,
             constraints: const BoxConstraints(minHeight: 48),
-            suffixIcon: TextButton(
-              onPressed: widget.habilitado ? () => setState(() => _mostrar = !_mostrar) : null,
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              child: Text(_mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña'),
-            ),
+            // Con texto grande, el texto «Mostrar contraseña» se come el campo: pasa a ícono con
+            // tooltip (como en el login) y deja ver lo que se escribe.
+            suffixIcon: _textoGrande(context)
+                ? IconButton(
+                    tooltip: etiquetaMostrar,
+                    onPressed: widget.habilitado ? _alternar : null,
+                    icon: Icon(_mostrar ? Icons.visibility_off : Icons.visibility),
+                  )
+                : TextButton(
+                    onPressed: widget.habilitado ? _alternar : null,
+                    style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                    child: Text(etiquetaMostrar),
+                  ),
           ),
         ),
       ],

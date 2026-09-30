@@ -2,6 +2,7 @@
 // no cubre (cierre de sesión que falla al terminar, «Listo» del teclado con el botón deshabilitado)
 // y la matriz de tamaños del QA (360x640 con el texto al 200 % y 412x915) sobre cada estado.
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -136,23 +137,20 @@ void main() {
   group('QA #224 — al terminar, con la contraseña ya cambiada', () {
     // QA #224: si `cerrarSesion()` lanza en `_terminar`, `_guardando` queda en true: spinner eterno
     // y atrás bloqueado aunque la contraseña ya cambió (no hay try/finally ni setState).
-    testWidgets(
-      'si cerrar la sesión de la app lanza, igual se ve el éxito y nada queda trabado',
-      (tester) async {
-        await _montar(tester, conSesion: true, cierre: () async => throw StateError('boom'));
-        await _completar(tester, 'NuevaClave1');
+    testWidgets('si cerrar la sesión de la app lanza, igual se ve el éxito y nada queda trabado', (
+      tester,
+    ) async {
+      await _montar(tester, conSesion: true, cierre: () async => throw StateError('boom'));
+      await _completar(tester, 'NuevaClave1');
 
-        await tester.ensureVisible(_guardar);
-        await tester.tap(_guardar);
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pumpAndSettle();
 
-        expect(find.text(_exito), findsOneWidget, reason: 'la contraseña ya cambió');
-        expect(_k('guardando'), findsNothing, reason: 'sin spinner eterno');
-        expect(find.byKey(const Key('confirmar_recuperacion_exito_ir_al_login')), findsOneWidget);
-      },
-      // skip: QA #224 — `_terminar` no protege `cerrarSesion()`: si falla queda el spinner y el atrás bloqueado.
-      skip: true,
-    );
+      expect(find.text(_exito), findsOneWidget, reason: 'la contraseña ya cambió');
+      expect(_k('guardando'), findsNothing, reason: 'sin spinner eterno');
+      expect(find.byKey(const Key('confirmar_recuperacion_exito_ir_al_login')), findsOneWidget);
+    });
 
     testWidgets(
       'si la sesión local no se pudo borrar (Left), igual se ve el éxito y «Ir al login» no '
@@ -182,29 +180,24 @@ void main() {
   group('QA #224 — «Listo» del teclado', () {
     // QA #224: con «Guardar» deshabilitado, «Listo» no hace nada ni avisa (contraseña válida y la
     // repetida vacía): el usuario no sabe por qué no pasa nada.
-    testWidgets(
-      'con la repetida vacía, «Listo» avisa qué falta',
-      (tester) async {
-        await _montar(tester);
-        await tester.enterText(_k('nueva'), 'NuevaClave1');
-        await tester.pump();
-        String textos() => tester
-            .widgetList<Text>(find.byType(Text))
-            .map((t) => t.data ?? t.textSpan?.toPlainText() ?? '')
-            .join('|');
-        final antes = textos();
+    testWidgets('con la repetida vacía, «Listo» avisa qué falta', (tester) async {
+      await _montar(tester);
+      await tester.enterText(_k('nueva'), 'NuevaClave1');
+      await tester.pump();
+      String textos() => tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) => t.data ?? t.textSpan?.toPlainText() ?? '')
+          .join('|');
+      final antes = textos();
 
-        await tester.tap(_k('repetida'));
-        await tester.pump();
-        await tester.testTextInput.receiveAction(TextInputAction.done);
-        await tester.pumpAndSettle();
+      await tester.tap(_k('repetida'));
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
 
-        expect(_recuperacion.actualizaciones, isEmpty);
-        expect(textos(), isNot(antes), reason: 'algún aviso de qué falta');
-      },
-      // skip: QA #224 — «Listo» con «Guardar» deshabilitado no hace nada ni avisa.
-      skip: true,
-    );
+      expect(_recuperacion.actualizaciones, isEmpty);
+      expect(textos(), isNot(antes), reason: 'algún aviso de qué falta');
+    });
 
     testWidgets('«Listo» con todo válido guarda una sola vez', (tester) async {
       await _montar(tester);
@@ -275,9 +268,47 @@ void main() {
       await recorrer(tester, grande: false);
     });
 
+    testWidgets('15-A04 guardando: «Guardando…» es blanco sobre el azul del botón', (tester) async {
+      _pantalla(tester, const Size(412, 915));
+      await _montar(tester);
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _completar(tester, 'NuevaClave1');
+      await tester.tap(_guardar);
+      await tester.pump();
+      final texto = find.descendant(of: _guardar, matching: find.text('Guardando…'));
+      final estilo = DefaultTextStyle.of(
+        tester.element(texto),
+      ).style.merge(tester.widget<Text>(texto).style);
+      final primario = Theme.of(tester.element(texto)).colorScheme;
+      expect(estilo.color, primario.onPrimary);
+      expect(_contraste(estilo.color!, primario.primary), greaterThanOrEqualTo(4.5));
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('al 200 %: botones con radio 16 y «Mostrar contraseña» pasa a ícono con tooltip', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 640), texto: 2.0);
+      await _montar(tester);
+      expect(find.text('Mostrar contraseña'), findsNothing);
+      expect(find.byTooltip('Mostrar contraseña'), findsNWidgets(2));
+      await tester.enterText(_k('nueva'), 'NuevaClave1');
+      await tester.pump();
+      await tester.ensureVisible(find.byTooltip('Mostrar contraseña').first);
+      await tester.tap(find.byTooltip('Mostrar contraseña').first);
+      await tester.pump();
+      expect(find.byTooltip('Ocultar contraseña'), findsOneWidget);
+      final boton = tester.widget<FilledButton>(_guardar);
+      final forma = boton.style!.shape!.resolve({}) as RoundedRectangleBorder;
+      expect(forma.borderRadius, BorderRadius.circular(16));
+      expect(tester.takeException(), isNull);
+    });
+
     // QA #224: en 15-A04 las etiquetas verdes «✓ CUMPLE LOS REQUISITOS» / «✓ COINCIDEN» quedan al
     // 55 % de opacidad y dan 2,44:1 (WCAG pide 4,5:1). El canvas dibuja el 55 %: es un choque
-    // entre el diseño y A/AA, lo decide Cristian.
+    // entre el diseño y A/AA, lo decide Cristian (pregunta pendiente en el PR #255). Solo esta
+    // parte queda con skip: lo de «Guardando…» se arregló arriba.
     testWidgets(
       '15-A04 guardando: el contraste de las etiquetas llega a 4,5:1',
       (tester) async {
@@ -338,3 +369,14 @@ void main() {
 
 String _texto(WidgetTester tester, String campo) =>
     tester.widget<TextField>(_k(campo)).controller!.text;
+
+double _luminancia(Color c) {
+  double f(double v) => v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+  return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+}
+
+double _contraste(Color a, Color b) {
+  final la = _luminancia(a);
+  final lb = _luminancia(b);
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
