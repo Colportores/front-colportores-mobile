@@ -247,6 +247,37 @@ void main() {
       },
     );
 
+    test('el cierre sin red solo deja el aviso del login si quien cierra lo pide', () async {
+      await iniciarSesion();
+      remote.simularSinConexion = true;
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(
+        container.read(avisoSesionProvider),
+        isNull,
+        reason: 'recuperación de contraseña y preparación de la DB cierran sin ese aviso',
+      );
+    });
+
+    test('desde Configuración, el cierre sin red deja el aviso «Cerraste sesión…»', () async {
+      await iniciarSesion();
+      remote.simularSinConexion = true;
+
+      await container.read(sesionProvider.notifier).cerrarSesion(avisarCierreSinConexion: true);
+
+      expect(container.read(avisoSesionProvider), const FailureCierreSesionSinConexion());
+    });
+
+    test('con red, pedir el aviso no deja ninguno: el cierre fue completo', () async {
+      await iniciarSesion();
+
+      await container.read(sesionProvider.notifier).cerrarSesion(avisarCierreSinConexion: true);
+
+      expect(container.read(avisoSesionProvider), isNull);
+    });
+
     test('dado una apertura de la DB en vuelo, cuando cierra sesión, no la deja abierta', () async {
       await iniciarSesion();
       final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));

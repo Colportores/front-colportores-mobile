@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../auth/domain/entities/resultado_cierre_sesion.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
@@ -55,7 +58,18 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
       context,
       pendientes: pendientes,
       cerrar: () async {
-        final resultado = await ref.read(sesionProvider.notifier).cerrarSesion();
+        final Either<Failure, ResultadoCierreSesion> resultado;
+        try {
+          resultado = await ref
+              .read(sesionProvider.notifier)
+              .cerrarSesion(avisarCierreSinConexion: true);
+        } on Object {
+          // Si el cierre lanzó pero la sesión ya quedó cerrada (el notifier la resetea igual), no
+          // hay error que mostrar: el colportor salió. Con la sesión todavía abierta sí es un error.
+          if (ref.read(sesionProvider).value != null) return false;
+          navigator.popUntil((route) => route.isFirst);
+          return true;
+        }
         if (resultado.isLeft()) return false;
         // La raíz ya muestra el login (la sesión es `null`); solo queda sacar esta pantalla.
         // Idempotente: si la raíz ya vació la pila (aviso de cierre sin conexión), no hace nada.
@@ -115,9 +129,15 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
                             const SizedBox(height: 8),
                             Semantics(
                               header: true,
-                              child: Text(
-                                'Configuración',
-                                style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                              // A texto grande el título encoge en vez de partirse a mitad de palabra.
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Configuración',
+                                  maxLines: 1,
+                                  style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -268,12 +288,9 @@ class _FilaCuenta extends StatelessWidget {
       subtitle: conNombre
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Sesión iniciada como'),
-                Text(email, key: const Key('configuracion_email')),
-              ],
+              children: [const Text('Sesión iniciada como'), _CorreoQueEncoge(email)],
             )
-          : Text(email, key: const Key('configuracion_email')),
+          : _CorreoQueEncoge(email),
     );
   }
 }
@@ -310,4 +327,19 @@ class _Tarjeta extends StatelessWidget {
       child: Column(children: children),
     );
   }
+}
+
+/// El correo no tiene espacios donde cortar: a texto grande encoge en vez de partirse a mitad de
+/// palabra.
+class _CorreoQueEncoge extends StatelessWidget {
+  const _CorreoQueEncoge(this.email);
+
+  final String email;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(email, key: const Key('configuracion_email'), maxLines: 1),
+  );
 }
