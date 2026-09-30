@@ -64,7 +64,9 @@ void main() {
 
         expect(
           resultado,
-          const Left<Failure, Unit>(FailureValidacion(campos: {'email': 'El email no es válido'})),
+          const Left<Failure, Unit>(
+            FailureValidacion(campos: {'email': 'Revisá el email: parece incompleto.'}),
+          ),
         );
         verifyNever(() => repository.solicitarRecuperacionPassword(email: any(named: 'email')));
       });

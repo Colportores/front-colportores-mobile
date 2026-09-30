@@ -46,7 +46,9 @@ final class SolicitarRecuperacionPasswordUseCase
       return const Left(FailureValidacion(campos: {'email': 'Ingresá tu email'}));
     }
     if (!_emailRegExp.hasMatch(email)) {
-      return const Left(FailureValidacion(campos: {'email': 'El email no es válido'}));
+      return const Left(
+        FailureValidacion(campos: {'email': 'Revisá el email: parece incompleto.'}),
+      );
     }
 
     return _repository.solicitarRecuperacionPassword(email: email);

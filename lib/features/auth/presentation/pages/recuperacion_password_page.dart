@@ -9,8 +9,9 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import '../providers/auth_providers.dart';
 
-/// Pantalla "Olvidé mi contraseña" (HU-AUTH-004), diseño "Login Colportor" — sin diseño propio
-/// para esta pantalla (decisión de Cristian): reusa tema y componentes de [LoginPage]/`RegistroPage`.
+/// Pantalla "Olvidé mi contraseña" (HU-AUTH-004), vista 14 del diseño (#223): el formulario con la
+/// advertencia arriba y la casilla pegada al botón (A01 a A04 y A06) y, al enviar, una pantalla
+/// aparte con el mensaje neutro, «Reenviar» con cuenta regresiva y «Volver al login» (A05).
 ///
 /// Llama directo a `solicitarRecuperacionPasswordUseCaseProvider`, no a través de
 /// `SesionNotifier`: la solicitud no toca el estado de sesión (igual que
@@ -41,9 +42,13 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// todavía, y dónde resolverlo es una decisión pendiente de Cristian.
   static const Duration _cooldown = Duration(seconds: 60);
 
-  /// Texto fijo por la HU (líneas 809/816): igual exista o no el email.
+  /// Texto fijo por la HU (líneas 809/816): igual exista o no el email. El diseño lo abrevia
+  /// («Te enviamos un enlace de recuperación»), pero eso afirma que el email existe: manda la HU.
   static const String _mensajeExito =
       'Si el email está registrado, te enviamos un enlace de recuperación';
+
+  /// Apoyo de la pantalla de éxito (A05).
+  static const String _textoSpam = 'Si no lo encontrás, revisá la carpeta de spam.';
 
   /// Advertencia literal de la HU (línea 798) — se muestra siempre, antes de enviar.
   static const String _textoAviso =
@@ -56,7 +61,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
-  String? _mensajeExitoActual;
+  bool _enviado = false;
   bool _entiendeImpacto = false;
   bool _enviando = false;
 
@@ -94,7 +99,6 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
       _enviando = true;
       _erroresCampo = const {};
       _errorGeneral = null;
-      _mensajeExitoActual = null;
     });
 
     final resultado = await ref.read(solicitarRecuperacionPasswordUseCaseProvider)(
@@ -119,7 +123,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
       (_) {
         setState(() {
           _enviando = false;
-          _mensajeExitoActual = _mensajeExito;
+          _enviado = true;
         });
         _iniciarCooldown();
       },
@@ -128,140 +132,259 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    const paddingHorizontal = 30.0;
-
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
-                child: IntrinsicHeight(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            key: const Key('recuperacion_password_atras'),
-                            onPressed: () => Navigator.of(context).pop(),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            alignment: Alignment.centerLeft,
-                            icon: Text(
-                              '‹',
-                              style: theme.textTheme.headlineMedium?.copyWith(
-                                fontSize: 26,
-                                height: 1,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'RECUPERAR CONTRASEÑA',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '¿Olvidaste tu contraseña?',
-                        style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Ingresá tu email y te enviamos un enlace para restablecerla.',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 22),
-                      _CampoRecuperacion(
-                        controller: _email,
-                        errorText: _erroresCampo['email'],
-                        onSubmitted: (_) => _enviar(),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        _textoAviso,
-                        key: const Key('recuperacion_password_aviso'),
-                        style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: Checkbox(
-                              key: const Key('recuperacion_password_checkbox'),
-                              value: _entiendeImpacto,
-                              onChanged: (valor) =>
-                                  setState(() => _entiendeImpacto = valor ?? false),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Entiendo el impacto sobre mis datos locales',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 12.5,
-                                height: 1.45,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_mensajeExitoActual != null) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          _mensajeExitoActual!,
-                          key: const Key('recuperacion_password_exito'),
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                      if (_errorGeneral != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          _errorGeneral!,
-                          key: const Key('recuperacion_password_error_general'),
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        key: const Key('recuperacion_password_enviar'),
-                        onPressed: _puedeEnviar ? _enviar : null,
-                        child: _enviando
-                            ? SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.onPrimary,
-                                ),
-                              )
-                            : Text(
-                                _segundosRestantes > 0
-                                    ? 'Reenviar en ${_segundosRestantes}s'
-                                    : 'Enviar enlace de recuperación',
-                              ),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 26),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - 26).clamp(0, double.infinity),
+              ),
+              child: _enviado ? _exito(context) : _formulario(context),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A01 a A04 y A06: el formulario. Enviando (A04) el campo, la casilla y el botón quedan
+  /// deshabilitados y el botón dice «Enviando…».
+  Widget _formulario(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(alignment: Alignment.centerLeft, child: _botonAtras()),
+            const SizedBox(height: 10),
+            Text(
+              'RECUPERAR CONTRASEÑA',
+              style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+            ),
+            const SizedBox(height: 10),
+            Semantics(
+              header: true,
+              child: Text('¿Olvidaste tu contraseña?', style: _estiloTitulo(context, theme, 30)),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Ingresá tu email y te enviamos un enlace para restablecerla.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 18),
+            const _AvisoImpacto(texto: _textoAviso),
+            const SizedBox(height: 22),
+            _CampoRecuperacion(
+              controller: _email,
+              errorText: _erroresCampo['email'],
+              enabled: !_enviando,
+              onSubmitted: (_) => _enviar(),
+            ),
+            if (_errorGeneral != null) ...[
+              const SizedBox(height: 12),
+              _ErrorGeneral(texto: _errorGeneral!),
+            ],
+          ],
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: CheckboxListTile(
+                key: const Key('recuperacion_password_checkbox'),
+                value: _entiendeImpacto,
+                onChanged: _enviando
+                    ? null
+                    : (valor) => setState(() => _entiendeImpacto = valor ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Entiendo el impacto sobre mis datos locales',
+                  style: theme.textTheme.bodyMedium,
                 ),
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              key: const Key('recuperacion_password_enviar'),
+              onPressed: _puedeEnviar ? _enviar : null,
+              child: _enviando ? const _Enviando() : const Text('Enviar enlace de recuperación'),
+            ),
+          ],
         ),
+      ],
+    );
+  }
+
+  /// A05: el mensaje neutro, «Reenviar» con la cuenta regresiva y «Volver al login». El título es
+  /// el texto de la HU (nunca dice si el email existe). Los límites de intentos muestran esta misma
+  /// pantalla.
+  Widget _exito(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 56),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.alternate_email, color: theme.colorScheme.onPrimaryContainer),
+              ),
+            ),
+            Text(
+              'RECUPERAR CONTRASEÑA',
+              style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+            ),
+            Semantics(
+              header: true,
+              liveRegion: true,
+              child: Text(
+                _mensajeExito,
+                key: const Key('recuperacion_password_exito'),
+                style: _estiloTitulo(context, theme, 26),
+              ),
+            ),
+            Text(_textoSpam, style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris)),
+          ],
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 10,
+          children: [
+            if (_errorGeneral != null) _ErrorGeneral(texto: _errorGeneral!),
+            OutlinedButton(
+              key: const Key('recuperacion_password_reenviar'),
+              onPressed: _puedeEnviar ? _enviar : null,
+              child: _enviando
+                  ? const _Enviando()
+                  : Text(
+                      _segundosRestantes > 0
+                          ? 'Reenviar en ${_segundosRestantes}s'
+                          : 'Reenviar enlace',
+                    ),
+            ),
+            TextButton(
+              key: const Key('recuperacion_password_volver_login'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Volver al login'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _botonAtras() => IconButton(
+    key: const Key('recuperacion_password_atras'),
+    tooltip: 'Volver',
+    onPressed: _enviando ? null : () => Navigator.of(context).pop(),
+    icon: const Icon(Icons.chevron_left, size: 32),
+  );
+}
+
+/// El título, más chico con el texto muy grande (más de 1,5) para que una palabra larga no se
+/// parta a mitad de palabra.
+TextStyle? _estiloTitulo(BuildContext context, ThemeData theme, double tamano) {
+  final grande = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+  return theme.textTheme.headlineMedium?.copyWith(fontSize: grande ? tamano * 0.72 : tamano);
+}
+
+/// El indicador y el texto «Enviando…» del botón (A04).
+class _Enviando extends StatelessWidget {
+  const _Enviando();
+
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisSize: MainAxisSize.min,
+    spacing: 10,
+    children: [
+      SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+      Flexible(child: Text('Enviando…')),
+    ],
+  );
+}
+
+/// La advertencia de impacto sobre los datos locales, arriba del campo (A01).
+class _AvisoImpacto extends StatelessWidget {
+  const _AvisoImpacto({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final esquema = theme.colorScheme;
+    return Semantics(
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: esquema.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: esquema.primary, width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 12,
+          children: [
+            ExcludeSemantics(child: Icon(Icons.warning_amber_rounded, color: esquema.primary)),
+            Expanded(
+              child: Text(
+                texto,
+                key: const Key('recuperacion_password_aviso'),
+                style: theme.textTheme.bodySmall?.copyWith(color: esquema.onSurface, height: 1.45),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El error del servicio (sin conexión, falla del servidor), con la ✕ del diseño (A06).
+class _ErrorGeneral extends StatelessWidget {
+  const _ErrorGeneral({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      liveRegion: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 8,
+        children: [
+          ExcludeSemantics(child: Icon(Icons.close, size: 18, color: theme.colorScheme.error)),
+          Expanded(
+            child: Text(
+              texto,
+              key: const Key('recuperacion_password_error_general'),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -270,10 +393,16 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 /// Campo de email — mismo criterio visual que `_CampoLogin`/`_CampoRegistro`/`_CampoEmail` de las
 /// otras páginas de auth, sin duplicar esas clases privadas.
 class _CampoRecuperacion extends StatelessWidget {
-  const _CampoRecuperacion({required this.controller, this.errorText, this.onSubmitted});
+  const _CampoRecuperacion({
+    required this.controller,
+    this.errorText,
+    this.enabled = true,
+    this.onSubmitted,
+  });
 
   final TextEditingController controller;
   final String? errorText;
+  final bool enabled;
   final ValueChanged<String>? onSubmitted;
 
   @override
@@ -289,12 +418,17 @@ class _CampoRecuperacion extends StatelessWidget {
         TextField(
           key: const Key('recuperacion_password_email'),
           controller: controller,
+          enabled: enabled,
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
           textInputAction: TextInputAction.done,
           onSubmitted: onSubmitted,
           style: theme.textTheme.bodyLarge,
-          decoration: InputDecoration(hintText: 'lucia.silva@correo.com', errorText: errorText),
+          decoration: InputDecoration(
+            hintText: 'lucia.silva@correo.com',
+            errorText: errorText,
+            constraints: const BoxConstraints(minHeight: 48),
+          ),
         ),
       ],
     );
