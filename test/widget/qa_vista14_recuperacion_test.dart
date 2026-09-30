@@ -144,7 +144,7 @@ void main() {
       expect(tester.widget<IconButton>(_k('recuperacion_password_atras')).onPressed, isNull);
 
       await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.byType(RecuperacionPasswordPage), findsOneWidget);
       remote.demoraRecuperacion!.complete();
