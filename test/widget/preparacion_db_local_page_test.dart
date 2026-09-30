@@ -36,11 +36,13 @@ late DbLocalRepositoryEnMemoria _db;
 final class _AbridorFalso implements AbridorAjustesSistema {
   final llamadas = <String>[];
   bool resultado = true;
+  bool lanza = false;
   Completer<void>? espera;
 
   Future<bool> _abrir(String cual) async {
     llamadas.add(cual);
     await espera?.future;
+    if (lanza) throw StateError('el abridor falló');
     return resultado;
   }
 
@@ -87,7 +89,7 @@ Future<ProviderContainer> _entrar(
 }
 
 bool _botonHabilitado(WidgetTester tester, String key) =>
-    tester.widget<FilledButton>(_boton(key)).onPressed != null;
+    tester.widget<ButtonStyleButton>(_boton(key)).onPressed != null;
 
 /// La pantalla sola en un [estado], sin la app: para los estados que el fake no alcanza (1/3, 3/3).
 Future<void> _montarEstado(WidgetTester tester, EstadoPreparacionDbLocal estado) =>
@@ -599,6 +601,36 @@ void main() {
       await _tocar(tester, 'preparacion_db_abrir_ajustes');
       expect(_ajustes.llamadas, ['seguridad', 'seguridad']);
       expect(aviso(), findsNothing);
+    });
+
+    testWidgets(
+      'A04 si el abridor lanza una excepción, no queda trabado: avisa y deja reintentar',
+      (tester) async {
+        _db.bloqueoPantalla = false;
+        _ajustes.lanza = true;
+        await _entrar(tester);
+
+        await _tocar(tester, 'preparacion_db_abrir_ajustes');
+
+        expect(find.text(TextosPreparacionDbLocal.noPudimosAbrirAjustes), findsOneWidget);
+        expect(_botonHabilitado(tester, 'preparacion_db_abrir_ajustes'), isTrue);
+
+        _ajustes.lanza = false;
+        await _tocar(tester, 'preparacion_db_abrir_ajustes');
+        expect(aviso(), findsNothing);
+        expect(_ajustes.llamadas, ['seguridad', 'seguridad']);
+      },
+    );
+
+    testWidgets('A07 si el abridor lanza una excepción, no queda trabado', (tester) async {
+      _db.fallas['abrir'] = const FailureSinEspacio();
+      _ajustes.lanza = true;
+      await _entrar(tester);
+
+      await _tocar(tester, 'preparacion_db_abrir_almacenamiento');
+
+      expect(find.text(TextosPreparacionDbLocal.noPudimosAbrirAjustes), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_abrir_almacenamiento'), isTrue);
     });
 
     testWidgets('A04 doble toque en «Abrir Ajustes»: una sola apertura', (tester) async {

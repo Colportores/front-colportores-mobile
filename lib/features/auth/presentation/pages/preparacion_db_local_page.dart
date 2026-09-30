@@ -165,12 +165,19 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       _abriendoAjustes = true;
       _avisoAjustes = null;
     });
-    final abierta = await abrir(ref.read(abridorAjustesSistemaProvider));
-    if (!mounted) return;
-    setState(() {
-      _abriendoAjustes = false;
-      if (!abierta) _avisoAjustes = TextosPreparacionDbLocal.noPudimosAbrirAjustes;
-    });
+    var abierta = false;
+    try {
+      abierta = await abrir(ref.read(abridorAjustesSistemaProvider));
+    } on Object {
+      // Una falla del abridor es lo mismo que no haber podido abrir: el aviso guía al usuario.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _abriendoAjustes = false;
+          if (!abierta) _avisoAjustes = TextosPreparacionDbLocal.noPudimosAbrirAjustes;
+        });
+      }
+    }
   }
 
   PreparacionDbLocalNotifier get _notifier => ref.read(preparacionDbLocalProvider.notifier);

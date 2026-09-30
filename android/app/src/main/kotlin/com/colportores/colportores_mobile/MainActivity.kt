@@ -51,17 +51,21 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Abre la pantalla de ajustes [accion]; si el equipo no la tiene, los ajustes generales. Devuelve
-     * `false` si ninguna abre: la app le dice al usuario cómo llegar a mano.
+     * Abre la pantalla de ajustes [accion] y devuelve `true`. Si el equipo no la tiene, abre los
+     * ajustes generales pero devuelve `false`: no llegó a la pantalla pedida, y la app le dice al
+     * usuario cómo llegar a mano. También `false` si ninguna abre.
      */
     private fun abrirAjustes(accion: String): Boolean {
-        for (candidata in listOf(accion, Settings.ACTION_SETTINGS)) {
-            try {
-                startActivity(Intent(candidata).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return true
-            } catch (e: Exception) {
-                // Sigue con la siguiente.
-            }
+        try {
+            startActivity(Intent(accion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: Exception) {
+            // Sin esa pantalla: se intenta con los ajustes generales.
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Tampoco abren.
         }
         return false
     }
