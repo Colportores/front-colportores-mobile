@@ -302,8 +302,33 @@ void main() {
     }
   });
 
+  group('QA #230 — resumen: cifras y copia de seguridad sin dato', () {
+    testWidgets('casas visitadas, ventas y cobros con «—» y la copia con «Todavía no disponible»', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource(iniciales: [_abiertaDesde(DateTime(2026, 9, 29, 13, 20))]));
+      await tester.pumpAndSettle();
+      await _tocar(tester, 'jornada_finalizar');
+
+      expect(find.text('Buen trabajo'), findsOneWidget);
+      for (final rotulo in ['Casas visitadas', 'Ventas', 'Cobros']) {
+        expect(find.text(rotulo), findsOneWidget);
+      }
+      for (var i = 0; i < 3; i++) {
+        expect(tester.widget<Text>(find.byKey(Key('jornada_resumen_cifra_$i'))).data, '—');
+      }
+      expect(find.text('Copia de seguridad'), findsOneWidget);
+      expect(find.text('Todavía no disponible'), findsOneWidget);
+      // Sin cifras inventadas: ningún número suelto fuera de la duración y el horario.
+      expect(find.text('27'), findsNothing);
+    });
+  });
+
   group('QA #230 — jornada sin cerrar', () {
-    testWidgets('sin elegir hora, "Cerrar" está deshabilitado y el atrás vuelve', (tester) async {
+    testWidgets('sin elegir hora, "Cerrar" está deshabilitado y no hay cómo volver', (
+      tester,
+    ) async {
       _pantalla(tester, const Size(390, 844));
       await _montar(tester, _ayer());
       await tester.pumpAndSettle();
@@ -315,9 +340,10 @@ void main() {
         tester.widget<FilledButton>(find.byKey(const Key('corregir_jornada_cerrar'))).onPressed,
         isNull,
       );
-      await _tocar(tester, 'corregir_jornada_atras');
-      expect(find.byType(CorregirJornadaPage), findsNothing);
-      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
     });
 
     testWidgets('una hora igual al inicio se rechaza con el rango y no cierra nada', (

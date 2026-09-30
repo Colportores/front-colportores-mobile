@@ -215,8 +215,16 @@ void main() {
       expect(find.text('Jornada activa'), findsOneWidget);
       expect(find.text('Desde las 13:15'), findsOneWidget);
       expect(find.text('1 h 20 min'), findsOneWidget);
-      expect(find.byKey(const Key('jornada_iniciar')), findsNothing);
-      expect(find.text('Iniciar jornada'), findsNothing);
+      // Vista 20 A08: «Iniciar jornada» deshabilitado con el bloqueo de la HU.
+      expect(
+        find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'),
+        findsOneWidget,
+      );
+      expect(find.text('Iniciar jornada'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('jornada_iniciar'))).onPressed,
+        isNull,
+      );
       expect(dataSource.jornadas, hasLength(1));
     });
 
@@ -249,7 +257,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Jornada activa'), findsOneWidget);
       expect(find.text('Desde las 08:10'), findsOneWidget);
-      expect(find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'), findsNothing);
+      // Vista 20 A08: con la jornada activa, «Iniciar jornada» sigue deshabilitado con el bloqueo.
+      expect(
+        find.text('Tenés una jornada en curso. Cerrala antes de iniciar otra.'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1119,8 +1131,8 @@ void main() {
       expect(find.text('Sin jornada en curso'), findsOneWidget);
     });
 
-    testWidgets('si vuelve de la corrección sin elegir una hora, la jornada sigue activa y no '
-        'queda trabada (#118)', (tester) async {
+    testWidgets('la corrección no tiene salida sin elegir una hora: ni flecha ni atrás del '
+        'sistema, y la jornada sigue abierta (#230)', (tester) async {
       _pantalla(tester, const Size(390, 844));
       final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))]);
       await _montar(tester, dataSource);
@@ -1128,15 +1140,13 @@ void main() {
 
       await _tocarFinalizar(tester);
       expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(find.byType(CorregirJornadaPage), findsNothing);
-      expect(find.text('Jornada activa'), findsOneWidget);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
-      // No quedó deshabilitado: se puede volver a tocar "Finalizar" sin reabrir la app.
-      expect(_botonFinalizar(tester).onPressed, isNotNull);
     });
 
     testWidgets('guarda la hora de fin que mostraba la etiqueta, aunque el minuto cambie antes '

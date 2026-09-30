@@ -7,10 +7,9 @@ import '../formato_jornada.dart';
 /// El cierre del día a pantalla completa (vista 21, HU-JOR-002 "se muestra resumen"), después de
 /// finalizar la jornada. "Volver al inicio" vuelve a "Hoy", ya sin jornada.
 ///
-/// Por ahora solo las horas trabajadas: casas visitadas, ventas y cobros llegan con sus módulos
-/// (#74), y el estado de la copia de seguridad con el motor de backup (HU-SYNC-005). El diseño
-/// dibuja esas dos secciones con cifras de ejemplo ("PRÓXIMAMENTE"); no se muestran cifras que no
-/// son del colportor.
+/// Casas visitadas, ventas y cobros se dibujan con «—» y la copia de seguridad con «Todavía no
+/// disponible» hasta que cada módulo traiga su dato (#151, #158, #163, #185; decisión de Cristian,
+/// 29/09): no se muestran cifras que no son del colportor.
 class ResumenJornadaPage extends StatefulWidget {
   const ResumenJornadaPage({super.key, required this.jornada});
 
@@ -87,6 +86,9 @@ class _ResumenJornadaPageState extends State<ResumenJornadaPage> {
                         key: const Key('jornada_resumen_horario'),
                         style: theme.textTheme.bodyLarge?.copyWith(color: esquema.onSurfaceVariant),
                       ),
+                      const SizedBox(height: 12),
+                      const _CifrasDelDia(),
+                      const _CopiaDeSeguridad(),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -104,6 +106,108 @@ class _ResumenJornadaPageState extends State<ResumenJornadaPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Casas visitadas, ventas y cobros del día: «—» hasta que cada módulo traiga su dato.
+class _CifrasDelDia extends StatelessWidget {
+  const _CifrasDelDia();
+
+  static const _rotulos = ['Casas visitadas', 'Ventas', 'Cobros'];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+
+    return Container(
+      key: const Key('jornada_resumen_cifras'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colores.borde),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < _rotulos.length; i++) ...[
+              if (i > 0) VerticalDivider(width: 1, thickness: 1, color: colores.borde),
+              Expanded(
+                child: Semantics(
+                  container: true,
+                  label: '${_rotulos[i]}: sin dato todavía',
+                  excludeSemantics: true,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 2,
+                      children: [
+                        Text(
+                          '—',
+                          key: Key('jornada_resumen_cifra_$i'),
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                        Text(
+                          _rotulos[i],
+                          style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Estado de la copia de seguridad: «Todavía no disponible» hasta que exista el motor de backup.
+class _CopiaDeSeguridad extends StatelessWidget {
+  const _CopiaDeSeguridad();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+
+    return Container(
+      key: const Key('jornada_resumen_backup'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colores.borde),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 12,
+        children: [
+          ExcludeSemantics(child: Icon(Icons.cloud_off_outlined, color: colores.gris)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 2,
+              children: [
+                Text(
+                  'Copia de seguridad',
+                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Todavía no disponible',
+                  key: const Key('jornada_resumen_backup_estado'),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

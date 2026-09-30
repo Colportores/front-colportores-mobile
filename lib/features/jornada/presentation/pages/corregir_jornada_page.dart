@@ -124,11 +124,28 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     final mensaje = FailureJornadaDeDiaAnterior(inicio: widget.inicio).mensaje;
     final horaElegida = _horaCompleta;
 
+    // Sin flecha de volver ni atrás del sistema (decisión de Cristian, 29/09, como el diseño): el
+    // colportor indica la hora de fin antes de seguir; nunca se inventa un fin. El `pop(cerrada)`
+    // al cerrar no pasa por acá.
+    return PopScope(
+      canPop: false,
+      child: _scaffold(context, theme, colores, esquema, mensaje, horaElegida),
+    );
+  }
+
+  Widget _scaffold(
+    BuildContext context,
+    ThemeData theme,
+    ColoresColportaje colores,
+    ColorScheme esquema,
+    String mensaje,
+    DateTime? horaElegida,
+  ) {
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, restricciones) => SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 26),
+            padding: const EdgeInsets.fromLTRB(20, 44, 20, 26),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 minHeight: (restricciones.maxHeight - 26).clamp(0, double.infinity),
@@ -140,12 +157,6 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                        key: const Key('corregir_jornada_atras'),
-                        tooltip: 'Volver',
-                        onPressed: _cerrando ? null : () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back),
-                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: Column(

@@ -276,16 +276,21 @@ void main() {
       expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
     });
 
-    testWidgets('"Volver" sale de la pantalla sin cerrar la jornada', (tester) async {
+    testWidgets('sin flecha de volver: el atrás del sistema no sale y no cierra la jornada', (
+      tester,
+    ) async {
       final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
       await _montar(tester, dataSource);
       final resultado = await _abrirCorregir(tester);
 
-      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsNothing);
+
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(resultado.recibido, isTrue);
-      expect(resultado.valor, isNull);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(resultado.recibido, isFalse);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
   });

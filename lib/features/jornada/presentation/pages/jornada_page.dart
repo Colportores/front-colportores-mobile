@@ -456,6 +456,14 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           onPressed: _finalizando ? null : () => _finalizar(jornada),
           child: _finalizando ? const _ConEspera('Finalizando…') : const Text('Finalizar jornada'),
         ),
+        // Vista 20 A08: con una jornada en curso no se puede iniciar otra.
+        const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
+        FilledButton.icon(
+          key: const Key('jornada_iniciar'),
+          onPressed: null,
+          icon: const Icon(Icons.lock_outline, size: 16),
+          label: const Text('Iniciar jornada'),
+        ),
       ],
     );
   }
