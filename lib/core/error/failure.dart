@@ -75,6 +75,18 @@ final class FailureSesionRevocada extends Failure {
       );
 }
 
+/// Se cerró la sesión en este teléfono pero no había conexión para revocarla en el servidor
+/// (HU-AUTH-006, "Logout sin conexión"): la revocación queda pendiente y se reintenta sola. El
+/// login lo muestra como aviso; los datos locales siguen intactos.
+final class FailureCierreSesionSinConexion extends Failure {
+  const FailureCierreSesionSinConexion()
+    : super(
+        mensaje:
+            'Cerraste sesión en este teléfono. Se va a cerrar por completo cuando haya conexión.',
+        codigo: 'AUTH_CIERRE_SIN_CONEXION',
+      );
+}
+
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
 /// `otp_expired`), así que la app tampoco. [mensaje] es el literal de la HU; la pantalla ofrece
