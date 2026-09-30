@@ -52,10 +52,20 @@ final class _DataSource implements JornadaLocalDataSource {
   Completer<void>? demoraFinalizar;
   Object? errorAlFinalizar;
 
+  /// Cuántas lecturas más devuelven "sin jornada" aunque haya una abierta: simula que otro
+  /// teléfono ya la cerró (sync) o un doble toque.
+  int lecturasSinVer = 0;
+
   List<JornadaModel> get jornadas => _real.jornadas;
 
   @override
-  Future<JornadaModel?> obtenerActiva(String colportorId) => _real.obtenerActiva(colportorId);
+  Future<JornadaModel?> obtenerActiva(String colportorId) async {
+    if (lecturasSinVer > 0) {
+      lecturasSinVer--;
+      return null;
+    }
+    return _real.obtenerActiva(colportorId);
+  }
 
   @override
   Future<void> insertar(JornadaModel jornada) => _real.insertar(jornada);
@@ -110,11 +120,9 @@ Future<void> _montar(
         navigatorKey: _navigatorKey,
         theme: tema ?? temaClaro(),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(escalaEfectiva.valor),
-            // Sin AM/PM: el selector de hora del sistema queda en 24 h, hora antes que minuto.
-            alwaysUse24HourFormat: true,
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(escalaEfectiva.valor)),
           child: child!,
         ),
         home: const Scaffold(),
@@ -148,19 +156,20 @@ void _pantalla(WidgetTester tester, Size tamanio) {
   addTearDown(tester.view.reset);
 }
 
-/// Abre el selector de hora del sistema, lo pasa a modo texto (más estable en tests que arrastrar
-/// el dial) y confirma [hora]:[minuto].
-Future<void> _elegirHora(WidgetTester tester, int hora, int minuto) async {
-  // A 360x740 con textScaler 2.0 el botón queda fuera del viewport por defecto (la pantalla es
-  // un `ListView`, scrollea).
+/// Abre la hoja de hora, escribe [hora]:[minuto] en "Otra hora" y, si [confirmar], la usa.
+Future<void> _elegirHora(WidgetTester tester, int hora, int minuto, {bool confirmar = true}) async {
+  // A 360x740 con textScaler 2.0 el botón queda fuera del viewport por defecto (la pantalla
+  // scrollea).
   await tester.ensureVisible(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byIcon(Icons.keyboard_outlined));
+  await tester.tap(find.byKey(const Key('hoja_hora_valor')));
   await tester.pumpAndSettle();
-  await tester.enterText(find.byType(TextFormField).at(0), '$hora');
-  await tester.enterText(find.byType(TextFormField).at(1), '$minuto');
-  await tester.tap(find.text('OK'));
+  final texto = '${hora.toString().padLeft(2, '0')}:${minuto.toString().padLeft(2, '0')}';
+  await tester.enterText(find.byKey(const Key('hoja_hora_campo')), texto);
+  await tester.pumpAndSettle();
+  if (!confirmar) return;
+  await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
   await tester.pumpAndSettle();
 }
 
@@ -210,24 +219,19 @@ void main() {
     });
 
     testWidgets('hora fuera de rango — a la misma hora del inicio (no es estrictamente '
-        'posterior): rechaza con el rango explícito y no cierra la jornada', (tester) async {
+        'posterior): la hoja rechaza con el rango explícito y no deja elegirla', (tester) async {
       final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
       await _montar(tester, dataSource);
       await _abrirCorregir(tester);
 
       // El inicio fue a las 18:00: elegir esa misma hora no vale (el rango excluye el inicio).
-      await _elegirHora(tester, 18, 0);
-      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-      await tester.pumpAndSettle();
+      await _elegirHora(tester, 18, 0, confirmar: false);
 
+      expect(find.text('La hora tiene que estar entre las 18:01 y las 23:59.'), findsOneWidget);
       expect(
-        find.text(
-          'La hora tiene que estar entre las 18:00 y las 23:59. Elegí otra hora y volvé a '
-          'intentar.',
-        ),
-        findsOneWidget,
+        tester.widget<FilledButton>(find.byKey(const Key('hoja_hora_usar_escrita'))).onPressed,
+        isNull,
       );
-      expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
   });
@@ -265,7 +269,13 @@ void main() {
       await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Ocurrió un error inesperado'), findsOneWidget);
+      expect(
+        find.text(
+          'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
+          'pasando, avisale a tu coordinador.',
+        ),
+        findsOneWidget,
+      );
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
       expect(_botonCerrar(tester).onPressed, isNotNull);
 
@@ -276,17 +286,103 @@ void main() {
       expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
     });
 
-    testWidgets('"Volver" sale de la pantalla sin cerrar la jornada', (tester) async {
+    testWidgets('sin flecha de volver: el atrás del sistema no sale y no cierra la jornada', (
+      tester,
+    ) async {
       final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
       await _montar(tester, dataSource);
       final resultado = await _abrirCorregir(tester);
 
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsNothing);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(resultado.recibido, isFalse);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
+  });
+
+  group('Ningún error deja la pantalla sin salida (revisión de #237)', () {
+    testWidgets('si la jornada ya estaba cerrada (otro teléfono), sale sin jornada en vez de '
+        'quedarse trabada', (tester) async {
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
+      await _montar(tester, dataSource);
+      final resultado = await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+
+      // Dos lecturas: la del estado (que la pantalla no había armado) y la del caso de uso.
+      dataSource.lecturasSinVer = 2;
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(resultado.recibido, isTrue);
+      expect(resultado.valor, isNull);
+    });
+
+    testWidgets('un fallo al guardar no bloquea: deja reintentar en la misma pantalla', (
+      tester,
+    ) async {
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+        ..errorAlFinalizar = StateError('disco lleno');
+      await _montar(tester, dataSource);
+      await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
+
+      dataSource.errorAlFinalizar = null;
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(dataSource.jornadas.single.estaAbierta, isFalse);
+    });
+
+    testWidgets('jornada iniciada a las 23:59: no hay hora válida, así que deja volver', (
+      tester,
+    ) async {
+      final inicio = DateTime(2026, 9, 22, 23, 59);
+      final dataSource = _DataSource(
+        iniciales: [
+          JornadaModel.fromEntity(
+            Jornada(
+              id: 'jor-previa',
+              colportorId: _sesion.usuarioId,
+              inicio: inicio,
+              auditoria: Auditoria(
+                createdAt: inicio,
+                updatedAt: inicio,
+                createdBy: _sesion.usuarioId,
+              ),
+            ),
+          ),
+        ],
+      );
+      await _montar(tester, dataSource);
+      final resultado = await _abrirCorregir(tester, inicio: inicio);
+
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+
       await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
       await tester.pumpAndSettle();
 
+      expect(find.byType(CorregirJornadaPage), findsNothing);
       expect(resultado.recibido, isTrue);
-      expect(resultado.valor, isNull);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
+
+    testWidgets('con horas válidas sigue sin flecha (el atrás solo sale sin minuto válido)', (
+      tester,
+    ) async {
+      await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]));
+      await _abrirCorregir(tester);
+
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
     });
   });
 
@@ -301,10 +397,7 @@ void main() {
         case 'hora elegida':
           await _elegirHora(tester, 20, 30);
         case 'error de rango':
-          await _elegirHora(tester, 18, 0);
-          await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
-          await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-          await tester.pumpAndSettle();
+          await _elegirHora(tester, 18, 0, confirmar: false);
       }
     }
 
@@ -324,10 +417,7 @@ void main() {
       });
 
       testWidgets('$estado: sin overflow con el texto al 200 % en 360x740', (tester) async {
-        // El estado se arma a tamaño normal: a 360x740 con el texto al 200 % el diálogo del
-        // selector de hora del *sistema* puede desbordar (ajeno a esta pantalla) antes de que
-        // termine de abrirse. Lo que audita este test es el layout de `CorregirJornadaPage` ya
-        // con el estado puesto, no el picker de Flutter.
+        // El estado se arma a tamaño normal y después se sube el texto al 200 %.
         final escala = _Escala(1);
         await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]), escala: escala);
         await _abrirCorregir(tester);

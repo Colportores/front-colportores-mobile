@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +21,9 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   required DateTime ahora,
   required int margenMinutos,
   required int minutosAtras,
+  String pregunta = '¿A qué hora empezaste?',
+  String etiquetaCampo = 'HORA DE INICIO',
+  bool mostrarRelativo = true,
 }) => showModalBottomSheet<HoraElegida>(
   context: context,
   isScrollControlled: true,
@@ -28,8 +33,14 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) =>
-      HojaHoraInicio(ahora: ahora, margenMinutos: margenMinutos, minutosAtras: minutosAtras),
+  builder: (_) => HojaHoraInicio(
+    ahora: ahora,
+    margenMinutos: margenMinutos,
+    minutosAtras: minutosAtras,
+    pregunta: pregunta,
+    etiquetaCampo: etiquetaCampo,
+    mostrarRelativo: mostrarRelativo,
+  ),
 );
 
 /// La hora de inicio se ajusta de a [pasoMinutos] con −5 / +5; tocando la hora se escribe otra en
@@ -41,9 +52,20 @@ class HojaHoraInicio extends StatefulWidget {
     required this.ahora,
     required this.margenMinutos,
     required this.minutosAtras,
+    this.pregunta = '¿A qué hora empezaste?',
+    this.etiquetaCampo = 'HORA DE INICIO',
+    this.mostrarRelativo = true,
   });
 
   static const pasoMinutos = 5;
+
+  /// Título de la hoja y rótulo del campo: la misma hoja sirve para el inicio y para el fin.
+  final String pregunta;
+  final String etiquetaCampo;
+
+  /// "Ahora" / "Hace N min" bajo la hora: solo tiene sentido cuando [ahora] es de verdad el
+  /// momento actual (no en la corrección de una jornada de otro día, donde es el fin de ese día).
+  final bool mostrarRelativo;
 
   final DateTime ahora;
   final int margenMinutos;
@@ -63,6 +85,10 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
   /// Intentó confirmar lo escrito: ahí se le marca todo lo que falta, aunque todavía no sea largo.
   bool _enviado = false;
   late final TextEditingController _texto;
+
+  /// El campo con su aviso: con letra grande y el teclado abierto, el aviso de rango puede quedar
+  /// bajo el teclado; al aparecer se lo trae a la vista.
+  final GlobalKey _campoKey = GlobalKey();
 
   /// Al minuto: el selector ofrece minutos enteros (igual que el caso de uso).
   late final DateTime _base = DateTime(
@@ -98,6 +124,21 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     _texto.selection = TextSelection(baseOffset: 0, extentOffset: _texto.text.length);
     _escribiendo = true;
   });
+
+  /// Trae el campo (con su aviso) a la parte visible de la hoja, sin mover lo que ya se ve.
+  void _mostrarCampo() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _campoKey.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          contexto,
+          duration: const Duration(milliseconds: 150),
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ),
+      );
+    });
+  }
 
   /// Cierra la hoja con [minutos] hacia atrás, una sola vez.
   void _usar(int minutos) {
@@ -180,7 +221,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
       children: [
         Semantics(
           header: true,
-          child: Text('¿A qué hora empezaste?', style: theme.textTheme.headlineMedium),
+          child: Text(widget.pregunta, style: theme.textTheme.headlineMedium),
         ),
         const SizedBox(height: 4),
         Text(
@@ -212,7 +253,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'HORA DE INICIO',
+                          widget.etiquetaCampo,
                           style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
                         ),
                         FittedBox(
@@ -222,10 +263,11 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                             style: theme.textTheme.headlineMedium?.copyWith(fontSize: 40),
                           ),
                         ),
-                        Text(
-                          _minutos == 0 ? 'Ahora' : 'Hace $_minutos min',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                        if (widget.mostrarRelativo)
+                          Text(
+                            _minutos == 0 ? 'Ahora' : 'Hace $_minutos min',
+                            style: theme.textTheme.bodyMedium,
+                          ),
                       ],
                     ),
                   ),
@@ -272,27 +314,41 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
           style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
         ),
         const SizedBox(height: 14),
-        TextField(
-          key: const Key('hoja_hora_campo'),
-          controller: _texto,
-          autofocus: true,
-          keyboardType: TextInputType.datetime,
-          textInputAction: TextInputAction.done,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp('[0-9:]')),
-            LengthLimitingTextInputFormatter(5),
-          ],
-          style: theme.textTheme.headlineMedium,
-          decoration: InputDecoration(
-            labelText: 'HORA DE INICIO',
-            errorText: error,
-            errorMaxLines: 3,
-          ),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) {
-            if (_escritoValido) return _usar(_minutosEscritos()!);
-            setState(() => _enviado = true);
+        NotificationListener<SizeChangedLayoutNotification>(
+          // El aviso entra animado: cada vez que el campo cambia de alto se lo vuelve a mostrar.
+          onNotification: (_) {
+            _mostrarCampo();
+            return false;
           },
+          child: SizeChangedLayoutNotifier(
+            key: _campoKey,
+            child: TextField(
+              key: const Key('hoja_hora_campo'),
+              controller: _texto,
+              autofocus: true,
+              keyboardType: TextInputType.datetime,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[0-9:]')),
+                LengthLimitingTextInputFormatter(5),
+              ],
+              style: theme.textTheme.headlineMedium,
+              decoration: InputDecoration(
+                labelText: widget.etiquetaCampo,
+                errorText: error,
+                errorMaxLines: 3,
+              ),
+              onChanged: (_) {
+                setState(() {});
+                _mostrarCampo();
+              },
+              onSubmitted: (_) {
+                if (_escritoValido) return _usar(_minutosEscritos()!);
+                setState(() => _enviado = true);
+                _mostrarCampo();
+              },
+            ),
+          ),
         ),
         const SizedBox(height: 18),
         FilledButton(

@@ -35,6 +35,13 @@ String fechaLarga(DateTime instante) {
   return '${_dias[local.weekday - 1]} ${local.day} de ${_meses[local.month - 1]}';
 }
 
+/// `Lunes 28`.
+String diaCorto(DateTime instante) {
+  final local = instante.toLocal();
+  final dia = _dias[local.weekday - 1];
+  return '${dia[0].toUpperCase()}${dia.substring(1)} ${local.day}';
+}
+
 /// `menos de 1 min`, `12 min`, `2 h`, `1 h 20 min`.
 String duracionCorta(Duration duracion) {
   final minutos = duracion.inMinutes;

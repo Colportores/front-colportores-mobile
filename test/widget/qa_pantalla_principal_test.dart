@@ -16,6 +16,7 @@ import 'package:colportores_mobile/features/jornada/domain/services/disparador_b
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -199,8 +200,6 @@ void main() {
       expect(find.textContaining('14:20'), findsWidgets);
     });
 
-    // skip: QA #229 — con texto 2.0 y el teclado abierto en 360x640, el aviso de rango de "Otra
-    // hora" queda cortado bajo el teclado: el colportor no ve hasta qué hora puede elegir.
     testWidgets('con el teclado abierto a texto 2.0 en 360x640, el aviso de rango se ve entero '
         'sin scrollear la hoja', (tester) async {
       _pantalla(tester, const Size(360, 640));
@@ -215,7 +214,7 @@ void main() {
       );
       // El teclado ocupa los últimos 256 dp: el aviso tiene que terminar arriba de él.
       expect(aviso.bottom, lessThanOrEqualTo(640 - 256));
-    }, skip: true);
+    });
   });
 
   group('QA #229 — entradas del campo "Otra hora"', () {
@@ -363,6 +362,71 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+    });
+
+    testWidgets('el atrás del sistema desde Mapa, Lista, Agenda o Ventas vuelve a Hoy', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      for (final pestana in ['mapa', 'lista', 'agenda', 'ventas']) {
+        await _tocar(tester, 'inicio_pestana_$pestana');
+        expect(find.byKey(Key('pestana_$pestana')), findsOneWidget);
+        expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, isNot(0));
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
+        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+      }
+    });
+
+    testWidgets('el atrás del sistema desde Hoy cierra la app (no queda en la pantalla)', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      final llamadas = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (
+        call,
+      ) async {
+        llamadas.add(call.method);
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(llamadas, contains('SystemNavigator.pop'), reason: 'en Hoy el atrás sale de la app');
+    });
+
+    testWidgets('las pestañas sin contenido muestran el ícono y «Esta sección llega pronto.»', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      await _montar(tester, _DataSource());
+      await tester.pumpAndSettle();
+
+      for (final pestana in PestanaInicio.values.skip(1)) {
+        await _tocar(tester, 'inicio_pestana_${pestana.name}');
+        final seccion = find.byKey(Key('pestana_${pestana.name}'));
+        expect(
+          find.descendant(of: seccion, matching: find.text('Esta sección llega pronto.')),
+          findsOneWidget,
+        );
+        expect(find.descendant(of: seccion, matching: find.byIcon(pestana.icono)), findsOneWidget);
+      }
     });
 
     testWidgets('la pestaña elegida se anuncia como seleccionada', (tester) async {
