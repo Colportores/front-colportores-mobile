@@ -62,6 +62,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     return (_finDelDia.difference(inicioAlMinuto).inMinutes - 1).clamp(0, 24 * 60);
   }
 
+  /// Sin ningún minuto válido (la jornada empezó a las 23:59): no hay hora que elegir, así que la
+  /// pantalla no puede ser una trampa y deja volver.
+  bool get _sinHoraValida => _minutosDeRango == 0;
+
   /// La hoja propia (la misma que Hoy) en vez del selector del sistema: valida el rango sin
   /// ajustar nada en silencio y aguanta el texto al 200 %.
   Future<void> _elegirHora() async {
@@ -100,6 +104,14 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
 
     if (!mounted) return;
 
+    // Otro teléfono ya la cerró (o un doble toque): no hay nada que corregir. Sale sin jornada y
+    // Hoy relee lo guardado (`finalizar` ya invalidó el estado). Sin esto, con la pantalla sin
+    // salida, la persona quedaría atrapada.
+    if (resultado.fold((failure) => failure is FailureSinJornadaActiva, (_) => false)) {
+      Navigator.of(context).pop();
+      return;
+    }
+
     resultado.fold(
       (failure) => setState(() {
         _cerrando = false;
@@ -125,10 +137,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     final horaElegida = _horaCompleta;
 
     // Sin flecha de volver ni atrás del sistema (decisión de Cristian, 29/09, como el diseño): el
-    // colportor indica la hora de fin antes de seguir; nunca se inventa un fin. El `pop(cerrada)`
-    // al cerrar no pasa por acá.
+    // colportor indica la hora de fin antes de seguir; nunca se inventa un fin. El `pop` al cerrar
+    // (o si la jornada ya estaba cerrada) no pasa por acá, y sin minuto válido sí se puede volver.
     return PopScope(
-      canPop: false,
+      canPop: _sinHoraValida,
       child: _scaffold(context, theme, colores, esquema, mensaje, horaElegida),
     );
   }
@@ -157,6 +169,13 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_sinHoraValida)
+                        IconButton(
+                          key: const Key('corregir_jornada_atras'),
+                          tooltip: 'Volver',
+                          onPressed: _cerrando ? null : () => Navigator.of(context).maybePop(),
+                          icon: const Icon(Icons.arrow_back),
+                        ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: Column(

@@ -1149,6 +1149,40 @@ void main() {
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
 
+    testWidgets(
+      'desde la corrección, si la jornada ya estaba cerrada, sale y Hoy relee lo guardado '
+      '(no queda trabada, #230)',
+      (tester) async {
+        _pantalla(tester, const Size(390, 844));
+        final dataSource = _DataSource(
+          iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 18))],
+        );
+        await _montar(tester, dataSource);
+        await tester.pumpAndSettle();
+        await _tocarFinalizar(tester);
+        expect(find.byType(CorregirJornadaPage), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '20:30');
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+        await tester.pumpAndSettle();
+
+        dataSource.lecturasSinVer = 1;
+        await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CorregirJornadaPage), findsNothing);
+        expect(find.text('JORNADA FINALIZADA'), findsNothing);
+        // Hoy volvió a leer lo guardado y se puede seguir usando.
+        expect(find.text('Jornada activa'), findsOneWidget);
+        expect(_botonFinalizar(tester).onPressed, isNotNull);
+      },
+    );
+
     testWidgets('guarda la hora de fin que mostraba la etiqueta, aunque el minuto cambie antes '
         'del toque (#102)', (tester) async {
       _pantalla(tester, const Size(390, 844));

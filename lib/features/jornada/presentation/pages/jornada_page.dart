@@ -196,7 +196,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
           builder: (_) => CorregirJornadaPage(sesion: widget.sesion, inicio: jornada.inicio),
         ),
       );
-      if (!mounted || corregida == null) return;
+      if (!mounted) return;
+      if (corregida == null) {
+        // Ya estaba cerrada (otro teléfono) o no había hora válida: Hoy muestra lo guardado.
+        setState(() => _horaFin = null);
+        return;
+      }
       setState(() {
         _horaFin = null;
         _error = null;
