@@ -66,11 +66,13 @@ final class FailureSesionExpiradaPorInactividad extends Failure {
 
 /// El servidor ya no acepta la sesión: se revocó (cambio de contraseña, cierre en todos los
 /// equipos) o venció de su lado (HU-AUTH-007, "Edge - backend revocó la sesión"). La HU no fija el
-/// texto; los datos locales siguen intactos.
+/// texto: es la propuesta de la vista 17 (17-A03); los datos locales siguen intactos.
 final class FailureSesionRevocada extends Failure {
   const FailureSesionRevocada()
     : super(
-        mensaje: 'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+        mensaje:
+            'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la '
+            'contraseña. Entrá de nuevo.',
         codigo: 'AUTH_SESION_REVOCADA',
       );
 }

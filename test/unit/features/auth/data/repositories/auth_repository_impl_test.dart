@@ -1083,7 +1083,7 @@ void main() {
       );
       expect(
         const FailureSesionRevocada().mensaje,
-        'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+        'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la contraseña. Entrá de nuevo.',
       );
     });
 

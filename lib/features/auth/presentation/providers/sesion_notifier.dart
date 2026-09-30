@@ -20,6 +20,7 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
 
@@ -50,6 +51,16 @@ class SesionNotifier extends _$SesionNotifier {
     return resultado.fold((failure) {
       if (failure case FailureSesionExpiradaPorInactividad() || FailureSesionRevocada()) {
         ref.read(avisoSesionProvider.notifier).mostrar(failure);
+        // Sin sesión que leer (se descartó al arrancar): el saludo no tiene a quién nombrar.
+        ref
+            .read(reingresoSesionProvider.notifier)
+            .iniciar(
+              DatosReingreso(
+                motivo: failure is FailureSesionRevocada
+                    ? MotivoExpiracion.revocada
+                    : MotivoExpiracion.inactividad,
+              ),
+            );
       }
       return null;
     }, (sesion) => sesion);
@@ -69,6 +80,10 @@ class SesionNotifier extends _$SesionNotifier {
       'habia_sesion': habiaSesion,
     });
     ref.read(avisoSesionProvider.notifier).mostrar(aviso);
+    // Antes de cerrar: cuando `state` pase a `null`, el login ya tiene a quién saludar.
+    ref
+        .read(reingresoSesionProvider.notifier)
+        .iniciar(DatosReingreso(motivo: motivo, email: state.value?.email));
     if (!habiaSesion) return;
     await ref.read(expirarSesionUseCaseProvider)(motivo);
     await _cerrarDbYSesion();
@@ -93,6 +108,7 @@ class SesionNotifier extends _$SesionNotifier {
         ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(sesion);
         ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
         return null;
@@ -116,6 +132,7 @@ class SesionNotifier extends _$SesionNotifier {
       (sesion) {
         state = AsyncData(sesion);
         ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         return null;
       },
     );
@@ -157,7 +174,10 @@ class SesionNotifier extends _$SesionNotifier {
       (r) {
         if (r.sesion != null) ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(r.sesion);
-        if (r.sesion != null) ref.read(avisoSesionProvider.notifier).descartar();
+        if (r.sesion != null) {
+          ref.read(avisoSesionProvider.notifier).descartar();
+          ref.read(reingresoSesionProvider.notifier).limpiar();
+        }
         return Right(r);
       },
     );
