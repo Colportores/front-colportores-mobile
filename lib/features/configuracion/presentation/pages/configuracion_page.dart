@@ -5,255 +5,175 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../../core/usecases/use_case.dart';
-import '../../../auth/domain/entities/resultado_cierre_sesion.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
+import '../providers/nombre_cuenta_provider.dart';
+import '../widgets/hoja_cerrar_sesion.dart';
 import 'borrar_datos_locales_page.dart';
 
-/// Configuración de la cuenta en este teléfono: cerrar sesión (HU-AUTH-006) y, bajo "Privacidad y
-/// datos", borrar los datos locales (HU-AUTH-010). Sin diseño de Claude Design: sigue el tema y
-/// los patrones de las pantallas de auth (encabezado en color primario, título grande, tarjetas
-/// con borde).
+/// Configuración de la cuenta en este teléfono (vista 16 del diseño): «Tu cuenta», «Privacidad y
+/// datos» con el borrado de datos locales (HU-AUTH-010) y «Cerrar sesión» al pie (HU-AUTH-006),
+/// con la confirmación en una hoja inferior. La fila «Mapas offline» no se muestra hasta que exista
+/// esa pantalla (#190). La barra de pestañas es la de la pantalla principal; con una cuenta que
+/// todavía no accede a los módulos de campo no se muestra (vista 18 la arma bloqueada).
 class ConfiguracionPage extends ConsumerStatefulWidget {
   const ConfiguracionPage({super.key});
 
-  /// La ruta de la pantalla. Todavía no hay router (go_router llega con el mapa en Sprint 5).
-  static Route<void> ruta() => MaterialPageRoute<void>(builder: (_) => const ConfiguracionPage());
+  /// La ruta de la pantalla. Todavía no hay router (go_router llega con el mapa en Sprint 5). Si
+  /// se sale por la barra de pestañas devuelve la pestaña elegida; con «volver», `null`.
+  static Route<PestanaInicio> ruta() =>
+      MaterialPageRoute<PestanaInicio>(builder: (_) => const ConfiguracionPage());
 
   @override
   ConsumerState<ConfiguracionPage> createState() => _ConfiguracionPageState();
 }
 
-/// Textos de los criterios de aceptación de HU-AUTH-006 (literales) y de los avisos propios.
-abstract final class TextosConfiguracion {
-  static String advertenciaPendientes(int n) =>
-      'Tenés $n operaciones sin sincronizar. Si cerrás sesión ahora, se subirán cuando vuelvas a '
-      'iniciar sesión.';
-  static const cerradaSinConexion =
-      'Cerraste sesión en este teléfono. Se va a cerrar por completo cuando haya conexión.';
-  static const confirmarCierre =
-      'Tus datos quedan guardados en este teléfono: vas a volver a verlos cuando inicies sesión.';
-  static const errorCierre = 'No pudimos cerrar la sesión. Probá de nuevo.';
-}
-
 class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
-  bool _cerrando = false;
-
-  /// El aviso de error con "Reintentar", mientras está visible (ver [_ocultarAvisoReintentar]).
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _avisoReintentar;
-
-  /// Guardado en [didChangeDependencies]: en [dispose] ya no se puede buscar en el `context`.
-  ScaffoldMessengerState? _messenger;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _messenger = ScaffoldMessenger.maybeOf(context);
-  }
-
-  @override
-  void dispose() {
-    // El SnackBar vive en el ScaffoldMessenger de la app, no en esta pantalla: sin esto, su
-    // "Reintentar" seguiría visible afuera y sin hacer nada (#102). Después del frame y no acá:
-    // en `dispose` el árbol está bloqueado, y con la navegación accesible (TalkBack, VoiceOver)
-    // ocultarlo hace un `setState` en el messenger que dispara una aserción.
-    if (_avisoReintentar != null) {
-      _avisoReintentar = null;
-      final messenger = _messenger;
-      // Si la app entera se desmontó en el mismo frame, el messenger ya no está: nada que ocultar.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (messenger != null && messenger.mounted) messenger.hideCurrentSnackBar();
-      });
-    }
-    super.dispose();
-  }
-
-  /// Saca el aviso con "Reintentar" si sigue visible. Siempre se cierra antes de mostrar otro, así
-  /// que mientras [_avisoReintentar] no es `null` es el SnackBar actual.
-  void _ocultarAvisoReintentar() {
-    if (_avisoReintentar == null) return;
-    _avisoReintentar = null;
-    _messenger?.hideCurrentSnackBar();
-  }
+  /// Mientras se cuentan las operaciones pendientes antes de abrir la hoja.
+  bool _revisando = false;
 
   Future<void> _cerrarSesion() async {
-    if (_cerrando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
-    setState(() => _cerrando = true);
+    if (_revisando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
+    setState(() => _revisando = true);
 
     // Si no se puede contar, se cierra igual con la confirmación común: cerrar sesión no borra
     // nada, lo pendiente se sube en el próximo login.
-    final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-    final pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
+    var pendientes = 0;
+    try {
+      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
+      pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
+    } on Object {
+      pendientes = 0;
+    }
     if (!mounted) return;
-    setState(() => _cerrando = false);
+    setState(() => _revisando = false);
 
-    final confirmado = await _confirmarCierre(pendientes);
-    if (confirmado != true || !mounted) return;
-
-    setState(() => _cerrando = true);
-    final resultado = await ref.read(sesionProvider.notifier).cerrarSesion();
-    if (!mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    _ocultarAvisoReintentar();
-    resultado.fold(
-      (_) {
-        setState(() => _cerrando = false);
-        final aviso = messenger.showSnackBar(
-          SnackBar(
-            key: const Key('configuracion_error_cierre'),
-            content: const Text(TextosConfiguracion.errorCierre),
-            action: SnackBarAction(
-              label: 'Reintentar',
-              onPressed: () {
-                // Si la pantalla ya no está, el reintento no tiene dónde mostrar nada.
-                if (mounted) unawaited(_cerrarSesion());
-              },
-            ),
-          ),
-        );
-        _avisoReintentar = aviso;
-        unawaited(
-          aviso.closed.then((_) {
-            if (identical(_avisoReintentar, aviso)) _avisoReintentar = null;
-          }),
-        );
-      },
-      (r) {
-        if (r == ResultadoCierreSesion.revocacionPendiente) {
-          messenger.showSnackBar(
-            const SnackBar(
-              key: Key('configuracion_cierre_sin_conexion'),
-              content: Text(TextosConfiguracion.cerradaSinConexion),
-              duration: Duration(seconds: 8),
-            ),
-          );
-        }
+    final navigator = Navigator.of(context);
+    await mostrarHojaCerrarSesion(
+      context,
+      pendientes: pendientes,
+      cerrar: () async {
+        final resultado = await ref.read(sesionProvider.notifier).cerrarSesion();
+        if (resultado.isLeft()) return false;
         // La raíz ya muestra el login (la sesión es `null`); solo queda sacar esta pantalla.
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Idempotente: si la raíz ya vació la pila (aviso de cierre sin conexión), no hace nada.
+        navigator.popUntil((route) => route.isFirst);
+        return true;
       },
     );
   }
-
-  Future<bool?> _confirmarCierre(int pendientes) => showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      key: const Key('configuracion_dialogo_cierre'),
-      title: const Text('Cerrar sesión'),
-      content: Text(
-        pendientes > 0
-            ? TextosConfiguracion.advertenciaPendientes(pendientes)
-            : TextosConfiguracion.confirmarCierre,
-      ),
-      actions: [
-        TextButton(
-          key: const Key('configuracion_dialogo_cancelar'),
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          key: const Key('configuracion_dialogo_confirmar'),
-          onPressed: () => Navigator.of(context).pop(true),
-          child: Text(pendientes > 0 ? 'Cerrar sesión igual' : 'Cerrar sesión'),
-        ),
-      ],
-    ),
-  );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     final email = ref.watch(sesionProvider).value?.email ?? '';
+    final nombre = ref.watch(nombreCuentaProvider);
+    final conBarra = switch (ref.watch(estadoCuentaProvider)) {
+      AsyncData(value: final estado) => estado == null || estado.accedeAModulosDeCampo,
+      _ => false,
+    };
 
     return Scaffold(
+      key: const Key('configuracion_pagina'),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                key: const Key('configuracion_atras'),
-                tooltip: 'Volver',
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.arrow_back),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight - 32),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    'CONFIGURACIÓN',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorEncabezado(theme, colores),
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          key: const Key('configuracion_atras'),
+                          tooltip: 'Volver',
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: const Icon(Icons.arrow_back),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 8),
+                            Text(
+                              'CONFIGURACIÓN',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorEncabezado(theme, colores),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Semantics(
+                              header: true,
+                              child: Text(
+                                'Configuración',
+                                style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      ),
+                      const _TituloSeccion('Tu cuenta'),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [_FilaCuenta(nombre: nombre, email: email)],
+                      ),
+                      const SizedBox(height: 24),
+                      const _TituloSeccion('Privacidad y datos'),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [
+                          ListTile(
+                            key: const Key('configuracion_borrar_datos'),
+                            enabled: !_revisando,
+                            minVerticalPadding: 12,
+                            leading: Icon(
+                              Icons.delete_forever_outlined,
+                              color: theme.colorScheme.error,
+                            ),
+                            title: Text(
+                              'Borrar datos locales',
+                              style: TextStyle(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Borra todo lo guardado en este teléfono y cierra tu sesión',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => unawaited(
+                              Navigator.of(context).push(BorrarDatosLocalesPage.ruta()),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text('Tu cuenta', style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),
-                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: _CierreDeSesion(revisando: _revisando, onPressed: _cerrarSesion),
+                  ),
                 ],
               ),
             ),
-            _Tarjeta(
-              children: [
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                    child: const Icon(Icons.person_outline),
-                  ),
-                  title: const Text('Sesión iniciada como'),
-                  subtitle: Text(email, key: const Key('configuracion_email')),
-                ),
-                const Divider(),
-                ListTile(
-                  key: const Key('configuracion_cerrar_sesion'),
-                  enabled: !_cerrando,
-                  leading: const Icon(Icons.logout),
-                  title: const Text('Cerrar sesión'),
-                  subtitle: const Text('Tus datos quedan guardados en este teléfono'),
-                  trailing: _cerrando
-                      ? const SizedBox.square(
-                          dimension: 24,
-                          child: CircularProgressIndicator(
-                            key: Key('configuracion_cerrando'),
-                            strokeWidth: 2.5,
-                            semanticsLabel: 'Cerrando sesión',
-                          ),
-                        )
-                      : null,
-                  onTap: _cerrarSesion,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const _TituloSeccion('Privacidad y datos'),
-            const SizedBox(height: 8),
-            _Tarjeta(
-              children: [
-                ListTile(
-                  key: const Key('configuracion_borrar_datos'),
-                  enabled: !_cerrando,
-                  leading: Icon(Icons.delete_forever_outlined, color: theme.colorScheme.error),
-                  title: Text(
-                    'Borrar datos locales',
-                    style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: const Text(
-                    'Borra todo lo guardado en este teléfono y cierra tu sesión',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(BorrarDatosLocalesPage.ruta()),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
+      bottomNavigationBar: conBarra
+          ? BarraPestanasInicio(onSeleccionar: (pestana) => Navigator.of(context).pop(pestana))
+          : null,
     );
   }
 }
@@ -261,6 +181,102 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
 /// Color del encabezado chico ("CONFIGURACIÓN", "PRIVACIDAD Y DATOS"): el color primario (paleta
 /// única 1b, #121 — el dorado ya no forma parte de la paleta).
 Color colorEncabezado(ThemeData theme, ColoresColportaje colores) => theme.colorScheme.primary;
+
+/// «Cerrar sesión» al pie, al alcance del pulgar, con lo que pasa con los datos del teléfono.
+class _CierreDeSesion extends StatelessWidget {
+  const _CierreDeSesion({required this.revisando, required this.onPressed});
+
+  final bool revisando;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    final escala = MediaQuery.textScalerOf(context).scale(15);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
+        children: [
+          OutlinedButton.icon(
+            key: const Key('configuracion_cerrar_sesion'),
+            onPressed: revisando ? null : onPressed,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              shape: escala > 20
+                  ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                  : const StadiumBorder(),
+              side: BorderSide(color: colores.bordeInput),
+            ),
+            icon: revisando
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      key: Key('configuracion_cerrando'),
+                      strokeWidth: 2.5,
+                      semanticsLabel: 'Cerrando sesión',
+                    ),
+                  )
+                : const Icon(Icons.logout),
+            label: const Text('Cerrar sesión'),
+          ),
+          Text(
+            TextosCerrarSesion.datosGuardados,
+            key: const Key('configuracion_datos_guardados'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Avatar con iniciales, nombre (si se conoce) y el correo con el que se inició sesión.
+class _FilaCuenta extends StatelessWidget {
+  const _FilaCuenta({required this.nombre, required this.email});
+
+  final String? nombre;
+  final String email;
+
+  static String _iniciales(String? nombre, String email) {
+    final partes = (nombre ?? '').trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (partes.isNotEmpty) {
+      return partes.take(2).map((p) => p.substring(0, 1).toUpperCase()).join();
+    }
+    return email.isEmpty ? '' : email.substring(0, 1).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final conNombre = nombre != null && nombre!.trim().isNotEmpty;
+    return ListTile(
+      minVerticalPadding: 12,
+      leading: ExcludeSemantics(
+        child: CircleAvatar(
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          child: Text(_iniciales(nombre, email)),
+        ),
+      ),
+      title: conNombre
+          ? Text(nombre!.trim(), key: const Key('configuracion_nombre'))
+          : const Text('Sesión iniciada como'),
+      subtitle: conNombre
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Sesión iniciada como'),
+                Text(email, key: const Key('configuracion_email')),
+              ],
+            )
+          : Text(email, key: const Key('configuracion_email')),
+    );
+  }
+}
 
 class _TituloSeccion extends StatelessWidget {
   const _TituloSeccion(this.texto);

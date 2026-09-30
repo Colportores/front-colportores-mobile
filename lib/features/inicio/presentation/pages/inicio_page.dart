@@ -1,23 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
+import '../widgets/barra_pestanas_inicio.dart';
 
-/// Las pestañas de la barra inferior, en el orden del diseño (vista 20, #229).
-enum PestanaInicio {
-  hoy('Hoy', Icons.home_outlined, Icons.home),
-  mapa('Mapa', Icons.map_outlined, Icons.map),
-  lista('Lista', Icons.format_list_bulleted, Icons.format_list_bulleted),
-  agenda('Agenda', Icons.calendar_month_outlined, Icons.calendar_month),
-  ventas('Ventas', Icons.payments_outlined, Icons.payments);
-
-  const PestanaInicio(this.etiqueta, this.icono, this.iconoActivo);
-
-  final String etiqueta;
-  final IconData icono;
-  final IconData iconoActivo;
-}
+export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 
 /// Estructura de la app una vez con sesión: la marca y el engranaje de Configuración arriba, la
 /// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
@@ -40,6 +30,13 @@ class _InicioPageState extends State<InicioPage> {
   PestanaInicio _actual = PestanaInicio.hoy;
 
   void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+
+  /// Configuración devuelve la pestaña elegida en su barra inferior (vista 16), o `null` si se
+  /// salió con "volver".
+  Future<void> _abrirConfiguracion() async {
+    final pestana = await Navigator.of(context).push(ConfiguracionPage.ruta());
+    if (pestana != null && mounted) _ir(pestana);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +68,7 @@ class _InicioPageState extends State<InicioPage> {
             key: const Key('inicio_configuracion'),
             tooltip: 'Configuración',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context).push(ConfiguracionPage.ruta()),
+            onPressed: () => unawaited(_abrirConfiguracion()),
           ),
           const SizedBox(width: 8),
         ],
@@ -84,32 +81,7 @@ class _InicioPageState extends State<InicioPage> {
             PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
         ],
       ),
-      bottomNavigationBar: DecoratedBox(
-        decoration: BoxDecoration(
-          color: esquema.surfaceContainerHighest,
-          border: Border(top: BorderSide(color: theme.dividerTheme.color ?? esquema.outline)),
-        ),
-        child: NavigationBar(
-          key: const Key('inicio_barra'),
-          height: 64,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          indicatorColor: Colors.transparent,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          selectedIndex: _actual.index,
-          onDestinationSelected: (i) => _ir(PestanaInicio.values[i]),
-          destinations: [
-            for (final pestana in PestanaInicio.values)
-              NavigationDestination(
-                key: Key('inicio_pestana_${pestana.name}'),
-                icon: Icon(pestana.icono),
-                selectedIcon: Icon(pestana.iconoActivo, color: esquema.primary),
-                label: pestana.etiqueta,
-              ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
     );
   }
 }

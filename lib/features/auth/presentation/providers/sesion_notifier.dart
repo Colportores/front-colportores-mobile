@@ -204,7 +204,13 @@ class SesionNotifier extends _$SesionNotifier {
       rethrow;
     }
 
-    if (resultado.isRight()) await _cerrarDbYSesion();
+    if (resultado.isRight()) {
+      // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
+      if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
+        ref.read(avisoSesionProvider.notifier).mostrar(const FailureCierreSesionSinConexion());
+      }
+      await _cerrarDbYSesion();
+    }
     return resultado;
   }
 
