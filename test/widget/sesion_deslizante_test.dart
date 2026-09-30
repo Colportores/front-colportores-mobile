@@ -18,7 +18,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 
 const _inactividad = 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.';
-const _revocada = 'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la contraseña. Entrá de nuevo.';
+const _revocada =
+    'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la contraseña. '
+    'Entrá de nuevo.';
 
 final _aviso = find.byKey(const Key('login_aviso_sesion'));
 final _login = find.byKey(const Key('login_enviar'));
