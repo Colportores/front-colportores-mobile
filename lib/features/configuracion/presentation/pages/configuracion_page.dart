@@ -127,9 +127,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
                       const _TituloSeccion('Tu cuenta'),
                       const SizedBox(height: 8),
                       _Tarjeta(
-                        children: [
-                          _FilaCuenta(nombre: nombre, email: email),
-                        ],
+                        children: [_FilaCuenta(nombre: nombre, email: email)],
                       ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),

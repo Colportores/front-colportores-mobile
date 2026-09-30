@@ -9,13 +9,13 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_local_dat
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/estado_cuenta_en_memoria.dart';
-import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
-import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/borrar_datos_locales_page.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/configuracion_page.dart';
@@ -25,6 +25,7 @@ import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_pag
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/db_local_repository_en_memoria.dart';
@@ -103,7 +104,9 @@ Future<ProviderContainer> _montar(
     overrides: [
       ...extras,
       if (estado != null)
-        estadoCuentaRemoteDataSourceProvider.overrideWithValue(EstadoCuentaEnMemoria(estado: estado)),
+        estadoCuentaRemoteDataSourceProvider.overrideWithValue(
+          EstadoCuentaEnMemoria(estado: estado),
+        ),
       if (estado != null)
         estadoCuentaLocalDataSourceProvider.overrideWithValue(EstadoCuentaLocalEnMemoria()),
       // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
@@ -173,7 +176,13 @@ void main() {
 
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
-      expect(find.text(TextosCerrarSesion.datosGuardados), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('configuracion_dialogo_cierre')),
+          matching: find.text(TextosCerrarSesion.datosGuardados),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
       await tester.pumpAndSettle();
 
@@ -264,8 +273,6 @@ void main() {
       local.fallar = false;
       await tester.tap(find.text('Reintentar'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
-      await tester.pumpAndSettle();
       expect(_login, findsOneWidget);
     });
 
@@ -300,10 +307,7 @@ void main() {
       testWidgets('A01 Principal: secciones, cuenta, borrar datos, cierre al pie y barra', (
         tester,
       ) async {
-        await _montar(
-          tester,
-          extras: [nombreCuentaProvider.overrideWithValue('Lucía Silva')],
-        );
+        await _montar(tester, extras: [nombreCuentaProvider.overrideWithValue('Lucía Silva')]);
 
         expect(find.text('Configuración'), findsOneWidget);
         expect(find.text('Tu cuenta'), findsOneWidget);
@@ -425,7 +429,10 @@ void main() {
         final cerrar = find.byKey(const Key('configuracion_dialogo_confirmar'));
         expect(find.descendant(of: cerrar, matching: find.text('Cerrar sesión')), findsOneWidget);
         expect(tester.widget(cerrar), isA<FilledButton>());
-        expect(tester.widget(find.byKey(const Key('configuracion_dialogo_cancelar'))), isA<OutlinedButton>());
+        expect(
+          tester.widget(find.byKey(const Key('configuracion_dialogo_cancelar'))),
+          isA<OutlinedButton>(),
+        );
       });
 
       testWidgets('A02 Cancelar cierra la hoja y no toca la sesión', (tester) async {
@@ -439,7 +446,9 @@ void main() {
         expect(container.read(sesionProvider).value, isNotNull);
         expect(_remote.llamadasCerrarSesion, 0);
         expect(
-          tester.widget<OutlinedButton>(find.byKey(const Key('configuracion_cerrar_sesion'))).onPressed,
+          tester
+              .widget<OutlinedButton>(find.byKey(const Key('configuracion_cerrar_sesion')))
+              .onPressed,
           isNotNull,
           reason: 'el botón vuelve a estar habilitado',
         );
@@ -459,8 +468,14 @@ void main() {
         );
         expect(find.text('3'), findsOneWidget);
         expect(find.text('Todo sincronizado'), findsNothing);
-        expect(tester.widget(find.byKey(const Key('configuracion_dialogo_cancelar'))), isA<FilledButton>());
-        expect(tester.widget(find.byKey(const Key('configuracion_dialogo_confirmar'))), isA<OutlinedButton>());
+        expect(
+          tester.widget(find.byKey(const Key('configuracion_dialogo_cancelar'))),
+          isA<FilledButton>(),
+        );
+        expect(
+          tester.widget(find.byKey(const Key('configuracion_dialogo_confirmar'))),
+          isA<OutlinedButton>(),
+        );
         expect(
           tester.getTopLeft(find.byKey(const Key('configuracion_dialogo_cancelar'))).dy,
           lessThan(tester.getTopLeft(find.byKey(const Key('configuracion_dialogo_confirmar'))).dy),
@@ -502,36 +517,45 @@ void main() {
         expect(find.byKey(const Key('configuracion_aviso_pendientes')), findsNothing);
       });
 
-      testWidgets('A04 Cerrando sesión: progreso, sin cancelar y sin cerrar la hoja; un solo cierre', (
-        tester,
-      ) async {
-        local.demora = Completer<void>();
-        final container = await _montar(tester, local: local);
-        await abrirHoja(tester);
+      testWidgets(
+        'A04 Cerrando sesión: progreso, sin cancelar y sin cerrar la hoja; un solo cierre',
+        (tester) async {
+          local.demora = Completer<void>();
+          final container = await _montar(tester, local: local);
+          await abrirHoja(tester);
 
-        await confirmar(tester);
-        await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')), warnIfMissed: false);
-        await tester.pump();
+          await confirmar(tester);
+          await tester.tap(
+            find.byKey(const Key('configuracion_dialogo_confirmar')),
+            warnIfMissed: false,
+          );
+          await tester.pump();
 
-        final confirmarBoton = find.byKey(const Key('configuracion_dialogo_confirmar'));
-        expect(find.descendant(of: confirmarBoton, matching: find.text('Cerrando sesión')), findsOneWidget);
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
-        expect(tester.widget<FilledButton>(confirmarBoton).onPressed, isNull);
-        expect(
-          tester.widget<OutlinedButton>(find.byKey(const Key('configuracion_dialogo_cancelar'))).onPressed,
-          isNull,
-        );
-        await tester.tapAt(const Offset(10, 10));
-        await tester.pump();
-        expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsOneWidget);
-        expect(_remote.llamadasCerrarSesion, 1, reason: 'doble tap: un solo cierre');
+          final confirmarBoton = find.byKey(const Key('configuracion_dialogo_confirmar'));
+          expect(
+            find.descendant(of: confirmarBoton, matching: find.text('Cerrando sesión')),
+            findsOneWidget,
+          );
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          expect(tester.widget<FilledButton>(confirmarBoton).onPressed, isNull);
+          expect(
+            tester
+                .widget<OutlinedButton>(find.byKey(const Key('configuracion_dialogo_cancelar')))
+                .onPressed,
+            isNull,
+          );
+          await tester.tapAt(const Offset(10, 10));
+          await tester.pump();
+          expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsOneWidget);
+          expect(_remote.llamadasCerrarSesion, 1, reason: 'doble tap: un solo cierre');
 
-        local.demora!.complete();
-        await tester.pumpAndSettle();
-        expect(container.read(sesionProvider).value, isNull);
-        expect(_login, findsOneWidget);
-        expect(local.intentos, 1);
-      });
+          local.demora!.complete();
+          await tester.pumpAndSettle();
+          expect(container.read(sesionProvider).value, isNull);
+          expect(_login, findsOneWidget);
+          expect(local.intentos, 1);
+        },
+      );
 
       testWidgets('A06 Error al cerrar: aviso, «Reintentar» y «Cancelar»', (tester) async {
         local.fallar = true;
@@ -551,13 +575,17 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(ConfiguracionPage), findsOneWidget);
         expect(
-          tester.widget<OutlinedButton>(find.byKey(const Key('configuracion_cerrar_sesion'))).onPressed,
+          tester
+              .widget<OutlinedButton>(find.byKey(const Key('configuracion_cerrar_sesion')))
+              .onPressed,
           isNotNull,
           reason: 'la falla a mitad del cierre no deja el botón trabado',
         );
       });
 
-      testWidgets('A06 «Reintentar» vuelve a intentar y, si sale, cierra la sesión', (tester) async {
+      testWidgets('A06 «Reintentar» vuelve a intentar y, si sale, cierra la sesión', (
+        tester,
+      ) async {
         local.fallar = true;
         final container = await _montar(tester, local: local);
         await abrirHoja(tester);
@@ -585,9 +613,10 @@ void main() {
 
         local.fallar = false;
         local.demora = Completer<void>();
-        await tester.tap(find.byKey(const Key('configuracion_reintentar')));
+        final posicion = tester.getCenter(find.byKey(const Key('configuracion_reintentar')));
+        await tester.tapAt(posicion);
         await tester.pump();
-        await tester.tap(find.byKey(const Key('configuracion_reintentar')), warnIfMissed: false);
+        await tester.tapAt(posicion);
         await tester.pump();
         expect(local.intentos, 2);
 
@@ -1210,7 +1239,10 @@ void main() {
       expect(tester.takeException(), isNull);
 
       local.demora = Completer<void>();
-      await _tocar(tester, find.byKey(const Key('configuracion_reintentar')));
+      await tester.ensureVisible(find.byKey(const Key('configuracion_reintentar')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('configuracion_reintentar')));
+      await tester.pump();
       expect(find.text('Cerrando sesión'), findsWidgets);
       expect(tester.takeException(), isNull);
       local.demora!.complete();

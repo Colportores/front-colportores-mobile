@@ -82,27 +82,27 @@ class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
     final hayPendientes = widget.pendientes > 0 && _fase != _Fase.error;
 
     final cancelar = _Boton(
-      key: const Key('configuracion_dialogo_cancelar'),
+      clave: const Key('configuracion_dialogo_cancelar'),
       texto: TextosCerrarSesion.cancelar,
       principal: hayPendientes,
       onPressed: cerrando ? null : () => Navigator.of(context).pop(),
     );
     final cierre = switch (_fase) {
       _Fase.error => _Boton(
-        key: const Key('configuracion_reintentar'),
+        clave: const Key('configuracion_reintentar'),
         texto: TextosCerrarSesion.reintentar,
         principal: true,
         onPressed: _cerrar,
       ),
       _Fase.cerrando => const _Boton(
-        key: Key('configuracion_dialogo_confirmar'),
+        clave: Key('configuracion_dialogo_confirmar'),
         texto: TextosCerrarSesion.cerrando,
         principal: true,
         cargando: true,
         onPressed: null,
       ),
       _Fase.confirmar => _Boton(
-        key: const Key('configuracion_dialogo_confirmar'),
+        clave: const Key('configuracion_dialogo_confirmar'),
         texto: hayPendientes ? TextosCerrarSesion.confirmarIgual : TextosCerrarSesion.confirmar,
         principal: !hayPendientes,
         onPressed: _cerrar,
@@ -235,13 +235,14 @@ class _Aviso extends StatelessWidget {
 
 class _Boton extends StatelessWidget {
   const _Boton({
-    super.key,
+    this.clave,
     required this.texto,
     required this.principal,
     required this.onPressed,
     this.cargando = false,
   });
 
+  final Key? clave;
   final String texto;
   final bool principal;
   final bool cargando;
@@ -270,6 +271,7 @@ class _Boton extends StatelessWidget {
     final tema = Theme.of(context);
     return principal
         ? FilledButton(
+            key: clave,
             onPressed: onPressed,
             style: FilledButton.styleFrom(
               minimumSize: minimo,
@@ -280,6 +282,7 @@ class _Boton extends StatelessWidget {
             child: contenido,
           )
         : OutlinedButton(
+            key: clave,
             onPressed: onPressed,
             style: OutlinedButton.styleFrom(
               minimumSize: minimo,
