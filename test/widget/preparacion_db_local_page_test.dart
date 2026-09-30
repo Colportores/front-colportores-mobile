@@ -8,13 +8,16 @@ import 'dart:typed_data';
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/inicializar_db_local_use_case.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/preparacion_db_local_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/password_para_db_local.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
 import 'package:flutter/material.dart';
@@ -59,6 +62,20 @@ Future<ProviderContainer> _entrar(
   if (esperar) await tester.pumpAndSettle();
   return container;
 }
+
+bool _botonHabilitado(WidgetTester tester, String key) =>
+    tester.widget<FilledButton>(_boton(key)).onPressed != null;
+
+/// La pantalla sola en un [estado], sin la app: para los estados que el fake no alcanza (1/3, 3/3).
+Future<void> _montarEstado(WidgetTester tester, EstadoPreparacionDbLocal estado) =>
+    tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: temaClaro(),
+          home: PreparacionDbLocalPage(estado: estado),
+        ),
+      ),
+    );
 
 Future<void> _tocar(WidgetTester tester, String key) async {
   await tester.ensureVisible(_boton(key));
@@ -137,6 +154,10 @@ void main() {
       expect(find.text('Entiendo el riesgo y quiero continuar'), findsOneWidget);
       expect(_db.llamadas, isNot(contains('crearDek')));
 
+      // «Continuar» recién se habilita al marcar «Entiendo el riesgo y quiero continuar».
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isFalse);
+      await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isTrue);
       await _tocar(tester, 'preparacion_db_aceptar_riesgo');
 
       expect(_principal, findsOneWidget);
@@ -372,6 +393,156 @@ void main() {
     });
   });
 
+  group('Vista 13 (#222) — un estado por artboard', () {
+    const pasos = [
+      'Revisando el bloqueo de pantalla',
+      'Creando y guardando tu clave',
+      'Creando tu base cifrada',
+    ];
+    const apoyos = [
+      'Lo que cargues queda cifrado en este teléfono. Se hace una sola vez.',
+      'La clave se guarda en el almacenamiento seguro del teléfono. Nadie más la ve.',
+      'Ya casi. Después vas a poder trabajar sin conexión.',
+    ];
+
+    for (final (n, paso) in [
+      (1, PasoInicializacionDb.generandoClave),
+      (2, PasoInicializacionDb.protegiendoClave),
+      (3, PasoInicializacionDb.abriendoDb),
+    ]) {
+      testWidgets('A0$n en curso $n/3: contador, barra por pasos, lista de pasos y apoyo', (
+        tester,
+      ) async {
+        await _montarEstado(tester, PreparandoDbLocal(paso: paso));
+
+        expect(find.text('PRIMER INGRESO EN ESTE TELÉFONO'), findsOneWidget);
+        expect(find.text('Preparando tu espacio seguro… $n/3'), findsOneWidget);
+        for (final texto in pasos) {
+          expect(find.text(texto), findsOneWidget);
+        }
+        expect(find.text(apoyos[n - 1]), findsOneWidget);
+        for (var i = 0; i < 3; i++) {
+          final segmento = tester.widget<Container>(find.byKey(Key('preparacion_db_segmento_$i')));
+          final lleno = (segmento.decoration! as BoxDecoration).color;
+          final primario = Theme.of(tester.element(_preparacion)).colorScheme.primary;
+          expect(lleno == primario, i < n, reason: 'segmento $i con $n/3');
+        }
+        // Los pasos anteriores, hechos; el actual, con el spinner; el resto, pendientes.
+        expect(find.byIcon(Icons.check_circle), findsNWidgets(n - 1));
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('preparacion_db_pasos')),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+      });
+    }
+
+    testWidgets('verificando el equipo (sin número): el primer paso en curso y la barra vacía', (
+      tester,
+    ) async {
+      await _montarEstado(tester, const PreparandoDbLocal());
+
+      expect(find.text('Preparando tu espacio seguro…'), findsOneWidget);
+      expect(find.text(apoyos[0]), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsNothing);
+    });
+
+    testWidgets('A04 sin bloqueo de pantalla: título, texto de la HU, cómo configurarlo y «Ya lo '
+        'configuré»', (tester) async {
+      _db.bloqueoPantalla = false;
+      await _entrar(tester);
+
+      expect(find.text('PASO 1 DE 3 · EN PAUSA'), findsOneWidget);
+      expect(find.text('Activá el bloqueo de pantalla'), findsOneWidget);
+      expect(find.text(const FailureSinBloqueoPantalla().mensaje), findsOneWidget);
+      expect(find.text('CÓMO CONFIGURARLO'), findsOneWidget);
+      expect(find.text('Ajustes > Seguridad > Bloqueo de pantalla'), findsOneWidget);
+      expect(find.text('Elegí PIN, patrón o contraseña y volvé a la app.'), findsOneWidget);
+      expect(find.text('Ya lo configuré'), findsOneWidget);
+      expect(
+        _boton('preparacion_db_cerrar_sesion'),
+        findsOneWidget,
+        reason: 'nadie queda encerrado',
+      );
+    });
+
+    testWidgets('A05 almacenamiento por software: «Continuar» deshabilitado hasta marcar el '
+        'consentimiento; «Salir sin preparar» aborta', (tester) async {
+      _db.nivel = NivelAlmacenSeguro.software;
+      await _entrar(tester);
+
+      expect(find.text('PASO 2 DE 3 · EN PAUSA'), findsOneWidget);
+      expect(find.text('Antes de seguir'), findsOneWidget);
+      expect(find.text('Continuar'), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isFalse);
+      expect(
+        tester.widget<CheckboxListTile>(_boton('preparacion_db_entiendo_riesgo')).value,
+        isFalse,
+      );
+
+      // Marcar y desmarcar vuelve a deshabilitar.
+      await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isTrue);
+      await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+      expect(_botonHabilitado(tester, 'preparacion_db_aceptar_riesgo'), isFalse);
+
+      await _tocar(tester, 'preparacion_db_cancelar_riesgo');
+      expect(find.text('Salir sin preparar'), findsNothing);
+      expect(find.text(TextosPreparacionDbLocal.otroCelular), findsOneWidget);
+      expect(_db.consentimiento, isFalse);
+    });
+
+    testWidgets('A06 falla del almacenamiento: «No se pudo terminar», el texto de la HU, que no '
+        'se perdió nada y «Reintentar desde cero»', (tester) async {
+      _db.fallas['crearDek'] = const FailureAlmacenSeguro();
+      await _entrar(tester);
+
+      expect(find.text('No se pudo terminar'), findsOneWidget);
+      expect(find.text(const FailureAlmacenSeguro().mensaje), findsOneWidget);
+      expect(
+        find.text('Si reintentás, empezamos de cero. No se perdió nada: todavía no había datos.'),
+        findsOneWidget,
+      );
+      expect(find.text('Reintentar desde cero'), findsOneWidget);
+      expect(
+        _boton('preparacion_db_cerrar_sesion'),
+        findsOneWidget,
+        reason: 'nadie queda encerrado',
+      );
+    });
+
+    testWidgets('A07 sin espacio: el texto de la HU como título, qué hacer y «Reintentar»', (
+      tester,
+    ) async {
+      _db.fallas['abrir'] = const FailureSinEspacio();
+      await _entrar(tester);
+
+      expect(find.text('No hay espacio suficiente para preparar el app'), findsOneWidget);
+      expect(
+        find.text(
+          'Liberá espacio borrando fotos, videos o apps que no uses, y volvé a intentarlo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Reintentar'), findsOneWidget);
+    });
+
+    testWidgets('A08 esquema posterior: bloqueante, con «Actualizar» y sin salida a borrar', (
+      tester,
+    ) async {
+      _dbExistente(dekEnAlmacen: true, conEnvoltorio: true);
+      _db.fallas['abrir'] = const FailureEsquemaPosterior();
+      await _entrar(tester);
+
+      expect(find.text('ACTUALIZACIÓN NECESARIA'), findsOneWidget);
+      expect(find.text('Actualizá la app'), findsOneWidget);
+      expect(find.text('Actualizar'), findsOneWidget);
+      expect(_boton('preparacion_db_empezar_de_nuevo'), findsNothing);
+    });
+  });
+
   group('Accesibilidad', () {
     // Cada estado de la pantalla, preparado sobre el fake.
     final estados = <String, Future<void> Function(WidgetTester)>{
@@ -381,8 +552,21 @@ void main() {
         await tester.pump();
         await tester.pump();
       },
+      'progreso 1/3': (tester) =>
+          _montarEstado(tester, const PreparandoDbLocal(paso: PasoInicializacionDb.generandoClave)),
+      'progreso 3/3': (tester) =>
+          _montarEstado(tester, const PreparandoDbLocal(paso: PasoInicializacionDb.abriendoDb)),
       'sin bloqueo': (tester) async {
         _db.bloqueoPantalla = false;
+        await _entrar(tester);
+      },
+      'consentimiento marcado': (tester) async {
+        _db.nivel = NivelAlmacenSeguro.software;
+        await _entrar(tester);
+        await _tocar(tester, 'preparacion_db_entiendo_riesgo');
+      },
+      'falla del almacenamiento': (tester) async {
+        _db.fallas['crearDek'] = const FailureAlmacenSeguro();
         await _entrar(tester);
       },
       'consentimiento': (tester) async {
