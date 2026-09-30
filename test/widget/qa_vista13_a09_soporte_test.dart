@@ -2,7 +2,6 @@
 // casos límite que `preparacion_db_local_page_test.dart` no cubre. A09 con la sesión restaurada
 // (contraseña equivocada, sin conexión, salida), y el aviso de soporte que no debe sobrevivir a un
 // reintento.
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:colportores_mobile/app.dart';
@@ -159,6 +158,6 @@ void main() {
         findsNothing,
         reason: 'es una falla nueva: el aviso viejo ya no corresponde',
       );
-    }, skip: true); // skip: QA #222 — el aviso de soporte de una falla anterior reaparece tras «Reintentar desde cero».
+    });
   });
 }

@@ -170,6 +170,10 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     if (anterior.estado.runtimeType != widget.estado.runtimeType ||
         _falloDistinto(anterior.estado, widget.estado)) {
       _entiendeRiesgo = false;
+    }
+    // Un estado nuevo (aunque sea la misma falla, p. ej. tras «Reintentar desde cero») vuelve a
+    // empezar: los avisos de una falla anterior, con su código, ya no corresponden.
+    if (!identical(anterior.estado, widget.estado)) {
       _avisoAjustes = null;
       _avisoSoporte = null;
     }
