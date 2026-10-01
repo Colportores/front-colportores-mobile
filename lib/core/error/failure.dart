@@ -96,6 +96,18 @@ final class FailureEnlaceRecuperacionVencido extends Failure {
     : super(mensaje: 'El enlace expiró. Solicitá uno nuevo.', codigo: 'AUTH_ENLACE_VENCIDO');
 }
 
+/// El login fue rechazado porque la cuenta todavía no confirmó su correo (HU-AUTH-002, Supabase
+/// `email_not_confirmed`). [mensaje] es el texto que ya veía el login. Además del login, la usa el
+/// login en silencio que decide qué pasó con un enlace de verificación `otp_expired`: si la cuenta
+/// sigue sin confirmar, el enlace de verdad expiró.
+final class FailureEmailNoVerificado extends Failure {
+  const FailureEmailNoVerificado()
+    : super(
+        mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
+        codigo: 'AUTH_EMAIL_NO_VERIFICADO',
+      );
+}
+
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
 /// [mensaje] es el texto literal del criterio de aceptación "Bloqueo - jornada ya activa".
 final class FailureJornadaActiva extends Failure {

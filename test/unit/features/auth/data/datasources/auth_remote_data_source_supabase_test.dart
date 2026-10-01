@@ -179,7 +179,7 @@ void main() {
       );
     });
 
-    test('dado un email sin confirmar, lanza ServidorException con mensaje para el usuario', () {
+    test('dado un email sin confirmar, lanza EmailNoConfirmadoException', () {
       when(
         () => auth.signInWithPassword(
           email: any(named: 'email'),
@@ -195,13 +195,7 @@ void main() {
 
       expect(
         () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
-        throwsA(
-          isA<ServidorException>().having(
-            (e) => e.mensaje,
-            'mensaje',
-            contains('verificar tu correo'),
-          ),
-        ),
+        throwsA(isA<EmailNoConfirmadoException>()),
       );
     });
 

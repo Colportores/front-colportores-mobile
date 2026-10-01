@@ -75,8 +75,6 @@ final class AuthRemoteDataSourceSupabase
   /// en frío) y los que lleguen mientras corre.
   final Stream<Uri> _enlacesEntrantes;
 
-  static const String _mensajeEmailNoConfirmado =
-      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
   static const String _mensajeDemasiadosIntentos =
       'Demasiados intentos. Esperá unos minutos y volvé a probar.';
   static const String _mensajeGoogleNoCompletado =
@@ -451,7 +449,7 @@ final class AuthRemoteDataSourceSupabase
         return const EmailYaRegistradoException();
       case 'email_not_confirmed':
         _log.warn(LogModulo.auth, 'EMAIL_NO_CONFIRMADO', 'login con email sin confirmar');
-        return ServidorException(status: status, mensaje: _mensajeEmailNoConfirmado);
+        return const EmailNoConfirmadoException();
       case 'weak_password':
         return const PasswordDebilException();
       case 'over_email_send_rate_limit' || 'over_request_rate_limit':
