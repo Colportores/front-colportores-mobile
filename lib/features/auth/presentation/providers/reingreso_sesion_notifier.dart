@@ -18,6 +18,10 @@ class DatosReingreso extends Equatable {
   final String? email;
   final String? nombre;
 
+  // Sin `toString` con el contenido: correo y nombre son datos personales y no deben llegar a logs.
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [motivo, email, nombre];
 }

@@ -80,10 +80,18 @@ class SesionNotifier extends _$SesionNotifier {
       'habia_sesion': habiaSesion,
     });
     ref.read(avisoSesionProvider.notifier).mostrar(aviso);
-    // Antes de cerrar: cuando `state` pase a `null`, el login ya tiene a quién saludar.
-    ref
-        .read(reingresoSesionProvider.notifier)
-        .iniciar(DatosReingreso(motivo: motivo, email: state.value?.email));
+    // Antes de cerrar: cuando `state` pase a `null`, el login ya tiene a quién saludar. Sin sesión
+    // (un segundo aviso mientras se ve el login) no hay correo nuevo: se conserva el que ya estaba.
+    if (habiaSesion) {
+      ref
+          .read(reingresoSesionProvider.notifier)
+          .iniciar(DatosReingreso(motivo: motivo, email: state.value?.email));
+    } else {
+      final previo = ref.read(reingresoSesionProvider);
+      ref
+          .read(reingresoSesionProvider.notifier)
+          .iniciar(DatosReingreso(motivo: motivo, email: previo?.email, nombre: previo?.nombre));
+    }
     if (!habiaSesion) return;
     await ref.read(expirarSesionUseCaseProvider)(motivo);
     await _cerrarDbYSesion();

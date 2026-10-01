@@ -107,6 +107,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     ).showSnackBar(const SnackBar(content: Text('Disponible próximamente')));
   }
 
+  /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
+  /// pantalla de recuperación lo trae cargado.
+  void _abrirRecuperacion() {
+    final email = _email.text.trim();
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => RecuperacionPasswordPage(emailInicial: email.isEmpty ? null : email),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -198,53 +211,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          // Sin achicar: el área de toque tiene que ser de 48x48 (accesibilidad).
-                          Checkbox(
-                            value: _mantenerSesion,
-                            semanticLabel: 'Mantener sesión',
-                            materialTapTargetSize: MaterialTapTargetSize.padded,
-                            onChanged: (valor) => setState(() => _mantenerSesion = valor ?? true),
-                          ),
-                          Expanded(
-                            // La etiqueta ya la lleva el checkbox para el lector de pantalla.
-                            child: ExcludeSemantics(
-                              child: Text(
-                                'Mantener sesión',
-                                style: theme.textTheme.bodyMedium,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: TextButton(
-                              key: const Key('login_olvidaste_clave'),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                minimumSize: const Size(48, 48),
-                              ),
-                              onPressed: () {
-                                unawaited(
-                                  Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => const RecuperacionPasswordPage(),
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Text(
-                                reingreso == null ? '¿Olvidaste tu clave?' : 'Recuperar acceso',
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.secondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                      _FilaMantenerSesion(
+                        mantener: _mantenerSesion,
+                        alCambiar: (valor) => setState(() => _mantenerSesion = valor),
+                        textoEnlace: reingreso == null
+                            ? '¿Olvidaste tu clave?'
+                            : 'Recuperar acceso',
+                        alRecuperar: _abrirRecuperacion,
                       ),
                       const SizedBox(height: 16),
                       FilledButton(
@@ -572,6 +545,79 @@ class _BotonProveedor extends StatelessWidget {
           Flexible(child: Text(etiqueta, textAlign: TextAlign.center)),
         ],
       ),
+    );
+  }
+}
+
+/// «Mantener sesión» y el enlace de recuperación. A texto grande el enlace va en una línea propia
+/// (en la misma fila se cortaba con puntos suspensivos) y la etiqueta del checkbox se parte en
+/// líneas en vez de recortarse.
+class _FilaMantenerSesion extends StatelessWidget {
+  const _FilaMantenerSesion({
+    required this.mantener,
+    required this.alCambiar,
+    required this.textoEnlace,
+    required this.alRecuperar,
+  });
+
+  final bool mantener;
+  final ValueChanged<bool> alCambiar;
+  final String textoEnlace;
+  final VoidCallback alRecuperar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textoGrande = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final casilla = Checkbox(
+      value: mantener,
+      semanticLabel: 'Mantener sesión',
+      // Sin achicar: el área de toque tiene que ser de 48x48 (accesibilidad).
+      materialTapTargetSize: MaterialTapTargetSize.padded,
+      onChanged: (valor) => alCambiar(valor ?? true),
+    );
+    final etiqueta = Expanded(
+      // La etiqueta ya la lleva el checkbox para el lector de pantalla.
+      child: ExcludeSemantics(
+        child: Text(
+          'Mantener sesión',
+          style: theme.textTheme.bodyMedium,
+          overflow: textoGrande ? null : TextOverflow.ellipsis,
+        ),
+      ),
+    );
+    final enlace = TextButton(
+      key: const Key('login_olvidaste_clave'),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        minimumSize: const Size(48, 48),
+      ),
+      onPressed: alRecuperar,
+      child: Text(
+        textoEnlace,
+        overflow: textoGrande ? null : TextOverflow.ellipsis,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.secondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+    if (textoGrande) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [casilla, etiqueta]),
+          enlace,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        casilla,
+        etiqueta,
+        const SizedBox(width: 8),
+        Flexible(child: enlace),
+      ],
     );
   }
 }

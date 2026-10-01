@@ -163,6 +163,19 @@ void main() {
       expect(_recuperar, findsOneWidget);
     });
 
+    testWidgets('«Recuperar acceso» abre la recuperación con el correo que ya está en el login', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _expirar(tester, e, MotivoExpiracion.revocada);
+
+      await tester.tap(_recuperar);
+      await tester.pumpAndSettle();
+
+      final campo = tester.widget<TextField>(find.byKey(const Key('recuperacion_password_email')));
+      expect(campo.controller?.text, 'lucia.silva@correo.com');
+    });
+
     testWidgets('«Recuperar acceso» abre la recuperación de contraseña y volver deja todo igual', (
       tester,
     ) async {

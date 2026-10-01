@@ -113,45 +113,32 @@ void main() {
     }
   }
 
-  testWidgets(
-    'los datos del reingreso no salen en toString (privacidad)',
-    (tester) async {
-      const datos = DatosReingreso(
-        motivo: MotivoExpiracion.inactividad,
-        email: 'lucia.silva@correo.com',
-        nombre: 'Lucía',
-      );
-      expect(datos.toString(), isNot(contains('lucia')));
-      expect(datos.toString(), isNot(contains('Lucía')));
-    },
-    // skip: QA #226 — DatosReingreso no apaga stringify: toString imprime correo y nombre.
-    skip: true,
-  );
+  testWidgets('los datos del reingreso no salen en toString (privacidad)', (tester) async {
+    const datos = DatosReingreso(
+      motivo: MotivoExpiracion.inactividad,
+      email: 'lucia.silva@correo.com',
+      nombre: 'Lucía',
+    );
+    expect(datos.toString(), isNot(contains('lucia')));
+    expect(datos.toString(), isNot(contains('Lucía')));
+  });
 
-  testWidgets(
-    'dos avisos de sesión seguidos: el correo de la cuenta no se pierde',
-    (tester) async {
-      final e = await _montar(tester);
-      await _expirar(tester, e, MotivoExpiracion.inactividad);
-      await _expirar(tester, e, MotivoExpiracion.revocada);
-      expect(_contenedor(tester).read(reingresoSesionProvider)?.email, 'lucia.silva@correo.com');
-    },
-    // skip: QA #226 — un segundo aviso sin sesión pisa el reingreso y borra el correo.
-    skip: true,
-  );
+  testWidgets('dos avisos de sesión seguidos: el correo de la cuenta no se pierde', (tester) async {
+    final e = await _montar(tester);
+    await _expirar(tester, e, MotivoExpiracion.inactividad);
+    await _expirar(tester, e, MotivoExpiracion.revocada);
+    expect(_contenedor(tester).read(reingresoSesionProvider)?.email, 'lucia.silva@correo.com');
+  });
 
-  testWidgets(
-    '17-A01 al 200 %: «Recuperar acceso» se lee completo, sin puntos suspensivos',
-    (tester) async {
-      _pantalla(tester, const Size(360, 640), texto: 2.0);
-      final e = await _montar(tester);
-      await _expirar(tester, e, MotivoExpiracion.inactividad);
-      final parrafo = tester.renderObject<RenderParagraph>(
-        find.descendant(of: find.byType(TextButton), matching: find.text('Recuperar acceso')),
-      );
-      expect(parrafo.didExceedMaxLines, isFalse);
-    },
-    // skip: QA #226 — a 200 % «Recuperar acceso» queda «Recup…» (la fila del login lo recorta).
-    skip: true,
-  );
+  testWidgets('17-A01 al 200 %: «Recuperar acceso» se lee completo, sin puntos suspensivos', (
+    tester,
+  ) async {
+    _pantalla(tester, const Size(360, 640), texto: 2.0);
+    final e = await _montar(tester);
+    await _expirar(tester, e, MotivoExpiracion.inactividad);
+    final parrafo = tester.renderObject<RenderParagraph>(
+      find.descendant(of: find.byType(TextButton), matching: find.text('Recuperar acceso')),
+    );
+    expect(parrafo.didExceedMaxLines, isFalse);
+  });
 }
