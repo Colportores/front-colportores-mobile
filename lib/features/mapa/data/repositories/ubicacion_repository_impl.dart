@@ -189,6 +189,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       return Right((ubicacion: ubicacion.toEntity(), escribio: escribio));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
+    } on ConservadaDeBajaException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CONSERVADA_DE_BAJA',
+        'la ubicación que se conserva ya estaba de baja',
+        {'ubicacion_id': id, 'conservada_id': conservadaId},
+      );
+      return const Left(FailureConservadaDeBaja());
     } on UbicacionCambioException {
       _log.info(
         LogModulo.db,
@@ -196,7 +204,9 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         baja ? 'la ubicación cambió antes de la baja' : 'la ubicación cambió antes de reactivarla',
         {'ubicacion_id': id},
       );
-      return const Left(FailureUbicacionCambio());
+      return Left(
+        baja ? const FailureBajaCambioReciente() : const FailureReactivacionCambioReciente(),
+      );
     } on Object catch (e, st) {
       _log.error(
         LogModulo.db,

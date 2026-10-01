@@ -337,6 +337,30 @@ void main() {
     );
   });
 
+  group('Ubicación de baja con la ciudad fuera del catálogo', () {
+    test(
+      'dado una baja cuya ciudad ya no está en el catálogo, cuando la edita y confirma reactivar, '
+      'queda activa con su ciudad y se encola el update (no se frena por la ciudad)',
+      () async {
+        await local.insertar(ubicacion(deletedAt: t0, ciudadId: 'ciudad-que-ya-no-esta'));
+        encolador.encolados.clear();
+
+        final r = await ok(
+          params(
+            numero: '1236',
+            ciudadId: 'ciudad-que-ya-no-esta',
+            confirmadas: {ConfirmacionModificacion.reactivar},
+          ),
+        );
+
+        expect((r as UbicacionModificada).reactivada, isTrue);
+        final u = await guardada();
+        expect((u.auditoria.deletedAt, u.ciudadId), (null, 'ciudad-que-ya-no-esta'));
+        expect(encolador.encolados.single.operacion, OperacionSync.update);
+      },
+    );
+  });
+
   group('Re-chequeo de duplicados', () {
     setUp(() async {
       await local.insertar(ubicacion());
