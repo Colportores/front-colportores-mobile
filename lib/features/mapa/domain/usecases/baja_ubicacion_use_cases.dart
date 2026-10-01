@@ -7,7 +7,6 @@ import '../../../../core/usecases/use_case.dart';
 import '../entities/resultado_baja_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
-import '../services/catalogo_ciudades.dart';
 import '../services/consultor_pendientes_ubicacion.dart';
 
 /// Parámetros de [DarDeBajaUbicacionUseCase].
@@ -47,7 +46,7 @@ final class DarDeBajaUbicacionParams extends Equatable {
 ///
 /// 1. Sin `id`: `Left(FailureValidacion)`. La ubicación no está: `Left(FailureUbicacionInexistente)`.
 /// 2. Ya estaba de baja (doble toque): `Right(BajaSinCambios)`, sin escribir ni encolar.
-/// 3. La fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
+/// 3. La fila cambió desde que se cargó la pantalla: `Left(FailureBajaCambioReciente)`.
 /// 4. Con visitas pendientes, ventas con saldo o cobros sin cerrar y sin `confirmaPendientes`:
 ///    `Right(BajaRequiereConfirmacion)` con el resumen; no escribe.
 /// 5. Escribe `deleted_at` = ahora y `updated_at` = ahora y encola el tombstone, en una
@@ -77,7 +76,7 @@ final class DarDeBajaUbicacionUseCase
         if (actual == null) return const Left(FailureUbicacionInexistente());
         if (actual.estaBorrada) return Right(BajaSinCambios(ubicacion: actual));
         if (actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt)) {
-          return const Left(FailureUbicacionCambio());
+          return const Left(FailureBajaCambioReciente());
         }
 
         final pendientes = await _pendientes.de(id);
@@ -122,17 +121,18 @@ final class ReactivarUbicacionParams extends Equatable {
 
 /// HU-UBI-005 — Reactivar desde "Ver bajas" (`deleted_at = NULL`). En orden: sin `id` o inexistente
 /// como la baja; ya activa (doble toque): `Right` con la ubicación tal cual, sin escribir; la fila
-/// cambió: `Left(FailureUbicacionCambio)`; la ciudad ya no está en el [CatalogoCiudades]:
-/// `Left(FailureCiudadFueraDeCatalogo)`; si no, escribe y encola el `update`.
+/// cambió: `Left(FailureReactivacionCambioReciente)`; si no, escribe y encola el `update`.
+///
+/// **No** mira si la ciudad sigue en el catálogo (decisión de Cristian, 29/09): la ciudad es una
+/// parte más de la dirección y ninguna acción sobre una ubicación se frena por eso.
 ///
 /// No busca duplicados al reactivar (la HU no lo pide; sí lo hace la reactivación que va dentro de
 /// editar, en `ModificarUbicacionUseCase`, HU-UBI-004): para confirmar.
 final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbicacionParams> {
-  ReactivarUbicacionUseCase(this._repository, this._catalogo, {DateTime Function()? ahora})
+  ReactivarUbicacionUseCase(this._repository, {DateTime Function()? ahora})
     : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _repository;
-  final CatalogoCiudades _catalogo;
   final DateTime Function() _ahora;
 
   @override
@@ -147,15 +147,8 @@ final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbi
       if (actual == null) return const Left(FailureUbicacionInexistente());
       if (!actual.estaBorrada) return Right(actual);
       if (actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt)) {
-        return const Left(FailureUbicacionCambio());
+        return const Left(FailureReactivacionCambioReciente());
       }
-
-      final existe = await _catalogo.existe(actual.ciudadId);
-      final falla = existe.fold<Failure?>(
-        (f) => f,
-        (esta) => esta ? null : const FailureCiudadFueraDeCatalogo(),
-      );
-      if (falla != null) return Left(falla);
 
       final reactivada = await _repository.cambiarBaja(
         id,

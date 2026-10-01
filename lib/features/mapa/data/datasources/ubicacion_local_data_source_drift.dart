@@ -136,7 +136,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         ubicaciones,
       )..where((u) => u.id.equals(conservadaId))).getSingleOrNull();
       if (conservada == null) throw const UbicacionInexistenteException();
-      if (conservada.deletedAt != null) throw const UbicacionCambioException();
+      if (conservada.deletedAt != null) throw const ConservadaDeBajaException();
     }
     // Ya está como se pide (dos toques que se pisaron: el primero ganó la transacción). Antes del
     // CAS, porque el primero ya cambió `updated_at`.

@@ -451,15 +451,32 @@ final class FailureUbicacionCambio extends Failure {
       );
 }
 
-/// No se puede reactivar una ubicación cuya ciudad ya no está en el catálogo (HU-UBI-005, caso
-/// borde). Texto propio: la HU dice "bloquear y pedir actualización del catálogo", sin el aviso.
-final class FailureCiudadFueraDeCatalogo extends Failure {
-  const FailureCiudadFueraDeCatalogo()
+/// La ubicación cambió entre que se abrió y que se quiso darla de baja (HU-UBI-005): texto propio
+/// para la baja, no el de la edición ([FailureUbicacionCambio]).
+final class FailureBajaCambioReciente extends Failure {
+  const FailureBajaCambioReciente()
     : super(
-        mensaje:
-            'La ciudad de esta ubicación ya no está en el catálogo. Actualizá el catálogo antes de '
-            'reactivarla.',
-        codigo: 'UBI_CIUDAD_FUERA_DE_CATALOGO',
+        mensaje: 'Esta ubicación cambió recién. Abrila de nuevo y volvé a darla de baja.',
+        codigo: 'UBI_BAJA_CAMBIO_RECIENTE',
+      );
+}
+
+/// La ubicación cambió entre que "Ver bajas" la cargó y que se quiso reactivarla (HU-UBI-005).
+final class FailureReactivacionCambioReciente extends Failure {
+  const FailureReactivacionCambioReciente()
+    : super(
+        mensaje: 'Esta ubicación cambió recién. Abrila de nuevo y volvé a reactivarla.',
+        codigo: 'UBI_REACTIVACION_CAMBIO_RECIENTE',
+      );
+}
+
+/// Al marcar un duplicado, la ubicación que se conserva ya está dada de baja (HU-UBI-006): el par
+/// cambió desde que se mostró.
+final class FailureConservadaDeBaja extends Failure {
+  const FailureConservadaDeBaja()
+    : super(
+        mensaje: 'La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.',
+        codigo: 'UBI_CONSERVADA_DE_BAJA',
       );
 }
 
