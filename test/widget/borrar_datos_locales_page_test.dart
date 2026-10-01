@@ -52,6 +52,7 @@ final class _DatosFake implements DatosLocalesRepository {
   Completer<void>? demoraBorrado;
   int llamadasResumen = 0;
   final List<bool> borrados = [];
+  final List<bool> reintentos = [];
 
   @override
   Future<Either<Failure, ResumenDatosLocales>> resumen() async {
@@ -64,8 +65,10 @@ final class _DatosFake implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
     borrados.add(incluirBackupDrive);
+    reintentos.add(reintento);
     await demoraBorrado?.future;
     return respuestaBorrado;
   }
@@ -783,6 +786,25 @@ void main() {
       expect(_datos.borrados, [false]);
     });
 
+    testWidgets('el contador de intentos ilegible: falla cerrado, lo dice y deja reintentar', (
+      tester,
+    ) async {
+      _intentos.estado = const EstadoIntentosBorrado.ilegible();
+      await _montar(tester);
+      await _irAConfirmacion(tester);
+
+      expect(find.byKey(const Key('borrar_datos_error_requisitos')), findsOneWidget);
+      expect(find.text(const FailureIntentosBorradoIlegibles().mensaje), findsOneWidget);
+      expect(find.byKey(const Key('borrar_datos_confirmar')), findsNothing);
+      expect(_datos.borrados, isEmpty);
+
+      _intentos.estado = EstadoIntentosBorrado.limpio;
+      await _tocar(tester, _k('borrar_datos_reintentar_requisitos'));
+
+      expect(find.byKey(const Key('borrar_datos_error_requisitos')), findsNothing);
+      expect(find.byKey(const Key('borrar_datos_confirmar')), findsOneWidget);
+    });
+
     testWidgets('doble toque: mientras valida la contraseña no se entra de nuevo', (tester) async {
       await _montar(tester);
       await _irAConfirmacion(tester);
@@ -1038,6 +1060,71 @@ void main() {
       expect(_datos.borrados, [false, false]);
       expect(_datos.llamadasResumen, resumenesAntes);
       expect(_login, findsOneWidget);
+    });
+
+    testWidgets('falla a mitad + «Volver» + reentrar: sigue en terminar el borrado, sin trabarse '
+        'en «No se pudieron contar»', (tester) async {
+      _datos.respuestaBorrado = const Left(FailureInesperado());
+      final container = await _montar(tester);
+      await _borrarTodo(tester);
+      await _tocar(tester, _k('borrar_datos_volver_configuracion'));
+      expect(find.byType(ConfiguracionPage), findsOneWidget);
+
+      // Con la DB ya cerrada y el archivo sin borrar, contar daría «no se pudo»: no se vuelve a contar.
+      _datos.respuestas
+        ..clear()
+        ..add(Right(_res(pendientes: null)));
+      final resumenesAntes = _datos.llamadasResumen;
+      await _abrirBorrado(tester);
+
+      expect(find.byKey(const Key('borrar_datos_error')), findsOneWidget);
+      expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
+      expect(_datos.llamadasResumen, resumenesAntes);
+      expect(find.byKey(const Key('borrar_datos_error_resumen')), findsNothing);
+
+      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
+      await _tocar(tester, _k('borrar_datos_reintentar'));
+
+      expect(_datos.reintentos.last, isTrue, reason: 'es un reintento: termina lo que empezó');
+      expect(_login, findsOneWidget);
+      expect(container.read(borradoEmpezadoProvider), isNull, reason: 'ya no hay nada a medias');
+    });
+
+    testWidgets('si no pudo empezar, volver y reentrar vuelve a contar (no hay nada a medias)', (
+      tester,
+    ) async {
+      _datos.respuestas
+        ..clear()
+        ..addAll([Right(_res()), const Left(FailureDatosLocalesIlegibles()), Right(_res())]);
+      final container = await _montar(tester);
+      await _borrarTodo(tester);
+      expect(container.read(borradoEmpezadoProvider), isNull);
+      await _tocar(tester, _k('borrar_datos_volver_configuracion'));
+
+      await _abrirBorrado(tester);
+
+      expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
+    });
+
+    testWidgets('la carrera: el borrado se niega por una fila nueva y vuelve al bloqueo con '
+        'su aviso', (tester) async {
+      // El resumen y el control del caso de uso dan 0; la guarda del repositorio, pegada al cierre
+      // de la DB, ve la fila que entró en el medio.
+      _datos.respuestaBorrado = const Left(FailureBorradoConPendientes(pendientes: 1));
+      _datos.respuestas
+        ..clear()
+        ..addAll([Right(_res()), Right(_res()), Right(_res(pendientes: 1))]);
+      final container = await _montar(tester);
+
+      await _borrarTodo(tester);
+
+      expect(_datos.borrados, [false], reason: 'el repositorio fue el que se negó');
+      expect(container.read(sesionProvider).value, isNotNull);
+      expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
+      expect(find.text(TextosBorrado.pendientes(1)), findsOneWidget);
+      expect(find.text(const FailureBorradoConPendientes(pendientes: 1).mensaje), findsOneWidget);
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isFalse);
+      expect(container.read(borradoEmpezadoProvider), isNull);
     });
 
     testWidgets('«No se borró nada y tu sesión sigue abierta» solo cuando es cierto', (

@@ -543,6 +543,20 @@ final class FailureBorradoConPendientes extends Failure {
   List<Object?> get props => [...super.props, pendientes];
 }
 
+/// No se pudo leer, o el valor guardado está mal formado, el contador de intentos de contraseña del
+/// borrado de datos locales (vista 19). Falla cerrado: sin saber cuántos intentos van no se prueba
+/// la contraseña ni se borra. Se puede reintentar; nada se borró.
+final class FailureIntentosBorradoIlegibles extends Failure {
+  const FailureIntentosBorradoIlegibles()
+    : super(
+        mensaje:
+            'No pudimos revisar tus intentos anteriores, así que por seguridad no se puede '
+            'confirmar el borrado ahora. No se borró nada: reintentá en un momento o, si sigue '
+            'igual, cerrá y volvé a abrir la app.',
+        codigo: 'AUTH_INTENTOS_BORRADO_ILEGIBLES',
+      );
+}
+
 /// La contraseña de la confirmación final del borrado (HU-AUTH-010) no abre la DEK de este
 /// teléfono. [intentosRestantes] cuenta los que quedan antes de la espera (vista 19, artboard 05b).
 final class FailurePasswordBorradoIncorrecta extends Failure {

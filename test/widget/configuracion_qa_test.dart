@@ -42,6 +42,7 @@ final class _Datos implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
     borrados.add(incluirBackupDrive);
     return const Right(ResultadoBorradoDatosLocales.completo);

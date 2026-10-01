@@ -169,7 +169,7 @@ void main() {
       () async {
         when(datos.resumen).thenAnswer((_) async => Right(_conPendientes(null)));
         when(
-          () => datos.borrar(incluirBackupDrive: false),
+          () => datos.borrar(incluirBackupDrive: false, reintento: true),
         ).thenAnswer((_) async => const Right(ResultadoBorradoDatosLocales.completo));
 
         final r = await BorrarDatosLocalesUseCase(datos, auth)(
@@ -178,6 +178,29 @@ void main() {
 
         expect(r.isRight(), isTrue);
         verifyNever(datos.resumen);
+      },
+    );
+
+    test(
+      'la carrera: si el repositorio se niega por una fila nueva, no cierra la sesión',
+      () async {
+        // El control previo ve 0, pero entre ese conteo y el cierre de la DB entró una fila.
+        when(
+          () => datos.borrar(incluirBackupDrive: false),
+        ).thenAnswer((_) async => const Left(FailureBorradoConPendientes(pendientes: 1)));
+
+        final r = await BorrarDatosLocalesUseCase(datos, auth)(
+          const BorrarDatosLocalesParams(incluirBackupDrive: false),
+        );
+
+        expect(
+          r,
+          const Left<Failure, ResultadoBorradoDatosLocales>(
+            FailureBorradoConPendientes(pendientes: 1),
+          ),
+        );
+        verify(() => datos.borrar(incluirBackupDrive: false)).called(1);
+        verifyNever(auth.cerrarSesion);
       },
     );
 

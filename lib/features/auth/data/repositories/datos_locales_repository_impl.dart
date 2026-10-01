@@ -63,9 +63,20 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
-    // Lo que se pierde, solo para el log: la pantalla ya lo avisó y el usuario lo confirmó.
+    // La guarda: se cuenta acá, pegado al cierre de la DB, y no solo en el resumen que vio el
+    // usuario (puede haberse sumado una fila en el medio). Sin poder contar (`null`), tampoco.
     final pendientes = await _contarSinSincronizar();
+    if (!reintento && pendientes != 0) {
+      _log.warn(LogModulo.db, 'WIPE_RECHAZADO', 'hay trabajo sin sincronizar: no se borró nada', {
+        'pendientes': pendientes,
+      });
+      // Sin poder contar no se sabe si se pierde algo: "no se pudo revisar", no "hay pendientes".
+      return pendientes == null
+          ? const Left(FailureDatosLocalesIlegibles())
+          : Left(FailureBorradoConPendientes(pendientes: pendientes));
+    }
 
     // 1. Lo local. Cada paso tolera que lo suyo ya no esté, así que reintentar tras una falla a
     // mitad termina el trabajo: sin DB abierta `cerrar` no hace nada, sin archivo `borrar` tampoco,

@@ -1,6 +1,7 @@
 // HU-AUTH-010, vista 19: la contraseña de la confirmación final se valida en el teléfono, con 5
 // intentos y una espera de 5 minutos que sobrevive al cierre de la app.
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/reloj/reloj_monotono.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_intentos_borrado.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/intentos_borrado_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/verificar_password_borrado_use_case.dart';
@@ -148,6 +149,55 @@ void main() {
       final r = await useCase.requisitos();
 
       expect(r.isLeft(), isTrue);
+    });
+  });
+
+  group('falla cerrado cuando no se sabe cuántos intentos van', () {
+    test('contador ilegible: no prueba la contraseña, ni la correcta, y dice qué hacer', () async {
+      intentos.estado = const EstadoIntentosBorrado.ilegible();
+
+      final r = await probar('Secreto123');
+
+      expect(r, const Left<Failure, Unit>(FailureIntentosBorradoIlegibles()));
+      expect(db.entregadas, isEmpty, reason: 'no se llegó a desenvolver la DEK');
+      expect(
+        const FailureIntentosBorradoIlegibles().mensaje,
+        allOf(contains('No se borró nada'), contains('reintentá')),
+        reason: 'el aviso guía al usuario',
+      );
+    });
+
+    test('los requisitos tampoco se arman: sin saber los intentos no se confirma nada', () async {
+      intentos.estado = const EstadoIntentosBorrado.ilegible();
+
+      final r = await useCase.requisitos();
+
+      expect(r, const Left<Failure, RequisitosBorrado>(FailureIntentosBorradoIlegibles()));
+    });
+  });
+
+  group('con el reloj monótono (RelojMonotono)', () {
+    test('adelantar la hora del teléfono NO destraba la espera', () async {
+      var sistema = DateTime.utc(2026, 9, 30, 12);
+      var corrido = Duration.zero;
+      final reloj = RelojMonotono(sistema: () => sistema, transcurrido: () => corrido);
+      useCase = VerificarPasswordBorradoUseCase(db, intentos, reloj.ahora);
+      for (var i = 0; i < 5; i++) {
+        await probar('otra');
+      }
+      expect(intentos.estado.bloqueadoHasta, isNotNull);
+
+      // El colportor mueve el reloj del sistema 1 hora adelante: el cronómetro no se entera.
+      sistema = sistema.add(const Duration(hours: 1));
+      corrido += const Duration(minutes: 1);
+      final r = await probar('Secreto123');
+
+      expect(r.swap().getOrElse(() => throw StateError('Right')), isA<FailureBorradoBloqueado>());
+      expect(db.entregadas, isEmpty);
+
+      // Pasado el tiempo real, sí se destraba.
+      corrido += const Duration(minutes: 5);
+      expect(await probar('Secreto123'), const Right<Failure, Unit>(unit));
     });
   });
 }

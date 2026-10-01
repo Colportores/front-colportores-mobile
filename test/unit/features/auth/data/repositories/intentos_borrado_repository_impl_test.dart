@@ -44,22 +44,41 @@ void main() {
     expect(await repo.leer(), EstadoIntentosBorrado.limpio);
   });
 
-  test('un valor corrupto se lee como limpio, sin lanzar', () async {
-    await almacen.escribir(ClaveSegura.intentosBorrado, 'basura');
-    expect(await repo.leer(), EstadoIntentosBorrado.limpio);
+  test('un valor mal formado no resetea los intentos: falla cerrado (ilegible)', () async {
+    for (final basura in ['basura', 'x|', '-1|', '1|no-es-fecha']) {
+      await almacen.escribir(ClaveSegura.intentosBorrado, basura);
+      final reabierto = IntentosBorradoRepositoryImpl(almacen, logger: loggerMudo());
 
-    await almacen.escribir(ClaveSegura.intentosBorrado, 'x|');
-    expect(await repo.leer(), EstadoIntentosBorrado.limpio);
+      final estado = await reabierto.leer();
 
-    await almacen.escribir(ClaveSegura.intentosBorrado, '-1|');
-    expect(await repo.leer(), EstadoIntentosBorrado.limpio);
+      expect(estado.ilegible, isTrue, reason: basura);
+      expect(estado, isNot(EstadoIntentosBorrado.limpio));
+    }
   });
 
-  test('si el almacén falla, no lanza: lee limpio y escribir no hace nada', () async {
+  test('si el almacén no se lee, falla cerrado (ilegible) y no lanza', () async {
     almacen.simularFalla = true;
 
-    expect(await repo.leer(), EstadoIntentosBorrado.limpio);
-    await expectLater(repo.guardar(EstadoIntentosBorrado(fallidos: 1)), completes);
+    expect((await repo.leer()).ilegible, isTrue);
     await expectLater(repo.limpiar(), completes);
+  });
+
+  test('si el almacén no deja escribir, el intento igual cuenta en esta corrida', () async {
+    almacen.simularFalla = true;
+
+    await expectLater(repo.guardar(EstadoIntentosBorrado(fallidos: 2)), completes);
+
+    final estado = await repo.leer();
+    expect(estado.ilegible, isFalse);
+    expect(estado.fallidos, 2);
+  });
+
+  test('limpiar con el almacén roto igual deja el contador limpio en esta corrida', () async {
+    await repo.guardar(EstadoIntentosBorrado(fallidos: 3));
+    almacen.simularFalla = true;
+
+    await repo.limpiar();
+
+    expect(await repo.leer(), EstadoIntentosBorrado.limpio);
   });
 }

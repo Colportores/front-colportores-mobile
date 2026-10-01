@@ -137,6 +137,16 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
   @override
   void initState() {
     super.initState();
+    // Un borrado que ya empezó y falló a mitad (el usuario tocó «Volver» y reentró): la DB puede
+    // estar cerrada y el conteo daría «no se pudo contar» sin salida. Se sigue en «terminar el
+    // borrado», que es idempotente.
+    final empezado = ref.read(borradoEmpezadoProvider);
+    if (empezado != null) {
+      _yaEmpezo = true;
+      _incluirDrive = empezado.incluirBackupDrive;
+      _fase = _Fase.error;
+      return;
+    }
     unawaited(_cargar());
   }
 
@@ -206,12 +216,22 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
         if (falla is FailureBorradoConPendientes) {
           // Se sumó una operación entre el resumen y la confirmación: no se borró nada. Vuelve al
           // resumen, ya con el conteo nuevo y el bloqueo.
-          setState(() => _fase = _Fase.resumen);
+          setState(() {
+            _fase = _Fase.resumen;
+            _avisoSincronizacion = falla.mensaje;
+          });
           unawaited(_cargar());
           return;
         }
         // Solo se promete que no se borró nada si no pudo empezar: la guarda del caso de uso.
         final nadaEmpezo = !_yaEmpezo && falla is FailureDatosLocalesIlegibles;
+        // Que sobreviva a salir de la pantalla: al reentrar no hay que volver a contar.
+        final empezado = ref.read(borradoEmpezadoProvider.notifier);
+        if (nadaEmpezo) {
+          empezado.limpiar();
+        } else {
+          empezado.marcar(incluirBackupDrive: _incluirDrive);
+        }
         setState(() {
           _fase = _Fase.error;
           _yaEmpezo = !nadaEmpezo;
@@ -221,6 +241,8 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
         });
       },
       (r) {
+        // Lo local terminó de borrarse: ya no hay un borrado a medias que retomar.
+        ref.read(borradoEmpezadoProvider.notifier).limpiar();
         // Si la jornada quedó en memoria (sin DB abierta, ver `jornadaLocalDataSourceProvider`),
         // sin esto el próximo login mostraría datos que la pantalla acaba de decir que se
         // borraron. Con la DB, borrarla ya se los llevó. Después del frame: en este, la pantalla de

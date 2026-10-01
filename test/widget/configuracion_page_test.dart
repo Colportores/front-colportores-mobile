@@ -55,6 +55,7 @@ final class _DatosLocalesFake implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
     await demoraBorrado?.future;
     borrados.add(incluirBackupDrive);

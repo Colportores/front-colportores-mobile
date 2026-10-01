@@ -45,8 +45,13 @@ final class RequisitosBorrado extends Equatable {
 /// - `Left(FailureBorradoBloqueado)`: hay espera en curso (**no** se prueba la contraseña) o se
 ///   acaba de agotar el último intento.
 /// - `Left(FailurePasswordBorradoIncorrecta)`: no abre; cuenta un intento.
+/// - `Left(FailureIntentosBorradoIlegibles)`: el contador de intentos no se pudo leer o está mal
+///   formado. Falla cerrado: no se prueba la contraseña.
 /// - Cualquier otra falla (almacén ilegible, sin envoltorio) sale tal cual y **no** cuenta: no es
 ///   culpa de la contraseña.
+///
+/// El reloj [_ahora] tiene que ser monótono (`RelojMonotono`): con el del sistema, adelantar la
+/// hora del teléfono destrabaría la espera.
 final class VerificarPasswordBorradoUseCase
     implements UseCase<Unit, VerificarPasswordBorradoParams> {
   const VerificarPasswordBorradoUseCase(this._db, this._intentos, this._ahora);
@@ -64,9 +69,10 @@ final class VerificarPasswordBorradoUseCase
     final estado = await _db.estado();
     if (estado case Left(value: final falla)) return Left(falla);
     final e = (estado as Right<Failure, EstadoDbLocal>).value;
-    return Right(
-      RequisitosBorrado(pidePassword: e.envoltorioExiste, estadoIntentos: await _vigente()),
-    );
+    final intentos = await _vigente();
+    // Sin saber cuántos intentos van no se puede confirmar nada: falla cerrado.
+    if (intentos.ilegible) return const Left(FailureIntentosBorradoIlegibles());
+    return Right(RequisitosBorrado(pidePassword: e.envoltorioExiste, estadoIntentos: intentos));
   }
 
   /// El estado guardado, con la espera ya vencida dada de baja.
@@ -87,6 +93,7 @@ final class VerificarPasswordBorradoUseCase
     }
 
     final estado = await _vigente();
+    if (estado.ilegible) return const Left(FailureIntentosBorradoIlegibles());
     final hasta = estado.bloqueadoHasta;
     if (hasta != null) return Left(FailureBorradoBloqueado(hasta: hasta));
 

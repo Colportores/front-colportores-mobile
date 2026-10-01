@@ -74,7 +74,10 @@ final class BorrarDatosLocalesUseCase
     }
 
     params.alAvanzar?.call(PasoBorrado.borrandoDatos);
-    final borrado = await _datosLocales.borrar(incluirBackupDrive: params.incluirBackupDrive);
+    final borrado = await _datosLocales.borrar(
+      incluirBackupDrive: params.incluirBackupDrive,
+      reintento: params.reintento,
+    );
     if (borrado.isLeft()) return borrado;
 
     params.alAvanzar?.call(PasoBorrado.cerrandoSesion);
