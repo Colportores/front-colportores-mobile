@@ -188,7 +188,14 @@ class SesionNotifier extends _$SesionNotifier {
   /// Si el use case **lanza** (no debería: el repositorio traduce todo a `Failure`), la DB se cierra
   /// igual, el estado se resetea y la excepción se propaga: deslogueado en pantalla con la DB
   /// abierta y la clave viva sería peor.
-  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion() async {
+  ///
+  /// [avisarCierreSinConexion]: con `true`, si la revocación quedó pendiente (sin red) deja el aviso
+  /// «Cerraste sesión…» en el login. Solo lo pide el cierre que el colportor inicia desde
+  /// Configuración: otros flujos que cierran la sesión (recuperación de contraseña, preparación de
+  /// la DB) tienen su propia pantalla y ese aviso no les corresponde.
+  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion({
+    bool avisarCierreSinConexion = false,
+  }) async {
     final Either<Failure, ResultadoCierreSesion> resultado;
     try {
       resultado = await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
@@ -207,8 +214,10 @@ class SesionNotifier extends _$SesionNotifier {
 
     if (resultado.isRight()) {
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
-      if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
-        ref.read(avisoSesionProvider.notifier).mostrar(const FailureCierreSesionSinConexion());
+      if (avisarCierreSinConexion) {
+        if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
+          ref.read(avisoSesionProvider.notifier).mostrar(const FailureCierreSesionSinConexion());
+        }
       }
       await _cerrarDbYSesion();
     }

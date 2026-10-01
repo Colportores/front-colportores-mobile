@@ -11,8 +11,11 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/estado_cuenta_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/cerrar_sesion_use_case.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
@@ -24,6 +27,7 @@ import 'package:colportores_mobile/features/configuracion/presentation/widgets/h
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -159,6 +163,17 @@ Future<void> _llegarAlDialogoFinal(WidgetTester tester) async {
   await _abrirBorrado(tester);
   await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
   await _tocar(tester, find.byKey(const Key('borrar_datos_continuar')));
+}
+
+/// Repositorio cuyo cierre de sesión lanza: el `SesionNotifier` igual cierra la DB y resetea la
+/// sesión. Lo demás no se usa en estos tests.
+final class _RepoQueLanzaAlCerrar implements AuthRepository {
+  @override
+  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion() async =>
+      throw StateError('falla inesperada');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
 Finder get _login => find.byKey(const Key('login_enviar'));
@@ -676,6 +691,29 @@ void main() {
         expect(find.byKey(const Key('configuracion_error_cierre')), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(find.byKey(const Key('configuracion_reintentar')), findsOneWidget);
+      });
+
+      testWidgets('si el cierre lanza pero la sesión ya quedó cerrada, no muestra un error falso', (
+        tester,
+      ) async {
+        final container = await _montar(
+          tester,
+          extras: [
+            cerrarSesionUseCaseProvider.overrideWithValue(
+              CerrarSesionUseCase(_RepoQueLanzaAlCerrar()),
+            ),
+          ],
+        );
+        await abrirHoja(tester);
+
+        await confirmar(tester);
+        await tester.pumpAndSettle();
+
+        expect(container.read(sesionProvider).value, isNull);
+        expect(_login, findsOneWidget);
+        expect(find.byKey(const Key('configuracion_error_cierre')), findsNothing);
+        expect(find.text('No pudimos cerrar la sesión. Probá de nuevo.'), findsNothing);
+        expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
       });
 
       testWidgets('volver con la hoja abierta la cierra sin cerrar la sesión', (tester) async {
@@ -1262,6 +1300,28 @@ void main() {
       await _llegarAlDialogoFinal(tester);
       expect(tester.takeException(), isNull);
       expect(find.text(TextosBorrado.borrarDrive), findsOneWidget);
+    });
+
+    testWidgets('a 360 px y texto 2.0 el título no se parte y el correo se corta en «@» y «.»', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 740));
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _montar(tester);
+
+      final titulo = tester.renderObject<RenderParagraph>(find.text('Configuración'));
+      final cajas = titulo.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: titulo.text.toPlainText().length),
+      );
+      expect(cajas, hasLength(1), reason: 'una sola línea: encoge en vez de partirse');
+      final caja = find.ancestor(of: find.text('Configuración'), matching: find.byType(FittedBox));
+      expect(tester.getRect(caja.first).right, lessThanOrEqualTo(360));
+
+      final correo = find.byKey(const Key('configuracion_email'));
+      expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
+      expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('el resumen de borrado con operaciones pendientes cumple las guías', (
