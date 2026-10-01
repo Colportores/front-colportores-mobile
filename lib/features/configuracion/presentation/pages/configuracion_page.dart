@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../auth/domain/entities/resultado_cierre_sesion.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
@@ -56,7 +59,18 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
       context,
       pendientes: pendientes,
       cerrar: () async {
-        final resultado = await ref.read(sesionProvider.notifier).cerrarSesion();
+        final Either<Failure, ResultadoCierreSesion> resultado;
+        try {
+          resultado = await ref
+              .read(sesionProvider.notifier)
+              .cerrarSesion(avisarCierreSinConexion: true);
+        } on Object {
+          // Si el cierre lanzó pero la sesión ya quedó cerrada (el notifier la resetea igual), no
+          // hay error que mostrar: el colportor salió. Con la sesión todavía abierta sí es un error.
+          if (ref.read(sesionProvider).value != null) return false;
+          navigator.popUntil((route) => route.isFirst);
+          return true;
+        }
         if (resultado.isLeft()) return false;
         // La raíz ya muestra el login (la sesión es `null`); solo queda sacar esta pantalla.
         // Idempotente: si la raíz ya vació la pila (aviso de cierre sin conexión), no hace nada.
@@ -118,9 +132,15 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
                             const SizedBox(height: 8),
                             Semantics(
                               header: true,
-                              child: Text(
-                                'Configuración',
-                                style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                              // A texto grande el título encoge en vez de partirse a mitad de palabra.
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Configuración',
+                                  maxLines: 1,
+                                  style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -280,12 +300,9 @@ class _FilaCuenta extends StatelessWidget {
       subtitle: conNombre
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Sesión iniciada como'),
-                Text(email, key: const Key('configuracion_email')),
-              ],
+              children: [const Text('Sesión iniciada como'), _CorreoQueSeParte(email)],
             )
-          : Text(email, key: const Key('configuracion_email')),
+          : _CorreoQueSeParte(email),
     );
   }
 }
@@ -320,6 +337,43 @@ class _Tarjeta extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(children: children),
+    );
+  }
+}
+
+/// El correo se lee a su tamaño, nunca encogido: si no entra en una línea se parte después de «@» y
+/// de cada «.», sin límite de líneas ni elipsis. Lo anunciado es el correo completo.
+class _CorreoQueSeParte extends StatelessWidget {
+  const _CorreoQueSeParte(this.email);
+
+  final String email;
+
+  static const _corteSuave = '\u200B';
+
+  @override
+  Widget build(BuildContext context) {
+    final estilo = DefaultTextStyle.of(context).style;
+    final escala = MediaQuery.textScalerOf(context);
+    final direccion = Directionality.of(context);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final medido = TextPainter(
+          text: TextSpan(text: email, style: estilo),
+          textScaler: escala,
+          textDirection: direccion,
+          maxLines: 1,
+        )..layout();
+        final entra = medido.width <= c.maxWidth;
+        medido.dispose();
+        final texto = entra
+            ? email
+            : email.replaceAllMapped(RegExp(r'[@.]'), (m) => '${m[0]}$_corteSuave');
+        return Semantics(
+          label: email,
+          excludeSemantics: true,
+          child: Text(texto, key: const Key('configuracion_email')),
+        );
+      },
     );
   }
 }
