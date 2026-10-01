@@ -7,15 +7,16 @@ import '../entities/resumen_datos_locales.dart';
 /// todo: para contarlos antes de cerrar sesión (HU-AUTH-006) y para borrarlos (HU-AUTH-010).
 abstract interface class DatosLocalesRepository {
   /// Cantidades de lo guardado en el teléfono. Si lo pendiente no se puede contar, llega como
-  /// `null` en [ResumenDatosLocales.operacionesSinSincronizar] (no es un `Left`: igual se puede
-  /// borrar). `Left` solo ante una falla inesperada.
+  /// `null` en [ResumenDatosLocales.operacionesSinSincronizar] (no es un `Left`: la pantalla lo
+  /// trata como "posiblemente pendiente" y bloquea el borrado). `Left` solo ante una falla
+  /// inesperada.
   Future<Either<Failure, ResumenDatosLocales>> resumen();
 
   /// Borra la DB local (sobrescritura con ceros + borrado), la sal y la marca de inicialización
   /// del almacén seguro, las cachés y, si [incluirBackupDrive], el backup en Drive.
   ///
-  /// Borra aunque haya operaciones sin sincronizar (decisión de Cristian en #66: es el objetivo de
-  /// la HU; la pantalla ya lo avisó y pidió confirmarlo). Es idempotente: si falla a mitad,
+  /// Borra lo que haya: quien lo llama (`BorrarDatosLocalesUseCase`) es el que se niega si quedan
+  /// operaciones sin sincronizar. Es idempotente: si falla a mitad,
   /// reintentar termina el trabajo sin restos. Una falla de Drive no revierte lo local.
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({required bool incluirBackupDrive});
 }

@@ -35,7 +35,12 @@ enum ClaveSegura {
 
   /// El instante más alto que vio la app (ISO 8601, UTC): la ventana de la sesión no se mide con
   /// un reloj que vuelve atrás (HU-AUTH-007, `RelojSesionEnAlmacen`).
-  relojSesion('session_clock');
+  relojSesion('session_clock'),
+
+  /// Intentos fallidos de contraseña en la confirmación final del borrado de datos locales
+  /// (HU-AUTH-010, vista 19) y hasta cuándo dura la espera, como `<fallidos>|<ISO 8601 UTC o vacío>`.
+  /// No es secreto: vive acá para que cerrar la app no reinicie la espera.
+  intentosBorrado('wipe_attempts');
 
   const ClaveSegura(this.id);
 

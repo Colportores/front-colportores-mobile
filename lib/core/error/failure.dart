@@ -521,3 +521,64 @@ final class FailureUbicacionAjenaFueraDeZona extends Failure {
         codigo: 'UBI_AJENA_FUERA_DE_ZONA',
       );
 }
+
+/// El borrado de datos locales (HU-AUTH-010) no se hizo porque, al ejecutarse, había operaciones
+/// sin sincronizar (o no se pudieron contar): borrar las perdería. No se tocó nada. [pendientes] es
+/// `null` si no se pudieron contar.
+///
+/// Es la guarda del caso de uso: la pantalla ya bloquea "Continuar" con pendientes, pero se puede
+/// sumar una operación entre el resumen y la confirmación (vista 19, #228).
+final class FailureBorradoConPendientes extends Failure {
+  const FailureBorradoConPendientes({this.pendientes})
+    : super(
+        mensaje:
+            'Apareció trabajo sin sincronizar y no se borró nada. Sincronizalo antes de borrar '
+            'los datos de este teléfono.',
+        codigo: 'AUTH_BORRADO_CON_PENDIENTES',
+      );
+
+  final int? pendientes;
+
+  @override
+  List<Object?> get props => [...super.props, pendientes];
+}
+
+/// La contraseña de la confirmación final del borrado (HU-AUTH-010) no abre la DEK de este
+/// teléfono. [intentosRestantes] cuenta los que quedan antes de la espera (vista 19, artboard 05b).
+final class FailurePasswordBorradoIncorrecta extends Failure {
+  const FailurePasswordBorradoIncorrecta({required this.intentosRestantes})
+    : super(mensaje: 'Contraseña incorrecta.', codigo: 'AUTH_BORRADO_PASSWORD_INCORRECTA');
+
+  final int intentosRestantes;
+
+  @override
+  List<Object?> get props => [...super.props, intentosRestantes];
+}
+
+/// Se agotaron los intentos de contraseña de la confirmación final del borrado: no se puede
+/// volver a intentar hasta [hasta] (5 intentos, 5 minutos de espera; vista 19).
+final class FailureBorradoBloqueado extends Failure {
+  FailureBorradoBloqueado({required DateTime hasta})
+    : hasta = hasta.toUtc(),
+      super(
+        mensaje: 'Demasiados intentos. Probá nuevamente en 5 minutos.',
+        codigo: 'AUTH_BORRADO_BLOQUEADO',
+      );
+
+  final DateTime hasta;
+
+  @override
+  List<Object?> get props => [...super.props, hasta];
+}
+
+/// "Sincronizar ahora" no pudo correr porque el motor de sync todavía no está en la app (ADR-007,
+/// #178 / #182). Provisoria: se reemplaza al conectar el motor.
+final class FailureSincronizacionNoDisponible extends Failure {
+  const FailureSincronizacionNoDisponible()
+    : super(
+        mensaje:
+            'Todavía no se puede sincronizar desde acá. Cuando esté disponible, vas a poder '
+            'subir tus operaciones y borrar los datos.',
+        codigo: 'SYNC_NO_DISPONIBLE',
+      );
+}

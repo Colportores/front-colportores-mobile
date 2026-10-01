@@ -18,6 +18,20 @@ class _MockAuthRepository extends Mock implements AuthRepository {}
 
 class _MockDatosLocalesRepository extends Mock implements DatosLocalesRepository {}
 
+const _sinPendientes = ResumenDatosLocales(
+  personas: 1,
+  visitas: 2,
+  operacionesSinSincronizar: 0,
+  hayBackupEnDrive: false,
+);
+
+ResumenDatosLocales _conPendientes(int? n) => ResumenDatosLocales(
+  personas: 1,
+  visitas: 2,
+  operacionesSinSincronizar: n,
+  hayBackupEnDrive: false,
+);
+
 void main() {
   late _MockAuthRepository auth;
   late _MockDatosLocalesRepository datos;
@@ -28,6 +42,7 @@ void main() {
     when(
       auth.cerrarSesion,
     ).thenAnswer((_) async => const Right(ResultadoCierreSesion.revocacionPendiente));
+    when(datos.resumen).thenAnswer((_) async => const Right(_sinPendientes));
   });
 
   test('CerrarSesionUseCase delega en el repositorio', () async {
@@ -102,6 +117,94 @@ void main() {
       );
 
       expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureInesperado()));
+    });
+
+    test(
+      'si hay operaciones sin sincronizar, no borra nada ni cierra la sesión (vista 19)',
+      () async {
+        when(datos.resumen).thenAnswer((_) async => Right(_conPendientes(3)));
+
+        final r = await BorrarDatosLocalesUseCase(datos, auth)(
+          const BorrarDatosLocalesParams(incluirBackupDrive: true),
+        );
+
+        expect(
+          r,
+          const Left<Failure, ResultadoBorradoDatosLocales>(
+            FailureBorradoConPendientes(pendientes: 3),
+          ),
+        );
+        verifyNever(() => datos.borrar(incluirBackupDrive: any(named: 'incluirBackupDrive')));
+        verifyNever(auth.cerrarSesion);
+      },
+    );
+
+    test(
+      'si no se pudieron contar, también se niega: sin saber si se pierde algo, no borra',
+      () async {
+        when(datos.resumen).thenAnswer((_) async => Right(_conPendientes(null)));
+
+        final r = await BorrarDatosLocalesUseCase(datos, auth)(
+          const BorrarDatosLocalesParams(incluirBackupDrive: false),
+        );
+
+        expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureBorradoConPendientes()));
+        verifyNever(() => datos.borrar(incluirBackupDrive: any(named: 'incluirBackupDrive')));
+      },
+    );
+
+    test('si el resumen falla, no borra y devuelve esa falla', () async {
+      when(datos.resumen).thenAnswer((_) async => const Left(FailureDatosLocalesIlegibles()));
+
+      final r = await BorrarDatosLocalesUseCase(datos, auth)(
+        const BorrarDatosLocalesParams(incluirBackupDrive: false),
+      );
+
+      expect(r, const Left<Failure, ResultadoBorradoDatosLocales>(FailureDatosLocalesIlegibles()));
+      verifyNever(() => datos.borrar(incluirBackupDrive: any(named: 'incluirBackupDrive')));
+    });
+
+    test(
+      'el reintento de un borrado que falló a mitad no vuelve a contar: termina el trabajo',
+      () async {
+        when(datos.resumen).thenAnswer((_) async => Right(_conPendientes(null)));
+        when(
+          () => datos.borrar(incluirBackupDrive: false),
+        ).thenAnswer((_) async => const Right(ResultadoBorradoDatosLocales.completo));
+
+        final r = await BorrarDatosLocalesUseCase(datos, auth)(
+          const BorrarDatosLocalesParams(incluirBackupDrive: false, reintento: true),
+        );
+
+        expect(r.isRight(), isTrue);
+        verifyNever(datos.resumen);
+      },
+    );
+
+    test('avisa las etapas en orden: primero los datos, después la sesión', () async {
+      when(
+        () => datos.borrar(incluirBackupDrive: false),
+      ).thenAnswer((_) async => const Right(ResultadoBorradoDatosLocales.completo));
+      final pasos = <PasoBorrado>[];
+
+      await BorrarDatosLocalesUseCase(datos, auth)(
+        BorrarDatosLocalesParams(incluirBackupDrive: false, alAvanzar: pasos.add),
+      );
+
+      expect(pasos, [PasoBorrado.borrandoDatos, PasoBorrado.cerrandoSesion]);
+    });
+
+    test('si el borrado falla, no avisa la etapa de la sesión', () async {
+      when(
+        () => datos.borrar(incluirBackupDrive: false),
+      ).thenAnswer((_) async => const Left(FailureInesperado()));
+      final pasos = <PasoBorrado>[];
+
+      await BorrarDatosLocalesUseCase(datos, auth)(
+        BorrarDatosLocalesParams(incluirBackupDrive: false, alAvanzar: pasos.add),
+      );
+
+      expect(pasos, [PasoBorrado.borrandoDatos]);
     });
 
     test('los params se comparan por valor', () {

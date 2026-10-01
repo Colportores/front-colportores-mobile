@@ -24,8 +24,8 @@ import '../datasources/backup_drive_data_source.dart';
 ///   ninguna en el teléfono.
 ///
 /// Sin el archivo de la DB no hay nada que perder (cero de todo). Con el archivo pero sin la DB
-/// abierta no se puede contar: el conteo llega como `null` y el borrado igual se puede hacer
-/// (decisión de Cristian en #66), avisando que no se sabe cuánto se pierde.
+/// abierta no se puede contar: el conteo llega como `null` y la pantalla **bloquea** el borrado
+/// hasta poder contar (decisión de Cristian del 29/09, vista 19).
 final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   DatosLocalesRepositoryImpl(
     this._helper,
