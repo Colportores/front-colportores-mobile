@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/error/failure.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
 import 'features/auth/domain/entities/estado_cuenta.dart';
 import 'features/auth/domain/entities/sesion.dart';
@@ -16,6 +17,7 @@ import 'features/auth/presentation/pages/preparacion_db_local_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/aviso_sesion_notifier.dart';
+import 'features/auth/presentation/providers/enlace_verificacion_usado_providers.dart';
 import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
@@ -44,7 +46,7 @@ class ColportoresApp extends ConsumerWidget {
     // suscribe una sola vez por vida de la app (`ColportoresApp` es la raíz, siempre montada).
     ref.listen(erroresVerificacionEmailProvider, (previous, next) {
       if (next is! AsyncData<EventoVerificacionEmail>) return;
-      unawaited(_llevarAVerificacionSiNoHaySesion(context, ref));
+      unawaited(_resolverEnlaceUsado(context, ref));
     });
 
     // HU-AUTH-002 (issue #84): simétrico al listener de arriba, para el caso de éxito — el
@@ -91,34 +93,33 @@ class ColportoresApp extends ConsumerWidget {
   }
 }
 
-/// Decide si hay que llevar al usuario a [VerificacionEmailPage] en estado expirado, con el mismo
-/// criterio que `home:` en [ColportoresApp.build] usa para elegir entre [LoginPage] e
-/// [InicioPage]: sesión → no corresponde (es un enlace viejo de un mail anterior); sin sesión →
-/// sí. La diferencia con leer `sesion.value` directamente (bug de la ronda anterior) es esperar a
-/// que `sesionProvider` termine de resolver: en un arranque en frío desde el enlace, Supabase ya
-/// procesó el deep link durante `Supabase.initialize()` (antes de `runApp`), pero
-/// `sesionActual()` hace I/O real (local y, si hace falta, de red) y puede seguir en
-/// `AsyncLoading` cuando este evento llega — navegar en ese momento es el bug original: la sesión
-/// existe, solo que todavía no terminó de leerse.
-Future<void> _llevarAVerificacionSiNoHaySesion(BuildContext context, WidgetRef ref) async {
-  bool haySesion;
-  try {
-    haySesion = await ref.read(sesionProvider.future) != null;
-  } on Object {
-    // Mismo criterio que `home:` ante un error de sesión (`error: (_, _) => LoginPage()`): se
-    // trata como si no hubiera sesión.
-    haySesion = false;
-  }
-  if (haySesion) return;
-  if (!context.mounted) return;
-  _navegarAVerificacion(context, EstadoVerificacionEmail.expirado);
+/// Un enlace de verificación llegó con `otp_expired` (Supabase no distingue «vencido» de «ya
+/// usado»): decide qué mostrar según HU-AUTH-002 («"Vencido" vs "ya usado"») y navega.
+///
+/// Espera a que `sesionProvider` termine de resolver: en un arranque en frío desde el enlace,
+/// Supabase ya procesó el deep link durante `Supabase.initialize()` (antes de `runApp`), pero
+/// `sesionActual()` hace I/O real y puede seguir en `AsyncLoading` cuando este evento llega —
+/// decidir en ese momento daría «no hay sesión» cuando la hay, solo que todavía no terminó de
+/// leerse.
+Future<void> _resolverEnlaceUsado(BuildContext context, WidgetRef ref) async {
+  final resuelto = await ref.read(resolutorEnlaceVerificacionUsadoProvider.notifier).resolver();
+  if (resuelto == null || !context.mounted) return;
+  _navegarAVerificacion(context, switch (resuelto.destino) {
+    DestinoEnlaceVerificacionUsado.yaVerificado => EstadoVerificacionEmail.yaVerificado,
+    DestinoEnlaceVerificacionUsado.expirado => EstadoVerificacionEmail.expirado,
+    DestinoEnlaceVerificacionUsado.noSabemos => EstadoVerificacionEmail.enlaceInutil,
+  }, email: resuelto.email);
 }
 
 /// Lleva a [VerificacionEmailPage] en [estadoInicial], vaciando la pila hasta la raíz primero —
 /// compartido por los dos listeners globales de deep link de verificación (error arriba, éxito en
 /// [ColportoresApp.build]): en los dos casos la pantalla puede tener que aparecer encima de
 /// cualquier otra que estuviera mostrándose (o de ninguna, en un arranque en frío).
-void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoInicial) {
+void _navegarAVerificacion(
+  BuildContext context,
+  EstadoVerificacionEmail estadoInicial, {
+  String email = '',
+}) {
   if (!context.mounted) return;
 
   final navigator = navigatorKeyColportores.currentState;
@@ -126,7 +127,9 @@ void _navegarAVerificacion(BuildContext context, EstadoVerificacionEmail estadoI
   navigator.popUntil((route) => route.isFirst);
   unawaited(
     navigator.push(
-      MaterialPageRoute<void>(builder: (_) => VerificacionEmailPage(estadoInicial: estadoInicial)),
+      MaterialPageRoute<void>(
+        builder: (_) => VerificacionEmailPage(email: email, estadoInicial: estadoInicial),
+      ),
     ),
   );
 }

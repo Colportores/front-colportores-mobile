@@ -181,11 +181,7 @@ void main() {
     testWidgets('cuando el email no está confirmado, muestra el aviso de verificar', (
       tester,
     ) async {
-      final remote = _RemoteQueLanzaAlIniciar(
-        const ServidorException(
-          mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
-        ),
-      );
+      final remote = _RemoteQueLanzaAlIniciar(const EmailNoConfirmadoException());
       await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
 

@@ -571,14 +571,7 @@ void main() {
           email: 'bruno@example.com',
           password: 'Secreto123',
         );
-        expect(
-          antes,
-          const Left<Failure, Sesion>(
-            FailureServidor(
-              mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
-            ),
-          ),
-        );
+        expect(antes, const Left<Failure, Sesion>(FailureEmailNoVerificado()));
 
         remotePendiente.confirmarEmail('bruno@example.com');
 
