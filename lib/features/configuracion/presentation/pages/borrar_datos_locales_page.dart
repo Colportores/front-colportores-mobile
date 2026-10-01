@@ -8,17 +8,23 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../../auth/domain/entities/resumen_datos_locales.dart';
+import '../../../auth/domain/usecases/borrar_datos_locales_use_case.dart' show PasoBorrado;
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../auth/presentation/providers/borrado_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
 import '../../../jornada/presentation/providers/jornada_providers.dart';
+import '../widgets/confirmacion_final_borrado.dart';
+import '../widgets/progreso_borrado.dart';
+import '../widgets/resumen_borrado.dart';
 import 'configuracion_page.dart' show colorEncabezado;
 
-/// Configuración → Privacidad y datos → "Borrar datos locales" (HU-AUTH-010).
+/// Configuración → Privacidad y datos → "Borrar datos locales" (HU-AUTH-010, vista 19).
 ///
-/// Doble confirmación obligatoria: esta pantalla con el resumen y el checkbox, y después el
-/// diálogo final. Si hay operaciones sin sincronizar (o no se pudieron contar) el borrado se
-/// puede hacer igual —decisión de Cristian en #66—, pero antes se avisa cuántas se pierden y se
-/// pide confirmarlo con un checkbox aparte.
+/// Es el único flujo donde el colportor borra a propósito los datos del teléfono, así que **no
+/// deja perder nada sin avisar**: con operaciones sin sincronizar (o sin poder contarlas) bloquea
+/// el borrado y ofrece sincronizar. Después, dos casillas, una confirmación final a pantalla
+/// completa (frase y contraseña) y el borrado con sus pasos. Si algo falla, lo dice con lo que
+/// pasó de verdad: qué se borró y qué no.
 class BorrarDatosLocalesPage extends ConsumerStatefulWidget {
   const BorrarDatosLocalesPage({super.key});
 
@@ -29,239 +35,333 @@ class BorrarDatosLocalesPage extends ConsumerStatefulWidget {
   ConsumerState<BorrarDatosLocalesPage> createState() => _BorrarDatosLocalesPageState();
 }
 
-/// Textos literales de HU-AUTH-010 (criterios de aceptación y aclaración de ADR-005) y avisos.
+/// Textos literales de HU-AUTH-010 y de la vista 19 (los marcados «propuesta» no están en la HU ni
+/// en el canvas: se confirman con Cristian).
 abstract final class TextosBorrado {
   static const explicacion =
       'Borraremos todos los datos que tengas en este dispositivo y cerraremos tu sesión. Tu '
       'cuenta seguirá existiendo en nuestro sistema (puede ser reactivada si te asignan a una '
       'campaña nueva). Si querés eliminar definitivamente tu cuenta, contactá a tu coordinador '
       'para una baja administrativa.';
+  static const encabezadoResumen = 'Esto se borra de este teléfono y no se puede deshacer:';
   static const datosDelSistema =
       'Los datos del sistema (estado de las ubicaciones, estadísticas) no se borran con esta '
       'acción.';
   static const limiteBorrado =
       'El archivo se pisa con ceros antes de borrarse. En la memoria del teléfono eso no garantiza '
       'que desaparezca físicamente; lo que sí lo protege es que siempre estuvo cifrado.';
-  static const checkbox = 'Entiendo que se van a borrar todos los datos de este teléfono.';
+  static const casillaSoloEsteTelefono =
+      'Entiendo que solo se borran los datos de este teléfono. Mi coordinador conserva mis ventas.';
+  static const casillaIrreversible = 'Entiendo que no se puede deshacer.';
+  static const faltanCasillas = 'Marcá las dos casillas para continuar.';
+
+  /// Aviso de lo que bloquea el borrado (artboard 02).
+  static String pendientes(int n) => n == 1
+      ? 'Tenés 1 operación sin sincronizar. Sincronizala antes de borrar los datos de este '
+            'teléfono.'
+      : 'Tenés $n operaciones sin sincronizar. Sincronizalas antes de borrar los datos de este '
+            'teléfono.';
+  static const leyendaBloqueo = '“Continuar” se habilita cuando no quedan operaciones pendientes.';
+  static const noSePudieronContar = 'No se pudieron contar';
+
+  /// Propuesta (el canvas dice «Podés seguir igual», que no va: decisión de Cristian del 29/09).
+  static const reintentarConteo = 'Reintentá. Hasta poder contarlas, no se puede borrar.';
+
+  /// Propuesta: lo que queda después de sincronizar y seguir con operaciones que no suben (las
+  /// `INVALID` no se destraban sincronizando).
+  static const quedanSinSubir =
+      'Algunas operaciones no se pudieron subir. Las que tienen datos para corregir no se suben '
+      'solas: revisalas y corregilas, y después volvé a sincronizar.';
+
+  static const subtituloConfirmacion = 'Se cierra tu sesión y no se puede deshacer.';
   static const conservarDrive = 'No, conservar mi backup en Drive';
   static const borrarDrive = 'Sí, borrar también mi backup en Drive';
   static const confirmarFinal = 'Sí, borrar datos locales';
+  static const fraseNoCoincide = 'El texto no coincide. Copialo tal cual.';
+  static const ingresaPassword = 'Ingresá tu contraseña';
+  static String passwordIncorrecta(int restantes) => restantes == 1
+      ? 'Contraseña incorrecta. Te queda 1 intento.'
+      : 'Contraseña incorrecta. Te quedan $restantes intentos.';
+  static const sinConexion =
+      'Sin conexión. La contraseña se valida en este teléfono y los datos se borran igual.';
+
+  /// Propuesta: cuenta de Google sin envoltorio por contraseña (la HU y el issue dicen «solo la
+  /// frase»; el texto es nuestro).
+  static const sinPassword =
+      'Tu cuenta entra con Google y no tiene contraseña en este teléfono: alcanza con la frase.';
+
+  /// Propuesta: sin nombre no se puede armar la frase (el nombre de la cuenta llega con #243).
+  static const sinNombre =
+      'No pudimos armar la frase de confirmación porque todavía no tenemos tu nombre en este '
+      'teléfono. Por ahora no se puede borrar desde acá.';
+
+  static const noCierresLaApp = 'No cierres la app.';
   static const driveSinConexion =
       'No pudimos borrar el backup remoto; intentalo más tarde desde Drive.';
   static const driveFallo =
       'Tus datos locales se eliminaron. No pudimos borrar el backup en Drive; eliminalo '
       'manualmente desde drive.google.com o reintentá.';
+
+  /// Artboard 08, solo cuando es cierto: no se tocó nada.
+  static const errorNoSeBorroNada = 'No se borró nada y tu sesión sigue abierta. Probá de nuevo.';
+
+  /// Artboard 08 cuando el borrado pudo haber empezado: no se promete que no se borró nada.
   static const errorBorrado =
       'No pudimos terminar de borrar los datos de este teléfono. Reintentá.';
-
-  /// Aviso de lo que se pierde (HU-AUTH-010: "las operaciones encoladas no se subirán").
-  static String pendientes(int n) =>
-      'Tenés $n operaciones sin sincronizar. Si borrás ahora, no se van a subir y se pierden.';
-  static const pendientesDesconocidos =
-      'No pudimos contar si hay operaciones sin sincronizar. Si hay alguna, no se va a subir y se '
-      'pierde al borrar.';
-  static String checkboxPendientes(int? n) => n == null
-      ? 'Entiendo que puedo perder operaciones que no se sincronizaron.'
-      : 'Entiendo que se pierden las $n operaciones sin sincronizar.';
 }
 
+enum _Fase { resumen, confirmacion, borrando, fallaDrive, error }
+
 class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage> {
-  late Future<Either<Failure, ResumenDatosLocales>> _resumen = _cargar();
-  bool _entiende = false;
-  bool _aceptaPerderPendientes = false;
-  bool _borrando = false;
+  _Fase _fase = _Fase.resumen;
 
-  /// El aviso de error con "Reintentar", mientras está visible (ver [_ocultarAvisoReintentar]).
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _avisoReintentar;
+  ResumenDatosLocales? _resumen;
+  Failure? _falloResumen;
+  bool _recontando = false;
+  int _cargaActual = 0;
 
-  /// Guardado en [didChangeDependencies]: en [dispose] ya no se puede buscar en el `context`.
-  ScaffoldMessengerState? _messenger;
+  bool _soloEsteTelefono = false;
+  bool _irreversible = false;
+
+  bool _sincronizando = false;
+  String? _avisoSincronizacion;
+
+  bool _incluirDrive = false;
+  PasoBorrado _paso = PasoBorrado.borrandoDatos;
+  ResultadoBorradoDatosLocales? _resultado;
+  String _mensajeError = TextosBorrado.errorBorrado;
+
+  /// El borrado ya empezó y falló a mitad: el reintento no vuelve a contar pendientes.
+  bool _yaEmpezo = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _messenger = ScaffoldMessenger.maybeOf(context);
+  void initState() {
+    super.initState();
+    unawaited(_cargar());
   }
 
-  @override
-  void dispose() {
-    // El SnackBar vive en el ScaffoldMessenger de la app, no en esta pantalla: sin esto, su
-    // "Reintentar" seguiría visible afuera y sin hacer nada (#102). Después del frame y no acá:
-    // en `dispose` el árbol está bloqueado, y con la navegación accesible (TalkBack, VoiceOver)
-    // ocultarlo hace un `setState` en el messenger que dispara una aserción.
-    if (_avisoReintentar != null) {
-      _avisoReintentar = null;
-      final messenger = _messenger;
-      // Si la app entera se desmontó en el mismo frame, el messenger ya no está: nada que ocultar.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (messenger != null && messenger.mounted) messenger.hideCurrentSnackBar();
-      });
-    }
-    super.dispose();
+  /// Cuenta lo que hay en el teléfono. Si llegan dos conteos seguidos, vale el último.
+  Future<void> _cargar() async {
+    final id = ++_cargaActual;
+    setState(() {
+      _recontando = true;
+      _falloResumen = null;
+    });
+    final r = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
+    if (!mounted || id != _cargaActual) return;
+    setState(() {
+      _recontando = false;
+      r.fold((f) {
+        // Sin conteo nuevo no se queda mostrando el viejo: sería un número que ya no es cierto.
+        _falloResumen = f;
+        _resumen = null;
+      }, (resumen) => _resumen = resumen);
+    });
   }
 
-  /// Saca el aviso con "Reintentar" si sigue visible. Siempre se cierra antes de mostrar otro, así
-  /// que mientras [_avisoReintentar] no es `null` es el SnackBar actual.
-  void _ocultarAvisoReintentar() {
-    if (_avisoReintentar == null) return;
-    _avisoReintentar = null;
-    _messenger?.hideCurrentSnackBar();
-  }
-
-  Future<Either<Failure, ResumenDatosLocales>> _cargar() =>
-      ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-
-  void _reintentarCarga() => setState(() {
-    _resumen = _cargar();
-  });
-
-  Future<void> _continuar(ResumenDatosLocales resumen) async {
-    final eleccion = await showDialog<_EleccionFinal>(
-      context: context,
-      builder: (_) => _DialogoFinal(resumen: resumen),
-    );
+  Future<void> _sincronizar() async {
+    if (_sincronizando) return;
+    setState(() {
+      _sincronizando = true;
+      _avisoSincronizacion = null;
+    });
+    final r = await ref.read(sincronizarAhoraUseCaseProvider)(const NoParams());
     if (!mounted) return;
-    if (eleccion == null) {
-      // "Cancelar" en el diálogo final: no se borra nada y se vuelve a Configuración.
-      Navigator.of(context).pop();
-      return;
+    setState(() {
+      _sincronizando = false;
+      _avisoSincronizacion = r.fold((f) => f.mensaje, (_) => null);
+    });
+    // Termine como termine, se vuelve a contar: lo que importa es lo que quedó.
+    await _cargar();
+    if (!mounted) return;
+    final quedan = _resumen?.operacionesSinSincronizar;
+    if (r.isRight() && quedan != null && quedan > 0) {
+      setState(() => _avisoSincronizacion = TextosBorrado.quedanSinSubir);
     }
-    await _borrar(eleccion);
   }
 
-  Future<void> _borrar(_EleccionFinal eleccion) async {
-    if (_borrando) return;
-    setState(() => _borrando = true);
+  Future<void> _borrar({required bool incluirBackupDrive, required bool reintento}) async {
+    if (_fase == _Fase.borrando) return;
+    setState(() {
+      _fase = _Fase.borrando;
+      _paso = PasoBorrado.borrandoDatos;
+      _incluirDrive = incluirBackupDrive;
+    });
     final resultado = await ref
         .read(sesionProvider.notifier)
-        .borrarDatosLocales(incluirBackupDrive: eleccion.incluirBackupDrive);
+        .borrarDatosLocales(
+          incluirBackupDrive: incluirBackupDrive,
+          reintento: reintento,
+          alAvanzar: (paso) {
+            if (mounted) setState(() => _paso = paso);
+          },
+        );
     if (!mounted) return;
+    _alTerminar(resultado);
+  }
 
-    final messenger = ScaffoldMessenger.of(context);
-    _ocultarAvisoReintentar();
+  void _alTerminar(Either<Failure, ResultadoBorradoDatosLocales> resultado) {
     resultado.fold(
-      (_) {
-        setState(() => _borrando = false);
-        final aviso = messenger.showSnackBar(
-          SnackBar(
-            key: const Key('borrar_datos_error'),
-            content: const Text(TextosBorrado.errorBorrado),
-            // Reintentar es seguro: el borrado es idempotente.
-            action: SnackBarAction(
-              label: 'Reintentar',
-              onPressed: () {
-                // Si la pantalla ya no está, el reintento no tiene dónde mostrar nada.
-                if (mounted) unawaited(_borrar(eleccion));
-              },
-            ),
-          ),
-        );
-        _avisoReintentar = aviso;
-        unawaited(
-          aviso.closed.then((_) {
-            if (identical(_avisoReintentar, aviso)) _avisoReintentar = null;
-          }),
-        );
+      (falla) {
+        if (falla is FailureBorradoConPendientes) {
+          // Se sumó una operación entre el resumen y la confirmación: no se borró nada. Vuelve al
+          // resumen, ya con el conteo nuevo y el bloqueo.
+          setState(() => _fase = _Fase.resumen);
+          unawaited(_cargar());
+          return;
+        }
+        // Solo se promete que no se borró nada si no pudo empezar: la guarda del caso de uso.
+        final nadaEmpezo = !_yaEmpezo && falla is FailureDatosLocalesIlegibles;
+        setState(() {
+          _fase = _Fase.error;
+          _yaEmpezo = !nadaEmpezo;
+          _mensajeError = nadaEmpezo
+              ? TextosBorrado.errorNoSeBorroNada
+              : TextosBorrado.errorBorrado;
+        });
       },
       (r) {
         // Si la jornada quedó en memoria (sin DB abierta, ver `jornadaLocalDataSourceProvider`),
         // sin esto el próximo login mostraría datos que la pantalla acaba de decir que se
-        // borraron. Con la DB, borrarla ya se los llevó. Después del frame:
-        // en este, la pantalla de jornada que está debajo reanuda sus providers mientras se
-        // reconstruye, y una invalidación en el medio dispara un rebuild durante el build.
+        // borraron. Con la DB, borrarla ya se los llevó. Después del frame: en este, la pantalla de
+        // jornada que está debajo reanuda sus providers mientras se reconstruye, y una
+        // invalidación en el medio dispara un rebuild durante el build.
         final container = ProviderScope.containerOf(context, listen: false);
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => container.invalidate(jornadaLocalDataSourceProvider),
         );
-        final aviso = switch (r) {
-          ResultadoBorradoDatosLocales.completo => null,
-          ResultadoBorradoDatosLocales.backupDriveNoBorradoSinConexion =>
-            TextosBorrado.driveSinConexion,
-          ResultadoBorradoDatosLocales.backupDriveNoBorrado => TextosBorrado.driveFallo,
-        };
-        if (aviso != null) {
-          messenger.showSnackBar(
-            SnackBar(
-              key: const Key('borrar_datos_aviso_drive'),
-              content: Text(aviso),
-              duration: const Duration(seconds: 10),
-            ),
-          );
+        if (r == ResultadoBorradoDatosLocales.completo) {
+          _irAlLogin();
+          return;
         }
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Lo local ya se borró y no se restaura: de acá solo se reintenta Drive o se va al login.
+        setState(() {
+          _fase = _Fase.fallaDrive;
+          _resultado = r;
+          _yaEmpezo = true;
+        });
       },
     );
+  }
+
+  /// La raíz ya muestra el login (la sesión es `null`); solo queda sacar esta pantalla.
+  void _irAlLogin() => Navigator.of(context).popUntil((route) => route.isFirst);
+
+  void _alVolver(bool didPop, Object? resultado) {
+    if (didPop) return;
+    switch (_fase) {
+      case _Fase.confirmacion:
+        setState(() => _fase = _Fase.resumen);
+      case _Fase.fallaDrive:
+        _irAlLogin();
+      case _Fase.resumen || _Fase.borrando || _Fase.error:
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
+    final enBorrado = _fase == _Fase.borrando || _fase == _Fase.fallaDrive;
 
     // Mientras borra no se puede salir: el "atrás" dejaría el borrado corriendo sin nadie que
-    // muestre cómo terminó.
+    // muestre cómo terminó. Con los datos ya borrados (falla de Drive) tampoco hay a dónde volver
+    // que no sea el login.
     return PopScope(
-      canPop: !_borrando,
+      canPop: _fase == _Fase.resumen || _fase == _Fase.error,
+      onPopInvokedWithResult: _alVolver,
       child: Scaffold(
         body: SafeArea(
-          child: FutureBuilder<Either<Failure, ResumenDatosLocales>>(
-            future: _resumen,
-            builder: (context, snapshot) {
-              final Widget contenido;
-              final datos = snapshot.data;
-              if (datos == null) {
-                contenido = const _Cargando(key: Key('borrar_datos_cargando'));
-              } else {
-                contenido = datos.fold(
-                  (_) => _Error(
-                    mensaje: const FailureDatosLocalesIlegibles().mensaje,
-                    onReintentar: _reintentarCarga,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: [
+              if (!enBorrado) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    key: const Key('borrar_datos_atras'),
+                    tooltip: 'Volver',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back),
                   ),
-                  (resumen) => _Resumen(
-                    resumen: resumen,
-                    entiende: _entiende,
-                    aceptaPerderPendientes: _aceptaPerderPendientes,
-                    borrando: _borrando,
-                    onEntiende: (v) => setState(() => _entiende = v),
-                    onAceptaPerderPendientes: (v) => setState(() => _aceptaPerderPendientes = v),
-                    onContinuar: () => _continuar(resumen),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _fase == _Fase.confirmacion
+                      ? 'PRIVACIDAD Y DATOS · CONFIRMACIÓN FINAL'
+                      : 'PRIVACIDAD Y DATOS',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorEncabezado(theme, colores),
                   ),
-                );
-              }
-
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      key: const Key('borrar_datos_atras'),
-                      tooltip: 'Volver',
-                      onPressed: _borrando ? null : () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'PRIVACIDAD Y DATOS',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorEncabezado(theme, colores),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Borrar datos locales',
+                ),
+                const SizedBox(height: 8),
+                Semantics(
+                  header: true,
+                  child: Text(
+                    _fase == _Fase.confirmacion ? 'Confirmá el borrado' : 'Borrar datos locales',
                     style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
                   ),
-                  const SizedBox(height: 12),
-                  contenido,
-                ],
-              );
-            },
+                ),
+                const SizedBox(height: 12),
+              ] else
+                const SizedBox(height: 48),
+              _cuerpo(),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _cuerpo() {
+    final resumen = _resumen;
+    return switch (_fase) {
+      _Fase.resumen when resumen == null && _falloResumen == null => const _Cargando(
+        key: Key('borrar_datos_cargando'),
+      ),
+      _Fase.resumen when resumen == null => _ErrorResumen(
+        mensaje: const FailureDatosLocalesIlegibles().mensaje,
+        recontando: _recontando,
+        onReintentar: _cargar,
+      ),
+      _Fase.resumen => ResumenBorrado(
+        resumen: resumen!,
+        soloEsteTelefono: _soloEsteTelefono,
+        irreversible: _irreversible,
+        sincronizando: _sincronizando,
+        recontando: _recontando,
+        avisoSincronizacion: _avisoSincronizacion,
+        onSoloEsteTelefono: (v) => setState(() => _soloEsteTelefono = v),
+        onIrreversible: (v) => setState(() => _irreversible = v),
+        onSincronizar: _sincronizar,
+        onReintentarConteo: _cargar,
+        onContinuar: () => setState(() => _fase = _Fase.confirmacion),
+      ),
+      _Fase.confirmacion => ConfirmacionFinalBorrado(
+        resumen: resumen!,
+        // "Cancelar": no se borra nada y se vuelve a Configuración.
+        onCancelar: () => Navigator.of(context).pop(),
+        onConfirmado: ({required incluirBackupDrive}) =>
+            unawaited(_borrar(incluirBackupDrive: incluirBackupDrive, reintento: false)),
+      ),
+      _Fase.borrando => BorrandoDatos(paso: _paso),
+      _Fase.fallaDrive => FallaBackupDrive(
+        mensaje: _resultado == ResultadoBorradoDatosLocales.backupDriveNoBorradoSinConexion
+            ? TextosBorrado.driveSinConexion
+            : TextosBorrado.driveFallo,
+        reintentando: false,
+        onReintentar: () => unawaited(_borrar(incluirBackupDrive: true, reintento: true)),
+        onIrAlLogin: _irAlLogin,
+      ),
+      _Fase.error => ErrorAlBorrar(
+        mensaje: _mensajeError,
+        // Reintentar es seguro: el borrado es idempotente.
+        onReintentar: () =>
+            unawaited(_borrar(incluirBackupDrive: _incluirDrive, reintento: _yaEmpezo)),
+        onVolver: () => Navigator.of(context).pop(),
+      ),
+    };
   }
 }
 
@@ -281,10 +381,15 @@ class _Cargando extends StatelessWidget {
   );
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.mensaje, required this.onReintentar});
+class _ErrorResumen extends StatelessWidget {
+  const _ErrorResumen({
+    required this.mensaje,
+    required this.recontando,
+    required this.onReintentar,
+  });
 
   final String mensaje;
+  final bool recontando;
   final VoidCallback onReintentar;
 
   @override
@@ -292,329 +397,21 @@ class _Error extends StatelessWidget {
     key: const Key('borrar_datos_error_resumen'),
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _Aviso(icono: Icons.error_outline, texto: mensaje),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(child: Icon(Icons.error_outline, size: 20)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(mensaje, style: Theme.of(context).textTheme.bodyMedium)),
+        ],
+      ),
       const SizedBox(height: 16),
       FilledButton(
-        key: const Key('borrar_datos_reintentar'),
-        onPressed: onReintentar,
+        key: const Key('borrar_datos_reintentar_resumen'),
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+        onPressed: recontando ? null : onReintentar,
         child: const Text('Reintentar'),
       ),
     ],
-  );
-}
-
-class _Resumen extends StatelessWidget {
-  const _Resumen({
-    required this.resumen,
-    required this.entiende,
-    required this.aceptaPerderPendientes,
-    required this.borrando,
-    required this.onEntiende,
-    required this.onAceptaPerderPendientes,
-    required this.onContinuar,
-  });
-
-  final ResumenDatosLocales resumen;
-  final bool entiende;
-  final bool aceptaPerderPendientes;
-  final bool borrando;
-  final ValueChanged<bool> onEntiende;
-  final ValueChanged<bool> onAceptaPerderPendientes;
-  final VoidCallback onContinuar;
-
-  /// Hay (o puede haber) trabajo sin subir que se pierde: pide una confirmación aparte.
-  bool get _hayPendientes =>
-      resumen.operacionesSinSincronizar == null || resumen.operacionesSinSincronizar! > 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final pendientes = resumen.operacionesSinSincronizar;
-    final puedeContinuar = entiende && (!_hayPendientes || aceptaPerderPendientes) && !borrando;
-
-    return Column(
-      key: const Key('borrar_datos_resumen'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(TextosBorrado.explicacion, style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 20),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: colores.borde),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            children: [
-              _Fila(
-                icono: Icons.people_outline,
-                titulo: 'Personas registradas en este teléfono',
-                valor: '${resumen.personas}',
-                valorKey: const Key('borrar_datos_personas'),
-              ),
-              const Divider(),
-              _Fila(
-                icono: Icons.event_note_outlined,
-                titulo: 'Visitas registradas en este teléfono',
-                valor: '${resumen.visitas}',
-                valorKey: const Key('borrar_datos_visitas'),
-              ),
-              const Divider(),
-              _Fila(
-                icono: Icons.cloud_upload_outlined,
-                titulo: 'Operaciones sin sincronizar',
-                valor: pendientes == null ? 'No se pudieron contar' : '$pendientes',
-                valorKey: const Key('borrar_datos_pendientes'),
-              ),
-              const Divider(),
-              _Fila(
-                icono: Icons.cloud_outlined,
-                titulo: 'Backup en Drive',
-                valor: resumen.hayBackupEnDrive ? 'Sí, vas a elegir si se borra' : 'No hay',
-                valorKey: const Key('borrar_datos_backup'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_hayPendientes) ...[
-          _AvisoPendientes(pendientes: pendientes),
-          const SizedBox(height: 12),
-        ],
-        const _Aviso(icono: Icons.info_outline, texto: TextosBorrado.datosDelSistema),
-        const SizedBox(height: 8),
-        const _Aviso(icono: Icons.lock_outline, texto: TextosBorrado.limiteBorrado),
-        const SizedBox(height: 12),
-        CheckboxListTile(
-          key: const Key('borrar_datos_checkbox'),
-          value: entiende,
-          onChanged: borrando ? null : (v) => onEntiende(v ?? false),
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-          title: const Text(TextosBorrado.checkbox),
-        ),
-        if (_hayPendientes)
-          CheckboxListTile(
-            key: const Key('borrar_datos_checkbox_pendientes'),
-            value: aceptaPerderPendientes,
-            onChanged: borrando ? null : (v) => onAceptaPerderPendientes(v ?? false),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-            title: Text(TextosBorrado.checkboxPendientes(pendientes)),
-          ),
-        const SizedBox(height: 12),
-        FilledButton(
-          key: const Key('borrar_datos_continuar'),
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.error,
-            foregroundColor: theme.colorScheme.onError,
-            minimumSize: const Size.fromHeight(48),
-          ),
-          onPressed: puedeContinuar ? onContinuar : null,
-          child: borrando
-              ? SizedBox.square(
-                  dimension: 22,
-                  child: CircularProgressIndicator(
-                    key: const Key('borrar_datos_borrando'),
-                    strokeWidth: 2.5,
-                    color: theme.colorScheme.onError,
-                    semanticsLabel: 'Borrando datos',
-                  ),
-                )
-              : const Text('Continuar'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Lo que se pierde, destacado: es trabajo del colportor que no llegó al servidor.
-class _AvisoPendientes extends StatelessWidget {
-  const _AvisoPendientes({required this.pendientes});
-
-  final int? pendientes;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return DecoratedBox(
-      key: const Key('borrar_datos_aviso_pendientes'),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ExcludeSemantics(
-              child: Icon(Icons.warning_amber_rounded, color: theme.colorScheme.onErrorContainer),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                pendientes == null
-                    ? TextosBorrado.pendientesDesconocidos
-                    : TextosBorrado.pendientes(pendientes!),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onErrorContainer,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Fila extends StatelessWidget {
-  const _Fila({
-    required this.icono,
-    required this.titulo,
-    required this.valor,
-    required this.valorKey,
-  });
-
-  final IconData icono;
-  final String titulo;
-  final String valor;
-  final Key valorKey;
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    leading: Icon(icono),
-    title: Text(titulo),
-    subtitle: Text(valor, key: valorKey, style: Theme.of(context).textTheme.titleMedium),
-  );
-}
-
-class _Aviso extends StatelessWidget {
-  const _Aviso({required this.icono, required this.texto});
-
-  final IconData icono;
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ExcludeSemantics(child: Icon(icono, size: 20)),
-        const SizedBox(width: 10),
-        Expanded(child: Text(texto, style: theme.textTheme.bodyMedium)),
-      ],
-    );
-  }
-}
-
-/// Lo que el usuario eligió en el diálogo final; `null` si canceló.
-final class _EleccionFinal {
-  const _EleccionFinal({required this.incluirBackupDrive});
-
-  final bool incluirBackupDrive;
-}
-
-/// Segunda confirmación. Con backup en Drive, además pregunta si se borra (por defecto se
-/// conserva: es la opción que no pierde nada).
-class _DialogoFinal extends StatefulWidget {
-  const _DialogoFinal({required this.resumen});
-
-  final ResumenDatosLocales resumen;
-
-  @override
-  State<_DialogoFinal> createState() => _DialogoFinalState();
-}
-
-class _DialogoFinalState extends State<_DialogoFinal> {
-  bool _incluirDrive = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final pendientes = widget.resumen.operacionesSinSincronizar;
-    return AlertDialog(
-      key: const Key('borrar_datos_dialogo_final'),
-      title: const Text('¿Borrar datos locales?'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Se van a borrar los datos de este teléfono y se va a cerrar tu sesión. No se puede '
-              'deshacer.',
-            ),
-            if (pendientes == null || pendientes > 0) ...[
-              const SizedBox(height: 8),
-              Text(
-                pendientes == null
-                    ? TextosBorrado.pendientesDesconocidos
-                    : TextosBorrado.pendientes(pendientes),
-                key: const Key('borrar_datos_dialogo_pendientes'),
-                style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
-              ),
-            ],
-            if (widget.resumen.hayBackupEnDrive) ...[
-              const SizedBox(height: 12),
-              _Opcion(
-                key: const Key('borrar_datos_conservar_drive'),
-                texto: TextosBorrado.conservarDrive,
-                seleccionada: !_incluirDrive,
-                onTap: () => setState(() => _incluirDrive = false),
-              ),
-              _Opcion(
-                key: const Key('borrar_datos_incluir_drive'),
-                texto: TextosBorrado.borrarDrive,
-                seleccionada: _incluirDrive,
-                onTap: () => setState(() => _incluirDrive = true),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          key: const Key('borrar_datos_cancelar'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          key: const Key('borrar_datos_confirmar'),
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.error,
-            foregroundColor: theme.colorScheme.onError,
-          ),
-          onPressed: () =>
-              Navigator.of(context).pop(_EleccionFinal(incluirBackupDrive: _incluirDrive)),
-          child: const Text(TextosBorrado.confirmarFinal),
-        ),
-      ],
-    );
-  }
-}
-
-/// Opción excluyente del diálogo final (se evita `RadioListTile` por el cambio de API de
-/// `RadioGroup`; la semántica es la misma).
-class _Opcion extends StatelessWidget {
-  const _Opcion({super.key, required this.texto, required this.seleccionada, required this.onTap});
-
-  final String texto;
-  final bool seleccionada;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    inMutuallyExclusiveGroup: true,
-    checked: seleccionada,
-    child: ListTile(
-      contentPadding: EdgeInsets.zero,
-      selected: seleccionada,
-      leading: Icon(seleccionada ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-      title: Text(texto),
-      onTap: onTap,
-    ),
   );
 }
