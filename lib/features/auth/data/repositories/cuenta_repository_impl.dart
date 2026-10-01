@@ -11,12 +11,15 @@ import '../datasources/estado_cuenta_remote_data_source.dart';
 /// [CuentaRepository] sobre el BFF, recordando en el equipo el último estado que informó
 /// (HU-AUTH-008), para que el colportor que abre la app sin señal no quede afuera.
 final class CuentaRepositoryImpl implements CuentaRepository {
-  CuentaRepositoryImpl(this._remote, this._local, {AppLogger? logger})
-    : _log = logger ?? AppLogger.instance;
+  CuentaRepositoryImpl(this._remote, this._local, {AppLogger? logger, DateTime Function()? ahora})
+    : _log = logger ?? AppLogger.instance,
+      _ahora = ahora ?? DateTime.now;
 
   final EstadoCuentaRemoteDataSource _remote;
   final EstadoCuentaLocalDataSource _local;
   final AppLogger _log;
+  final DateTime Function() _ahora;
+  final _ultimaConsulta = <String, DateTime>{};
 
   @override
   Future<Either<Failure, EstadoCuenta>> consultar(String usuarioId) async {
@@ -60,6 +63,7 @@ final class CuentaRepositoryImpl implements CuentaRepository {
         st,
       );
     }
+    _ultimaConsulta[usuarioId] = _ahora();
     _log.info(LogModulo.auth, 'ESTADO_CUENTA', 'estado de cuenta consultado', {
       'user_id': usuarioId,
       'estado': estado.name,
@@ -78,4 +82,7 @@ final class CuentaRepositoryImpl implements CuentaRepository {
       return null;
     }
   }
+
+  @override
+  DateTime? ultimaConsultaExitosa(String usuarioId) => _ultimaConsulta[usuarioId];
 }

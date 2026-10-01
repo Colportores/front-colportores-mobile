@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/error/failure.dart';
 import 'core/theme/tema_colportaje.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
+import 'features/auth/domain/entities/estado_cuenta.dart';
 import 'features/auth/domain/entities/sesion.dart';
 import 'features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
+import 'features/auth/presentation/pages/cuenta_asignada_page.dart';
 import 'features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/preparacion_db_local_page.dart';
@@ -165,27 +167,60 @@ class _RevisionAlVolverState extends ConsumerState<_RevisionAlVolver> {
 /// solo una cuenta activa ve los módulos de campo; las demás, la pantalla de espera con
 /// Configuración. Es el único camino a los módulos de campo mientras no haya router (llega en
 /// Sprint 5): el gate de deep links de la HU vive acá.
-class _Principal extends ConsumerWidget {
+class _Principal extends ConsumerStatefulWidget {
   const _Principal({required this.sesion});
 
   final Sesion sesion;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final preparacion = ref.watch(preparacionDbLocalProvider);
-    if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
-    return _porEstadoDeCuenta(ref);
+  ConsumerState<_Principal> createState() => _PrincipalState();
+}
+
+class _PrincipalState extends ConsumerState<_Principal> {
+  /// El colportor vio la pantalla de espera con la cuenta pendiente: si pasa a activa con la app
+  /// abierta, antes de la pantalla principal se le muestra «Ya te asignaron» (vista 18, 18-A07).
+  /// Una cuenta que ya llega activa (o suspendida y reactivada) entra directo.
+  bool _vioPendiente = false;
+  bool _mostrandoAsignada = false;
+
+  void _alCambiarEstado(AsyncValue<EstadoCuenta?>? anterior, AsyncValue<EstadoCuenta?> actual) {
+    if (actual is! AsyncData<EstadoCuenta?>) return;
+    final estado = actual.value;
+    if (estado == EstadoCuenta.activa && _vioPendiente) {
+      setState(() {
+        _vioPendiente = false;
+        _mostrandoAsignada = true;
+      });
+    } else if (estado != null && !estado.accedeAModulosDeCampo) {
+      // Volvió a pendiente o suspendida (el coordinador revirtió la asignación): sin transición.
+      setState(() {
+        _vioPendiente = estado == EstadoCuenta.pendienteAsignacion;
+        _mostrandoAsignada = false;
+      });
+    }
   }
 
-  Widget _porEstadoDeCuenta(WidgetRef ref) => switch (ref.watch(estadoCuentaProvider)) {
-    AsyncData(value: final estado) when estado == null || estado.accedeAModulosDeCampo =>
-      InicioPage(sesion: sesion),
-    AsyncData(value: final estado) => EsperandoAsignacionPage(estado: estado),
-    AsyncError(:final error) => EsperandoAsignacionPage(
-      falla: error is Failure ? error : FailureInesperado(causa: error),
-    ),
-    _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
-  };
+  @override
+  Widget build(BuildContext context) {
+    final preparacion = ref.watch(preparacionDbLocalProvider);
+    if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    ref.listen(estadoCuentaProvider, _alCambiarEstado);
+    final estado = ref.watch(estadoCuentaProvider);
+    if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;
+    if (_mostrandoAsignada) {
+      return CuentaAsignadaPage(onTerminar: () => setState(() => _mostrandoAsignada = false));
+    }
+    return switch (estado) {
+      AsyncData(value: final e) when e == null || e.accedeAModulosDeCampo => InicioPage(
+        sesion: widget.sesion,
+      ),
+      AsyncData(value: final e) => EsperandoAsignacionPage(estado: e),
+      AsyncError(:final error) => EsperandoAsignacionPage(
+        falla: error is Failure ? error : FailureInesperado(causa: error),
+      ),
+      _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
+    };
+  }
 }
 
 /// Lleva a la pantalla de la contraseña nueva (o de enlace vencido) desde la raíz de la pila.
