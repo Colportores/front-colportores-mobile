@@ -11,4 +11,9 @@ abstract interface class CuentaRepository {
 
   /// El último estado que informó el backend para [usuarioId] en este equipo, o `null`.
   Future<EstadoCuenta?> ultimoConocido(String usuarioId);
+
+  /// Cuándo se consultó el estado al backend con éxito por última vez en esta ejecución de la app
+  /// para [usuarioId], o `null` si todavía no (el último estado conocido pudo venir del equipo).
+  /// Sirve para decirle al colportor cuándo fue la última revisión (vista 18).
+  DateTime? ultimaConsultaExitosa(String usuarioId);
 }

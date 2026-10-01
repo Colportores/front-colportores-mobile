@@ -343,13 +343,14 @@ void main() {
         expect(find.text('Mapas'), findsNothing);
       });
 
-      testWidgets('con la cuenta pendiente de asignación no hay barra de pestañas (vista 18)', (
+      testWidgets('con la cuenta pendiente de asignación la barra muestra los módulos bloqueados', (
         tester,
       ) async {
         await _montar(tester, estado: EstadoCuenta.pendienteAsignacion);
 
         expect(find.byType(ConfiguracionPage), findsOneWidget);
-        expect(find.byKey(const Key('inicio_barra')), findsNothing);
+        expect(find.byKey(const Key('inicio_barra')), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
         expect(find.byKey(const Key('configuracion_cerrar_sesion')), findsOneWidget);
       });
 

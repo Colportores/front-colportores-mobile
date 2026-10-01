@@ -8,6 +8,7 @@ import '../../../../core/usecases/use_case.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../providers/nombre_cuenta_provider.dart';
 import '../widgets/hoja_cerrar_sesion.dart';
@@ -71,10 +72,12 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     final colores = theme.extension<ColoresColportaje>()!;
     final email = ref.watch(sesionProvider).value?.email ?? '';
     final nombre = ref.watch(nombreCuentaProvider);
-    final conBarra = switch (ref.watch(estadoCuentaProvider)) {
-      AsyncData(value: final estado) => estado == null || estado.accedeAModulosDeCampo,
-      _ => false,
-    };
+    // Con la cuenta pendiente (o sin estado conocido) la barra se ve con los módulos bloqueados
+    // (vista 16, nota; vista 18). Mientras se consulta el estado no hay barra.
+    final estadoCuenta = ref.watch(estadoCuentaProvider);
+    final conBarra = estadoCuenta is! AsyncLoading;
+    final estado = estadoCuenta.value;
+    final accede = estadoCuenta is AsyncData && (estado == null || estado.accedeAModulosDeCampo);
 
     return Scaffold(
       key: const Key('configuracion_pagina'),
@@ -172,7 +175,16 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
         ),
       ),
       bottomNavigationBar: conBarra
-          ? BarraPestanasInicio(onSeleccionar: (pestana) => Navigator.of(context).pop(pestana))
+          ? BarraPestanasInicio(
+              bloqueadas: accede ? const {} : modulosDeCampo,
+              onSeleccionar: (pestana) {
+                if (accede || pestana == PestanaInicio.hoy) {
+                  Navigator.of(context).pop(pestana);
+                } else {
+                  avisarModuloBloqueado(context, estado);
+                }
+              },
+            )
           : null,
     );
   }

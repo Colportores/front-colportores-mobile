@@ -38,6 +38,28 @@ void main() {
     expect(await repo.ultimoConocido('ana'), EstadoCuenta.pendienteAsignacion);
   });
 
+  test(
+    'recuerda cuándo consultó con éxito por última vez, por cuenta, y no con una falla',
+    () async {
+      var reloj = DateTime(2026, 9, 30, 14, 30);
+      repo = CuentaRepositoryImpl(
+        remoto,
+        EstadoCuentaEnAlmacen(almacen),
+        logger: loggerMudo(),
+        ahora: () => reloj,
+      );
+      expect(repo.ultimaConsultaExitosa('ana'), isNull);
+
+      await repo.consultar('ana');
+      reloj = DateTime(2026, 9, 30, 14, 36);
+      remoto.simularSinConexion = true;
+      await repo.consultar('ana');
+
+      expect(repo.ultimaConsultaExitosa('ana'), DateTime(2026, 9, 30, 14, 30));
+      expect(repo.ultimaConsultaExitosa('beto'), isNull);
+    },
+  );
+
   test('otra cuenta en el mismo equipo no hereda el estado', () async {
     await repo.consultar('ana');
 

@@ -10,6 +10,7 @@ import '../../data/repositories/cuenta_repository_impl.dart';
 import '../../domain/entities/estado_cuenta.dart';
 import '../../domain/repositories/cuenta_repository.dart';
 import '../../domain/usecases/consultar_estado_cuenta_use_case.dart';
+import 'asignacion_campania_providers.dart';
 import 'sesion_notifier.dart';
 
 part 'estado_cuenta_providers.g.dart';
@@ -32,6 +33,7 @@ EstadoCuentaLocalDataSource estadoCuentaLocalDataSource(Ref ref) => ConfigSupaba
 CuentaRepository cuentaRepository(Ref ref) => CuentaRepositoryImpl(
   ref.watch(estadoCuentaRemoteDataSourceProvider),
   ref.watch(estadoCuentaLocalDataSourceProvider),
+  ahora: ref.watch(ahoraEsperaProvider),
 );
 
 @Riverpod(keepAlive: true)
