@@ -17,6 +17,7 @@ import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
+import 'generated/schema_v6.dart' as v6;
 
 class _SinSalida extends LogOutput {
   @override
@@ -308,6 +309,81 @@ void main() {
         expect(await nuevo.select(nuevo.campaniaCiudad).get(), isEmpty);
         expect(await nuevo.select(nuevo.zona).get(), isEmpty);
         expect(await nuevo.select(nuevo.zonaVertice).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado jornadas, ubicaciones, espacios y pares guardados en la versión 5, cuando migra a '
+      'la 6, se conservan todos con los mismos datos y la copia del nombre queda vacía', () async {
+    // #243: solo se suma `sesion_usuario`. Perder lo guardado de un colportor cuesta mucho dinero
+    // (convenciones §9): nada de lo anterior puede moverse.
+    const jornada = v5.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      fin: 1758720000000,
+      totalVisitas: 7,
+      totalVentas: 2,
+      createdAt: 1758700000000,
+      updatedAt: 1758720000000,
+      createdBy: 'col-1',
+      syncVersion: 3,
+    );
+    const ubicacion = v5.UbicacionData(
+      id: 'ub-1',
+      tipo: 'CASA',
+      calle: 'Av. Ñandú',
+      numero: '1234 bis',
+      lat: -34.9,
+      lon: -56.16,
+      ciudadId: 'ciu-1',
+      zonaId: 'zon-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 5,
+    );
+    const espacio = v5.EspacioData(
+      id: 'esp-1',
+      ubicacionId: 'ub-1',
+      numeroDepto: '3B',
+      piso: '3',
+      descripcion: 'Fondo',
+      createdAt: 1758600000000,
+      updatedAt: 1758600000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+    const par = v5.UbicacionParDecididoData(
+      ubicacionAId: 'ub-1',
+      ubicacionBId: 'ub-2',
+      decision: 'CONSERVAR_AMBOS',
+      decididoEn: 1758660000000,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 5,
+      newVersion: 6,
+      createOld: v5.DatabaseAtV5.new,
+      createNew: v6.DatabaseAtV6.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.jornada, jornada)
+          ..insert(viejo.ubicacion, ubicacion)
+          ..insert(viejo.espacio, espacio)
+          ..insert(viejo.ubicacionParDecidido, par);
+      },
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((f) => f.toJson()).toList(), [jornada.toJson()]);
+        final ubicaciones = await nuevo.select(nuevo.ubicacion).get();
+        expect(ubicaciones.map((f) => f.toJson()).toList(), [ubicacion.toJson()]);
+        final espacios = await nuevo.select(nuevo.espacio).get();
+        expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
+        final pares = await nuevo.select(nuevo.ubicacionParDecidido).get();
+        expect(pares.map((f) => f.toJson()).toList(), [par.toJson()]);
+        expect(await nuevo.select(nuevo.sesionUsuario).get(), isEmpty);
       },
     );
   });

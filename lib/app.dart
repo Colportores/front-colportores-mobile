@@ -20,6 +20,7 @@ import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
@@ -202,6 +203,7 @@ class _PrincipalState extends ConsumerState<_Principal> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(copiaNombreSesionProvider);
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
