@@ -288,9 +288,9 @@ class _FilaCuenta extends StatelessWidget {
       subtitle: conNombre
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [const Text('Sesión iniciada como'), _CorreoQueEncoge(email)],
+              children: [const Text('Sesión iniciada como'), _CorreoQueSeParte(email)],
             )
-          : _CorreoQueEncoge(email),
+          : _CorreoQueSeParte(email),
     );
   }
 }
@@ -329,17 +329,39 @@ class _Tarjeta extends StatelessWidget {
   }
 }
 
-/// El correo no tiene espacios donde cortar: a texto grande encoge en vez de partirse a mitad de
-/// palabra.
-class _CorreoQueEncoge extends StatelessWidget {
-  const _CorreoQueEncoge(this.email);
+/// El correo se lee a su tamaño, nunca encogido: si no entra en una línea se parte después de «@» y
+/// de cada «.», sin límite de líneas ni elipsis. Lo anunciado es el correo completo.
+class _CorreoQueSeParte extends StatelessWidget {
+  const _CorreoQueSeParte(this.email);
 
   final String email;
 
+  static const _corteSuave = '\u200B';
+
   @override
-  Widget build(BuildContext context) => FittedBox(
-    fit: BoxFit.scaleDown,
-    alignment: Alignment.centerLeft,
-    child: Text(email, key: const Key('configuracion_email'), maxLines: 1),
-  );
+  Widget build(BuildContext context) {
+    final estilo = DefaultTextStyle.of(context).style;
+    final escala = MediaQuery.textScalerOf(context);
+    final direccion = Directionality.of(context);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final medido = TextPainter(
+          text: TextSpan(text: email, style: estilo),
+          textScaler: escala,
+          textDirection: direccion,
+          maxLines: 1,
+        )..layout();
+        final entra = medido.width <= c.maxWidth;
+        medido.dispose();
+        final texto = entra
+            ? email
+            : email.replaceAllMapped(RegExp(r'[@.]'), (m) => '${m[0]}$_corteSuave');
+        return Semantics(
+          label: email,
+          excludeSemantics: true,
+          child: Text(texto, key: const Key('configuracion_email')),
+        );
+      },
+    );
+  }
 }

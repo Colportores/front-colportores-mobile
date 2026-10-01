@@ -1,5 +1,5 @@
 // QA del seguimiento de la vista 16 (#225, PR #258): el aviso «Cerraste sesión…» solo sale del
-// cierre iniciado en Configuración, y el título y el correo encogen (360x640, texto 2.0).
+// cierre iniciado en Configuración, y el título y el correo se leen a su tamaño (360x640, texto 2.0).
 import 'dart:typed_data';
 
 import 'package:colportores_mobile/app.dart';
@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/db_local
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -122,8 +123,6 @@ void main() {
       'ana.rodriguez@example.com',
       'maria.fernanda.gonzalez.rodriguez@correo.com',
     ]) {
-      // skip: QA #225 — un correo de 25 caracteres queda en ~9,5 px a texto 2.0 y uno de 44 en ~5 px (menos que sin agrandar).
-      final largo = email.length > 20;
       testWidgets('el título y el correo ($email) no desbordan ni se parten', (tester) async {
         await abrirConfiguracion(tester, email);
 
@@ -136,26 +135,22 @@ void main() {
         }
       });
 
-      testWidgets(
-        'el correo ($email) sigue legible: encogido no baja de 11 px reales',
-        skip: largo,
-        (tester) async {
-          await abrirConfiguracion(tester, email);
+      testWidgets('el correo ($email) sigue legible: a su tamaño, sin encoger ni cortarse', (
+        tester,
+      ) async {
+        await abrirConfiguracion(tester, email);
 
-          final correo = find.byKey(const Key('configuracion_email'));
-          final fitted = find.ancestor(of: correo, matching: find.byType(FittedBox)).first;
-          // Escala efectiva del FittedBox = ancho disponible / ancho natural del texto.
-          final natural = tester.getSize(correo).width;
-          final disponible = tester.getSize(fitted).width;
-          final escala = disponible >= natural ? 1.0 : disponible / natural;
-          // El texto base del correo es de ~14 px; con 2.0 llega a 28 px antes de encoger.
-          expect(
-            28 * escala,
-            greaterThanOrEqualTo(11),
-            reason: 'a texto 2.0 el correo quedó en ${(28 * escala).toStringAsFixed(1)} px',
-          );
-        },
-      );
+        final correo = find.byKey(const Key('configuracion_email'));
+        expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
+        final render = tester.renderObject<RenderParagraph>(correo);
+        expect(render.didExceedMaxLines, isFalse, reason: 'el correo quedó cortado con elipsis');
+        expect(render.textScaler.scale(14), greaterThanOrEqualTo(28));
+        expect(
+          find.byWidgetPredicate((w) => w is Semantics && w.properties.label == email),
+          findsOneWidget,
+          reason: 'la semántica lleva el correo completo, sin cortes',
+        );
+      });
     }
   });
 }

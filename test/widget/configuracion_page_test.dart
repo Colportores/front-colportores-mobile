@@ -1301,7 +1301,7 @@ void main() {
       expect(find.text(TextosBorrado.borrarDrive), findsOneWidget);
     });
 
-    testWidgets('a 360 px y texto 2.0 el título y el correo no se parten a mitad de palabra', (
+    testWidgets('a 360 px y texto 2.0 el título no se parte y el correo se corta en «@» y «.»', (
       tester,
     ) async {
       _pantalla(tester, const Size(360, 740));
@@ -1309,19 +1309,17 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _montar(tester);
 
-      for (final finder in [
-        find.text('Configuración'),
-        find.byKey(const Key('configuracion_email')),
-      ]) {
-        final texto = tester.renderObject<RenderParagraph>(finder);
-        final cajas = texto.getBoxesForSelection(
-          TextSelection(baseOffset: 0, extentOffset: texto.text.toPlainText().length),
-        );
-        expect(cajas, hasLength(1), reason: 'una sola línea: encoge en vez de partirse');
-        final caja = find.ancestor(of: finder, matching: find.byType(FittedBox)).first;
-        expect(tester.getSize(caja).width, lessThanOrEqualTo(360));
-        expect(tester.getRect(caja).right, lessThanOrEqualTo(360));
-      }
+      final titulo = tester.renderObject<RenderParagraph>(find.text('Configuración'));
+      final cajas = titulo.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: titulo.text.toPlainText().length),
+      );
+      expect(cajas, hasLength(1), reason: 'una sola línea: encoge en vez de partirse');
+      final caja = find.ancestor(of: find.text('Configuración'), matching: find.byType(FittedBox));
+      expect(tester.getRect(caja.first).right, lessThanOrEqualTo(360));
+
+      final correo = find.byKey(const Key('configuracion_email'));
+      expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
+      expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
     });
 
