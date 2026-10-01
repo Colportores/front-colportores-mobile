@@ -155,24 +155,71 @@ void main() {
   }
 
   group('borrar', () {
-    test('con operaciones sin sincronizar, borra igual (decisión de #66)', () async {
+    test('con operaciones sin sincronizar, se niega: no cierra ni toca nada', () async {
       await abrirConJornadas(1);
       await guardarDekYEnvoltorio();
 
       final r = await repo.borrar(incluirBackupDrive: false);
 
-      expect(r.isRight(), isTrue);
-      expect(helper.abierta, isFalse);
-      expect(await helper.existe(), isFalse);
-      await esperarDekOlvidada();
+      expect(
+        r,
+        const Left<Failure, ResultadoBorradoDatosLocales>(
+          FailureBorradoConPendientes(pendientes: 1),
+        ),
+      );
+      expect(helper.abierta, isTrue);
+      expect(await helper.existe(), isTrue);
+      expect(await custodia.leerDek(), isNotNull, reason: 'la DEK sigue ahí');
     });
 
-    test('sin poder contar (archivo presente, DB cerrada), borra igual', () async {
+    test('la carrera: una fila que entra DESPUÉS del resumen no se borra sin aviso', () async {
+      await abrirConJornadas(0);
+      await guardarDekYEnvoltorio();
+      final resumen = await repo.resumen();
+      expect(resumen.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 0);
+
+      // La pantalla de jornada, viva debajo en la pila, escribe entre el resumen y el borrado.
+      await db!.customStatement(
+        'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
+        "VALUES ('nueva', 'c1', 0, 0, 0)",
+      );
+      final r = await repo.borrar(incluirBackupDrive: false);
+
+      expect(
+        r,
+        const Left<Failure, ResultadoBorradoDatosLocales>(
+          FailureBorradoConPendientes(pendientes: 1),
+        ),
+      );
+      expect(helper.abierta, isTrue, reason: 'no se cerró la DB');
+      expect(await helper.existe(), isTrue, reason: 'la fila nueva sigue en el teléfono');
+      final filas = await db!.customSelect('SELECT COUNT(*) AS n FROM jornada').getSingle();
+      expect(filas.read<int>('n'), 1);
+    });
+
+    test(
+      'sin poder contar (archivo presente, DB cerrada), se niega con «no se pudo revisar»',
+      () async {
+        await abrirConJornadas(0);
+        await helper.cerrar();
+        db = null;
+
+        final r = await repo.borrar(incluirBackupDrive: false);
+
+        expect(
+          r,
+          const Left<Failure, ResultadoBorradoDatosLocales>(FailureDatosLocalesIlegibles()),
+        );
+        expect(await helper.existe(), isTrue);
+      },
+    );
+
+    test('con reintento (un borrado que ya empezó) no cuenta ni se vuelve a bloquear', () async {
       await abrirConJornadas(0);
       await helper.cerrar();
       db = null;
 
-      final r = await repo.borrar(incluirBackupDrive: false);
+      final r = await repo.borrar(incluirBackupDrive: false, reintento: true);
 
       expect(r.isRight(), isTrue);
       expect(await helper.existe(), isFalse);
@@ -181,7 +228,7 @@ void main() {
     test(
       'dado un intento que falló después de cerrar la DB, reintentar termina el borrado',
       () async {
-        await abrirConJornadas(2);
+        await abrirConJornadas(0);
         await guardarDekYEnvoltorio();
         var intentos = 0;
         final conFallaAMitad = DatosLocalesRepositoryImpl(
@@ -202,7 +249,7 @@ void main() {
         expect(primero.isLeft(), isTrue);
         expect(await helper.existe(), isTrue, reason: 'quedó a mitad: DB cerrada, archivo y DEK');
 
-        final segundo = await conFallaAMitad.borrar(incluirBackupDrive: false);
+        final segundo = await conFallaAMitad.borrar(incluirBackupDrive: false, reintento: true);
 
         expect(segundo.isRight(), isTrue);
         expect(await helper.existe(), isFalse);

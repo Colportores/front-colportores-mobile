@@ -24,8 +24,8 @@ import '../datasources/backup_drive_data_source.dart';
 ///   ninguna en el teléfono.
 ///
 /// Sin el archivo de la DB no hay nada que perder (cero de todo). Con el archivo pero sin la DB
-/// abierta no se puede contar: el conteo llega como `null` y el borrado igual se puede hacer
-/// (decisión de Cristian en #66), avisando que no se sabe cuánto se pierde.
+/// abierta no se puede contar: el conteo llega como `null` y la pantalla **bloquea** el borrado
+/// hasta poder contar (decisión de Cristian del 29/09, vista 19).
 final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   DatosLocalesRepositoryImpl(
     this._helper,
@@ -63,9 +63,26 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
-    // Lo que se pierde, solo para el log: la pantalla ya lo avisó y el usuario lo confirmó.
-    final pendientes = await _contarSinSincronizar();
+    // La guarda: se cuenta acá, pegado al cierre de la DB, y no solo en el resumen que vio el
+    // usuario (puede haberse sumado una fila en el medio). Sin poder contar (`null`), tampoco.
+    //
+    // Solo un reintento con la DB **ya cerrada** saltea el conteo: es el que sigue a una falla a
+    // mitad del borrado (no se puede abrir de nuevo para contar). Si el cierre falló y la DB
+    // sigue abierta, el colportor pudo cargar trabajo nuevo en el medio: se cuenta como la
+    // primera vez (QA del PR #260).
+    final saltaConteo = reintento && _dbAbierta() == null;
+    final pendientes = saltaConteo ? 0 : await _contarSinSincronizar();
+    if (!saltaConteo && pendientes != 0) {
+      _log.warn(LogModulo.db, 'WIPE_RECHAZADO', 'hay trabajo sin sincronizar: no se borró nada', {
+        'pendientes': pendientes,
+      });
+      // Sin poder contar no se sabe si se pierde algo: "no se pudo revisar", no "hay pendientes".
+      return pendientes == null
+          ? const Left(FailureDatosLocalesIlegibles())
+          : Left(FailureBorradoConPendientes(pendientes: pendientes));
+    }
 
     // 1. Lo local. Cada paso tolera que lo suyo ya no esté, así que reintentar tras una falla a
     // mitad termina el trabajo: sin DB abierta `cerrar` no hace nada, sin archivo `borrar` tampoco,

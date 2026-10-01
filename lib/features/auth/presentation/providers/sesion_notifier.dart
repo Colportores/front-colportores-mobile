@@ -237,11 +237,19 @@ class SesionNotifier extends _$SesionNotifier {
   /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
   /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
   /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.
+  ///
+  /// [reintento] y [alAvanzar]: ver `BorrarDatosLocalesParams`.
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrarDatosLocales({
     required bool incluirBackupDrive,
+    bool reintento = false,
+    void Function(PasoBorrado paso)? alAvanzar,
   }) async {
     final resultado = await ref.read(borrarDatosLocalesUseCaseProvider)(
-      BorrarDatosLocalesParams(incluirBackupDrive: incluirBackupDrive),
+      BorrarDatosLocalesParams(
+        incluirBackupDrive: incluirBackupDrive,
+        reintento: reintento,
+        alAvanzar: alAvanzar,
+      ),
     );
     if (resultado.isRight()) {
       _olvidarPassword();

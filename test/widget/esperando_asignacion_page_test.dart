@@ -47,6 +47,7 @@ final class _SinDatosLocales implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async => const Right(ResultadoBorradoDatosLocales.completo);
 }
 

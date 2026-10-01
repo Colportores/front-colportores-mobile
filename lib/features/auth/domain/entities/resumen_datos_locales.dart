@@ -18,7 +18,8 @@ final class ResumenDatosLocales extends Equatable {
 
   /// Cambios que todavía no se subieron al servidor: borrar los pierde (HU-AUTH-010: "las
   /// operaciones encoladas no se subirán"). `null` si no se pudo contar (la DB existe pero no se
-  /// puede leer): el borrado sigue siendo posible, avisando que no se sabe cuánto se pierde.
+  /// puede leer): **bloquea el borrado igual que si hubiera pendientes** (decisión de Cristian del
+  /// 29/09, vista 19): sin saber si se pierde algo, no se borra; se reintenta el conteo.
   final int? operacionesSinSincronizar;
 
   /// Si existe un backup en Drive (`appDataFolder`) que el borrado podría incluir.

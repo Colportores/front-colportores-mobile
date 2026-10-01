@@ -59,6 +59,7 @@ final class _DatosLocalesFake implements DatosLocalesRepository {
   @override
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
     required bool incluirBackupDrive,
+    bool reintento = false,
   }) async {
     await demoraBorrado?.future;
     borrados.add(incluirBackupDrive);
@@ -158,12 +159,6 @@ Future<void> _tocar(WidgetTester tester, Finder finder) async {
 
 Future<void> _abrirBorrado(WidgetTester tester) =>
     _tocar(tester, find.byKey(const Key('configuracion_borrar_datos')));
-
-Future<void> _llegarAlDialogoFinal(WidgetTester tester) async {
-  await _abrirBorrado(tester);
-  await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
-  await _tocar(tester, find.byKey(const Key('borrar_datos_continuar')));
-}
 
 /// Repositorio cuyo cierre de sesión lanza: el `SesionNotifier` igual cierra la DB y resetea la
 /// sesión. Lo demás no se usa en estos tests.
@@ -793,370 +788,14 @@ void main() {
     }, skip: true);
   });
 
-  group('HU-AUTH-010 — Borrar datos locales', () {
-    testWidgets('Escenario: Borrado exitoso (sin tocar backup en Drive)', (tester) async {
-      final container = await _montar(tester);
-      await _abrirBorrado(tester);
-
-      expect(find.text(TextosBorrado.explicacion), findsOneWidget);
-      expect(find.byKey(const Key('borrar_datos_personas')), findsOneWidget);
-      expect(find.text('12'), findsOneWidget);
-      expect(find.text('34'), findsOneWidget);
-      expect(find.text('Sí, vas a elegir si se borra'), findsOneWidget);
-      expect(find.text(TextosBorrado.datosDelSistema), findsOneWidget);
-      expect(
-        find.text(TextosBorrado.limiteBorrado),
-        findsOneWidget,
-        reason: 'HU-AUTH-010, caso borde: documenta el límite del overwrite en memoria flash',
-      );
-
-      final continuar = find.byKey(const Key('borrar_datos_continuar'));
-      expect(tester.widget<FilledButton>(continuar).onPressed, isNull, reason: 'sin checkbox');
-      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
-      await _tocar(tester, continuar);
-
-      await tester.tap(find.text('No, conservar mi backup en Drive'));
-      await tester.pump();
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, [false]);
-      expect(_remote.llamadasCerrarSesion, 1, reason: 'revoca el JWT en Supabase');
-      expect(container.read(sesionProvider).value, isNull);
-      expect(_login, findsOneWidget, reason: 'la UI navega al login');
-    });
-
-    testWidgets('Escenario: Borrado exitoso (incluyendo backup en Drive)', (tester) async {
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar también mi backup en Drive'));
-      await tester.pump();
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, [true]);
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('Escenario: Borrado exitoso (incluyendo backup en Drive) — Drive falla por red', (
-      tester,
-    ) async {
-      _datos.respuestaBorrado = const Right(
-        ResultadoBorradoDatosLocales.backupDriveNoBorradoSinConexion,
-      );
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar también mi backup en Drive'));
-      await tester.pump();
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('No pudimos borrar el backup remoto; intentalo más tarde desde Drive.'),
-        findsOneWidget,
-      );
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('Escenario: Error -borrado de Drive falla y se exigió incluirlo', (tester) async {
-      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.backupDriveNoBorrado);
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar también mi backup en Drive'));
-      await tester.pump();
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(
-          'Tus datos locales se eliminaron. No pudimos borrar el backup en Drive; eliminalo '
-          'manualmente desde drive.google.com o reintentá.',
-        ),
-        findsOneWidget,
-      );
-      expect(_datos.borrados, [true], reason: 'los datos locales sí se borran (no se revierte)');
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('Escenario: Edge -usuario cancela en el diálogo final', (tester) async {
-      final container = await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.byKey(const Key('borrar_datos_cancelar')));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, isEmpty, reason: 'no se borra absolutamente nada');
-      expect(container.read(sesionProvider).value, isNotNull);
-      expect(find.byType(ConfiguracionPage), findsOneWidget, reason: 'vuelvo a Configuración');
-      expect(find.byType(BorrarDatosLocalesPage), findsNothing);
-    });
-
-    testWidgets('Escenario: Edge -sin sesión válida (caso raro)', (tester) async {
-      final container = await _montar(tester);
-      _remote.simularSinConexion = true; // la revocación no puede llegar al servidor
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, [false], reason: 'el borrado local procede igual');
-      expect(container.read(sesionProvider).value, isNull);
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('pendientes: avisa cuántas se pierden y pide confirmarlo aparte (#66)', (
-      tester,
-    ) async {
-      _datos.respuestaResumen = const Right(
-        ResumenDatosLocales(
-          personas: 2,
-          visitas: 5,
-          operacionesSinSincronizar: 7,
-          hayBackupEnDrive: false,
-        ),
-      );
-      final container = await _montar(tester);
-      await _abrirBorrado(tester);
-
-      expect(find.text(TextosBorrado.pendientes(7)), findsOneWidget);
-      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
-      final continuar = find.byKey(const Key('borrar_datos_continuar'));
-      expect(
-        tester.widget<FilledButton>(continuar).onPressed,
-        isNull,
-        reason: 'falta confirmar que se pierden las pendientes',
-      );
-
-      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox_pendientes')));
-      await _tocar(tester, continuar);
-      expect(find.byKey(const Key('borrar_datos_dialogo_pendientes')), findsOneWidget);
-      await tester.tap(find.text(TextosBorrado.confirmarFinal));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, [false], reason: 'el borrado se hace igual');
-      expect(container.read(sesionProvider).value, isNull);
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('pendientes desconocidos: avisa que no se pudieron contar y deja borrar', (
-      tester,
-    ) async {
-      _datos.respuestaResumen = const Right(
-        ResumenDatosLocales(
-          personas: 0,
-          visitas: 0,
-          operacionesSinSincronizar: null,
-          hayBackupEnDrive: false,
-        ),
-      );
+  group('HU-AUTH-010 — entrada desde Configuración', () {
+    testWidgets('«Borrar datos locales» abre la vista 19 con el resumen', (tester) async {
       await _montar(tester);
       await _abrirBorrado(tester);
 
-      expect(find.text('No se pudieron contar'), findsOneWidget);
-      expect(find.text(TextosBorrado.pendientesDesconocidos), findsOneWidget);
-      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox')));
-      await _tocar(tester, find.byKey(const Key('borrar_datos_checkbox_pendientes')));
-      await _tocar(tester, find.byKey(const Key('borrar_datos_continuar')));
-      await tester.tap(find.text(TextosBorrado.confirmarFinal));
-      await tester.pumpAndSettle();
-
-      expect(_datos.borrados, [false]);
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('error: si el borrado falla, avisa y la sesión sigue abierta', (tester) async {
-      _datos.respuestaBorrado = const Left(FailureInesperado());
-      final container = await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
-      expect(container.read(sesionProvider).value, isNotNull);
       expect(find.byType(BorrarDatosLocalesPage), findsOneWidget);
-
-      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
-      await tester.tap(find.text('Reintentar'));
-      await tester.pumpAndSettle();
-      expect(_datos.borrados, [false, false]);
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('error: si borra pero no puede cerrar la sesión, no muestra el login', (
-      tester,
-    ) async {
-      final local = _LocalQueNoBorra();
-      final container = await _montar(tester, local: local);
-      local.fallar = true;
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text('Sí, borrar datos locales'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
-      expect(container.read(sesionProvider).value, isNotNull);
-      expect(_login, findsNothing);
-
-      local.fallar = false;
-      await tester.tap(find.text('Reintentar'));
-      await tester.pumpAndSettle();
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('error: si no puede revisar los datos, no ofrece borrar y deja reintentar', (
-      tester,
-    ) async {
-      _datos.respuestaResumen = const Left(FailureDatosLocalesIlegibles());
-      await _montar(tester);
-      await _abrirBorrado(tester);
-
-      expect(find.text(const FailureDatosLocalesIlegibles().mensaje), findsOneWidget);
-      expect(find.byKey(const Key('borrar_datos_continuar')), findsNothing);
-      expect(_datos.borrados, isEmpty);
-
-      _datos.respuestaResumen = const Right(_resumenBase);
-      await _tocar(tester, find.byKey(const Key('borrar_datos_reintentar')));
       expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
     });
-
-    testWidgets('cargando: mientras cuenta, lo dice', (tester) async {
-      await _montar(tester);
-      _datos.demoraResumen = Completer<void>();
-
-      await tester.tap(find.byKey(const Key('configuracion_borrar_datos')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(find.text('Revisando los datos de este teléfono…'), findsOneWidget);
-      _datos.demoraResumen!.complete();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
-    });
-
-    testWidgets('sin backup en Drive, el diálogo final no pregunta por Drive', (tester) async {
-      _datos.respuestaResumen = const Right(
-        ResumenDatosLocales(
-          personas: 0,
-          visitas: 0,
-          operacionesSinSincronizar: 0,
-          hayBackupEnDrive: false,
-        ),
-      );
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      expect(find.text(TextosBorrado.conservarDrive), findsNothing);
-      expect(find.text(TextosBorrado.borrarDrive), findsNothing);
-    });
-
-    testWidgets('mientras borra, el PopScope bloquea el back y "atrás" queda deshabilitado', (
-      tester,
-    ) async {
-      _datos.demoraBorrado = Completer<void>();
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await tester.tap(find.text(TextosBorrado.confirmarFinal));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byKey(const Key('borrar_datos_borrando')), findsOneWidget);
-      // El ListView quedó scrolleado hacia abajo por los toques anteriores (checkbox, continuar):
-      // "atrás" (arriba del todo) queda fuera del viewport actual y flutter_test lo trata como
-      // offstage por default. No hace falta tocarlo, solo inspeccionar su estado: skipOffstage:
-      // false alcanza, sin necesidad de scrollear de vuelta.
-      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
-      expect(
-        tester.widget<IconButton>(atras).onPressed,
-        isNull,
-        reason: '"atrás" no puede sacar de la pantalla mientras borra',
-      );
-      final popScope = tester.widget<PopScope>(
-        find.descendant(
-          of: find.byType(BorrarDatosLocalesPage),
-          matching: find.byType(PopScope),
-          skipOffstage: false,
-        ),
-      );
-      expect(
-        popScope.canPop,
-        isFalse,
-        reason: 'el gesto/botón de sistema tampoco puede sacar de la pantalla mientras borra',
-      );
-
-      _datos.demoraBorrado!.complete();
-      await tester.pumpAndSettle();
-      expect(_login, findsOneWidget);
-    });
-
-    testWidgets('en reposo, el PopScope deja salir y "atrás" está habilitado (contraste con el '
-        'borrado en curso, #102)', (tester) async {
-      await _montar(tester);
-      await _abrirBorrado(tester);
-
-      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
-      expect(tester.widget<IconButton>(atras).onPressed, isNotNull);
-      final popScope = tester.widget<PopScope>(
-        find.descendant(
-          of: find.byType(BorrarDatosLocalesPage),
-          matching: find.byType(PopScope),
-          skipOffstage: false,
-        ),
-      );
-      expect(popScope.canPop, isTrue);
-    });
-
-    testWidgets('dado que el borrado falló y se sale sin reintentar, el aviso con "Reintentar" '
-        'no queda colgado, también con la navegación accesible prendida (#102, #107)', (
-      tester,
-    ) async {
-      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
-        accessibleNavigation: true,
-      );
-      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-      _datos.respuestaBorrado = const Left(FailureInesperado());
-      final container = await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-      await tester.tap(find.text(TextosBorrado.confirmarFinal));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('borrar_datos_error')), findsOneWidget);
-      final reintentar = tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed;
-
-      final atras = find.byKey(const Key('borrar_datos_atras'), skipOffstage: false);
-      expect(tester.widget<IconButton>(atras).onPressed, isNotNull, reason: 'ya no está borrando');
-
-      // El "atrás" del sistema (gesto o botón), que el PopScope deja pasar en reposo.
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-      expect(find.byType(BorrarDatosLocalesPage), findsNothing);
-      expect(find.byKey(const Key('borrar_datos_error')), findsNothing);
-
-      // Y si el "Reintentar" llegara igual, con la pantalla ya cerrada, no hace nada.
-      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
-      reintentar();
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(_datos.borrados, [false], reason: 'un solo intento: el que falló');
-      expect(container.read(sesionProvider).value, isNotNull);
-    });
-
-    // skip: QA #68 — HU-AUTH-010 (casos borde) pide esperar o cancelar limpiamente una operación
-    // en curso (sync o backup activo) antes de borrar. No hay motor de sync ni jobs de backup en
-    // el código todavía — nada que testear hasta que existan.
-    testWidgets(
-      'caso borde: borrado con una operación en curso (sync o backup activo) espera o cancela '
-      'limpiamente',
-      (tester) async {
-        fail('no hay nada que probar: no existe motor de sync ni job de backup en el código');
-      },
-      skip: true,
-    );
   });
 
   group('Accesibilidad', () {
@@ -1170,11 +809,6 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-      await _abrirBorrado(tester);
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
       handle.dispose();
     });
 
@@ -1288,20 +922,6 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('con textScaler 2.0 no hay overflow en Configuración ni en el borrado', (
-      tester,
-    ) async {
-      _pantalla(tester, const Size(360, 740));
-      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await _montar(tester);
-      expect(tester.takeException(), isNull);
-
-      await _llegarAlDialogoFinal(tester);
-      expect(tester.takeException(), isNull);
-      expect(find.text(TextosBorrado.borrarDrive), findsOneWidget);
-    });
-
     testWidgets('a 360 px y texto 2.0 el título no se parte y el correo se corta en «@» y «.»', (
       tester,
     ) async {
@@ -1322,48 +942,6 @@ void main() {
       expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
       expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('el resumen de borrado con operaciones pendientes cumple las guías', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      _datos.respuestaResumen = const Right(
-        ResumenDatosLocales(
-          personas: 2,
-          visitas: 5,
-          operacionesSinSincronizar: 7,
-          hayBackupEnDrive: true,
-        ),
-      );
-      await _montar(tester);
-      await _abrirBorrado(tester);
-
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
-      handle.dispose();
-    });
-
-    testWidgets('el diálogo final (con la opción de backup en Drive) cumple las guías', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await _montar(tester);
-      await _llegarAlDialogoFinal(tester);
-
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
-      handle.dispose();
     });
   });
 }
