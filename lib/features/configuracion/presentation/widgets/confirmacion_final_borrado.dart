@@ -205,6 +205,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
     if (_falloRequisitos != null) {
       cuerpo = _Aviso(
         key: const Key('borrar_datos_error_requisitos'),
+        anuncia: true,
         icono: Icons.error_outline,
         texto: _falloRequisitos!.mensaje,
         accion: OutlinedButton(
@@ -340,6 +341,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
           const SizedBox(height: 12),
           const _Aviso(
             key: Key('borrar_datos_sin_conexion'),
+            anuncia: true,
             icono: Icons.cloud_off_outlined,
             texto: TextosBorrado.sinConexion,
           ),
@@ -348,6 +350,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
           const SizedBox(height: 12),
           _Aviso(
             key: const Key('borrar_datos_error_confirmacion'),
+            anuncia: true,
             icono: Icons.error_outline,
             texto: _falloGeneral!.mensaje,
           ),
@@ -416,26 +419,37 @@ class _Opcion extends StatelessWidget {
 }
 
 class _Aviso extends StatelessWidget {
-  const _Aviso({super.key, required this.icono, required this.texto, this.accion});
+  const _Aviso({
+    super.key,
+    required this.icono,
+    required this.texto,
+    this.accion,
+    this.anuncia = false,
+  });
 
   final IconData icono;
   final String texto;
   final Widget? accion;
 
+  /// El aviso aparece tras una acción del usuario (reintentar, confirmar, cortarse la conexión):
+  /// el lector de pantalla lo anuncia sin que tenga que ir a buscarlo.
+  final bool anuncia;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fila = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExcludeSemantics(child: Icon(icono, size: 20)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(texto, style: theme.textTheme.bodyMedium)),
+      ],
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ExcludeSemantics(child: Icon(icono, size: 20)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(texto, style: theme.textTheme.bodyMedium)),
-          ],
-        ),
+        anuncia ? Semantics(liveRegion: true, child: fila) : fila,
         if (accion != null) ...[const SizedBox(height: 12), accion!],
       ],
     );

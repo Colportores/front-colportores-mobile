@@ -67,8 +67,14 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   }) async {
     // La guarda: se cuenta acá, pegado al cierre de la DB, y no solo en el resumen que vio el
     // usuario (puede haberse sumado una fila en el medio). Sin poder contar (`null`), tampoco.
-    final pendientes = await _contarSinSincronizar();
-    if (!reintento && pendientes != 0) {
+    //
+    // Solo un reintento con la DB **ya cerrada** saltea el conteo: es el que sigue a una falla a
+    // mitad del borrado (no se puede abrir de nuevo para contar). Si el cierre falló y la DB
+    // sigue abierta, el colportor pudo cargar trabajo nuevo en el medio: se cuenta como la
+    // primera vez (QA del PR #260).
+    final saltaConteo = reintento && _dbAbierta() == null;
+    final pendientes = saltaConteo ? 0 : await _contarSinSincronizar();
+    if (!saltaConteo && pendientes != 0) {
       _log.warn(LogModulo.db, 'WIPE_RECHAZADO', 'hay trabajo sin sincronizar: no se borró nada', {
         'pendientes': pendientes,
       });

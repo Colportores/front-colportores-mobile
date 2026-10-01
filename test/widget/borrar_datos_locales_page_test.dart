@@ -786,6 +786,40 @@ void main() {
       expect(_datos.borrados, [false]);
     });
 
+    testWidgets('los avisos que aparecen tras una acción se anuncian (liveRegion): error general, '
+        'sin conexión y error de requisitos', (tester) async {
+      Finder anunciado(String clave) => find.descendant(
+        of: _k(clave),
+        matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.liveRegion == true),
+      );
+      _monitor.inicial = TipoConexion.sinConexion;
+      await _montar(tester);
+      await _irAConfirmacion(tester);
+      expect(anunciado('borrar_datos_sin_conexion'), findsOneWidget);
+
+      _db.fallas['desenvolver'] = const FailureAlmacenSeguro();
+      await _completarConfirmacion(tester);
+      await _confirmar(tester);
+
+      expect(anunciado('borrar_datos_error_confirmacion'), findsOneWidget);
+    });
+
+    testWidgets('el aviso de requisitos ilegibles también se anuncia', (tester) async {
+      _intentos.estado = const EstadoIntentosBorrado.ilegible();
+      await _montar(tester);
+      await _irAConfirmacion(tester);
+
+      expect(
+        find.descendant(
+          of: _k('borrar_datos_error_requisitos'),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('el contador de intentos ilegible: falla cerrado, lo dice y deja reintentar', (
       tester,
     ) async {
