@@ -13,6 +13,7 @@ class Sesion extends Equatable {
     required this.accessToken,
     required DateTime expiraEn,
     this.entraConPassword = true,
+    this.nombre,
   }) : expiraEn = expiraEn.toUtc();
 
   /// UUID del usuario (`auth.users.id` = `public.usuario.id`). Es lo único que se loguea.
@@ -39,6 +40,11 @@ class Sesion extends Equatable {
   /// (revisión del PR #130).
   final bool entraConPassword;
 
+  /// Nombre de pila del usuario (`usuario.nombre`), para el saludo «Buen trabajo, NOMBRE»
+  /// (#243). `null` si la cuenta no lo trae (ingreso con Google: el proveedor no lo manda en el
+  /// signup). Es dato personal: va en [props] pero nunca en `toString` ([stringify] es `false`).
+  final String? nombre;
+
   /// `true` si la sesión sigue válida en el instante [ahora] (inyectable para tests), con la
   /// tolerancia de reloj de [PoliticaSesion].
   bool estaVigente({DateTime? ahora}) => !PoliticaSesion.vencida(expiraEn, ahora ?? DateTime.now());
@@ -50,5 +56,5 @@ class Sesion extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [usuarioId, email, accessToken, expiraEn, entraConPassword];
+  List<Object?> get props => [usuarioId, email, accessToken, expiraEn, entraConPassword, nombre];
 }

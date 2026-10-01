@@ -412,7 +412,19 @@ final class AuthRemoteDataSourceSupabase
     accessToken: sesion.accessToken,
     expiraEn: PoliticaSesion.expiraEn(emisionDelJwt(sesion.accessToken) ?? DateTime.now()),
     entraConPassword: entraConPassword(sesion.user.appMetadata),
+    nombre: nombreDeUsuario(sesion.user.userMetadata),
   );
+
+  /// El nombre que el registro manda en `data: {nombre, ...}` (queda en `user_metadata` y el
+  /// trigger de backend lo copia a `public.usuario`). Sin él —ingreso con Google, o una cuenta
+  /// vieja—, `null`: el saludo queda sin nombre.
+  @visibleForTesting
+  static String? nombreDeUsuario(Map<String, dynamic>? metadata) {
+    final nombre = metadata?['nombre'];
+    if (nombre is! String) return null;
+    final limpio = nombre.trim();
+    return limpio.isEmpty ? null : limpio;
+  }
 
   /// Si la cuenta tiene contraseña: `providers` de Supabase incluye `email` (una cuenta de Google
   /// que después creó una contraseña también). Sin esa información, ante la duda, `true`: se pide

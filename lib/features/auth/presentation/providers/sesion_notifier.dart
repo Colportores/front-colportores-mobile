@@ -4,6 +4,7 @@ import 'package:dartz/dartz.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/database/database_providers.dart';
+import '../../../../core/database/sesion_usuario_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
@@ -289,6 +290,14 @@ class SesionNotifier extends _$SesionNotifier {
 
   Future<void> _cerrarDbYSesion() async {
     _olvidarPassword();
+    // El nombre del usuario no se queda en el teléfono (#243). Antes de cerrar la DB; si falla, el
+    // cierre sigue igual: la copia está cifrada y la próxima sesión la pisa o la ignora (se lee por
+    // usuario).
+    try {
+      await ref.read(sesionUsuarioLocalDataSourceProvider)?.borrar();
+    } on Object {
+      _log.warn(LogModulo.db, 'NOMBRE_BORRADO_FAIL', 'no se pudo borrar la copia del nombre');
+    }
     try {
       await ref.read(dbLocalProvider.notifier).cerrar();
     } on Object {
