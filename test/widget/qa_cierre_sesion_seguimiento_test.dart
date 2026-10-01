@@ -152,5 +152,24 @@ void main() {
         );
       });
     }
+
+    testWidgets('un correo muy largo se parte sin desbordar y no tapa «Cerrar sesión»', (
+      tester,
+    ) async {
+      const largo =
+          'nombre.muy.largo.de.una.persona.con.apellidos.compuestos.y.varios.segmentos@subdominio.de.una.organizacion.example.com';
+      await abrirConfiguracion(tester, largo);
+
+      expect(tester.takeException(), isNull);
+      final correo = find.byKey(const Key('configuracion_email'));
+      expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
+      expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
+      final boton = find.text('Cerrar sesión');
+      await tester.ensureVisible(boton);
+      await tester.pumpAndSettle();
+      expect(boton, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(tester.getRect(correo).bottom, lessThanOrEqualTo(tester.getRect(boton).top));
+    });
   });
 }
