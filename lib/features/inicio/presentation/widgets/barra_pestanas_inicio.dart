@@ -15,12 +15,30 @@ enum PestanaInicio {
   final IconData iconoActivo;
 }
 
+/// Las pestañas que una cuenta pendiente de asignación no puede abrir (todas menos «Hoy»).
+const modulosDeCampo = {
+  PestanaInicio.mapa,
+  PestanaInicio.lista,
+  PestanaInicio.agenda,
+  PestanaInicio.ventas,
+};
+
 /// La barra inferior Hoy · Mapa · Lista · Agenda · Ventas. La arma la pantalla principal (#229) y
 /// la reutiliza Configuración (vista 16), donde ninguna pestaña está activa ([seleccionada] `null`).
+///
+/// Con la cuenta pendiente de asignación (vista 18) los módulos de campo van [bloqueadas]: se ven
+/// con un candado y tocarlos le explica al colportor por qué no están disponibles ([onSeleccionar]
+/// también se llama con ellas: quien la arma decide qué decir).
 class BarraPestanasInicio extends StatelessWidget {
-  const BarraPestanasInicio({super.key, required this.onSeleccionar, this.seleccionada});
+  const BarraPestanasInicio({
+    super.key,
+    required this.onSeleccionar,
+    this.seleccionada,
+    this.bloqueadas = const {},
+  });
 
   final PestanaInicio? seleccionada;
+  final Set<PestanaInicio> bloqueadas;
   final ValueChanged<PestanaInicio> onSeleccionar;
 
   @override
@@ -46,7 +64,9 @@ class BarraPestanasInicio extends StatelessWidget {
           for (final pestana in PestanaInicio.values)
             NavigationDestination(
               key: Key('inicio_pestana_${pestana.name}'),
-              icon: Icon(pestana.icono),
+              icon: bloqueadas.contains(pestana)
+                  ? Semantics(label: 'Bloqueado', child: const Icon(Icons.lock_outline, size: 20))
+                  : Icon(pestana.icono),
               selectedIcon: seleccionada == null
                   ? Icon(pestana.icono)
                   : Icon(pestana.iconoActivo, color: esquema.primary),

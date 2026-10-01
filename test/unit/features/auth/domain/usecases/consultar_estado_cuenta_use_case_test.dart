@@ -15,6 +15,9 @@ final class _CuentaFalsa implements CuentaRepository {
 
   @override
   Future<EstadoCuenta?> ultimoConocido(String usuarioId) async => ultimo;
+
+  @override
+  DateTime? ultimaConsultaExitosa(String usuarioId) => null;
 }
 
 void main() {
