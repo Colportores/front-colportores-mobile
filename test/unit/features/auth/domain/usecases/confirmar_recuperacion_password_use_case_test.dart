@@ -400,6 +400,22 @@ void main() {
     expect(recuperacion.llamadas, ['abandonar']);
   });
 
+  test('una mayúscula con tilde o Ñ cumple («Ñandú2026», «Élan2026»)', () async {
+    for (final nueva in ['Ñandú2026', 'Élan2026']) {
+      final r = await conPassword(nueva);
+
+      expect(r, const Right<Failure, Unit>(unit), reason: nueva);
+      expect(recuperacion.fijada, nueva);
+    }
+  });
+
+  test('con 7 caracteres visibles (un emoji cuenta 1) la rechaza sin llamar al servidor', () async {
+    final r = await conPassword('Ab1😀😀😀😀');
+
+    expect(campos(r), {'password': PoliticaPassword.requisitos});
+    expect(recuperacion.llamadas, isEmpty);
+  });
+
   test(
     'PoliticaPassword acepta una contraseña que cumple y usa el texto de vacía que se le pase',
     () {
