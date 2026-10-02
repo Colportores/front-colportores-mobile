@@ -532,6 +532,24 @@ void main() {
 
       await expectLater(custodia.olvidarDatosDelUsuario(), completes);
     });
+
+    test('borra también el correo de la última cuenta (vista 19)', () async {
+      await almacen.escribir(ClaveSegura.ultimoCorreo, 'ana@example.com');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimoCorreo), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el correo de la última cuenta', () async {
+      await almacen.escribir(ClaveSegura.ultimoCorreo, 'ana@example.com');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.ultimoCorreo], 'ana@example.com');
+    });
   });
 
   group('CustodiaClaveDb — cada ClaveSegura tiene un destino (#122)', () {
