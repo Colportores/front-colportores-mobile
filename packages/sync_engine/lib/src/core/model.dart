@@ -135,6 +135,8 @@ class JobResult {
     this.serverRow,
     this.code = '',
     this.message = '',
+    this.constraint = '',
+    this.dependsOn,
   });
 
   final String clientOpId;
@@ -149,6 +151,16 @@ class JobResult {
 
   final String code;
   final String message;
+
+  /// La restricción que saltó, cuando el servidor la nombra. Hoy solo viene en
+  /// el [JobOutcome.conflict] de dirección única (`code` `23505`, constraint
+  /// `ubicacion_direccion_unica`, §2.2), que llega **sin** [serverRow]: la fila
+  /// queda en el teléfono y la app la resuelve en la vista 10.
+  final String constraint;
+
+  /// En el [JobOutcome.conflict] con `code` `ESPERA_ALTA_EN_CONFLICTO` (§6.1):
+  /// el id de la fila en espera de la que cuelga este job. Sin [serverRow].
+  final String? dependsOn;
 
   @override
   String toString() => '$clientOpId → ${outcome.name}'
@@ -200,9 +212,9 @@ class PullDelta {
 /// La única clasificación que el motor hace de un error (§5.1).
 ///
 /// Lleva una categoría y no un status HTTP a propósito: el núcleo no sabe que
-/// existe HTTP. La traducción desde el status vive en `adapters/bff_transport`,
-/// y está en [kindForStatus] para que el fake y el transporte real no puedan
-/// discrepar.
+/// existe HTTP. La traducción desde el status está en [kindForStatus] para que
+/// el fake y los transportes reales no puedan discrepar; `SupabaseRpcTransport`
+/// la mira después del `code` de PostgREST (`kindForRpcError`, §6.1).
 enum FailureKind {
   /// Red, timeout, `5xx`, `429`. El job vuelve a `PENDING` y se reintenta al
   /// próximo trigger, indefinidamente y sin contador.

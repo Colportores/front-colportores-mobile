@@ -8,10 +8,12 @@ import 'backup.dart';
 import 'model.dart';
 import 'queue.dart';
 
-/// El camino batch hacia el backend (§6: a través de `bff-colportores`).
+/// El camino batch hacia el backend (§6: directo a las RPC de Supabase,
+/// ADR-013).
 ///
-/// Lo implementan `BffTransport` en producción y [FakeSyncTransport] en los
-/// tests y en el desarrollo de la app entre hitos (§11).
+/// Lo implementan `SupabaseRpcTransport` en producción, `BffTransport` para el
+/// BFF diferido y [FakeSyncTransport] en los tests y en el desarrollo de la app
+/// entre hitos (§11).
 ///
 /// Toda implementación falla lanzando [TransportFailure] y nunca deja escapar
 /// una excepción de su propia tecnología (`DioException`, `SocketException`):
