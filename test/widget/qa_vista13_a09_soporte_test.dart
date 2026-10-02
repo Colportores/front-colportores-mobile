@@ -167,8 +167,9 @@ void main() {
     const explicacion =
         'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu contraseña.';
 
-    testWidgets('la explicación sigue visible tras una contraseña equivocada y sin conexión',
-        (tester) async {
+    testWidgets('la explicación sigue visible tras una contraseña equivocada y sin conexión', (
+      tester,
+    ) async {
       _interrumpida();
       await _entrar(tester, restaurada: true);
       await _tocar(tester, 'preparacion_db_empezar_interrumpida');
@@ -186,8 +187,9 @@ void main() {
       expect(find.text(explicacion), findsOneWidget);
     });
 
-    testWidgets('sin interrupción previa (base existente sin envoltorio) el texto es el genérico',
-        (tester) async {
+    testWidgets('sin interrupción previa (base existente sin envoltorio) el texto es el genérico', (
+      tester,
+    ) async {
       final dek = Uint8List.fromList(List<int>.filled(32, 9));
       _db
         ..marca = MarcaDbLocal.puesta
