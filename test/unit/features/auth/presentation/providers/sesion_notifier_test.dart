@@ -8,16 +8,21 @@ import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
+import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,6 +54,22 @@ final class _LocalQueFalla implements AuthLocalDataSource {
 
 class _MockAuthRepository extends Mock implements AuthRepository {}
 
+/// Borrado de datos que termina como se le diga: lo único que importa acá es qué hace la sesión.
+final class _DatosQueBorran implements DatosLocalesRepository {
+  Either<Failure, ResultadoBorradoDatosLocales> respuesta = const Right(
+    ResultadoBorradoDatosLocales.completo,
+  );
+
+  @override
+  Future<Either<Failure, ResumenDatosLocales>> resumen() => throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, ResultadoBorradoDatosLocales>> borrar({
+    required bool incluirBackupDrive,
+    bool reintento = false,
+  }) async => respuesta;
+}
+
 final class _FallaDeAlmacen implements Exception {
   const _FallaDeAlmacen();
 }
@@ -61,6 +82,31 @@ class _DbLocalQueFallaAlCerrar extends DbLocalNotifier {
     await super.cerrar();
     throw const DbLocalException(operacion: 'cerrar');
   }
+}
+
+/// Almacén seguro donde escribir tarda: sirve para probar el orden de las operaciones.
+final class _AlmacenLento implements AlmacenSeguro {
+  String? contenido;
+  final operaciones = <String>[];
+
+  @override
+  Future<String?> leer(ClaveSegura clave) async => contenido;
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) async {
+    operaciones.add('escribir');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    contenido = valor;
+  }
+
+  @override
+  Future<void> borrar(ClaveSegura clave) async {
+    operaciones.add('borrar');
+    contenido = null;
+  }
+
+  @override
+  Future<void> borrarTodo() async => contenido = null;
 }
 
 class _SalidaEnMemoria extends LogOutput {
@@ -605,5 +651,226 @@ void main() {
           );
       expect(container.read(avisoSesionProvider), isNull);
     });
+  });
+  group('SesionNotifier — correo de la última cuenta (decisión de Cristian, 01/10)', () {
+    late Directory directorio;
+    late DatabaseHelper helper;
+    late AuthRemoteDataSourceEnMemoria remote;
+    late _LocalQueFalla local;
+    late UltimoCorreoEnMemoria correo;
+    late _DatosQueBorran datos;
+    late ProviderContainer container;
+
+    ProviderContainer crear() => ProviderContainer(
+      overrides: [
+        authRemoteDataSourceProvider.overrideWithValue(remote),
+        authLocalDataSourceProvider.overrideWithValue(local),
+        databaseHelperProvider.overrideWithValue(helper),
+        ultimoCorreoRepositoryProvider.overrideWithValue(correo),
+        datosLocalesRepositoryProvider.overrideWithValue(datos),
+      ],
+    );
+
+    setUp(() async {
+      directorio = await Directory.systemTemp.createTemp('colportores_ultimo_correo_test');
+      helper = DatabaseHelper(
+        directorio: () async => directorio,
+        directorioTemporal: () async => directorio,
+        logger: loggerMudo(),
+      );
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
+      local = _LocalQueFalla();
+      correo = UltimoCorreoEnMemoria();
+      datos = _DatosQueBorran();
+      container = crear();
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await helper.cerrar();
+      await directorio.delete(recursive: true);
+    });
+
+    Future<void> entrar() async {
+      await container.read(sesionProvider.future);
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      expect(falla, isNull);
+      await pumpEventQueue();
+    }
+
+    test('al entrar con correo y contraseña guarda solo el correo', () async {
+      await entrar();
+
+      expect(await correo.leer(), 'ana@example.com');
+    });
+
+    test('al entrar con Google guarda el correo de esa cuenta', () async {
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+      await pumpEventQueue();
+
+      expect(await correo.leer(), container.read(sesionProvider).value!.email);
+    });
+
+    test('al registrarse con una sesión que queda adentro guarda el correo', () async {
+      await container.read(sesionProvider.future);
+      await container
+          .read(sesionProvider.notifier)
+          .registrar(
+            nombre: 'Ana',
+            apellido: 'Pérez',
+            cedula: '12345672',
+            email: 'nueva@example.com',
+            password: 'Secreto123',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          );
+      await pumpEventQueue();
+
+      expect(await correo.leer(), 'nueva@example.com');
+    });
+
+    test(
+      'una sesión restaurada al arrancar también lo guarda (cuentas que entraron antes)',
+      () async {
+        await entrar();
+        await correo.borrar();
+        container.dispose();
+
+        container = crear();
+        await container.read(sesionProvider.future);
+        await pumpEventQueue();
+
+        expect(await correo.leer(), 'ana@example.com');
+      },
+    );
+
+    test('si el que entra es otro, el correo guardado pasa a ser el suyo', () async {
+      await correo.guardar('vieja@example.com');
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {'luis@example.com': 'otra12345'});
+      container.dispose();
+      container = crear();
+      await container.read(sesionProvider.future);
+
+      await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'luis@example.com', password: 'otra12345');
+      await pumpEventQueue();
+
+      expect(await correo.leer(), 'luis@example.com');
+    });
+
+    test('arranque en frío con la sesión vencida por inactividad: «Sesión vencida» ya trae el '
+        'correo guardado, sin sesión de dónde sacarlo', () async {
+      await correo.guardar('ana@example.com');
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      expect(await container.read(sesionProvider.future), isNull);
+
+      final reingreso = container.read(reingresoSesionProvider)!;
+      expect(reingreso.motivo, MotivoExpiracion.inactividad);
+      expect(reingreso.email, 'ana@example.com');
+    });
+
+    test('arranque en frío vencido sin correo guardado: no inventa uno', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      await container.read(sesionProvider.future);
+
+      expect(container.read(reingresoSesionProvider)!.email, isNull);
+      expect(container.read(avisoSesionProvider), isNotNull);
+    });
+
+    test('arranque en frío sin motivo de vencimiento (login común): no hay reingreso', () async {
+      await correo.guardar('ana@example.com');
+
+      await container.read(sesionProvider.future);
+
+      expect(container.read(reingresoSesionProvider), isNull);
+    });
+
+    test('cuando la sesión termina con la app abierta, el correo guardado se conserva', () async {
+      await entrar();
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+      await pumpEventQueue();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(await correo.leer(), 'ana@example.com');
+      expect(container.read(reingresoSesionProvider)?.email, 'ana@example.com');
+    });
+
+    test('cerrar sesión a propósito borra el correo', () async {
+      await entrar();
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(await correo.leer(), isNull);
+    });
+
+    test('si cerrar sesión falla (el usuario sigue adentro) el correo se conserva', () async {
+      await entrar();
+      local.explotar = true;
+
+      final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(resultado.isLeft(), isTrue);
+      expect(await correo.leer(), 'ana@example.com');
+    });
+
+    test('entrar y cerrar sesión enseguida, sin esperar el guardado, termina sin correo', () async {
+      // Con el almacén real el guardado puede tardar: el borrado pedido después tiene que ganar.
+      final lento = _AlmacenLento();
+      correo = UltimoCorreoEnMemoria();
+      container.dispose();
+      container = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(lento)),
+          datosLocalesRepositoryProvider.overrideWithValue(datos),
+        ],
+      );
+      await container.read(sesionProvider.future);
+      await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+      await pumpEventQueue();
+
+      expect(lento.contenido, isNull);
+      expect(lento.operaciones, ['escribir', 'borrar']);
+    });
+
+    test('borrar los datos locales borra el correo', () async {
+      await entrar();
+
+      final resultado = await container
+          .read(sesionProvider.notifier)
+          .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+      expect(resultado.isRight(), isTrue);
+      expect(await correo.leer(), isNull);
+      expect(container.read(sesionProvider).value, isNull);
+    });
+
+    test(
+      'si el borrado de datos falla, el usuario sigue adentro y el correo se conserva',
+      () async {
+        await entrar();
+        datos.respuesta = const Left(FailureDatosLocalesIlegibles());
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+        expect(resultado.isLeft(), isTrue);
+        expect(await correo.leer(), 'ana@example.com');
+      },
+    );
   });
 }

@@ -40,7 +40,12 @@ enum ClaveSegura {
   /// Intentos fallidos de contraseña en la confirmación final del borrado de datos locales
   /// (HU-AUTH-010, vista 19) y hasta cuándo dura la espera, como `<fallidos>|<ISO 8601 UTC o vacío>`.
   /// No es secreto: vive acá para que cerrar la app no reinicie la espera.
-  intentosBorrado('wipe_attempts');
+  intentosBorrado('wipe_attempts'),
+
+  /// El correo de la última cuenta que estuvo adentro y nada más (decisión de Cristian, 01/10):
+  /// precarga «Sesión vencida» tras un arranque en frío (HU-AUTH-007, vista 17). Se borra al
+  /// cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010, vista 19).
+  ultimoCorreo('last_account_email');
 
   const ClaveSegura(this.id);
 
