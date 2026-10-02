@@ -5,10 +5,12 @@ import 'ubicacion.dart';
 /// Por qué dos ubicaciones son un posible duplicado (HU-UBI-006, regla del 29/09 en #207).
 ///
 /// Si se cumplen las dos, cuenta [mismaDireccion]: es la más fuerte y la que decide si se puede
-/// "conservar ambos" (ver `CriterioDuplicadoUbicacion.mismaDireccionAdmiteConservarAmbos`).
+/// "conservar ambos": a menos de 100 m no, a 100 m o más sí (D1, ver
+/// `CriterioDuplicadoUbicacion.radioMismaDireccionMetros`).
 enum MotivoDuplicado {
   /// Misma calle y mismo número en la misma ciudad, a cualquier distancia (el GPS puede diferir
-  /// 10 o 20 m). Vista 10: "Misma calle y número".
+  /// 10 o 20 m, y dos casas con el mismo número pueden estar a cuadras). Vista 10: "Misma calle y
+  /// número".
   mismaDireccion,
 
   /// A menos de 5 m, con cualquier dirección o sin ella. Vista 10: "A menos de 5 m".

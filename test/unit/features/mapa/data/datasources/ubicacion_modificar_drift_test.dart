@@ -381,13 +381,36 @@ void main() {
       expect(encolador.encolados, isEmpty);
     });
 
-    test('dado "seguir igual" con motivo, cuando modifica, guarda aunque haya candidata', () async {
+    test('D1: dado "seguir igual" con motivo y la misma dirección a ~10 m, cuando modifica, no '
+        'guarda: sigue devolviendo la candidata, que no admite conservar las dos', () async {
       final r = await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
 
-      expect(r, isA<UbicacionModificada>());
-      expect((await guardada()).numero, '1236');
-      expect(encolador.encolados, hasLength(1));
+      expect(r, isA<ModificacionConDuplicados>());
+      final candidata = (r as ModificacionConDuplicados).candidatas.single;
+      expect((candidata.ubicacion.id, candidata.admiteConservarAmbos), ('ub-2', false));
+      expect((await guardada()).numero, '1234');
+      expect(encolador.encolados, isEmpty);
     });
+
+    test(
+      'D1: dado la misma dirección a 150 m, cuando modifica avisa, y con "seguir igual" y motivo '
+      'guarda (dos casas con el mismo número)',
+      () async {
+        await local.insertar(ubicacion(id: 'ub-5', numero: '1237', punto: alNorte(150)));
+        encolador.encolados.clear();
+
+        final aviso = await ok(params(numero: '1237'));
+        expect(aviso, isA<ModificacionConDuplicados>());
+        expect((aviso as ModificacionConDuplicados).candidatas.single.admiteConservarAmbos, isTrue);
+        expect((await guardada()).numero, '1234');
+
+        final r = await ok(params(numero: '1237', justificacion: 'Son dos casas del mismo número'));
+
+        expect(r, isA<UbicacionModificada>());
+        expect((await guardada()).numero, '1237');
+        expect(encolador.encolados, hasLength(1));
+      },
+    );
 
     test(
       'dado que la otra está dada de baja o es de otra ciudad, cuando modifica, no es candidata',

@@ -3,6 +3,7 @@
 // dispositivo. Los últimos grupos recorren el alta entera (caso de uso → repositorio → Drift).
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
@@ -18,6 +19,7 @@ import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_ubica
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
+import 'package:dartz/dartz.dart' show Either;
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
@@ -202,13 +204,12 @@ void main() {
     });
 
     test(
-      'dado D1 en la opción (a), cuando "Crear igual" inserta junto a una de la misma dirección, '
-      'la frena; junto a una solo cercana, la guarda',
+      'dado D1, cuando "Crear igual" inserta junto a la misma dirección a menos de 100 m, la frena; '
+      'junto a la misma dirección a 100 m o más o a una solo cercana, la guarda',
       () async {
-        final alSeguirIgual = const CriterioDuplicadoUbicacion(
-          mismaDireccionAdmiteConservarAmbos: false,
-        ).alSeguirIgual;
-        await local.insertar(ubicacion(id: 'misma', metrosAlNorte: 300));
+        final alSeguirIgual = criterio.alSeguirIgual;
+        await local.insertar(ubicacion(id: 'misma', metrosAlNorte: 15));
+        await local.insertar(ubicacion(id: 'lejana', metrosAlNorte: 300));
         await local.insertar(ubicacion(id: 'cerca', calle: 'Comercio', metrosAlNorte: 3));
 
         await expectLater(
@@ -217,8 +218,15 @@ void main() {
             ['misma', MotivoDuplicado.mismaDireccion],
           ]),
         );
+        // Otra dirección: la cercana (3 m) admite conservar ambos y la lejana ni es candidata.
         final r = await local.insertar(ubicacion(calle: 'Otra'), duplicados: alSeguirIgual);
         expect(r.yaEstaba, isFalse);
+        // La misma dirección a 100 m o más de cada una de las que ya están: las dos casas quedan.
+        final lejos = await local.insertar(
+          ubicacion(id: 'otra-cuadra', metrosAlNorte: 600),
+          duplicados: alSeguirIgual,
+        );
+        expect(lejos.yaEstaba, isFalse);
       },
     );
 
@@ -293,22 +301,31 @@ void main() {
       );
     });
 
-    RegistrarUbicacionParams params({String? id, String? justificacion}) =>
-        RegistrarUbicacionParams(
-          colportorId: 'col-1',
-          tipo: TipoUbicacion.casa,
-          punto: PuntoCapturado.gps(
-            const LecturaGps(
-              coordenadas: Coordenadas(lat: -34.891, lon: -56.125),
-              precisionMetros: 10,
-            ),
-          ),
-          ciudadId: 'mvd',
-          calle: 'Av. Italia',
-          numero: '1234',
-          id: id ?? registrar.nuevoId(),
-          justificacionDuplicado: justificacion,
-        );
+    RegistrarUbicacionParams params({
+      String? id,
+      String? justificacion,
+      String calle = 'Av. Italia',
+      String numero = '1234',
+      double metrosAlNorte = 0,
+    }) => RegistrarUbicacionParams(
+      colportorId: 'col-1',
+      tipo: TipoUbicacion.casa,
+      punto: PuntoCapturado.gps(
+        LecturaGps(
+          coordenadas: Coordenadas(lat: -34.891 + _grados(metrosAlNorte), lon: -56.125),
+          precisionMetros: 10,
+        ),
+      ),
+      ciudadId: 'mvd',
+      calle: calle,
+      numero: numero,
+      id: id ?? registrar.nuevoId(),
+      justificacionDuplicado: justificacion,
+    );
+
+    /// Lo que devolvió un alta que no se creó: las candidatas que la frenaron.
+    List<CandidataDuplicado> frenada(Either<Failure, ResultadoAltaUbicacion> r) =>
+        (r.getOrElse(() => throw StateError('falló')) as AltaConDuplicados).candidatas;
 
     test('Offline: sin red el alta se completa localmente y deja la ubicación y su espacio '
         'encolados para el sync', () async {
@@ -321,19 +338,109 @@ void main() {
       expect(encolador.encolados.first.payload['id'], alta.ubicacion.id);
     });
 
-    test('Detección de duplicado: la segunda alta de "Av. Italia 1234" no se crea y devuelve la '
-        'candidata; con "Crear igual" se crea', () async {
+    test(
+      'Detección de duplicado: la segunda alta de "Av. Italia 1234" a 15 m no se crea y devuelve '
+      'la candidata, que no admite conservar ambos (D1); con "Crear igual" tampoco se crea',
+      () async {
+        await registrar(params());
+
+        final segunda = await registrar(params(metrosAlNorte: 15));
+        expect(frenada(segunda).map((c) => c.ubicacion.id), ['id-1']);
+        expect(frenada(segunda).single.admiteConservarAmbos, isFalse);
+        expect(await filas('ubicacion'), 1);
+
+        final igual = await registrar(
+          params(metrosAlNorte: 15, justificacion: 'Es otra casa en el mismo padrón'),
+        );
+        expect(frenada(igual).map((c) => c.ubicacion.id), ['id-1']);
+        expect(await filas('ubicacion'), 1);
+      },
+    );
+
+    test('D1, el caso del revisor de #267: «av.  itália» 1234 a 15 m de «Av. Italia» 1234 no crea '
+        'el alta en silencio, ni con "Crear igual"', () async {
       await registrar(params());
 
-      final segunda = await registrar(params());
-      final candidatas =
-          (segunda.getOrElse(() => throw StateError('falló')) as AltaConDuplicados).candidatas;
-      expect(candidatas.map((c) => c.ubicacion.id), ['id-1']);
+      final sinCrear = await registrar(params(calle: 'av.  itália', metrosAlNorte: 15));
+      final conCrearIgual = await registrar(
+        params(calle: 'av.  itália', metrosAlNorte: 15, justificacion: 'Es otra casa'),
+      );
+
+      for (final r in [sinCrear, conCrearIgual]) {
+        expect(frenada(r).map((c) => c.ubicacion.id), ['id-1']);
+        expect(frenada(r).single.motivo, MotivoDuplicado.mismaDireccion);
+        expect(frenada(r).single.admiteConservarAmbos, isFalse);
+      }
+      expect(await filas('ubicacion'), 1);
+    });
+
+    test('D1, la misma dirección con otro número de espacios o tildes en el número (12 bís contra '
+        '12  BIS) a 15 m también choca', () async {
+      await registrar(params(numero: '12 bís'));
+
+      final r = await registrar(params(numero: '12  BIS', metrosAlNorte: 15));
+
+      expect(frenada(r).single.admiteConservarAmbos, isFalse);
+      expect(await filas('ubicacion'), 1);
+    });
+
+    test('D1, control: la misma dirección a 150 m avisa pero admite las dos; con "Crear igual" se '
+        'crea', () async {
+      await registrar(params());
+
+      final aviso = await registrar(params(metrosAlNorte: 150));
+      expect(frenada(aviso).map((c) => c.ubicacion.id), ['id-1']);
+      expect(frenada(aviso).single.admiteConservarAmbos, isTrue);
       expect(await filas('ubicacion'), 1);
 
-      final igual = await registrar(params(justificacion: 'Es otra casa en el mismo padrón'));
+      final igual = await registrar(
+        params(metrosAlNorte: 150, justificacion: 'Es otra casa en la misma calle'),
+      );
       expect(igual.getOrElse(() => throw StateError('falló')), isA<AltaRegistrada>());
       expect(await filas('ubicacion'), 2);
+    });
+
+    test(
+      'D1, otra dirección a menos de 5 m avisa (cercanía) y admite las dos: con "Crear igual" se '
+      'crea',
+      () async {
+        await registrar(params());
+
+        final aviso = await registrar(params(calle: 'Comercio', numero: '10', metrosAlNorte: 3));
+        expect(frenada(aviso).single.motivo, MotivoDuplicado.cercania);
+        expect(frenada(aviso).single.admiteConservarAmbos, isTrue);
+
+        final igual = await registrar(
+          params(
+            calle: 'Comercio',
+            numero: '10',
+            metrosAlNorte: 3,
+            justificacion: 'Local en planta',
+          ),
+        );
+        expect(igual.getOrElse(() => throw StateError('falló')), isA<AltaRegistrada>());
+        expect(await filas('ubicacion'), 2);
+      },
+    );
+
+    test('D1, con candidatas que admiten y una que choca, "Crear igual" no crea: frena solo la que '
+        'choca', () async {
+      await local.insertar(ubicacion(id: 'lejana', metrosAlNorte: 300));
+      await local.insertar(ubicacion(id: 'choca', metrosAlNorte: 40));
+      await local.insertar(
+        ubicacion(id: 'cercana', calle: 'Comercio', numero: '10', metrosAlNorte: 1),
+      );
+
+      final aviso = await registrar(params());
+      final conCrearIgual = await registrar(params(justificacion: 'Es otra casa'));
+
+      expect(frenada(aviso).map((c) => (c.ubicacion.id, c.admiteConservarAmbos)), [
+        ('cercana', true),
+        ('choca', false),
+        ('lejana', true),
+      ]);
+      expect(frenada(conCrearIgual).map((c) => c.ubicacion.id), ['choca']);
+      expect(await filas('ubicacion'), 3);
     });
 
     test('Doble toque: el mismo id del formulario no crea dos ubicaciones ni la marca como '

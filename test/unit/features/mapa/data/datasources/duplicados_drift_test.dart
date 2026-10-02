@@ -232,6 +232,31 @@ void main() {
       expect(encolador.encolados, isEmpty, reason: 'la decisión es solo local');
     });
 
+    test(
+      'D1: dado un par de la misma dirección a menos de 100 m, cuando intento "Conservar ambos", '
+      'no se guarda nada; "Ignorar" sí vale, y a 100 m o más sí se puede conservar',
+      () async {
+        await ubicaciones.insertar(ubicacion('ub-a', creada: t0));
+        await ubicaciones.insertar(
+          ubicacion('ub-b', metrosAlNorte: 40, creada: t0.add(const Duration(days: 2))),
+        );
+        final par = (await scan()).single;
+
+        final conservar = await decidir(
+          DecidirParDuplicadoParams(par: par, decision: DecisionParDuplicado.conservarAmbos),
+        );
+
+        expect(par.admiteConservarAmbos, isFalse);
+        expect(conservar, const Left<Failure, Unit>(FailureDuplicadoMismaDireccion()));
+        expect(await db.select(db.paresDecididos).get(), isEmpty);
+        final ignorar = await decidir(
+          DecidirParDuplicadoParams(par: par, decision: DecisionParDuplicado.ignorar),
+        );
+        expect(ignorar, const Right<Failure, Unit>(unit));
+        expect(await db.select(db.paresDecididos).get(), hasLength(1));
+      },
+    );
+
     test('dado un par ya decidido, cuando lo ignora de nuevo más tarde, queda una sola fila con la '
         'decisión y la fecha nuevas', () async {
       await sembrarPar();

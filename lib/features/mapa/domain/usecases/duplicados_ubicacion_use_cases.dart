@@ -89,7 +89,7 @@ final class DecidirParDuplicadoParams extends Equatable {
 /// aparecer durante `ConsultarParesDuplicadosUseCase.ventana` ("Escenario: Ignorar par"). No toca
 /// ninguna de las dos ubicaciones.
 ///
-/// "Conservar ambos" sobre un par que no lo admite (misma dirección con D1 en la opción (a)):
+/// "Conservar ambos" sobre un par que no lo admite (misma dirección a menos de 100 m, D1):
 /// `Left(FailureDuplicadoMismaDireccion)`, sin guardar nada. "Ignorar" vale para cualquier par.
 final class DecidirParDuplicadoUseCase implements UseCase<Unit, DecidirParDuplicadoParams> {
   DecidirParDuplicadoUseCase(this._pares, {DateTime Function()? ahora})

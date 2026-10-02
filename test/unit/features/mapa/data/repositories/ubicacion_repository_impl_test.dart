@@ -149,11 +149,9 @@ void main() {
       expect(salida.lineas.single, isNot(contains('Italia')));
     });
 
-    test('dado "Crear igual" con D1 en la opción (a) (criterio que solo frena la misma dirección), '
+    test('dado "Crear igual" con D1 (criterio que solo frena la misma dirección a menos de 100 m), '
         'cuando guarda, el log lo marca como crear igual', () async {
-      final alSeguirIgual = const CriterioDuplicadoUbicacion(
-        mismaDireccionAdmiteConservarAmbos: false,
-      ).alSeguirIgual;
+      final alSeguirIgual = criterio.alSeguirIgual;
 
       await repositorio(
         _LocalFijo(),
