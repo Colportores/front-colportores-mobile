@@ -38,7 +38,7 @@ enum ClaveSegura {
   relojSesion('session_clock'),
 
   /// Intentos fallidos de contraseña en la confirmación final del borrado de datos locales
-  /// (HU-AUTH-010, vista 19) y hasta cuándo dura la espera, como `<fallidos>|<ISO 8601 UTC o vacío>`.
+  /// (HU-AUTH-010, vista 19) y lo que falta de la espera, como `<fallidos>|<milisegundos o vacío>`.
   /// No es secreto: vive acá para que cerrar la app no reinicie la espera.
   intentosBorrado('wipe_attempts');
 

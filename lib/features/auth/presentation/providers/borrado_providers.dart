@@ -41,7 +41,10 @@ final borradoEmpezadoProvider = NotifierProvider<BorradoEmpezadoNotifier, Borrad
 );
 
 final intentosBorradoRepositoryProvider = Provider<IntentosBorradoRepository>(
-  (ref) => IntentosBorradoRepositoryImpl(ref.watch(almacenSeguroProvider)),
+  (ref) => IntentosBorradoRepositoryImpl(
+    ref.watch(almacenSeguroProvider),
+    ref.watch(relojBorradoProvider),
+  ),
 );
 
 final verificarPasswordBorradoUseCaseProvider = Provider<VerificarPasswordBorradoUseCase>(
