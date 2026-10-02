@@ -42,6 +42,10 @@ abstract final class TextosConfirmacionRecuperacion {
       'contraseña nueva.';
   static const sesionesConBase = 'Se cierran tus sesiones en todos tus teléfonos.';
 
+  /// 15-A07 (HU-AUTH-005, «Error -token reutilizado»).
+  static const usadoTitulo = 'Este enlace ya fue utilizado';
+  static const usadoDetalle = 'Si ya cambiaste la contraseña, entrá con la nueva.';
+
   /// 15-A05.
   static const errorInesperado = 'No pudimos guardar la contraseña. Probá de nuevo.';
 
@@ -68,7 +72,8 @@ abstract final class TextosConfirmacionRecuperacion {
 /// arranque lo dejaría adentro sin haber puesto ninguna contraseña. Mientras guarda no se puede
 /// salir (el "atrás" dejaría el cambio corriendo sin nadie que muestre cómo terminó).
 ///
-/// El enlace ya usado (15-A07) lo cubre front-colportores-mobile#247: hoy se trata como vencido.
+/// - Con [EnlaceRecuperacion.usado] (15-A07): «Este enlace ya fue utilizado», que ya cambió la
+///   contraseña y entre con la nueva, y el botón al login (no ofrece pedir otro).
 class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
   const ConfirmarRecuperacionPasswordPage({super.key, required this.enlace});
 
@@ -292,6 +297,8 @@ class _ConfirmarRecuperacionPasswordPageState
                             _vencidoContenido(theme)
                           else if (widget.enlace == EnlaceRecuperacion.sinConexion)
                             _sinConexionContenido(theme)
+                          else if (widget.enlace == EnlaceRecuperacion.usado)
+                            _usadoContenido(theme)
                           else
                             _formularioArriba(theme),
                         ],
@@ -387,6 +394,37 @@ class _ConfirmarRecuperacionPasswordPageState
       TextButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
         onPressed: _irAlLogin,
+        child: const Text('Volver al login'),
+      ),
+    ],
+  );
+
+  /// 15-A07.
+  Widget _usadoContenido(ThemeData theme) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Align(
+        alignment: Alignment.centerLeft,
+        child: ExcludeSemantics(
+          child: _Insignia(icono: Icons.block, color: Color(0xFF5B6B82)),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          TextosConfirmacionRecuperacion.usadoTitulo,
+          key: const Key('confirmar_recuperacion_usado'),
+          style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(TextosConfirmacionRecuperacion.usadoDetalle, style: theme.textTheme.bodyLarge),
+      const SizedBox(height: 24),
+      FilledButton(
+        key: const Key('confirmar_recuperacion_ir_al_login'),
+        onPressed: _irAlLogin,
+        style: _estiloTextoGrande(context),
         child: const Text('Volver al login'),
       ),
     ],

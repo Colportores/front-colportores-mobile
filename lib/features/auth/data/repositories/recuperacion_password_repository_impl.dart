@@ -1,20 +1,29 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/enlace_recuperacion.dart';
 import '../../domain/entities/politica_password.dart';
+import '../../domain/repositories/cambios_por_recuperacion.dart';
 import '../../domain/repositories/recuperacion_password_repository.dart';
 import '../datasources/auth_remote_data_source.dart';
 import '../datasources/recuperacion_password_remote_data_source.dart';
+import 'cambios_por_recuperacion_impl.dart';
 
 /// [RecuperacionPasswordRepository] sobre el remoto (HU-AUTH-005). Traduce las excepciones a
 /// [Failure] y deja en el log lo que el usuario no puede resolver.
 final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRepository {
-  RecuperacionPasswordRepositoryImpl(this._remote, {AppLogger? logger})
-    : _log = logger ?? AppLogger.instance;
+  RecuperacionPasswordRepositoryImpl(
+    this._remote, {
+    CambiosPorRecuperacion? cambios,
+    AppLogger? logger,
+  }) : _cambios = cambios ?? CambiosPorRecuperacionEnMemoria(),
+       _log = logger ?? AppLogger.instance;
 
   final RecuperacionPasswordRemoteDataSource _remote;
+  final CambiosPorRecuperacion _cambios;
   final AppLogger _log;
 
   /// La contraseña de un intento que se cortó sin respuesta: Supabase pudo haberlo aceptado. Si el
@@ -23,8 +32,14 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// Solo en memoria, y se suelta con cualquier respuesta del servidor.
   String? _enDuda;
 
+  /// Supabase manda el mismo error para un enlace vencido y para uno ya usado: si este teléfono
+  /// acaba de completar un cambio con un enlace, el que vuelve «vencido» es ese, ya usado (15-A07).
+  /// `asyncMap` respeta el orden de llegada: dos enlaces seguidos salen en el mismo orden.
   @override
-  Stream<EnlaceRecuperacion> get enlaces => _remote.enlacesRecuperacion;
+  Stream<EnlaceRecuperacion> get enlaces => _remote.enlacesRecuperacion.asyncMap((enlace) async {
+    if (enlace != EnlaceRecuperacion.vencido) return enlace;
+    return await _cambios.hayUnoReciente() ? EnlaceRecuperacion.usado : enlace;
+  });
 
   @override
   String? get usuarioId => _remote.usuarioDeLaRecuperacion;
@@ -62,8 +77,10 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   }
 
   // `audit_log` todavía no existe: el evento de la HU queda en el log (como `local_data_wipe`).
-  void _registrarCambio() =>
-      _log.info(LogModulo.auth, 'password_reset_completed', 'contraseña actualizada');
+  void _registrarCambio() {
+    _log.info(LogModulo.auth, 'password_reset_completed', 'contraseña actualizada');
+    unawaited(_cambios.registrar());
+  }
 
   @override
   Future<Either<Failure, Unit>> cerrarTodasLasSesiones() => _sinMostrar(
