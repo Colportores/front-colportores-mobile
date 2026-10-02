@@ -49,6 +49,12 @@ abstract final class TextosConfirmacionRecuperacion {
       'contraseña nueva.';
   static const sesionesConBase = 'Se cierran tus sesiones en todos tus teléfonos.';
 
+  /// La contraseña cambió pero la sesión que estaba abierta en este teléfono no se pudo cerrar
+  /// (decisión de Cristian, 02/10): dice qué pasó y la salida.
+  static const exitoSinCerrarSesion =
+      'Cambiaste la contraseña, pero no pudimos cerrar la sesión en este teléfono. Cerrala desde '
+      'Configuración.';
+
   /// 15-A05.
   static const errorInesperado = 'No pudimos guardar la contraseña. Probá de nuevo.';
 
@@ -97,7 +103,6 @@ class _ConfirmarRecuperacionPasswordPageState
     extends ConsumerState<ConfirmarRecuperacionPasswordPage> {
   static const _verde = Color(0xFF1F6E3A);
   static const _oro = Color(0xFFA98330);
-  static const _largoMinimo = 8;
 
   final _nueva = TextEditingController();
   final _repetida = TextEditingController();
@@ -105,6 +110,9 @@ class _ConfirmarRecuperacionPasswordPageState
   late bool _vencido = widget.enlace == EnlaceRecuperacion.vencido;
   bool _guardando = false;
   bool _terminado = false;
+
+  /// La contraseña cambió pero la sesión abierta en la app no se pudo cerrar.
+  bool _cierreFallido = false;
   bool _sesionSoltada = false;
   bool _hayBaseLocal = false;
   Map<String, String> _erroresCampo = const {};
@@ -135,9 +143,9 @@ class _ConfirmarRecuperacionPasswordPageState
     }
   }
 
-  bool get _cumpleLargo => _nueva.text.length >= _largoMinimo;
-  bool get _cumpleMayuscula => _nueva.text.contains(RegExp('[A-Z]'));
-  bool get _cumpleNumero => _nueva.text.contains(RegExp(r'\d'));
+  bool get _cumpleLargo => PoliticaPassword.cumpleLargo(_nueva.text);
+  bool get _cumpleMayuscula => PoliticaPassword.tieneMayuscula(_nueva.text);
+  bool get _cumpleNumero => PoliticaPassword.tieneNumero(_nueva.text);
   bool get _cumple => PoliticaPassword.validar(_nueva.text) == null;
   bool get _coinciden => _repetida.text.isNotEmpty && _repetida.text == _nueva.text;
   bool get _puedeGuardar => !_guardando && _cumple && _coinciden;
@@ -218,17 +226,26 @@ class _ConfirmarRecuperacionPasswordPageState
   /// también se cierra acá (DB, DEK en memoria), y se muestra la pantalla de éxito (15-A09).
   Future<void> _terminar() async {
     _terminado = true;
+    var cierreFallido = false;
     try {
       if (ref.read(sesionProvider).value != null) {
         // El cierre lo hace la app, no la colportora: el correo de la última cuenta se conserva y
         // el login lo trae puesto (se borra solo con «Cerrar sesión» o al borrar los datos).
-        await ref.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true);
+        final cierre = await ref.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true);
+        cierreFallido = cierre.isLeft();
       }
     } on Object {
       // La contraseña ya cambió: el éxito se muestra igual; un cierre local que falló no puede
-      // dejar la pantalla trabada en «Guardando…».
+      // dejar la pantalla trabada en «Guardando…». Si lanzó pero la sesión quedó cerrada (el
+      // notifier la cierra igual), no hay nada que avisar.
+      cierreFallido = ref.read(sesionProvider).value != null;
     } finally {
-      if (mounted) setState(() => _guardando = false);
+      if (mounted) {
+        setState(() {
+          _guardando = false;
+          _cierreFallido = cierreFallido;
+        });
+      }
     }
   }
 
@@ -367,7 +384,10 @@ class _ConfirmarRecuperacionPasswordPageState
           style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
         ),
         const SizedBox(height: 8),
-        Text(titulo, style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),
+        Semantics(
+          header: true,
+          child: Text(titulo, style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),
+        ),
       ],
     );
   }
@@ -385,9 +405,13 @@ class _ConfirmarRecuperacionPasswordPageState
       ),
       const SizedBox(height: 16),
       Semantics(
+        header: true,
         liveRegion: true,
         child: Text(
-          TextosConfirmacionRecuperacion.exito,
+          // Con la sesión todavía abierta, «Iniciá sesión» sería falso: se dice qué pasó y qué hacer.
+          _cierreFallido
+              ? TextosConfirmacionRecuperacion.exitoSinCerrarSesion
+              : TextosConfirmacionRecuperacion.exito,
           key: const Key('confirmar_recuperacion_exito'),
           style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
         ),
@@ -397,7 +421,7 @@ class _ConfirmarRecuperacionPasswordPageState
         key: const Key('confirmar_recuperacion_exito_ir_al_login'),
         onPressed: _irAlLogin,
         style: _estiloTextoGrande(context),
-        child: const Text('Ir al login'),
+        child: Text(_cierreFallido ? 'Volver al inicio' : 'Ir al login'),
       ),
     ],
   );
@@ -421,6 +445,7 @@ class _ConfirmarRecuperacionPasswordPageState
         style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
       ),
       Semantics(
+        header: true,
         liveRegion: true,
         child: Text(
           TextosConfirmacionRecuperacion.vencido,
@@ -494,7 +519,9 @@ class _ConfirmarRecuperacionPasswordPageState
           _encabezado(theme, 'RECUPERAR CONTRASEÑA', 'Elegí una contraseña nueva'),
           const SizedBox(height: 22),
           Opacity(
-            opacity: _guardando ? .55 : 1,
+            // 15-A04: el canvas atenúa al 55 %, que da 2,4:1 en las etiquetas; con 95 % llegan a
+            // 4,5:1 (decisión de Cristian, 02/10). El «Guardando…» lo dice además el botón.
+            opacity: _guardando ? .95 : 1,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -516,7 +543,7 @@ class _ConfirmarRecuperacionPasswordPageState
                 _Requisitos(
                   vacia: nuevaVacia,
                   largo: _cumpleLargo,
-                  faltan: _largoMinimo - _nueva.text.length,
+                  faltan: PoliticaPassword.largoMinimo - PoliticaPassword.largo(_nueva.text),
                   mayuscula: _cumpleMayuscula,
                   numero: _cumpleNumero,
                 ),

@@ -113,6 +113,26 @@ void main() {
         },
       );
 
+      test('una mayúscula con tilde o Ñ cumple la política («Ñandú2026», «Élan2026»)', () async {
+        for (final password in ['Ñandú2026', 'Élan2026']) {
+          stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+          final resultado = await useCase(
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: datosValidos.email,
+              password: password,
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            ),
+          );
+
+          expect(resultado.isRight(), isTrue, reason: password);
+        }
+      });
+
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
         stubRepositorio(const Left(FailureEmailYaRegistrado()));
 
@@ -264,6 +284,22 @@ void main() {
             cedula: datosValidos.cedula,
             email: datosValidos.email,
             password: 'Ab1defg',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
+      });
+
+      test('con 7 caracteres visibles (un emoji cuenta 1) marca el campo password', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ab1😀😀😀😀',
             aceptaTerminos: true,
             aceptaTradeOffE2E: true,
           ),

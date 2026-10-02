@@ -293,6 +293,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     // «Verificado» y «ya verificado» son pantallas de cierre: sin correo, sin avisos ni reenvío.
     final cierre = verificado || yaVerificado;
     final conAvisoDeReenvio = _mensajeReenvio != null;
+    // Con sesión, al salir la app entra a Inicio (casos 1 y 2 de HU-AUTH-002): el texto lo dice así.
+    final haySesion = ref.watch(sesionProvider).value != null;
 
     return Scaffold(
       body: SafeArea(
@@ -343,7 +345,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                           ),
                         if (!(conAvisoDeReenvio && _emailConocido))
                           Text(
-                            _mensaje(),
+                            _mensaje(haySesion: haySesion),
                             key: const Key('verificacion_email_mensaje'),
                             style: theme.textTheme.bodyLarge?.copyWith(
                               color: esquema.onSurfaceVariant,
@@ -408,7 +410,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                         if (!cierre)
                           ..._acciones(context)
                         else if (yaVerificado)
-                          _irAlLoginBoton()
+                          _irAlLoginBoton(haySesion: haySesion)
                         else
                           _continuarBoton(),
                       ],
@@ -429,10 +431,10 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     child: const Text('Continuar'),
   );
 
-  Widget _irAlLoginBoton() => FilledButton(
+  Widget _irAlLoginBoton({required bool haySesion}) => FilledButton(
     key: const Key('verificacion_email_ir_login'),
     onPressed: _irAlLogin,
-    child: const Text('Ir al login ahora'),
+    child: Text(haySesion ? 'Ir a mi inicio ahora' : 'Ir al login ahora'),
   );
 
   /// Los avisos (arriba de las acciones) y las acciones de la espera, según el diseño.
@@ -543,7 +545,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     EstadoVerificacionEmail.enlaceInutil => null,
   };
 
-  String _mensaje() => switch (_estado) {
+  String _mensaje({required bool haySesion}) => switch (_estado) {
     EstadoVerificacionEmail.pendiente =>
       _emailConocido
           ? 'Te enviamos un correo a'
@@ -555,7 +557,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _emailConocido
           ? 'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a ${widget.email}.'
           : 'Pedí uno nuevo y abrilo desde este teléfono.',
-    EstadoVerificacionEmail.yaVerificado => 'Te llevamos al login…',
+    // 12-A05 (decisión de Cristian, 02/10): el texto según el destino. Sin sesión, el del diseño.
+    EstadoVerificacionEmail.yaVerificado =>
+      haySesion ? 'Te llevamos a tu inicio…' : 'Te llevamos al login…',
     EstadoVerificacionEmail.enlaceInutil =>
       'Este enlace ya no sirve: puede que ya lo hayas usado o que haya vencido. Si ya '
           'verificaste tu email, entrá con tu contraseña. Si no, pedí un enlace nuevo.',

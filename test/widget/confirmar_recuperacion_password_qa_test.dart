@@ -16,6 +16,8 @@ import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierr
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/confirmar_recuperacion_password_use_case.dart';
+import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart'
+    show TextosConfirmacionRecuperacion;
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
@@ -153,8 +155,8 @@ void main() {
     });
 
     testWidgets(
-      'si la sesión local no se pudo borrar (Left), igual se ve el éxito y «Ir al login» no '
-      'trae de vuelta a un usuario «adentro»',
+      'si la sesión local no se pudo borrar (Left), se ve el éxito con el aviso de que la sesión '
+      'sigue abierta y la salida no manda a un login que no se ve',
       (tester) async {
         final container = await _montar(
           tester,
@@ -164,13 +166,20 @@ void main() {
         await _completar(tester, 'NuevaClave1');
         await _tocarGuardar(tester);
 
-        expect(find.text(_exito), findsOneWidget);
+        // Decisión de Cristian (02/10): avisa con salida en vez de decir «Iniciá sesión».
+        expect(find.text(TextosConfirmacionRecuperacion.exitoSinCerrarSesion), findsOneWidget);
+        expect(find.text(_exito), findsNothing);
         expect(_k('guardando'), findsNothing);
         final ir = find.byKey(const Key('confirmar_recuperacion_exito_ir_al_login'));
+        expect(find.descendant(of: ir, matching: find.text('Volver al inicio')), findsOneWidget);
         await tester.ensureVisible(ir);
         await tester.tap(ir);
         await tester.pumpAndSettle();
-        expect(find.text(_exito), findsNothing, reason: 'no queda trabado en la pantalla de éxito');
+        expect(
+          find.text(TextosConfirmacionRecuperacion.exitoSinCerrarSesion),
+          findsNothing,
+          reason: 'no queda trabado en la pantalla de éxito',
+        );
         // Documenta el estado real: la sesión local sigue.
         expect(container.read(sesionProvider).value, isNotNull);
       },
@@ -305,28 +314,21 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // QA #224: en 15-A04 las etiquetas verdes «✓ CUMPLE LOS REQUISITOS» / «✓ COINCIDEN» quedan al
-    // 55 % de opacidad y dan 2,44:1 (WCAG pide 4,5:1). El canvas dibuja el 55 %: es un choque
-    // entre el diseño y A/AA, lo decide Cristian (pregunta pendiente en el PR #255). Solo esta
-    // parte queda con skip: lo de «Guardando…» se arregló arriba.
-    testWidgets(
-      '15-A04 guardando: el contraste de las etiquetas llega a 4,5:1',
-      (tester) async {
-        _pantalla(tester, const Size(412, 915));
-        final handle = tester.ensureSemantics();
-        await _montar(tester);
-        _recuperacion.demoraAlActualizar = Completer<void>();
-        await _completar(tester, 'NuevaClave1');
-        await tester.tap(_guardar);
-        await tester.pump();
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-        _recuperacion.demoraAlActualizar!.complete();
-        await tester.pumpAndSettle();
-        handle.dispose();
-      },
-      // skip: QA #224 — 15-A04: etiquetas al 55 % de opacidad dan 2,44:1 de contraste.
-      skip: true,
-    );
+    // 15-A04 (decisión de Cristian, 02/10): el canvas atenúa el formulario al 55 %, que da 2,4:1 en
+    // las etiquetas; se sube la opacidad hasta llegar a 4,5:1.
+    testWidgets('15-A04 guardando: el contraste de las etiquetas llega a 4,5:1', (tester) async {
+      _pantalla(tester, const Size(412, 915));
+      final handle = tester.ensureSemantics();
+      await _montar(tester);
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _completar(tester, 'NuevaClave1');
+      await tester.tap(_guardar);
+      await tester.pump();
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+      handle.dispose();
+    });
 
     for (final (nombre, tam, texto) in [
       ('360x640 al 200 %', const Size(360, 640), 2.0),

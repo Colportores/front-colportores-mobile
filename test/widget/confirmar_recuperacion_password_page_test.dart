@@ -8,9 +8,11 @@ import 'dart:typed_data';
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
@@ -30,6 +32,24 @@ const _email = 'ana@example.com';
 /// dos es ni afirma «expiró» (decisión de Cristian, 02/10).
 const _textoVencido = 'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.';
 
+/// Almacén de sesión que no puede borrar la sesión: el cierre de sesión falla del lado local.
+final class _LocalQueNoBorra implements AuthLocalDataSource {
+  SesionModel? _sesion;
+  bool fallar = true;
+
+  @override
+  Future<SesionModel?> leerSesion() async => _sesion;
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) async => _sesion = sesion;
+
+  @override
+  Future<void> borrarSesion() async {
+    if (fallar) throw Exception('keystore');
+    _sesion = null;
+  }
+}
+
 late RecuperacionPasswordEnMemoria _recuperacion;
 late DbLocalRepositoryEnMemoria _dbLocal;
 late AuthRemoteDataSourceEnMemoria _auth;
@@ -42,11 +62,12 @@ Future<ProviderContainer> _montar(
   WidgetTester tester, {
   EnlaceRecuperacion enlace = EnlaceRecuperacion.valido,
   bool conSesion = false,
+  AuthLocalDataSource? local,
 }) async {
   final container = ProviderContainer(
     overrides: [
       authRemoteDataSourceProvider.overrideWithValue(_auth),
-      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
       recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(_recuperacion),
       dbLocalRepositoryProvider.overrideWithValue(_dbLocal),
     ],
@@ -359,6 +380,38 @@ void main() {
       expect(find.descendant(of: _req('numero'), matching: find.text('✕')), findsOneWidget);
     });
 
+    testWidgets('mayúscula con tilde o Ñ: «Ñandú2026» y «Élan2026» cumplen y se puede guardar', (
+      tester,
+    ) async {
+      await _montar(tester);
+      for (final clave in ['Ñandú2026', 'Élan2026']) {
+        await _completar(tester, clave);
+
+        expect(
+          find.descendant(of: _req('mayuscula'), matching: find.text('✓')),
+          findsOneWidget,
+          reason: clave,
+        );
+        expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull, reason: clave);
+      }
+      await _completar(tester, 'ñandú2026');
+      expect(find.descendant(of: _req('mayuscula'), matching: find.text('✕')), findsOneWidget);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNull);
+    });
+
+    testWidgets('el largo cuenta caracteres visibles: un emoji es 1', (tester) async {
+      await _montar(tester);
+
+      await _completar(tester, 'Ab1😀😀😀😀');
+      expect(find.textContaining('faltan 1', findRichText: true), findsOneWidget);
+      expect(find.descendant(of: _req('largo'), matching: find.text('✕')), findsOneWidget);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNull);
+
+      await _completar(tester, 'Ab1😀😀😀😀😀');
+      expect(find.descendant(of: _req('largo'), matching: find.text('✓')), findsOneWidget);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull);
+    });
+
     testWidgets('15-A03: «faltan N» baja al escribir y los requisitos se tildan de a uno', (
       tester,
     ) async {
@@ -545,6 +598,47 @@ void main() {
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
       await _irAlLogin(tester);
       expect(_login, findsOneWidget);
+    });
+
+    testWidgets('si falla el cierre de sesión tras cambiar la contraseña, lo dice y da la salida', (
+      tester,
+    ) async {
+      final container = await _montar(tester, conSesion: true, local: _LocalQueNoBorra());
+      expect(container.read(sesionProvider).value, isNotNull);
+
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(
+        find.text(
+          'Cambiaste la contraseña, pero no pudimos cerrar la sesión en este teléfono. Cerrala '
+          'desde Configuración.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsNothing);
+      expect(container.read(sesionProvider).value, isNotNull, reason: 'la sesión sigue abierta');
+      expect(_recuperacion.passwordActual, 'NuevaClave1', reason: 'la contraseña sí cambió');
+      expect(find.byKey(const Key('confirmar_recuperacion_guardando')), findsNothing);
+      expect(find.text('Ir al login'), findsNothing, reason: 'no manda a un login que no se ve');
+
+      // La salida lleva a la pantalla principal (hay sesión), desde donde se llega a Configuración.
+      await tester.tap(find.text('Volver al inicio'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+    });
+
+    testWidgets('con el cierre de sesión bien hecho no aparece el aviso de la sesión abierta', (
+      tester,
+    ) async {
+      await _montar(tester, conSesion: true);
+
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(find.textContaining('no pudimos cerrar la sesión'), findsNothing);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
     });
 
     testWidgets('si revocar las sesiones falla, igual termina bien: la contraseña ya cambió', (

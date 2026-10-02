@@ -250,10 +250,8 @@ void main() {
       semantica.dispose();
     });
 
-    // skip: QA #247 — hallazgo menor: los títulos de la vista 15 (A01, A06, A09) no son encabezados
-    // para el lector de pantalla, y las vistas vecinas (14, 17, 18, Configuración) sí: se navega por
-    // encabezados y el título de la pantalla no aparece en esa lista (WCAG 1.3.1). Al arreglarlo
-    // (`Semantics(header: true)` en `_encabezado`, A06 y A09) se saca el `skip`.
+    // Los títulos de la vista 15 (A01, A06, A09) son encabezados para el lector de pantalla, como
+    // en las vistas vecinas (14, 17, 18, Configuración): se navega por encabezados (WCAG 1.3.1).
     testWidgets('los títulos de A01, A06 y A09 son encabezados, como en las vistas vecinas', (
       tester,
     ) async {
@@ -281,7 +279,7 @@ void main() {
         reason: 'A06',
       );
       semantica.dispose();
-    }, skip: true);
+    });
   });
 
   group('QA #247 — vista 15: datos locales y correo tras el cambio con el enlace', () {
