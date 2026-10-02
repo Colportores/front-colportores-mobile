@@ -418,32 +418,17 @@ final class FailureGpsNoDisponible extends Failure {
   List<Object?> get props => [...super.props, motivo];
 }
 
-/// El alta de ubicación llegó sin `ciudad_id` (HU-UBI-001, "Error - ciudad no en catálogo": "no
-/// permite crear la ubicación sin `ciudad_id`"). La pantalla ofrece "Seleccionar ciudad
-/// manualmente" o "Solicitar alta de ciudad al administrador".
+/// El alta (o la modificación) de una ubicación llegó sin `ciudad_id`. En el servidor `ciudad_id` es
+/// obligatorio y sin ciudad el push vuelve `invalid`: el caso de uso lo ataja antes de guardar.
 ///
-/// Texto para confirmar con Cristian: la HU nombra las dos acciones, no el aviso.
+/// La pantalla no lo muestra en el camino normal: la app siempre propone una ciudad de la campaña
+/// del colportor (decisión de Cristian, 02/10, front-colportores-mobile#267) y «Registrar» no se
+/// habilita sin ciudad. Es la red de seguridad del dominio.
 final class FailureCiudadRequerida extends Failure {
   const FailureCiudadRequerida()
     : super(
-        mensaje:
-            'No encontramos la ciudad de este punto en el catálogo. Seleccionala a mano o pedile '
-            'al administrador que la dé de alta.',
+        mensaje: 'Falta la ciudad de la ubicación. Elegí una de las ciudades de tu campaña.',
         codigo: 'UBI_SIN_CIUDAD',
-      );
-}
-
-/// «Solicitar alta de ciudad al administrador» (HU-UBI-001) todavía no tiene adónde ir: el pedido
-/// pasa por el BFF (docs-organizacion#22). Provisoria: se reemplaza al conectar la solicitud.
-///
-/// Texto para confirmar con Cristian: la HU nombra la acción, no este aviso.
-final class FailureSolicitudCiudadNoDisponible extends Failure {
-  const FailureSolicitudCiudadNoDisponible()
-    : super(
-        mensaje:
-            'Todavía no podemos enviar el pedido desde la app. Avisale a tu coordinador cómo se '
-            'llama la ciudad para que el administrador la dé de alta.',
-        codigo: 'UBI_SOLICITUD_CIUDAD_NO_DISPONIBLE',
       );
 }
 

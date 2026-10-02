@@ -28,7 +28,6 @@ final class _Banco {
     GpsFalso? gps,
     GeocodificadorFalso? geocodificador,
     CiudadesFalsas? ciudades,
-    SolicitadorFalso? solicitador,
     RepoAltaFalso? repo,
     ParametrosAlta parametros = parametrosAlta,
     List<Override> extra = const [],
@@ -37,7 +36,6 @@ final class _Banco {
            geocodificador ??
            GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234')),
        ciudades = ciudades ?? CiudadesFalsas(),
-       solicitador = solicitador ?? SolicitadorFalso(),
        repo = repo ?? RepoAltaFalso() {
     contenedor = ProviderContainer(
       overrides: [
@@ -45,7 +43,6 @@ final class _Banco {
           gps: this.gps,
           geocodificador: this.geocodificador,
           ciudades: this.ciudades,
-          solicitador: this.solicitador,
           repo: this.repo,
         ),
         ...extra,
@@ -58,7 +55,6 @@ final class _Banco {
   final GpsFalso gps;
   final GeocodificadorFalso geocodificador;
   final CiudadesFalsas ciudades;
-  final SolicitadorFalso solicitador;
   final RepoAltaFalso repo;
   late final ProviderContainer contenedor;
   late final NotifierProvider<AltaUbicacionNotifier, AltaUbicacionState> proveedor;
@@ -73,7 +69,6 @@ _Banco _banco({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
-  SolicitadorFalso? solicitador,
   RepoAltaFalso? repo,
   ParametrosAlta parametros = parametrosAlta,
   List<Override> extra = const [],
@@ -82,7 +77,6 @@ _Banco _banco({
     gps: gps,
     geocodificador: geocodificador,
     ciudades: ciudades,
-    solicitador: solicitador,
     repo: repo,
     parametros: parametros,
     extra: extra,
@@ -483,128 +477,246 @@ void main() {
   });
 
   group('ciudad', () {
-    test('cerca del límite de dos ciudades: se pregunta, no se asigna', () async {
+    const deCampania = CiudadPropuesta(canelones, OrigenPropuesta.deCampania);
+    Future<_Banco> sinGps({CiudadesFalsas? ciudades}) async {
       final b = _banco(
-        ciudades: CiudadesFalsas(detecta: (_) => const CiudadAmbigua([montevideo, canelones])),
+        gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
+        ciudades: ciudades,
       );
       await _esperar();
+      return b;
+    }
 
-      expect(b.estado.ciudad, isNull);
-      expect(b.estado.origenCiudad, OrigenCiudad.ambigua);
-      b.notificador.elegirTipo(TipoUbicacion.casa);
-      expect(b.estado.puedeRegistrar, isFalse);
-    });
-
-    test('ciudad no encontrada: no se puede registrar sin ciudad', () async {
-      final b = _banco(ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()));
+    test('siempre se propone una ciudad de la campaña: con GPS, la del punto', () async {
+      final b = _banco();
       await _esperar();
       b.notificador.elegirTipo(TipoUbicacion.casa);
 
-      expect(b.estado.ciudad, isNull);
-      expect(b.estado.origenCiudad, OrigenCiudad.noEncontrada);
-      expect(b.estado.puedeRegistrar, isFalse);
-      expect(await b.notificador.registrar(), isA<AltaIgnorada>());
-      expect(b.repo.llamadas, isEmpty);
+      expect(b.ciudades.propuestas, [puntoItalia]);
+      expect(b.estado.ciudad, montevideo);
+      expect(b.estado.origenCiudad, OrigenCiudad.detectada);
+      expect(b.estado.puedeRegistrar, isTrue);
     });
 
-    test('«Seleccionar ciudad manualmente» deja registrar, y mover el punto no la pisa', () async {
-      final b = _banco(ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()));
+    test('sin zona del punto ni asignada: la de la campaña, sin preguntar', () async {
+      final b = _banco(ciudades: CiudadesFalsas(propone: (_) => deCampania));
+      await _esperar();
+      b.notificador.elegirTipo(TipoUbicacion.casa);
+
+      expect(b.estado.ciudad, canelones);
+      expect(b.estado.origenCiudad, OrigenCiudad.deCampania);
+      expect(b.estado.puedeRegistrar, isTrue);
+      await b.notificador.registrar();
+      expect(b.repo.llamadas.single.ubicacion.ciudadId, canelones.id);
+    });
+
+    test('sin GPS ni punto la propuesta sale sin punto (zona asignada o única ciudad)', () async {
+      final b = await sinGps();
+
+      expect(b.ciudades.propuestas, [null]);
+      expect(b.estado.ciudad, montevideo);
+      expect(b.estado.origenCiudad, OrigenCiudad.deZona);
+    });
+
+    test('con varias ciudades y sin zona asignada ni punto: queda por elegir; al marcar el '
+        'punto, se propone', () async {
+      final b = await sinGps(
+        ciudades: CiudadesFalsas(
+          propone: (punto) => punto == null ? const FaltaElPunto() : deCampania,
+        ),
+      );
+
+      expect(b.estado.ciudad, isNull);
+      expect(b.estado.origenCiudad, OrigenCiudad.porElegir);
+
+      b.notificador.marcarPunto(_otroPunto);
+      await _esperar();
+
+      expect(b.estado.ciudad, canelones);
+      expect(b.estado.origenCiudad, OrigenCiudad.deCampania);
+    });
+
+    test('la propuesta sin punto que llega tarde no pisa la del punto marcado', () async {
+      final ciudades = CiudadesFalsas(
+        propone: (punto) =>
+            punto == null ? const CiudadPropuesta(montevideo, OrigenPropuesta.deZona) : deCampania,
+      )..bloqueoPropuesta = Completer<void>();
+      final b = await sinGps(ciudades: ciudades);
+      b.notificador.marcarPunto(_otroPunto);
+      await _esperar();
+
+      ciudades.bloqueoPropuesta!.complete();
+      await _esperar();
+
+      expect(b.estado.ciudad, canelones);
+      expect(b.estado.origenCiudad, OrigenCiudad.deCampania);
+    });
+
+    test('«Cambiar» deja registrar con otra ciudad, y mover el punto no la pisa', () async {
+      final b = _banco();
       await _esperar();
       b.notificador.elegirTipo(TipoUbicacion.casa);
 
       b.notificador.elegirCiudad(canelones);
-      b.ciudades.detecta = (_) => const CiudadDetectada(montevideo);
       b.notificador.moverPunto(_otroPunto);
       await _esperar();
 
       expect(b.estado.ciudad, canelones);
       expect(b.estado.origenCiudad, OrigenCiudad.elegida);
       expect(b.estado.puedeRegistrar, isTrue);
+      expect(b.ciudades.propuestas, [puntoItalia], reason: 'elegida: no se vuelve a proponer');
       await b.notificador.registrar();
       expect(b.repo.llamadas.single.ubicacion.ciudadId, canelones.id);
     });
 
-    test('al mover el punto a otra ciudad del catálogo, la detectada cambia', () async {
+    test('si elige la ciudad mientras la propuesta viene en camino, la propuesta no la pisa y '
+        'la dirección del punto igual se aplica', () async {
+      final ciudades = CiudadesFalsas()..bloqueoPropuesta = Completer<void>();
+      final b = _banco(ciudades: ciudades);
+      await _esperar();
+      expect(b.estado.origenCiudad, OrigenCiudad.buscando);
+
+      b.notificador.elegirCiudad(canelones);
+      ciudades.bloqueoPropuesta!.complete();
+      await _esperar();
+
+      expect(b.estado.ciudad, canelones);
+      expect(b.estado.origenCiudad, OrigenCiudad.elegida);
+      expect(b.estado.calle, const CampoDireccion('Av. Italia', FuenteCampo.delMapa));
+    });
+
+    test('al mover el punto a otra ciudad de la campaña, la propuesta cambia', () async {
       final b = _banco();
       await _esperar();
       expect(b.estado.ciudad, montevideo);
 
-      b.ciudades.detecta = (_) => const CiudadDetectada(canelones);
+      b.ciudades.propone = (_) => deCampania;
       b.notificador.moverPunto(_otroPunto);
       await _esperar();
 
       expect(b.estado.ciudad, canelones);
+      expect(b.estado.origenCiudad, OrigenCiudad.deCampania);
     });
 
-    test('al mover el punto fuera del catálogo, la ciudad detectada se va', () async {
+    test('si al mover el punto no se puede leer la ciudad, se conserva la que ya tenía', () async {
       final b = _banco();
       await _esperar();
 
-      b.ciudades.detecta = (_) => const CiudadNoEncontrada();
+      b.ciudades.fallaPropuesta = const FailureInesperado();
       b.notificador.moverPunto(_otroPunto);
       await _esperar();
+      b.notificador.elegirTipo(TipoUbicacion.casa);
 
-      expect(b.estado.ciudad, isNull);
-      expect(b.estado.origenCiudad, OrigenCiudad.noEncontrada);
+      expect(b.estado.ciudad, montevideo);
+      expect(b.estado.origenCiudad, OrigenCiudad.detectada);
+      expect(b.estado.puedeRegistrar, isTrue);
     });
 
-    test('sin GPS y sin ciudad en la zona: ciudad no encontrada', () async {
-      final b = _banco(
-        gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
-        ciudades: CiudadesFalsas(miZona: null),
-      );
-      await _esperar();
+    group('la campaña no tiene ciudades', () {
+      Future<_Banco> sinCiudades() async {
+        final b = _banco(ciudades: CiudadesFalsas(propone: (_) => const CampaniaSinCiudades()));
+        await _esperar();
+        b.notificador.elegirTipo(TipoUbicacion.casa);
+        return b;
+      }
 
-      expect(b.estado.ciudad, isNull);
-      expect(b.estado.origenCiudad, OrigenCiudad.noEncontrada);
+      test('es el único caso sin ciudad: aviso, y no se registra ni se crea nada', () async {
+        final b = await sinCiudades();
+
+        expect(b.estado.ciudad, isNull);
+        expect(b.estado.origenCiudad, OrigenCiudad.sinCiudades);
+        expect(b.estado.puedeRegistrar, isFalse);
+        expect(await b.notificador.registrar(), isA<AltaIgnorada>());
+        expect(b.repo.llamadas, isEmpty);
+      });
+
+      test('«Reintentar»: con la campaña ya con ciudades, se propone y deja registrar', () async {
+        final b = await sinCiudades();
+
+        b.ciudades.propone = (_) => const CiudadPropuesta(montevideo, OrigenPropuesta.detectada);
+        await b.notificador.reintentarCiudad();
+
+        expect(b.estado.ciudad, montevideo);
+        expect(b.estado.origenCiudad, OrigenCiudad.detectada);
+        expect(b.estado.puedeRegistrar, isTrue);
+      });
+
+      test('dos «Reintentar» seguidos mandan un solo pedido; con ciudad ya no preguntan', () async {
+        final b = await sinCiudades();
+        b.ciudades.bloqueoPropuesta = Completer<void>();
+
+        final primero = b.notificador.reintentarCiudad();
+        final segundo = b.notificador.reintentarCiudad();
+        b.ciudades.bloqueoPropuesta!.complete();
+        await Future.wait([primero, segundo]);
+        expect(b.ciudades.propuestas, hasLength(2), reason: 'la del arranque y un solo reintento');
+
+        b.ciudades
+          ..bloqueoPropuesta = null
+          ..propone = (_) => const CiudadPropuesta(montevideo, OrigenPropuesta.detectada);
+        await b.notificador.reintentarCiudad();
+        await b.notificador.reintentarCiudad();
+        expect(b.ciudades.propuestas, hasLength(3));
+      });
+
+      test('si sigue sin ciudades, el aviso queda y se puede reintentar de nuevo', () async {
+        final b = await sinCiudades();
+
+        await b.notificador.reintentarCiudad();
+
+        expect(b.estado.origenCiudad, OrigenCiudad.sinCiudades);
+        expect(b.estado.ciudad, isNull);
+      });
     });
 
-    test('«Solicitar alta de ciudad al administrador»: manda el punto y avisa que salió', () async {
-      final b = _banco(ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()));
-      await _esperar();
+    group('no se pueden leer las ciudades', () {
+      test('queda el aviso con «Reintentar», sin dejar trabado «Buscando la ciudad…»', () async {
+        final b = _banco(ciudades: CiudadesFalsas()..fallaPropuesta = const FailureInesperado());
+        await _esperar();
+        b.notificador.elegirTipo(TipoUbicacion.casa);
 
-      await b.notificador.solicitarAltaCiudad();
+        expect(b.estado.ciudad, isNull);
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer);
+        expect(b.estado.puedeRegistrar, isFalse);
 
-      expect(b.solicitador.puntos, [puntoItalia]);
-      expect(b.estado.solicitud, isA<SolicitudCiudadEnviada>());
-    });
+        b.ciudades.fallaPropuesta = null;
+        await b.notificador.reintentarCiudad();
 
-    test('si el pedido falla, queda la falla para mostrar y se puede reintentar', () async {
-      final solicitador = SolicitadorFalso()..falla = const FailureSolicitudCiudadNoDisponible();
-      final b = _banco(solicitador: solicitador);
-      await _esperar();
+        expect(b.estado.ciudad, montevideo);
+        expect(b.estado.puedeRegistrar, isTrue);
+      });
 
-      await b.notificador.solicitarAltaCiudad();
-      expect(b.estado.solicitud, isA<SolicitudCiudadFallida>());
+      test('si el puerto lanza en vez de devolver una falla, pasa lo mismo', () async {
+        final b = _banco(ciudades: CiudadesFalsas()..lanzaAlProponer = StateError('sin base'));
+        await _esperar();
 
-      solicitador.falla = null;
-      await b.notificador.solicitarAltaCiudad();
-      expect(b.estado.solicitud, isA<SolicitudCiudadEnviada>());
-      expect(solicitador.puntos, hasLength(2));
-    });
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer);
+        expect(b.estado.ciudad, isNull);
 
-    test('dos toques seguidos en «Solicitar» mandan un solo pedido', () async {
-      final solicitador = SolicitadorFalso()..bloqueo = Completer<void>();
-      final b = _banco(solicitador: solicitador);
-      await _esperar();
+        b.ciudades.lanzaAlProponer = null;
+        await b.notificador.reintentarCiudad();
 
-      final primero = b.notificador.solicitarAltaCiudad();
-      final segundo = b.notificador.solicitarAltaCiudad();
-      solicitador.bloqueo!.complete();
-      await Future.wait([primero, segundo]);
+        expect(b.estado.ciudad, montevideo);
+      });
 
-      expect(solicitador.puntos, hasLength(1));
-    });
+      test('«Reintentar» y mover el punto a la vez: queda la propuesta del punto nuevo', () async {
+        final b = _banco(ciudades: CiudadesFalsas()..fallaPropuesta = const FailureInesperado());
+        await _esperar();
+        b.ciudades.fallaPropuesta = null;
+        b.ciudades.propone = (punto) => punto == _otroPunto
+            ? deCampania
+            : const CiudadPropuesta(montevideo, OrigenPropuesta.detectada);
+        b.ciudades.bloqueoPropuesta = Completer<void>();
 
-    test('sin punto no hay a qué ciudad pedir el alta', () async {
-      final b = _banco(
-        gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
-      );
-      await _esperar();
+        final reintento = b.notificador.reintentarCiudad();
+        b.notificador.moverPunto(_otroPunto);
+        await _esperar();
+        b.ciudades.bloqueoPropuesta!.complete();
+        await reintento;
+        await _esperar();
 
-      await b.notificador.solicitarAltaCiudad();
-
-      expect(b.solicitador.puntos, isEmpty);
+        expect(b.estado.ciudad, canelones);
+      });
     });
   });
 

@@ -6,14 +6,14 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../../auth/domain/entities/campania_colportor.dart';
 import '../../domain/services/ciudades_para_alta.dart';
 import '../../domain/services/inscripciones_colportor.dart';
-import '../../domain/services/solicitador_alta_ciudad.dart';
 import '../../domain/value_objects/coordenadas.dart';
 
 // Puertos del alta de ubicación (HU-UBI-001) cuya fuente real todavía no existe. **Ninguno es la
 // regla de la HU**: se reemplazan cuando llegue lo que les falta.
 
-/// Sin catálogo de ciudades en el teléfono (HU-ADM / BFF, docs-organizacion#22): ninguna ciudad
-/// se detecta ni se puede elegir. El alta muestra «ciudad no encontrada» y no deja registrar.
+/// Sin réplica local de las ciudades de la campaña (el catálogo y las campañas del colportor llegan
+/// con el pull del sync, #178): no hay ciudad que proponer ni lista que mostrar. El alta muestra el
+/// aviso «Tu campaña todavía no tiene ciudades» y no deja registrar: no se inventa una ciudad.
 final class CiudadesParaAltaSinFuente implements CiudadesParaAlta {
   CiudadesParaAltaSinFuente({AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -22,37 +22,23 @@ final class CiudadesParaAltaSinFuente implements CiudadesParaAlta {
   void _avisar() => _log.warn(
     LogModulo.map,
     'CIUDADES_SIN_FUENTE',
-    'no hay catálogo de ciudades en el teléfono (docs-organizacion#22)',
+    'no hay ciudades de la campaña en el teléfono (falta la réplica local del catálogo)',
   );
 
   @override
-  Future<Either<Failure, DeteccionCiudad>> detectar(Coordenadas punto) async {
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async {
     _avisar();
-    return const Right(CiudadNoEncontrada());
+    return const Right(CampaniaSinCiudades());
   }
 
   @override
-  Future<Either<Failure, List<CiudadCatalogo>>> todas() async {
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async {
     _avisar();
     return const Right([]);
   }
-
-  @override
-  Future<Either<Failure, CiudadCatalogo?>> deMiZona(String colportorId) async {
-    _avisar();
-    return const Right(null);
-  }
-}
-
-/// Sin dónde mandar el pedido de alta de ciudad: siempre [FailureSolicitudCiudadNoDisponible].
-final class SolicitadorAltaCiudadSinFuente implements SolicitadorAltaCiudad {
-  const SolicitadorAltaCiudadSinFuente();
-
-  @override
-  Future<Either<Failure, Unit>> solicitar({
-    required String colportorId,
-    required Coordenadas punto,
-  }) async => const Left(FailureSolicitudCiudadNoDisponible());
 }
 
 /// Sin inscripciones del colportor en el teléfono (coord#20): el alta se hace igual y queda sin zona

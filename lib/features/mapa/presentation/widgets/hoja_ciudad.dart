@@ -10,11 +10,12 @@ import '../providers/alta_ubicacion_providers.dart';
 import 'hoja_alta.dart';
 import 'piezas_alta.dart';
 
-/// Abre la lista de ciudades del catálogo (vista 03 «Cambiar», HU-UBI-001 «Seleccionar ciudad
-/// manualmente»). Devuelve la ciudad elegida o `null` si se cerró.
+/// Abre la lista de las ciudades de la campaña del colportor (vista 03 «Cambiar»). Devuelve la
+/// ciudad elegida o `null` si se cerró.
 ///
 /// Esta hoja **no tiene diseño** en el canvas (la vista 03 solo dibuja el campo «Montevideo
-/// detectada · Cambiar»): es una lista simple con los textos de la HU, a confirmar con Cristian.
+/// detectada · Cambiar»): es una lista simple (cargando, vacía, error con «Reintentar»), con la misma
+/// forma que las pantallas vecinas.
 Future<CiudadCatalogo?> mostrarHojaCiudad(
   BuildContext context, {
   required ParametrosAlta parametros,
@@ -42,14 +43,22 @@ class HojaCiudad extends ConsumerStatefulWidget {
 class _HojaCiudadState extends ConsumerState<HojaCiudad> {
   late Future<Either<Failure, List<CiudadCatalogo>>> _ciudades;
 
+  /// Un segundo toque mientras la hoja se cierra no tiene que cerrar también la pantalla de atrás.
+  var _cerrando = false;
+
   @override
   void initState() {
     super.initState();
-    _ciudades = ref.read(ciudadesParaAltaProvider).todas();
+    _ciudades = _leer();
   }
 
+  /// Las ciudades de la campaña. Si el puerto lanza en vez de devolver una falla, el `FutureBuilder`
+  /// lo muestra como error con «Reintentar».
+  Future<Either<Failure, List<CiudadCatalogo>>> _leer() async =>
+      ref.read(ciudadesParaAltaProvider).deMiCampania(widget.parametros.colportorId);
+
   void _reintentar() {
-    final nuevas = ref.read(ciudadesParaAltaProvider).todas();
+    final nuevas = _leer();
     setState(() {
       _ciudades = nuevas;
     });
@@ -60,15 +69,6 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
     final proveedor = altaUbicacionProvider(widget.parametros);
     final estado = ref.watch(proveedor);
     final theme = Theme.of(context);
-    final solicitud = estado.solicitud;
-    final String? resultadoSolicitud = switch (solicitud) {
-      SolicitudCiudadEnviada() => TextosAlta.solicitudEnviada,
-      SolicitudCiudadFallida(:final falla) => mensajePara(
-        falla,
-        accion: 'pedir el alta de la ciudad.',
-      ),
-      _ => null,
-    };
 
     return SafeArea(
       child: Padding(
@@ -112,7 +112,7 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
                         ? Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Text(
-                              'No hay ciudades en el catálogo de este teléfono.',
+                              TextosAlta.sinCiudades,
                               style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
                             ),
                           )
@@ -124,6 +124,8 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
                                   ciudad: c,
                                   elegida: estado.ciudad?.id == c.id,
                                   alElegir: () {
+                                    if (_cerrando) return;
+                                    _cerrando = true;
                                     ref.read(proveedor.notifier).elegirCiudad(c);
                                     Navigator.of(context).pop(c);
                                   },
@@ -134,28 +136,6 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
                 },
               ),
             ),
-            const SizedBox(height: 8),
-            if (resultadoSolicitud != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    resultadoSolicitud,
-                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
-                  ),
-                ),
-              ),
-            if (solicitud is! SolicitudCiudadEnviada)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: EnlaceAlta(
-                  texto: TextosAlta.solicitarCiudad,
-                  alPresionar: solicitud is SolicitudCiudadEnviando || estado.punto == null
-                      ? null
-                      : () => ref.read(proveedor.notifier).solicitarAltaCiudad(),
-                ),
-              ),
           ],
         ),
       ),
@@ -195,7 +175,7 @@ class _Error extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: texto),
-        EnlaceAlta(texto: 'Reintentar', alPresionar: alReintentar),
+        EnlaceAlta(texto: TextosAlta.reintentar, alPresionar: alReintentar),
       ],
     );
   }

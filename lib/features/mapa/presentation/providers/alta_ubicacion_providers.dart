@@ -21,14 +21,13 @@ import '../../domain/services/geocodificador_inverso.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/services/proveedor_gps.dart';
 import '../../domain/services/resolutores_mapa.dart';
-import '../../domain/services/solicitador_alta_ciudad.dart';
 import '../../domain/services/ubicador_zona.dart';
 import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
 import '../../domain/usecases/registrar_ubicacion_use_case.dart';
 import '../../domain/value_objects/area_mapa.dart';
 
 // Cableado del alta de ubicación (HU-UBI-001, vistas 03 y 04). Presentation conoce domain; data se
-// inyecta acá. Todo lo que todavía no tiene fuente real (catálogo de ciudades, inscripciones,
+// inyecta acá. Todo lo que todavía no tiene fuente real (ciudades de la campaña, inscripciones,
 // motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
 
 /// El motor de sync (#178). Hasta que llegue, [EncoladorSyncSinMotor]: encolar falla y el alta no
@@ -105,12 +104,9 @@ final geocodificadorInversoProvider = Provider<GeocodificadorInverso>(
   (ref) => GeocodificadorNominatim(lectorHttpIo()),
 );
 
-/// Sin catálogo de ciudades hasta HU-ADM / BFF: [CiudadesParaAltaSinFuente].
+/// Sin réplica local de las ciudades de la campaña hasta que llegue el pull del sync (#178):
+/// [CiudadesParaAltaSinFuente].
 final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) => CiudadesParaAltaSinFuente());
-
-final solicitadorAltaCiudadProvider = Provider<SolicitadorAltaCiudad>(
-  (ref) => const SolicitadorAltaCiudadSinFuente(),
-);
 
 /// De dónde salen los tiles del mapa de fondo (HU-UBI-003, ADR-011). El paquete PMTiles offline y
 /// el servidor online llegan con la vista del mapa (#199): hasta entonces no hay fondo y la vista

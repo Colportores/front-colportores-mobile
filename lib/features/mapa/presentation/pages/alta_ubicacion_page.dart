@@ -110,7 +110,9 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
 
   Future<Map<String, String>> _nombresCiudad() async {
     try {
-      final r = await ref.read(ciudadesParaAltaProvider).todas();
+      final r = await ref
+          .read(ciudadesParaAltaProvider)
+          .deMiCampania(widget.parametros.colportorId);
       return r.fold<Map<String, String>>(
         (_) => const {},
         (ciudades) => {for (final c in ciudades) c.id: c.nombre},

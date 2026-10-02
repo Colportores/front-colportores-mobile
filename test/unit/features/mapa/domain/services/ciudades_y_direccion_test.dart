@@ -27,31 +27,41 @@ void main() {
     });
   });
 
-  group('DeteccionCiudad', () {
+  group('PropuestaCiudad', () {
     const montevideo = CiudadCatalogo(id: 'm', nombre: 'Montevideo');
     const canelones = CiudadCatalogo(id: 'c', nombre: 'Canelones');
 
-    test('cada resultado se compara por su contenido', () {
-      expect(const CiudadDetectada(montevideo), const CiudadDetectada(montevideo));
-      expect(const CiudadDetectada(montevideo), isNot(const CiudadDetectada(canelones)));
+    test('cada propuesta se compara por su contenido', () {
       expect(
-        const CiudadAmbigua([montevideo, canelones]),
-        const CiudadAmbigua([montevideo, canelones]),
+        const CiudadPropuesta(montevideo, OrigenPropuesta.detectada),
+        const CiudadPropuesta(montevideo, OrigenPropuesta.detectada),
       );
-      expect(const CiudadNoEncontrada(), const CiudadNoEncontrada());
-      expect(const CiudadNoEncontrada(), isNot(const CiudadDetectada(montevideo)));
+      expect(
+        const CiudadPropuesta(montevideo, OrigenPropuesta.detectada),
+        isNot(const CiudadPropuesta(canelones, OrigenPropuesta.detectada)),
+      );
+      expect(
+        const CiudadPropuesta(montevideo, OrigenPropuesta.detectada),
+        isNot(const CiudadPropuesta(montevideo, OrigenPropuesta.deZona)),
+      );
+      expect(const CampaniaSinCiudades(), const CampaniaSinCiudades());
+      expect(const FaltaElPunto(), const FaltaElPunto());
+      expect(const CampaniaSinCiudades(), isNot(const FaltaElPunto()));
     });
 
-    test('un switch sobre el resultado es exhaustivo', () {
-      String texto(DeteccionCiudad d) => switch (d) {
-        CiudadDetectada(:final ciudad) => 'detectada ${ciudad.nombre}',
-        CiudadAmbigua(:final candidatas) => 'ambigua ${candidatas.length}',
-        CiudadNoEncontrada() => 'no encontrada',
+    test('un switch sobre la propuesta es exhaustivo: no hay «no encontrada» ni «ambigua»', () {
+      String texto(PropuestaCiudad p) => switch (p) {
+        CiudadPropuesta(:final ciudad, :final origen) => '${origen.name} ${ciudad.nombre}',
+        CampaniaSinCiudades() => 'sin ciudades',
+        FaltaElPunto() => 'falta el punto',
       };
 
-      expect(texto(const CiudadDetectada(montevideo)), 'detectada Montevideo');
-      expect(texto(const CiudadAmbigua([montevideo, canelones])), 'ambigua 2');
-      expect(texto(const CiudadNoEncontrada()), 'no encontrada');
+      expect(
+        texto(const CiudadPropuesta(montevideo, OrigenPropuesta.deCampania)),
+        'deCampania Montevideo',
+      );
+      expect(texto(const CampaniaSinCiudades()), 'sin ciudades');
+      expect(texto(const FaltaElPunto()), 'falta el punto');
     });
   });
 }

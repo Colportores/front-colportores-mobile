@@ -16,27 +16,24 @@ const _punto = Coordenadas(lat: -34.9, lon: -56.1);
 
 void main() {
   test(
-    'sin catálogo: ninguna ciudad se detecta, no hay lista y no hay ciudad de la zona',
+    'sin ciudades de la campaña: no se inventa ninguna, ni al proponer ni en «Cambiar»',
     () async {
       final c = CiudadesParaAltaSinFuente();
 
-      expect(await c.detectar(_punto), const Right<Failure, DeteccionCiudad>(CiudadNoEncontrada()));
-      expect(await c.todas(), const Right<Failure, List<CiudadCatalogo>>([]));
-      expect(await c.deMiZona('col-1'), const Right<Failure, CiudadCatalogo?>(null));
+      expect(
+        await c.proponer(colportorId: 'col-1', punto: _punto),
+        const Right<Failure, PropuestaCiudad>(CampaniaSinCiudades()),
+      );
+      expect(
+        await c.proponer(colportorId: 'col-1'),
+        const Right<Failure, PropuestaCiudad>(CampaniaSinCiudades()),
+      );
+      expect(await c.deMiCampania('col-1'), const Right<Failure, List<CiudadCatalogo>>([]));
     },
   );
 
-  test('sin dónde mandar el pedido de alta de ciudad: dice que todavía no se puede', () async {
-    final r = await const SolicitadorAltaCiudadSinFuente().solicitar(
-      colportorId: 'col-1',
-      punto: _punto,
-    );
-
-    expect(r, const Left<Failure, Unit>(FailureSolicitudCiudadNoDisponible()));
-    expect(
-      const FailureSolicitudCiudadNoDisponible().mensaje,
-      contains('Avisale a tu coordinador'),
-    );
+  test('el aviso de que falta la ciudad de la campaña guía al colportor', () {
+    expect(const FailureCiudadRequerida().mensaje, contains('Elegí una de las ciudades'));
   });
 
   test(

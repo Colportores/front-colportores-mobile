@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -34,8 +33,6 @@ abstract final class TextosAlta {
   static const delMapa = 'Del mapa';
   static const editado = 'Editado';
   static const cambiar = 'Cambiar';
-  static const seleccionarCiudad = 'Seleccionar ciudad manualmente';
-  static const solicitarCiudad = 'Solicitar alta de ciudad al administrador';
   static const sinTiles = 'Sin tiles para esta zona. Descargá tu ciudad en Configuración.';
 
   // Provisorios: la HU y el canvas no los traen (se confirman con Cristian, ver el issue #193).
@@ -44,11 +41,10 @@ abstract final class TextosAlta {
   static const elegiPrecision = 'Elegí «Ajustar manualmente» o «Continuar» para registrar.';
   static const buscandoGps = 'Buscando GPS…';
   static const buscandoCiudad = 'Buscando la ciudad…';
-  static const ciudadAmbigua =
-      'El punto está cerca del límite entre dos ciudades. Elegí cuál es la tuya.';
-  static const solicitudEnviada =
-      'Listo, le avisamos al administrador. Cuando dé de alta la ciudad vas a poder registrar '
-      'esta ubicación.';
+  static const reintentar = 'Reintentar';
+  static const deTuCampania = 'de tu campaña';
+  static const sinCiudades = 'Tu campaña todavía no tiene ciudades. Avisale a tu coordinador.';
+  static const ciudadesNoLeidas = 'No pudimos leer las ciudades de tu campaña. Probá de nuevo.';
 
   static String gps(double metros) => 'GPS ±${metros.round()} m';
 
@@ -73,7 +69,7 @@ class HojaAlta extends ConsumerStatefulWidget {
   final ParametrosAlta parametros;
   final VoidCallback alRegistrar;
 
-  /// Abre la lista de ciudades («Cambiar», «Seleccionar ciudad manualmente»).
+  /// Abre la lista de ciudades de la campaña («Cambiar»).
   final VoidCallback alElegirCiudad;
 
   @override
@@ -144,13 +140,12 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
         const SizedBox(height: 14),
         _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
         if (estado.ciudad == null &&
-            (estado.origenCiudad == OrigenCiudad.noEncontrada ||
-                estado.origenCiudad == OrigenCiudad.ambigua)) ...[
+            (estado.origenCiudad == OrigenCiudad.sinCiudades ||
+                estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
           const SizedBox(height: 10),
           _AvisoCiudad(
-            estado: estado,
-            alElegir: widget.alElegirCiudad,
-            alSolicitar: _notificador.solicitarAltaCiudad,
+            sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
+            alReintentar: _notificador.reintentarCiudad,
           ),
         ],
         const SizedBox(height: 14),
@@ -234,7 +229,11 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     if (e.punto == null) return TextosAlta.marcaElPunto;
     if (e.necesitaDecisionPrecision) return TextosAlta.elegiPrecision;
     if (e.tipo == null) return TextosAlta.elegiElTipo;
-    if (e.ciudad == null) return TextosAlta.elegiLaCiudad;
+    // Sin ciudad: buscándola, el campo lo dice; sin ciudades o sin poder leerlas, el aviso de arriba
+    // dice qué hacer. Solo «por elegir» (varias ciudades y todavía sin punto) pide elegir.
+    if (e.ciudad == null && e.origenCiudad == OrigenCiudad.porElegir) {
+      return TextosAlta.elegiLaCiudad;
+    }
     return null;
   }
 }
@@ -506,6 +505,7 @@ class _CampoCiudad extends StatelessWidget {
       origen = switch (estado.origenCiudad) {
         OrigenCiudad.detectada => 'detectada',
         OrigenCiudad.deZona => 'de tu zona',
+        OrigenCiudad.deCampania => TextosAlta.deTuCampania,
         _ => null,
       };
     } else {
@@ -514,16 +514,20 @@ class _CampoCiudad extends StatelessWidget {
           : 'Sin ciudad';
       origen = null;
     }
-    final enlace = ciudad == null && estado.origenCiudad != OrigenCiudad.buscando
-        ? 'Elegir'
-        : TextosAlta.cambiar;
+    // Sin ciudades en la campaña no hay nada que elegir: el campo no abre una lista vacía.
+    final sinNadaQueElegir = ciudad == null && estado.origenCiudad == OrigenCiudad.sinCiudades;
+    final enlace = sinNadaQueElegir
+        ? null
+        : (ciudad == null && estado.origenCiudad != OrigenCiudad.buscando
+              ? 'Elegir'
+              : TextosAlta.cambiar);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _EtiquetaCampo(TextosAlta.ciudadObligatoria),
         const SizedBox(height: 6),
         Semantics(
-          button: true,
+          button: !sinNadaQueElegir,
           child: Material(
             color: Colors.white,
             shape: RoundedRectangleBorder(
@@ -531,7 +535,7 @@ class _CampoCiudad extends StatelessWidget {
               side: const BorderSide(color: ColoresAlta.grisBorde, width: 1.5),
             ),
             child: InkWell(
-              onTap: alTocar,
+              onTap: sinNadaQueElegir ? null : alTocar,
               borderRadius: BorderRadius.circular(12),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
@@ -554,13 +558,14 @@ class _CampoCiudad extends StatelessWidget {
                           TextSpan(
                             children: [
                               if (origen != null) TextSpan(text: '$origen · '),
-                              TextSpan(
-                                text: enlace,
-                                style: const TextStyle(
-                                  color: ColoresAlta.azul,
-                                  fontWeight: FontWeight.w600,
+                              if (enlace != null)
+                                TextSpan(
+                                  text: enlace,
+                                  style: const TextStyle(
+                                    color: ColoresAlta.azul,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                           textAlign: TextAlign.end,
@@ -579,58 +584,24 @@ class _CampoCiudad extends StatelessWidget {
   }
 }
 
-/// «Ciudad no encontrada» (HU-UBI-001): «Seleccionar ciudad manualmente» o «Solicitar alta de
-/// ciudad al administrador». Con el punto en el límite de dos ciudades, solo se pregunta.
+/// El único aviso de ciudad que queda: la campaña no tiene ciudades cargadas, o no se pudieron leer.
+/// Dice qué pasa y qué hacer, con «Reintentar» a mano.
 class _AvisoCiudad extends StatelessWidget {
-  const _AvisoCiudad({required this.estado, required this.alElegir, required this.alSolicitar});
+  const _AvisoCiudad({required this.sinCiudades, required this.alReintentar});
 
-  final AltaUbicacionState estado;
-  final VoidCallback alElegir;
-  final VoidCallback alSolicitar;
+  final bool sinCiudades;
+  final VoidCallback alReintentar;
 
   @override
   Widget build(BuildContext context) {
-    final ambigua = estado.origenCiudad == OrigenCiudad.ambigua;
-    final solicitud = estado.solicitud;
-    final texto = ambigua ? TextosAlta.ciudadAmbigua : const FailureCiudadRequerida().mensaje;
-    final enviando = solicitud is SolicitudCiudadEnviando;
-    final String? resultado = switch (solicitud) {
-      SolicitudCiudadEnviada() => TextosAlta.solicitudEnviada,
-      SolicitudCiudadFallida(:final falla) => mensajePara(
-        falla,
-        accion: 'pedir el alta de la ciudad.',
-      ),
-      _ => null,
-    };
     return AvisoAlta(
       color: ColoresAlta.ambarBorde,
       colorInsignia: ColoresAlta.ambar,
       glyph: '!',
-      texto: texto,
-      acciones: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (resultado != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                resultado,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4),
-              ),
-            ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: EnlaceAlta(texto: TextosAlta.seleccionarCiudad, alPresionar: alElegir),
-          ),
-          if (!ambigua && solicitud is! SolicitudCiudadEnviada)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: EnlaceAlta(
-                texto: TextosAlta.solicitarCiudad,
-                alPresionar: enviando ? null : alSolicitar,
-              ),
-            ),
-        ],
+      texto: sinCiudades ? TextosAlta.sinCiudades : TextosAlta.ciudadesNoLeidas,
+      acciones: Align(
+        alignment: Alignment.centerLeft,
+        child: EnlaceAlta(texto: TextosAlta.reintentar, alPresionar: alReintentar),
       ),
     );
   }

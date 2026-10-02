@@ -13,7 +13,6 @@ import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_a
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proveedor_gps.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/solicitador_alta_ciudad.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
@@ -82,53 +81,68 @@ final class GeocodificadorFalso implements GeocodificadorInverso {
   }
 }
 
-/// El catálogo de ciudades en memoria.
+/// Las ciudades de la campaña en memoria: qué propone y qué lista tiene «Cambiar».
 final class CiudadesFalsas implements CiudadesParaAlta {
-  CiudadesFalsas({
-    this.detecta = _siempreMontevideo,
-    this.catalogo = const [montevideo, canelones],
-    this.miZona = montevideo,
-  });
+  CiudadesFalsas({this.propone = _montevideo, this.campania = const [montevideo, canelones]});
 
-  static DeteccionCiudad _siempreMontevideo(Coordenadas _) => const CiudadDetectada(montevideo);
+  /// Lo que haría la fuente real con Montevideo de zona asignada: con punto, la de la zona que lo
+  /// contiene; sin punto, la de la zona asignada.
+  static PropuestaCiudad _montevideo(Coordenadas? punto) => CiudadPropuesta(
+    montevideo,
+    punto == null ? OrigenPropuesta.deZona : OrigenPropuesta.detectada,
+  );
 
-  DeteccionCiudad Function(Coordenadas punto) detecta;
-  List<CiudadCatalogo> catalogo;
-  CiudadCatalogo? miZona;
-  Failure? fallaTodas;
-  Completer<void>? bloqueoTodas;
-  var consultasTodas = 0;
+  /// Qué propone para cada pedido (`null` = sin punto).
+  PropuestaCiudad Function(Coordenadas? punto) propone;
+
+  /// Las ciudades de la campaña.
+  List<CiudadCatalogo> campania;
+
+  /// Si no es `null`, `proponer` devuelve esta falla.
+  Failure? fallaPropuesta;
+
+  /// Si no es `null`, `proponer` lanza esto en vez de devolver una falla.
+  Object? lanzaAlProponer;
+
+  /// Si no es `null`, `proponer` espera a que se complete.
+  Completer<void>? bloqueoPropuesta;
+
+  /// Cada pedido de `proponer`, con el punto que llevó.
+  final propuestas = <Coordenadas?>[];
+
+  Failure? fallaCampania;
+  Completer<void>? bloqueoCampania;
+
+  /// Si no es `null`, `deMiCampania` lanza esto en el acto (sin devolver un `Future`), como un
+  /// puerto mal escrito.
+  Object? lanzaAlListar;
+  var consultasCampania = 0;
 
   @override
-  Future<Either<Failure, DeteccionCiudad>> detectar(Coordenadas punto) async =>
-      Right(detecta(punto));
-
-  @override
-  Future<Either<Failure, List<CiudadCatalogo>>> todas() async {
-    consultasTodas++;
-    final espera = bloqueoTodas;
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async {
+    propuestas.add(punto);
+    final espera = bloqueoPropuesta;
     if (espera != null) await espera.future;
-    return fallaTodas != null ? Left(fallaTodas!) : Right(catalogo);
+    final lanza = lanzaAlProponer;
+    if (lanza != null) throw lanza;
+    return fallaPropuesta != null ? Left(fallaPropuesta!) : Right(propone(punto));
   }
 
   @override
-  Future<Either<Failure, CiudadCatalogo?>> deMiZona(String colportorId) async => Right(miZona);
-}
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) {
+    consultasCampania++;
+    final lanza = lanzaAlListar;
+    if (lanza != null) throw lanza;
+    return _campania();
+  }
 
-final class SolicitadorFalso implements SolicitadorAltaCiudad {
-  Failure? falla;
-  Completer<void>? bloqueo;
-  final puntos = <Coordenadas>[];
-
-  @override
-  Future<Either<Failure, Unit>> solicitar({
-    required String colportorId,
-    required Coordenadas punto,
-  }) async {
-    puntos.add(punto);
-    final espera = bloqueo;
+  Future<Either<Failure, List<CiudadCatalogo>>> _campania() async {
+    final espera = bloqueoCampania;
     if (espera != null) await espera.future;
-    return falla != null ? Left(falla!) : const Right(unit);
+    return fallaCampania != null ? Left(fallaCampania!) : Right(campania);
   }
 }
 
@@ -214,7 +228,6 @@ List<Override> overridesAlta({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
-  SolicitadorFalso? solicitador,
   RepoAltaFalso? repo,
   Duration espera = const Duration(milliseconds: 20),
   DateTime? ahora,
@@ -227,7 +240,6 @@ List<Override> overridesAlta({
     activadorGpsProvider.overrideWithValue(gpsFalso),
     geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
     ciudadesParaAltaProvider.overrideWithValue(ciudades ?? CiudadesFalsas()),
-    solicitadorAltaCiudadProvider.overrideWithValue(solicitador ?? SolicitadorFalso()),
     ubicacionRepositoryProvider.overrideWithValue(repo ?? RepoAltaFalso()),
     ubicadorZonaProvider.overrideWithValue(ubicadorSinZonas()),
     esperaPuntoAltaProvider.overrideWithValue(espera),

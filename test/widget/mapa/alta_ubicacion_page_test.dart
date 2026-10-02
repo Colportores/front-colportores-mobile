@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -55,14 +56,12 @@ final class _Escenario {
     required this.gps,
     required this.geocodificador,
     required this.ciudades,
-    required this.solicitador,
     required this.repo,
   });
 
   final GpsFalso gps;
   final GeocodificadorFalso geocodificador;
   final CiudadesFalsas ciudades;
-  final SolicitadorFalso solicitador;
   final RepoAltaFalso repo;
   final salidas = <SalidaAltaUbicacion?>[];
 }
@@ -78,7 +77,6 @@ Future<_Escenario> _montar(
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
-  SolicitadorFalso? solicitador,
   RepoAltaFalso? repo,
   double escala = 1,
   Size tamano = const Size(390, 844),
@@ -95,7 +93,6 @@ Future<_Escenario> _montar(
         geocodificador ??
         GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234')),
     ciudades: ciudades ?? CiudadesFalsas(),
-    solicitador: solicitador ?? SolicitadorFalso(),
     repo: repo ?? RepoAltaFalso(),
   );
   await tester.pumpWidget(
@@ -104,7 +101,6 @@ Future<_Escenario> _montar(
         gps: e.gps,
         geocodificador: e.geocodificador,
         ciudades: e.ciudades,
-        solicitador: e.solicitador,
         repo: e.repo,
         ahora: DateTime.utc(2026, 10, 2, 12),
         marcadores: marcadores,
@@ -142,6 +138,39 @@ Finder get _mapa => find.byType(FlutterMap).first;
 
 /// Lo que está dentro de la hoja inferior abierta (y no en el alta que queda debajo).
 Finder _enHoja(Finder f) => find.descendant(of: find.byType(BottomSheet), matching: f);
+
+/// Ningún resto de los estados que Cristian sacó (02/10): «no encontrada», «ambigua» ni «Solicitar alta».
+void _sinEstadosViejos() {
+  expect(find.text('Solicitar alta de ciudad al administrador'), findsNothing);
+  expect(find.text('Seleccionar ciudad manualmente'), findsNothing);
+  expect(find.textContaining('No encontramos la ciudad'), findsNothing);
+  expect(find.textContaining('cerca del límite'), findsNothing);
+  expect(find.textContaining('le avisamos al administrador'), findsNothing);
+}
+
+/// El borde punteado de la gota del pin sin colocar.
+Finder get _bordePunteado =>
+    find.byWidgetPredicate((w) => w is CustomPaint && w.painter is BordePunteadoGota);
+
+/// Un pellizco de dos dedos sobre el centro del mapa: cada dedo se aleja [izquierda] y [derecha]
+/// píxeles por paso (desparejo, como un pellizco real, que además corre el punto focal).
+Future<void> _pellizcar(
+  WidgetTester tester, {
+  required double izquierda,
+  required double derecha,
+}) async {
+  final centro = tester.getCenter(_mapa);
+  final a = await tester.startGesture(centro - const Offset(40, 0), pointer: 1);
+  final b = await tester.startGesture(centro + const Offset(40, 0), pointer: 2);
+  for (var i = 0; i < 6; i++) {
+    await a.moveBy(Offset(-izquierda, 0));
+    await b.moveBy(Offset(derecha, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await a.up();
+  await b.up();
+  await _asentar(tester);
+}
 
 void main() {
   group('artboard 03A · 01 «GPS preciso»', () {
@@ -488,8 +517,12 @@ void main() {
     });
   });
 
-  group('ciudad (HU-UBI-001: «Error - ciudad no en catálogo»)', () {
-    testWidgets('«Cambiar» abre la lista, elegir una cambia la ciudad', (tester) async {
+  group('ciudad (decisión de Cristian, 02/10: la ciudad de tu campaña siempre se propone)', () {
+    const deCampania = CiudadPropuesta(canelones, OrigenPropuesta.deCampania);
+
+    testWidgets('«Cambiar» abre la lista de la campaña, elegir una cambia la ciudad', (
+      tester,
+    ) async {
       await _montar(tester);
 
       await _tocar(tester, find.text('detectada · Cambiar'));
@@ -500,80 +533,192 @@ void main() {
       expect(find.text('Elegí la ciudad'), findsNothing);
       expect(find.text('Canelones'), findsOneWidget);
       expect(find.text('Cambiar'), findsOneWidget);
+      _sinEstadosViejos();
     });
 
-    testWidgets('ciudad no encontrada: ofrece las dos salidas de la HU y no deja registrar', (
-      tester,
-    ) async {
-      final e = await _montar(
+    testWidgets(
+      'sin zona del punto ni asignada, se propone la ciudad de la campaña y se registra',
+      (tester) async {
+        final e = await _montar(tester, ciudades: CiudadesFalsas(propone: (_) => deCampania));
+
+        expect(find.text('Canelones'), findsOneWidget);
+        expect(find.text('de tu campaña · Cambiar'), findsOneWidget);
+        await _tocar(tester, find.text('Casa'));
+        expect(_habilitado(tester, _registrar), isTrue);
+        await _tocar(tester, _registrar);
+
+        expect((e.salidas.single! as UbicacionCreada).ubicacion.ciudadId, canelones.id);
+        _sinEstadosViejos();
+      },
+    );
+
+    testWidgets('con varias ciudades y sin punto ni zona asignada: «Elegir» y la ayuda bajo '
+        '«Registrar»; al marcar el punto se propone', (tester) async {
+      await _montar(
         tester,
-        ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()),
+        gps: _gpsSin(MotivoSinGps.sinSenal),
+        ciudades: CiudadesFalsas(
+          propone: (punto) => punto == null ? const FaltaElPunto() : deCampania,
+        ),
       );
-      await _tocar(tester, find.text('Casa'));
 
       expect(find.text('Sin ciudad'), findsOneWidget);
-      expect(find.text('Seleccionar ciudad manualmente'), findsOneWidget);
-      expect(find.text('Solicitar alta de ciudad al administrador'), findsOneWidget);
-      expect(find.textContaining('No encontramos la ciudad de este punto'), findsOneWidget);
+      expect(find.text('Elegir'), findsOneWidget);
+      expect(find.text('Marcá el punto en el mapa para registrar.'), findsOneWidget);
       expect(_habilitado(tester, _registrar), isFalse);
-      expect(find.text('Elegí la ciudad para registrar.'), findsOneWidget);
 
-      await _tocar(tester, find.text('Seleccionar ciudad manualmente'));
-      await _tocar(tester, find.text('Montevideo'));
+      await tester.tapAt(tester.getBottomLeft(_mapa) + const Offset(200, -15));
+      await tester.pump(const Duration(milliseconds: 400));
+      await _asentar(tester);
 
-      expect(find.text('Seleccionar ciudad manualmente'), findsNothing);
+      expect(find.text('de tu campaña · Cambiar'), findsOneWidget);
+      expect(find.text('Sin ciudad'), findsNothing);
+      await _tocar(tester, find.text('Casa'));
+      expect(_habilitado(tester, _registrar), isTrue);
+      _sinEstadosViejos();
+    });
+
+    testWidgets('mientras busca: «Buscando la ciudad…», sin poder registrar y sin quedar trabado', (
+      tester,
+    ) async {
+      final ciudades = CiudadesFalsas()..bloqueoPropuesta = Completer<void>();
+      final e = await _montar(tester, ciudades: ciudades);
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text('Buscando la ciudad…'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isFalse);
+      expect(e.repo.llamadas, isEmpty);
+
+      ciudades.bloqueoPropuesta!.complete();
+      await _asentar(tester);
+
+      expect(find.text('Buscando la ciudad…'), findsNothing);
+      expect(find.text('detectada · Cambiar'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isTrue);
+    });
+
+    testWidgets('la campaña sin ciudades: el aviso dice qué hacer, no hay lista que abrir y no se '
+        'registra; «Reintentar» lo resuelve', (tester) async {
+      final ciudades = CiudadesFalsas(propone: (_) => const CampaniaSinCiudades());
+      final e = await _montar(tester, ciudades: ciudades);
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(TextosAlta.sinCiudades), findsOneWidget);
+      expect(find.text('Sin ciudad'), findsOneWidget);
+      expect(find.text('Cambiar'), findsNothing);
+      expect(find.text('Elegir'), findsNothing);
+      expect(_habilitado(tester, _registrar), isFalse);
+      await tester.tap(find.text('Sin ciudad'), warnIfMissed: false);
+      await _asentar(tester);
+      expect(find.text('Elegí la ciudad'), findsNothing);
+      expect(e.repo.llamadas, isEmpty);
+      _sinEstadosViejos();
+
+      ciudades.propone = (_) => const CiudadPropuesta(montevideo, OrigenPropuesta.detectada);
+      await _tocar(tester, find.text('Reintentar'));
+
+      expect(find.text(TextosAlta.sinCiudades), findsNothing);
+      expect(find.text('detectada · Cambiar'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isTrue);
+    });
+
+    testWidgets('«Reintentar» sin ciudades en la campaña: el aviso sigue y se puede volver a '
+        'tocar', (tester) async {
+      final ciudades = CiudadesFalsas(propone: (_) => const CampaniaSinCiudades());
+      await _montar(tester, ciudades: ciudades);
+
+      await _tocar(tester, find.text('Reintentar'));
+      await _tocar(tester, find.text('Reintentar'));
+
+      expect(find.text(TextosAlta.sinCiudades), findsOneWidget);
+      expect(ciudades.propuestas, hasLength(3));
+    });
+
+    testWidgets('si no se pueden leer las ciudades: aviso con «Reintentar», se puede elegir de la '
+        'lista y no queda «Buscando la ciudad…»', (tester) async {
+      final ciudades = CiudadesFalsas()..fallaPropuesta = const FailureInesperado();
+      final e = await _montar(tester, ciudades: ciudades);
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
+      expect(find.text('Buscando la ciudad…'), findsNothing);
+      expect(find.text('Sin ciudad'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isFalse);
+
+      await _tocar(tester, find.text('Elegir'));
+      await _tocar(tester, find.text('Canelones'));
+
+      expect(find.text(TextosAlta.ciudadesNoLeidas), findsNothing);
       expect(_habilitado(tester, _registrar), isTrue);
       await _tocar(tester, _registrar);
-      expect(e.salidas.single, isA<UbicacionCreada>());
+      expect((e.salidas.single! as UbicacionCreada).ubicacion.ciudadId, canelones.id);
     });
 
-    testWidgets('«Solicitar alta de ciudad al administrador» manda el pedido y lo confirma', (
+    testWidgets('si no se pueden leer y se reintenta con éxito, la ciudad se propone sola', (
       tester,
     ) async {
-      final e = await _montar(
-        tester,
-        ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()),
-      );
+      final ciudades = CiudadesFalsas()..fallaPropuesta = const FailureInesperado();
+      await _montar(tester, ciudades: ciudades);
 
-      await _tocar(tester, find.text('Solicitar alta de ciudad al administrador'));
+      ciudades.fallaPropuesta = null;
+      await _tocar(tester, find.text('Reintentar'));
 
-      expect(e.solicitador.puntos, [puntoItalia]);
-      expect(find.textContaining('le avisamos al administrador'), findsOneWidget);
-      expect(find.text('Solicitar alta de ciudad al administrador'), findsNothing);
+      expect(find.text(TextosAlta.ciudadesNoLeidas), findsNothing);
+      expect(find.text('detectada · Cambiar'), findsOneWidget);
     });
 
-    testWidgets('si el pedido falla lo dice y se puede reintentar', (tester) async {
-      final solicitador = SolicitadorFalso()..falla = const FailureSolicitudCiudadNoDisponible();
-      await _montar(
-        tester,
-        solicitador: solicitador,
-        ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()),
-      );
+    testWidgets('la ciudad elegida no se pisa al mover el mapa', (tester) async {
+      final e = await _montar(tester);
+      await _tocar(tester, find.text('detectada · Cambiar'));
+      await _tocar(tester, find.text('Canelones'));
 
-      await _tocar(tester, find.text('Solicitar alta de ciudad al administrador'));
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
 
-      expect(find.textContaining('Todavía no podemos enviar el pedido'), findsOneWidget);
-      solicitador.falla = null;
-      await _tocar(tester, find.text('Solicitar alta de ciudad al administrador'));
-      expect(find.textContaining('le avisamos al administrador'), findsOneWidget);
+      expect(find.text('Marcado a mano'), findsOneWidget);
+      expect(find.text('Canelones'), findsOneWidget);
+      expect(find.text('Cambiar'), findsOneWidget);
+      expect(e.ciudades.propuestas, [puntoItalia], reason: 'ya eligió: no se vuelve a proponer');
     });
 
-    testWidgets('cerca del límite entre dos ciudades pregunta y no asigna', (tester) async {
-      await _montar(
-        tester,
-        ciudades: CiudadesFalsas(detecta: (_) => const CiudadAmbigua([montevideo, canelones])),
-      );
-
-      expect(find.textContaining('cerca del límite entre dos ciudades'), findsOneWidget);
-      expect(find.text('Seleccionar ciudad manualmente'), findsOneWidget);
-      expect(find.text('Solicitar alta de ciudad al administrador'), findsNothing);
-      expect(_habilitado(tester, _registrar), isFalse);
-    });
-
-    testWidgets('la lista: cargando con texto, vacía con salida, y con error con «Reintentar»', (
+    testWidgets('doble toque en una ciudad de la lista: elige una vez y no cierra el alta', (
       tester,
     ) async {
-      final ciudades = CiudadesFalsas()..bloqueoTodas = Completer<void>();
+      final e = await _montar(tester);
+      await _tocar(tester, find.text('detectada · Cambiar'));
+
+      await tester.tap(find.text('Canelones'));
+      await tester.tap(find.text('Canelones'), warnIfMissed: false);
+      await _asentar(tester);
+
+      expect(find.text('Nueva ubicación'), findsOneWidget);
+      expect(find.text('Elegí la ciudad'), findsNothing);
+      expect(e.salidas, isEmpty);
+    });
+
+    testWidgets('volver atrás desde la lista deja la ciudad como estaba, y se puede reabrir', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _tocar(tester, find.text('detectada · Cambiar'));
+
+      await tester.binding.handlePopRoute();
+      await _asentar(tester);
+
+      expect(find.text('Elegí la ciudad'), findsNothing);
+      expect(find.text('Nueva ubicación'), findsOneWidget);
+      expect(find.text('detectada · Cambiar'), findsOneWidget);
+
+      await _tocar(tester, find.text('detectada · Cambiar'));
+
+      expect(find.text('Elegí la ciudad'), findsOneWidget);
+      expect(e.ciudades.consultasCampania, 2);
+    });
+
+    testWidgets('la lista: cargando con texto, con error y «Reintentar», y vacía con el aviso', (
+      tester,
+    ) async {
+      final ciudades = CiudadesFalsas()..bloqueoCampania = Completer<void>();
       await _montar(tester, ciudades: ciudades);
 
       await tester.ensureVisible(find.text('detectada · Cambiar'));
@@ -583,17 +728,124 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Buscando ciudades…'), findsOneWidget);
       ciudades
-        ..fallaTodas = const FailureServidor()
-        ..bloqueoTodas!.complete();
+        ..fallaCampania = const FailureServidor()
+        ..bloqueoCampania!.complete();
       await _asentar(tester);
       expect(find.text('El servidor no pudo procesar la solicitud'), findsOneWidget);
+      expect(find.text('Buscando ciudades…'), findsNothing);
 
       ciudades
-        ..fallaTodas = null
-        ..catalogo = const [];
+        ..fallaCampania = null
+        ..campania = const [];
       await _tocar(tester, find.text('Reintentar'));
-      expect(find.text('No hay ciudades en el catálogo de este teléfono.'), findsOneWidget);
-      expect(find.text('Solicitar alta de ciudad al administrador'), findsOneWidget);
+      expect(_enHoja(find.text(TextosAlta.sinCiudades)), findsOneWidget);
+      expect(find.text('Solicitar alta de ciudad al administrador'), findsNothing);
+    });
+
+    testWidgets(
+      'si la fuente de la lista lanza, se ve el error con «Reintentar» y no el cargando',
+      (tester) async {
+        final ciudades = CiudadesFalsas()..lanzaAlListar = StateError('sin base');
+        await _montar(tester, ciudades: ciudades);
+
+        await _tocar(tester, find.text('detectada · Cambiar'));
+
+        expect(find.text('Ocurrió un error inesperado'), findsOneWidget);
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(find.text('Buscando ciudades…'), findsNothing);
+      },
+    );
+  });
+
+  group('mapa: pellizco, pin sin colocar y fondo sin tiles', () {
+    testWidgets('un pellizco de zoom no mueve el punto del GPS ni lo pasa a «Marcado a mano»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      final zoomAntes = MapCamera.of(tester.element(find.byType(MarkerLayer))).zoom;
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      final zoomDespues = MapCamera.of(tester.element(find.byType(MarkerLayer))).zoom;
+      expect(zoomDespues, greaterThan(zoomAntes), reason: 'el pellizco sí hizo zoom');
+      expect(find.text('Marcado a mano'), findsNothing);
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+      expect(find.text('-34.88761, -56.13024'), findsOneWidget);
+    });
+
+    testWidgets('después de un pellizco, arrastrar el mapa sí deja el punto «a mano»', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
+
+      expect(find.text('Marcado a mano'), findsOneWidget);
+      expect(e.geocodificador.pedidos.length, greaterThan(1), reason: 'pidió la dirección nueva');
+    });
+
+    testWidgets('sin punto el pin es una gota blanca con borde punteado; con punto, navy y lleno', (
+      tester,
+    ) async {
+      await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
+
+      expect(find.byType(PinAlta), findsOneWidget);
+      expect(tester.widget<PinAlta>(find.byType(PinAlta)).colocado, isFalse);
+      expect(_bordePunteado, findsOneWidget);
+
+      await tester.tapAt(tester.getBottomLeft(_mapa) + const Offset(200, -15));
+      await tester.pump(const Duration(milliseconds: 400));
+      await _asentar(tester);
+
+      expect(tester.widget<PinAlta>(find.byType(PinAlta)).colocado, isTrue);
+      expect(_bordePunteado, findsNothing);
+    });
+
+    testWidgets(
+      'el borde punteado se dibuja con trazos de 3 px y repinta solo si cambia el color',
+      (tester) async {
+        await tester.pumpWidget(
+          const Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: CustomPaint(painter: BordePunteadoGota(color: ColoresAlta.gris)),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          tester.renderObject(find.byType(CustomPaint)),
+          paints
+            ..path(color: ColoresAlta.gris, style: PaintingStyle.stroke, strokeWidth: 3)
+            ..path()
+            ..path(),
+        );
+        const pintor = BordePunteadoGota(color: ColoresAlta.gris);
+        expect(pintor.shouldRepaint(const BordePunteadoGota(color: ColoresAlta.gris)), isFalse);
+        expect(pintor.shouldRepaint(const BordePunteadoGota(color: Colors.red)), isTrue);
+      },
+    );
+
+    testWidgets('sin tiles: color liso del diseño y el aviso de la HU-UBI-003, sin capa de tiles', (
+      tester,
+    ) async {
+      await _montar(tester);
+
+      expect(find.byType(TileLayer), findsNothing);
+      expect(
+        tester.widget<FlutterMap>(find.byType(FlutterMap)).options.backgroundColor,
+        ColoresAlta.fondoMapa,
+      );
+      expect(
+        find.text('Sin tiles para esta zona. Descargá tu ciudad en Configuración.'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -977,12 +1229,14 @@ void main() {
           escala: escala,
           tamano: const Size(360, 640),
           gps: GpsFalso(Right(lecturaGps(85))),
-          ciudades: CiudadesFalsas(detecta: (_) => const CiudadNoEncontrada()),
+          ciudades: CiudadesFalsas(
+            propone: (_) => const CiudadPropuesta(canelones, OrigenPropuesta.deCampania),
+          ),
         );
         expect(tester.takeException(), isNull);
         await _tocar(tester, find.text('Casa'));
         await _tocar(tester, find.text('Continuar'));
-        await _tocar(tester, find.text('Seleccionar ciudad manualmente'));
+        await _tocar(tester, find.text('de tu campaña · Cambiar'));
         expect(tester.takeException(), isNull);
         await _tocar(tester, find.text('Montevideo'));
         await _tocar(tester, _registrar);
@@ -1023,13 +1277,36 @@ void main() {
       expect(u.numero, hasLength(20));
     });
 
+    for (final (nombre, ciudades) in <(String, CiudadesFalsas Function())>[
+      ('sin ciudades', () => CiudadesFalsas(propone: (_) => const CampaniaSinCiudades())),
+      ('no se pueden leer', () => CiudadesFalsas()..fallaPropuesta = const FailureInesperado()),
+    ]) {
+      testWidgets('el aviso de ciudad ($nombre) no se desborda a texto 2x y cumple las guías', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        await _montar(tester, escala: 2, tamano: const Size(360, 640), ciudades: ciudades());
+        await _tocar(tester, find.text('Casa'));
+
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        handle.dispose();
+      });
+    }
+
     testWidgets('un nombre de ciudad larguísimo no se desborda', (tester) async {
       final larga = CiudadCatalogo(id: 'x', nombre: 'San José de Mayo ${'del Este ' * 12}');
       await _montar(
         tester,
         escala: 2,
         tamano: const Size(360, 640),
-        ciudades: CiudadesFalsas(detecta: (_) => CiudadDetectada(larga), catalogo: [larga]),
+        ciudades: CiudadesFalsas(
+          propone: (_) => CiudadPropuesta(larga, OrigenPropuesta.detectada),
+          campania: [larga],
+        ),
       );
 
       expect(tester.takeException(), isNull);
@@ -1044,7 +1321,7 @@ void main() {
         tester,
         escala: 2,
         tamano: const Size(360, 640),
-        ciudades: CiudadesFalsas(catalogo: catalogo),
+        ciudades: CiudadesFalsas(campania: catalogo),
       );
 
       await _tocar(tester, find.textContaining('Cambiar'));

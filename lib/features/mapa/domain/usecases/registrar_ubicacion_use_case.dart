@@ -77,8 +77,9 @@ final class RegistrarUbicacionParams extends Equatable {
 /// En orden:
 ///
 /// 1. Sin `id` de alta, sin colportor, o con coordenadas en `(0, 0)` o fuera de rango: `Left(FailureValidacion)`.
-/// 2. Sin `ciudad_id`: `Left(FailureCiudadRequerida)` ("no permite crear la ubicación sin
-///    `ciudad_id`").
+/// 2. Sin `ciudad_id`: `Left(FailureCiudadRequerida)` (en el servidor es obligatoria: sin ella el push
+///    vuelve `invalid`). La pantalla siempre propone una ciudad de la campaña, así que es la red de
+///    seguridad del dominio.
 /// 3. "Crear igual" con la justificación en blanco: `Left(FailureValidacion)`.
 /// 4. GPS con precisión peor que 50 m y sin confirmar: `Right(AltaConBajaPrecision)`, sin crear
 ///    nada.

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Colores de las vistas 03 y 04 (alta de ubicación) que el tema no cubre: estados del GPS y
@@ -127,7 +129,7 @@ class EnlaceAlta extends StatelessWidget {
 }
 
 /// El pin de la nueva ubicación: una gota navy con el pico abajo. Con [colocado] en `false` (todavía
-/// sin punto) es una gota blanca con borde punteado.
+/// sin punto) es una gota blanca con borde punteado (vista 03, artboard «Sin GPS o permiso denegado»).
 class PinAlta extends StatelessWidget {
   const PinAlta({super.key, this.colocado = true});
 
@@ -151,16 +153,15 @@ class PinAlta extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: colocado ? navy : Colors.white,
-                  border: Border.all(color: colocado ? Colors.white : ColoresAlta.gris, width: 3),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(18),
-                    topRight: Radius.circular(18),
-                    bottomRight: Radius.circular(18),
-                  ),
+                  border: colocado ? Border.all(color: Colors.white, width: 3) : null,
+                  borderRadius: _radioGota,
                   boxShadow: const [
                     BoxShadow(color: Color(0x4D000000), blurRadius: 10, offset: Offset(0, 4)),
                   ],
                 ),
+                child: colocado
+                    ? null
+                    : const CustomPaint(painter: BordePunteadoGota(color: ColoresAlta.gris)),
               ),
             ),
           ],
@@ -168,4 +169,38 @@ class PinAlta extends StatelessWidget {
       ),
     );
   }
+}
+
+const _radioGota = BorderRadius.only(
+  topLeft: Radius.circular(18),
+  topRight: Radius.circular(18),
+  bottomRight: Radius.circular(18),
+);
+
+/// El borde punteado de la gota del pin sin colocar: 3 px, trazos de 6 con huecos de 4.
+class BordePunteadoGota extends CustomPainter {
+  const BordePunteadoGota({required this.color});
+
+  final Color color;
+
+  static const _grosor = 3.0;
+  static const _trazo = 6.0;
+  static const _hueco = 4.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final borde = _radioGota.toRRect(Offset.zero & size).deflate(_grosor / 2);
+    final pincel = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _grosor;
+    for (final tramo in (Path()..addRRect(borde)).computeMetrics()) {
+      for (var d = 0.0; d < tramo.length; d += _trazo + _hueco) {
+        canvas.drawPath(tramo.extractPath(d, math.min(d + _trazo, tramo.length)), pincel);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(BordePunteadoGota anterior) => anterior.color != color;
 }

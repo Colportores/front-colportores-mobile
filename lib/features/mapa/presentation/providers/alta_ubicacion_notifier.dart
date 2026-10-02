@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either, Left;
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -61,56 +62,36 @@ final class CampoDireccion extends Equatable {
   List<Object?> get props => [texto, fuente];
 }
 
-/// Cómo se llegó a la ciudad del alta (vista 03: «detectada», «de tu zona»).
+/// Cómo se llegó a la ciudad del alta (vista 03: «detectada», «de tu zona», «de tu campaña»).
+///
+/// La ciudad nunca limita el alta (decisión de Cristian, 02/10, en #267): siempre se propone una de
+/// la campaña del colportor. Solo hay aviso si la campaña no tiene ciudades ([sinCiudades]) o si no
+/// se pudieron leer ([noSePudoLeer]).
 enum OrigenCiudad {
-  /// Todavía no hay ciudad (esperando el punto).
+  /// Todavía no hay ciudad (esperando la propuesta).
   buscando,
+
+  /// La ciudad de la zona de sus campañas que contiene el punto.
   detectada,
+
+  /// La ciudad de la zona que tiene asignada.
   deZona,
+
+  /// La única ciudad de su campaña o la que tiene el centro más cerca del punto.
+  deCampania,
 
   /// La eligió el colportor: no se vuelve a pisar al mover el punto.
   elegida,
 
-  /// El punto está cerca del límite de dos ciudades: se pregunta, no se asigna (HU-UBI-001).
-  ambigua,
+  /// La campaña tiene varias ciudades y todavía no hay punto con el que elegir entre ellas: se
+  /// propone cuando lo haya, o la elige el colportor.
+  porElegir,
 
-  /// El catálogo no tiene la ciudad del punto (HU-UBI-001, «Error - ciudad no en catálogo»).
-  noEncontrada,
-}
+  /// La campaña del colportor no tiene ciudades cargadas: aviso que guía, y «Registrar» espera.
+  sinCiudades,
 
-/// El pedido «Solicitar alta de ciudad al administrador».
-sealed class EstadoSolicitudCiudad extends Equatable {
-  const EstadoSolicitudCiudad();
-}
-
-final class SolicitudCiudadNinguna extends EstadoSolicitudCiudad {
-  const SolicitudCiudadNinguna();
-
-  @override
-  List<Object?> get props => const [];
-}
-
-final class SolicitudCiudadEnviando extends EstadoSolicitudCiudad {
-  const SolicitudCiudadEnviando();
-
-  @override
-  List<Object?> get props => const [];
-}
-
-final class SolicitudCiudadEnviada extends EstadoSolicitudCiudad {
-  const SolicitudCiudadEnviada();
-
-  @override
-  List<Object?> get props => const [];
-}
-
-final class SolicitudCiudadFallida extends EstadoSolicitudCiudad {
-  const SolicitudCiudadFallida(this.falla);
-
-  final Failure falla;
-
-  @override
-  List<Object?> get props => [falla];
+  /// No se pudieron leer las ciudades de la campaña: aviso con «Reintentar».
+  noSePudoLeer,
 }
 
 /// Todo lo que muestra el alta de ubicación (vista 03).
@@ -132,7 +113,6 @@ final class AltaUbicacionState extends Equatable {
     this.movimientosCamara = 0,
     this.guardando = false,
     this.falla,
-    this.solicitud = const SolicitudCiudadNinguna(),
   });
 
   final EstadoGps gps;
@@ -170,8 +150,6 @@ final class AltaUbicacionState extends Equatable {
 
   /// Por qué falló el último intento de registrar.
   final Failure? falla;
-
-  final EstadoSolicitudCiudad solicitud;
 
   /// La precisión que muestra la vista: la del GPS, o `null` si el punto se marcó a mano.
   double? get precisionMetros => origen == OrigenCoordenadas.gps ? lectura?.precisionMetros : null;
@@ -213,7 +191,6 @@ final class AltaUbicacionState extends Equatable {
     bool? guardando,
     Failure? falla,
     bool borrarFalla = false,
-    EstadoSolicitudCiudad? solicitud,
   }) => AltaUbicacionState(
     gps: gps ?? this.gps,
     motivoSinGps: borrarMotivo ? null : (motivoSinGps ?? this.motivoSinGps),
@@ -231,7 +208,6 @@ final class AltaUbicacionState extends Equatable {
     movimientosCamara: movimientosCamara ?? this.movimientosCamara,
     guardando: guardando ?? this.guardando,
     falla: borrarFalla ? null : (falla ?? this.falla),
-    solicitud: solicitud ?? this.solicitud,
   );
 
   @override
@@ -252,7 +228,6 @@ final class AltaUbicacionState extends Equatable {
     movimientosCamara,
     guardando,
     falla,
-    solicitud,
   ];
 }
 
@@ -335,8 +310,10 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
       (falla) {
         final motivo = falla is FailureGpsNoDisponible ? falla.motivo : MotivoSinGps.sinSenal;
         state = state.copyWith(gps: EstadoGps.sinGps, motivoSinGps: motivo);
-        if (state.ciudad == null && state.origenCiudad == OrigenCiudad.buscando) {
-          unawaited(_ciudadDeMiZona());
+        // Sin GPS y sin punto la ciudad sale de la zona asignada o de la campaña (vista 03). Con un
+        // punto ya puesto (tap largo, toque en el mapa) la propone el enriquecimiento del punto.
+        if (state.punto == null && state.origenCiudad == OrigenCiudad.buscando) {
+          unawaited(_proponerCiudad(null, _secuencia));
         }
       },
       (lectura) {
@@ -436,28 +413,17 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     state = state.copyWith(numero: CampoDireccion(numero, FuenteCampo.delMapa));
   }
 
-  void elegirCiudad(CiudadCatalogo ciudad) => state = state.copyWith(
-    ciudad: ciudad,
-    origenCiudad: OrigenCiudad.elegida,
-    solicitud: const SolicitudCiudadNinguna(),
-    borrarFalla: true,
-  );
+  /// «Cambiar»: la ciudad la elige el colportor de la lista de su campaña. Desde ahí no se pisa al
+  /// mover el punto ni con una propuesta que todavía venga en camino (se descarta al llegar).
+  void elegirCiudad(CiudadCatalogo ciudad) =>
+      state = state.copyWith(ciudad: ciudad, origenCiudad: OrigenCiudad.elegida, borrarFalla: true);
 
-  /// «Solicitar alta de ciudad al administrador».
-  Future<void> solicitarAltaCiudad() async {
-    final punto = state.punto;
-    if (punto == null || state.solicitud is SolicitudCiudadEnviando) return;
-    state = state.copyWith(solicitud: const SolicitudCiudadEnviando());
-    final resultado = await ref
-        .read(solicitadorAltaCiudadProvider)
-        .solicitar(colportorId: parametros.colportorId, punto: punto);
-    if (!ref.mounted) return;
-    state = state.copyWith(
-      solicitud: resultado.fold<EstadoSolicitudCiudad>(
-        SolicitudCiudadFallida.new,
-        (_) => const SolicitudCiudadEnviada(),
-      ),
-    );
+  /// «Reintentar» del aviso de ciudad: vuelve a pedir la propuesta.
+  Future<void> reintentarCiudad() async {
+    final origen = state.origenCiudad;
+    if (origen != OrigenCiudad.noSePudoLeer && origen != OrigenCiudad.sinCiudades) return;
+    state = state.copyWith(origenCiudad: OrigenCiudad.buscando);
+    await _proponerCiudad(state.punto, _secuencia);
   }
 
   // ---------------------------------------------------------------- dirección y ciudad del punto
@@ -476,47 +442,67 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     final punto = state.punto;
     if (punto == null || !ref.mounted) return;
     final direccion = ref.read(geocodificadorInversoProvider).direccionDe(punto);
-    final ciudad = state.origenCiudad == OrigenCiudad.elegida
-        ? null
-        : ref.read(ciudadesParaAltaProvider).detectar(punto);
+    final propuesta = state.origenCiudad == OrigenCiudad.elegida ? null : _pedirPropuesta(punto);
     final dir = await direccion;
     if (!ref.mounted || secuencia != _secuencia) return;
     _aplicarDireccion(dir);
-    final deteccion = await ciudad;
-    if (!ref.mounted || secuencia != _secuencia || deteccion == null) return;
-    deteccion.fold<void>(
-      (falla) {
-        _log.warn(LogModulo.map, 'CIUDAD_DETECTAR_FAIL', 'no se pudo detectar la ciudad', {
-          'codigo': falla.codigo,
-        });
-        state = state.copyWith(borrarCiudad: true, origenCiudad: OrigenCiudad.noEncontrada);
-      },
-      (d) => switch (d) {
-        CiudadDetectada(:final ciudad) => state = state.copyWith(
-          ciudad: ciudad,
-          origenCiudad: OrigenCiudad.detectada,
-        ),
-        CiudadAmbigua() => state = state.copyWith(
-          borrarCiudad: true,
-          origenCiudad: OrigenCiudad.ambigua,
-        ),
-        CiudadNoEncontrada() => state = state.copyWith(
-          borrarCiudad: true,
-          origenCiudad: OrigenCiudad.noEncontrada,
-        ),
-      },
-    );
+    if (propuesta == null) return;
+    _aplicarPropuesta(await propuesta, secuencia);
   }
 
-  Future<void> _ciudadDeMiZona() async {
-    final resultado = await ref.read(ciudadesParaAltaProvider).deMiZona(parametros.colportorId);
-    if (!ref.mounted || state.origenCiudad != OrigenCiudad.buscando) return;
-    resultado.fold<void>(
-      (falla) => state = state.copyWith(origenCiudad: OrigenCiudad.noEncontrada),
-      (ciudad) => state = ciudad == null
-          ? state.copyWith(origenCiudad: OrigenCiudad.noEncontrada)
-          : state.copyWith(ciudad: ciudad, origenCiudad: OrigenCiudad.deZona),
-    );
+  Future<void> _proponerCiudad(Coordenadas? punto, int secuencia) async =>
+      _aplicarPropuesta(await _pedirPropuesta(punto), secuencia);
+
+  /// Le pide la ciudad al puerto. Si el puerto lanza en vez de devolver una falla, se traduce a una:
+  /// el campo no se queda en «Buscando la ciudad…» para siempre.
+  Future<Either<Failure, PropuestaCiudad>> _pedirPropuesta(Coordenadas? punto) async {
+    try {
+      return await ref
+          .read(ciudadesParaAltaProvider)
+          .proponer(colportorId: parametros.colportorId, punto: punto);
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.map,
+        'CIUDAD_PROPONER_FAIL',
+        'no se pudo proponer la ciudad',
+        const {},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  /// Aplica la propuesta si sigue valiendo: si el colportor ya eligió una ciudad (aunque haya sido
+  /// mientras la propuesta venía en camino) o el punto ya cambió, se descarta.
+  void _aplicarPropuesta(Either<Failure, PropuestaCiudad> resultado, int secuencia) {
+    if (!ref.mounted || secuencia != _secuencia || state.origenCiudad == OrigenCiudad.elegida) {
+      return;
+    }
+    final propuesta = resultado.fold<PropuestaCiudad?>((falla) {
+      _log.warn(LogModulo.map, 'CIUDAD_PROPONER_FAIL', 'no se pudo leer la ciudad', {
+        'codigo': falla.codigo,
+      });
+      return null;
+    }, (p) => p);
+    switch (propuesta) {
+      case null:
+        // Si ya había una ciudad propuesta (el punto se movió), se conserva: nada se pierde.
+        if (state.ciudad == null) state = state.copyWith(origenCiudad: OrigenCiudad.noSePudoLeer);
+      case CiudadPropuesta(:final ciudad, :final origen):
+        state = state.copyWith(
+          ciudad: ciudad,
+          origenCiudad: switch (origen) {
+            OrigenPropuesta.detectada => OrigenCiudad.detectada,
+            OrigenPropuesta.deZona => OrigenCiudad.deZona,
+            OrigenPropuesta.deCampania => OrigenCiudad.deCampania,
+          },
+        );
+      case CampaniaSinCiudades():
+        state = state.copyWith(borrarCiudad: true, origenCiudad: OrigenCiudad.sinCiudades);
+      case FaltaElPunto():
+        if (state.ciudad == null) state = state.copyWith(origenCiudad: OrigenCiudad.porElegir);
+    }
   }
 
   void _aplicarDireccion(DireccionDelPunto? dir) {

@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
+import '../../domain/value_objects/punto_capturado.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
 import 'piezas_alta.dart';
@@ -42,6 +43,10 @@ class MapaAlta extends ConsumerStatefulWidget {
   static const zoomPais = 6.5;
   static const zoomCalle = 17.0;
 
+  /// Cuánto tiene que correrse el centro del mapa, en píxeles, para que cuente como «movió el
+  /// punto». Un zoom o un temblor del dedo no mueven el pin: el punto del GPS sigue siendo del GPS.
+  static const umbralMovimientoPx = 6.0;
+
   @override
   ConsumerState<MapaAlta> createState() => _MapaAltaState();
 }
@@ -51,6 +56,11 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
   var _listo = false;
   AreaMapa? _area;
   Timer? _esperaArea;
+
+  /// El centro del mapa donde está el punto: el del último centrado, o el último que se le avisó al
+  /// estado. Mientras el punto sea el del GPS (o no haya), un gesto que no se aleja de acá más del
+  /// umbral —un zoom con el pellizco, por ejemplo— no lo mueve.
+  LatLng? _centroDelPunto;
 
   @override
   void didUpdateWidget(MapaAlta anterior) {
@@ -69,14 +79,30 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
     final punto = widget.estado.punto;
     if (punto == null || !_listo) return;
     final zoom = _controlador.camera.zoom;
-    _controlador.move(
-      LatLng(punto.lat, punto.lon),
-      zoom < MapaAlta.zoomCalle ? MapaAlta.zoomCalle : zoom,
-    );
+    final centro = LatLng(punto.lat, punto.lon);
+    _centroDelPunto = centro;
+    _controlador.move(centro, zoom < MapaAlta.zoomCalle ? MapaAlta.zoomCalle : zoom);
+  }
+
+  /// ¿Los gestos movieron el centro lo suficiente como para mover el punto?
+  ///
+  /// Una vez que el punto es «a mano» se informa todo movimiento, para que quede exacto donde el
+  /// colportor soltó el mapa. El umbral solo protege al punto del GPS (o al pin sin colocar) de los
+  /// gestos que no lo mueven.
+  bool _movioElPunto(MapCamera camara) {
+    if (widget.estado.origen == OrigenCoordenadas.manual && widget.estado.punto != null) {
+      return true;
+    }
+    final referencia = _centroDelPunto;
+    if (referencia == null) return true;
+    final distancia =
+        (camara.projectAtZoom(camara.center) - camara.projectAtZoom(referencia)).distance;
+    return distancia > MapaAlta.umbralMovimientoPx;
   }
 
   void _alCambiarCamara(MapCamera camara, bool conGesto) {
-    if (conGesto) {
+    if (conGesto && _movioElPunto(camara)) {
+      _centroDelPunto = camara.center;
       widget.alMoverCentro(Coordenadas(lat: camara.center.latitude, lon: camara.center.longitude));
     }
     _esperaArea?.cancel();
@@ -120,11 +146,14 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
           minZoom: 3,
           maxZoom: 19,
           backgroundColor: ColoresAlta.fondoMapa,
+          // Sin rotar y sin que el pellizco arrastre: el pin está fijo en el centro y el zoom se hace
+          // sobre él, así el punto no se corre al acercar o alejar el mapa.
           interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate & ~InteractiveFlag.pinchMove,
           ),
           onMapReady: () {
             _listo = true;
+            _centroDelPunto ??= _controlador.camera.center;
             _actualizarArea(_controlador.camera);
           },
           onPositionChanged: _alCambiarCamara,

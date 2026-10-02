@@ -15,55 +15,77 @@ final class CiudadCatalogo extends Equatable {
   List<Object?> get props => [id, nombre];
 }
 
-/// Qué ciudad del catálogo corresponde a un punto (HU-UBI-001: «la ciudad detectada por las
-/// coords»).
-sealed class DeteccionCiudad extends Equatable {
-  const DeteccionCiudad();
+/// De dónde sale la ciudad que se le propone al colportor (vista 03: «detectada», «de tu zona»,
+/// «de tu campaña»).
+enum OrigenPropuesta {
+  /// La ciudad de la zona de sus campañas que contiene el punto.
+  detectada,
+
+  /// La ciudad de la zona que tiene asignada.
+  deZona,
+
+  /// La única ciudad de su campaña o, con varias, la que tiene el centro más cerca del punto.
+  deCampania,
 }
 
-/// El punto cae en una sola ciudad del catálogo.
-final class CiudadDetectada extends DeteccionCiudad {
-  const CiudadDetectada(this.ciudad);
+/// Qué ciudad se le propone al colportor para una ubicación nueva.
+///
+/// La ciudad **nunca limita el alta** (decisión de Cristian, 02/10, en front-colportores-mobile#267):
+/// la app siempre propone una ciudad de la campaña del colportor, aun sin red, y el colportor la puede
+/// cambiar por otra de su campaña. Por eso no hay «no encontrada», «ambigua» ni «pedir el alta de la
+/// ciudad». El único caso sin propuesta es una campaña sin ciudades cargadas.
+sealed class PropuestaCiudad extends Equatable {
+  const PropuestaCiudad();
+}
+
+/// La ciudad propuesta y de dónde sale.
+final class CiudadPropuesta extends PropuestaCiudad {
+  const CiudadPropuesta(this.ciudad, this.origen);
 
   final CiudadCatalogo ciudad;
+  final OrigenPropuesta origen;
 
   @override
-  List<Object?> get props => [ciudad];
+  List<Object?> get props => [ciudad, origen];
 }
 
-/// El punto está cerca del límite de dos ciudades o más: HU-UBI-001 pide preguntar al colportor y
-/// no asignar ninguna.
-final class CiudadAmbigua extends DeteccionCiudad {
-  const CiudadAmbigua(this.candidatas);
-
-  final List<CiudadCatalogo> candidatas;
+/// La campaña del colportor todavía no tiene ciudades cargadas: no hay qué proponer ni qué elegir.
+final class CampaniaSinCiudades extends PropuestaCiudad {
+  const CampaniaSinCiudades();
 
   @override
-  List<Object?> get props => [candidatas];
+  List<Object?> get props => const [];
 }
 
-/// El catálogo no incluye la ciudad del punto (HU-UBI-001, «Error - ciudad no en catálogo»).
-final class CiudadNoEncontrada extends DeteccionCiudad {
-  const CiudadNoEncontrada();
+/// Sin punto no se puede elegir entre varias ciudades de la campaña (no hay zona asignada ni
+/// distancia que medir). Se vuelve a pedir cuando el colportor marque el punto.
+final class FaltaElPunto extends PropuestaCiudad {
+  const FaltaElPunto();
 
   @override
   List<Object?> get props => const [];
 }
 
 /// Puerto: las ciudades que el alta de ubicación necesita (vista 03, «Montevideo detectada»,
-/// «de tu zona», «Cambiar»).
+/// «de tu zona», «Cambiar»). Todas son **de la campaña del colportor**.
 ///
-/// No hay tabla `ciudad` en la DB local ni geometrías de ciudad: la fuente real llega con el
-/// catálogo del Admin (HU-ADM) y el BFF (docs-organizacion#22). Hasta entonces no hay
-/// implementación de producción (`CiudadesParaAltaSinFuente`).
+/// La fuente real sale del teléfono, sin red: la réplica local del catálogo de ciudades (el nombre),
+/// las campañas del colportor, sus zonas y los centros de las ciudades. Hasta que esa réplica exista
+/// no hay implementación de producción (`CiudadesParaAltaSinFuente`).
 abstract interface class CiudadesParaAlta {
-  /// La ciudad que contiene [punto].
-  Future<Either<Failure, DeteccionCiudad>> detectar(Coordenadas punto);
+  /// La ciudad para una ubicación nueva de [colportorId], en este orden:
+  /// 1. la de la zona de sus campañas que contiene [punto] ([OrigenPropuesta.detectada]);
+  /// 2. la de la zona que tiene asignada ([OrigenPropuesta.deZona]);
+  /// 3. la única ciudad de su campaña ([OrigenPropuesta.deCampania]);
+  /// 4. la de la campaña con el centro más cerca de [punto] ([OrigenPropuesta.deCampania]).
+  ///
+  /// Sin [punto] se aplican solo el 2 y el 3: con varias ciudades y sin zona asignada devuelve
+  /// [FaltaElPunto].
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  });
 
-  /// Todo el catálogo, para «Cambiar» y «Seleccionar ciudad manualmente».
-  Future<Either<Failure, List<CiudadCatalogo>>> todas();
-
-  /// La ciudad de la zona asignada a [colportorId]: lo que se prellena si no hay GPS (vista 03).
-  /// `null` si no tiene zona o no se conoce.
-  Future<Either<Failure, CiudadCatalogo?>> deMiZona(String colportorId);
+  /// Las ciudades de la campaña de [colportorId], para «Cambiar». Vacía si la campaña no tiene.
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId);
 }
