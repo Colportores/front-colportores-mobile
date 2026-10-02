@@ -35,6 +35,7 @@ environment:
 dependencies:
   app_links: ^7.2.1          # deep link propio de verificación de email (#84) — antes transitiva
                               # vía supabase_flutter, ahora también uso directo en AuthRemoteDataSourceSupabase
+  characters: ^1.4.1        # largo de la contraseña en caracteres visibles (PoliticaPassword) — antes transitiva
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
   drift: 2.34.0             # DB local (ADR-009); cifrada con SQLCipher (ADR-006) — fijo: ver nota arriba
   drift_flutter: ^0.3.1     # driftDatabase(): archivo, isolate de fondo y temp dir de sqlite en Android
