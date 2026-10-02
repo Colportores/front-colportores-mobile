@@ -3,7 +3,6 @@
 // 412x915, texto al 100 % y al 200 %), la pista que sobrevive a reiniciar la app (almacén seguro
 // real, no en memoria) y que A07 nunca ofrece pedir otro enlace.
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/app.dart';
