@@ -1,10 +1,10 @@
 // El formato de cable, en un solo lugar (docs/formato-de-cable.md).
 //
-// Estas funciones las usan las **dos** puntas: `BffTransport` del lado del
-// motor y las rutas de sync de `bff-colportores`. Es la ventaja de que el BFF
-// también sea Dart: no hay dos implementaciones del mismo JSON que puedan
-// separarse en silencio, y un cambio de campo rompe la compilación de los dos
-// lados a la vez.
+// Del lado del motor lo usan `SupabaseRpcTransport` (ADR-013: las funciones de
+// entrada `public.sync_push` y `public.sync_pull` reciben este mismo JSON como
+// `p_body`) y `BffTransport`. Del otro lado, `sync.validar_sobre()` sigue a
+// [envelopeFromJson] regla por regla (backend-supabase 0025): la definición del
+// mensaje sigue siendo una sola, este archivo y docs/formato-de-cable.md.
 //
 // Es Dart puro y no toca HTTP: por eso vive en core/ y no en adapters/.
 
@@ -12,9 +12,10 @@ import 'model.dart';
 
 // --- el sobre (§5.3) --------------------------------------------------------
 
-/// Va en el cuerpo del push y en el query del pull, pero es el mismo sobre y se
-/// arma en un solo lugar: es lo único que hace que las dos rutas no puedan
-/// discrepar en cómo se llama un campo.
+/// Va en el cuerpo del push y del pull (en el query del pull de
+/// `BffTransport`), pero es el mismo sobre y se arma en un solo lugar: es lo
+/// único que hace que las dos rutas no puedan discrepar en cómo se llama un
+/// campo.
 Map<String, Object?> envelopeToJson(ClientEnvelope sobre) => {
       'device_id': sobre.deviceId,
       'app_version': sobre.appVersion,
@@ -175,6 +176,8 @@ Map<String, Object?> pushResponseToJson(PushResult result) => {
             if (r.serverRow != null) 'server_row': r.serverRow,
             if (r.code.isNotEmpty) 'code': r.code,
             if (r.message.isNotEmpty) 'message': r.message,
+            if (r.constraint.isNotEmpty) 'constraint': r.constraint,
+            if (r.dependsOn != null) 'depends_on': r.dependsOn,
           },
       ],
     };
@@ -194,9 +197,29 @@ JobResult _resultFromJson(Map<String, Object?> j) => JobResult(
       serverRow: (j['server_row'] as Map?)?.cast<String, Object?>(),
       code: (j['code'] as String?) ?? '',
       message: (j['message'] as String?) ?? '',
+      constraint: (j['constraint'] as String?) ?? '',
+      dependsOn: j['depends_on'] as String?,
     );
 
-// --- GET /sync/pull ---------------------------------------------------------
+// --- pull -------------------------------------------------------------------
+
+/// El pedido del pull como cuerpo (`public.sync_pull`, contrato §6.1).
+///
+/// `entities` es un array y no una lista con comas, y el sobre va en `device`,
+/// como en el push. [watermark] y [limit] se omiten cuando son nulos: sin
+/// watermark es una réplica desde cero, y sin limit decide el servidor.
+Map<String, Object?> pullRequestToJson(
+  ClientEnvelope sobre, {
+  required List<String> entities,
+  String? watermark,
+  int? limit,
+}) =>
+    {
+      'device': envelopeToJson(sobre),
+      'entities': entities,
+      if (watermark != null) 'watermark': watermark,
+      if (limit != null) 'limit': limit,
+    };
 
 Map<String, Object?> pullResponseToJson(PullDelta delta) => {
       'server_time': delta.serverTime.toUtc().toIso8601String(),
@@ -221,11 +244,21 @@ PullDelta pullResponseFromJson(
     serverTime: _fecha(json['server_time']),
     // Si el servidor no manda uno nuevo, se conserva el que había: inventar uno
     // acá sería adelantar el cursor sin datos.
-    watermark: (json['watermark'] as String?) ?? watermarkPrevio ?? '',
+    watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
     hasMore: json['has_more'] == true,
     rows: filas,
   );
 }
+
+/// El watermark es un string opaco. Un objeto (el `jsonb` de `sync.pull()` sin
+/// serializar) no se puede guardar ni devolver tal cual: es un servidor que no
+/// cumple, y se dice con [FormatException] en vez de un `TypeError` que el
+/// transporte no sabría clasificar.
+String? _watermark(Object? valor) => switch (valor) {
+      null => null,
+      final String w => w,
+      _ => throw FormatException('watermark tiene que ser un string: $valor'),
+    };
 
 // --- errores ----------------------------------------------------------------
 
