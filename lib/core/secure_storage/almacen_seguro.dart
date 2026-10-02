@@ -33,6 +33,12 @@ enum ClaveSegura {
   /// ahí no se vuelve a migrar (p. ej. después de un logout).
   sesionMigrada('auth_session_migrated'),
 
+  /// El instante (ISO 8601 UTC) en que este teléfono completó por última vez un cambio de
+  /// contraseña con un enlace de recuperación, y nada más (HU-AUTH-005, 15-A07): es la pista para
+  /// decir «Este enlace ya fue utilizado» cuando el mismo enlace vuelve a abrirse dentro de su hora
+  /// de vida. No es secreto.
+  cambioPorRecuperacion('recovery_completed_at'),
+
   /// El instante más alto que vio la app (ISO 8601, UTC): la ventana de la sesión no se mide con
   /// un reloj que vuelve atrás (HU-AUTH-007, `RelojSesionEnAlmacen`).
   relojSesion('session_clock'),

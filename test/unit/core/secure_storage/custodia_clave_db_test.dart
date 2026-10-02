@@ -534,6 +534,18 @@ void main() {
     });
   });
 
+  group('CustodiaClaveDb.olvidarDatosDelUsuario — marca del cambio por recuperación (15-A07)', () {
+    test('borra la marca del último cambio por recuperación y deja la sesión', () async {
+      await almacen.escribir(ClaveSegura.cambioPorRecuperacion, '2026-10-02T12:00:00.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.cambioPorRecuperacion), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+  });
+
   group('CustodiaClaveDb — cada ClaveSegura tiene un destino (#122)', () {
     // Una clave nueva que no se sume a ninguna lista se borraría en silencio al reconstruir, o
     // sobreviviría al borrado de datos sin que nadie lo haya decidido.

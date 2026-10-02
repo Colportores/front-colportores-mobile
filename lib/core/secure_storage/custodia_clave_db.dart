@@ -262,6 +262,7 @@ final class CustodiaClaveDb {
   static const Set<ClaveSegura> seConservanAlReconstruir = {
     ClaveSegura.consentimientoAlmacenSoftware,
     ClaveSegura.estadoCuenta,
+    ClaveSegura.cambioPorRecuperacion,
     ClaveSegura.sesionAuth,
     ClaveSegura.relojSesion,
     ClaveSegura.sesionMigrada,
@@ -345,6 +346,7 @@ final class CustodiaClaveDb {
   /// (lleva el id del usuario) y el reloj de la sesión (el último momento en que se usó la app).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
+    ClaveSegura.cambioPorRecuperacion,
     ClaveSegura.relojSesion,
     ClaveSegura.intentosBorrado,
   ];
