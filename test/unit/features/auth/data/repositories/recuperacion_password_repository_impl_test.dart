@@ -4,6 +4,7 @@ import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/recuperacion_password_remote_data_source.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/recuperacion_password_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/politica_password.dart';
@@ -230,6 +231,95 @@ void main() {
 
       expect(await repo.cerrarTodasLasSesiones(), const Left<Failure, Unit>(FailureSinConexion()));
       expect(salida.lineas.join('\n'), contains('RECUPERACION_REVOCAR_FAIL'));
+    });
+  });
+
+  group('enlaces: «ya usado» frente a «vencido» (15-A07)', () {
+    late DateTime ahora;
+    late CambiosPorRecuperacionEnMemoria cambios;
+
+    setUp(() {
+      ahora = DateTime.utc(2026, 10, 2, 12);
+      cambios = CambiosPorRecuperacionEnMemoria(ahora: () => ahora);
+      repo = RecuperacionPasswordRepositoryImpl(remoto, cambios: cambios, logger: loggerMudo());
+    });
+
+    /// Lo que el repositorio entrega para los próximos [cuantos] enlaces que llegan al remoto.
+    Future<List<EnlaceRecuperacion>> llegan(int cuantos, List<EnlaceRecuperacion> enlaces) async {
+      final futuro = repo.enlaces.take(cuantos).toList();
+      enlaces.forEach(remoto.simularEnlace);
+      return futuro;
+    }
+
+    test(
+      'un enlace vencido sin ningún cambio hecho en este teléfono sigue siendo vencido',
+      () async {
+        expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.vencido]);
+      },
+    );
+
+    test('con un cambio completado hace un rato, el enlace «vencido» es el ya usado', () async {
+      await repo.actualizarPassword('NuevaClave1');
+      ahora = ahora.add(const Duration(minutes: 10));
+
+      expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.usado]);
+    });
+
+    test('pasada la hora de vida del enlace, vuelve a ser vencido', () async {
+      await repo.actualizarPassword('NuevaClave1');
+      ahora = ahora.add(const Duration(minutes: 61));
+
+      expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.vencido]);
+    });
+
+    test('un cambio que falló (sin red) no anota nada: el enlace vencido sigue vencido', () async {
+      remoto.simularSinConexion = true;
+      await repo.actualizarPassword('NuevaClave1');
+      remoto.simularSinConexion = false;
+
+      expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.vencido]);
+    });
+
+    test('un cambio rechazado (igual a la anterior) tampoco anota nada', () async {
+      await repo.actualizarPassword('Vieja1234');
+
+      expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.vencido]);
+    });
+
+    test(
+      '«pérdida de conexión y el servidor ya lo había aceptado» cuenta como cambio hecho',
+      () async {
+        remoto.pierdeLaRespuestaAlActualizar = true;
+        await repo.actualizarPassword('NuevaClave1');
+        await repo.actualizarPassword('NuevaClave1');
+
+        expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.usado]);
+      },
+    );
+
+    test(
+      'los enlaces válidos y sin conexión pasan tal cual, aunque haya un cambio reciente',
+      () async {
+        await repo.actualizarPassword('NuevaClave1');
+
+        expect(await llegan(2, [EnlaceRecuperacion.valido, EnlaceRecuperacion.sinConexion]), [
+          EnlaceRecuperacion.valido,
+          EnlaceRecuperacion.sinConexion,
+        ]);
+      },
+    );
+
+    test('dos enlaces seguidos salen en el mismo orden en que llegaron', () async {
+      await repo.actualizarPassword('NuevaClave1');
+
+      expect(
+        await llegan(3, [
+          EnlaceRecuperacion.vencido,
+          EnlaceRecuperacion.valido,
+          EnlaceRecuperacion.vencido,
+        ]),
+        [EnlaceRecuperacion.usado, EnlaceRecuperacion.valido, EnlaceRecuperacion.usado],
+      );
     });
   });
 }

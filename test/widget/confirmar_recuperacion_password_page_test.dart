@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
@@ -29,6 +30,7 @@ const _email = 'ana@example.com';
 late RecuperacionPasswordEnMemoria _recuperacion;
 late DbLocalRepositoryEnMemoria _dbLocal;
 late AuthRemoteDataSourceEnMemoria _auth;
+late DateTime _ahora;
 
 Finder get _login => find.byKey(const Key('login_enviar'));
 Finder get _guardar => find.byKey(const Key('confirmar_recuperacion_guardar'));
@@ -45,6 +47,9 @@ Future<ProviderContainer> _montar(
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
       recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(_recuperacion),
       dbLocalRepositoryProvider.overrideWithValue(_dbLocal),
+      cambiosPorRecuperacionProvider.overrideWithValue(
+        CambiosPorRecuperacionEnMemoria(ahora: () => _ahora),
+      ),
     ],
   );
   addTearDown(container.dispose);
@@ -120,6 +125,7 @@ Future<void> _tocarGuardar(WidgetTester tester) async {
 
 void main() {
   setUp(() {
+    _ahora = DateTime.utc(2026, 10, 2, 12);
     _recuperacion = RecuperacionPasswordEnMemoria(passwordActual: 'Vieja1234');
     _dbLocal = DbLocalRepositoryEnMemoria();
     _auth = AuthRemoteDataSourceEnMemoria(credenciales: const {_email: 'Vieja1234'});
@@ -180,14 +186,29 @@ void main() {
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
     });
 
-    // skip (15-A07, lo cubre front-colportores-mobile#247): Supabase manda el mismo `otp_expired` para un enlace vencido y para uno ya usado, así
-    // que la app no puede mostrar "Este enlace ya fue utilizado" por separado: los dos casos caen
-    // en "El enlace expiró. Solicitá uno nuevo.". Queda para decidir en #50 (como la heurística de
-    // HU-AUTH-002 para la verificación). `testWidgets.skip` es `bool?`: el motivo va acá.
-    testWidgets('Escenario: Error -token reutilizado — "Este enlace ya fue utilizado" y volver al '
-        'login', (tester) async {
-      fail('Supabase no distingue un enlace usado de uno vencido (#50)');
-    }, skip: true);
+    testWidgets('Escenario: Error -token reutilizado — «Este enlace ya fue utilizado» y volver al '
+        'login: el mismo enlace, vuelto a abrir después de cambiar la contraseña', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+      await _irAlLogin(tester);
+      expect(_login, findsOneWidget);
+
+      // Supabase rechaza el enlace con el mismo error que a uno vencido.
+      _ahora = _ahora.add(const Duration(minutes: 5));
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsNothing);
+      expect(_guardar, findsNothing);
+
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
+      await tester.pumpAndSettle();
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+    });
   });
 
   group('Enlace vencido', () {
@@ -632,6 +653,22 @@ void main() {
       expect(find.text('Volver al login'), findsOneWidget);
     });
 
+    testWidgets(
+      '15-A07 enlace ya usado: título, «Si ya cambiaste la contraseña, entrá con la nueva.» '
+      'y una sola salida, «Volver al login»',
+      (tester) async {
+        await _montar(tester, enlace: EnlaceRecuperacion.usado);
+
+        expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+        expect(find.text('Si ya cambiaste la contraseña, entrá con la nueva.'), findsOneWidget);
+        expect(find.text('Volver al login'), findsOneWidget);
+        expect(find.text('Solicitar un enlace nuevo'), findsNothing);
+        expect(find.text('ENLACE VENCIDO'), findsNothing);
+        expect(_guardar, findsNothing);
+        expect(_recuperacion.abandonos, 0, reason: 'no abrió ninguna sesión de recuperación');
+      },
+    );
+
     testWidgets('15-A09 éxito: pantalla con «Ir al login»; el atrás del sistema también lleva al '
         'login', (tester) async {
       await _montar(tester);
@@ -649,6 +686,145 @@ void main() {
       expect(_login, findsOneWidget);
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
       expect(_recuperacion.abandonos, 0, reason: 'la sesión ya se cerró al guardar');
+    });
+  });
+
+  group('Vista 15 — enlace ya usado: casos límite (15-A07)', () {
+    Future<void> cambiarYVolverAlLogin(WidgetTester tester) async {
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+      await _irAlLogin(tester);
+    }
+
+    testWidgets('pasada la hora de vida del enlace, el mismo enlace es «vencido», no «usado»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await cambiarYVolverAlLogin(tester);
+
+      _ahora = _ahora.add(const Duration(minutes: 61));
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+      expect(find.text('Este enlace ya fue utilizado'), findsNothing);
+    });
+
+    testWidgets('un enlace vencido sin ningún cambio hecho antes sigue diciendo «expiró»', (
+      tester,
+    ) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+      expect(find.text('Este enlace ya fue utilizado'), findsNothing);
+    });
+
+    testWidgets('si el cambio falló (sin conexión), no se anota: el enlace vencido dice «expiró»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _recuperacion.simularSinConexion = true;
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      _recuperacion.simularSinConexion = false;
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+    });
+
+    testWidgets('el mismo enlace abierto dos veces: las dos veces dice «ya fue utilizado»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await cambiarYVolverAlLogin(tester);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
+      await tester.pumpAndSettle();
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsOneWidget);
+    });
+
+    testWidgets('doble toque en «Volver al login»: sale una sola vez y queda el login', (
+      tester,
+    ) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+      final boton = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
+
+      await tester.tap(boton);
+      await tester.tap(boton, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el atrás de la pantalla lleva al login, y un enlace nuevo vuelve a abrirla', (
+      tester,
+    ) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_atras')));
+      await tester.pumpAndSettle();
+      expect(_login, findsOneWidget);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.valido);
+      await tester.pumpAndSettle();
+
+      expect(_guardar, findsOneWidget, reason: 'un enlace válido nuevo muestra el formulario');
+    });
+
+    testWidgets('un cambio hecho y, enseguida, un enlace válido nuevo: el formulario abre limpio', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await cambiarYVolverAlLogin(tester);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.valido);
+      await tester.pumpAndSettle();
+
+      expect(_guardar, findsOneWidget);
+      expect(_texto(tester, 'nueva'), isEmpty);
+    });
+
+    testWidgets('con el texto al 200 % a 360x740: sin overflow y los dos textos visibles', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _montarSolo(tester, EnlaceRecuperacion.usado);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.text('Si ya cambiaste la contraseña, entrá con la nueva.'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('lector de pantalla: el título se anuncia y el botón tiene etiqueta', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+
+      expect(find.bySemanticsLabel('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.bySemanticsLabel('Volver al login'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
     });
   });
 
