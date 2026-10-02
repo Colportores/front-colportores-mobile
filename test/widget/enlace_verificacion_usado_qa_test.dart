@@ -83,6 +83,9 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
       expect(find.byKey(const Key('verificacion_email_ir_login')), findsOneWidget);
+      // No sale sola: se queda hasta que la colportora toca el botón.
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.text('Tu email ya está verificado'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('verificacion_email_ir_login')));
       await tester.pumpAndSettle();
@@ -141,9 +144,6 @@ void main() {
               '${dir.path}/242_${estado.name}_claro_$escala.png',
             ).writeAsBytesSync(bytes.buffer.asUint8List());
           });
-          // Sin el temporizador pendiente, el test no termina con un Timer vivo.
-          await tester.pumpWidget(const SizedBox());
-          await tester.pump(const Duration(seconds: 5));
         });
       }
     }
