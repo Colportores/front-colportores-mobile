@@ -86,8 +86,13 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// registrar la solicitud — para simular un rate limit u otro error de Supabase.
   AuthRemoteException? fallaAlSolicitarRecuperacion;
 
+  /// Si no es `null`, [solicitarRecuperacionPassword] no sigue hasta que el test lo complete — para
+  /// ver el estado «Enviando…» y probar el doble toque con la solicitud en vuelo.
+  Completer<void>? demoraRecuperacion;
+
   @override
   Future<void> solicitarRecuperacionPassword(String email) async {
+    await demoraRecuperacion?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlSolicitarRecuperacion != null) throw fallaAlSolicitarRecuperacion!;
     solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
