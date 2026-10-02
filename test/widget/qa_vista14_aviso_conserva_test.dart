@@ -36,12 +36,14 @@ void _sinTextoViejo() {
   }
 }
 
-Future<void> _llenarYEnviar(WidgetTester tester, String email) async {
+Future<void> _llenarYEnviar(WidgetTester tester, String email, {bool marcar = true}) async {
   await tester.enterText(find.byKey(const Key('recuperacion_password_email')), email);
   final casilla = find.byKey(const Key('recuperacion_password_checkbox'));
-  await tester.ensureVisible(casilla);
-  await tester.tap(casilla);
-  await tester.pump();
+  if (marcar) {
+    await tester.ensureVisible(casilla);
+    await tester.tap(casilla);
+    await tester.pump();
+  }
   final enviar = find.byKey(const Key('recuperacion_password_enviar'));
   await tester.ensureVisible(enviar);
   await tester.tap(enviar);
@@ -69,7 +71,7 @@ void main() {
       _sinTextoViejo();
 
       remoto.simularSinConexion = true;
-      await _llenarYEnviar(tester, 'lucia@correo.com');
+      await _llenarYEnviar(tester, 'lucia@correo.com', marcar: false);
       expect(find.textContaining('Necesitás conexión'), findsOneWidget);
       expect(find.text(_aviso), findsOneWidget);
       _sinTextoViejo();
