@@ -42,15 +42,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     if (_revisando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
     setState(() => _revisando = true);
 
-    // Si no se puede contar, se cierra igual con la confirmación común: cerrar sesión no borra
-    // nada, lo pendiente se sube en el próximo login.
-    var pendientes = 0;
-    try {
-      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-      pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
-    } on Object {
-      pendientes = 0;
-    }
+    // Si no se puede contar, la hoja no dice «Todo sincronizado»: dice que no pudo revisar y deja
+    // reintentar o cerrar igual (cerrar sesión no borra nada; lo pendiente se sube en el próximo
+    // login).
+    final pendientes = await _contarPendientes();
     if (!mounted) return;
     setState(() => _revisando = false);
 
@@ -58,6 +53,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     await mostrarHojaCerrarSesion(
       context,
       pendientes: pendientes,
+      contar: _contarPendientes,
       cerrar: () async {
         final Either<Failure, ResultadoCierreSesion> resultado;
         try {
@@ -78,6 +74,16 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
         return true;
       },
     );
+  }
+
+  /// Las operaciones que faltan subir, o `null` si no se pudieron contar.
+  Future<int?> _contarPendientes() async {
+    try {
+      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
+      return resumen.fold((_) => null, (r) => r.operacionesSinSincronizar);
+    } on Object {
+      return null;
+    }
   }
 
   @override
