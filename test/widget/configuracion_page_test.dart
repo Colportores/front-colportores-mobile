@@ -50,10 +50,14 @@ final class _DatosLocalesFake implements DatosLocalesRepository {
   Completer<void>? demoraBorrado;
   final List<bool> borrados = [];
 
+  int llamadasResumen = 0;
+
   @override
   Future<Either<Failure, ResumenDatosLocales>> resumen() async {
+    llamadasResumen++;
+    final respuesta = respuestaResumen;
     await demoraResumen?.future;
-    return respuestaResumen;
+    return respuesta;
   }
 
   @override
@@ -517,15 +521,249 @@ void main() {
         expect(find.textContaining('Tenés 12345 operaciones sin sincronizar'), findsOneWidget);
       });
 
-      testWidgets('si no se pueden contar las pendientes, se confirma con el texto común', (
+      testWidgets('con una sola operación pendiente, singular: «Tenés 1 operación»', (
         tester,
       ) async {
-        _datos.respuestaResumen = const Left(FailureInesperado(causa: 'sin db'));
+        conPendientes(1);
         await _montar(tester);
         await abrirHoja(tester);
 
-        expect(find.text('Todo sincronizado'), findsOneWidget);
-        expect(find.byKey(const Key('configuracion_aviso_pendientes')), findsNothing);
+        expect(
+          find.text(
+            'Tenés 1 operación sin sincronizar. Si cerrás sesión ahora, se subirá cuando vuelvas '
+            'a iniciar sesión.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('1 operaciones'), findsNothing);
+        expect(find.text('1'), findsOneWidget);
+      });
+
+      testWidgets('con 2 pendientes, plural: «Tenés 2 operaciones»', (tester) async {
+        conPendientes(2);
+        await _montar(tester);
+        await abrirHoja(tester);
+
+        expect(find.textContaining('Tenés 2 operaciones sin sincronizar'), findsOneWidget);
+      });
+
+      group('si no se pueden contar las pendientes', () {
+        void sinConteo() =>
+            _datos.respuestaResumen = const Left(FailureInesperado(causa: 'sin db'));
+
+        testWidgets('no dice «Todo sincronizado»: dice que no pudo revisar y qué hacer', (
+          tester,
+        ) async {
+          sinConteo();
+          await _montar(tester);
+          await abrirHoja(tester);
+
+          expect(find.text('Todo sincronizado'), findsNothing);
+          expect(find.byKey(const Key('configuracion_todo_sincronizado')), findsNothing);
+          expect(find.byKey(const Key('configuracion_aviso_pendientes')), findsNothing);
+          expect(find.text(TextosCerrarSesion.sinRevisar), findsOneWidget);
+          // El único que queda es el de la pantalla de atrás: la hoja no lo repite.
+          expect(find.text(TextosCerrarSesion.datosGuardados), findsOneWidget);
+          expect(find.byKey(const Key('configuracion_reintentar_conteo')), findsOneWidget);
+          expect(
+            tester.widget(find.byKey(const Key('configuracion_reintentar_conteo'))),
+            isA<FilledButton>(),
+          );
+          final igual = find.byKey(const Key('configuracion_dialogo_confirmar'));
+          expect(
+            find.descendant(of: igual, matching: find.text('Cerrar sesión igual')),
+            findsOneWidget,
+          );
+          expect(find.byKey(const Key('configuracion_dialogo_cancelar')), findsOneWidget);
+        });
+
+        testWidgets('un conteo sin número (null) también cuenta como no revisado', (tester) async {
+          _datos.respuestaResumen = const Right(
+            ResumenDatosLocales(
+              personas: 1,
+              visitas: 1,
+              operacionesSinSincronizar: null,
+              hayBackupEnDrive: false,
+            ),
+          );
+          await _montar(tester);
+          await abrirHoja(tester);
+
+          expect(find.text('Todo sincronizado'), findsNothing);
+          expect(find.text(TextosCerrarSesion.sinRevisar), findsOneWidget);
+        });
+
+        testWidgets(
+          '«Reintentar» vuelve a contar: sin nada pendiente muestra «Todo sincronizado»',
+          (tester) async {
+            sinConteo();
+            await _montar(tester);
+            await abrirHoja(tester);
+
+            _datos.respuestaResumen = const Right(_resumenBase);
+            await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+            await tester.pumpAndSettle();
+
+            expect(find.text('Todo sincronizado'), findsOneWidget);
+            expect(find.text(TextosCerrarSesion.sinRevisar), findsNothing);
+            expect(find.byKey(const Key('configuracion_reintentar_conteo')), findsNothing);
+            final cerrar = find.byKey(const Key('configuracion_dialogo_confirmar'));
+            expect(
+              find.descendant(of: cerrar, matching: find.text('Cerrar sesión')),
+              findsOneWidget,
+            );
+          },
+        );
+
+        testWidgets('«Reintentar» con pendientes pasa al aviso de pendientes', (tester) async {
+          sinConteo();
+          await _montar(tester);
+          await abrirHoja(tester);
+
+          conPendientes(1);
+          await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const Key('configuracion_aviso_pendientes')), findsOneWidget);
+          expect(find.textContaining('Tenés 1 operación sin sincronizar'), findsOneWidget);
+          expect(find.text(TextosCerrarSesion.sinRevisar), findsNothing);
+        });
+
+        testWidgets('si reintentar vuelve a fallar, sigue igual y se puede reintentar de nuevo', (
+          tester,
+        ) async {
+          sinConteo();
+          await _montar(tester);
+          await abrirHoja(tester);
+
+          await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+          await tester.pumpAndSettle();
+
+          expect(find.text(TextosCerrarSesion.sinRevisar), findsOneWidget);
+          expect(find.text('Todo sincronizado'), findsNothing);
+          expect(
+            tester
+                .widget<FilledButton>(find.byKey(const Key('configuracion_reintentar_conteo')))
+                .onPressed,
+            isNotNull,
+            reason: 'el botón vuelve a habilitarse: nada queda trabado en «Revisando…»',
+          );
+          expect(find.text('Revisando…'), findsNothing);
+
+          _datos.respuestaResumen = const Right(_resumenBase);
+          await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+          await tester.pumpAndSettle();
+          expect(find.text('Todo sincronizado'), findsOneWidget);
+        });
+
+        testWidgets('doble toque en «Reintentar»: cuenta una sola vez mientras revisa', (
+          tester,
+        ) async {
+          sinConteo();
+          await _montar(tester);
+          await abrirHoja(tester);
+          final antes = _datos.llamadasResumen;
+
+          _datos.demoraResumen = Completer<void>();
+          await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+          await tester.pump();
+          expect(find.text('Revisando…'), findsOneWidget);
+          await tester.tap(
+            find.byKey(const Key('configuracion_reintentar_conteo')),
+            warnIfMissed: false,
+          );
+          await tester.pump();
+          expect(_datos.llamadasResumen, antes + 1);
+          expect(
+            tester
+                .widget<OutlinedButton>(find.byKey(const Key('configuracion_dialogo_confirmar')))
+                .onPressed,
+            isNull,
+            reason: 'mientras revisa no se cierra la sesión',
+          );
+
+          _datos.demoraResumen!.complete();
+          await tester.pumpAndSettle();
+          expect(_datos.llamadasResumen, antes + 1);
+        });
+
+        testWidgets('«Cerrar sesión igual» cierra la sesión sin haber podido contar', (
+          tester,
+        ) async {
+          sinConteo();
+          final container = await _montar(tester);
+          await abrirHoja(tester);
+
+          await confirmar(tester);
+          await tester.pumpAndSettle();
+
+          expect(container.read(sesionProvider).value, isNull);
+          expect(_login, findsOneWidget);
+        });
+
+        testWidgets(
+          'si cerrar falla después de no poder contar, muestra el error y deja reintentar',
+          (tester) async {
+            sinConteo();
+            local.fallar = true;
+            await _montar(tester, local: local);
+            await abrirHoja(tester);
+
+            await confirmar(tester);
+            await tester.pumpAndSettle();
+
+            expect(find.byKey(const Key('configuracion_error_cierre')), findsOneWidget);
+            expect(find.text(TextosCerrarSesion.sinRevisar), findsNothing);
+            expect(find.byKey(const Key('configuracion_reintentar')), findsOneWidget);
+          },
+        );
+
+        testWidgets('si el conteo lanza una excepción en el reintento, no se traba', (
+          tester,
+        ) async {
+          var llamadas = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: temaClaro(),
+              home: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => mostrarHojaCerrarSesion(
+                    context,
+                    pendientes: null,
+                    cerrar: () async => true,
+                    contar: () async {
+                      llamadas++;
+                      throw StateError('falla inesperada');
+                    },
+                  ),
+                  child: const Text('abrir'),
+                ),
+              ),
+            ),
+          );
+          await tester.tap(find.text('abrir'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+          await tester.pumpAndSettle();
+
+          expect(llamadas, 1);
+          expect(find.text(TextosCerrarSesion.sinRevisar), findsOneWidget);
+          expect(find.text('Revisando…'), findsNothing);
+        });
+
+        testWidgets('volver atrás y reentrar: la hoja vuelve a contar desde cero', (tester) async {
+          sinConteo();
+          await _montar(tester);
+          await abrirHoja(tester);
+          await tester.tap(find.byKey(const Key('configuracion_dialogo_cancelar')));
+          await tester.pumpAndSettle();
+
+          _datos.respuestaResumen = const Right(_resumenBase);
+          await abrirHoja(tester);
+
+          expect(find.text('Todo sincronizado'), findsOneWidget);
+        });
       });
 
       testWidgets(
@@ -854,6 +1092,53 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await expectLater(tester, meetsGuideline(textContrastGuideline));
       handle.dispose();
+    });
+
+    testWidgets('la hoja «No pudimos revisar» (con «Reintentar») cumple las guías', (tester) async {
+      final handle = tester.ensureSemantics();
+      _pantalla(tester, const Size(390, 844));
+      _datos.respuestaResumen = const Left(FailureInesperado(causa: 'sin db'));
+      await _montar(tester);
+
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+      _datos.demoraResumen = Completer<void>();
+      await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+      await tester.pump();
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+      _datos.demoraResumen!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('con textScaler 2.0 la hoja «No pudimos revisar» no desborda ni en «Revisando…»', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 740));
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      _datos.respuestaResumen = const Left(FailureInesperado(causa: 'sin db'));
+      await _montar(tester);
+
+      await _tocar(tester, find.byKey(const Key('configuracion_cerrar_sesion')));
+      expect(find.byKey(const Key('configuracion_aviso_sin_revisar')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      _datos.demoraResumen = Completer<void>();
+      await tester.ensureVisible(find.byKey(const Key('configuracion_reintentar_conteo')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('configuracion_reintentar_conteo')));
+      await tester.pump();
+      expect(find.text('Revisando…'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      _datos.demoraResumen!.complete();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('la hoja sin pendientes y la hoja cerrando cumplen las guías', (tester) async {
