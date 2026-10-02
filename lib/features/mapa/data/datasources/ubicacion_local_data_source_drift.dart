@@ -222,33 +222,47 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// La consulta solo acota lo que se lee; la regla exacta la aplica el criterio en Dart. Trae:
   ///
   /// - las que caen en un recuadro que contiene el círculo de `CriterioDuplicadoUbicacion.
-  ///   radioMetros` alrededor de [centro] (con margen), de cualquier ciudad; y
-  /// - si [centro] tiene calle y número, las de su ciudad con el mismo número (`lower(trim(…))`
-  ///   de los dos lados, así que el `lower` de SQLite, que solo pasa a minúsculas el ASCII, es
-  ///   parejo). Un número que difiere solo en mayúsculas no ASCII ("12 Ñ" y "12 ñ") no sale acá:
-  ///   lo encuentra el scan de "Posibles duplicados", que compara en Dart.
+  ///   radioMetros` alrededor de [centro] (con margen), de cualquier ciudad;
+  /// - si [centro] tiene calle y número, las de su ciudad dentro de un recuadro que contiene el
+  ///   círculo de `CriterioDuplicadoUbicacion.radioMismaDireccionMetros` (con margen), escritas
+  ///   como estén: así la regla de D1 (la misma dirección a menos de 100 m choca) la decide la
+  ///   normalización del criterio y no esta consulta («av.  itália» y «Av. Italia» chocan); y
+  /// - si [centro] tiene calle y número, las de su ciudad con el mismo número a cualquier
+  ///   distancia (`lower(trim(…))` de los dos lados, así que el `lower` de SQLite, que solo pasa a
+  ///   minúsculas el ASCII, es parejo). Para el aviso de «misma dirección» lejos: un número que
+  ///   difiere a más de 100 m solo en tildes, espacios de más o mayúsculas no ASCII ("12 bís" y
+  ///   "12 BIS") no sale acá: lo encuentra el scan de "Posibles duplicados", que compara en Dart.
   Future<List<CandidataDuplicado>> _candidatas(
     UbicacionModel centro,
     CriterioDuplicadoUbicacion criterio,
   ) async {
     const margen = CriterioDuplicadoUbicacion.radioMetros * 1.5;
-    const dLat = margen / _metrosPorGrado;
+    const margenMismaDireccion = CriterioDuplicadoUbicacion.radioMismaDireccionMetros * 1.5;
     final cosLat = math.cos(centro.lat * math.pi / 180).abs();
     final numero = centro.numero;
     final consulta = select(ubicaciones)
       ..where((u) {
-        var cerca = u.lat.isBetweenValues(centro.lat - dLat, centro.lat + dLat);
         // Cerca de los polos un grado de longitud mide casi nada: ahí no se acota por longitud.
-        if (cosLat > 0.01) {
-          final dLon = margen / (_metrosPorGrado * cosLat);
-          cerca = cerca & u.lon.isBetweenValues(centro.lon - dLon, centro.lon + dLon);
+        Expression<bool> recuadro(double metros) {
+          final dLat = metros / _metrosPorGrado;
+          final enLatitud = u.lat.isBetweenValues(centro.lat - dLat, centro.lat + dLat);
+          if (cosLat <= 0.01) return enLatitud;
+          final dLon = metros / (_metrosPorGrado * cosLat);
+          return enLatitud & u.lon.isBetweenValues(centro.lon - dLon, centro.lon + dLon);
         }
-        final mismoNumero = centro.calle == null || numero == null
-            ? const Constant(false)
-            : u.ciudadId.equals(centro.ciudadId) &
-                  u.calle.isNotNull() &
-                  u.numero.trim().lower().equalsExp(Variable(numero).trim().lower());
-        return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismoNumero);
+
+        final cerca = recuadro(margen);
+        final Expression<bool> mismaDireccion;
+        if (centro.calle == null || numero == null) {
+          mismaDireccion = const Constant(false);
+        } else {
+          final mismaCiudad = u.ciudadId.equals(centro.ciudadId) & u.calle.isNotNull();
+          mismaDireccion =
+              mismaCiudad &
+              (recuadro(margenMismaDireccion) |
+                  u.numero.trim().lower().equalsExp(Variable(numero).trim().lower()));
+        }
+        return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismaDireccion);
       });
     final filas = await consulta.get();
     return criterio.candidatas(centro.toEntity(), [

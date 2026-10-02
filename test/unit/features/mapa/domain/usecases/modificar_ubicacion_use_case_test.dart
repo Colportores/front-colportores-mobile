@@ -272,25 +272,29 @@ void main() {
       expect(repo.escrituras.single.duplicados, isNull);
     });
 
-    test('dado "seguir igual" con motivo, cuando modifica, no busca duplicados', () async {
-      await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
-
-      expect(repo.escrituras.single.duplicados, isNull);
-    });
-
-    test('dado D1 en la opción (a) y "seguir igual", cuando modifica, busca solo las candidatas '
-        'que no admiten conservar las dos', () async {
-      modificar = ModificarUbicacionUseCase(
-        repo,
-        ubicador: ubicadorSinZonas(),
-        ahora: () => t1,
-        criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
-      );
-
+    test('dado D1 y "seguir igual" con motivo, cuando modifica, busca solo las candidatas que no '
+        'admiten conservar las dos (la misma dirección a menos de 100 m)', () async {
       await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
 
       expect(repo.escrituras.single.duplicados?.esSeguirIgual, isTrue);
     });
+
+    test(
+      'dado la regla anterior a D1 (opción (c)) y "seguir igual" con motivo, cuando modifica, no '
+      'busca duplicados',
+      () async {
+        modificar = ModificarUbicacionUseCase(
+          repo,
+          ubicador: ubicadorSinZonas(),
+          ahora: () => t1,
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
+        );
+
+        await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
+
+        expect(repo.escrituras.single.duplicados, isNull);
+      },
+    );
 
     test(
       'dado que el repositorio encuentra candidatas, cuando modifica, las devuelve tal cual',

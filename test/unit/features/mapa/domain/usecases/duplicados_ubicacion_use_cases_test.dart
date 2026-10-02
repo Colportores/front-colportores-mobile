@@ -231,7 +231,7 @@ void main() {
       ]);
     });
 
-    test('dado un par con la misma dirección que no lo admite (D1 opción (a)), cuando elige '
+    test('dado un par con la misma dirección que no lo admite (D1: a menos de 100 m), cuando elige '
         '"Conservar ambos", devuelve FailureDuplicadoMismaDireccion y no guarda nada', () async {
       final r = await decidir(
         DecidirParDuplicadoParams(

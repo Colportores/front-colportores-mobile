@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
@@ -21,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
+import '../../helpers/logger_mudo.dart';
 
 /// Atajo: el GPS que no da ubicación por [motivo].
 GpsFalso _gpsSin(MotivoSinGps motivo) => GpsFalso(Left(FailureGpsNoDisponible(motivo: motivo)));
@@ -83,6 +85,7 @@ Future<_Escenario> _montar(
   Coordenadas? puntoInicial,
   bool abrir = true,
   List<MarcadorMapa> marcadores = const [],
+  CiudadesParaAlta? puertoCiudades,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -101,6 +104,7 @@ Future<_Escenario> _montar(
         gps: e.gps,
         geocodificador: e.geocodificador,
         ciudades: e.ciudades,
+        puertoCiudades: puertoCiudades,
         repo: e.repo,
         ahora: DateTime.utc(2026, 10, 2, 12),
         marcadores: marcadores,
@@ -515,6 +519,25 @@ void main() {
       expect(e.repo.llamadas.single.ubicacion.calle, isNull);
       expect(find.text('Necesitás conexión'), findsNothing);
     });
+
+    testWidgets('con la dirección sin contestar (señal mala), la ciudad ya conocida aparece y se '
+        'registra sin esperar', (tester) async {
+      final geocodificador = GeocodificadorFalso(
+        (_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'),
+      )..bloqueo = Completer<void>();
+      final e = await _montar(tester, geocodificador: geocodificador);
+
+      expect(find.text('Buscando la ciudad…'), findsNothing);
+      expect(find.text('Montevideo'), findsOneWidget);
+      expect(find.text('detectada · Cambiar'), findsOneWidget);
+      await _tocar(tester, find.text('Casa'));
+      expect(_habilitado(tester, _registrar), isTrue);
+      await _tocar(tester, _registrar);
+
+      expect(e.salidas.single, isA<UbicacionCreada>());
+      expect(e.repo.llamadas.single.ubicacion.ciudadId, montevideo.id);
+      expect(e.repo.llamadas.single.ubicacion.calle, isNull);
+    });
   });
 
   group('ciudad (decisión de Cristian, 02/10: la ciudad de tu campaña siempre se propone)', () {
@@ -654,6 +677,33 @@ void main() {
       expect((e.salidas.single! as UbicacionCreada).ubicacion.ciudadId, canelones.id);
     });
 
+    testWidgets('sin la fuente de ciudades (lo que hay hoy en producción): la falla de lectura con '
+        '«Reintentar» y nunca «Tu campaña todavía no tiene ciudades»', (tester) async {
+      final e = await _montar(
+        tester,
+        puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()),
+      );
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
+      expect(find.text(TextosAlta.sinCiudades), findsNothing);
+      expect(find.text('Buscando la ciudad…'), findsNothing);
+      expect(find.text('Reintentar'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isFalse);
+
+      await _tocar(tester, find.text('Reintentar'));
+      expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
+      expect(find.text(TextosAlta.sinCiudades), findsNothing);
+
+      // «Elegir»: la lista tampoco dice que la campaña no tiene ciudades, da el error y «Reintentar».
+      await _tocar(tester, find.text('Elegir'));
+      expect(_enHoja(find.text(TextosAlta.ciudadesNoLeidas)), findsOneWidget);
+      expect(_enHoja(find.text(TextosAlta.sinCiudades)), findsNothing);
+      expect(_enHoja(find.text('Reintentar')), findsOneWidget);
+      expect(e.repo.llamadas, isEmpty);
+      _sinEstadosViejos();
+    });
+
     testWidgets('si no se pueden leer y se reintenta con éxito, la ciudad se propone sola', (
       tester,
     ) async {
@@ -785,6 +835,37 @@ void main() {
       expect(find.text('Marcado a mano'), findsOneWidget);
       expect(e.geocodificador.pedidos.length, greaterThan(1), reason: 'pidió la dirección nueva');
     });
+
+    testWidgets(
+      'mientras guarda el mapa no se mueve: si el alta falla, el pin sigue en el punto que '
+      'se registra',
+      (tester) async {
+        final repo = RepoAltaFalso()
+          ..bloqueo = Completer<void>()
+          ..comportamiento = (_) async => const Left(FailureInesperado());
+        await _montar(tester, repo: repo);
+        await _tocar(tester, find.text('Casa'));
+
+        await tester.tap(_registrar);
+        await tester.pump();
+        expect(find.text('Registrando…'), findsOneWidget);
+        await tester.drag(_mapa, const Offset(0, 120), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 400));
+        repo.bloqueo!.complete();
+        await _asentar(tester);
+
+        expect(_registrar, findsOneWidget, reason: 'falló: el botón vuelve');
+        expect(_habilitado(tester, _registrar), isTrue);
+        final centro = MapCamera.of(tester.element(find.byType(MarkerLayer))).center;
+        expect(centro.latitude, closeTo(puntoItalia.lat, 1e-6));
+        expect(centro.longitude, closeTo(puntoItalia.lon, 1e-6));
+        expect(find.text('GPS ±6 m'), findsOneWidget);
+        expect(find.text('Marcado a mano'), findsNothing);
+        expect(find.text('-34.88761, -56.13024'), findsOneWidget);
+        await _tocar(tester, _registrar);
+        expect(repo.llamadas.last.ubicacion.lat, puntoItalia.lat);
+      },
+    );
 
     testWidgets('sin punto el pin es una gota blanca con borde punteado; con punto, navy y lleno', (
       tester,
@@ -1134,6 +1215,89 @@ void main() {
 
       await _tocar(tester, find.text('Abrir la existente'));
       expect((e.salidas.single! as UbicacionReutilizada).ubicacionId, 'existente');
+    });
+
+    group('regla D1 con el criterio real (las candidatas las calcula el criterio de la app)', () {
+      /// Un repositorio que decide los duplicados con el criterio que le llega a `registrar` (el
+      /// real: lo arma el caso de uso de la app) contra [existentes], como lo hace la base del
+      /// teléfono, y guarda en [existentes] lo que se crea. El test no arma ninguna candidata.
+      RepoAltaFalso repoConCriterioReal(List<Ubicacion> existentes) {
+        late final RepoAltaFalso repo;
+        repo = RepoAltaFalso()
+          ..comportamiento = (u) async {
+            final criterio = repo.llamadas.last.duplicados;
+            final candidatas = criterio?.candidatas(u, existentes) ?? const [];
+            if (candidatas.isNotEmpty) return Right(AltaConDuplicados(candidatas: candidatas));
+            existentes.add(u);
+            return Right(AltaRegistrada(ubicacion: u));
+          };
+        return repo;
+      }
+
+      testWidgets(
+        '«av.  itália» 1234 a 15 m de «Av. Italia» 1234: no crea el alta en silencio y la '
+        'hoja no ofrece «Crear igual»',
+        (tester) async {
+          final existentes = [candidata('existente', metros: 15).ubicacion];
+          final repo = repoConCriterioReal(existentes);
+          final e = await _montar(tester, repo: repo);
+          await _tocar(tester, find.text('Casa'));
+          await tester.enterText(find.widgetWithText(TextField, 'Av. Italia'), 'av.  itália');
+          await tester.pump();
+
+          await _tocar(tester, _registrar);
+
+          expect(repo.llamadas, hasLength(1));
+          expect(existentes, hasLength(1), reason: 'no se creó nada');
+          expect(e.salidas, isEmpty);
+          expect(find.textContaining('Ya existe una ubicación a'), findsOneWidget);
+          expect(find.text('Abrir la existente'), findsOneWidget);
+          expect(find.text('Crear igual'), findsNothing);
+          expect(find.text('Reutilizar esta'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'la misma dirección a 15 m: sin «Crear igual», y «Abrir la existente» no crea otra',
+        (tester) async {
+          final existentes = [candidata('existente', metros: 15).ubicacion];
+          final repo = repoConCriterioReal(existentes);
+          final e = await _montar(tester, repo: repo);
+          await _tocar(tester, find.text('Casa'));
+
+          await _tocar(tester, _registrar);
+
+          expect(find.text('Abrir la existente'), findsOneWidget);
+          expect(find.text('Crear igual'), findsNothing);
+          await _tocar(tester, find.text('Abrir la existente'));
+          expect((e.salidas.single! as UbicacionReutilizada).ubicacionId, 'existente');
+          expect(existentes, hasLength(1));
+          expect(repo.llamadas, hasLength(1));
+        },
+      );
+
+      testWidgets('control: la misma dirección a 150 m avisa y admite las dos: «Crear igual» con '
+          'la justificación crea la nueva', (tester) async {
+        final existentes = [candidata('existente', metros: 150).ubicacion];
+        final repo = repoConCriterioReal(existentes);
+        final e = await _montar(tester, repo: repo);
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _registrar);
+
+        expect(find.text('Reutilizar esta'), findsOneWidget);
+        expect(find.text('Crear igual'), findsOneWidget);
+        expect(existentes, hasLength(1));
+        await _tocar(tester, find.text('Crear igual'));
+        await tester.enterText(find.byType(TextField).last, 'Otra casa en la misma calle');
+        await tester.pump();
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Crear igual'));
+
+        expect(e.salidas.single, isA<UbicacionCreada>());
+        expect(existentes, hasLength(2));
+        expect(repo.llamadas, hasLength(2));
+        expect(repo.llamadas[1].duplicados?.esSeguirIgual, isTrue);
+      });
     });
 
     testWidgets(

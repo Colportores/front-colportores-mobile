@@ -226,25 +226,26 @@ void main() {
         },
       );
 
-      test('cuando elige "Crear igual" con justificación, no pide validar duplicados', () async {
+      test('con D1, cuando elige "Crear igual" con justificación, pide validar solo las candidatas '
+          'que no admiten conservar las dos (la misma dirección a menos de 100 m)', () async {
         await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
 
-        expect(repositorio.llamadas.single.duplicados, isNull);
+        expect(repositorio.llamadas.single.duplicados?.esSeguirIgual, isTrue);
       });
 
-      test('con D1 en la opción (a), cuando elige "Crear igual", pide validar solo las candidatas '
-          'que no admiten conservar las dos', () async {
+      test('con la regla anterior a D1 (opción (c)), cuando elige "Crear igual" con justificación, '
+          'no pide validar duplicados', () async {
         registrar = RegistrarUbicacionUseCase(
           repositorio,
-          generarId: () => 'id-d1a',
+          generarId: () => 'id-opcion-c',
           ubicador: ubicadorSinZonas(),
           ahora: () => ahora,
-          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
         );
 
         await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
 
-        expect(repositorio.llamadas.single.duplicados?.esSeguirIgual, isTrue);
+        expect(repositorio.llamadas.single.duplicados, isNull);
       });
 
       test('cuando elige "Crear igual" con la justificación en blanco, devuelve FailureValidacion '
