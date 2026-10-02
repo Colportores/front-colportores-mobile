@@ -404,6 +404,20 @@ final class FailureCiudadRequerida extends Failure {
       );
 }
 
+/// «Solicitar alta de ciudad al administrador» (HU-UBI-001) todavía no tiene adónde ir: el pedido
+/// pasa por el BFF (docs-organizacion#22). Provisoria: se reemplaza al conectar la solicitud.
+///
+/// Texto para confirmar con Cristian: la HU nombra la acción, no este aviso.
+final class FailureSolicitudCiudadNoDisponible extends Failure {
+  const FailureSolicitudCiudadNoDisponible()
+    : super(
+        mensaje:
+            'Todavía no podemos enviar el pedido desde la app. Avisale a tu coordinador cómo se '
+            'llama la ciudad para que el administrador la dé de alta.',
+        codigo: 'UBI_SOLICITUD_CIUDAD_NO_DISPONIBLE',
+      );
+}
+
 /// HU-UBI-007, "único espacio activo con personas": no se puede dar de baja el último espacio
 /// activo de un edificio o negocio si tiene personas. El mensaje es el que fija la HU.
 final class FailureUltimoEspacioConPersonas extends Failure {

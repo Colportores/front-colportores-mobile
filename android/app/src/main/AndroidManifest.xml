@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- GPS del alta de ubicación (HU-UBI-001). Solo mientras la app está abierta: no hay
+         ubicación en segundo plano. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
          1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin
             guarda el ciphertext en SharedPreferences —que Auto Backup sube a Drive— y la clave
