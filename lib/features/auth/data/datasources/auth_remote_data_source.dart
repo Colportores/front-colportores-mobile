@@ -110,6 +110,12 @@ final class EmailYaRegistradoException extends AuthRemoteException {
   const EmailYaRegistradoException();
 }
 
+/// La cuenta existe y la contraseña es correcta, pero el correo no se confirmó (Supabase
+/// `email_not_confirmed`, HU-AUTH-002).
+final class EmailNoConfirmadoException extends AuthRemoteException {
+  const EmailNoConfirmadoException();
+}
+
 final class SinConexionException extends AuthRemoteException {
   const SinConexionException();
 }

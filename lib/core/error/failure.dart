@@ -75,6 +75,18 @@ final class FailureSesionRevocada extends Failure {
       );
 }
 
+/// Se cerró la sesión en este teléfono pero no había conexión para revocarla en el servidor
+/// (HU-AUTH-006, "Logout sin conexión"): la revocación queda pendiente y se reintenta sola. El
+/// login lo muestra como aviso; los datos locales siguen intactos.
+final class FailureCierreSesionSinConexion extends Failure {
+  const FailureCierreSesionSinConexion()
+    : super(
+        mensaje:
+            'Cerraste sesión en este teléfono. Se va a cerrar por completo cuando haya conexión.',
+        codigo: 'AUTH_CIERRE_SIN_CONEXION',
+      );
+}
+
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
 /// `otp_expired`), así que la app tampoco. [mensaje] es el literal de la HU; la pantalla ofrece
@@ -82,6 +94,18 @@ final class FailureSesionRevocada extends Failure {
 final class FailureEnlaceRecuperacionVencido extends Failure {
   const FailureEnlaceRecuperacionVencido()
     : super(mensaje: 'El enlace expiró. Solicitá uno nuevo.', codigo: 'AUTH_ENLACE_VENCIDO');
+}
+
+/// El login fue rechazado porque la cuenta todavía no confirmó su correo (HU-AUTH-002, Supabase
+/// `email_not_confirmed`). [mensaje] es el texto que ya veía el login. Además del login, la usa el
+/// login en silencio que decide qué pasó con un enlace de verificación `otp_expired`: si la cuenta
+/// sigue sin confirmar, el enlace de verdad expiró.
+final class FailureEmailNoVerificado extends Failure {
+  const FailureEmailNoVerificado()
+    : super(
+        mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
+        codigo: 'AUTH_EMAIL_NO_VERIFICADO',
+      );
 }
 
 /// El colportor ya tiene una jornada en curso (HU-JOR-001: "solo una jornada activa a la vez").
@@ -427,15 +451,32 @@ final class FailureUbicacionCambio extends Failure {
       );
 }
 
-/// No se puede reactivar una ubicación cuya ciudad ya no está en el catálogo (HU-UBI-005, caso
-/// borde). Texto propio: la HU dice "bloquear y pedir actualización del catálogo", sin el aviso.
-final class FailureCiudadFueraDeCatalogo extends Failure {
-  const FailureCiudadFueraDeCatalogo()
+/// La ubicación cambió entre que se abrió y que se quiso darla de baja (HU-UBI-005): texto propio
+/// para la baja, no el de la edición ([FailureUbicacionCambio]).
+final class FailureBajaCambioReciente extends Failure {
+  const FailureBajaCambioReciente()
     : super(
-        mensaje:
-            'La ciudad de esta ubicación ya no está en el catálogo. Actualizá el catálogo antes de '
-            'reactivarla.',
-        codigo: 'UBI_CIUDAD_FUERA_DE_CATALOGO',
+        mensaje: 'Esta ubicación cambió recién. Abrila de nuevo y volvé a darla de baja.',
+        codigo: 'UBI_BAJA_CAMBIO_RECIENTE',
+      );
+}
+
+/// La ubicación cambió entre que "Ver bajas" la cargó y que se quiso reactivarla (HU-UBI-005).
+final class FailureReactivacionCambioReciente extends Failure {
+  const FailureReactivacionCambioReciente()
+    : super(
+        mensaje: 'Esta ubicación cambió recién. Abrila de nuevo y volvé a reactivarla.',
+        codigo: 'UBI_REACTIVACION_CAMBIO_RECIENTE',
+      );
+}
+
+/// Al marcar un duplicado, la ubicación que se conserva ya está dada de baja (HU-UBI-006): el par
+/// cambió desde que se mostró.
+final class FailureConservadaDeBaja extends Failure {
+  const FailureConservadaDeBaja()
+    : super(
+        mensaje: 'La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.',
+        codigo: 'UBI_CONSERVADA_DE_BAJA',
       );
 }
 
@@ -507,5 +548,80 @@ final class FailureUbicacionAjenaFueraDeZona extends Failure {
             'Esta ubicación la registró otro colportor y solo podés moverla dentro de tu zona. '
             'Volvé a ponerla dentro de tu zona o pedile a tu coordinador que la mueva.',
         codigo: 'UBI_AJENA_FUERA_DE_ZONA',
+      );
+}
+
+/// El borrado de datos locales (HU-AUTH-010) no se hizo porque, al ejecutarse, había operaciones
+/// sin sincronizar (o no se pudieron contar): borrar las perdería. No se tocó nada. [pendientes] es
+/// `null` si no se pudieron contar.
+///
+/// Es la guarda del caso de uso: la pantalla ya bloquea "Continuar" con pendientes, pero se puede
+/// sumar una operación entre el resumen y la confirmación (vista 19, #228).
+final class FailureBorradoConPendientes extends Failure {
+  const FailureBorradoConPendientes({this.pendientes})
+    : super(
+        mensaje:
+            'Apareció trabajo sin sincronizar y no se borró nada. Sincronizalo antes de borrar '
+            'los datos de este teléfono.',
+        codigo: 'AUTH_BORRADO_CON_PENDIENTES',
+      );
+
+  final int? pendientes;
+
+  @override
+  List<Object?> get props => [...super.props, pendientes];
+}
+
+/// No se pudo leer, o el valor guardado está mal formado, el contador de intentos de contraseña del
+/// borrado de datos locales (vista 19). Falla cerrado: sin saber cuántos intentos van no se prueba
+/// la contraseña ni se borra. Se puede reintentar; nada se borró.
+final class FailureIntentosBorradoIlegibles extends Failure {
+  const FailureIntentosBorradoIlegibles()
+    : super(
+        mensaje:
+            'No pudimos revisar tus intentos anteriores, así que por seguridad no se puede '
+            'confirmar el borrado ahora. No se borró nada: reintentá en un momento o, si sigue '
+            'igual, cerrá y volvé a abrir la app.',
+        codigo: 'AUTH_INTENTOS_BORRADO_ILEGIBLES',
+      );
+}
+
+/// La contraseña de la confirmación final del borrado (HU-AUTH-010) no abre la DEK de este
+/// teléfono. [intentosRestantes] cuenta los que quedan antes de la espera (vista 19, artboard 05b).
+final class FailurePasswordBorradoIncorrecta extends Failure {
+  const FailurePasswordBorradoIncorrecta({required this.intentosRestantes})
+    : super(mensaje: 'Contraseña incorrecta.', codigo: 'AUTH_BORRADO_PASSWORD_INCORRECTA');
+
+  final int intentosRestantes;
+
+  @override
+  List<Object?> get props => [...super.props, intentosRestantes];
+}
+
+/// Se agotaron los intentos de contraseña de la confirmación final del borrado: no se puede
+/// volver a intentar hasta [hasta] (5 intentos, 5 minutos de espera; vista 19).
+final class FailureBorradoBloqueado extends Failure {
+  FailureBorradoBloqueado({required DateTime hasta})
+    : hasta = hasta.toUtc(),
+      super(
+        mensaje: 'Demasiados intentos. Probá nuevamente en 5 minutos.',
+        codigo: 'AUTH_BORRADO_BLOQUEADO',
+      );
+
+  final DateTime hasta;
+
+  @override
+  List<Object?> get props => [...super.props, hasta];
+}
+
+/// "Sincronizar ahora" no pudo correr porque el motor de sync todavía no está en la app (ADR-007,
+/// #178 / #182). Provisoria: se reemplaza al conectar el motor.
+final class FailureSincronizacionNoDisponible extends Failure {
+  const FailureSincronizacionNoDisponible()
+    : super(
+        mensaje:
+            'Todavía no se puede sincronizar desde acá. Cuando esté disponible, vas a poder '
+            'subir tus operaciones y borrar los datos.',
+        codigo: 'SYNC_NO_DISPONIBLE',
       );
 }

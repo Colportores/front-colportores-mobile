@@ -75,8 +75,6 @@ final class AuthRemoteDataSourceSupabase
   /// en frío) y los que lleguen mientras corre.
   final Stream<Uri> _enlacesEntrantes;
 
-  static const String _mensajeEmailNoConfirmado =
-      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
   static const String _mensajeDemasiadosIntentos =
       'Demasiados intentos. Esperá unos minutos y volvé a probar.';
   static const String _mensajeGoogleNoCompletado =
@@ -412,7 +410,19 @@ final class AuthRemoteDataSourceSupabase
     accessToken: sesion.accessToken,
     expiraEn: PoliticaSesion.expiraEn(emisionDelJwt(sesion.accessToken) ?? DateTime.now()),
     entraConPassword: entraConPassword(sesion.user.appMetadata),
+    nombre: nombreDeUsuario(sesion.user.userMetadata),
   );
+
+  /// El nombre que el registro manda en `data: {nombre, ...}` (queda en `user_metadata` y el
+  /// trigger de backend lo copia a `public.usuario`). Sin él —ingreso con Google, o una cuenta
+  /// vieja—, `null`: el saludo queda sin nombre.
+  @visibleForTesting
+  static String? nombreDeUsuario(Map<String, dynamic>? metadata) {
+    final nombre = metadata?['nombre'];
+    if (nombre is! String) return null;
+    final limpio = nombre.trim();
+    return limpio.isEmpty ? null : limpio;
+  }
 
   /// Si la cuenta tiene contraseña: `providers` de Supabase incluye `email` (una cuenta de Google
   /// que después creó una contraseña también). Sin esa información, ante la duda, `true`: se pide
@@ -451,7 +461,7 @@ final class AuthRemoteDataSourceSupabase
         return const EmailYaRegistradoException();
       case 'email_not_confirmed':
         _log.warn(LogModulo.auth, 'EMAIL_NO_CONFIRMADO', 'login con email sin confirmar');
-        return ServidorException(status: status, mensaje: _mensajeEmailNoConfirmado);
+        return const EmailNoConfirmadoException();
       case 'weak_password':
         return const PasswordDebilException();
       case 'over_email_send_rate_limit' || 'over_request_rate_limit':

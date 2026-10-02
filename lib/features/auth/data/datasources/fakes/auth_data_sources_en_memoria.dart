@@ -49,17 +49,22 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// email — [confirmarEmail] las saca de acá.
   final Set<String> _pendientesDeVerificar = {};
 
-  static const String _mensajeEmailNoConfirmado =
-      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
+  /// Cuántas veces se llamó a [iniciarSesion] — para probar que un enlace no dispara dos logins.
+  int llamadasIniciarSesion = 0;
+
+  /// Si no es `null`, [iniciarSesion] no sigue hasta que el test lo complete (ventana de carrera).
+  Completer<void>? demoraIniciarSesion;
 
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    llamadasIniciarSesion++;
+    await demoraIniciarSesion?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales[email] != password) throw const CredencialesInvalidasException();
     // El orden importa: como en Supabase real, una contraseña incorrecta da credenciales
     // inválidas primero — recién con la contraseña bien se ve si falta confirmar el email.
     if (_pendientesDeVerificar.contains(email)) {
-      throw const ServidorException(mensaje: _mensajeEmailNoConfirmado);
+      throw const EmailNoConfirmadoException();
     }
 
     final sesion = SesionModel(

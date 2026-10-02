@@ -140,7 +140,7 @@ final class MarcarDuplicadoParams extends Equatable {
 ///
 /// 1. Sin alguno de los dos `id`, o el mismo en los dos: `Left(FailureValidacion)`.
 /// 2. La que se conserva no está: `Left(FailureUbicacionInexistente)`; está de baja (el par cambió
-///    desde el scan): `Left(FailureUbicacionCambio)`. En los dos casos no escribe nada, para no
+///    desde el scan): `Left(FailureConservadaDeBaja)`. En los dos casos no escribe nada, para no
 ///    dejar a las dos de baja.
 /// 3. Si no, el resultado de la baja de la duplicada, tal cual. La condición del paso 2 se vuelve
 ///    a exigir **dentro de la transacción de la baja** (`conservadaId`): dos acciones concurrentes
@@ -179,7 +179,7 @@ final class MarcarDuplicadoUseCase
       (falla) async => Left(falla),
       (conservada) async {
         if (conservada == null) return const Left(FailureUbicacionInexistente());
-        if (conservada.estaBorrada) return const Left(FailureUbicacionCambio());
+        if (conservada.estaBorrada) return const Left(FailureConservadaDeBaja());
         return _darDeBaja(
           DarDeBajaUbicacionParams(
             id: duplicadaId,
