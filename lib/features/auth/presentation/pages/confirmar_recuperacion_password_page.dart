@@ -23,8 +23,11 @@ abstract final class TextosConfirmacionRecuperacion {
   /// "Cambio exitoso": la pantalla de éxito (15-A09) antes de volver al login.
   static const exito = 'Contraseña actualizada. Iniciá sesión.';
 
-  /// "Error - token expirado" (el mismo texto de `FailureEnlaceRecuperacionVencido`).
-  static const vencido = 'El enlace expiró. Solicitá uno nuevo.';
+  /// 15-A06, enlace que Supabase rechazó con `otp_expired` y que **no** se puede dar por usado:
+  /// el error llega sin el enlace, así que la app no sabe si venció o se usó en otro teléfono. No
+  /// afirma «expiró»: dice las dos cosas y guía (decisión del orquestador, 02/10, sobre «Error -
+  /// token expirado» de HU-AUTH-005). El mismo texto de `FailureEnlaceRecuperacionVencido`.
+  static const vencido = 'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.';
 
   /// Para `mensajePara`, cuando el enlace no se pudo canjear por falta de red: "Necesitás conexión
   /// para abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el correo." (propio, sin
@@ -63,8 +66,10 @@ abstract final class TextosConfirmacionRecuperacion {
 ///   `ConfirmarRecuperacionPasswordUseCase` la fija, re-envuelve la DEK si hay DB local (ADR-006,
 ///   sin tarjetas «Restaurar»/«Borrar»: decisión de Cristian 30/09) y revoca todas las sesiones; la
 ///   pantalla muestra «Contraseña actualizada. Iniciá sesión.» con el botón al login (15-A09).
-/// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): "El enlace
-///   expiró. Solicitá uno nuevo.", con el botón para pedir otro (HU-AUTH-004) y volver al login.
+/// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): 15-A06,
+///   «Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.» (no afirma «expiró»: sin la
+///   marca del cambio, la app no sabe cuál de los dos pasó), con el botón para pedir otro
+///   (HU-AUTH-004) y volver al login.
 /// - Con [EnlaceRecuperacion.sinConexion]: que hace falta conexión y que el enlace se vuelve a
 ///   abrir desde el correo (sigue sirviendo).
 ///
@@ -74,6 +79,9 @@ abstract final class TextosConfirmacionRecuperacion {
 ///
 /// - Con [EnlaceRecuperacion.usado] (15-A07): «Este enlace ya fue utilizado», que ya cambió la
 ///   contraseña y entre con la nueva, y el botón al login (no ofrece pedir otro).
+///
+/// 15-A06 y 15-A07 son como el canvas: el contenido centrado con el anillo arriba, las salidas al
+/// pie y **sin flecha de atrás** (se sale por el botón o por el atrás del sistema).
 class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
   const ConfirmarRecuperacionPasswordPage({super.key, required this.enlace});
 
@@ -90,6 +98,7 @@ class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
 class _ConfirmarRecuperacionPasswordPageState
     extends ConsumerState<ConfirmarRecuperacionPasswordPage> {
   static const _verde = Color(0xFF1F6E3A);
+  static const _oro = Color(0xFFA98330);
   static const _largoMinimo = 8;
 
   final _nueva = TextEditingController();
@@ -213,7 +222,9 @@ class _ConfirmarRecuperacionPasswordPageState
     _terminado = true;
     try {
       if (ref.read(sesionProvider).value != null) {
-        await ref.read(sesionProvider.notifier).cerrarSesion();
+        // El cierre lo hace la app, no la colportora: el correo de la última cuenta se conserva y
+        // el login lo trae puesto (se borra solo con «Cerrar sesión» o al borrar los datos).
+        await ref.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true);
       }
     } on Object {
       // La contraseña ya cambió: el éxito se muestra igual; un cierre local que falló no puede
@@ -259,6 +270,8 @@ class _ConfirmarRecuperacionPasswordPageState
     final theme = Theme.of(context);
     const paddingHorizontal = 30.0;
     final formulario = !_vencido && widget.enlace == EnlaceRecuperacion.valido;
+    // 15-A06 y 15-A07 tienen su propio armado: centrado, sin flecha, con las salidas al pie.
+    final enlaceInservible = !_terminado && (_vencido || widget.enlace == EnlaceRecuperacion.usado);
 
     return PopScope(
       // Guardando no se sale; terminado, el atrás lleva al login (no queda el formulario).
@@ -266,56 +279,89 @@ class _ConfirmarRecuperacionPasswordPageState
       onPopInvokedWithResult: (salio, _) => _alSalir(salio),
       child: Scaffold(
         body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - 48).clamp(0, double.infinity),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    if (_terminado)
-                      _exitoContenido(theme)
-                    else ...[
-                      Column(
+          child: enlaceInservible
+              ? _enlaceInservible(theme)
+              : LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: paddingHorizontal,
+                      vertical: 24,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: (constraints.maxHeight - 48).clamp(0, double.infinity),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: IconButton(
-                              key: const Key('confirmar_recuperacion_atras'),
-                              tooltip: 'Volver',
-                              onPressed: _guardando ? null : () => Navigator.of(context).maybePop(),
-                              icon: const Icon(Icons.arrow_back),
+                          if (_terminado)
+                            _exitoContenido(theme)
+                          else ...[
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: IconButton(
+                                    key: const Key('confirmar_recuperacion_atras'),
+                                    tooltip: 'Volver',
+                                    onPressed: _guardando
+                                        ? null
+                                        : () => Navigator.of(context).maybePop(),
+                                    icon: const Icon(Icons.arrow_back),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                if (widget.enlace == EnlaceRecuperacion.sinConexion)
+                                  _sinConexionContenido(theme)
+                                else
+                                  _formularioArriba(theme),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (_vencido)
-                            _vencidoContenido(theme)
-                          else if (widget.enlace == EnlaceRecuperacion.sinConexion)
-                            _sinConexionContenido(theme)
-                          else if (widget.enlace == EnlaceRecuperacion.usado)
-                            _usadoContenido(theme)
-                          else
-                            _formularioArriba(theme),
+                            if (formulario) _formularioAbajo(theme),
+                          ],
                         ],
                       ),
-                      if (formulario) _formularioAbajo(theme),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
+        ),
+      ),
+    );
+  }
+
+  /// 15-A06 (vencido) y 15-A07 (ya usado), como el canvas: el contenido centrado en lo que sobra
+  /// encima de las salidas, que van pegadas al pie. Sin flecha de atrás.
+  Widget _enlaceInservible(ThemeData theme) {
+    final usado = widget.enlace == EnlaceRecuperacion.usado;
+    final colores = theme.extension<ColoresColportaje>()!;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Con spaceBetween, el del medio queda centrado entre el borde de arriba y las salidas.
+              const SizedBox.shrink(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
+                child: usado ? _usadoContenido(theme, colores) : _vencidoContenido(theme, colores),
               ),
-            ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, usado ? 28 : 18),
+                child: usado ? _usadoSalidas(context) : _vencidoSalidas(context),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _encabezado(ThemeData theme, String eyebrow, String titulo, {Key? tituloKey}) {
+  Widget _encabezado(ThemeData theme, String eyebrow, String titulo) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -324,14 +370,7 @@ class _ConfirmarRecuperacionPasswordPageState
           style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
         ),
         const SizedBox(height: 8),
-        Semantics(
-          liveRegion: tituloKey != null,
-          child: Text(
-            titulo,
-            key: tituloKey,
-            style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
-          ),
-        ),
+        Text(titulo, style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),
       ],
     );
   }
@@ -366,31 +405,43 @@ class _ConfirmarRecuperacionPasswordPageState
     ],
   );
 
-  /// 15-A06.
-  Widget _vencidoContenido(ThemeData theme) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// Título de 15-A06 y 15-A07: serif de 28 con interlineado 1,2, como el canvas.
+  TextStyle? _tituloEnlace(ThemeData theme) =>
+      theme.textTheme.headlineMedium?.copyWith(fontSize: 28, height: 1.2);
+
+  /// 15-A06, la parte del medio: anillo dorado con el reloj de arena, el rótulo y el texto.
+  Widget _vencidoContenido(ThemeData theme, ColoresColportaje colores) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: 16,
     children: [
-      const Align(
-        alignment: Alignment.centerLeft,
-        child: ExcludeSemantics(
-          child: _Insignia(icono: Icons.hourglass_empty, color: Color(0xFF5B6B82)),
+      _Anillo(
+        icono: Icons.hourglass_empty,
+        colorBorde: _oro,
+        colorIcono: theme.colorScheme.onSurface,
+      ),
+      Text('ENLACE VENCIDO', style: theme.textTheme.labelSmall?.copyWith(color: colores.gris)),
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          TextosConfirmacionRecuperacion.vencido,
+          key: const Key('confirmar_recuperacion_vencido'),
+          style: _tituloEnlace(theme),
         ),
       ),
-      const SizedBox(height: 16),
-      _encabezado(
-        theme,
-        'ENLACE VENCIDO',
-        TextosConfirmacionRecuperacion.vencido,
-        tituloKey: const Key('confirmar_recuperacion_vencido'),
-      ),
-      const SizedBox(height: 24),
+    ],
+  );
+
+  /// 15-A06, al pie: pedir un enlace nuevo y volver al login.
+  Widget _vencidoSalidas(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 10,
+    children: [
       FilledButton(
         key: const Key('confirmar_recuperacion_pedir_otro'),
         onPressed: _pedirOtroEnlace,
         style: _estiloTextoGrande(context),
         child: const Text('Solicitar un enlace nuevo'),
       ),
-      const SizedBox(height: 8),
       TextButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
         onPressed: _irAlLogin,
@@ -399,35 +450,40 @@ class _ConfirmarRecuperacionPasswordPageState
     ],
   );
 
-  /// 15-A07.
-  Widget _usadoContenido(ThemeData theme) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// 15-A07, la parte del medio: anillo con el ⊘, el título y que entre con la nueva.
+  Widget _usadoContenido(ThemeData theme, ColoresColportaje colores) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: 16,
     children: [
-      const Align(
-        alignment: Alignment.centerLeft,
-        child: ExcludeSemantics(
-          child: _Insignia(icono: Icons.block, color: Color(0xFF5B6B82)),
-        ),
+      _Anillo(
+        icono: Icons.block,
+        colorBorde: colores.gris,
+        colorIcono: theme.colorScheme.onSurfaceVariant,
       ),
-      const SizedBox(height: 16),
       Semantics(
         liveRegion: true,
         child: Text(
           TextosConfirmacionRecuperacion.usadoTitulo,
           key: const Key('confirmar_recuperacion_usado'),
-          style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
+          style: _tituloEnlace(theme),
         ),
       ),
-      const SizedBox(height: 12),
-      Text(TextosConfirmacionRecuperacion.usadoDetalle, style: theme.textTheme.bodyLarge),
-      const SizedBox(height: 24),
-      FilledButton(
-        key: const Key('confirmar_recuperacion_ir_al_login'),
-        onPressed: _irAlLogin,
-        style: _estiloTextoGrande(context),
-        child: const Text('Volver al login'),
+      Text(
+        TextosConfirmacionRecuperacion.usadoDetalle,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          height: 1.5,
+        ),
       ),
     ],
+  );
+
+  /// 15-A07, al pie: solo volver al login (no ofrece pedir otro enlace).
+  Widget _usadoSalidas(BuildContext context) => FilledButton(
+    key: const Key('confirmar_recuperacion_ir_al_login'),
+    onPressed: _irAlLogin,
+    style: _estiloTextoGrande(context),
+    child: const Text('Volver al login'),
   );
 
   Widget _sinConexionContenido(ThemeData theme) => Column(
@@ -587,7 +643,7 @@ class _ConfirmarRecuperacionPasswordPageState
   }
 }
 
-/// Círculo con un ícono (éxito, vencido): decorativo, el texto dice lo mismo.
+/// Círculo lleno con un ícono (éxito, 15-A09): decorativo, el texto dice lo mismo.
 class _Insignia extends StatelessWidget {
   const _Insignia({required this.icono, required this.color});
 
@@ -601,6 +657,32 @@ class _Insignia extends StatelessWidget {
       height: 56,
       decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       child: Icon(icono, color: Colors.white, size: 28),
+    );
+  }
+}
+
+/// Anillo con un ícono adentro (enlace vencido 15-A06, ya usado 15-A07): borde de 1,5 y sin
+/// relleno, como el canvas. Decorativo: el título dice lo mismo.
+class _Anillo extends StatelessWidget {
+  const _Anillo({required this.icono, required this.colorBorde, required this.colorIcono});
+
+  final IconData icono;
+  final Color colorBorde;
+  final Color colorIcono;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Container(
+        width: 56,
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: colorBorde, width: 1.5),
+        ),
+        child: Icon(icono, color: colorIcono, size: 22),
+      ),
     );
   }
 }

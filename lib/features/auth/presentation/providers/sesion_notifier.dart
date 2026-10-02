@@ -21,6 +21,7 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'recuperacion_password_providers.dart';
 import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
@@ -229,14 +230,21 @@ class SesionNotifier extends _$SesionNotifier {
   ///
   /// Si el use case **lanza** (no debería: el repositorio traduce todo a `Failure`), la DB se cierra
   /// igual, el estado se resetea y la excepción se propaga: deslogueado en pantalla con la DB
-  /// abierta y la clave viva sería peor.
+  /// abierta y la clave viva sería peor. Como la sesión se cierra igual, el correo de la última
+  /// cuenta se borra igual (salvo con [conservarCorreo]).
   ///
   /// [avisarCierreSinConexion]: con `true`, si la revocación quedó pendiente (sin red) deja el aviso
   /// «Cerraste sesión…» en el login. Solo lo pide el cierre que el colportor inicia desde
   /// Configuración: otros flujos que cierran la sesión (recuperación de contraseña, preparación de
   /// la DB) tienen su propia pantalla y ese aviso no les corresponde.
+  ///
+  /// [conservarCorreo]: con `true`, el correo de la última cuenta queda guardado. Es para el cierre
+  /// que la app hace sola y la colportora no pidió (el cambio de contraseña con el enlace de
+  /// recuperación, HU-AUTH-005): el correo se borra solo cuando ella toca «Cerrar sesión» o borra
+  /// los datos locales (decisión de Cristian, 01/10, y del orquestador, 02/10).
   Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion({
     bool avisarCierreSinConexion = false,
+    bool conservarCorreo = false,
   }) async {
     final Either<Failure, ResultadoCierreSesion> resultado;
     try {
@@ -250,13 +258,15 @@ class SesionNotifier extends _$SesionNotifier {
         e,
         st,
       );
+      // Antes de resetear el estado: cuando pasa a `null` el login ya no ve el correo.
+      if (!conservarCorreo) await _borrarUltimoCorreo();
       await _cerrarDbYSesion();
       rethrow;
     }
 
     if (resultado.isRight()) {
       // Cerrar a propósito: el correo de la última cuenta no se queda en el teléfono.
-      await ref.read(ultimoCorreoRepositoryProvider).borrar();
+      if (!conservarCorreo) await ref.read(ultimoCorreoRepositoryProvider).borrar();
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
         if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
@@ -299,6 +309,9 @@ class SesionNotifier extends _$SesionNotifier {
     if (resultado.isRight()) {
       _olvidarPassword();
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
+      // La marca de «cambié la contraseña con un enlace» también es del teléfono: el almacén ya la
+      // borró, falta la que esta corrida tiene en memoria.
+      await ref.read(cambiosPorRecuperacionProvider).olvidar();
       state = const AsyncData(null);
     }
     return resultado;
@@ -332,6 +345,16 @@ class SesionNotifier extends _$SesionNotifier {
   /// La contraseña del login deja de hacer falta: se cerró la sesión o empieza otro ingreso
   /// (revisión del PR #130). Acá y no en la preparación de la DB, que puede no estar escuchando.
   void _olvidarPassword() => ref.read(passwordParaDbLocalProvider).olvidar();
+
+  /// Borra el correo de la última cuenta cuando el cierre ya está fallando: nada de lo que pase acá
+  /// puede tapar el error original ni dejar la DB abierta.
+  Future<void> _borrarUltimoCorreo() async {
+    try {
+      await ref.read(ultimoCorreoRepositoryProvider).borrar();
+    } on Object {
+      _log.warn(LogModulo.auth, 'ULTIMO_CORREO_BORRAR', 'no se pudo borrar el último correo');
+    }
+  }
 
   Future<void> _cerrarDbYSesion() async {
     _olvidarPassword();

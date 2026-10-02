@@ -73,9 +73,9 @@ Future<void> main() async {
         // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
         // Cuándo se completó el último cambio con un enlace de recuperación: distingue «ya usado»
-        // de «vencido» (15-A07).
+        // de «vencido» (15-A07). La hora sale del reloj de la sesión, que no vuelve atrás.
         cambiosPorRecuperacionProvider.overrideWithValue(
-          CambiosPorRecuperacionEnAlmacen(almacenSeguro),
+          CambiosPorRecuperacionEnAlmacen(almacenSeguro, relojSesion),
         ),
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.

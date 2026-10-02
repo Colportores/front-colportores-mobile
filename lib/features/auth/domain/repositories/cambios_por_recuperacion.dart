@@ -13,7 +13,11 @@ abstract interface class CambiosPorRecuperacion {
   /// Anota que se acaba de completar un cambio de contraseña con un enlace.
   Future<void> registrar();
 
-  /// Si el último cambio se completó hace [ventana] o menos. Un instante del futuro (el reloj se
-  /// atrasó) no cuenta: ante la duda, el enlace se trata como vencido.
+  /// Si el último cambio se completó hace [ventana] o menos. Un instante del futuro no cuenta: ante
+  /// la duda, el enlace se trata como vencido.
   Future<bool> hayUnoReciente();
+
+  /// Olvida el último cambio, en el almacén y en memoria: el borrado de datos locales (HU-AUTH-010)
+  /// no deja ninguna pista de lo que hubo en el teléfono.
+  Future<void> olvidar();
 }
