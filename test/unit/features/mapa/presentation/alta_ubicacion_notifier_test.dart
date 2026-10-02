@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
@@ -17,6 +18,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../helpers/alta_ubicacion_falsos.dart';
+import '../../../../helpers/logger_mudo.dart';
 
 const _otroPunto = Coordenadas(lat: -34.8900, lon: -56.1300);
 
@@ -28,6 +30,7 @@ final class _Banco {
     GpsFalso? gps,
     GeocodificadorFalso? geocodificador,
     CiudadesFalsas? ciudades,
+    CiudadesParaAlta? puertoCiudades,
     RepoAltaFalso? repo,
     ParametrosAlta parametros = parametrosAlta,
     List<Override> extra = const [],
@@ -43,6 +46,7 @@ final class _Banco {
           gps: this.gps,
           geocodificador: this.geocodificador,
           ciudades: this.ciudades,
+          puertoCiudades: puertoCiudades,
           repo: this.repo,
         ),
         ...extra,
@@ -69,6 +73,7 @@ _Banco _banco({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
+  CiudadesParaAlta? puertoCiudades,
   RepoAltaFalso? repo,
   ParametrosAlta parametros = parametrosAlta,
   List<Override> extra = const [],
@@ -77,6 +82,7 @@ _Banco _banco({
     gps: gps,
     geocodificador: geocodificador,
     ciudades: ciudades,
+    puertoCiudades: puertoCiudades,
     repo: repo,
     parametros: parametros,
     extra: extra,
@@ -237,6 +243,82 @@ void main() {
         expect(b.estado.lectura?.coordenadas, puntoItalia);
       },
     );
+
+    group('dos lecturas del GPS en vuelo', () {
+      // Permiso denegado; después «Activar GPS» y el reintento al volver de los ajustes arrancan una
+      // lectura cada uno, a la vez (la 2 y la 3). La que vale es la última que se pidió: la 3.
+      const segundoPunto = Coordenadas(lat: -34.88741, lon: -56.13024);
+      final lecturas = <int, Completer<Either<Failure, LecturaGps>>>{};
+      late _Banco b;
+
+      Future<void> arrancar() async {
+        lecturas.clear();
+        final gps = GpsFalso(
+          const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado)),
+        );
+        b = _banco(gps: gps);
+        await _esperar();
+        gps.porLectura = (n) =>
+            lecturas.putIfAbsent(n, () => Completer<Either<Failure, LecturaGps>>()).future;
+        unawaited(b.notificador.activarGps());
+        unawaited(b.notificador.reintentarGpsSiHaceFalta());
+        await _esperar();
+        expect(gps.lecturas, 3, reason: 'quedaron dos lecturas en vuelo');
+      }
+
+      test('la vieja contesta primero: se ignora y el pin sale de la que vale; lo que se guarda '
+          'es lo que muestra el pin', () async {
+        await arrancar();
+
+        lecturas[2]!.complete(Right(lecturaGps(80)));
+        await _esperar();
+        expect(b.estado.gps, EstadoGps.buscando, reason: 'la que vale todavía no llegó');
+        expect(b.estado.punto, isNull);
+
+        lecturas[3]!.complete(Right(lecturaGps(6, punto: segundoPunto)));
+        await _esperar();
+
+        expect(b.estado.gps, EstadoGps.conLectura);
+        expect(b.estado.punto, segundoPunto);
+        expect(b.estado.precisionMetros, 6);
+        expect(b.estado.esImpreciso, isFalse, reason: 'sin el aviso de baja precisión de la vieja');
+        b.notificador.elegirTipo(TipoUbicacion.casa);
+        expect(await b.notificador.registrar(), isA<AltaCreada>());
+        expect(b.repo.llamadas.single.ubicacion.lat, segundoPunto.lat);
+        expect(b.repo.llamadas.single.origen, OrigenCoordenadas.gps);
+      });
+
+      test('la que vale contesta primero: la vieja que llega después no cambia el pin, la '
+          'precisión ni lo que se guarda', () async {
+        await arrancar();
+
+        lecturas[3]!.complete(Right(lecturaGps(6, punto: segundoPunto)));
+        await _esperar();
+        lecturas[2]!.complete(Right(lecturaGps(80)));
+        await _esperar();
+
+        expect(b.estado.punto, segundoPunto);
+        expect(b.estado.lectura?.coordenadas, segundoPunto);
+        expect(b.estado.precisionMetros, 6);
+        expect(b.estado.esImpreciso, isFalse);
+        b.notificador.elegirTipo(TipoUbicacion.casa);
+        await b.notificador.registrar();
+        expect(b.repo.llamadas.single.ubicacion.lat, segundoPunto.lat);
+      });
+
+      test('una vieja que falla no manda a «Sin GPS» a la que ya tomó la posición', () async {
+        await arrancar();
+
+        lecturas[3]!.complete(Right(lecturaGps(6, punto: segundoPunto)));
+        await _esperar();
+        lecturas[2]!.complete(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal)));
+        await _esperar();
+
+        expect(b.estado.gps, EstadoGps.conLectura);
+        expect(b.estado.motivoSinGps, isNull);
+        expect(b.estado.punto, segundoPunto);
+      });
+    });
 
     test(
       'un alta por tap largo arranca en ese punto, «Marcado a mano», y el GPS no lo mueve',
@@ -669,7 +751,120 @@ void main() {
       });
     });
 
+    group('la dirección en camino no demora a la ciudad', () {
+      GeocodificadorFalso lento() =>
+          GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'))
+            ..bloqueo = Completer<void>();
+
+      test('con la red sin contestar, la ciudad conocida ya se aplica y deja registrar', () async {
+        final geocodificador = lento();
+        final b = _banco(geocodificador: geocodificador);
+        await _esperar();
+        b.notificador.elegirTipo(TipoUbicacion.casa);
+
+        expect(geocodificador.pedidos, [puntoItalia], reason: 'la dirección sigue esperando');
+        expect(b.estado.calle.fuente, FuenteCampo.vacio);
+        expect(b.estado.ciudad, montevideo);
+        expect(b.estado.origenCiudad, OrigenCiudad.detectada);
+        expect(b.estado.puedeRegistrar, isTrue);
+        expect(await b.notificador.registrar(), isA<AltaCreada>());
+        expect(b.repo.llamadas.single.ubicacion.ciudadId, montevideo.id);
+      });
+
+      test('la dirección que llega después se aplica igual, sin tocar la ciudad', () async {
+        final geocodificador = lento();
+        final b = _banco(geocodificador: geocodificador);
+        await _esperar();
+
+        geocodificador.bloqueo!.complete();
+        await _esperar();
+
+        expect(b.estado.calle, const CampoDireccion('Av. Italia', FuenteCampo.delMapa));
+        expect(b.estado.numero, const CampoDireccion('1234', FuenteCampo.delMapa));
+        expect(b.estado.ciudad, montevideo);
+        expect(b.estado.origenCiudad, OrigenCiudad.detectada);
+      });
+
+      test('si el punto se movió mientras la dirección venía en camino, la ciudad es la del '
+          'punto nuevo', () async {
+        final geocodificador = lento();
+        final b = _banco(
+          geocodificador: geocodificador,
+          ciudades: CiudadesFalsas(
+            propone: (punto) => punto == _otroPunto
+                ? deCampania
+                : const CiudadPropuesta(montevideo, OrigenPropuesta.detectada),
+          ),
+        );
+        await _esperar();
+
+        b.notificador.moverPunto(_otroPunto);
+        await _esperar();
+        geocodificador.bloqueo!.complete();
+        await _esperar();
+
+        expect(b.estado.ciudad, canelones);
+        expect(b.estado.origenCiudad, OrigenCiudad.deCampania);
+        expect(geocodificador.pedidos, [puntoItalia, _otroPunto]);
+        expect(b.estado.punto, _otroPunto);
+      });
+
+      test(
+        'con la ciudad ya elegida no se vuelve a proponer, y la dirección igual llega',
+        () async {
+          final geocodificador = lento();
+          final b = _banco(geocodificador: geocodificador);
+          await _esperar();
+          b.notificador.elegirCiudad(canelones);
+
+          b.notificador.moverPunto(_otroPunto);
+          await _esperar();
+          geocodificador.bloqueo!.complete();
+          await _esperar();
+
+          expect(b.ciudades.propuestas, [puntoItalia]);
+          expect(b.estado.ciudad, canelones);
+          expect(b.estado.calle, const CampoDireccion('Av. Italia', FuenteCampo.delMapa));
+        },
+      );
+    });
+
     group('no se pueden leer las ciudades', () {
+      Future<_Banco> sinFuente() async {
+        final b = _banco(puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()));
+        await _esperar();
+        b.notificador.elegirTipo(TipoUbicacion.casa);
+        return b;
+      }
+
+      test('sin la fuente de ciudades (producción hoy) es una falla de lectura, no «la campaña '
+          'no tiene ciudades»', () async {
+        final b = await sinFuente();
+
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer);
+        expect(b.estado.origenCiudad, isNot(OrigenCiudad.sinCiudades));
+        expect(b.estado.ciudad, isNull);
+        expect(b.estado.puedeRegistrar, isFalse);
+        expect(await b.notificador.registrar(), isA<AltaIgnorada>());
+        expect(b.repo.llamadas, isEmpty);
+      });
+
+      test('sin la fuente y sin punto pasa lo mismo, y «Reintentar» no la inventa', () async {
+        final b = _banco(
+          gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
+          puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()),
+        );
+        await _esperar();
+
+        expect(b.estado.punto, isNull);
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer);
+
+        await b.notificador.reintentarCiudad();
+
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer, reason: 'sigue sin fuente');
+        expect(b.estado.ciudad, isNull);
+      });
+
       test('queda el aviso con «Reintentar», sin dejar trabado «Buscando la ciudad…»', () async {
         final b = _banco(ciudades: CiudadesFalsas()..fallaPropuesta = const FailureInesperado());
         await _esperar();

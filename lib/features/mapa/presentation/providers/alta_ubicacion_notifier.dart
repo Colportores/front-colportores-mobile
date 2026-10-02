@@ -278,6 +278,10 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   Timer? _espera;
   int _secuencia = 0;
+
+  /// Cuál es la última lectura del GPS que se pidió: una lectura que llega cuando ya se pidió otra
+  /// se ignora, para que el pin y la lectura que se guarda sean siempre la misma.
+  int _secuenciaGps = 0;
   String? _idAlta;
   final _log = AppLogger.instance;
 
@@ -301,11 +305,16 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   // ---------------------------------------------------------------- GPS
 
+  /// Pide una lectura al GPS. Pueden quedar dos en vuelo (por ejemplo «Activar GPS» y, al volver de
+  /// los ajustes, el reintento automático): **gana la última que se pidió**, aunque la anterior
+  /// llegue después. Así el pin, el chip de precisión y el aviso de baja precisión salen de la misma
+  /// lectura, y es la que `registrar` guarda.
   Future<void> _leerGps() async {
     if (!ref.mounted) return;
+    final numero = ++_secuenciaGps;
     state = state.copyWith(gps: EstadoGps.buscando, borrarMotivo: true);
     final resultado = await ref.read(capturarPosicionGpsUseCaseProvider)(const NoParams());
-    if (!ref.mounted) return;
+    if (!ref.mounted || numero != _secuenciaGps) return;
     resultado.fold<void>(
       (falla) {
         final motivo = falla is FailureGpsNoDisponible ? falla.motivo : MotivoSinGps.sinSenal;
@@ -438,16 +447,18 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     _espera = Timer(ref.read(esperaPuntoAltaProvider), () => unawaited(_enriquecer(secuencia)));
   }
 
+  /// Pide la dirección (red) y la ciudad (dato local) del punto **a la vez y sin que una espere a la
+  /// otra**: la ciudad ya se conoce sin red, y «Registrar» no tiene que quedar esperando a que
+  /// Nominatim conteste o venza (hasta ~15 s con mala señal). Cada respuesta se descarta por su
+  /// cuenta si el punto ya cambió.
   Future<void> _enriquecer(int secuencia) async {
     final punto = state.punto;
     if (punto == null || !ref.mounted) return;
     final direccion = ref.read(geocodificadorInversoProvider).direccionDe(punto);
-    final propuesta = state.origenCiudad == OrigenCiudad.elegida ? null : _pedirPropuesta(punto);
+    if (state.origenCiudad != OrigenCiudad.elegida) unawaited(_proponerCiudad(punto, secuencia));
     final dir = await direccion;
     if (!ref.mounted || secuencia != _secuencia) return;
     _aplicarDireccion(dir);
-    if (propuesta == null) return;
-    _aplicarPropuesta(await propuesta, secuencia);
   }
 
   Future<void> _proponerCiudad(Coordenadas? punto, int secuencia) async =>

@@ -294,11 +294,17 @@ class _ZonaMapaState extends State<_ZonaMapa> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        MapaAlta(
-          parametros: widget.parametros,
-          estado: estado,
-          alMoverCentro: widget.alMover,
-          alTocar: widget.alTocar,
+        // Mientras se guarda el punto no se toca (el notifier ya ignora el movimiento): sin esto el
+        // mapa se podría arrastrar y, si el alta falla o devuelve candidatas, el pin quedaría lejos del
+        // punto que se registra.
+        IgnorePointer(
+          ignoring: estado.guardando,
+          child: MapaAlta(
+            parametros: widget.parametros,
+            estado: estado,
+            alMoverCentro: widget.alMover,
+            alTocar: widget.alTocar,
+          ),
         ),
         // El pin fijo en el centro: la punta queda justo en el centro del mapa.
         IgnorePointer(

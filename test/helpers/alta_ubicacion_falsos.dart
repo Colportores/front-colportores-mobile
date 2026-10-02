@@ -49,9 +49,15 @@ final class GpsFalso implements ProveedorGps, ActivadorGps {
   /// Qué hace «Activar GPS»: por ejemplo, cambiar [respuesta].
   void Function()? alActivar;
 
+  /// Si no es `null`, decide qué devuelve cada lectura según su número (la primera es la 1) en vez
+  /// de [respuesta]: sirve para tener dos lecturas en vuelo y completarlas en el orden que se quiera.
+  Future<Either<Failure, LecturaGps>> Function(int numero)? porLectura;
+
   @override
   Future<Either<Failure, LecturaGps>> posicionActual() async {
     lecturas++;
+    final decide = porLectura;
+    if (decide != null) return decide(lecturas);
     final espera = bloqueo;
     if (espera != null) await espera.future;
     return respuesta;
@@ -224,10 +230,14 @@ CandidataDuplicado candidata(
 }
 
 /// Overrides de Riverpod para probar el alta sin plugins, red ni base de datos.
+///
+/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesParaAltaSinFuente`,
+/// el de producción hoy): un provider no se puede sobrescribir dos veces en el mismo contenedor.
 List<Override> overridesAlta({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
+  CiudadesParaAlta? puertoCiudades,
   RepoAltaFalso? repo,
   Duration espera = const Duration(milliseconds: 20),
   DateTime? ahora,
@@ -239,7 +249,7 @@ List<Override> overridesAlta({
     proveedorGpsProvider.overrideWithValue(gpsFalso),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
-    ciudadesParaAltaProvider.overrideWithValue(ciudades ?? CiudadesFalsas()),
+    ciudadesParaAltaProvider.overrideWithValue(puertoCiudades ?? ciudades ?? CiudadesFalsas()),
     ubicacionRepositoryProvider.overrideWithValue(repo ?? RepoAltaFalso()),
     ubicadorZonaProvider.overrideWithValue(ubicadorSinZonas()),
     esperaPuntoAltaProvider.overrideWithValue(espera),
