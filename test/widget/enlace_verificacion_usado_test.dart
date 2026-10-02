@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,7 +95,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
-      expect(find.text('Te llevamos al login…'), findsOneWidget);
+      // Decisión de Cristian (02/10): con sesión, el texto dice a dónde se va de verdad.
+      expect(find.text('Te llevamos a tu inicio…'), findsOneWidget);
+      expect(find.text('Te llevamos al login…'), findsNothing);
+      expect(find.text('Ir a mi inicio ahora'), findsOneWidget);
+      expect(find.text('Ir al login ahora'), findsNothing);
       expect(find.byKey(const Key('verificacion_email_ir_login')), findsOneWidget);
       // No es la pantalla de «enlace vencido»: ya no se trata el enlace usado como expirado.
       expect(find.text('El enlace expiró'), findsNothing);
@@ -194,6 +199,9 @@ void main() {
 
       expect(remote.llamadasIniciarSesion, 1);
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
+      // El login en silencio dejó la sesión abierta: la salida es Inicio, no el login.
+      expect(find.text('Te llevamos a tu inicio…'), findsOneWidget);
+      expect(find.text('Te llevamos al login…'), findsNothing);
       expect(find.text('El enlace expiró'), findsNothing);
       expect(find.text('Ya verifiqué mi email'), findsNothing);
 
@@ -516,6 +524,80 @@ void main() {
       expect(find.byKey(const Key('verificacion_email_tarjeta')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_reenviar')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_volver_login')), findsNothing);
+    });
+
+    testWidgets('«ya verificado» con sesión: «Te llevamos a tu inicio…» y «Ir a mi inicio ahora»', (
+      tester,
+    ) async {
+      _pantalla(tester);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _clave});
+      final container = ProviderContainer(
+        overrides: [
+          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesion(email: _correo, password: _clave);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: const VerificacionEmailPage(
+              email: _correo,
+              estadoInicial: EstadoVerificacionEmail.yaVerificado,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Te llevamos a tu inicio…'), findsOneWidget);
+      expect(find.text('Te llevamos al login…'), findsNothing);
+      expect(find.text('Ir a mi inicio ahora'), findsOneWidget);
+
+      // Si la sesión termina con la pantalla abierta, el texto pasa a decir la verdad.
+      await container.read(sesionProvider.notifier).cerrarSesion();
+      await tester.pump();
+      expect(find.text('Te llevamos al login…'), findsOneWidget);
+      expect(find.text('Te llevamos a tu inicio…'), findsNothing);
+      expect(find.text('Ir al login ahora'), findsOneWidget);
+    });
+
+    testWidgets('«ya verificado» con sesión a 200 % de texto: sin overflow', (tester) async {
+      _pantalla(tester, const Size(360, 640));
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _clave});
+      final container = ProviderContainer(
+        overrides: [
+          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesion(email: _correo, password: _clave);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: const VerificacionEmailPage(
+              email: _correo,
+              estadoInicial: EstadoVerificacionEmail.yaVerificado,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ir a mi inicio ahora'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('«ya verificado»: doble toque en «Ir al login ahora» sale una sola vez', (
