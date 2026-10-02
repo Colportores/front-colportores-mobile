@@ -306,6 +306,28 @@ void main() {
       expect(repo.llamadas, contains('descartar'));
     });
 
+    test('tras «Empezar de nuevo» con la sesión restaurada (sin contraseña) pide la contraseña con '
+        'el texto de la interrupción y no toca nada', () async {
+      repo.dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+
+      final r = await inicializar(
+        password: null,
+        requiereEnvoltorio: true,
+        descartaInterrumpida: true,
+      );
+
+      expect(
+        r,
+        const Left<Failure, ResultadoInicializacionDb>(
+          FailurePasswordParaProteger(porPreparacionInterrumpida: true),
+        ),
+      );
+      expect(
+        (r as Left<Failure, ResultadoInicializacionDb>).value.mensaje,
+        'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu contraseña.',
+      );
+    });
+
     test('dado un archivo sin marca y con la DEK en el almacén, tras «Empezar de nuevo» elimina la '
         'DEK envuelta y el archivo parcial y parte de cero', () async {
       repo

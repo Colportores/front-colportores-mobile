@@ -171,7 +171,7 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     if (!r.mounted) return;
     if (falla != null) {
       state = PreparacionDbLocalFallida(
-        const FailurePasswordParaProteger(),
+        FailurePasswordParaProteger(porPreparacionInterrumpida: _descartaInterrumpida),
         errorRecuperacion: falla,
       );
       return;

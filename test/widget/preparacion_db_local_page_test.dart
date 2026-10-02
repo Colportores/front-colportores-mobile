@@ -900,6 +900,13 @@ void main() {
 
       await _tocar(tester, 'preparacion_db_empezar_interrumpida');
       expect(find.text('Confirmá tu contraseña'), findsOneWidget);
+      expect(
+        find.text(
+          'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu contraseña.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsNothing);
       expect(find.text('La preparación se cortó'), findsNothing);
       expect(_db.archivo, isTrue, reason: 'hasta tener la contraseña no se toca nada');
 

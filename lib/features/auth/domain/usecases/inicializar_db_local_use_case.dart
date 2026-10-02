@@ -241,7 +241,9 @@ final class InicializarDbLocalUseCase
     if (password == null && params.requiereEnvoltorio && !estado.envoltorioExiste) {
       // Abriría sin envoltorio una cuenta que tiene contraseña: primero, la contraseña.
       dek.destruir();
-      return const Left(FailurePasswordParaProteger());
+      return Left(
+        FailurePasswordParaProteger(porPreparacionInterrumpida: params.descartaInterrumpida),
+      );
     }
     if (password != null && !estado.envoltorioExiste) {
       // Login con contraseña en un equipo sin envoltorio: se arma ahora, así hay con qué recuperar
@@ -300,7 +302,9 @@ final class InicializarDbLocalUseCase
     // Una DB nueva de una cuenta con contraseña nace con envoltorio: sin la contraseña, no se toca
     // nada y se pide.
     if (params.password == null && params.requiereEnvoltorio) {
-      return const Left(FailurePasswordParaProteger());
+      return Left(
+        FailurePasswordParaProteger(porPreparacionInterrumpida: params.descartaInterrumpida),
+      );
     }
 
     // Las dos verificaciones van antes de tocar nada: si no se sigue, el dispositivo queda como

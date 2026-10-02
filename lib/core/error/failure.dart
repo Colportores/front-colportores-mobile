@@ -358,13 +358,20 @@ final class FailurePasswordNoAbreDatos extends Failure {
 /// almacén seguro falla solo queda "empezar de nuevo" (ADR-006). El texto es propio: para
 /// confirmar.
 final class FailurePasswordParaProteger extends Failure {
-  const FailurePasswordParaProteger()
+  /// Con [porPreparacionInterrumpida] el texto explica por qué se pide la contraseña (la app se
+  /// cerró en plena preparación y se empezó de nuevo con la sesión restaurada).
+  const FailurePasswordParaProteger({this.porPreparacionInterrumpida = false})
     : super(
-        mensaje:
-            'Para proteger tus datos, confirmá tu contraseña. Con ella vas a poder recuperarlos si '
-            'este teléfono pierde su clave.',
+        mensaje: porPreparacionInterrumpida
+            ? 'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu '
+                  'contraseña.'
+            : 'Para proteger tus datos, confirmá tu contraseña. Con ella vas a poder recuperarlos '
+                  'si este teléfono pierde su clave.',
         codigo: 'DB_FALTA_PASSWORD',
       );
+
+  /// Se pide por «Empezar de nuevo» tras una preparación interrumpida (A09).
+  final bool porPreparacionInterrumpida;
 }
 
 /// La sesión se cerró (o no había) mientras se preparaba la DB local: no se abre nada sin sesión.
