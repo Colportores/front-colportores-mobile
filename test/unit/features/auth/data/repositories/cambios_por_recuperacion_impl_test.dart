@@ -1,21 +1,57 @@
 // 15-A07: la única pista para distinguir un enlace ya usado de uno vencido es que este teléfono
-// acaba de completar un cambio con un enlace. Se guarda solo el instante, y vale una hora.
+// acaba de completar un cambio con un enlace. Se guarda solo el instante, y vale una hora. La hora
+// sale del reloj de la sesión (no vuelve atrás) y las operaciones salen en el orden en que se piden.
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 
+/// Almacén donde escribir y leer tardan, para probar el orden de las operaciones. La primera
+/// escritura tarda más que las siguientes: sin una cola, la segunda terminaría antes y la primera
+/// la pisaría.
+final class _AlmacenLento implements AlmacenSeguro {
+  final AlmacenSeguroEnMemoria _real = AlmacenSeguroEnMemoria();
+  int _escrituras = 0;
+
+  @override
+  Future<String?> leer(ClaveSegura clave) async {
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    return _real.leer(clave);
+  }
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) async {
+    await Future<void>.delayed(Duration(milliseconds: _escrituras++ == 0 ? 80 : 10));
+    return _real.escribir(clave, valor);
+  }
+
+  @override
+  Future<void> borrar(ClaveSegura clave) async {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    return _real.borrar(clave);
+  }
+
+  @override
+  Future<void> borrarTodo() => _real.borrarTodo();
+}
+
 void main() {
   late AlmacenSeguroEnMemoria almacen;
   late DateTime ahora;
+  late RelojSesionEnMemoria reloj;
   late CambiosPorRecuperacionEnAlmacen cambios;
+
+  CambiosPorRecuperacionEnAlmacen nuevo(AlmacenSeguro a, RelojSesionEnMemoria r) =>
+      CambiosPorRecuperacionEnAlmacen(a, r, logger: loggerMudo());
 
   setUp(() {
     almacen = AlmacenSeguroEnMemoria();
     ahora = DateTime.utc(2026, 10, 2, 12);
-    cambios = CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora, logger: loggerMudo());
+    reloj = RelojSesionEnMemoria(sistema: () => ahora);
+    cambios = nuevo(almacen, reloj);
   });
 
   test('sin ningún cambio anotado, no hay uno reciente', () async {
@@ -45,24 +81,51 @@ void main() {
       });
     }
 
-    test('si el reloj se atrasó (el cambio queda en el futuro), no cuenta', () async {
-      await cambios.registrar();
-
-      ahora = ahora.subtract(const Duration(minutes: 5));
+    test('una marca guardada que quedó en el futuro no cuenta', () async {
+      await almacen.escribir(
+        ClaveSegura.cambioPorRecuperacion,
+        ahora.add(const Duration(minutes: 5)).toIso8601String(),
+      );
 
       expect(await cambios.hayUnoReciente(), isFalse);
     });
+  });
+
+  group('el reloj de la sesión no vuelve atrás', () {
+    test('si el teléfono atrasa la hora, la marca no queda en el futuro ni se estira', () async {
+      await cambios.registrar();
+
+      // Pasan 30 minutos (el reloj de la sesión los ve) y después el teléfono atrasa la hora un día.
+      ahora = ahora.add(const Duration(minutes: 30));
+      expect(await cambios.hayUnoReciente(), isTrue);
+      ahora = ahora.subtract(const Duration(days: 1));
+
+      // El reloj sigue en las 12:30: la marca sigue vigente, pero no se estira con el atraso.
+      expect(await cambios.hayUnoReciente(), isTrue);
+      ahora = ahora.add(const Duration(days: 1, minutes: 31));
+      expect(await cambios.hayUnoReciente(), isFalse, reason: 'pasada la hora, vence igual');
+    });
+
+    test(
+      'registra con la hora que ya había visto el reloj aunque el sistema vaya atrasado',
+      () async {
+        await reloj.registrar(ahora.add(const Duration(hours: 3)));
+        ahora = ahora.subtract(const Duration(days: 2));
+
+        await cambios.registrar();
+
+        expect(almacen.contenido, {
+          ClaveSegura.cambioPorRecuperacion: DateTime.utc(2026, 10, 2, 15).toIso8601String(),
+        });
+      },
+    );
   });
 
   test('lo lee una app que se abre de nuevo (arranque en frío)', () async {
     await cambios.registrar();
     ahora = ahora.add(const Duration(minutes: 10));
 
-    final reabierto = CambiosPorRecuperacionEnAlmacen(
-      almacen,
-      ahora: () => ahora,
-      logger: loggerMudo(),
-    );
+    final reabierto = nuevo(almacen, RelojSesionEnMemoria(sistema: () => ahora));
 
     expect(await reabierto.hayUnoReciente(), isTrue);
   });
@@ -73,17 +136,79 @@ void main() {
     expect(await cambios.hayUnoReciente(), isFalse);
   });
 
+  group('olvidar (borrar los datos locales)', () {
+    test('borra la marca del almacén y de la memoria: no queda ningún rastro', () async {
+      await cambios.registrar();
+      expect(await cambios.hayUnoReciente(), isTrue);
+
+      await cambios.olvidar();
+
+      expect(almacen.contenido, isEmpty);
+      expect(await cambios.hayUnoReciente(), isFalse, reason: '_enMemoria también se borra');
+    });
+
+    test('sin nada anotado no falla', () async {
+      await expectLater(cambios.olvidar(), completes);
+      expect(await cambios.hayUnoReciente(), isFalse);
+    });
+
+    test('con el almacén roto no lanza (el borrado fallido queda en el log)', () async {
+      await cambios.registrar();
+      almacen.simularFalla = true;
+
+      await expectLater(cambios.olvidar(), completes);
+    });
+
+    test('un registro y un olvido seguidos, sin esperar: queda olvidado', () async {
+      final lento = _AlmacenLento();
+      final c = nuevo(lento, reloj);
+
+      final registro = c.registrar();
+      final olvido = c.olvidar();
+      await Future.wait([registro, olvido]);
+
+      expect(await c.hayUnoReciente(), isFalse);
+      expect(await lento.leer(ClaveSegura.cambioPorRecuperacion), isNull);
+    });
+  });
+
+  group('en el orden en que se piden', () {
+    test('un otp_expired que llega justo después del cambio ya ve la marca', () async {
+      final lento = _AlmacenLento();
+      final c = nuevo(lento, reloj);
+
+      final registro = c.registrar();
+      final consulta = c.hayUnoReciente();
+      await registro;
+
+      expect(await consulta, isTrue);
+    });
+
+    test('dos registros seguidos, el primero con la escritura más lenta: gana el último', () async {
+      final lento = _AlmacenLento();
+      var llamadas = 0;
+      final base = ahora;
+      final c = nuevo(
+        lento,
+        RelojSesionEnMemoria(sistema: () => base.add(Duration(minutes: llamadas++))),
+      );
+
+      await Future.wait([c.registrar(), c.registrar()]);
+
+      expect(
+        await lento.leer(ClaveSegura.cambioPorRecuperacion),
+        base.add(const Duration(minutes: 1)).toIso8601String(),
+      );
+    });
+  });
+
   group('con el almacén roto', () {
     setUp(() => almacen.simularFalla = true);
 
     test('registrar y leer no lanzan', () async {
       await expectLater(cambios.registrar(), completes);
       almacen.simularFalla = true;
-      final otro = CambiosPorRecuperacionEnAlmacen(
-        almacen,
-        ahora: () => ahora,
-        logger: loggerMudo(),
-      );
+      final otro = nuevo(almacen, reloj);
 
       expect(await otro.hayUnoReciente(), isFalse);
     });
@@ -95,14 +220,25 @@ void main() {
     });
   });
 
-  test('CambiosPorRecuperacionEnMemoria sigue la misma regla', () async {
-    final memoria = CambiosPorRecuperacionEnMemoria(ahora: () => ahora);
-    expect(await memoria.hayUnoReciente(), isFalse);
+  group('CambiosPorRecuperacionEnMemoria sigue la misma regla', () {
+    test('ventana de una hora', () async {
+      final memoria = CambiosPorRecuperacionEnMemoria(ahora: () => ahora);
+      expect(await memoria.hayUnoReciente(), isFalse);
 
-    await memoria.registrar();
-    expect(await memoria.hayUnoReciente(), isTrue);
+      await memoria.registrar();
+      expect(await memoria.hayUnoReciente(), isTrue);
 
-    ahora = ahora.add(const Duration(minutes: 61));
-    expect(await memoria.hayUnoReciente(), isFalse);
+      ahora = ahora.add(const Duration(minutes: 61));
+      expect(await memoria.hayUnoReciente(), isFalse);
+    });
+
+    test('olvidar la borra', () async {
+      final memoria = CambiosPorRecuperacionEnMemoria(ahora: () => ahora);
+      await memoria.registrar();
+
+      await memoria.olvidar();
+
+      expect(await memoria.hayUnoReciente(), isFalse);
+    });
   });
 }

@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_m
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
@@ -117,18 +118,27 @@ void main() {
         'contando al reabrirla dentro de la hora, y no pasada', (tester) async {
       final almacen = AlmacenSeguroEnMemoria();
       var ahora = DateTime.utc(2026, 10, 2, 12);
-      final antes = CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora);
+      final antes = CambiosPorRecuperacionEnAlmacen(
+        almacen,
+        RelojSesionEnMemoria(sistema: () => ahora),
+      );
       await antes.registrar();
       expect(almacen.contenido.keys, [ClaveSegura.cambioPorRecuperacion]);
 
       // La app se cierra y se reabre: otra instancia, el mismo almacén, sin memoria compartida.
       ahora = ahora.add(const Duration(minutes: 59));
-      final despues = CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora);
+      final despues = CambiosPorRecuperacionEnAlmacen(
+        almacen,
+        RelojSesionEnMemoria(sistema: () => ahora),
+      );
       expect(await despues.hayUnoReciente(), isTrue);
 
       ahora = ahora.add(const Duration(minutes: 2));
       expect(
-        await CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora).hayUnoReciente(),
+        await CambiosPorRecuperacionEnAlmacen(
+          almacen,
+          RelojSesionEnMemoria(sistema: () => ahora),
+        ).hayUnoReciente(),
         isFalse,
       );
     });
@@ -138,7 +148,10 @@ void main() {
     ) async {
       final almacen = AlmacenSeguroEnMemoria();
       final ahora = DateTime.utc(2026, 10, 2, 12);
-      final cambios = CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora);
+      final cambios = CambiosPorRecuperacionEnAlmacen(
+        almacen,
+        RelojSesionEnMemoria(sistema: () => ahora),
+      );
       expect(await cambios.hayUnoReciente(), isFalse);
 
       await almacen.escribir(ClaveSegura.cambioPorRecuperacion, 'no es una fecha');

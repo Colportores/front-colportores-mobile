@@ -74,9 +74,10 @@ void main() {
           await repo.actualizarPassword('NuevaClave1'),
           const Left<Failure, Unit>(FailureEnlaceRecuperacionVencido()),
         );
+        // No afirma «expiró»: Supabase no distingue vencido de usado (decisión del 02/10).
         expect(
           const FailureEnlaceRecuperacionVencido().mensaje,
-          'El enlace expiró. Solicitá uno nuevo.',
+          'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.',
         );
       },
     );

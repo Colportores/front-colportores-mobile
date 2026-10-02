@@ -14,14 +14,17 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_local_dat
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
@@ -107,6 +110,19 @@ final class _AlmacenLento implements AlmacenSeguro {
 
   @override
   Future<void> borrarTodo() async => contenido = null;
+}
+
+/// Un correo que, contra su contrato, lanza al borrar: el cierre que ya está fallando no puede
+/// perder el error original por eso.
+final class _CorreoQueExplotaAlBorrar implements UltimoCorreoRepository {
+  @override
+  Future<String?> leer() async => 'ana@example.com';
+
+  @override
+  Future<void> guardar(String email) async {}
+
+  @override
+  Future<void> borrar() async => throw StateError('el almacén no responde');
 }
 
 class _SalidaEnMemoria extends LogOutput {
@@ -659,6 +675,7 @@ void main() {
     late _LocalQueFalla local;
     late UltimoCorreoEnMemoria correo;
     late _DatosQueBorran datos;
+    late CambiosPorRecuperacionEnMemoria cambios;
     late ProviderContainer container;
 
     ProviderContainer crear() => ProviderContainer(
@@ -668,6 +685,7 @@ void main() {
         databaseHelperProvider.overrideWithValue(helper),
         ultimoCorreoRepositoryProvider.overrideWithValue(correo),
         datosLocalesRepositoryProvider.overrideWithValue(datos),
+        cambiosPorRecuperacionProvider.overrideWithValue(cambios),
       ],
     );
 
@@ -682,6 +700,7 @@ void main() {
       local = _LocalQueFalla();
       correo = UltimoCorreoEnMemoria();
       datos = _DatosQueBorran();
+      cambios = CambiosPorRecuperacionEnMemoria();
       container = crear();
     });
 
@@ -872,5 +891,121 @@ void main() {
         expect(await correo.leer(), 'ana@example.com');
       },
     );
+
+    test(
+      'el cierre que hace la app por la recuperación de contraseña conserva el correo',
+      () async {
+        await entrar();
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .cerrarSesion(conservarCorreo: true);
+
+        expect(resultado.isRight(), isTrue);
+        expect(container.read(sesionProvider).value, isNull, reason: 'la sesión se cerró');
+        expect(await correo.leer(), 'ana@example.com');
+      },
+    );
+
+    test('con conservarCorreo, un cierre que falla tampoco toca el correo', () async {
+      await entrar();
+      local.explotar = true;
+
+      final resultado = await container
+          .read(sesionProvider.notifier)
+          .cerrarSesion(conservarCorreo: true);
+
+      expect(resultado.isLeft(), isTrue);
+      expect(await correo.leer(), 'ana@example.com');
+    });
+
+    group('cuando el use case de cerrar sesión lanza pero la sesión se cierra igual', () {
+      Future<ProviderContainer> conUseCaseQueLanza(UltimoCorreoRepository repoCorreo) async {
+        final repo = _MockAuthRepository();
+        when(repo.sesionActual).thenAnswer((_) async => const Right(null));
+        when(repo.reintentarRevocacionPendiente).thenAnswer((_) async => const Right(unit));
+        when(() => repo.expiraciones).thenAnswer((_) => const Stream.empty());
+        when(repo.cerrarSesion).thenThrow(const _FallaDeAlmacen());
+        final c = ProviderContainer(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repo),
+            databaseHelperProvider.overrideWithValue(helper),
+            ultimoCorreoRepositoryProvider.overrideWithValue(repoCorreo),
+          ],
+        );
+        addTearDown(c.dispose);
+        await c.read(sesionProvider.future);
+        return c;
+      }
+
+      test('el correo se borra igual y el error original se propaga', () async {
+        await correo.guardar('ana@example.com');
+        final c = await conUseCaseQueLanza(correo);
+
+        await expectLater(
+          c.read(sesionProvider.notifier).cerrarSesion(),
+          throwsA(isA<_FallaDeAlmacen>()),
+        );
+
+        expect(await correo.leer(), isNull);
+        expect(c.read(sesionProvider).value, isNull);
+      });
+
+      test('con conservarCorreo, el correo queda', () async {
+        await correo.guardar('ana@example.com');
+        final c = await conUseCaseQueLanza(correo);
+
+        await expectLater(
+          c.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true),
+          throwsA(isA<_FallaDeAlmacen>()),
+        );
+
+        expect(await correo.leer(), 'ana@example.com');
+      });
+
+      test(
+        'si borrar el correo también falla, no tapa el error original ni deja la DB abierta',
+        () async {
+          final c = await conUseCaseQueLanza(_CorreoQueExplotaAlBorrar());
+          final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+          await c.read(dbLocalProvider.notifier).abrir(clave);
+
+          await expectLater(
+            c.read(sesionProvider.notifier).cerrarSesion(),
+            throwsA(isA<_FallaDeAlmacen>()),
+          );
+
+          expect(helper.abierta, isFalse);
+          expect(clave.destruida, isTrue);
+          expect(c.read(sesionProvider).value, isNull);
+        },
+      );
+    });
+
+    test('borrar los datos locales también olvida la marca de «cambié la contraseña con un '
+        'enlace» que la corrida tiene en memoria', () async {
+      await entrar();
+      await cambios.registrar();
+      expect(await cambios.hayUnoReciente(), isTrue);
+
+      final resultado = await container
+          .read(sesionProvider.notifier)
+          .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+      expect(resultado.isRight(), isTrue);
+      expect(await cambios.hayUnoReciente(), isFalse);
+    });
+
+    test('si el borrado de datos falla, la marca se conserva (el usuario sigue adentro)', () async {
+      await entrar();
+      await cambios.registrar();
+      datos.respuesta = const Left(FailureDatosLocalesIlegibles());
+
+      await container
+          .read(sesionProvider.notifier)
+          .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+      expect(await cambios.hayUnoReciente(), isTrue);
+    });
   });
 }
