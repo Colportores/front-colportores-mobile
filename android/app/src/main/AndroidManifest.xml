@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Red. Flutter la declara solo en los manifiestos de debug y profile (para el hot reload);
+         sin esta línea una build de release no sale a internet: ni Supabase, ni los mosaicos del
+         mapa del alta de ubicación, ni la dirección del punto. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- GPS del alta de ubicación (HU-UBI-001). Solo mientras la app está abierta: no hay
          ubicación en segundo plano. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
