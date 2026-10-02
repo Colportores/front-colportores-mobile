@@ -95,14 +95,14 @@ void main() {
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
         await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-        // Captura fuera del repo (build/qa_capturas está en .gitignore).
+        // Captura fuera del repo (.dart_tool está en .gitignore).
         await tester.runAsync(() async {
           final render = tester.renderObject<RenderRepaintBoundary>(
             find.byType(RepaintBoundary).first,
           );
           final img = await render.toImage();
           final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
-          final dir = Directory('build/qa_capturas')..createSync(recursive: true);
+          final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
           File(
             '${dir.path}/264_a07_${tam.width.toInt()}x${tam.height.toInt()}_$texto.png',
           ).writeAsBytesSync(bytes.buffer.asUint8List());
