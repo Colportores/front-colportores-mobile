@@ -23,11 +23,15 @@ abstract final class TextosConfirmacionRecuperacion {
   /// "Cambio exitoso": la pantalla de éxito (15-A09) antes de volver al login.
   static const exito = 'Contraseña actualizada. Iniciá sesión.';
 
-  /// 15-A06, enlace que Supabase rechazó con `otp_expired` y que **no** se puede dar por usado:
-  /// el error llega sin el enlace, así que la app no sabe si venció o se usó en otro teléfono. No
-  /// afirma «expiró»: dice las dos cosas y guía (decisión del orquestador, 02/10, sobre «Error -
-  /// token expirado» de HU-AUTH-005). El mismo texto de `FailureEnlaceRecuperacionVencido`.
+  /// 15-A06, el único enlace que no sirve: Supabase manda el mismo `otp_expired` para uno vencido y
+  /// para uno ya usado, y el error llega sin el enlace, así que la app no adivina cuál de los dos
+  /// es. Dice las dos cosas y guía (decisión de Cristian, 02/10, sobre «Error - token expirado» y
+  /// «Error - token reutilizado» de HU-AUTH-005). El mismo texto de
+  /// `FailureEnlaceRecuperacionVencido`.
   static const vencido = 'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.';
+
+  /// Rótulo de 15-A06: no afirma «vencido» (decisión del orquestador, 02/10).
+  static const rotuloEnlaceNoValido = 'ENLACE NO VÁLIDO';
 
   /// Para `mensajePara`, cuando el enlace no se pudo canjear por falta de red: "Necesitás conexión
   /// para abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el correo." (propio, sin
@@ -44,10 +48,6 @@ abstract final class TextosConfirmacionRecuperacion {
       'Al guardarla se cierran tus sesiones en todos tus teléfonos: vas a entrar de nuevo con la '
       'contraseña nueva.';
   static const sesionesConBase = 'Se cierran tus sesiones en todos tus teléfonos.';
-
-  /// 15-A07 (HU-AUTH-005, «Error -token reutilizado»).
-  static const usadoTitulo = 'Este enlace ya fue utilizado';
-  static const usadoDetalle = 'Si ya cambiaste la contraseña, entrá con la nueva.';
 
   /// 15-A05.
   static const errorInesperado = 'No pudimos guardar la contraseña. Probá de nuevo.';
@@ -67,9 +67,10 @@ abstract final class TextosConfirmacionRecuperacion {
 ///   sin tarjetas «Restaurar»/«Borrar»: decisión de Cristian 30/09) y revoca todas las sesiones; la
 ///   pantalla muestra «Contraseña actualizada. Iniciá sesión.» con el botón al login (15-A09).
 /// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): 15-A06,
-///   «Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.» (no afirma «expiró»: sin la
-///   marca del cambio, la app no sabe cuál de los dos pasó), con el botón para pedir otro
-///   (HU-AUTH-004) y volver al login.
+///   «Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.» con el rótulo «ENLACE NO
+///   VÁLIDO», el botón para pedir otro (HU-AUTH-004) y volver al login. Una sola pantalla para el
+///   enlace vencido y el ya usado: Supabase los rechaza igual y la app no adivina cuál es (decisión
+///   de Cristian, 02/10; el canvas dibuja además 15-A07 «ya fue utilizado», que se quitó).
 /// - Con [EnlaceRecuperacion.sinConexion]: que hace falta conexión y que el enlace se vuelve a
 ///   abrir desde el correo (sigue sirviendo).
 ///
@@ -77,11 +78,8 @@ abstract final class TextosConfirmacionRecuperacion {
 /// arranque lo dejaría adentro sin haber puesto ninguna contraseña. Mientras guarda no se puede
 /// salir (el "atrás" dejaría el cambio corriendo sin nadie que muestre cómo terminó).
 ///
-/// - Con [EnlaceRecuperacion.usado] (15-A07): «Este enlace ya fue utilizado», que ya cambió la
-///   contraseña y entre con la nueva, y el botón al login (no ofrece pedir otro).
-///
-/// 15-A06 y 15-A07 son como el canvas: el contenido centrado con el anillo arriba, las salidas al
-/// pie y **sin flecha de atrás** (se sale por el botón o por el atrás del sistema).
+/// 15-A06 es como el canvas: el contenido centrado con el anillo arriba, las salidas al pie y
+/// **sin flecha de atrás** (se sale por los botones o por el atrás del sistema).
 class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
   const ConfirmarRecuperacionPasswordPage({super.key, required this.enlace});
 
@@ -270,8 +268,8 @@ class _ConfirmarRecuperacionPasswordPageState
     final theme = Theme.of(context);
     const paddingHorizontal = 30.0;
     final formulario = !_vencido && widget.enlace == EnlaceRecuperacion.valido;
-    // 15-A06 y 15-A07 tienen su propio armado: centrado, sin flecha, con las salidas al pie.
-    final enlaceInservible = !_terminado && (_vencido || widget.enlace == EnlaceRecuperacion.usado);
+    // 15-A06 tiene su propio armado: centrado, sin flecha, con las salidas al pie.
+    final enlaceInservible = !_terminado && _vencido;
 
     return PopScope(
       // Guardando no se sale; terminado, el atrás lleva al login (no queda el formulario).
@@ -331,10 +329,9 @@ class _ConfirmarRecuperacionPasswordPageState
     );
   }
 
-  /// 15-A06 (vencido) y 15-A07 (ya usado), como el canvas: el contenido centrado en lo que sobra
-  /// encima de las salidas, que van pegadas al pie. Sin flecha de atrás.
+  /// 15-A06 (el enlace no sirve: venció o ya se usó), como el canvas: el contenido centrado en lo
+  /// que sobra encima de las salidas, que van pegadas al pie. Sin flecha de atrás.
   Widget _enlaceInservible(ThemeData theme) {
-    final usado = widget.enlace == EnlaceRecuperacion.usado;
     final colores = theme.extension<ColoresColportaje>()!;
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
@@ -348,11 +345,11 @@ class _ConfirmarRecuperacionPasswordPageState
               const SizedBox.shrink(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
-                child: usado ? _usadoContenido(theme, colores) : _vencidoContenido(theme, colores),
+                child: _vencidoContenido(theme, colores),
               ),
               Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, usado ? 28 : 18),
-                child: usado ? _usadoSalidas(context) : _vencidoSalidas(context),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                child: _vencidoSalidas(context),
               ),
             ],
           ),
@@ -405,7 +402,7 @@ class _ConfirmarRecuperacionPasswordPageState
     ],
   );
 
-  /// Título de 15-A06 y 15-A07: serif de 28 con interlineado 1,2, como el canvas.
+  /// Título de 15-A06: serif de 28 con interlineado 1,2, como el canvas.
   TextStyle? _tituloEnlace(ThemeData theme) =>
       theme.textTheme.headlineMedium?.copyWith(fontSize: 28, height: 1.2);
 
@@ -419,7 +416,10 @@ class _ConfirmarRecuperacionPasswordPageState
         colorBorde: _oro,
         colorIcono: theme.colorScheme.onSurface,
       ),
-      Text('ENLACE VENCIDO', style: theme.textTheme.labelSmall?.copyWith(color: colores.gris)),
+      Text(
+        TextosConfirmacionRecuperacion.rotuloEnlaceNoValido,
+        style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+      ),
       Semantics(
         liveRegion: true,
         child: Text(
@@ -448,42 +448,6 @@ class _ConfirmarRecuperacionPasswordPageState
         child: const Text('Volver al login'),
       ),
     ],
-  );
-
-  /// 15-A07, la parte del medio: anillo con el ⊘, el título y que entre con la nueva.
-  Widget _usadoContenido(ThemeData theme, ColoresColportaje colores) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: 16,
-    children: [
-      _Anillo(
-        icono: Icons.block,
-        colorBorde: colores.gris,
-        colorIcono: theme.colorScheme.onSurfaceVariant,
-      ),
-      Semantics(
-        liveRegion: true,
-        child: Text(
-          TextosConfirmacionRecuperacion.usadoTitulo,
-          key: const Key('confirmar_recuperacion_usado'),
-          style: _tituloEnlace(theme),
-        ),
-      ),
-      Text(
-        TextosConfirmacionRecuperacion.usadoDetalle,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          height: 1.5,
-        ),
-      ),
-    ],
-  );
-
-  /// 15-A07, al pie: solo volver al login (no ofrece pedir otro enlace).
-  Widget _usadoSalidas(BuildContext context) => FilledButton(
-    key: const Key('confirmar_recuperacion_ir_al_login'),
-    onPressed: _irAlLogin,
-    style: _estiloTextoGrande(context),
-    child: const Text('Volver al login'),
   );
 
   Widget _sinConexionContenido(ThemeData theme) => Column(
@@ -661,8 +625,8 @@ class _Insignia extends StatelessWidget {
   }
 }
 
-/// Anillo con un ícono adentro (enlace vencido 15-A06, ya usado 15-A07): borde de 1,5 y sin
-/// relleno, como el canvas. Decorativo: el título dice lo mismo.
+/// Anillo con un ícono adentro (enlace que no sirve, 15-A06): borde de 1,5 y sin relleno, como el
+/// canvas. Decorativo: el título dice lo mismo.
 class _Anillo extends StatelessWidget {
   const _Anillo({required this.icono, required this.colorBorde, required this.colorIcono});
 

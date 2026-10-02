@@ -17,10 +17,8 @@ import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
-import 'features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
-import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,11 +70,6 @@ Future<void> main() async {
         // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o
         // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
-        // Cuándo se completó el último cambio con un enlace de recuperación: distingue «ya usado»
-        // de «vencido» (15-A07). La hora sale del reloj de la sesión, que no vuelve atrás.
-        cambiosPorRecuperacionProvider.overrideWithValue(
-          CambiosPorRecuperacionEnAlmacen(almacenSeguro, relojSesion),
-        ),
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.
         ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacenSeguro)),

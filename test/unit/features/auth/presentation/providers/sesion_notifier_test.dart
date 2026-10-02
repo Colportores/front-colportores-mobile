@@ -14,7 +14,6 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_local_dat
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
-import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
@@ -24,7 +23,6 @@ import 'package:colportores_mobile/features/auth/domain/repositories/datos_local
 import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
-import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
@@ -675,7 +673,6 @@ void main() {
     late _LocalQueFalla local;
     late UltimoCorreoEnMemoria correo;
     late _DatosQueBorran datos;
-    late CambiosPorRecuperacionEnMemoria cambios;
     late ProviderContainer container;
 
     ProviderContainer crear() => ProviderContainer(
@@ -685,7 +682,6 @@ void main() {
         databaseHelperProvider.overrideWithValue(helper),
         ultimoCorreoRepositoryProvider.overrideWithValue(correo),
         datosLocalesRepositoryProvider.overrideWithValue(datos),
-        cambiosPorRecuperacionProvider.overrideWithValue(cambios),
       ],
     );
 
@@ -700,7 +696,6 @@ void main() {
       local = _LocalQueFalla();
       correo = UltimoCorreoEnMemoria();
       datos = _DatosQueBorran();
-      cambios = CambiosPorRecuperacionEnMemoria();
       container = crear();
     });
 
@@ -980,32 +975,6 @@ void main() {
           expect(c.read(sesionProvider).value, isNull);
         },
       );
-    });
-
-    test('borrar los datos locales también olvida la marca de «cambié la contraseña con un '
-        'enlace» que la corrida tiene en memoria', () async {
-      await entrar();
-      await cambios.registrar();
-      expect(await cambios.hayUnoReciente(), isTrue);
-
-      final resultado = await container
-          .read(sesionProvider.notifier)
-          .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
-
-      expect(resultado.isRight(), isTrue);
-      expect(await cambios.hayUnoReciente(), isFalse);
-    });
-
-    test('si el borrado de datos falla, la marca se conserva (el usuario sigue adentro)', () async {
-      await entrar();
-      await cambios.registrar();
-      datos.respuesta = const Left(FailureDatosLocalesIlegibles());
-
-      await container
-          .read(sesionProvider.notifier)
-          .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
-
-      expect(await cambios.hayUnoReciente(), isTrue);
     });
   });
 }

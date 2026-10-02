@@ -6,10 +6,8 @@ import '../../../../core/usecases/use_case.dart';
 import '../../data/datasources/auth_remote_data_source_supabase.dart';
 import '../../data/datasources/fakes/recuperacion_password_en_memoria.dart';
 import '../../data/datasources/recuperacion_password_remote_data_source.dart';
-import '../../data/repositories/cambios_por_recuperacion_impl.dart';
 import '../../data/repositories/recuperacion_password_repository_impl.dart';
 import '../../domain/entities/enlace_recuperacion.dart';
-import '../../domain/repositories/cambios_por_recuperacion.dart';
 import '../../domain/repositories/recuperacion_password_repository.dart';
 import '../../domain/usecases/abandonar_recuperacion_password_use_case.dart';
 import '../../domain/usecases/confirmar_recuperacion_password_use_case.dart';
@@ -29,18 +27,9 @@ RecuperacionPasswordRemoteDataSource recuperacionPasswordRemoteDataSource(Ref re
     ? AuthRemoteDataSourceSupabase(Supabase.instance.client.auth)
     : RecuperacionPasswordEnMemoria();
 
-/// Cuándo se completó el último cambio con un enlace (para distinguir uno ya usado de uno vencido,
-/// 15-A07). En el equipo, `main.dart` lo sobreescribe con el almacén seguro; por defecto (tests),
-/// en memoria.
-@Riverpod(keepAlive: true)
-CambiosPorRecuperacion cambiosPorRecuperacion(Ref ref) => CambiosPorRecuperacionEnMemoria();
-
 @Riverpod(keepAlive: true)
 RecuperacionPasswordRepository recuperacionPasswordRepository(Ref ref) =>
-    RecuperacionPasswordRepositoryImpl(
-      ref.watch(recuperacionPasswordRemoteDataSourceProvider),
-      cambios: ref.watch(cambiosPorRecuperacionProvider),
-    );
+    RecuperacionPasswordRepositoryImpl(ref.watch(recuperacionPasswordRemoteDataSourceProvider));
 
 /// `keepAlive` porque la raíz de la app se suscribe una sola vez, para toda su vida, a
 /// [enlacesRecuperacionProvider] (igual que a los errores de verificación de email).

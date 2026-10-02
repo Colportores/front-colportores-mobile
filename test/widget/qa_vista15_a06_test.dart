@@ -1,18 +1,14 @@
-// QA de la vista 15, artboard 15-A07 «enlace ya usado» (HU-AUTH-005, #247). Complementa
-// `confirmar_recuperacion_password_page_test.dart`: A07 en los tamaños del checklist (360x640 y
-// 412x915, texto al 100 % y al 200 %), la pista que sobrevive a reiniciar la app (almacén seguro
-// real, no en memoria) y que A07 nunca ofrece pedir otro enlace.
+// QA de la vista 15, artboard 15-A06 «enlace que no sirve» (HU-AUTH-005, #247). Complementa
+// `confirmar_recuperacion_password_page_test.dart`: A06 en los tamaños del checklist (360x640 y
+// 412x915, texto al 100 % y al 200 %) y el atrás del sistema dentro de la app. Una sola pantalla
+// para el enlace vencido y el ya usado (decisión de Cristian, 02/10): 15-A07 se quitó.
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/app.dart';
-import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
-import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
-import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
-import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -26,8 +22,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/db_local_repository_en_memoria.dart';
 
-const _titulo = 'Este enlace ya fue utilizado';
-const _detalle = 'Si ya cambiaste la contraseña, entrá con la nueva.';
+const _titulo = TextosConfirmacionRecuperacion.vencido;
+const _rotulo = TextosConfirmacionRecuperacion.rotuloEnlaceNoValido;
 
 void _pantalla(WidgetTester tester, Size tam, double texto) {
   tester.view
@@ -38,6 +34,13 @@ void _pantalla(WidgetTester tester, Size tam, double texto) {
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 }
 
+/// Relación de contraste de WCAG entre dos colores opacos.
+double _contraste(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return (la > lb ? la + 0.05 : lb + 0.05) / (la > lb ? lb + 0.05 : la + 0.05);
+}
+
 Future<void> _cargarFuentes(WidgetTester tester) => tester.runAsync(() async {
   for (final f in ['Inter', 'SourceSerif4', 'JetBrainsMono']) {
     final bytes = File('assets/fonts/$f.ttf').readAsBytesSync();
@@ -46,7 +49,7 @@ Future<void> _cargarFuentes(WidgetTester tester) => tester.runAsync(() async {
   }
 });
 
-Future<void> _montarA07(WidgetTester tester) => tester.pumpWidget(
+Future<void> _montarA06(WidgetTester tester) => tester.pumpWidget(
   ProviderScope(
     overrides: [
       authRemoteDataSourceProvider.overrideWithValue(
@@ -60,13 +63,13 @@ Future<void> _montarA07(WidgetTester tester) => tester.pumpWidget(
     ],
     child: MaterialApp(
       theme: temaClaro(),
-      home: const ConfirmarRecuperacionPasswordPage(enlace: EnlaceRecuperacion.usado),
+      home: const ConfirmarRecuperacionPasswordPage(enlace: EnlaceRecuperacion.vencido),
     ),
   ),
 );
 
 void main() {
-  group('QA #247 — 15-A07 en los tamaños del checklist', () {
+  group('QA #247 — 15-A06 en los tamaños del checklist', () {
     for (final (tam, texto) in const [
       (Size(360, 640), 1.0),
       (Size(360, 640), 2.0),
@@ -74,27 +77,38 @@ void main() {
       (Size(412, 915), 2.0),
     ]) {
       testWidgets('${tam.width.toInt()}x${tam.height.toInt()} a ${(texto * 100).toInt()} %: textos '
-          'enteros, una sola salida, sin overflow y accesible', (tester) async {
+          'enteros, las dos salidas, sin overflow y accesible', (tester) async {
         _pantalla(tester, tam, texto);
         final semantica = tester.ensureSemantics();
         await _cargarFuentes(tester);
-        await _montarA07(tester);
+        await _montarA06(tester);
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
+        expect(find.text(_rotulo), findsOneWidget);
         expect(find.text(_titulo), findsOneWidget);
-        expect(find.text(_detalle), findsOneWidget);
+        expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
         expect(find.text('Volver al login'), findsOneWidget);
-        expect(find.text('Solicitar un enlace nuevo'), findsNothing);
         expect(find.textContaining('expiró'), findsNothing);
+        expect(find.textContaining('ya fue utilizado'), findsNothing);
         expect(find.byType(TextField), findsNothing, reason: 'no hay formulario');
-        for (final t in [_titulo, _detalle]) {
+        for (final t in [_rotulo, _titulo]) {
           expect(tester.getRect(find.text(t)).right, lessThanOrEqualTo(tam.width));
         }
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        if (texto >= 2) {
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+        } else {
+          // A 10 px la guía de Flutter mide el borde suavizado de las letras y da ~1,4 aunque el
+          // color cumple: el rótulo se mide por sus colores, y la guía completa corre al 200 %.
+          final fondo = Theme.of(tester.element(find.byType(Scaffold))).scaffoldBackgroundColor;
+          for (final t in [_rotulo, _titulo]) {
+            final color = tester.widget<Text>(find.text(t)).style!.color!;
+            expect(_contraste(color, fondo), greaterThanOrEqualTo(4.5), reason: t);
+          }
+        }
 
         // Captura fuera del repo (.dart_tool está en .gitignore).
         await tester.runAsync(() async {
@@ -105,7 +119,7 @@ void main() {
           final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
           final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
           File(
-            '${dir.path}/264_a07_${tam.width.toInt()}x${tam.height.toInt()}_$texto.png',
+            '${dir.path}/264_a06_${tam.width.toInt()}x${tam.height.toInt()}_$texto.png',
           ).writeAsBytesSync(bytes.buffer.asUint8List());
         });
         semantica.dispose();
@@ -113,57 +127,8 @@ void main() {
     }
   });
 
-  group('QA #247 — la pista sobrevive a reiniciar la app', () {
-    testWidgets('con el almacén seguro real: el cambio hecho antes de cerrar la app sigue '
-        'contando al reabrirla dentro de la hora, y no pasada', (tester) async {
-      final almacen = AlmacenSeguroEnMemoria();
-      var ahora = DateTime.utc(2026, 10, 2, 12);
-      final antes = CambiosPorRecuperacionEnAlmacen(
-        almacen,
-        RelojSesionEnMemoria(sistema: () => ahora),
-      );
-      await antes.registrar();
-      expect(almacen.contenido.keys, [ClaveSegura.cambioPorRecuperacion]);
-
-      // La app se cierra y se reabre: otra instancia, el mismo almacén, sin memoria compartida.
-      ahora = ahora.add(const Duration(minutes: 59));
-      final despues = CambiosPorRecuperacionEnAlmacen(
-        almacen,
-        RelojSesionEnMemoria(sistema: () => ahora),
-      );
-      expect(await despues.hayUnoReciente(), isTrue);
-
-      ahora = ahora.add(const Duration(minutes: 2));
-      expect(
-        await CambiosPorRecuperacionEnAlmacen(
-          almacen,
-          RelojSesionEnMemoria(sistema: () => ahora),
-        ).hayUnoReciente(),
-        isFalse,
-      );
-    });
-
-    testWidgets('sin la marca (se borró el almacén o nunca hubo) el enlace vuelve «vencido»', (
-      tester,
-    ) async {
-      final almacen = AlmacenSeguroEnMemoria();
-      final ahora = DateTime.utc(2026, 10, 2, 12);
-      final cambios = CambiosPorRecuperacionEnAlmacen(
-        almacen,
-        RelojSesionEnMemoria(sistema: () => ahora),
-      );
-      expect(await cambios.hayUnoReciente(), isFalse);
-
-      await almacen.escribir(ClaveSegura.cambioPorRecuperacion, 'no es una fecha');
-      expect(await cambios.hayUnoReciente(), isFalse, reason: 'ilegible: ante la duda, vencido');
-    });
-  });
-
-  testWidgets('A07 dentro de la app: el atrás del sistema también lleva al login', (tester) async {
+  testWidgets('A06 dentro de la app: el atrás del sistema también lleva al login', (tester) async {
     final recuperacion = RecuperacionPasswordEnMemoria();
-    final ahora = DateTime.utc(2026, 10, 2, 12);
-    final cambios = CambiosPorRecuperacionEnMemoria(ahora: () => ahora);
-    await cambios.registrar();
     final container = ProviderContainer(
       overrides: [
         authRemoteDataSourceProvider.overrideWithValue(
@@ -172,7 +137,6 @@ void main() {
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
         recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(recuperacion),
         dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
-        cambiosPorRecuperacionProvider.overrideWithValue(cambios),
       ],
     );
     addTearDown(container.dispose);

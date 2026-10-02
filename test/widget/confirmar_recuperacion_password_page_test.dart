@@ -11,7 +11,6 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
-import 'package:colportores_mobile/features/auth/data/repositories/cambios_por_recuperacion_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
@@ -27,13 +26,13 @@ import '../helpers/db_local_repository_en_memoria.dart';
 
 const _email = 'ana@example.com';
 
-/// 15-A06 sin la marca del cambio: no afirma «expiró» (decisión del orquestador, 02/10).
+/// 15-A06, la única pantalla del enlace que no sirve (vencido o ya usado): no adivina cuál de los
+/// dos es ni afirma «expiró» (decisión de Cristian, 02/10).
 const _textoVencido = 'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.';
 
 late RecuperacionPasswordEnMemoria _recuperacion;
 late DbLocalRepositoryEnMemoria _dbLocal;
 late AuthRemoteDataSourceEnMemoria _auth;
-late DateTime _ahora;
 
 Finder get _login => find.byKey(const Key('login_enviar'));
 Finder get _guardar => find.byKey(const Key('confirmar_recuperacion_guardar'));
@@ -50,9 +49,6 @@ Future<ProviderContainer> _montar(
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
       recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(_recuperacion),
       dbLocalRepositoryProvider.overrideWithValue(_dbLocal),
-      cambiosPorRecuperacionProvider.overrideWithValue(
-        CambiosPorRecuperacionEnMemoria(ahora: () => _ahora),
-      ),
     ],
   );
   addTearDown(container.dispose);
@@ -135,7 +131,6 @@ Future<void> _tocarGuardar(WidgetTester tester) async {
 
 void main() {
   setUp(() {
-    _ahora = DateTime.utc(2026, 10, 2, 12);
     _recuperacion = RecuperacionPasswordEnMemoria(passwordActual: 'Vieja1234');
     _dbLocal = DbLocalRepositoryEnMemoria();
     _auth = AuthRemoteDataSourceEnMemoria(credenciales: const {_email: 'Vieja1234'});
@@ -196,8 +191,9 @@ void main() {
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
     });
 
-    testWidgets('Escenario: Error -token reutilizado — «Este enlace ya fue utilizado» y volver al '
-        'login: el mismo enlace, vuelto a abrir después de cambiar la contraseña', (tester) async {
+    testWidgets('Escenario: Error -token reutilizado — la misma pantalla que el vencido («venció o '
+        'ya se usó», sin adivinar) con pedir otro enlace y volver al login: el mismo enlace, vuelto '
+        'a abrir después de cambiar la contraseña', (tester) async {
       await _montar(tester);
       await _completar(tester, 'NuevaClave1');
       await _tocarGuardar(tester);
@@ -205,12 +201,11 @@ void main() {
       expect(_login, findsOneWidget);
 
       // Supabase rechaza el enlace con el mismo error que a uno vencido.
-      _ahora = _ahora.add(const Duration(minutes: 5));
       _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
       await tester.pumpAndSettle();
 
-      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
-      expect(find.text(_textoVencido), findsNothing);
+      expect(find.text(_textoVencido), findsOneWidget);
+      expect(find.textContaining('ya fue utilizado'), findsNothing);
       expect(_guardar, findsNothing);
 
       await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
@@ -655,32 +650,16 @@ void main() {
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
     });
 
-    testWidgets('15-A06 enlace vencido: «ENLACE VENCIDO», el texto que no afirma «expiró» y las '
-        'dos salidas', (tester) async {
+    testWidgets('15-A06 enlace que no sirve: «ENLACE NO VÁLIDO», el texto que no afirma «expiró» y '
+        'las dos salidas', (tester) async {
       await _montar(tester, enlace: EnlaceRecuperacion.vencido);
 
-      expect(find.text('ENLACE VENCIDO'), findsOneWidget);
+      expect(find.text('ENLACE NO VÁLIDO'), findsOneWidget);
       expect(find.text(_textoVencido), findsOneWidget);
       expect(find.textContaining('expiró'), findsNothing);
       expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
       expect(find.text('Volver al login'), findsOneWidget);
     });
-
-    testWidgets(
-      '15-A07 enlace ya usado: título, «Si ya cambiaste la contraseña, entrá con la nueva.» '
-      'y una sola salida, «Volver al login»',
-      (tester) async {
-        await _montar(tester, enlace: EnlaceRecuperacion.usado);
-
-        expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
-        expect(find.text('Si ya cambiaste la contraseña, entrá con la nueva.'), findsOneWidget);
-        expect(find.text('Volver al login'), findsOneWidget);
-        expect(find.text('Solicitar un enlace nuevo'), findsNothing);
-        expect(find.text('ENLACE VENCIDO'), findsNothing);
-        expect(_guardar, findsNothing);
-        expect(_recuperacion.abandonos, 0, reason: 'no abrió ninguna sesión de recuperación');
-      },
-    );
 
     testWidgets('15-A09 éxito: pantalla con «Ir al login»; el atrás del sistema también lleva al '
         'login', (tester) async {
@@ -702,55 +681,31 @@ void main() {
     });
   });
 
-  group('Vista 15 — enlace ya usado: casos límite (15-A07)', () {
+  group('Vista 15 — enlace que no sirve, vencido o ya usado: casos límite (15-A06)', () {
     Future<void> cambiarYVolverAlLogin(WidgetTester tester) async {
       await _completar(tester, 'NuevaClave1');
       await _tocarGuardar(tester);
       await _irAlLogin(tester);
     }
 
-    testWidgets('pasada la hora de vida del enlace, el mismo enlace es «vencido», no «usado»', (
-      tester,
-    ) async {
+    testWidgets('el mismo enlace vuelto a abrir después de cambiar la contraseña: la pantalla de '
+        'siempre, sin adivinar que ya se usó', (tester) async {
       await _montar(tester);
       await cambiarYVolverAlLogin(tester);
 
-      _ahora = _ahora.add(const Duration(minutes: 61));
       _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
       await tester.pumpAndSettle();
 
       expect(find.text(_textoVencido), findsOneWidget);
-      expect(find.text('Este enlace ya fue utilizado'), findsNothing);
-    });
-
-    testWidgets('un enlace vencido sin ningún cambio hecho antes dice «ya no sirve», no «expiró»', (
-      tester,
-    ) async {
-      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
-
-      expect(find.text(_textoVencido), findsOneWidget);
-      expect(find.text('Este enlace ya fue utilizado'), findsNothing);
+      expect(find.text('ENLACE NO VÁLIDO'), findsOneWidget);
+      expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+      expect(find.textContaining('ya fue utilizado'), findsNothing);
       expect(find.textContaining('expiró'), findsNothing);
+      expect(_guardar, findsNothing);
     });
 
-    testWidgets(
-      'si el cambio falló (sin conexión), no se anota: el enlace vencido dice «ya no sirve»',
-      (tester) async {
-        await _montar(tester);
-        _recuperacion.simularSinConexion = true;
-        await _completar(tester, 'NuevaClave1');
-        await _tocarGuardar(tester);
-        expect(find.text('Sin conexión'), findsOneWidget);
-        _recuperacion.simularSinConexion = false;
-
-        _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
-        await tester.pumpAndSettle();
-
-        expect(find.text(_textoVencido), findsOneWidget);
-      },
-    );
-
-    testWidgets('el mismo enlace abierto dos veces: las dos veces dice «ya fue utilizado»', (
+    testWidgets('el mismo enlace abierto dos veces seguidas: las dos veces la misma pantalla', (
       tester,
     ) async {
       await _montar(tester);
@@ -758,36 +713,21 @@ void main() {
 
       _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
       await tester.pumpAndSettle();
-      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.text(_textoVencido), findsOneWidget);
       await tester.tap(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
       await tester.pumpAndSettle();
 
       _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
       await tester.pumpAndSettle();
 
-      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.text(_textoVencido), findsOneWidget);
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsOneWidget);
-    });
-
-    testWidgets('doble toque en «Volver al login»: sale una sola vez y queda el login', (
-      tester,
-    ) async {
-      await _montar(tester, enlace: EnlaceRecuperacion.usado);
-      final boton = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
-
-      await tester.tap(boton);
-      await tester.tap(boton, warnIfMissed: false);
-      await tester.pumpAndSettle();
-
-      expect(_login, findsOneWidget);
-      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
-      expect(tester.takeException(), isNull);
     });
 
     testWidgets('el atrás del sistema lleva al login, y un enlace nuevo vuelve a abrirla', (
       tester,
     ) async {
-      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
 
       await _atrasDelSistema(tester);
       expect(_login, findsOneWidget);
@@ -811,40 +751,24 @@ void main() {
       expect(_texto(tester, 'nueva'), isEmpty);
     });
 
-    testWidgets('con el texto al 200 % a 360x740: sin overflow y los dos textos visibles', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(360, 740);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-
-      await _montarSolo(tester, EnlaceRecuperacion.usado);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Este enlace ya fue utilizado'), findsOneWidget);
-      expect(find.text('Si ya cambiaste la contraseña, entrá con la nueva.'), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('confirmar_recuperacion_ir_al_login')));
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('lector de pantalla: el título se anuncia y el botón tiene etiqueta', (
+    testWidgets('lector de pantalla: el título se anuncia y los dos botones tienen etiqueta', (
       tester,
     ) async {
       final handle = tester.ensureSemantics();
-      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
 
-      expect(find.bySemanticsLabel('Este enlace ya fue utilizado'), findsOneWidget);
+      expect(find.bySemanticsLabel(_textoVencido), findsOneWidget);
+      expect(find.bySemanticsLabel('Solicitar un enlace nuevo'), findsOneWidget);
       expect(find.bySemanticsLabel('Volver al login'), findsOneWidget);
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       handle.dispose();
     });
   });
 
-  // 15-A06 y 15-A07 como el canvas (`15 Nueva Contrasena.dc.html`): el contenido centrado con el
-  // anillo arriba, las salidas al pie y sin flecha de atrás (decisión del orquestador, 02/10).
-  group('Vista 15 — A06 y A07 como el canvas', () {
+  // 15-A06 como el canvas (`15 Nueva Contrasena.dc.html`): el contenido centrado con el anillo
+  // arriba, las salidas al pie y sin flecha de atrás (decisión del orquestador, 02/10). El canvas
+  // dibuja además 15-A07 «ya fue utilizado», que se quitó (decisión de Cristian, 02/10).
+  group('Vista 15 — A06 como el canvas', () {
     Finder anillo(IconData icono) => find.byWidgetPredicate(
       (w) =>
           w is Container &&
@@ -854,105 +778,76 @@ void main() {
           (w.child! as Icon).icon == icono,
     );
 
-    for (final (enlace, rotulo) in [
-      (EnlaceRecuperacion.vencido, '15-A06'),
-      (EnlaceRecuperacion.usado, '15-A07'),
-    ]) {
-      testWidgets('$rotulo: sin flecha de atrás, y el atrás del sistema lleva al login', (
-        tester,
-      ) async {
-        await _montar(tester, enlace: enlace);
-
-        expect(find.byKey(const Key('confirmar_recuperacion_atras')), findsNothing);
-        expect(find.byIcon(Icons.arrow_back), findsNothing);
-
-        await _atrasDelSistema(tester);
-
-        expect(_login, findsOneWidget);
-        expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
-      });
-
-      testWidgets('$rotulo: el anillo de 56 con borde de 1,5 y sin relleno va arriba del título, '
-          'y las salidas pegadas al pie', (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        await _montar(tester, enlace: enlace);
-
-        final icono = enlace == EnlaceRecuperacion.vencido ? Icons.hourglass_empty : Icons.block;
-        final contenedor = tester.widget<Container>(anillo(icono));
-        final decoracion = contenedor.decoration! as BoxDecoration;
-        expect(decoracion.color, isNull, reason: 'es un anillo, no un disco');
-        expect(decoracion.border!.top.width, 1.5);
-        expect(tester.getSize(anillo(icono)), const Size(56, 56));
-
-        final titulo = find.byKey(
-          Key(
-            enlace == EnlaceRecuperacion.vencido
-                ? 'confirmar_recuperacion_vencido'
-                : 'confirmar_recuperacion_usado',
-          ),
-        );
-        final boton = find.byKey(
-          Key(
-            enlace == EnlaceRecuperacion.vencido
-                ? 'confirmar_recuperacion_pedir_otro'
-                : 'confirmar_recuperacion_ir_al_login',
-          ),
-        );
-        expect(tester.getBottomLeft(anillo(icono)).dy, lessThan(tester.getTopLeft(titulo).dy));
-        expect(tester.getBottomLeft(titulo).dy, lessThan(tester.getTopLeft(boton).dy));
-        // Al pie: debajo del botón queda el margen del canvas y nada más (18 en A06 + «Volver al
-        // login» debajo; 28 en A07).
-        final pie = enlace == EnlaceRecuperacion.vencido
-            ? find.byKey(const Key('confirmar_recuperacion_ir_al_login'))
-            : boton;
-        expect(844 - tester.getBottomLeft(pie).dy, lessThan(80));
-        // El contenido del medio queda en la mitad de arriba/centro, no pegado al borde de arriba.
-        expect(tester.getTopLeft(anillo(icono)).dy, greaterThan(100));
-      });
-
-      testWidgets('$rotulo: el texto al 200 % a 360x740 no desborda y las salidas se alcanzan', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(360, 740);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-
-        await _montarSolo(tester, enlace);
-        final salida = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
-        await tester.ensureVisible(salida);
-        await tester.pumpAndSettle();
-
-        expect(tester.takeException(), isNull);
-        expect(salida, findsOneWidget);
-        // Con el texto enorme, el contenido se desplaza: no queda nada cortado sin forma de llegar.
-        expect(tester.getBottomLeft(salida).dy, lessThanOrEqualTo(740));
-      });
-    }
-
-    testWidgets('15-A06: el ícono es el reloj de arena dorado y el rótulo va en gris', (
+    testWidgets('15-A06: sin flecha de atrás, y el atrás del sistema lleva al login', (
       tester,
     ) async {
       await _montar(tester, enlace: EnlaceRecuperacion.vencido);
 
-      final contenedor = tester.widget<Container>(anillo(Icons.hourglass_empty));
-      expect((contenedor.decoration! as BoxDecoration).border!.top.color, const Color(0xFFA98330));
-      final rotulo = tester.widget<Text>(find.text('ENLACE VENCIDO'));
-      expect(rotulo.style!.color, const Color(0xFF5B6B82));
+      expect(find.byKey(const Key('confirmar_recuperacion_atras')), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsNothing);
+
+      await _atrasDelSistema(tester);
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
     });
 
-    testWidgets('15-A07: el ícono es el ⊘ en gris azulado, sin botón de pedir otro enlace', (
+    testWidgets('15-A06: el anillo de 56 con borde de 1,5 y sin relleno va arriba del título, y '
+        'las salidas pegadas al pie', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+
+      final contenedor = tester.widget<Container>(anillo(Icons.hourglass_empty));
+      final decoracion = contenedor.decoration! as BoxDecoration;
+      expect(decoracion.color, isNull, reason: 'es un anillo, no un disco');
+      expect(decoracion.border!.top.width, 1.5);
+      expect(tester.getSize(anillo(Icons.hourglass_empty)), const Size(56, 56));
+
+      final titulo = find.byKey(const Key('confirmar_recuperacion_vencido'));
+      final boton = find.byKey(const Key('confirmar_recuperacion_pedir_otro'));
+      final volver = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
+      expect(
+        tester.getBottomLeft(anillo(Icons.hourglass_empty)).dy,
+        lessThan(tester.getTopLeft(titulo).dy),
+      );
+      expect(tester.getBottomLeft(titulo).dy, lessThan(tester.getTopLeft(boton).dy));
+      // Al pie: debajo del botón queda el margen del canvas (18) y nada más que «Volver al login».
+      expect(844 - tester.getBottomLeft(volver).dy, lessThan(80));
+      // El contenido del medio queda en la mitad de arriba/centro, no pegado al borde de arriba.
+      expect(tester.getTopLeft(anillo(Icons.hourglass_empty)).dy, greaterThan(100));
+    });
+
+    testWidgets('15-A06: el texto al 200 % a 360x740 no desborda y las salidas se alcanzan', (
       tester,
     ) async {
-      await _montar(tester, enlace: EnlaceRecuperacion.usado);
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-      final contenedor = tester.widget<Container>(anillo(Icons.block));
-      expect((contenedor.decoration! as BoxDecoration).border!.top.color, const Color(0xFF5B6B82));
-      expect(tester.widget<Icon>(find.byIcon(Icons.block)).color, const Color(0xFF2A3A52));
-      expect(find.byKey(const Key('confirmar_recuperacion_pedir_otro')), findsNothing);
+      await _montarSolo(tester, EnlaceRecuperacion.vencido);
+      final salida = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
+      await tester.ensureVisible(salida);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(salida, findsOneWidget);
+      // Con el texto enorme, el contenido se desplaza: no queda nada cortado sin forma de llegar.
+      expect(tester.getBottomLeft(salida).dy, lessThanOrEqualTo(740));
+    });
+
+    testWidgets('15-A06: el ícono es el reloj de arena dorado y el rótulo «ENLACE NO VÁLIDO» va '
+        'en gris', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+
+      final contenedor = tester.widget<Container>(anillo(Icons.hourglass_empty));
+      expect((contenedor.decoration! as BoxDecoration).border!.top.color, const Color(0xFFA98330));
+      final rotulo = tester.widget<Text>(find.text('ENLACE NO VÁLIDO'));
+      expect(rotulo.style!.color, const Color(0xFF5B6B82));
+      expect(find.text('ENLACE VENCIDO'), findsNothing);
     });
 
     testWidgets('15-A06: doble toque en «Volver al login» sale una sola vez', (tester) async {

@@ -21,7 +21,6 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
-import 'recuperacion_password_providers.dart';
 import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
@@ -309,9 +308,6 @@ class SesionNotifier extends _$SesionNotifier {
     if (resultado.isRight()) {
       _olvidarPassword();
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
-      // La marca de «cambié la contraseña con un enlace» también es del teléfono: el almacén ya la
-      // borró, falta la que esta corrida tiene en memoria.
-      await ref.read(cambiosPorRecuperacionProvider).olvidar();
       state = const AsyncData(null);
     }
     return resultado;

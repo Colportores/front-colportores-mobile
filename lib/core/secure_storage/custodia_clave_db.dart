@@ -262,7 +262,6 @@ final class CustodiaClaveDb {
   static const Set<ClaveSegura> seConservanAlReconstruir = {
     ClaveSegura.consentimientoAlmacenSoftware,
     ClaveSegura.estadoCuenta,
-    ClaveSegura.cambioPorRecuperacion,
     ClaveSegura.sesionAuth,
     ClaveSegura.relojSesion,
     ClaveSegura.sesionMigrada,
@@ -348,7 +347,6 @@ final class CustodiaClaveDb {
   /// intentos del borrado y el correo de la última cuenta.
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
-    ClaveSegura.cambioPorRecuperacion,
     ClaveSegura.relojSesion,
     ClaveSegura.intentosBorrado,
     ClaveSegura.ultimoCorreo,

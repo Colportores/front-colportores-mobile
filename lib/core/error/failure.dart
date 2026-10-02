@@ -91,8 +91,9 @@ final class FailureCierreSesionSinConexion extends Failure {
 
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
-/// `otp_expired`), así que la app tampoco: [mensaje] no afirma «expiró» (decisión del orquestador,
-/// 02/10, sobre el literal de la HU). La pantalla ofrece pedir un enlace nuevo (HU-AUTH-004).
+/// `otp_expired`), así que la app tampoco: [mensaje] no afirma «expiró» sino las dos cosas
+/// (decisión de Cristian, 02/10, sobre el literal de la HU). La pantalla ofrece pedir un enlace
+/// nuevo (HU-AUTH-004).
 final class FailureEnlaceRecuperacionVencido extends Failure {
   const FailureEnlaceRecuperacionVencido()
     : super(
