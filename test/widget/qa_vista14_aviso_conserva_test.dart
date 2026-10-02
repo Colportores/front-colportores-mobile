@@ -1,5 +1,6 @@
 // QA del delta de la vista 14 (#223), decisión de Cristian del 01/10: el aviso de impacto dice
 // «Tus datos guardados en este teléfono se conservan.» y el texto viejo no queda en ningún estado.
+// Desde el 02/10 (#272) el aviso solo informa: sin casilla «Entiendo el impacto» ni ⚠.
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
@@ -36,14 +37,18 @@ void _sinTextoViejo() {
   }
 }
 
-Future<void> _llenarYEnviar(WidgetTester tester, String email, {bool marcar = true}) async {
+/// Ni casilla ni ⚠ (#272).
+void _sinCasillaNiAdvertencia() {
+  expect(find.byType(Checkbox), findsNothing);
+  expect(find.byType(CheckboxListTile), findsNothing);
+  expect(find.textContaining('Entiendo el impacto'), findsNothing);
+  expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+  expect(find.byIcon(Icons.warning_amber), findsNothing);
+  expect(find.byIcon(Icons.warning), findsNothing);
+}
+
+Future<void> _llenarYEnviar(WidgetTester tester, String email) async {
   await tester.enterText(find.byKey(const Key('recuperacion_password_email')), email);
-  final casilla = find.byKey(const Key('recuperacion_password_checkbox'));
-  if (marcar) {
-    await tester.ensureVisible(casilla);
-    await tester.tap(casilla);
-    await tester.pump();
-  }
   final enviar = find.byKey(const Key('recuperacion_password_enviar'));
   await tester.ensureVisible(enviar);
   await tester.tap(enviar);
@@ -52,15 +57,22 @@ Future<void> _llenarYEnviar(WidgetTester tester, String email, {bool marcar = tr
 
 void main() {
   group('QA #223 — aviso «se conservan» en todos los estados', () {
-    testWidgets('A01 y A02: literal exacto, una sola vez, y sin texto viejo', (tester) async {
+    testWidgets('A01 y A02: literal exacto, una sola vez, sin texto viejo y sin casilla ni ⚠', (
+      tester,
+    ) async {
       await _montar(tester);
       expect(find.text(_aviso), findsOneWidget);
       _sinTextoViejo();
+      _sinCasillaNiAdvertencia();
 
-      await tester.tap(find.byKey(const Key('recuperacion_password_checkbox')));
+      await tester.enterText(
+        find.byKey(const Key('recuperacion_password_email')),
+        'lucia@correo.com',
+      );
       await tester.pump();
       expect(find.text(_aviso), findsOneWidget);
       _sinTextoViejo();
+      _sinCasillaNiAdvertencia();
     });
 
     testWidgets('A03 email inválido y A06 sin conexión conservan el aviso nuevo', (tester) async {
@@ -69,12 +81,14 @@ void main() {
       expect(find.text('Revisá el email: parece incompleto.'), findsOneWidget);
       expect(find.text(_aviso), findsOneWidget);
       _sinTextoViejo();
+      _sinCasillaNiAdvertencia();
 
       remoto.simularSinConexion = true;
-      await _llenarYEnviar(tester, 'lucia@correo.com', marcar: false);
+      await _llenarYEnviar(tester, 'lucia@correo.com');
       expect(find.textContaining('Necesitás conexión'), findsOneWidget);
       expect(find.text(_aviso), findsOneWidget);
       _sinTextoViejo();
+      _sinCasillaNiAdvertencia();
     });
 
     testWidgets('A05 éxito: pantalla aparte sin el aviso de impacto ni el texto viejo', (
@@ -103,6 +117,7 @@ void main() {
 
         expect(tester.takeException(), isNull);
         expect(find.text(_aviso), findsOneWidget);
+        _sinCasillaNiAdvertencia();
         expect(tester.getRect(_avisoKey).right, lessThanOrEqualTo(tam.width));
         expect(find.bySemanticsLabel(RegExp('se conservan')), findsOneWidget);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));

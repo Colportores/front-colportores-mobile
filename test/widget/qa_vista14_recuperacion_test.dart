@@ -55,12 +55,8 @@ Future<void> _tocar(WidgetTester tester, String key) async {
 
 Future<void> _enviarCon(WidgetTester tester, String email) async {
   await tester.enterText(_k('recuperacion_password_email'), email);
-  await _tocar(tester, 'recuperacion_password_checkbox');
   await _tocar(tester, 'recuperacion_password_enviar');
 }
-
-bool _marcada(WidgetTester tester) =>
-    tester.widget<CheckboxListTile>(_k('recuperacion_password_checkbox')).value ?? false;
 
 void main() {
   late AuthRemoteDataSourceEnMemoria remote;
@@ -96,25 +92,19 @@ void main() {
       expect(find.text(_incompleto), findsNothing);
     });
 
-    testWidgets('después de A03 lo tipeado y la casilla siguen y el botón queda habilitado', (
-      tester,
-    ) async {
+    testWidgets('después de A03 lo tipeado sigue y el botón queda habilitado', (tester) async {
       await _montar(tester, remote);
       await _enviarCon(tester, 'lucia@');
       expect(find.text('lucia@'), findsOneWidget);
-      expect(_marcada(tester), isTrue);
       expect(tester.widget<FilledButton>(_k('recuperacion_password_enviar')).onPressed, isNotNull);
     });
 
-    testWidgets('después de A06 lo tipeado y la casilla siguen y reintentar lleva al éxito', (
-      tester,
-    ) async {
+    testWidgets('después de A06 lo tipeado sigue y reintentar lleva al éxito', (tester) async {
       remote.simularSinConexion = true;
       await _montar(tester, remote);
       await _enviarCon(tester, 'lucia@correo.com');
       expect(find.text(_sinConexion), findsOneWidget);
       expect(find.text('lucia@correo.com'), findsOneWidget);
-      expect(_marcada(tester), isTrue);
 
       remote.simularSinConexion = false;
       await _tocar(tester, 'recuperacion_password_enviar');
@@ -138,7 +128,6 @@ void main() {
       remote.demoraRecuperacion = Completer<void>();
       await _montar(tester, remote);
       await tester.enterText(_k('recuperacion_password_email'), 'lucia@correo.com');
-      await _tocar(tester, 'recuperacion_password_checkbox');
       await tester.tap(_k('recuperacion_password_enviar'));
       await tester.pump();
       expect(tester.widget<IconButton>(_k('recuperacion_password_atras')).onPressed, isNull);
@@ -151,18 +140,23 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('salir y volver a entrar: formulario limpio, casilla sin marcar y botón apagado', (
-      tester,
-    ) async {
-      await _montar(tester, remote);
-      await _enviarCon(tester, 'lucia@correo.com');
-      await _tocar(tester, 'recuperacion_password_volver_login');
-      await tester.tap(_k('abrir'));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'salir y volver a entrar: formulario limpio, sin casilla y con el botón habilitado',
+      (tester) async {
+        await _montar(tester, remote);
+        await _enviarCon(tester, 'lucia@correo.com');
+        await _tocar(tester, 'recuperacion_password_volver_login');
+        await tester.tap(_k('abrir'));
+        await tester.pumpAndSettle();
 
-      expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
-      expect(_marcada(tester), isFalse);
-      expect(tester.widget<FilledButton>(_k('recuperacion_password_enviar')).onPressed, isNull);
-    });
+        expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
+        expect(find.text('lucia@correo.com'), findsNothing);
+        expect(find.byType(Checkbox), findsNothing);
+        expect(
+          tester.widget<FilledButton>(_k('recuperacion_password_enviar')).onPressed,
+          isNotNull,
+        );
+      },
+    );
   });
 }
