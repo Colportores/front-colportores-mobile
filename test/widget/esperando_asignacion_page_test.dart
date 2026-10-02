@@ -877,7 +877,7 @@ void main() {
       },
     );
 
-    testWidgets('A07: sin la fuente de la asignación (BFF pendiente) no inventa campaña ni zona', (
+    testWidgets('A07: sin la fuente de la asignación (llega con #62) no inventa campaña ni zona', (
       tester,
     ) async {
       await _montar(tester);
