@@ -52,7 +52,9 @@ Future<void> _montarA07(WidgetTester tester) => tester.pumpWidget(
         AuthRemoteDataSourceEnMemoria(credenciales: const {}),
       ),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-      recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(RecuperacionPasswordEnMemoria()),
+      recuperacionPasswordRemoteDataSourceProvider.overrideWithValue(
+        RecuperacionPasswordEnMemoria(),
+      ),
       dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
     ],
     child: MaterialApp(
@@ -125,8 +127,10 @@ void main() {
       expect(await despues.hayUnoReciente(), isTrue);
 
       ahora = ahora.add(const Duration(minutes: 2));
-      expect(await CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora).hayUnoReciente(),
-          isFalse);
+      expect(
+        await CambiosPorRecuperacionEnAlmacen(almacen, ahora: () => ahora).hayUnoReciente(),
+        isFalse,
+      );
     });
 
     testWidgets('sin la marca (se borró el almacén o nunca hubo) el enlace vuelve «vencido»', (
