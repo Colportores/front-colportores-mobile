@@ -30,7 +30,13 @@ class _FakeUserResponse extends Fake implements UserResponse {}
 /// Fakes (sin `when`) para lo que devuelve GoTrue: mocktail prohíbe stubear dentro de otro
 /// stub, y estos objetos se construyen justamente dentro de `thenAnswer`.
 class _FakeUser extends Fake implements User {
-  _FakeUser({required this.id, this.email, this.identities, this.appMetadata = const {}});
+  _FakeUser({
+    required this.id,
+    this.email,
+    this.identities,
+    this.appMetadata = const {},
+    this.userMetadata,
+  });
 
   @override
   final String id;
@@ -40,6 +46,8 @@ class _FakeUser extends Fake implements User {
   final List<UserIdentity>? identities;
   @override
   final Map<String, dynamic> appMetadata;
+  @override
+  final Map<String, dynamic>? userMetadata;
 }
 
 class _FakeSession extends Fake implements Session {
@@ -79,8 +87,14 @@ void main() {
     // Las sesiones de este helper representan, salvo que se diga lo contrario, un login con
     // Google (es el único flujo que las consume vía onAuthStateChange en estos tests).
     String proveedor = 'google',
+    Map<String, dynamic>? metadata,
   }) => _FakeSession(
-    user: _FakeUser(id: usuarioId, email: email, appMetadata: {'provider': proveedor}),
+    user: _FakeUser(
+      id: usuarioId,
+      email: email,
+      appMetadata: {'provider': proveedor},
+      userMetadata: metadata,
+    ),
     accessToken: accessToken,
     expiresAt: expiraEnSegundos,
     isExpired: vencida,
@@ -145,6 +159,42 @@ void main() {
       },
     );
 
+    test(
+      'dado un usuario registrado con nombre, la sesión trae el nombre de user_metadata (#243)',
+      () async {
+        when(
+          () => auth.signInWithPassword(email: 'ana@example.com', password: 'secreto123'),
+        ).thenAnswer(
+          (_) async => respuestaCon(
+            sesion: sesionSupabase(metadata: {'nombre': 'Lucía', 'apellido': 'Silva'}),
+          ),
+        );
+
+        final sesion = await dataSource().iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(sesion.nombre, 'Lucía');
+      },
+    );
+
+    test(
+      'dado un ingreso con Google (nombre vacío o sin metadata), la sesión no trae nombre (#243)',
+      () async {
+        when(
+          () => auth.signInWithPassword(email: 'ana@example.com', password: 'secreto123'),
+        ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase(metadata: {'nombre': ''})));
+
+        final sesion = await dataSource().iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(sesion.nombre, isNull);
+      },
+    );
+
     test('dado credenciales inválidas (error_code), lanza CredencialesInvalidasException', () {
       when(
         () => auth.signInWithPassword(
@@ -179,7 +229,7 @@ void main() {
       );
     });
 
-    test('dado un email sin confirmar, lanza ServidorException con mensaje para el usuario', () {
+    test('dado un email sin confirmar, lanza EmailNoConfirmadoException', () {
       when(
         () => auth.signInWithPassword(
           email: any(named: 'email'),
@@ -195,13 +245,7 @@ void main() {
 
       expect(
         () => dataSource().iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
-        throwsA(
-          isA<ServidorException>().having(
-            (e) => e.mensaje,
-            'mensaje',
-            contains('verificar tu correo'),
-          ),
-        ),
+        throwsA(isA<EmailNoConfirmadoException>()),
       );
     });
 

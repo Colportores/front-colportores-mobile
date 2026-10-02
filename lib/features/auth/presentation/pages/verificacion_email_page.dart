@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../providers/bloqueo_reenvio_verificacion.dart';
+import '../providers/enlace_verificacion_usado_providers.dart';
 import '../providers/sesion_notifier.dart';
 
 /// Estado visible de [VerificacionEmailPage] (HU-AUTH-002).
@@ -19,6 +20,14 @@ enum EstadoVerificacionEmail {
   /// El enlace abierto está vencido o ya fue usado — Supabase no distingue los dos casos (mismo
   /// `error_code` `otp_expired`), así que la app tampoco.
   expirado,
+
+  /// El enlace abierto ya se había usado: la cuenta ya está verificada (HU-AUTH-002, «Error -
+  /// token ya usado»). Vuelve solo al login (o a la app, si hay sesión) tras unos segundos.
+  yaVerificado,
+
+  /// El enlace ya no sirve y no hay forma de saber si se usó o venció (HU-AUTH-002, «"Vencido" vs
+  /// "ya usado"», caso 3): ofrece **Ir al login** y **Reenviar**.
+  enlaceInutil,
 }
 
 /// Pantalla de espera/reenvío de verificación de email (HU-AUTH-002), vista 12 del diseño (#221):
@@ -64,12 +73,19 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   /// ([bloqueoReenvioVerificacion], decisión de Cristian 29/09).
   static const Duration _cooldown = Duration(seconds: 60);
 
+  /// Cuánto se muestra «Tu email ya está verificado» antes de salir solo (el canvas no lo fija).
+  static const Duration _esperaYaVerificado = Duration(seconds: 4);
+
   static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
   Timer? _timer;
   Timer? _timerBloqueo;
+  Timer? _timerSalida;
+  bool _saliendo = false;
+  late final VerificacionEnEsperaNotifier _enEspera;
+  DatosDeEsperaVerificacion? _datosEnEspera;
   int _segundosRestantes = 0;
 
   /// Instante en que termina el bloqueo por límite de reenvíos (`null` si no hay).
@@ -100,13 +116,30 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     _emailController = TextEditingController(text: widget.email);
     _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
     _programarDesbloqueo();
+    _enEspera = ref.read(verificacionEnEsperaProvider.notifier);
+    final password = widget.password;
+    if (_estado == EstadoVerificacionEmail.pendiente && _emailConocido && password != null) {
+      // Se avisa después del primer frame: modificar un provider mientras el árbol se construye
+      // no está permitido. Solo en memoria, mientras esta pantalla vive.
+      final datos = DatosDeEsperaVerificacion(email: widget.email, password: password);
+      _datosEnEspera = datos;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _enEspera.abrir(datos);
+      });
+    }
+    if (_estado == EstadoVerificacionEmail.yaVerificado) {
+      _timerSalida = Timer(_esperaYaVerificado, _irAlLogin);
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    final datos = _datosEnEspera;
+    if (datos != null) scheduleMicrotask(() => _enEspera.cerrar(datos));
     _timer?.cancel();
     _timerBloqueo?.cancel();
+    _timerSalida?.cancel();
     _emailController.dispose();
     super.dispose();
   }
@@ -226,6 +259,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
 
   void _volverAlLogin() => Navigator.of(context).pop();
 
+  /// Sale de esta pantalla hacia la raíz: el login, o la app si hay sesión. Idempotente: el
+  /// temporizador y «Ir al login ahora» pueden coincidir.
+  void _irAlLogin() {
+    if (_saliendo || !mounted) return;
+    _saliendo = true;
+    _timerSalida?.cancel();
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   /// Todo aviso dice qué pasa y qué hacer (criterio de Cristian): sin conexión, un error del
   /// servidor sin mensaje propio o uno inesperado llevan texto de la pantalla; el resto (rate
   /// limit, credenciales, validación) ya trae el suyo.
@@ -245,7 +287,11 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     final esquema = theme.colorScheme;
     final colores = theme.extension<ColoresColportaje>()!;
     final verificado = _estado == EstadoVerificacionEmail.verificado;
+    final yaVerificado = _estado == EstadoVerificacionEmail.yaVerificado;
     final expirado = _estado == EstadoVerificacionEmail.expirado;
+    final inutil = _estado == EstadoVerificacionEmail.enlaceInutil;
+    // «Verificado» y «ya verificado» son pantallas de cierre: sin correo, sin avisos ni reenvío.
+    final cierre = verificado || yaVerificado;
     final conAvisoDeReenvio = _mensajeReenvio != null;
 
     return Scaffold(
@@ -267,7 +313,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                       spacing: 12,
                       children: [
                         const SizedBox(height: 28),
-                        if (verificado || expirado)
+                        if (cierre || expirado || inutil)
                           ExcludeSemantics(
                             child: Container(
                               width: 56,
@@ -277,21 +323,24 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                                 border: Border.all(color: esquema.primary, width: 1.5),
                               ),
                               child: Icon(
-                                verificado ? Icons.check : Icons.hourglass_bottom,
+                                cierre
+                                    ? Icons.check
+                                    : (inutil ? Icons.link_off : Icons.hourglass_bottom),
                                 color: esquema.primary,
                               ),
                             ),
                           ),
-                        if (!verificado)
+                        if (!cierre)
                           Text(
                             'VERIFICACIÓN DE EMAIL',
                             style: theme.textTheme.labelSmall?.copyWith(color: esquema.primary),
                           ),
-                        Text(
-                          _titulo(),
-                          key: const Key('verificacion_email_titulo'),
-                          style: theme.textTheme.headlineMedium,
-                        ),
+                        if (_titulo() case final titulo?)
+                          Text(
+                            titulo,
+                            key: const Key('verificacion_email_titulo'),
+                            style: theme.textTheme.headlineMedium,
+                          ),
                         if (!(conAvisoDeReenvio && _emailConocido))
                           Text(
                             _mensaje(),
@@ -301,7 +350,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                               height: 1.5,
                             ),
                           ),
-                        if (!verificado && _emailConocido)
+                        if (!cierre && _emailConocido)
                           Container(
                             key: const Key('verificacion_email_tarjeta'),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -341,7 +390,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                             style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
                           ),
                         ],
-                        if (!verificado && !_emailConocido)
+                        if (!cierre && !_emailConocido)
                           _CampoEmail(
                             controller: _emailController,
                             errorText: _errorEmail,
@@ -355,7 +404,14 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       spacing: 10,
-                      children: [if (!verificado) ..._acciones(context) else _continuarBoton()],
+                      children: [
+                        if (!cierre)
+                          ..._acciones(context)
+                        else if (yaVerificado)
+                          _irAlLoginBoton()
+                        else
+                          _continuarBoton(),
+                      ],
                     ),
                   ],
                 ),
@@ -373,10 +429,18 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     child: const Text('Continuar'),
   );
 
+  Widget _irAlLoginBoton() => FilledButton(
+    key: const Key('verificacion_email_ir_login'),
+    onPressed: _irAlLogin,
+    child: const Text('Ir al login ahora'),
+  );
+
   /// Los avisos (arriba de las acciones) y las acciones de la espera, según el diseño.
   List<Widget> _acciones(BuildContext context) {
     final theme = Theme.of(context);
-    final expirado = _estado == EstadoVerificacionEmail.expirado;
+    final inutil = _estado == EstadoVerificacionEmail.enlaceInutil;
+    // El botón dice «de verificación» cuando el enlace no sirvió (vencido o inútil).
+    final expirado = _estado == EstadoVerificacionEmail.expirado || inutil;
     final conCuentaRegresiva = _segundosRestantes > 0;
     final etiquetaReenviar = conCuentaRegresiva
         ? 'Reenviar en ${_segundosRestantes}s'
@@ -451,9 +515,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         ),
       TextButton(
         key: const Key('verificacion_email_volver_login'),
-        onPressed: _volverAlLogin,
+        onPressed: inutil ? _irAlLogin : _volverAlLogin,
         child: Text(
-          'Volver al login',
+          inutil ? 'Ir al login' : 'Volver al login',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.secondary),
         ),
       ),
@@ -470,10 +534,13 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     );
   }
 
-  String _titulo() => switch (_estado) {
+  /// `null` cuando el texto de la HU ya es todo el mensaje y no hay un título aparte.
+  String? _titulo() => switch (_estado) {
     EstadoVerificacionEmail.pendiente => 'Verificá tu cuenta',
     EstadoVerificacionEmail.verificado => 'Email verificado',
     EstadoVerificacionEmail.expirado => 'El enlace expiró',
+    EstadoVerificacionEmail.yaVerificado => 'Tu email ya está verificado',
+    EstadoVerificacionEmail.enlaceInutil => null,
   };
 
   String _mensaje() => switch (_estado) {
@@ -488,6 +555,10 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _emailConocido
           ? 'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a ${widget.email}.'
           : 'Pedí uno nuevo y abrilo desde este teléfono.',
+    EstadoVerificacionEmail.yaVerificado => 'Te llevamos al login…',
+    EstadoVerificacionEmail.enlaceInutil =>
+      'Este enlace ya no sirve: puede que ya lo hayas usado o que haya vencido. Si ya '
+          'verificaste tu email, entrá con tu contraseña. Si no, pedí un enlace nuevo.',
   };
 }
 

@@ -61,7 +61,7 @@ abstract interface class UbicacionLocalDataSource {
   /// - Sin fila con ese `id`: [UbicacionInexistenteException].
   /// - Si llega [conservadaId] —la ubicación que se conserva al marcar un duplicado, HU-UBI-006—,
   ///   esa otra ubicación tiene que seguir activa **dentro de la misma transacción**: si no está,
-  ///   [UbicacionInexistenteException]; si está de baja, [UbicacionCambioException]. Así dos
+  ///   [UbicacionInexistenteException]; si está de baja, [ConservadaDeBajaException]. Así dos
   ///   "marcar duplicado" concurrentes sobre pares que se cruzan no dejan de baja a las dos.
   /// - Si la fila ya está de baja (o activa, al reactivar), la devuelve con `escribio: false`, sin
   ///   escribir ni encolar, con cualquier [baseUpdatedAt]: es el segundo de dos toques que se
@@ -119,4 +119,12 @@ final class UbicacionCambioException implements Exception {
 
   @override
   String toString() => 'UbicacionCambioException';
+}
+
+/// Al marcar un duplicado, la ubicación que se conserva ya está de baja (HU-UBI-006).
+final class ConservadaDeBajaException implements Exception {
+  const ConservadaDeBajaException();
+
+  @override
+  String toString() => 'ConservadaDeBajaException';
 }

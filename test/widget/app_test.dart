@@ -1,6 +1,7 @@
 // Cubre el listener de deep link de verificación de email en la raíz de la app (lib/app.dart):
-// `erroresVerificacionEmailProvider` navega a VerificacionEmailPage(expirado) solo cuando no hay
-// sesión activa — con sesión, el evento es de un enlace viejo y no debe interrumpir al usuario.
+// `erroresVerificacionEmailProvider` (enlace con `otp_expired`) lleva a VerificacionEmailPage: con
+// sesión activa, «ya verificado»; sin sesión ni pantalla de espera, el texto genérico (los tres
+// casos de HU-AUTH-002 están en `enlace_verificacion_usado_test.dart`).
 import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
@@ -59,7 +60,9 @@ class _LocalConDemora implements AuthLocalDataSource {
 
 void main() {
   group('ColportoresApp — deep link de verificación con error', () {
-    testWidgets('sin sesión activa: navega a la pantalla en estado expirado', (tester) async {
+    testWidgets('sin sesión activa ni pantalla de espera: navega al texto genérico', (
+      tester,
+    ) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
       await _montarApp(tester, remote: remote);
       await tester.pumpAndSettle();
@@ -69,11 +72,12 @@ void main() {
       remote.simularEnlaceVerificacionInvalido();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
-      expect(find.text('El enlace expiró'), findsOneWidget);
+      expect(find.byKey(const Key('verificacion_email_mensaje')), findsOneWidget);
+      expect(find.textContaining('Este enlace ya no sirve'), findsOneWidget);
+      expect(find.text('El enlace expiró'), findsNothing);
     });
 
-    testWidgets('con sesión activa: no navega ni toca la pila (enlace viejo, ya verificado)', (
+    testWidgets('con sesión activa: «Tu email ya está verificado» y después vuelve a la app', (
       tester,
     ) async {
       final remote = AuthRemoteDataSourceEnMemoria(
@@ -89,8 +93,8 @@ void main() {
 
       expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
 
-      // Empuja una ruta arriba de "/" (InicioPage) para que "la pila queda intacta" pruebe algo:
-      // sin esto, "/" es la única ruta y un `popUntil((r) => r.isFirst)` de más sería invisible.
+      // Empuja una ruta arriba de "/" (InicioPage): al salir de «ya verificado» la pila queda en
+      // la raíz.
       final elemento = tester.element(find.byKey(const Key('inicio_principal')));
       unawaited(
         Navigator.of(elemento).push(
@@ -105,8 +109,12 @@ void main() {
       remote.simularEnlaceVerificacionInvalido();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('otra_pantalla')), findsOneWidget);
-      expect(find.byKey(const Key('verificacion_email_titulo')), findsNothing);
+      expect(find.byKey(const Key('otra_pantalla')), findsNothing);
+      expect(find.text('Tu email ya está verificado'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('verificacion_email_ir_login')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
     });
 
     testWidgets(
@@ -143,10 +151,9 @@ void main() {
         local.resolver();
         await tester.pumpAndSettle();
 
-        // Había sesión: el evento era de un enlace viejo. Entra directo a Inicio, nunca pasó por
-        // la pantalla de verificación.
-        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
-        expect(find.byKey(const Key('verificacion_email_titulo')), findsNothing);
+        // Había sesión: el enlace ya estaba usado, la cuenta ya está verificada.
+        expect(find.text('Tu email ya está verificado'), findsOneWidget);
+        expect(find.text('El enlace expiró'), findsNothing);
       },
     );
   });

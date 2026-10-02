@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import '../../domain/entities/jornada.dart';
 import '../formato_jornada.dart';
 
@@ -10,16 +12,16 @@ import '../formato_jornada.dart';
 /// Casas visitadas, ventas y cobros se dibujan con «—» y la copia de seguridad con «Todavía no
 /// disponible» hasta que cada módulo traiga su dato (#151, #158, #163, #185; decisión de Cristian,
 /// 29/09): no se muestran cifras que no son del colportor.
-class ResumenJornadaPage extends StatefulWidget {
+class ResumenJornadaPage extends ConsumerStatefulWidget {
   const ResumenJornadaPage({super.key, required this.jornada});
 
   final Jornada jornada;
 
   @override
-  State<ResumenJornadaPage> createState() => _ResumenJornadaPageState();
+  ConsumerState<ResumenJornadaPage> createState() => _ResumenJornadaPageState();
 }
 
-class _ResumenJornadaPageState extends State<ResumenJornadaPage> {
+class _ResumenJornadaPageState extends ConsumerState<ResumenJornadaPage> {
   /// Un doble toque en "Volver al inicio" no debe sacar también la pantalla de abajo.
   bool _saliendo = false;
 
@@ -32,6 +34,7 @@ class _ResumenJornadaPageState extends State<ResumenJornadaPage> {
     final esquema = theme.colorScheme;
     final fin = jornada.fin ?? jornada.inicio;
     final duracion = jornada.duracion ?? Duration.zero;
+    final nombre = ref.watch(nombreCuentaProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -66,7 +69,11 @@ class _ResumenJornadaPageState extends State<ResumenJornadaPage> {
                           ],
                         ),
                       ),
-                      Text('Buen trabajo', style: theme.textTheme.headlineMedium),
+                      Text(
+                        nombre == null ? 'Buen trabajo' : 'Buen trabajo, $nombre',
+                        key: const Key('jornada_resumen_saludo'),
+                        style: theme.textTheme.headlineMedium,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         'TRABAJASTE',

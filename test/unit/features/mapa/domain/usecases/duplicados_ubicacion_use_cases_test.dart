@@ -320,10 +320,10 @@ void main() {
     });
 
     test('dado que la que se conserva quedó de baja desde el scan, cuando marca, devuelve '
-        'FailureUbicacionCambio y no deja a las dos de baja', () async {
+        'FailureConservadaDeBaja y no deja a las dos de baja', () async {
       ubicaciones.porId['ub-a'] = _ubicacion('ub-a', deletedAt: _t0);
 
-      expect(_falla(await marcar(params())), const FailureUbicacionCambio());
+      expect(_falla(await marcar(params())), const FailureConservadaDeBaja());
       expect(ubicaciones.bajas, isEmpty);
     });
 

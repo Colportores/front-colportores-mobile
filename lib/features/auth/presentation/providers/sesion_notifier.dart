@@ -4,6 +4,7 @@ import 'package:dartz/dartz.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/database/database_providers.dart';
+import '../../../../core/database/sesion_usuario_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
@@ -215,7 +216,14 @@ class SesionNotifier extends _$SesionNotifier {
   /// Si el use case **lanza** (no debería: el repositorio traduce todo a `Failure`), la DB se cierra
   /// igual, el estado se resetea y la excepción se propaga: deslogueado en pantalla con la DB
   /// abierta y la clave viva sería peor.
-  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion() async {
+  ///
+  /// [avisarCierreSinConexion]: con `true`, si la revocación quedó pendiente (sin red) deja el aviso
+  /// «Cerraste sesión…» en el login. Solo lo pide el cierre que el colportor inicia desde
+  /// Configuración: otros flujos que cierran la sesión (recuperación de contraseña, preparación de
+  /// la DB) tienen su propia pantalla y ese aviso no les corresponde.
+  Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion({
+    bool avisarCierreSinConexion = false,
+  }) async {
     final Either<Failure, ResultadoCierreSesion> resultado;
     try {
       resultado = await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
@@ -232,7 +240,15 @@ class SesionNotifier extends _$SesionNotifier {
       rethrow;
     }
 
-    if (resultado.isRight()) await _cerrarDbYSesion();
+    if (resultado.isRight()) {
+      // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
+      if (avisarCierreSinConexion) {
+        if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
+          ref.read(avisoSesionProvider.notifier).mostrar(const FailureCierreSesionSinConexion());
+        }
+      }
+      await _cerrarDbYSesion();
+    }
     return resultado;
   }
 
@@ -250,11 +266,19 @@ class SesionNotifier extends _$SesionNotifier {
   /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
   /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
   /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.
+  ///
+  /// [reintento] y [alAvanzar]: ver `BorrarDatosLocalesParams`.
   Future<Either<Failure, ResultadoBorradoDatosLocales>> borrarDatosLocales({
     required bool incluirBackupDrive,
+    bool reintento = false,
+    void Function(PasoBorrado paso)? alAvanzar,
   }) async {
     final resultado = await ref.read(borrarDatosLocalesUseCaseProvider)(
-      BorrarDatosLocalesParams(incluirBackupDrive: incluirBackupDrive),
+      BorrarDatosLocalesParams(
+        incluirBackupDrive: incluirBackupDrive,
+        reintento: reintento,
+        alAvanzar: alAvanzar,
+      ),
     );
     if (resultado.isRight()) {
       _olvidarPassword();
@@ -294,6 +318,14 @@ class SesionNotifier extends _$SesionNotifier {
 
   Future<void> _cerrarDbYSesion() async {
     _olvidarPassword();
+    // El nombre del usuario no se queda en el teléfono (#243). Antes de cerrar la DB; si falla, el
+    // cierre sigue igual: la copia está cifrada y la próxima sesión la pisa o la ignora (se lee por
+    // usuario).
+    try {
+      await ref.read(sesionUsuarioLocalDataSourceProvider)?.borrar();
+    } on Object {
+      _log.warn(LogModulo.db, 'NOMBRE_BORRADO_FAIL', 'no se pudo borrar la copia del nombre');
+    }
     try {
       await ref.read(dbLocalProvider.notifier).cerrar();
     } on Object {

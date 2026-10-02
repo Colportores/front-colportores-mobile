@@ -265,6 +265,7 @@ final class CustodiaClaveDb {
     ClaveSegura.sesionAuth,
     ClaveSegura.relojSesion,
     ClaveSegura.sesionMigrada,
+    ClaveSegura.intentosBorrado,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -345,6 +346,7 @@ final class CustodiaClaveDb {
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
+    ClaveSegura.intentosBorrado,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
@@ -29,7 +30,16 @@ part 'app_database.g.dart';
 /// Las fechas de toda tabla van en epoch ms UTC con [FechaUtcConverter]
 /// (08-conceptos-transversales §8.11), no con columnas `dateTime()` de Drift.
 @DriftDatabase(
-  tables: [Jornadas, Ubicaciones, Espacios, ParesDecididos, CampaniasCiudad, Zonas, ZonaVertices],
+  tables: [
+    Jornadas,
+    Ubicaciones,
+    Espacios,
+    ParesDecididos,
+    CampaniasCiudad,
+    Zonas,
+    ZonaVertices,
+    SesionUsuarios,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
@@ -46,10 +56,11 @@ class AppDatabase extends _$AppDatabase {
   /// - 3: `ubicacion` y `espacio` (#192).
   /// - 4: `ubicacion_par_decidido`, solo local (#207).
   /// - 5: `campania_ciudad`, `zona` y `zona_vertice`, réplicas del canal de catálogo (#231).
+  /// - 6: `sesion_usuario`, copia local del nombre del usuario (#243).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 5;
+  static const int versionEsquema = 6;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -117,6 +128,10 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.zonaCampaniaCiudadIdx);
       await m.createTable(esquema.zonaVertice);
       await m.createIndex(esquema.zonaVerticeZonaIdx);
+    },
+    // Solo crea la tabla del nombre, vacía (se llena al entrar): nada de lo guardado cambia.
+    from5To6: (m, esquema) async {
+      await m.createTable(esquema.sesionUsuario);
     },
   );
 }
