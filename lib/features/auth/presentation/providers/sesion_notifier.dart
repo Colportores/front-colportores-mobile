@@ -21,6 +21,7 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
 
@@ -48,12 +49,31 @@ class SesionNotifier extends _$SesionNotifier {
 
     final resultado = await ref.watch(obtenerSesionActualUseCaseProvider)(const NoParams());
     _reintentarRevocacionPendiente();
-    return resultado.fold((failure) {
+    if (resultado case Left(value: final failure)) {
       if (failure case FailureSesionExpiradaPorInactividad() || FailureSesionRevocada()) {
+        // Sin sesión que leer (se descartó al arrancar): el saludo no tiene a quién nombrar, pero
+        // el correo de la última cuenta sí quedó guardado aparte (decisión de Cristian, 01/10).
+        final correo = await ref.read(ultimoCorreoRepositoryProvider).leer();
+        if (!ref.mounted) return null;
         ref.read(avisoSesionProvider.notifier).mostrar(failure);
+        ref
+            .read(reingresoSesionProvider.notifier)
+            .iniciar(
+              DatosReingreso(
+                motivo: failure is FailureSesionRevocada
+                    ? MotivoExpiracion.revocada
+                    : MotivoExpiracion.inactividad,
+                email: correo,
+              ),
+            );
       }
       return null;
-    }, (sesion) => sesion);
+    }
+    final sesion = (resultado as Right<Failure, Sesion?>).value;
+    // Una sesión restaurada también deja el correo: cubre las cuentas que entraron antes de que se
+    // guardara.
+    if (sesion != null) unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
+    return sesion;
   }
 
   /// La sesión venció o el servidor la revocó (HU-AUTH-007): de vuelta al login con el motivo.
@@ -70,6 +90,20 @@ class SesionNotifier extends _$SesionNotifier {
       'habia_sesion': habiaSesion,
     });
     ref.read(avisoSesionProvider.notifier).mostrar(aviso);
+    // Antes de cerrar: cuando `state` pase a `null`, el login ya tiene a quién saludar. Sin sesión
+    // (un segundo aviso mientras se ve el login) no hay correo nuevo: se conserva el que ya estaba.
+    if (habiaSesion) {
+      ref
+          .read(reingresoSesionProvider.notifier)
+          .iniciar(
+            DatosReingreso(motivo: motivo, email: state.value?.email, nombre: state.value?.nombre),
+          );
+    } else {
+      final previo = ref.read(reingresoSesionProvider);
+      ref
+          .read(reingresoSesionProvider.notifier)
+          .iniciar(DatosReingreso(motivo: motivo, email: previo?.email, nombre: previo?.nombre));
+    }
     if (!habiaSesion) return;
     await ref.read(expirarSesionUseCaseProvider)(motivo);
     await _cerrarDbYSesion();
@@ -93,7 +127,9 @@ class SesionNotifier extends _$SesionNotifier {
         // envuelve la DEK con esta contraseña (HU-AUTH-009, `PreparacionDbLocalNotifier`).
         ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(sesion);
+        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
         ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
         return null;
@@ -116,7 +152,9 @@ class SesionNotifier extends _$SesionNotifier {
       },
       (sesion) {
         state = AsyncData(sesion);
+        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
         ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         return null;
       },
     );
@@ -158,7 +196,11 @@ class SesionNotifier extends _$SesionNotifier {
       (r) {
         if (r.sesion != null) ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(r.sesion);
-        if (r.sesion != null) ref.read(avisoSesionProvider.notifier).descartar();
+        if (r.sesion case final sesion?) {
+          unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
+          ref.read(avisoSesionProvider.notifier).descartar();
+          ref.read(reingresoSesionProvider.notifier).limpiar();
+        }
         return Right(r);
       },
     );
@@ -213,6 +255,8 @@ class SesionNotifier extends _$SesionNotifier {
     }
 
     if (resultado.isRight()) {
+      // Cerrar a propósito: el correo de la última cuenta no se queda en el teléfono.
+      await ref.read(ultimoCorreoRepositoryProvider).borrar();
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
         if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
@@ -254,6 +298,7 @@ class SesionNotifier extends _$SesionNotifier {
     );
     if (resultado.isRight()) {
       _olvidarPassword();
+      await ref.read(ultimoCorreoRepositoryProvider).borrar();
       state = const AsyncData(null);
     }
     return resultado;

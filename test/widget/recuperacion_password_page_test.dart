@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -34,20 +36,492 @@ Future<void> _montarPagina(
 );
 
 const _mensajeNeutro = 'Si el email está registrado, te enviamos un enlace de recuperación';
-const _textoAviso =
-    'Si restablecés tu contraseña y tenés datos locales en otro dispositivo, no podrás '
-    'abrirlos ahí. Tendrás que restaurar desde tu backup.';
+const _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
 Future<void> _completarYAceptar(
   WidgetTester tester, {
   String email = 'lucia.silva@correo.com',
 }) async {
   await tester.enterText(find.byKey(const Key('recuperacion_password_email')), email);
-  await tester.tap(find.byKey(const Key('recuperacion_password_checkbox')));
+  await _tocar(tester, 'recuperacion_password_checkbox');
   await tester.pump();
 }
 
+/// Con el texto al 200 % los botones quedan fuera de pantalla: sin esto el toque no llega.
+Future<void> _tocar(WidgetTester tester, String key) async {
+  await tester.ensureVisible(find.byKey(Key(key)));
+  await tester.tap(find.byKey(Key(key)));
+}
+
+OutlinedButton _reenviar(WidgetTester tester) =>
+    tester.widget<OutlinedButton>(find.byKey(const Key('recuperacion_password_reenviar')));
+
+FilledButton _enviar(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.byKey(const Key('recuperacion_password_enviar')));
+
+/// La página dentro de un Navigator con una ruta debajo, para probar «Volver al login» y el atrás.
+Future<void> _montarSobreLogin(
+  WidgetTester tester, {
+  required AuthRemoteDataSourceEnMemoria remote,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+        authRemoteDataSourceProvider.overrideWithValue(remote),
+        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      ],
+      child: MaterialApp(
+        theme: temaClaro(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                key: const Key('abrir_recuperacion'),
+                onPressed: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(builder: (_) => const RecuperacionPasswordPage()),
+                ),
+                child: const Text('pantalla de abajo'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(const Key('abrir_recuperacion')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  group('Vista 14 (#223) — un estado por artboard', () {
+    testWidgets('A01 principal: eyebrow, título, apoyo, aviso, campo, casilla sin marcar y botón '
+        'deshabilitado', (tester) async {
+      await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      await tester.pumpAndSettle();
+
+      expect(find.text('RECUPERAR CONTRASEÑA'), findsOneWidget);
+      expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
+      expect(
+        find.text('Ingresá tu email y te enviamos un enlace para restablecerla.'),
+        findsOneWidget,
+      );
+      expect(find.text(_textoAviso), findsOneWidget);
+      expect(find.text('CORREO'), findsOneWidget);
+      expect(find.text('Entiendo el impacto sobre mis datos locales'), findsOneWidget);
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('recuperacion_password_checkbox')))
+            .value,
+        isFalse,
+      );
+      expect(find.text('Enviar enlace de recuperación'), findsOneWidget);
+      expect(_enviar(tester).onPressed, isNull);
+    });
+
+    testWidgets('A02 casilla marcada: el botón se habilita', (tester) async {
+      await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_checkbox')));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('recuperacion_password_checkbox')))
+            .value,
+        isTrue,
+      );
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    for (final email in ['lucia', 'lucia@', 'lucia@correo', 'lu cia@correo.com']) {
+      testWidgets(
+        'A03 email inválido («$email»): «Revisá el email: parece incompleto.», sin enviar y '
+        'con el botón habilitado',
+        (tester) async {
+          final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+          await _montarPagina(tester, remote: remote);
+          await tester.pumpAndSettle();
+
+          await _completarYAceptar(tester, email: email);
+          await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Revisá el email: parece incompleto.'), findsOneWidget);
+          expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+          expect(_enviar(tester).onPressed, isNotNull);
+          expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+        },
+      );
+    }
+
+    testWidgets('A03 corregir el email y volver a enviar lleva al éxito', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester, email: 'lucia@');
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('recuperacion_password_email')),
+        'lucia@correo.com',
+      );
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Revisá el email: parece incompleto.'), findsNothing);
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsOneWidget);
+    });
+
+    testWidgets('A04 enviando: «Enviando…», campo, casilla y atrás deshabilitados', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+        ..demoraRecuperacion = Completer<void>();
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pump();
+
+      expect(find.text('Enviando…'), findsOneWidget);
+      expect(_enviar(tester).onPressed, isNull);
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('recuperacion_password_email'))).enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('recuperacion_password_checkbox')))
+            .onChanged,
+        isNull,
+      );
+      expect(
+        tester.widget<IconButton>(find.byKey(const Key('recuperacion_password_atras'))).onPressed,
+        isNull,
+      );
+
+      remote.demoraRecuperacion!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsOneWidget);
+    });
+
+    testWidgets(
+      'A05 éxito: pantalla aparte con el mensaje de la HU, el apoyo del spam, «Reenviar en '
+      '60s» y «Volver al login»',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+        await _montarPagina(tester, remote: remote);
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.text(_mensajeNeutro), findsOneWidget);
+        expect(find.text('Si no lo encontrás, revisá la carpeta de spam.'), findsOneWidget);
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(find.text('Volver al login'), findsOneWidget);
+        expect(find.text('¿Olvidaste tu contraseña?'), findsNothing, reason: 'es otra pantalla');
+        expect(find.byKey(const Key('recuperacion_password_enviar')), findsNothing);
+      },
+    );
+
+    testWidgets('A05 la cuenta regresiva baja y «Reenviar enlace» vuelve a enviar y reinicia los '
+        '60 s', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      await tester.pump(const Duration(seconds: 18));
+      expect(find.text('Reenviar en 42s'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 42));
+      await tester.tap(find.byKey(const Key('recuperacion_password_reenviar')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 2);
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+    });
+
+    testWidgets('A05 «Reenviar» tocado dos veces seguidas envía una sola vez', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 60));
+      remote.demoraRecuperacion = Completer<void>();
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_reenviar')));
+      await tester.tap(
+        find.byKey(const Key('recuperacion_password_reenviar')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(find.text('Enviando…'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNull);
+
+      remote.demoraRecuperacion!.complete();
+      await tester.pumpAndSettle();
+      expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 2);
+    });
+
+    testWidgets('A05 si el reenvío falla por falta de conexión, lo dice en la misma pantalla y '
+        'deja reintentar', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 60));
+
+      remote.simularSinConexion = true;
+      await tester.tap(find.byKey(const Key('recuperacion_password_reenviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Necesitás conexión para solicitar la recuperación'), findsOneWidget);
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNotNull);
+
+      remote.simularSinConexion = false;
+      await tester.tap(find.byKey(const Key('recuperacion_password_reenviar')));
+      await tester.pumpAndSettle();
+      expect(find.text('Necesitás conexión para solicitar la recuperación'), findsNothing);
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+    });
+
+    testWidgets('A05 «Volver al login» y el atrás de A01 cierran la pantalla', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarSobreLogin(tester, remote: remote);
+      await _completarYAceptar(tester);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_volver_login')));
+      await tester.pumpAndSettle();
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('abrir_recuperacion')));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('recuperacion_password_checkbox')))
+            .value,
+        isFalse,
+        reason: 'al volver a entrar, nada queda marcado',
+      );
+      await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
+      await tester.pumpAndSettle();
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+    });
+
+    testWidgets('A05 al volver de segundo plano la cuenta regresiva sigue la hora real, sin perder '
+        'el cooldown', (tester) async {
+      var ahora = DateTime(2026, 9, 30, 10);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          ],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: RecuperacionPasswordPage(ahora: () => ahora),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+      await _tocar(tester, 'recuperacion_password_enviar');
+      await tester.pumpAndSettle();
+      expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+      // Segundo plano 45 s: el timer no corrió, pero el reloj sí.
+      ahora = ahora.add(const Duration(seconds: 45));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Reenviar en 15s'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNull, reason: 'todavía no pasaron los 60 s');
+
+      ahora = ahora.add(const Duration(seconds: 30));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Reenviar enlace'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('A06 sin conexión: «Necesitás conexión…» con la casilla marcada y el botón '
+        'habilitado; al volver la conexión, envía', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+        ..simularSinConexion = true;
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await _completarYAceptar(tester);
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Necesitás conexión para solicitar la recuperación'), findsOneWidget);
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('recuperacion_password_checkbox')))
+            .value,
+        isTrue,
+      );
+      expect(_enviar(tester).onPressed, isNotNull);
+
+      remote.simularSinConexion = false;
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsOneWidget);
+    });
+
+    testWidgets('el email de la sesión llega precargado y se puede cambiar', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(
+              AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+            ),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          ],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: const RecuperacionPasswordPage(emailInicial: 'ana@example.com'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ana@example.com'), findsOneWidget);
+    });
+  });
+
+  group('Vista 14 (#223) — accesibilidad y tamaños', () {
+    final estados = <String, Future<void> Function(WidgetTester)>{
+      'A01 principal': (tester) async {
+        await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+        await tester.pumpAndSettle();
+      },
+      'A02 casilla marcada': (tester) async {
+        await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+        await tester.pumpAndSettle();
+        await _tocar(tester, 'recuperacion_password_checkbox');
+        await tester.pump();
+      },
+      'A03 email inválido': (tester) async {
+        await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester, email: 'lucia@');
+        await _tocar(tester, 'recuperacion_password_enviar');
+        await tester.pumpAndSettle();
+      },
+      'A04 enviando': (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+          ..demoraRecuperacion = Completer<void>();
+        await _montarPagina(tester, remote: remote);
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester);
+        await _tocar(tester, 'recuperacion_password_enviar');
+        await tester.pump();
+      },
+      'A05 éxito': (tester) async {
+        await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester);
+        await _tocar(tester, 'recuperacion_password_enviar');
+        await tester.pumpAndSettle();
+      },
+      'A05 éxito con error al reenviar': (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+        await _montarPagina(tester, remote: remote);
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester);
+        await _tocar(tester, 'recuperacion_password_enviar');
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 60));
+        remote.simularSinConexion = true;
+        await _tocar(tester, 'recuperacion_password_reenviar');
+        await tester.pumpAndSettle();
+      },
+      'A06 sin conexión': (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+          ..simularSinConexion = true;
+        await _montarPagina(tester, remote: remote);
+        await tester.pumpAndSettle();
+        await _completarYAceptar(tester);
+        await _tocar(tester, 'recuperacion_password_enviar');
+        await tester.pumpAndSettle();
+      },
+    };
+
+    for (final MapEntry(key: nombre, value: preparar) in estados.entries) {
+      testWidgets('$nombre: tamaño de toque, etiquetas y contraste en 390x844', (tester) async {
+        final handle = tester.ensureSemantics();
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await preparar(tester);
+
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        handle.dispose();
+      });
+
+      for (final (tam, escala) in [
+        (const Size(360, 640), 1.0),
+        (const Size(360, 640), 2.0),
+        (const Size(412, 915), 2.0),
+        (const Size(360, 740), 2.0),
+      ]) {
+        testWidgets('$nombre: sin overflow en ${tam.width.toInt()}x${tam.height.toInt()} con texto '
+            '$escala', (tester) async {
+          tester.view.physicalSize = tam;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          tester.platformDispatcher.textScaleFactorTestValue = escala;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await preparar(tester);
+
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('un email de 300 caracteres al 200 % no desborda', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('recuperacion_password_email')),
+        '${'a' * 300}@correo.com',
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('RecuperacionPasswordPage — diseño', () {
     testWidgets('renderiza sin overflow en 390x844', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
@@ -64,6 +538,16 @@ void main() {
   });
 
   group('RecuperacionPasswordPage — advertencia y casilla', () {
+    testWidgets('el aviso de impacto es «Tus datos guardados en este teléfono se conservan.» y no '
+        'queda rastro del texto viejo (decisión 01/10)', (tester) async {
+      await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tus datos guardados en este teléfono se conservan.'), findsOneWidget);
+      expect(find.textContaining('restaurar desde tu backup'), findsNothing);
+      expect(find.textContaining('no podrás abrirlos'), findsNothing);
+    });
+
     testWidgets('muestra la advertencia literal de la HU antes de enviar', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
       await _montarPagina(tester, remote: remote);
@@ -178,22 +662,15 @@ void main() {
       expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
       expect(find.text('Reenviar en 60s'), findsOneWidget);
       expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('recuperacion_password_enviar')))
-            .onPressed,
+        _reenviar(tester).onPressed,
         isNull,
         reason: 'deshabilitado mientras dura el cooldown',
       );
 
       await tester.pump(const Duration(seconds: 60));
 
-      expect(find.text('Enviar enlace de recuperación'), findsOneWidget);
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('recuperacion_password_enviar')))
-            .onPressed,
-        isNotNull,
-      );
+      expect(find.text('Reenviar enlace'), findsOneWidget);
+      expect(_reenviar(tester).onPressed, isNotNull);
     });
 
     testWidgets('email no registrado: el mismo mensaje neutro (no revela que no existe)', (

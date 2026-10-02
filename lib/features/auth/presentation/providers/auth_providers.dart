@@ -14,8 +14,10 @@ import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import '../../data/datasources/reloj_sesion_en_almacen.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
+import '../../data/repositories/ultimo_correo_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
+import '../../domain/repositories/ultimo_correo_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
@@ -94,6 +96,11 @@ ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
 /// `AlmacenSesionSupabase`); por defecto (tests), en memoria.
 @Riverpod(keepAlive: true)
 RelojSesion relojSesion(Ref ref) => RelojSesionEnMemoria();
+
+/// El correo de la última cuenta (decisión de Cristian, 01/10). En el equipo, `main.dart` lo
+/// sobreescribe con el almacén seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+UltimoCorreoRepository ultimoCorreoRepository(Ref ref) => UltimoCorreoEnMemoria();
 
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
