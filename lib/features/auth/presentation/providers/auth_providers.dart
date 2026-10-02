@@ -124,7 +124,7 @@ ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref re
 ConfirmarPasswordUseCase confirmarPasswordUseCase(Ref ref) =>
     ConfirmarPasswordUseCase(ref.watch(authRepositoryProvider));
 
-/// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
+/// Backup en Drive (#184 y #185, HU-SYNC-004/005): hasta que exista, [BackupDriveNoDisponible].
 @Riverpod(keepAlive: true)
 BackupDriveDataSource backupDriveDataSource(Ref ref) => const BackupDriveNoDisponible();
 
