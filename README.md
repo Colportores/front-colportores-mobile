@@ -102,6 +102,7 @@ flutter run --dart-define-from-file=.env.json
 flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUPABASE_ANON_KEY=eyJ...
 ```
 
+- «Contactar a soporte» (vista 13) abre el WhatsApp de soporte, +54 3751 530020 (`https://wa.me/5493751530020`). El número es configuración (`lib/core/config/config_soporte.dart`): se cambia en compilación con `--dart-define=SOPORTE_WHATSAPP=<código de país y número, sin +>` (en Argentina los celulares llevan el 9: `549…`) y `--dart-define=SOPORTE_WHATSAPP_VISIBLE="+54 …"`.
 - Google entra por OAuth en el navegador del sistema y vuelve por el deep link `io.supabase.colportores://login-callback/` (intent-filter en `AndroidManifest.xml`); esa URL tiene que estar allowlisteada en Supabase → Authentication → URL Configuration → Redirect URLs. Apple/iOS quedan desactivados por ahora.
 - La verificación de email (HU-AUTH-002) vuelve por un deep link propio, mismo scheme/host, path distinto: `io.supabase.colportores://login-callback/verificado` (issue #84). **Pendiente de sumar** esa URL —o un comodín `io.supabase.colportores://login-callback/**`— en el mismo lugar que la de arriba; sin eso Supabase rechaza el `emailRedirectTo` del registro y el correo de verificación no vuelve a la app.
 - `scripts/check_auth_providers.sh` verifica contra `/auth/v1/settings` que el proyecto tenga email y Google activos y Apple apagado; en CI lee las variables de repo `SUPABASE_URL` / `SUPABASE_ANON_KEY` (`gh variable set …`) y con ellas el job del APK sale ya configurado.

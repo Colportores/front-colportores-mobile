@@ -66,11 +66,13 @@ final class FailureSesionExpiradaPorInactividad extends Failure {
 
 /// El servidor ya no acepta la sesión: se revocó (cambio de contraseña, cierre en todos los
 /// equipos) o venció de su lado (HU-AUTH-007, "Edge - backend revocó la sesión"). La HU no fija el
-/// texto; los datos locales siguen intactos.
+/// texto: es la propuesta de la vista 17 (17-A03); los datos locales siguen intactos.
 final class FailureSesionRevocada extends Failure {
   const FailureSesionRevocada()
     : super(
-        mensaje: 'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+        mensaje:
+            'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la '
+            'contraseña. Entrá de nuevo.',
         codigo: 'AUTH_SESION_REVOCADA',
       );
 }
@@ -270,6 +272,26 @@ final class FailureSinBloqueoPantalla extends Failure {
       );
 }
 
+/// La app se cerró a mitad de la primera preparación de la DB local (HU-AUTH-009, vista 13 A09).
+///
+/// Lo parcial nunca se usó (la marca de "inicializada" va última), así que empezar de nuevo no
+/// pierde nada: la UI lo avisa y ofrece "Empezar de nuevo", sin pedir el login otra vez.
+/// [pasoCortado] es el índice (0 a 2) del paso de la lista en el que se cortó.
+final class FailurePreparacionInterrumpida extends Failure {
+  const FailurePreparacionInterrumpida({this.pasoCortado = 1})
+    : super(
+        mensaje:
+            'La app se cerró antes de terminar. Volvemos a empezar desde el paso 1 para que todo '
+            'quede bien.',
+        codigo: 'DB_PREPARACION_INTERRUMPIDA',
+      );
+
+  final int pasoCortado;
+
+  @override
+  List<Object?> get props => [...super.props, pasoCortado];
+}
+
 /// El Keystore del equipo es por software (Supuesto S10, HU-AUTH-009): hace falta el consentimiento
 /// explícito del usuario para seguir. No es un error: la UI muestra la advertencia (el [mensaje] es
 /// el texto literal de la HU) con "Entiendo el riesgo y quiero continuar" y "Cancelar".
@@ -338,13 +360,20 @@ final class FailurePasswordNoAbreDatos extends Failure {
 /// almacén seguro falla solo queda "empezar de nuevo" (ADR-006). El texto es propio: para
 /// confirmar.
 final class FailurePasswordParaProteger extends Failure {
-  const FailurePasswordParaProteger()
+  /// Con [porPreparacionInterrumpida] el texto explica por qué se pide la contraseña (la app se
+  /// cerró en plena preparación y se empezó de nuevo con la sesión restaurada).
+  const FailurePasswordParaProteger({this.porPreparacionInterrumpida = false})
     : super(
-        mensaje:
-            'Para proteger tus datos, confirmá tu contraseña. Con ella vas a poder recuperarlos si '
-            'este teléfono pierde su clave.',
+        mensaje: porPreparacionInterrumpida
+            ? 'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu '
+                  'contraseña.'
+            : 'Para proteger tus datos, confirmá tu contraseña. Con ella vas a poder recuperarlos '
+                  'si este teléfono pierde su clave.',
         codigo: 'DB_FALTA_PASSWORD',
       );
+
+  /// Se pide por «Empezar de nuevo» tras una preparación interrumpida (A09).
+  final bool porPreparacionInterrumpida;
 }
 
 /// La sesión se cerró (o no había) mientras se preparaba la DB local: no se abre nada sin sesión.
