@@ -2,7 +2,10 @@ package com.colportores.colportores_mobile
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
@@ -25,6 +28,11 @@ class MainActivity : FlutterActivity() {
      *
      * - `bloqueoPantalla` → si hay PIN, patrón, contraseña o biometría (`isDeviceSecure`).
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
+     * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` → abre esa pantalla de los ajustes
+     *   (vista 13, #222) y devuelve si pudo.
+     *
+     * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
+     *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
      *
      * Nunca devuelve material secreto: la clave de prueba se crea y se borra acá mismo.
      */
@@ -34,12 +42,53 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "bloqueoPantalla" -> result.success(tieneBloqueoPantalla())
                     "nivelAlmacen" -> result.success(nivelAlmacen())
+                    "abrirAjustesSeguridad" -> result.success(abrirAjustes(Settings.ACTION_SECURITY_SETTINGS))
+                    "abrirAjustesAlmacenamiento" ->
+                        result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
                 // Solo el tipo: el mensaje de una excepción del Keystore no tiene por qué ir a Dart.
                 result.error("SEGURIDAD_DISPOSITIVO", e.javaClass.simpleName, null)
             }
+        }
+    }
+
+    /**
+     * Abre la pantalla de ajustes [accion] y devuelve `true`. Si el equipo no la tiene, abre los
+     * ajustes generales pero devuelve `false`: no llegó a la pantalla pedida, y la app le dice al
+     * usuario cómo llegar a mano. También `false` si ninguna abre.
+     */
+    private fun abrirAjustes(accion: String): Boolean {
+        try {
+            startActivity(Intent(accion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: Exception) {
+            // Sin esa pantalla: se intenta con los ajustes generales.
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Tampoco abren.
+        }
+        return false
+    }
+
+    /**
+     * Abre [url] (solo `https://wa.me/...`) con la app que la resuelva: WhatsApp si está instalado
+     * (`wa.me` es un enlace verificado suyo) y, si no, el navegador. `false` si el enlace no es de
+     * `wa.me` o ninguna app lo abre.
+     */
+    private fun abrirEnlace(url: String?): Boolean {
+        if (url == null) return false
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host != "wa.me") return false
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
