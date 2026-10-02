@@ -104,8 +104,9 @@ final geocodificadorInversoProvider = Provider<GeocodificadorInverso>(
   (ref) => GeocodificadorNominatim(lectorHttpIo()),
 );
 
-/// Sin réplica local de las ciudades de la campaña hasta que llegue el pull del sync (#178):
-/// [CiudadesParaAltaSinFuente].
+/// Sin réplica local de las ciudades de la campaña hasta el adaptador real (#274, junto al pull de
+/// catálogos): [CiudadesParaAltaSinFuente] devuelve la falla de lectura, y toda alta muestra «No
+/// pudimos leer las ciudades de tu campaña». La app no sale a producción así.
 final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) => CiudadesParaAltaSinFuente());
 
 /// De dónde salen los tiles del mapa de fondo (HU-UBI-003, ADR-011). El paquete PMTiles offline y

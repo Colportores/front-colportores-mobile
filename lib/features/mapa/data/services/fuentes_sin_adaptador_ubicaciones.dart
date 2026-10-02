@@ -11,34 +11,39 @@ import '../../domain/value_objects/coordenadas.dart';
 // Puertos del alta de ubicación (HU-UBI-001) cuya fuente real todavía no existe. **Ninguno es la
 // regla de la HU**: se reemplazan cuando llegue lo que les falta.
 
-/// Sin réplica local de las ciudades de la campaña (el catálogo y las campañas del colportor llegan
-/// con el pull del sync, #178): no hay ciudad que proponer ni lista que mostrar. El alta muestra el
-/// aviso «Tu campaña todavía no tiene ciudades» y no deja registrar: no se inventa una ciudad.
+/// Sin réplica local de las ciudades de la campaña (`ciudad` y `campania_colportor` llegan con el
+/// pull de catálogos, #180 y #181; el adaptador real es front-colportores-mobile#274): no hay ciudad
+/// que proponer ni lista que mostrar.
+///
+/// **No sabe, así que no afirma que la campaña no tiene ciudades**: devuelve la **falla de lectura**
+/// ([FailureCiudadesNoDisponibles], «No pudimos leer las ciudades de tu campaña. Probá de nuevo.»,
+/// con «Reintentar»). «Tu campaña todavía no tiene ciudades. Avisale a tu coordinador.»
+/// ([CampaniaSinCiudades]) queda para una campaña que de verdad no las tiene (decisión del
+/// orquestador, 02/10, en #267). Hasta que exista el adaptador toda alta cae en la falla de lectura:
+/// la app no sale a producción con esta clase.
 final class CiudadesParaAltaSinFuente implements CiudadesParaAlta {
   CiudadesParaAltaSinFuente({AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
   final AppLogger _log;
 
-  void _avisar() => _log.warn(
-    LogModulo.map,
-    'CIUDADES_SIN_FUENTE',
-    'no hay ciudades de la campaña en el teléfono (falta la réplica local del catálogo)',
-  );
+  Left<Failure, T> _sinFuente<T>() {
+    _log.warn(
+      LogModulo.map,
+      'CIUDADES_SIN_FUENTE',
+      'no hay ciudades de la campaña en el teléfono (falta la réplica local del catálogo)',
+    );
+    return Left(const FailureCiudadesNoDisponibles());
+  }
 
   @override
   Future<Either<Failure, PropuestaCiudad>> proponer({
     required String colportorId,
     Coordenadas? punto,
-  }) async {
-    _avisar();
-    return const Right(CampaniaSinCiudades());
-  }
+  }) async => _sinFuente();
 
   @override
-  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async {
-    _avisar();
-    return const Right([]);
-  }
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async =>
+      _sinFuente();
 }
 
 /// Sin inscripciones del colportor en el teléfono (coord#20): el alta se hace igual y queda sin zona

@@ -432,6 +432,21 @@ final class FailureCiudadRequerida extends Failure {
       );
 }
 
+/// No se pudieron leer las ciudades de la campaña del colportor (vista 03, «No pudimos leer las
+/// ciudades de tu campaña…»): la base local no se pudo leer o todavía no existe de dónde leerlas
+/// (`CiudadesParaAltaSinFuente`, hasta el adaptador real de front-colportores-mobile#274). Es **otra
+/// cosa** que una campaña sin ciudades: aquí no se sabe, y afirmar que no tiene mandaría al colportor
+/// a molestar al coordinador por algo que no es de la campaña. Se puede reintentar.
+///
+/// La HU no trae texto: el de acá lo aceptó el orquestador en #267 (mapa §2, 02/10).
+final class FailureCiudadesNoDisponibles extends Failure {
+  const FailureCiudadesNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer las ciudades de tu campaña. Probá de nuevo.',
+        codigo: 'UBI_CIUDADES_NO_DISPONIBLES',
+      );
+}
+
 /// HU-UBI-007, "único espacio activo con personas": no se puede dar de baja el último espacio
 /// activo de un edificio o negocio si tiene personas. El mensaje es el que fija la HU.
 final class FailureUltimoEspacioConPersonas extends Failure {
@@ -548,9 +563,9 @@ final class FailurePaqueteTilesCorrupto extends Failure {
       );
 }
 
-/// "Conservar ambos" sobre dos ubicaciones con la misma calle, número y ciudad cuando la decisión
-/// D1 (backend-supabase#24) no lo admite (`CriterioDuplicadoUbicacion.
-/// mismaDireccionAdmiteConservarAmbos`): tiene que quedar una sola (HU-UBI-006).
+/// "Conservar ambos" sobre dos ubicaciones con la misma calle, número y ciudad a menos de 100 m
+/// (`CriterioDuplicadoUbicacion.radioMismaDireccionMetros`), que la decisión D1
+/// (backend-supabase#24) no admite: tiene que quedar una sola (HU-UBI-006).
 ///
 /// Texto para confirmar con Cristian: la HU y la vista 10 no traen uno para este caso.
 final class FailureDuplicadoMismaDireccion extends Failure {
