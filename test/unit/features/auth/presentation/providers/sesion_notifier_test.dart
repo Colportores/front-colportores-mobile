@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
@@ -125,6 +126,38 @@ void main() {
         expect(remote.llamadasCerrarSesion, 1);
       },
     );
+
+    test('dado el nombre del usuario guardado en la DB, cuando cierra sesión, se borra con el '
+        'resto (#243) y no queda en el teléfono', () async {
+      await iniciarSesion();
+      final bytes = List<int>.filled(32, 4);
+      final db = await container
+          .read(dbLocalProvider.notifier)
+          .abrir(ClaveDb(Uint8List.fromList(bytes)));
+      await SesionUsuarioLocalDataSource(db).guardar('u-1', 'Lucía');
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(container.read(sesionProvider).value, isNull);
+      final reabierta = await helper.abrir(ClaveDb(Uint8List.fromList(bytes)));
+      expect(await reabierta.select(reabierta.sesionUsuarios).get(), isEmpty);
+    });
+
+    test('dado que la sesión guardada no se puede borrar (el usuario sigue adentro), el nombre '
+        'se conserva', () async {
+      await iniciarSesion();
+      final bytes = List<int>.filled(32, 4);
+      final db = await container
+          .read(dbLocalProvider.notifier)
+          .abrir(ClaveDb(Uint8List.fromList(bytes)));
+      await SesionUsuarioLocalDataSource(db).guardar('u-1', 'Lucía');
+      local.explotar = true;
+
+      final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(resultado.isLeft(), isTrue);
+      expect(await SesionUsuarioLocalDataSource(db).leer('u-1'), 'Lucía');
+    });
 
     test('dado sesión sin DB abierta, cuando cierra sesión, no falla ni toca el helper', () async {
       await iniciarSesion();
@@ -246,6 +279,37 @@ void main() {
         expect(remote.revocaciones, hasLength(1));
       },
     );
+
+    test('el cierre sin red solo deja el aviso del login si quien cierra lo pide', () async {
+      await iniciarSesion();
+      remote.simularSinConexion = true;
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(
+        container.read(avisoSesionProvider),
+        isNull,
+        reason: 'recuperación de contraseña y preparación de la DB cierran sin ese aviso',
+      );
+    });
+
+    test('desde Configuración, el cierre sin red deja el aviso «Cerraste sesión…»', () async {
+      await iniciarSesion();
+      remote.simularSinConexion = true;
+
+      await container.read(sesionProvider.notifier).cerrarSesion(avisarCierreSinConexion: true);
+
+      expect(container.read(avisoSesionProvider), const FailureCierreSesionSinConexion());
+    });
+
+    test('con red, pedir el aviso no deja ninguno: el cierre fue completo', () async {
+      await iniciarSesion();
+
+      await container.read(sesionProvider.notifier).cerrarSesion(avisarCierreSinConexion: true);
+
+      expect(container.read(avisoSesionProvider), isNull);
+    });
 
     test('dado una apertura de la DB en vuelo, cuando cierra sesión, no la deja abierta', () async {
       await iniciarSesion();

@@ -205,7 +205,7 @@ void main() {
       expect(encolador.encolados, hasLength(1));
       expect(
         resultados.where(
-          (r) => r == const Left<Failure, ResultadoBajaUbicacion>(FailureUbicacionCambio()),
+          (r) => r == const Left<Failure, ResultadoBajaUbicacion>(FailureConservadaDeBaja()),
         ),
         hasLength(1),
       );

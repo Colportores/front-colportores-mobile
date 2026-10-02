@@ -417,11 +417,8 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// Al pie de "Jornada activa" (vista 21): la hora de fin como fila tocable (abre la hoja de ±5
   /// minutos), "Abrir el mapa" y "Finalizar jornada".
   Widget _accionesFin(Jornada jornada, DateTime ahora) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
     final maximo = _maximoAtrasFin(jornada, ahora);
     final elegida = _horaElegidaFin(jornada, ahora);
-    final margen = FinalizarJornadaUseCase.margenHaciaAtras.inMinutes;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -438,17 +435,6 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
               : 'hace ${_minutosAtrasDe(ahora, elegida)} min',
           onTap: _finalizando || maximo == 0 ? null : () => _elegirHoraFin(ahora, maximo),
         ),
-        if (_errorFin == null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              maximo < margen
-                  ? 'Podés marcar el fin hasta $maximo minutos hacia atrás: tu jornada empezó a '
-                        'las ${horaCorta(jornada.inicio)}.'
-                  : 'Podés marcar el fin hasta $margen minutos hacia atrás.',
-              style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris, fontSize: 12.5),
-            ),
-          ),
         const SizedBox(height: 4),
         OutlinedButton.icon(
           key: const Key('jornada_abrir_mapa'),

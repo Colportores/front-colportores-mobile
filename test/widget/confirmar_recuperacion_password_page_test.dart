@@ -13,7 +13,6 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
-import 'package:colportores_mobile/features/auth/domain/entities/politica_password.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -85,12 +84,32 @@ Future<void> _montarSolo(WidgetTester tester, EnlaceRecuperacion enlace) async {
   await tester.pumpAndSettle();
 }
 
+String _texto(WidgetTester tester, String campo) =>
+    tester.widget<TextField>(find.byKey(Key('confirmar_recuperacion_$campo'))).controller!.text;
+
+Finder _req(String cual) => find.byKey(Key('confirmar_recuperacion_req_$cual'));
+
 Future<void> _completar(WidgetTester tester, String nueva, {String? repetida}) async {
   await tester.enterText(find.byKey(const Key('confirmar_recuperacion_nueva')), nueva);
   await tester.enterText(
     find.byKey(const Key('confirmar_recuperacion_repetida')),
     repetida ?? nueva,
   );
+  await tester.pump();
+}
+
+Finder get _irAlLoginExito => find.byKey(const Key('confirmar_recuperacion_exito_ir_al_login'));
+
+Future<void> _irAlLogin(WidgetTester tester) async {
+  await tester.ensureVisible(_irAlLoginExito);
+  await tester.tap(_irAlLoginExito);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tocarGuardarSinEsperar(WidgetTester tester) async {
+  await tester.ensureVisible(_guardar);
+  await tester.tap(_guardar);
+  await tester.pump();
 }
 
 Future<void> _tocarGuardar(WidgetTester tester) async {
@@ -118,9 +137,11 @@ void main() {
 
       expect(_recuperacion.actualizaciones, ['NuevaClave1']);
       expect(_recuperacion.sesionesCerradas, 1, reason: 'todos los JWT activos quedan revocados');
-      expect(_login, findsOneWidget);
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
       expect(_dbLocal.llamadas, isNot(contains('envolver')));
+
+      await _irAlLogin(tester);
+      expect(_login, findsOneWidget);
     });
 
     testWidgets('Escenario: Cambio en dispositivo CON DB local - se re-envuelve la DEK — la DB '
@@ -159,7 +180,7 @@ void main() {
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
     });
 
-    // skip: Supabase manda el mismo `otp_expired` para un enlace vencido y para uno ya usado, así
+    // skip (15-A07, lo cubre front-colportores-mobile#247): Supabase manda el mismo `otp_expired` para un enlace vencido y para uno ya usado, así
     // que la app no puede mostrar "Este enlace ya fue utilizado" por separado: los dos casos caen
     // en "El enlace expiró. Solicitá uno nuevo.". Queda para decidir en #50 (como la heurística de
     // HU-AUTH-002 para la verificación). `testWidgets.skip` es `bool?`: el motivo va acá.
@@ -285,35 +306,85 @@ void main() {
   });
 
   group('Validación de la contraseña nueva', () {
-    testWidgets('vacía: pide las dos', (tester) async {
+    bool guardarHabilitado(WidgetTester tester) =>
+        tester.widget<FilledButton>(_guardar).onPressed != null;
+
+    testWidgets('vacía: «Guardar contraseña» deshabilitado y nada se envía', (tester) async {
       await _montar(tester);
 
-      await _tocarGuardar(tester);
+      expect(guardarHabilitado(tester), isFalse);
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar, warnIfMissed: false);
+      await tester.pumpAndSettle();
 
-      expect(find.text('Ingresá la contraseña nueva'), findsOneWidget);
-      expect(find.text('Repetí la contraseña nueva'), findsOneWidget);
       expect(_recuperacion.actualizaciones, isEmpty);
     });
 
-    testWidgets('sin la política del registro: muestra los requisitos como error', (tester) async {
+    testWidgets('sin la política del registro: los requisitos que faltan van con ✕ y el botón '
+        'sigue deshabilitado', (tester) async {
       await _montar(tester);
 
       await _completar(tester, 'corta');
-      await _tocarGuardar(tester);
+      await tester.pump();
 
-      // El requisito aparece como error del campo (y deja de ser la ayuda).
-      expect(find.text(PoliticaPassword.requisitos), findsOneWidget);
-      final campo = tester.widget<TextField>(find.byKey(const Key('confirmar_recuperacion_nueva')));
-      expect(campo.decoration?.errorText, PoliticaPassword.requisitos);
+      expect(guardarHabilitado(tester), isFalse);
+      expect(find.descendant(of: _req('largo'), matching: find.text('✕')), findsOneWidget);
+      expect(find.descendant(of: _req('mayuscula'), matching: find.text('✕')), findsOneWidget);
+      expect(find.descendant(of: _req('numero'), matching: find.text('✕')), findsOneWidget);
     });
 
-    testWidgets('las dos no coinciden', (tester) async {
+    testWidgets('15-A03: «faltan N» baja al escribir y los requisitos se tildan de a uno', (
+      tester,
+    ) async {
+      await _montar(tester);
+      final campo = find.byKey(const Key('confirmar_recuperacion_nueva'));
+
+      await tester.enterText(campo, 'lucia');
+      await tester.pump();
+      expect(find.textContaining('faltan 3', findRichText: true), findsOneWidget);
+      expect(find.descendant(of: _req('largo'), matching: find.text('✕')), findsOneWidget);
+
+      await tester.enterText(campo, 'Lucia1');
+      await tester.pump();
+      expect(find.textContaining('faltan 2', findRichText: true), findsOneWidget);
+      expect(find.descendant(of: _req('mayuscula'), matching: find.text('✓')), findsOneWidget);
+      expect(find.descendant(of: _req('numero'), matching: find.text('✓')), findsOneWidget);
+
+      await tester.enterText(campo, 'Lucia1234');
+      await tester.pump();
+      expect(find.textContaining('faltan', findRichText: true), findsNothing);
+      expect(find.descendant(of: _req('largo'), matching: find.text('✓')), findsOneWidget);
+      expect(find.text('CONTRASEÑA NUEVA · ✓ CUMPLE LOS REQUISITOS'), findsOneWidget);
+    });
+
+    testWidgets('con el campo vacío los requisitos quedan neutros, sin ✕', (tester) async {
+      await _montar(tester);
+
+      expect(find.text('✕'), findsNothing);
+      expect(find.text('○'), findsNWidgets(3));
+    });
+
+    testWidgets('las dos no coinciden: lo dice en el campo y el botón no se habilita', (
+      tester,
+    ) async {
       await _montar(tester);
 
       await _completar(tester, 'NuevaClave1', repetida: 'NuevaClave2');
-      await _tocarGuardar(tester);
+      await tester.pump();
 
       expect(find.text('Las contraseñas no coinciden'), findsOneWidget);
+      expect(guardarHabilitado(tester), isFalse);
+      expect(find.textContaining('✓ COINCIDEN'), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const Key('confirmar_recuperacion_repetida')),
+        'NuevaClave1',
+      );
+      await tester.pump();
+
+      expect(find.text('Las contraseñas no coinciden'), findsNothing);
+      expect(find.text('REPETIR CONTRASEÑA · ✓ COINCIDEN'), findsOneWidget);
+      expect(guardarHabilitado(tester), isTrue);
     });
 
     testWidgets('igual a la anterior: lo dice en el campo', (tester) async {
@@ -332,11 +403,13 @@ void main() {
           tester.widget<TextField>(find.byKey(const Key('confirmar_recuperacion_nueva')));
       expect(campo().obscureText, isTrue);
 
-      await tester.tap(find.byTooltip('Mostrar contraseña').first);
+      expect(find.text('Mostrar contraseña'), findsNWidgets(2));
+      await tester.tap(find.text('Mostrar contraseña').first);
       await tester.pump();
 
       expect(campo().obscureText, isFalse);
-      expect(find.byTooltip('Ocultar contraseña'), findsOneWidget);
+      expect(find.text('Ocultar contraseña'), findsOneWidget);
+      expect(find.text('Mostrar contraseña'), findsOneWidget, reason: 'el otro sigue oculto');
     });
   });
 
@@ -364,20 +437,26 @@ void main() {
 
       _recuperacion.demoraAlActualizar!.complete();
       await tester.pumpAndSettle();
+      await _irAlLogin(tester);
       expect(_login, findsOneWidget);
     });
 
-    testWidgets('sin conexión: "Necesitás conexión para cambiar tu contraseña" y deja reintentar', (
-      tester,
-    ) async {
+    testWidgets('15-A08 sin conexión: «Sin conexión» con qué hacer, conserva lo escrito y deja '
+        'reintentar', (tester) async {
       await _montar(tester);
       _recuperacion.simularSinConexion = true;
       await _completar(tester, 'NuevaClave1');
 
       await _tocarGuardar(tester);
 
-      expect(find.text('Necesitás conexión para cambiar tu contraseña'), findsOneWidget);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(
+        find.text('Conectate para guardar la contraseña. No perdés lo que escribiste.'),
+        findsOneWidget,
+      );
       expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1');
+      expect(_texto(tester, 'repetida'), 'NuevaClave1');
 
       _recuperacion.simularSinConexion = false;
       await _tocarGuardar(tester);
@@ -391,7 +470,7 @@ void main() {
       await _completar(tester, 'NuevaClave1');
 
       await _tocarGuardar(tester);
-      expect(find.text('Necesitás conexión para cambiar tu contraseña'), findsOneWidget);
+      expect(find.text('Sin conexión'), findsOneWidget);
       expect(_recuperacion.passwordActual, 'NuevaClave1', reason: 'el servidor ya la tiene');
 
       await _tocarGuardar(tester);
@@ -437,8 +516,9 @@ void main() {
       await _tocarGuardar(tester);
 
       expect(container.read(sesionProvider).value, isNull);
-      expect(_login, findsOneWidget);
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      await _irAlLogin(tester);
+      expect(_login, findsOneWidget);
     });
 
     testWidgets('si revocar las sesiones falla, igual termina bien: la contraseña ya cambió', (
@@ -451,6 +531,225 @@ void main() {
       await _tocarGuardar(tester);
 
       expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+    });
+  });
+
+  group('Vista 15 — inventario de artboards', () {
+    void conBaseLocal() {
+      final dek = Uint8List.fromList(List<int>.filled(32, 77));
+      _dbLocal
+        ..marca = MarcaDbLocal.puesta
+        ..archivo = true
+        ..claveDelArchivo = dek
+        ..dekEnAlmacen = dek
+        ..envoltorio = (dek: dek, password: 'Vieja1234');
+    }
+
+    testWidgets('15-A01 sin base local: aviso de sesiones completo y nada sobre datos', (
+      tester,
+    ) async {
+      await _montar(tester);
+
+      expect(
+        find.text(
+          'Al guardarla se cierran tus sesiones en todos tus teléfonos: vas a entrar de nuevo con '
+          'la contraseña nueva.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Tus datos guardados en este teléfono se conservan.'), findsNothing);
+      expect(find.text('Restaurar'), findsNothing);
+      expect(find.text('Borrar'), findsNothing);
+    });
+
+    testWidgets('15-A02 con base local: agrega «Tus datos guardados en este teléfono se '
+        'conservan.», sin tarjetas, y «Guardar contraseña» funciona directo', (tester) async {
+      conBaseLocal();
+      await _montar(tester);
+
+      expect(find.text('Tus datos guardados en este teléfono se conservan.'), findsOneWidget);
+      expect(find.text('Se cierran tus sesiones en todos tus teléfonos.'), findsOneWidget);
+      expect(find.textContaining('Restaurar'), findsNothing);
+      expect(find.textContaining('Borrar'), findsNothing);
+
+      await _completar(tester, 'NuevaClave1');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull);
+      await _tocarGuardar(tester);
+
+      expect(_recuperacion.actualizaciones, ['NuevaClave1']);
+      expect(_dbLocal.envoltorio!.password, 'NuevaClave1');
+    });
+
+    testWidgets('15-A04 guardando: campos deshabilitados, botón «Guardando…» y sin reenvío', (
+      tester,
+    ) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.pump();
+
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+
+      expect(find.text('Guardando…'), findsOneWidget);
+      for (final campo in ['nueva', 'repetida']) {
+        expect(
+          tester.widget<TextField>(find.byKey(Key('confirmar_recuperacion_$campo'))).enabled,
+          isFalse,
+        );
+      }
+
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('15-A05 error genérico: el aviso dice qué hacer y el botón vuelve a habilitarse', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _recuperacion.fallaAlActualizar = const CredencialesInvalidasException();
+      await _completar(tester, 'NuevaClave1');
+
+      await _tocarGuardar(tester);
+
+      expect(find.text('No pudimos guardar la contraseña. Probá de nuevo.'), findsOneWidget);
+      expect(find.text('Guardando…'), findsNothing);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1', reason: 'no pierde lo escrito');
+
+      _recuperacion.fallaAlActualizar = null;
+      await _tocarGuardar(tester);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+    });
+
+    testWidgets('15-A06 enlace vencido: «ENLACE VENCIDO» y las dos salidas', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+
+      expect(find.text('ENLACE VENCIDO'), findsOneWidget);
+      expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
+      expect(find.text('Volver al login'), findsOneWidget);
+    });
+
+    testWidgets('15-A09 éxito: pantalla con «Ir al login»; el atrás del sistema también lleva al '
+        'login', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      expect(find.text('Ir al login'), findsOneWidget);
+      expect(find.byKey(const Key('confirmar_recuperacion_atras')), findsNothing);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator).first);
+      await navigator.maybePop();
+      await tester.pumpAndSettle();
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(_recuperacion.abandonos, 0, reason: 'la sesión ya se cerró al guardar');
+    });
+  });
+
+  group('Vista 15 — casos límite', () {
+    testWidgets('doble tap en «Guardar contraseña» y «Listo» del teclado: una sola actualización', (
+      tester,
+    ) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.pump();
+
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.tap(_guardar, warnIfMissed: false);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+
+      expect(_recuperacion.actualizaciones, ['NuevaClave1']);
+      expect(_recuperacion.sesionesCerradas, 1);
+    });
+
+    testWidgets('falla a mitad y reintento inmediato: nada queda trabado ni se pisa', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _recuperacion.simularSinConexion = true;
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+      expect(find.text('Sin conexión'), findsOneWidget);
+
+      _recuperacion.simularSinConexion = false;
+      _recuperacion.fallaAlActualizar = const CredencialesInvalidasException();
+      await _tocarGuardar(tester);
+      expect(find.text('Sin conexión'), findsNothing, reason: 'el aviso anterior se reemplaza');
+      expect(find.text('No pudimos guardar la contraseña. Probá de nuevo.'), findsOneWidget);
+
+      _recuperacion.fallaAlActualizar = null;
+      await _tocarGuardar(tester);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      expect(_recuperacion.actualizaciones.last, 'NuevaClave1');
+    });
+
+    testWidgets('editar después de un error de campo lo limpia', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'Vieja1234');
+      await _tocarGuardar(tester);
+      expect(find.text('Tiene que ser distinta de la anterior.'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('confirmar_recuperacion_nueva')), 'Vieja12345');
+      await tester.pump();
+
+      expect(find.text('Tiene que ser distinta de la anterior.'), findsNothing);
+    });
+
+    testWidgets('volver atrás y reentrar con otro enlace: el formulario arranca vacío', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.tap(find.byKey(const Key('confirmar_recuperacion_atras')));
+      await tester.pumpAndSettle();
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.valido);
+      await tester.pumpAndSettle();
+
+      expect(_texto(tester, 'nueva'), isEmpty);
+      expect(_texto(tester, 'repetida'), isEmpty);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNull);
+    });
+
+    testWidgets('contraseña larguísima con espacios y símbolos: se acepta tal cual', (
+      tester,
+    ) async {
+      await _montar(tester);
+      final larga = 'Aa1 ${'ñ#' * 120}';
+
+      await _completar(tester, larga);
+      await _tocarGuardar(tester);
+
+      expect(_recuperacion.actualizaciones, [larga]);
+    });
+
+    testWidgets('sin conexión y luego vencido: pasa a «El enlace expiró» sin dejar el aviso', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _recuperacion.simularSinConexion = true;
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+      expect(find.text('Sin conexión'), findsOneWidget);
+
+      _recuperacion.simularSinConexion = false;
+      _recuperacion.vencerSesionDeRecuperacion();
+      await _tocarGuardar(tester);
+
+      expect(find.text('El enlace expiró. Solicitá uno nuevo.'), findsOneWidget);
+      expect(find.text('Sin conexión'), findsNothing);
     });
   });
 
@@ -522,15 +821,128 @@ void main() {
         if (enlace == EnlaceRecuperacion.valido) {
           _recuperacion.simularSinConexion = true;
           await _completar(tester, 'corta', repetida: 'otra');
-          await _tocarGuardar(tester);
+          expect(tester.takeException(), isNull);
           await _completar(tester, 'NuevaClave1');
           await _tocarGuardar(tester);
-          expect(find.text('Necesitás conexión para cambiar tu contraseña'), findsOneWidget);
+          expect(find.text('Sin conexión'), findsOneWidget);
         }
 
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  group('Vista 15 — estados a 200 % en 360x740', () {
+    Future<void> escalar(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+
+    testWidgets('A01, A02 y A03 (débil, con datos largos): sin overflow', (tester) async {
+      await escalar(tester);
+      await _montarSolo(tester, EnlaceRecuperacion.valido);
+      await _completar(tester, 'lucia', repetida: 'x' * 80);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await _completar(tester, 'Primavera26');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(_guardar);
+      expect(tester.widget<FilledButton>(_guardar).onPressed, isNotNull);
+      WidgetController.hitTestWarningShouldBeFatal = true;
+      addTearDown(() => WidgetController.hitTestWarningShouldBeFatal = false);
+      await _tocarGuardar(tester);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+    });
+
+    testWidgets('A02 con base local: sin overflow', (tester) async {
+      final dek = Uint8List.fromList(List<int>.filled(32, 77));
+      _dbLocal
+        ..marca = MarcaDbLocal.puesta
+        ..archivo = true
+        ..dekEnAlmacen = dek;
+      await escalar(tester);
+      await _montarSolo(tester, EnlaceRecuperacion.valido);
+      await _completar(tester, 'Primavera26');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tus datos guardados en este teléfono se conservan.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('A04 guardando, A05 error y A09 éxito: sin overflow', (tester) async {
+      await escalar(tester);
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montarSolo(tester, EnlaceRecuperacion.valido);
+      await _completar(tester, 'Primavera26');
+      await tester.pump();
+      await _tocarGuardarSinEsperar(tester);
+      expect(find.text('Guardando…'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(_irAlLoginExito);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('A05 error genérico y A08 sin conexión: sin overflow', (tester) async {
+      await escalar(tester);
+      await _montarSolo(tester, EnlaceRecuperacion.valido);
+      _recuperacion.fallaAlActualizar = const CredencialesInvalidasException();
+      await _completar(tester, 'Primavera26');
+      await _tocarGuardar(tester);
+      expect(find.text('No pudimos guardar la contraseña. Probá de nuevo.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      _recuperacion.fallaAlActualizar = null;
+      _recuperacion.simularSinConexion = true;
+      await _tocarGuardar(tester);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Vista 15 — accesibilidad de los estados nuevos', () {
+    testWidgets('requisitos con etiqueta, éxito y aviso de error: toque, etiquetas y contraste', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _montar(tester);
+
+      await _completar(tester, 'lucia', repetida: '');
+      await tester.pump();
+      expect(
+        tester.getSemantics(_req('largo')).label,
+        'Al menos 8 caracteres, faltan 3: no cumple',
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+      _recuperacion.fallaAlActualizar = const CredencialesInvalidasException();
+      await _completar(tester, 'Primavera26');
+      await _tocarGuardar(tester);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+      _recuperacion.fallaAlActualizar = null;
+      await _tocarGuardar(tester);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      handle.dispose();
+    });
   });
 
   test('los textos de la HU no cambian sin querer', () {

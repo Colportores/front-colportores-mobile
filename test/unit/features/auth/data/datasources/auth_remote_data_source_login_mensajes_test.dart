@@ -44,13 +44,7 @@ void main() {
 
       await expectLater(
         dataSource.iniciarSesion(email: 'ana@example.com', password: 'secreto123'),
-        throwsA(
-          isA<ServidorException>().having(
-            (e) => e.mensaje,
-            'mensaje',
-            'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
-          ),
-        ),
+        throwsA(isA<EmailNoConfirmadoException>()),
       );
     });
   });

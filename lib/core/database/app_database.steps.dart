@@ -1013,11 +1013,263 @@ i1.GeneratedColumn<String> _column_40(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
+
+final class Schema6 extends i0.VersionedSchema {
+  Schema6({required super.database}) : super(version: 6);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    jornada,
+    ubicacion,
+    espacio,
+    ubicacionParDecidido,
+    campaniaCiudad,
+    zona,
+    zonaVertice,
+    sesionUsuario,
+    jornadaColportorIdx,
+    ubicacionCiudadIdx,
+    espacioUbicacionIdx,
+    campaniaCiudadCiudadIdIdx,
+    zonaCampaniaCiudadIdx,
+    zonaVerticeZonaIdx,
+  ];
+  late final Shape0 jornada = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'jornada',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(total_visitas >= 0)',
+        'CHECK(total_ventas >= 0)',
+        'CHECK(fin IS NULL OR fin >= inicio)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 ubicacion = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'CASA\', \'NEGOCIO\', \'EDIFICIO\'))',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 espacio = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'espacio',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 ubicacionParDecidido = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion_par_decidido',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ubicacion_a_id, ubicacion_b_id)',
+        'CHECK(decision IN (\'CONSERVAR_AMBOS\', \'IGNORAR\'))',
+        'CHECK(ubicacion_a_id < ubicacion_b_id)',
+      ],
+      columns: [_column_24, _column_25, _column_26, _column_27],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape4 campaniaCiudad = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'campania_ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_28,
+        _column_18,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape5 zona = Shape5(
+    source: i0.VersionedTable(
+      entityName: 'zona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo_forma IN (\'RADIAL\', \'ESQUINAS\'))',
+        'CHECK(tipo_forma <> \'RADIAL\' OR(centro_lat IS NOT NULL AND centro_lon IS NOT NULL AND radio_m IS NOT NULL))',
+        'CHECK(radio_m IS NULL OR radio_m BETWEEN 1 AND 3000)',
+        'CHECK((centro_lat IS NULL OR centro_lat BETWEEN -90 AND 90)AND(centro_lon IS NULL OR centro_lon BETWEEN -180 AND 180))',
+        'CHECK(color IS NULL OR color GLOB \'#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]\')',
+      ],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_33,
+        _column_34,
+        _column_35,
+        _column_36,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 zonaVertice = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'zona_vertice',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_37,
+        _column_38,
+        _column_16,
+        _column_17,
+        _column_39,
+        _column_40,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 sesionUsuario = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'sesion_usuario',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(usuario_id)'],
+      columns: [_column_41, _column_29],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index jornadaColportorIdx = i1.Index(
+    'jornada_colportor_idx',
+    'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
+  );
+  final i1.Index ubicacionCiudadIdx = i1.Index(
+    'ubicacion_ciudad_idx',
+    'CREATE INDEX ubicacion_ciudad_idx ON ubicacion (ciudad_id, lat)',
+  );
+  final i1.Index espacioUbicacionIdx = i1.Index(
+    'espacio_ubicacion_idx',
+    'CREATE INDEX espacio_ubicacion_idx ON espacio (ubicacion_id)',
+  );
+  final i1.Index campaniaCiudadCiudadIdIdx = i1.Index(
+    'campania_ciudad_ciudad_id_idx',
+    'CREATE INDEX campania_ciudad_ciudad_id_idx ON campania_ciudad (ciudad_id)',
+  );
+  final i1.Index zonaCampaniaCiudadIdx = i1.Index(
+    'zona_campania_ciudad_idx',
+    'CREATE INDEX zona_campania_ciudad_idx ON zona (campania_ciudad_id)',
+  );
+  final i1.Index zonaVerticeZonaIdx = i1.Index(
+    'zona_vertice_zona_idx',
+    'CREATE INDEX zona_vertice_zona_idx ON zona_vertice (zona_id, orden)',
+  );
+}
+
+class Shape7 extends i0.VersionedTable {
+  Shape7({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get usuarioId =>
+      columnsByName['usuario_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get nombre =>
+      columnsByName['nombre']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_41(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'usuario_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
+  required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -1041,6 +1293,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from4To5(migrator, schema);
         return 5;
+      case 5:
+        final schema = Schema6(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from5To6(migrator, schema);
+        return 6;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -1052,11 +1309,13 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
+  required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
     from2To3: from2To3,
     from3To4: from3To4,
     from4To5: from4To5,
+    from5To6: from5To6,
   ),
 );

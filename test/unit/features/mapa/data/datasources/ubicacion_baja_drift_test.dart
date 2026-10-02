@@ -13,7 +13,6 @@ import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_rep
 import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_baja_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/catalogo_ciudades.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/consultor_pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/baja_ubicacion_use_cases.dart';
 import 'package:dartz/dartz.dart';
@@ -43,25 +42,18 @@ final class _SalidaEnMemoria extends LogOutput {
   void output(OutputEvent event) => lineas.addAll(event.lines);
 }
 
-final class _Catalogo implements CatalogoCiudades {
-  var existeLaCiudad = true;
-
-  @override
-  Future<Either<Failure, bool>> existe(String ciudadId) async => Right(existeLaCiudad);
-}
-
 void main() {
   final t0 = DateTime.utc(2026, 9, 29, 13, 45, 10, 123);
   final t1 = DateTime.utc(2026, 9, 30, 8, 0, 0, 500);
 
-  UbicacionModel ubicacion({DateTime? deletedAt}) => UbicacionModel(
+  UbicacionModel ubicacion({DateTime? deletedAt, String ciudadId = 'mvd'}) => UbicacionModel(
     id: 'ub-1',
     tipo: TipoUbicacion.edificio,
     calle: 'Av. Italia',
     numero: '1234',
     lat: -34.891,
     lon: -56.125,
-    ciudadId: 'mvd',
+    ciudadId: ciudadId,
     zonaId: 'zona-9',
     auditoria: Auditoria(
       createdAt: t0,
@@ -76,7 +68,6 @@ void main() {
   late EncoladorSyncEnMemoria encolador;
   late UbicacionLocalDataSourceDrift local;
   late _Pendientes pendientes;
-  late _Catalogo catalogo;
   late DarDeBajaUbicacionUseCase darDeBaja;
   late ReactivarUbicacionUseCase reactivar;
 
@@ -86,9 +77,8 @@ void main() {
     local = UbicacionLocalDataSourceDrift(db, encolador: encolador);
     final repositorio = UbicacionRepositoryImpl(local, logger: loggerMudo());
     pendientes = _Pendientes();
-    catalogo = _Catalogo();
     darDeBaja = DarDeBajaUbicacionUseCase(repositorio, pendientes, ahora: () => t1);
-    reactivar = ReactivarUbicacionUseCase(repositorio, catalogo, ahora: () => t1);
+    reactivar = ReactivarUbicacionUseCase(repositorio, ahora: () => t1);
   });
 
   tearDown(() => db.close());
@@ -228,7 +218,7 @@ void main() {
           UbicacionesCompanion(updatedAt: Value(t0.add(const Duration(minutes: 5)))),
         );
 
-        expect(await fallaBaja(baja()), const FailureUbicacionCambio());
+        expect(await fallaBaja(baja()), const FailureBajaCambioReciente());
         expect((await guardada()).auditoria.deletedAt, isNull);
         expect(encolador.encolados, isEmpty);
       },
@@ -275,20 +265,18 @@ void main() {
       expect(encolador.encolados.single.payload['deleted_at'], isNull);
     });
 
-    test(
-      'dado que la ciudad ya no está en el catálogo, cuando reactiva, se bloquea sin escribir',
-      () async {
-        await local.insertar(ubicacion(deletedAt: t0));
-        encolador.encolados.clear();
-        catalogo.existeLaCiudad = false;
+    test('dado que la ciudad ya no está en el catálogo, cuando reactiva, se reactiva igual y se '
+        'encola el update (la ciudad es una parte más de la dirección)', () async {
+      await local.insertar(ubicacion(deletedAt: t0, ciudadId: 'ciudad-que-ya-no-esta'));
+      encolador.encolados.clear();
 
-        final r = await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t0));
+      final r = await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t0));
 
-        expect(r, const Left<Failure, Ubicacion>(FailureCiudadFueraDeCatalogo()));
-        expect((await guardada()).auditoria.deletedAt, t0);
-        expect(encolador.encolados, isEmpty);
-      },
-    );
+      expect(r.isRight(), isTrue);
+      final u = await guardada();
+      expect((u.auditoria.deletedAt, u.ciudadId), (null, 'ciudad-que-ya-no-esta'));
+      expect(encolador.encolados.single.operacion, OperacionSync.update);
+    });
 
     test('dado una ubicación ya activa (doble toque), cuando reactiva, devuelve la ubicación sin '
         'escribir', () async {
@@ -307,7 +295,7 @@ void main() {
 
       final r = await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t1));
 
-      expect(r, const Left<Failure, Ubicacion>(FailureUbicacionCambio()));
+      expect(r, const Left<Failure, Ubicacion>(FailureReactivacionCambioReciente()));
     });
 
     test('dado una ubicación que no existe, cuando reactiva, falla como inexistente', () async {
@@ -437,7 +425,7 @@ void main() {
         expect(r.escribio, isTrue);
       });
 
-      test('si quedó de baja, lanza UbicacionCambioException sin escribir ni encolar', () async {
+      test('si quedó de baja, lanza ConservadaDeBajaException sin escribir ni encolar', () async {
         await local.insertar(ubicacion());
         await conservada(deletedAt: t0);
         encolador.encolados.clear();
@@ -450,7 +438,7 @@ void main() {
             deletedAt: t1,
             conservadaId: 'ub-a',
           ),
-          throwsA(isA<UbicacionCambioException>()),
+          throwsA(isA<ConservadaDeBajaException>()),
         );
         expect(await guardada(), ubicacion());
         expect(encolador.encolados, isEmpty);
@@ -484,7 +472,7 @@ void main() {
             deletedAt: t1,
             conservadaId: 'ub-a',
           ),
-          throwsA(isA<UbicacionCambioException>()),
+          throwsA(isA<ConservadaDeBajaException>()),
         );
       });
     });

@@ -816,7 +816,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('HORA DE FIN'), findsOneWidget);
       expect(find.text('Ahora · 14:35'), findsOneWidget);
-      expect(find.text('Podés marcar el fin hasta 30 minutos hacia atrás.'), findsOneWidget);
+      expect(find.textContaining('Podés marcar el fin'), findsNothing);
 
       await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
       await tester.pumpAndSettle();
@@ -865,12 +865,7 @@ void main() {
         _DataSource(iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 14, 20))]),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'Podés marcar el fin hasta 15 minutos hacia atrás: tu jornada empezó a las 14:20.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Podés marcar el fin'), findsNothing);
 
       await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
       await tester.pumpAndSettle();
