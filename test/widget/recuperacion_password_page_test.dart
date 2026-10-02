@@ -36,9 +36,7 @@ Future<void> _montarPagina(
 );
 
 const _mensajeNeutro = 'Si el email está registrado, te enviamos un enlace de recuperación';
-const _textoAviso =
-    'Si restablecés tu contraseña y tenés datos locales en otro dispositivo, no podrás '
-    'abrirlos ahí. Tendrás que restaurar desde tu backup.';
+const _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
 Future<void> _completarYAceptar(
   WidgetTester tester, {
@@ -540,6 +538,16 @@ void main() {
   });
 
   group('RecuperacionPasswordPage — advertencia y casilla', () {
+    testWidgets('el aviso de impacto es «Tus datos guardados en este teléfono se conservan.» y no '
+        'queda rastro del texto viejo (decisión 01/10)', (tester) async {
+      await _montarPagina(tester, remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tus datos guardados en este teléfono se conservan.'), findsOneWidget);
+      expect(find.textContaining('restaurar desde tu backup'), findsNothing);
+      expect(find.textContaining('no podrás abrirlos'), findsNothing);
+    });
+
     testWidgets('muestra la advertencia literal de la HU antes de enviar', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
       await _montarPagina(tester, remote: remote);

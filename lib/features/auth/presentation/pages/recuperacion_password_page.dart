@@ -58,10 +58,10 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// Apoyo de la pantalla de éxito (A05).
   static const String _textoSpam = 'Si no lo encontrás, revisá la carpeta de spam.';
 
-  /// Advertencia literal de la HU (línea 798) — se muestra siempre, antes de enviar.
-  static const String _textoAviso =
-      'Si restablecés tu contraseña y tenés datos locales en otro dispositivo, no podrás '
-      'abrirlos ahí. Tendrás que restaurar desde tu backup.';
+  /// Aviso de impacto (decisión de Cristian 01/10): el mismo texto de la vista 15 (15-A02). La
+  /// clave de los datos del teléfono queda protegida (ADR-006, HU-AUTH-004): nada se pierde. Se
+  /// muestra siempre, antes de enviar.
+  static const String _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
   late final _email = TextEditingController(text: widget.emailInicial);
   Timer? _timer;
