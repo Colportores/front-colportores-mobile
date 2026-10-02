@@ -6,6 +6,7 @@ import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -362,6 +363,78 @@ void main() {
       expect(tester.getSemantics(_aviso), isSemantics(isLiveRegion: true));
       expect(find.byTooltip('Cerrar aviso'), findsOneWidget);
       semantica.dispose();
+    });
+  });
+  group('Vista 17 — arranque en frío: el correo viene del almacén seguro', () {
+    /// La app arranca con la sesión ya descartada por 30 días sin uso: no hay sesión de dónde
+    /// sacar el correo, solo lo que quedó guardado aparte.
+    Future<AuthRemoteDataSourceEnMemoria> arrancarEnFrio(
+      WidgetTester tester,
+      UltimoCorreoEnMemoria guardado,
+    ) async {
+      final remoto = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..vencidaPorInactividadAlArrancar = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remoto),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+            ultimoCorreoRepositoryProvider.overrideWithValue(guardado),
+          ],
+          child: const ColportoresApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return remoto;
+    }
+
+    testWidgets('17-A01 en frío con correo guardado: aviso, saludo y el correo ya puesto', (
+      tester,
+    ) async {
+      await arrancarEnFrio(tester, UltimoCorreoEnMemoria('lucia.silva@correo.com'));
+
+      expect(find.text(_inactividad), findsOneWidget);
+      expect(find.text('Hola de nuevo'), findsOneWidget);
+      expect(_correo(tester), 'lucia.silva@correo.com');
+      expect(_recuperar, findsOneWidget);
+    });
+
+    testWidgets('en frío sin correo guardado: el campo queda vacío y el aviso se muestra igual', (
+      tester,
+    ) async {
+      await arrancarEnFrio(tester, UltimoCorreoEnMemoria());
+
+      expect(find.text(_inactividad), findsOneWidget);
+      expect(_correo(tester), isEmpty);
+    });
+
+    testWidgets('en frío con correo precargado: entrar con la contraseña lleva a la principal '
+        'y deja el correo guardado', (tester) async {
+      final guardado = UltimoCorreoEnMemoria('lucia.silva@correo.com');
+      await arrancarEnFrio(tester, guardado);
+
+      await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
+      await tester.pump();
+      await tester.tap(_entrar);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(await guardado.leer(), 'lucia.silva@correo.com');
+    });
+
+    testWidgets('en frío con el correo precargado a texto grande (200 %): sin overflow', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 740), texto: 2);
+      await arrancarEnFrio(
+        tester,
+        UltimoCorreoEnMemoria('lucia.silva.con.un.correo.largo@correo.com'),
+      );
+
+      expect(_correo(tester), 'lucia.silva.con.un.correo.largo@correo.com');
+      expect(tester.takeException(), isNull);
     });
   });
 }
