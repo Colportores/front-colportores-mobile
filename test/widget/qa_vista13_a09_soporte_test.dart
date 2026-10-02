@@ -9,6 +9,8 @@ import 'package:colportores_mobile/core/dispositivo/abridor_ajustes_sistema.dart
 import 'package:colportores_mobile/core/dispositivo/abridor_enlace_externo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
+
 import 'package:colportores_mobile/features/auth/presentation/pages/preparacion_db_local_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -159,5 +161,67 @@ void main() {
         reason: 'es una falla nueva: el aviso viejo ya no corresponde',
       );
     });
+  });
+
+  group('QA vista 13 — decisión del 01/10: por qué se pide la contraseña', () {
+    const explicacion =
+        'La app se cerró mientras preparaba tus datos. Para protegerlos, confirmá tu contraseña.';
+
+    testWidgets('la explicación sigue visible tras una contraseña equivocada y sin conexión',
+        (tester) async {
+      _interrumpida();
+      await _entrar(tester, restaurada: true);
+      await _tocar(tester, 'preparacion_db_empezar_interrumpida');
+      expect(find.text(explicacion), findsOneWidget);
+
+      await tester.enterText(_k('preparacion_db_password'), 'equivocada');
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+      expect(find.text(TextosPreparacionDbLocal.passwordIncorrecta), findsOneWidget);
+      expect(find.text(explicacion), findsOneWidget);
+
+      _remoto.simularSinConexion = true;
+      await tester.enterText(_k('preparacion_db_password'), _password);
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+      expect(find.text('Necesitás conexión para confirmar tu contraseña.'), findsOneWidget);
+      expect(find.text(explicacion), findsOneWidget);
+    });
+
+    testWidgets('sin interrupción previa (base existente sin envoltorio) el texto es el genérico',
+        (tester) async {
+      final dek = Uint8List.fromList(List<int>.filled(32, 9));
+      _db
+        ..marca = MarcaDbLocal.puesta
+        ..archivo = true
+        ..claveDelArchivo = dek
+        ..dekEnAlmacen = dek;
+      await _entrar(tester, restaurada: true);
+
+      expect(find.text('Confirmá tu contraseña'), findsOneWidget);
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
+      expect(find.text(explicacion), findsNothing);
+    });
+
+    for (final tam in const [Size(360, 640), Size(412, 915)]) {
+      testWidgets('el pedido con la explicación a 200 % en ${tam.width.toInt()}x'
+          '${tam.height.toInt()}: sin overflow, texto completo y accesible', (tester) async {
+        tester.view.physicalSize = tam;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(() {
+          tester.view.reset();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        _interrumpida();
+        await _entrar(tester, restaurada: true);
+        await _tocar(tester, 'preparacion_db_empezar_interrumpida');
+
+        expect(tester.takeException(), isNull);
+        expect(find.text(explicacion), findsOneWidget);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+    }
   });
 }
