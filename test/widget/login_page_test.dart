@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,29 +82,63 @@ class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataS
       _interno.solicitarRecuperacionPassword(email);
 }
 
+/// Correo guardado cuya lectura responde cuando el test lo decide.
+final class _CorreoQueTarda implements UltimoCorreoRepository {
+  final lectura = Completer<String?>();
+
+  @override
+  Future<String?> leer() => lectura.future;
+
+  @override
+  Future<void> guardar(String email) async {}
+
+  @override
+  Future<void> borrar() async {}
+}
+
+/// «Sesión vencida» ya armada: el reingreso que el login lee al abrirse.
+class _ReingresoFijo extends ReingresoSesion {
+  _ReingresoFijo(this._datos);
+
+  final DatosReingreso _datos;
+
+  @override
+  DatosReingreso? build() => _datos;
+}
+
 /// [LoginPage] aislada (sin [ColportoresApp]): estas pruebas cubren diseño/tema/proveedores, no el
 /// flujo de negocio — eso ya está en `flujo_login_test.dart`.
 ///
 /// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
 /// devuelve el widget, riverpod_lint lo toma por un scope anidado
 /// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
-Future<void> _montarPagina(WidgetTester tester, {ThemeData? tema, bool? mostrarApple}) =>
-    tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
-          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
-          authRemoteDataSourceProvider.overrideWithValue(
-            AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
-          ),
-          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-        ],
-        child: MaterialApp(
-          theme: tema ?? temaClaro(),
-          home: LoginPage(mostrarApple: mostrarApple),
-        ),
+Future<void> _montarPagina(
+  WidgetTester tester, {
+  ThemeData? tema,
+  bool? mostrarApple,
+  String? correoGuardado,
+  UltimoCorreoRepository? repositorioDeCorreo,
+  DatosReingreso? reingreso,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+      authRemoteDataSourceProvider.overrideWithValue(
+        AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
       ),
-    );
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      ultimoCorreoRepositoryProvider.overrideWithValue(
+        repositorioDeCorreo ?? UltimoCorreoEnMemoria(correoGuardado),
+      ),
+      if (reingreso != null) reingresoSesionProvider.overrideWith(() => _ReingresoFijo(reingreso)),
+    ],
+    child: MaterialApp(
+      theme: tema ?? temaClaro(),
+      home: LoginPage(mostrarApple: mostrarApple),
+    ),
+  ),
+);
 
 void main() {
   group('LoginPage — diseño', () {
@@ -198,6 +238,86 @@ void main() {
       expect(tester.widget<FilledButton>(find.byKey(const Key('login_enviar'))).onPressed, isNull);
 
       await tester.pumpAndSettle();
+    });
+  });
+
+  // El cierre que hace la app al cambiar la contraseña con el enlace de recuperación deja el correo
+  // de la última cuenta guardado (revisión de #264): el login lo trae puesto aunque no haya «Sesión
+  // vencida» de por medio.
+  group('LoginPage — correo de la última cuenta', () {
+    String correo(WidgetTester tester) =>
+        tester.widget<TextField>(find.byKey(const Key('login_email'))).controller!.text;
+
+    testWidgets('sin «Sesión vencida» y con un correo guardado, el campo ya viene puesto', (
+      tester,
+    ) async {
+      await _montarPagina(tester, correoGuardado: 'ana@example.com');
+      await tester.pumpAndSettle();
+
+      expect(correo(tester), 'ana@example.com');
+    });
+
+    testWidgets('si la pantalla se cierra antes de que termine la lectura, no pasa nada', (
+      tester,
+    ) async {
+      final lento = _CorreoQueTarda();
+      await _montarPagina(tester, repositorioDeCorreo: lento);
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      lento.lectura.complete('ana@example.com');
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('sin correo guardado el campo queda vacío', (tester) async {
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
+
+      expect(correo(tester), isEmpty);
+    });
+
+    testWidgets('si la colportora ya empezó a escribir otro correo, no se lo pisa', (tester) async {
+      final lento = _CorreoQueTarda();
+      await _montarPagina(tester, repositorioDeCorreo: lento);
+      await tester.pump();
+
+      // Escribe antes de que la lectura del correo guardado termine.
+      await tester.enterText(find.byKey(const Key('login_email')), 'luis@example.com');
+      lento.lectura.complete('ana@example.com');
+      await tester.pumpAndSettle();
+
+      expect(correo(tester), 'luis@example.com');
+    });
+
+    testWidgets('con «Sesión vencida», manda el correo del reingreso sobre el guardado', (
+      tester,
+    ) async {
+      await _montarPagina(
+        tester,
+        correoGuardado: 'vieja@example.com',
+        reingreso: const DatosReingreso(
+          motivo: MotivoExpiracion.inactividad,
+          email: 'lucia.silva@correo.com',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(correo(tester), 'lucia.silva@correo.com');
+    });
+
+    testWidgets('«Sesión vencida» sin correo en el reingreso: el guardado lo completa', (
+      tester,
+    ) async {
+      await _montarPagina(
+        tester,
+        correoGuardado: 'ana@example.com',
+        reingreso: const DatosReingreso(motivo: MotivoExpiracion.inactividad),
+      );
+      await tester.pumpAndSettle();
+
+      expect(correo(tester), 'ana@example.com');
     });
   });
 }

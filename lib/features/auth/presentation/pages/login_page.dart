@@ -8,6 +8,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/motivo_expiracion.dart';
+import '../providers/auth_providers.dart';
 import '../providers/aviso_sesion_notifier.dart';
 import '../providers/reingreso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
@@ -47,7 +48,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.initState();
     // Sesión vencida (vista 17): el correo de la cuenta que estaba adentro ya viene puesto.
     final correo = ref.read(reingresoSesionProvider)?.email;
-    if (correo != null) _email.text = correo;
+    if (correo != null) {
+      _email.text = correo;
+    } else {
+      unawaited(_precargarUltimoCorreo());
+    }
+  }
+
+  /// Sin «Sesión vencida» de por medio, el correo de la última cuenta puede seguir guardado: la app
+  /// cerró la sesión por su cuenta (el cambio de contraseña con el enlace de recuperación) y no se
+  /// borra a propósito. Si la colportora ya empezó a escribir otro, no se lo pisa.
+  Future<void> _precargarUltimoCorreo() async {
+    final guardado = await ref.read(ultimoCorreoRepositoryProvider).leer();
+    if (!mounted || guardado == null || _email.text.isNotEmpty) return;
+    _email.text = guardado;
   }
 
   @override

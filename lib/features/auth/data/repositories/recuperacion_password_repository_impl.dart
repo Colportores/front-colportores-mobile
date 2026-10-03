@@ -23,6 +23,8 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// Solo en memoria, y se suelta con cualquier respuesta del servidor.
   String? _enDuda;
 
+  /// Supabase manda el mismo error para un enlace vencido y para uno ya usado: la app no adivina
+  /// cuál de los dos es, y los dos salen como [EnlaceRecuperacion.vencido].
   @override
   Stream<EnlaceRecuperacion> get enlaces => _remote.enlacesRecuperacion;
 

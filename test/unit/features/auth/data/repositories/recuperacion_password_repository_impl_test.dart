@@ -73,9 +73,10 @@ void main() {
           await repo.actualizarPassword('NuevaClave1'),
           const Left<Failure, Unit>(FailureEnlaceRecuperacionVencido()),
         );
+        // No afirma «expiró»: Supabase no distingue vencido de usado (decisión del 02/10).
         expect(
           const FailureEnlaceRecuperacionVencido().mensaje,
-          'El enlace expiró. Solicitá uno nuevo.',
+          'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.',
         );
       },
     );
@@ -230,6 +231,33 @@ void main() {
 
       expect(await repo.cerrarTodasLasSesiones(), const Left<Failure, Unit>(FailureSinConexion()));
       expect(salida.lineas.join('\n'), contains('RECUPERACION_REVOCAR_FAIL'));
+    });
+  });
+
+  group('enlaces: el vencido y el ya usado son lo mismo (15-A06)', () {
+    /// Lo que el repositorio entrega para los próximos [cuantos] enlaces que llegan al remoto.
+    Future<List<EnlaceRecuperacion>> llegan(int cuantos, List<EnlaceRecuperacion> enlaces) async {
+      final futuro = repo.enlaces.take(cuantos).toList();
+      enlaces.forEach(remoto.simularEnlace);
+      return futuro;
+    }
+
+    test('con un cambio recién completado, el enlace rechazado sigue siendo «vencido»: no se '
+        'adivina que ya se usó', () async {
+      await repo.actualizarPassword('NuevaClave1');
+
+      expect(await llegan(1, [EnlaceRecuperacion.vencido]), [EnlaceRecuperacion.vencido]);
+    });
+
+    test('los enlaces llegan en el mismo orden, sin tocarlos', () async {
+      expect(
+        await llegan(3, [
+          EnlaceRecuperacion.vencido,
+          EnlaceRecuperacion.valido,
+          EnlaceRecuperacion.sinConexion,
+        ]),
+        [EnlaceRecuperacion.vencido, EnlaceRecuperacion.valido, EnlaceRecuperacion.sinConexion],
+      );
     });
   });
 }

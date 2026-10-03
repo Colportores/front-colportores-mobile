@@ -333,7 +333,7 @@ void main() {
       tester,
     ) async {
       await _montar(tester, enlace: EnlaceRecuperacion.vencido);
-      expect(find.text('ENLACE VENCIDO'), findsOneWidget);
+      expect(find.text('ENLACE NO VÁLIDO'), findsOneWidget);
       expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
       expect(find.text('Volver al login'), findsOneWidget);
       expect(_guardar, findsNothing);
@@ -638,11 +638,17 @@ void main() {
       expect(_recuperacion.actualizaciones, ['NuevaClave1']);
     });
 
-    testWidgets('enlace vencido y enlace sin conexión: atrás lleva al login sin soltar ninguna '
-        'sesión', (tester) async {
+    testWidgets('enlace no válido (atrás del sistema) y enlace sin conexión (flecha): atrás lleva '
+        'al login sin soltar ninguna sesión', (tester) async {
       for (final estado in [_Estado.a06, _Estado.enlaceSinConexion]) {
         await _llegarA(tester, estado);
-        await tester.tap(_k('atras'));
+        if (estado == _Estado.a06) {
+          // A06 no tiene flecha (como el canvas): se sale por el atrás del sistema.
+          expect(_k('atras'), findsNothing);
+          await tester.binding.handlePopRoute();
+        } else {
+          await tester.tap(_k('atras'));
+        }
         await tester.pumpAndSettle();
         expect(_login, findsOneWidget, reason: estado.rotulo);
         expect(_recuperacion.abandonos, 0, reason: estado.rotulo);
