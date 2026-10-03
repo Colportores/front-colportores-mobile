@@ -10,6 +10,7 @@ import '../../../../core/usecases/use_case.dart';
 import '../../../auth/domain/entities/resumen_datos_locales.dart';
 import '../../../auth/domain/usecases/borrar_datos_locales_use_case.dart' show PasoBorrado;
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../auth/presentation/providers/aviso_sesion_notifier.dart';
 import '../../../auth/presentation/providers/borrado_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
 import '../../../jornada/presentation/providers/jornada_providers.dart';
@@ -85,15 +86,10 @@ abstract final class TextosBorrado {
   static const sinConexion =
       'Sin conexión. La contraseña se valida en este teléfono y los datos se borran igual.';
 
-  /// Propuesta: cuenta de Google sin envoltorio por contraseña (la HU y el issue dicen «solo la
-  /// frase»; el texto es nuestro).
-  static const sinPassword =
-      'Tu cuenta entra con Google y no tiene contraseña en este teléfono: alcanza con la frase.';
-
-  /// Propuesta: sin nombre no se puede armar la frase (el nombre de la cuenta llega con #243).
-  static const sinNombre =
-      'No pudimos armar la frase de confirmación porque todavía no tenemos tu nombre en este '
-      'teléfono. Por ahora no se puede borrar desde acá.';
+  /// Propuesta: sin nombre en la sesión no se puede armar la frase (falla cerrado, con qué hacer).
+  static const sinFrase =
+      'No pudimos preparar la confirmación porque no tenemos tu nombre en este teléfono. Cerrá '
+      'sesión, volvé a entrar y probá de nuevo.';
 
   static const noCierresLaApp = 'No cierres la app.';
   static const driveSinConexion =
@@ -267,7 +263,14 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
   }
 
   /// La raíz ya muestra el login (la sesión es `null`); solo queda sacar esta pantalla.
-  void _irAlLogin() => Navigator.of(context).popUntil((route) => route.isFirst);
+  void _irAlLogin() {
+    final navegador = Navigator.of(context);
+    // Se sale de la pantalla de falla sin haber borrado el backup: el login lo recuerda (canvas).
+    if (_fase == _Fase.fallaDrive) {
+      ref.read(avisoSesionProvider.notifier).mostrar(const FailureBackupDriveNoBorrado());
+    }
+    navegador.popUntil((route) => route.isFirst);
+  }
 
   void _alVolver(bool didPop, Object? resultado) {
     if (didPop) return;
@@ -342,13 +345,8 @@ class _BorrarDatosLocalesPageState extends ConsumerState<BorrarDatosLocalesPage>
       _Fase.resumen when resumen == null && _falloResumen == null => const _Cargando(
         key: Key('borrar_datos_cargando'),
       ),
-      _Fase.resumen when resumen == null => _ErrorResumen(
-        mensaje: const FailureDatosLocalesIlegibles().mensaje,
-        recontando: _recontando,
-        onReintentar: _cargar,
-      ),
       _Fase.resumen => ResumenBorrado(
-        resumen: resumen!,
+        resumen: resumen,
         soloEsteTelefono: _soloEsteTelefono,
         irreversible: _irreversible,
         sincronizando: _sincronizando,
@@ -400,40 +398,5 @@ class _Cargando extends StatelessWidget {
         Text('Revisando los datos de este teléfono…', textAlign: TextAlign.center),
       ],
     ),
-  );
-}
-
-class _ErrorResumen extends StatelessWidget {
-  const _ErrorResumen({
-    required this.mensaje,
-    required this.recontando,
-    required this.onReintentar,
-  });
-
-  final String mensaje;
-  final bool recontando;
-  final VoidCallback onReintentar;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    key: const Key('borrar_datos_error_resumen'),
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const ExcludeSemantics(child: Icon(Icons.error_outline, size: 20)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(mensaje, style: Theme.of(context).textTheme.bodyMedium)),
-        ],
-      ),
-      const SizedBox(height: 16),
-      FilledButton(
-        key: const Key('borrar_datos_reintentar_resumen'),
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-        onPressed: recontando ? null : onReintentar,
-        child: const Text('Reintentar'),
-      ),
-    ],
   );
 }

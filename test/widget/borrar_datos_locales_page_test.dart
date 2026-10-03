@@ -15,6 +15,7 @@ import 'package:colportores_mobile/features/auth/domain/repositories/datos_local
 import 'package:colportores_mobile/features/auth/domain/repositories/intentos_borrado_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/services/sincronizador_manual.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/borrado_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
@@ -465,8 +466,10 @@ void main() {
 
       await _tocar(tester, _k('borrar_datos_sincronizar'));
 
-      expect(find.byKey(const Key('borrar_datos_error_resumen')), findsOneWidget);
-      expect(find.byKey(const Key('borrar_datos_continuar')), findsNothing);
+      // Sin conteo nuevo no queda el viejo: filas con «—» y «Continuar» apagado (artboard 03).
+      expect(find.byKey(const Key('borrar_datos_sin_conteo')), findsOneWidget);
+      expect(tester.widget<Text>(_k('borrar_datos_personas')).data, '—');
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isFalse);
     });
   });
 
@@ -497,6 +500,56 @@ void main() {
       expect(find.byKey(const Key('borrar_datos_sin_conteo')), findsNothing);
       expect(tester.widget<Text>(_k('borrar_datos_pendientes')).data, '0');
       expect(_habilitado(tester, 'borrar_datos_continuar'), isTrue);
+    });
+
+    testWidgets('falla el conteo completo: filas con «—», las dos casillas y «Continuar» apagado', (
+      tester,
+    ) async {
+      _datos.respuestas[0] = const Left(FailureDatosLocalesIlegibles());
+      await _montar(tester);
+      await _abrirBorrado(tester);
+
+      expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
+      expect(tester.widget<Text>(_k('borrar_datos_personas')).data, '—');
+      expect(tester.widget<Text>(_k('borrar_datos_visitas')).data, '—');
+      expect(find.text('— ${TextosBorrado.noSePudieronContar}'), findsOneWidget);
+      expect(tester.widget<Text>(_k('borrar_datos_backup')).data, '—');
+      expect(find.textContaining(TextosBorrado.reintentarConteo), findsOneWidget);
+      expect(find.byKey(const Key('borrar_datos_checkbox')), findsOneWidget);
+      expect(find.byKey(const Key('borrar_datos_checkbox_irreversible')), findsOneWidget);
+      await _marcarCasillas(tester);
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isFalse);
+      expect(_datos.borrados, isEmpty);
+    });
+
+    testWidgets('falla el conteo completo: «Reintentar» vuelve a contar y destraba', (
+      tester,
+    ) async {
+      _datos.respuestas
+        ..clear()
+        ..addAll([const Left(FailureDatosLocalesIlegibles()), Right(_res())]);
+      await _montar(tester);
+      await _abrirBorrado(tester);
+      await _marcarCasillas(tester);
+
+      await _tocar(tester, _k('borrar_datos_reintentar_conteo'));
+
+      expect(find.byKey(const Key('borrar_datos_sin_conteo')), findsNothing);
+      expect(tester.widget<Text>(_k('borrar_datos_personas')).data, '12');
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isTrue);
+    });
+
+    testWidgets('falla el conteo completo y reintentar también falla: no se traba', (tester) async {
+      _datos.respuestas[0] = const Left(FailureDatosLocalesIlegibles());
+      await _montar(tester);
+      await _abrirBorrado(tester);
+
+      await _tocar(tester, _k('borrar_datos_reintentar_conteo'));
+      await _tocar(tester, _k('borrar_datos_reintentar_conteo'));
+
+      expect(_habilitado(tester, 'borrar_datos_reintentar_conteo'), isTrue);
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isFalse);
+      expect(_datos.llamadasResumen, 3);
     });
 
     testWidgets('si reintentar sigue sin poder contar, sigue bloqueado y se puede reintentar', (
@@ -610,56 +663,129 @@ void main() {
       expect(find.text(TextosBorrado.borrarDrive), findsNothing);
     });
 
-    testWidgets('Google sin backup (sin envoltorio): se pide solo la frase, sin contraseña', (
-      tester,
-    ) async {
+    testWidgets('la contraseña se pide siempre, además de la frase', (tester) async {
       await _montar(tester);
-      // Después del login: preparar la DB con contraseña arma el envoltorio.
-      _db.envoltorio = null;
       await _irAConfirmacion(tester);
 
-      expect(find.byKey(const Key('borrar_datos_password')), findsNothing);
-      expect(find.text('TU CONTRASEÑA'), findsNothing);
-      expect(find.text(TextosBorrado.sinPassword), findsOneWidget);
+      expect(find.byKey(const Key('borrar_datos_password')), findsOneWidget);
+      expect(find.text('TU CONTRASEÑA'), findsOneWidget);
 
       await _completarConfirmacion(tester, conPassword: false);
       await _confirmar(tester);
 
-      expect(_datos.borrados, [false]);
-      expect(_login, findsOneWidget);
+      expect(find.text('Ingresá tu contraseña'), findsOneWidget);
+      expect(_datos.borrados, isEmpty, reason: 'con la frase sola no se borra');
     });
 
-    testWidgets('sin nombre de cuenta no se puede armar la frase: avisa y no ofrece borrar', (
+    testWidgets('sin nombre de cuenta no se puede armar la frase: avisa qué hacer y no borra', (
       tester,
     ) async {
       await _montar(tester, nombre: null);
       await _irAConfirmacion(tester);
 
-      expect(find.text(TextosBorrado.sinNombre), findsOneWidget);
+      expect(find.text(TextosBorrado.sinFrase), findsOneWidget);
       expect(find.byKey(const Key('borrar_datos_confirmar')), findsNothing);
       expect(_datos.borrados, isEmpty);
     });
   });
 
   group('A05b Frase o contraseña incorrectas', () {
-    testWidgets('frase distinta: «El texto no coincide. Copialo tal cual.» y no borra', (
+    testWidgets(
+      'frase distinta: «El texto no coincide. Copialo tal cual.», botón apagado y no borra',
+      (tester) async {
+        await _montar(tester);
+        await _irAConfirmacion(tester);
+
+        await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-LUCIO-SILVA');
+        await _escribir(tester, 'borrar_datos_password', _password);
+
+        expect(find.text('El texto no coincide. Copialo tal cual.'), findsOneWidget);
+        expect(_habilitado(tester, 'borrar_datos_confirmar'), isFalse);
+        await _confirmar(tester);
+        expect(_datos.borrados, isEmpty);
+        expect(_db.llamadas, isNot(contains('desenvolver')), reason: 'no gasta un intento');
+        expect(_intentos.estado.fallidos, 0);
+
+        // Al corregirla, el error se va y el botón se habilita.
+        await _escribir(tester, 'borrar_datos_frase', _frase);
+        expect(find.text('El texto no coincide. Copialo tal cual.'), findsNothing);
+        expect(_habilitado(tester, 'borrar_datos_confirmar'), isTrue);
+      },
+    );
+
+    testWidgets('mientras se escribe bien la frase no se marca error, y el botón sigue apagado', (
       tester,
     ) async {
       await _montar(tester);
       await _irAConfirmacion(tester);
 
-      await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-LUCIA');
-      await _escribir(tester, 'borrar_datos_password', _password);
-      await _confirmar(tester);
+      await tester.scrollUntilVisible(
+        _k('borrar_datos_frase'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(_k('borrar_datos_frase'));
+      await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-LU');
+
+      expect(find.text('El texto no coincide. Copialo tal cual.'), findsNothing);
+      expect(_habilitado(tester, 'borrar_datos_confirmar'), isFalse);
+
+      // Un carácter que ya no puede ser parte de la frase: error enseguida.
+      await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-X');
+      expect(find.text('El texto no coincide. Copialo tal cual.'), findsOneWidget);
+    });
+
+    testWidgets('frase a medias y se sale del campo: avisa que no coincide', (tester) async {
+      await _montar(tester);
+      await _irAConfirmacion(tester);
+      await tester.scrollUntilVisible(
+        _k('borrar_datos_frase'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(_k('borrar_datos_frase'));
+      await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-LU');
+      expect(find.text('El texto no coincide. Copialo tal cual.'), findsNothing);
+
+      await tester.tap(_k('borrar_datos_password'));
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('El texto no coincide. Copialo tal cual.'), findsOneWidget);
-      expect(_datos.borrados, isEmpty);
-      expect(_db.llamadas, isNot(contains('desenvolver')), reason: 'no gasta un intento');
-      expect(_intentos.estado.fallidos, 0);
+      expect(_habilitado(tester, 'borrar_datos_confirmar'), isFalse);
+    });
 
-      // Al corregirla, el error se va.
+    testWidgets('los dos errores a la vez: contraseña incorrecta y después la frase cambiada', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _irAConfirmacion(tester);
       await _escribir(tester, 'borrar_datos_frase', _frase);
-      expect(find.text('El texto no coincide. Copialo tal cual.'), findsNothing);
+      await _escribir(tester, 'borrar_datos_password', 'otra');
+      await _confirmar(tester);
+      expect(find.text('Contraseña incorrecta. Te quedan 4 intentos.'), findsOneWidget);
+
+      await _escribir(tester, 'borrar_datos_frase', 'BORRAR-DATOS-LUCIO-SILVA');
+
+      expect(find.text('El texto no coincide. Copialo tal cual.'), findsOneWidget);
+      expect(find.text('Contraseña incorrecta. Te quedan 4 intentos.'), findsOneWidget);
+      expect(_habilitado(tester, 'borrar_datos_confirmar'), isFalse);
+      expect(_intentos.estado.fallidos, 1);
+    });
+
+    testWidgets('«Listo» del teclado en la contraseña con la frase mal: no gasta un intento', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _irAConfirmacion(tester);
+      await _escribir(tester, 'borrar_datos_frase', 'mal');
+      await _escribir(tester, 'borrar_datos_password', 'otra');
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(_intentos.estado.fallidos, 0);
+      expect(_db.llamadas, isNot(contains('desenvolver')));
+      expect(_datos.borrados, isEmpty);
     });
 
     testWidgets('contraseña incorrecta: «Contraseña incorrecta. Te quedan 4 intentos.»', (
@@ -726,6 +852,7 @@ void main() {
       );
       await _montar(tester);
       await _irAConfirmacion(tester);
+      await _escribir(tester, 'borrar_datos_frase', _frase);
       expect(_habilitado(tester, 'borrar_datos_confirmar'), isFalse);
 
       _ahora = _ahora.add(const Duration(minutes: 5));
@@ -734,7 +861,7 @@ void main() {
 
       expect(find.textContaining('Demasiados intentos'), findsNothing);
       expect(_habilitado(tester, 'borrar_datos_confirmar'), isTrue);
-      await _completarConfirmacion(tester);
+      await _escribir(tester, 'borrar_datos_password', _password);
       await _confirmar(tester);
       expect(_datos.borrados, [false]);
     });
@@ -1055,6 +1182,30 @@ void main() {
       await _tocar(tester, _k('borrar_datos_ir_al_login'));
       expect(_login, findsOneWidget);
       expect(find.byType(BorrarDatosLocalesPage), findsNothing);
+      // El login recuerda que el backup remoto sigue ahí (nota del canvas) y qué hacer.
+      expect(
+        find.text('No pudimos borrar el backup remoto; intentalo más tarde desde Drive.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('el atrás del sistema también deja el aviso en el login', (tester) async {
+      _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.backupDriveNoBorrado);
+      final container = await _montar(tester);
+      await _borrarTodo(tester, incluirDrive: true);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(container.read(avisoSesionProvider), isA<FailureBackupDriveNoBorrado>());
+    });
+
+    testWidgets('con el borrado completo no queda aviso de Drive en el login', (tester) async {
+      final container = await _montar(tester);
+      await _borrarTodo(tester, incluirDrive: true);
+
+      expect(_login, findsOneWidget);
+      expect(container.read(avisoSesionProvider), isNull);
     });
 
     testWidgets('el atrás del sistema no vuelve a una pantalla sin datos: va al login', (
@@ -1114,7 +1265,7 @@ void main() {
       expect(find.byKey(const Key('borrar_datos_error')), findsOneWidget);
       expect(find.text(TextosBorrado.errorBorrado), findsOneWidget);
       expect(_datos.llamadasResumen, resumenesAntes);
-      expect(find.byKey(const Key('borrar_datos_error_resumen')), findsNothing);
+      expect(find.byKey(const Key('borrar_datos_sin_conteo')), findsNothing);
 
       _datos.respuestaBorrado = const Right(ResultadoBorradoDatosLocales.completo);
       await _tocar(tester, _k('borrar_datos_reintentar'));
@@ -1326,7 +1477,7 @@ void main() {
       expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
     });
 
-    testWidgets('error: si no puede revisar los datos, no ofrece borrar y deja reintentar', (
+    testWidgets('error: si no puede revisar los datos, no deja continuar y deja reintentar', (
       tester,
     ) async {
       _datos.respuestas
@@ -1335,11 +1486,11 @@ void main() {
       await _montar(tester);
       await _abrirBorrado(tester);
 
-      expect(find.text(const FailureDatosLocalesIlegibles().mensaje), findsOneWidget);
-      expect(find.byKey(const Key('borrar_datos_continuar')), findsNothing);
+      expect(find.byKey(const Key('borrar_datos_sin_conteo')), findsOneWidget);
+      expect(_habilitado(tester, 'borrar_datos_continuar'), isFalse);
       expect(_datos.borrados, isEmpty);
 
-      await _tocar(tester, _k('borrar_datos_reintentar_resumen'));
+      await _tocar(tester, _k('borrar_datos_reintentar_conteo'));
       expect(find.byKey(const Key('borrar_datos_resumen')), findsOneWidget);
     });
 

@@ -89,6 +89,17 @@ final class FailureCierreSesionSinConexion extends Failure {
       );
 }
 
+/// Se borraron los datos de este teléfono pero no se pudo borrar el backup en Drive (HU-AUTH-010,
+/// nota del canvas de la vista 19): el login lo muestra como aviso, para que quien salió de la
+/// pantalla de falla sepa que el backup remoto sigue ahí y qué hacer.
+final class FailureBackupDriveNoBorrado extends Failure {
+  const FailureBackupDriveNoBorrado()
+    : super(
+        mensaje: 'No pudimos borrar el backup remoto; intentalo más tarde desde Drive.',
+        codigo: 'AUTH_BACKUP_DRIVE_NO_BORRADO',
+      );
+}
+
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
 /// `otp_expired`), así que la app tampoco: [mensaje] no afirma «expiró» sino las dos cosas

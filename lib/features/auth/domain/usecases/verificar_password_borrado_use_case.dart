@@ -4,7 +4,6 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/secure_storage/clave_db.dart';
 import '../../../../core/usecases/use_case.dart';
-import '../entities/estado_db_local.dart';
 import '../entities/estado_intentos_borrado.dart';
 import '../repositories/db_local_repository.dart';
 import '../repositories/intentos_borrado_repository.dart';
@@ -22,17 +21,15 @@ final class VerificarPasswordBorradoParams extends Equatable {
   List<Object?> get props => [password];
 }
 
-/// Qué pide la confirmación final y cómo va el límite de intentos, para armar la pantalla.
+/// Cómo va el límite de intentos de la contraseña, para armar la confirmación final. La contraseña
+/// se pide siempre (decisión de Cristian, 02/10: sin login con Google, toda cuenta tiene una).
 final class RequisitosBorrado extends Equatable {
-  const RequisitosBorrado({required this.pidePassword, required this.estadoIntentos});
-
-  /// `false` si no hay DEK envuelta con contraseña (Google sin backup): se pide solo la frase.
-  final bool pidePassword;
+  const RequisitosBorrado({required this.estadoIntentos});
 
   final EstadoIntentosBorrado estadoIntentos;
 
   @override
-  List<Object?> get props => [pidePassword, estadoIntentos];
+  List<Object?> get props => [estadoIntentos];
 }
 
 /// Confirma con la contraseña el borrado de datos locales (HU-AUTH-010, vista 19): intenta abrir la
@@ -63,16 +60,15 @@ final class VerificarPasswordBorradoUseCase
   final IntentosBorradoRepository _intentos;
   final DateTime Function() _ahora;
 
-  /// Si pide contraseña y cómo van los intentos. `Left` si el almacén no se puede leer: sin saberlo
-  /// no se puede confirmar nada, y no se borra.
+  /// Cómo van los intentos. `Left` si el almacén no se puede leer: sin saberlo no se puede
+  /// confirmar nada, y no se borra.
   Future<Either<Failure, RequisitosBorrado>> requisitos() async {
     final estado = await _db.estado();
     if (estado case Left(value: final falla)) return Left(falla);
-    final e = (estado as Right<Failure, EstadoDbLocal>).value;
     final intentos = await _vigente();
     // Sin saber cuántos intentos van no se puede confirmar nada: falla cerrado.
     if (intentos.ilegible) return const Left(FailureIntentosBorradoIlegibles());
-    return Right(RequisitosBorrado(pidePassword: e.envoltorioExiste, estadoIntentos: intentos));
+    return Right(RequisitosBorrado(estadoIntentos: intentos));
   }
 
   /// El estado guardado, con la espera ya vencida dada de baja.

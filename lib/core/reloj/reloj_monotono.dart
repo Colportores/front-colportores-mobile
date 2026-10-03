@@ -6,8 +6,10 @@
 /// las destraba.
 ///
 /// Límites, a propósito: el cronómetro no cuenta el tiempo con el equipo dormido (la espera puede
-/// durar un poco más: falla cerrado) y un instante guardado antes de cerrar la app se compara contra
-/// la hora del sistema de la corrida siguiente, que sí puede haberse movido entre una y otra.
+/// durar un poco más: falla cerrado) y **no sobrevive a cerrar la app**: un instante guardado antes
+/// de cerrarla no se puede comparar con la corrida siguiente (la hora del sistema pudo moverse entre
+/// una y otra). Por eso quien guarda una espera guarda **lo que falta**, no la hora de fin
+/// (`IntentosBorradoRepositoryImpl`).
 final class RelojMonotono {
   RelojMonotono({DateTime Function()? sistema, Duration Function()? transcurrido})
     : _base = (sistema ?? DateTime.now)().toUtc(),

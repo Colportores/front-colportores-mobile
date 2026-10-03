@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
-import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/resumen_datos_locales.dart';
 import '../../../auth/domain/services/frase_borrado.dart';
 import '../../../auth/domain/usecases/verificar_password_borrado_use_case.dart';
@@ -16,8 +15,9 @@ import '../pages/borrar_datos_locales_page.dart' show TextosBorrado;
 import '../providers/nombre_cuenta_provider.dart';
 
 /// Segunda parte de «Borrar datos locales» (vista 19, artboards 05, 05b y 09): confirmación final a
-/// pantalla completa, sin la barra inferior. Pide la frase `BORRAR-DATOS-<NOMBRE>-<APELLIDO>` y,
-/// si hay una DEK envuelta con contraseña, la contraseña (se valida en el teléfono, sin red).
+/// pantalla completa, sin la barra inferior. Pide la frase `BORRAR-DATOS-<NOMBRE>-<APELLIDO>` y
+/// **siempre** la contraseña (se valida en el teléfono, sin red). Con la frase que no coincide, el
+/// botón queda apagado; el error de la contraseña y el de la frase pueden verse a la vez (05b).
 ///
 /// Con backup en Drive, también elige si se borra. Sin conexión esa opción queda deshabilitada
 /// ("requiere conexión") y el resto sigue: los datos se borran igual.
@@ -44,6 +44,7 @@ class ConfirmacionFinalBorrado extends ConsumerStatefulWidget {
 class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorrado> {
   final _frase = TextEditingController();
   final _password = TextEditingController();
+  final _focoFrase = FocusNode();
 
   RequisitosBorrado? _requisitos;
   Failure? _falloRequisitos;
@@ -52,7 +53,6 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
   bool _verificando = false;
   bool _sinConexion = false;
 
-  String? _errorFrase;
   String? _errorPassword;
   Failure? _falloGeneral;
 
@@ -64,6 +64,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
   @override
   void initState() {
     super.initState();
+    _focoFrase.addListener(() => setState(() {}));
     unawaited(_cargarRequisitos());
     unawaited(_escucharConexion());
   }
@@ -74,6 +75,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
     unawaited(_escuchaConexion?.cancel());
     _frase.dispose();
     _password.dispose();
+    _focoFrase.dispose();
     super.dispose();
   }
 
@@ -147,57 +149,60 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
     final requisitos = _requisitos;
     if (requisitos == null) return;
 
+    // El botón ya está apagado con la frase mal; esto cubre el «Listo» del teclado. No se gasta un
+    // intento de contraseña con la frase mal.
     if (!FraseBorrado.coincide(_frase.text, esperada)) {
-      setState(() {
-        _errorFrase = TextosBorrado.fraseNoCoincide;
-        _falloGeneral = null;
-      });
+      setState(() => _falloGeneral = null);
       return;
     }
     setState(() {
-      _errorFrase = null;
       _errorPassword = null;
       _falloGeneral = null;
+      _verificando = true;
     });
-
-    if (requisitos.pidePassword) {
-      setState(() => _verificando = true);
-      final r = await ref.read(verificarPasswordBorradoUseCaseProvider)(
-        VerificarPasswordBorradoParams(password: _password.text),
-      );
-      if (!mounted) return;
-      if (r.isRight()) {
-        // Sigue "verificando" hasta que la pantalla cambia: ningún segundo toque entra.
-        widget.onConfirmado(incluirBackupDrive: _incluirDrive);
-        return;
-      }
-      final falla = r.swap().getOrElse(() => const FailureInesperado());
-      setState(() {
-        _verificando = false;
-        switch (falla) {
-          case FailureBorradoBloqueado(:final hasta):
-            _password.clear();
-            _programarFinDeEspera(hasta);
-            _errorPassword = _textoEspera;
-          case FailurePasswordBorradoIncorrecta(:final intentosRestantes):
-            _password.clear();
-            _errorPassword = TextosBorrado.passwordIncorrecta(intentosRestantes);
-          case FailureValidacion(:final campos):
-            _errorPassword = campos['password'] ?? TextosBorrado.ingresaPassword;
-          default:
-            _falloGeneral = falla;
-        }
-      });
+    final r = await ref.read(verificarPasswordBorradoUseCaseProvider)(
+      VerificarPasswordBorradoParams(password: _password.text),
+    );
+    if (!mounted) return;
+    if (r.isRight()) {
+      // Sigue "verificando" hasta que la pantalla cambia: ningún segundo toque entra.
+      widget.onConfirmado(incluirBackupDrive: _incluirDrive);
       return;
     }
+    final falla = r.swap().getOrElse(() => const FailureInesperado());
+    setState(() {
+      _verificando = false;
+      switch (falla) {
+        case FailureBorradoBloqueado(:final hasta):
+          _password.clear();
+          _programarFinDeEspera(hasta);
+          _errorPassword = _textoEspera;
+        case FailurePasswordBorradoIncorrecta(:final intentosRestantes):
+          _password.clear();
+          _errorPassword = TextosBorrado.passwordIncorrecta(intentosRestantes);
+        case FailureValidacion(:final campos):
+          _errorPassword = campos['password'] ?? TextosBorrado.ingresaPassword;
+        default:
+          _falloGeneral = falla;
+      }
+    });
+  }
 
-    widget.onConfirmado(incluirBackupDrive: _incluirDrive);
+  /// El error de la frase (05b): se muestra cuando lo escrito ya no puede llegar a ser la frase, o
+  /// cuando tiene su largo, o cuando se sale del campo con la frase a medias. Mientras se tipea
+  /// bien no se marca error.
+  String? _errorFrase(String esperada) {
+    final escrito = _frase.text.trim().toUpperCase();
+    if (escrito.isEmpty || FraseBorrado.coincide(escrito, esperada)) return null;
+    final puedeSerla = esperada.toUpperCase().startsWith(escrito);
+    final completo = escrito.length >= esperada.length;
+    if (puedeSerla && !completo && _focoFrase.hasFocus) return null;
+    return TextosBorrado.fraseNoCoincide;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
     final esperada = FraseBorrado.para(ref.watch(nombreCuentaProvider));
     final requisitos = _requisitos;
 
@@ -221,12 +226,12 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
       );
     } else if (esperada == null) {
       cuerpo = const _Aviso(
-        key: Key('borrar_datos_sin_nombre'),
+        key: Key('borrar_datos_sin_frase'),
         icono: Icons.info_outline,
-        texto: TextosBorrado.sinNombre,
+        texto: TextosBorrado.sinFrase,
       );
     } else {
-      cuerpo = _formulario(theme, colores, esperada, requisitos);
+      cuerpo = _formulario(theme, esperada);
     }
 
     return Column(
@@ -247,14 +252,10 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
     );
   }
 
-  Widget _formulario(
-    ThemeData theme,
-    ColoresColportaje colores,
-    String esperada,
-    RequisitosBorrado requisitos,
-  ) {
+  Widget _formulario(ThemeData theme, String esperada) {
     final coincide = _frase.text.isNotEmpty && FraseBorrado.coincide(_frase.text, esperada);
     final enEspera = _enEspera;
+    final errorFrase = _errorFrase(esperada);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -284,6 +285,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
         TextField(
           key: const Key('borrar_datos_frase'),
           controller: _frase,
+          focusNode: _focoFrase,
           enabled: !_verificando,
           // Hay que escribirla, no pegarla: sin menú de selección ni de portapapeles.
           enableInteractiveSelection: false,
@@ -291,52 +293,42 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
           autocorrect: false,
           enableSuggestions: false,
           textCapitalization: TextCapitalization.characters,
-          textInputAction: requisitos.pidePassword ? TextInputAction.next : TextInputAction.done,
+          textInputAction: TextInputAction.next,
           inputFormatters: [LengthLimitingTextInputFormatter(esperada.length + 20)],
-          onChanged: (_) => setState(() => _errorFrase = null),
-          onSubmitted: requisitos.pidePassword ? null : (_) => _confirmar(esperada),
+          onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            errorText: _errorFrase,
+            errorText: errorFrase,
             errorMaxLines: 3,
             constraints: const BoxConstraints(minHeight: 48),
             helperText: coincide ? '✓ Coincide' : null,
             helperStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
           ),
         ),
-        if (requisitos.pidePassword) ...[
-          const SizedBox(height: 16),
-          Text('TU CONTRASEÑA', style: theme.textTheme.labelMedium),
-          const SizedBox(height: 6),
-          TextField(
-            key: const Key('borrar_datos_password'),
-            controller: _password,
-            enabled: !_verificando && !enEspera,
-            obscureText: !_mostrarPassword,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.done,
-            onChanged: (_) => setState(() => _errorPassword = enEspera ? _errorPassword : null),
-            onSubmitted: (_) => _confirmar(esperada),
-            decoration: InputDecoration(
-              errorText: _errorPassword,
-              errorMaxLines: 3,
-              constraints: const BoxConstraints(minHeight: 48),
-              suffixIcon: IconButton(
-                key: const Key('borrar_datos_mostrar_password'),
-                tooltip: _mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña',
-                onPressed: () => setState(() => _mostrarPassword = !_mostrarPassword),
-                icon: Icon(_mostrarPassword ? Icons.visibility_off : Icons.visibility),
-              ),
+        const SizedBox(height: 16),
+        Text('TU CONTRASEÑA', style: theme.textTheme.labelMedium),
+        const SizedBox(height: 6),
+        TextField(
+          key: const Key('borrar_datos_password'),
+          controller: _password,
+          enabled: !_verificando && !enEspera,
+          obscureText: !_mostrarPassword,
+          autocorrect: false,
+          enableSuggestions: false,
+          textInputAction: TextInputAction.done,
+          onChanged: (_) => setState(() => _errorPassword = enEspera ? _errorPassword : null),
+          onSubmitted: (_) => _confirmar(esperada),
+          decoration: InputDecoration(
+            errorText: _errorPassword,
+            errorMaxLines: 3,
+            constraints: const BoxConstraints(minHeight: 48),
+            suffixIcon: IconButton(
+              key: const Key('borrar_datos_mostrar_password'),
+              tooltip: _mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña',
+              onPressed: () => setState(() => _mostrarPassword = !_mostrarPassword),
+              icon: Icon(_mostrarPassword ? Icons.visibility_off : Icons.visibility),
             ),
           ),
-        ] else ...[
-          const SizedBox(height: 8),
-          Text(
-            TextosBorrado.sinPassword,
-            key: const Key('borrar_datos_sin_password'),
-            style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
-          ),
-        ],
+        ),
         if (_sinConexion) ...[
           const SizedBox(height: 12),
           const _Aviso(
@@ -363,7 +355,7 @@ class _ConfirmacionFinalBorradoState extends ConsumerState<ConfirmacionFinalBorr
             foregroundColor: theme.colorScheme.onError,
             minimumSize: const Size.fromHeight(48),
           ),
-          onPressed: _verificando || enEspera ? null : () => _confirmar(esperada),
+          onPressed: _verificando || enEspera || !coincide ? null : () => _confirmar(esperada),
           child: _verificando
               ? SizedBox.square(
                   dimension: 22,

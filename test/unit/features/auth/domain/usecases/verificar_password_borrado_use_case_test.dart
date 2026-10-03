@@ -113,18 +113,13 @@ void main() {
   });
 
   group('requisitos', () {
-    test('con envoltorio pide contraseña', () async {
+    test('trae el estado de los intentos (la contraseña se pide siempre)', () async {
       final r = await useCase.requisitos();
 
-      expect(r.getOrElse(() => throw StateError('')).pidePassword, isTrue);
-    });
-
-    test('sin envoltorio (Google sin backup) pide solo la frase', () async {
-      db.envoltorio = null;
-
-      final r = await useCase.requisitos();
-
-      expect(r.getOrElse(() => throw StateError('')).pidePassword, isFalse);
+      expect(
+        r.getOrElse(() => throw StateError('')),
+        RequisitosBorrado(estadoIntentos: EstadoIntentosBorrado.limpio),
+      );
     });
 
     test('trae la espera en curso, y una vencida se da de baja', () async {
