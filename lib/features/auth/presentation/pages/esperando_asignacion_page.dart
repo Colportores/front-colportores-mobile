@@ -44,6 +44,12 @@ abstract final class TextosEsperaAsignacion {
   static const irAConfiguracion = 'Ir a Configuración';
 
   static const tituloSinEstado = 'No pudimos revisar tu cuenta';
+
+  /// Sin conexión y sin estado conocido (nunca se pudo consultar; decisión de Cristian, 02/10): lo
+  /// dice tal cual, qué pasa y qué hacer, en vez del genérico «No pudimos revisar tu cuenta».
+  static const tituloSinConexion = 'Sin conexión';
+  static const sinConexionSinEstado =
+      'No hay conexión para revisar tu cuenta. Conectate a internet y tocá Reintentar.';
   static const probarDeNuevo = 'Probá de nuevo en unos minutos.';
   static const sinEstadoSinConexion =
       'Necesitás conexión para saber si ya te asignaron a una campaña. Conectate y tocá '
@@ -252,6 +258,8 @@ class _Pendiente extends StatelessWidget {
     // 18-A01: el cuerpo completo con la línea de tiempo. Mientras consulta o con un resultado a la
     // vista (18-A02 a 18-A05) queda lo esencial.
     final completo = conocido && !consultando && resultado == null;
+    // Sin estado conocido y sin red: un aviso de sin conexión explícito, no el error genérico.
+    final sinConexionSinEstado = !conocido && !consultando && resultado == _Resultado.sinConexion;
 
     final cuerpo = <Widget>[
       if (conocido)
@@ -265,6 +273,8 @@ class _Pendiente extends StatelessWidget {
         child: Text(
           conocido
               ? TextosEsperaAsignacion.tituloPendiente
+              : sinConexionSinEstado
+              ? TextosEsperaAsignacion.tituloSinConexion
               : TextosEsperaAsignacion.tituloSinEstado,
           key: const Key('espera_titulo'),
           style: theme.textTheme.headlineMedium,
@@ -293,10 +303,12 @@ class _Pendiente extends StatelessWidget {
             ? null
             : TextosEsperaAsignacion.revisadoRecien(TextosEsperaAsignacion.horaDe(revisadoA!)),
       ),
-      _Resultado.sinConexion => const _Aviso(
-        key: Key('espera_sin_conexion'),
+      _Resultado.sinConexion => _Aviso(
+        key: const Key('espera_sin_conexion'),
         tipo: _TipoAviso.sinConexion,
-        texto: TextosEsperaAsignacion.sinEstadoSinConexion,
+        texto: conocido
+            ? TextosEsperaAsignacion.sinEstadoSinConexion
+            : TextosEsperaAsignacion.sinConexionSinEstado,
       ),
       _Resultado.error => _Aviso(
         key: const Key('espera_error'),
@@ -328,7 +340,8 @@ class _Pendiente extends StatelessWidget {
         ),
       _BotonActualizar(
         consultando: consultando,
-        texto: resultado == _Resultado.error
+        // Sin estado conocido, siempre «Reintentar» (el texto del aviso lo nombra así).
+        texto: resultado == _Resultado.error || !conocido
             ? TextosEsperaAsignacion.reintentar
             : TextosEsperaAsignacion.actualizar,
         onPressed: onActualizar,
