@@ -1,6 +1,6 @@
 // QA de front-colportores-mobile#242 (HU-AUTH-002, enlace de verificación usado): casos límite que
 // se superponen —«Ya verifiqué» a la vez que el login en silencio del enlace— y capturas de la
-// vista 12 (A05 «ya verificado» y «enlace que ya no sirve»), que van fuera del repo.
+// vista 12 (A05 «ya verificado» y «enlace que ya no sirve»), que van a `build/qa_capturas/`.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -95,7 +95,7 @@ void main() {
     },
   );
 
-  // Capturas: fuera del repo (qa_capturas_tmp, no se commitea).
+  // Capturas: en `build/qa_capturas/` (ignorado por git, no ensucian el árbol del repo).
   for (final estado in [
     EstadoVerificacionEmail.yaVerificado,
     EstadoVerificacionEmail.enlaceInutil,
@@ -139,7 +139,7 @@ void main() {
             final render = clave.currentContext!.findRenderObject()! as RenderRepaintBoundary;
             final img = await render.toImage();
             final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
-            final dir = Directory('qa_capturas_tmp')..createSync(recursive: true);
+            final dir = Directory('build/qa_capturas')..createSync(recursive: true);
             File(
               '${dir.path}/242_${estado.name}_claro_$escala.png',
             ).writeAsBytesSync(bytes.buffer.asUint8List());

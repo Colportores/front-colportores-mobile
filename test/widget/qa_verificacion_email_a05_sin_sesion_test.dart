@@ -109,9 +109,8 @@ void main() {
       }
     }
 
-    // skip: QA #279 — el título de A05 («Tu email ya está verificado») es un `Text` suelto: no se
-    // marca como encabezado, así que TalkBack/VoiceOver no lo ofrecen en la navegación por encabezados
-    // (los títulos de la vista 14, por ejemplo, sí llevan `Semantics(header: true)`).
+    // QA #279: el título de A05 («Tu email ya está verificado») es un encabezado, así que
+    // TalkBack/VoiceOver lo ofrecen en la navegación por encabezados (como los de la vista 14).
     testWidgets('el título de A05 es un encabezado para el lector de pantalla', (tester) async {
       final semantica = tester.ensureSemantics();
       await _a05Sola(tester, const Size(360, 640), 1);
@@ -121,7 +120,7 @@ void main() {
         isSemantics(isHeader: true),
       );
       semantica.dispose();
-    }, skip: true);
+    });
   });
 
   group('QA #279 · 12-A05 sin sesión · navegación y casos límite', () {

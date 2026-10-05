@@ -330,10 +330,13 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                             style: theme.textTheme.labelSmall?.copyWith(color: esquema.primary),
                           ),
                         if (_titulo() case final titulo?)
-                          Text(
-                            titulo,
-                            key: const Key('verificacion_email_titulo'),
-                            style: theme.textTheme.headlineMedium,
+                          Semantics(
+                            header: true,
+                            child: Text(
+                              titulo,
+                              key: const Key('verificacion_email_titulo'),
+                              style: theme.textTheme.headlineMedium,
+                            ),
                           ),
                         if (!(conAvisoDeReenvio && _emailConocido))
                           Text(

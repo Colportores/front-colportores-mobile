@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -320,6 +321,41 @@ void main() {
       expect(_login, findsOneWidget);
       expect(_inicio, findsNothing);
     });
+
+    // HU-AUTH-007 (decisión del 05/10, #279): «no sale sola» vale para los temporizadores de A05,
+    // no para un cierre forzado de la sesión. Si la sesión vence por inactividad o el servidor la
+    // revoca con A05 abierta, A05 cede al login con el aviso que explica qué pasó y qué hacer, como
+    // cualquier otra pantalla: con la sesión terminada, «Ir a mi inicio» ya no sería cierto.
+    for (final (motivo, aviso) in [
+      (MotivoExpiracion.inactividad, 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.'),
+      (
+        MotivoExpiracion.revocada,
+        'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la '
+            'contraseña. Entrá de nuevo.',
+      ),
+    ]) {
+      testWidgets(
+        'un cierre forzado de la sesión (${motivo.name}) con A05 abierta: cede al login y se ve el aviso',
+        (tester) async {
+          final remote = await _a05ConSesion(tester);
+
+          remote.simularExpiracion(motivo);
+          await tester.pumpAndSettle();
+
+          expect(find.text(_titulo), findsNothing);
+          expect(_botonSalir, findsNothing);
+          expect(_inicio, findsNothing);
+          expect(_login, findsOneWidget);
+          expect(find.text(aviso), findsOneWidget);
+          expect(tester.takeException(), isNull);
+
+          // Y se queda en el login: nada más la saca de ahí sola.
+          await tester.pump(const Duration(seconds: 30));
+          expect(_login, findsOneWidget);
+          expect(find.text(aviso), findsOneWidget);
+        },
+      );
+    }
 
     testWidgets('la sesión se cierra y se vuelve a abrir: el texto no cambia y el botón sigue', (
       tester,
