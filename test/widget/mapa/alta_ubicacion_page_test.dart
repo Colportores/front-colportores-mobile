@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
@@ -126,9 +127,20 @@ Future<_Escenario> _montar(
   return e;
 }
 
-Future<void> _tocar(WidgetTester tester, Finder f) async {
-  await tester.ensureVisible(f);
+/// Deja [f] a la vista en la hoja. Primero deja que el árbol se rearme (un `enterText` previo cambia
+/// el alto de la hoja recién en el próximo cuadro) y solo desplaza la hoja si [f] no se alcanza: sin
+/// eso, `ensureVisible` llevaba el texto al borde de arriba y dejaba el botón cortado, y las guías de
+/// accesibilidad medían un botón de 36 en vez de 52.
+Future<void> _traer(WidgetTester tester, Finder f) async {
   await tester.pump();
+  if (f.hitTestable().evaluate().isEmpty) {
+    await Scrollable.ensureVisible(tester.element(f), alignment: .5);
+    await tester.pump();
+  }
+}
+
+Future<void> _tocar(WidgetTester tester, Finder f) async {
+  await _traer(tester, f);
   await tester.tap(f);
   await _asentar(tester);
 }
@@ -240,6 +252,7 @@ void main() {
       final e = await _montar(tester, repo: repo);
       await _tocar(tester, find.text('Casa'));
 
+      await _traer(tester, _registrar);
       await tester.tap(_registrar);
       await tester.pump();
 
@@ -260,6 +273,7 @@ void main() {
       final e = await _montar(tester, repo: repo);
       await _tocar(tester, find.text('Casa'));
 
+      await _traer(tester, _registrar);
       await tester.tap(_registrar);
       await tester.tap(_registrar, warnIfMissed: false);
       repo.bloqueo!.complete();
@@ -282,7 +296,8 @@ void main() {
 
       await _tocar(tester, _registrar);
 
-      expect(find.text('Ocurrió un error inesperado'), findsOneWidget);
+      expect(find.text(TextosAlta.noPudimosGuardar), findsOneWidget);
+      expect(find.text('Ocurrió un error inesperado'), findsNothing);
       expect(_habilitado(tester, _registrar), isTrue);
       expect(find.text('Registrar'), findsOneWidget);
       expect(find.widgetWithText(TextField, '1240'), findsOneWidget);
@@ -294,6 +309,31 @@ void main() {
       expect(repo.llamadas.map((l) => l.ubicacion.id).toSet(), hasLength(1));
       expect(repo.llamadas.last.ubicacion.numero, '1240');
     });
+
+    testWidgets(
+      'las fallas que no son inesperadas conservan su texto (y sin conexión dice para qué)',
+      (tester) async {
+        var intento = 0;
+        final repo = RepoAltaFalso()
+          ..comportamiento = (u) async {
+            intento++;
+            if (intento == 1) return const Left(FailureServidor());
+            if (intento == 2) return const Left(FailureSinConexion());
+            return Right(AltaRegistrada(ubicacion: u));
+          };
+        await _montar(tester, repo: repo);
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _registrar);
+        expect(find.text('El servidor no pudo procesar la solicitud'), findsOneWidget);
+        expect(find.text(TextosAlta.noPudimosGuardar), findsNothing);
+        expect(_habilitado(tester, _registrar), isTrue);
+
+        await _tocar(tester, _registrar);
+        expect(find.text('Necesitás conexión para registrar la ubicación.'), findsOneWidget);
+        expect(find.text('El servidor no pudo procesar la solicitud'), findsNothing);
+      },
+    );
   });
 
   group('artboard 03A · 02 «Sin GPS o permiso denegado»', () {
@@ -846,6 +886,7 @@ void main() {
         await _montar(tester, repo: repo);
         await _tocar(tester, find.text('Casa'));
 
+        await _traer(tester, _registrar);
         await tester.tap(_registrar);
         await tester.pump();
         expect(find.text('Registrando…'), findsOneWidget);
@@ -993,6 +1034,7 @@ void main() {
       expect(find.text('Actualizada hace 3 días'), findsOneWidget);
       expect(find.text('Reutilizar esta'), findsOneWidget);
       expect(find.text('Crear igual'), findsOneWidget);
+      expect(find.text(TextosDuplicado.sinCrearIgual), findsNothing, reason: 'con «Crear igual»');
       expect(find.text('Cancelar'), findsOneWidget);
       expect(find.text('La nueva'), findsOneWidget);
       expect(find.text('Ya registrada'), findsOneWidget);
@@ -1130,7 +1172,8 @@ void main() {
 
       await _tocar(tester, crear);
 
-      expect(_enHoja(find.text('Ocurrió un error inesperado')), findsOneWidget);
+      expect(_enHoja(find.text(TextosAlta.noPudimosGuardar)), findsOneWidget);
+      expect(_enHoja(find.text('Ocurrió un error inesperado')), findsNothing);
       expect(tester.widget<FilledButton>(crear).onPressed, isNotNull);
       expect(find.text('Local en planta baja, otra puerta'), findsOneWidget);
       expect(e.salidas, isEmpty);
@@ -1215,6 +1258,67 @@ void main() {
 
       await _tocar(tester, find.text('Abrir la existente'));
       expect((e.salidas.single! as UbicacionReutilizada).ubicacionId, 'existente');
+    });
+
+    testWidgets(
+      'sin «Crear igual» (D1) la hoja dice por qué y qué hacer, debajo de «Misma dirección y misma '
+      'ciudad.»',
+      (tester) async {
+        final repo = RepoAltaFalso()
+          ..comportamiento = (_) async => Right(
+            AltaConDuplicados(candidatas: [candidata('existente', admiteConservarAmbos: false)]),
+          );
+        await _montar(tester, repo: repo);
+        await _tocar(tester, find.text('Casa'));
+        await _tocar(tester, _registrar);
+
+        final explicacion = find.text(
+          'No puede haber dos ubicaciones con la misma dirección a menos de 100 m. '
+          'Si es otra puerta, abrí la existente y agregala como espacio.',
+        );
+        expect(explicacion, findsOneWidget);
+        expect(
+          tester.getTopLeft(explicacion).dy,
+          greaterThan(tester.getBottomLeft(find.text(TextosDuplicado.misma)).dy - 1),
+        );
+        expect(find.text('Crear igual'), findsNothing);
+      },
+    );
+
+    testWidgets('la falla inesperada al «Crear igual» dice qué hacer; las demás fallas, su texto', (
+      tester,
+    ) async {
+      var intento = 0;
+      final repo = RepoAltaFalso()
+        ..comportamiento = (u) async {
+          intento++;
+          if (intento == 1) return Right(AltaConDuplicados(candidatas: [candidata('existente')]));
+          if (intento == 2) return const Left(FailureServidor());
+          if (intento == 3) return const Left(FailureInesperado());
+          return Right(AltaRegistrada(ubicacion: u));
+        };
+      final e = await _montar(tester, repo: repo);
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, _registrar);
+      await _tocar(tester, find.text('Crear igual'));
+      await tester.enterText(find.byType(TextField).last, 'Local en planta baja, otra puerta');
+      await tester.pump();
+      final crear = find.widgetWithText(FilledButton, 'Crear igual');
+
+      await _tocar(tester, crear);
+      expect(_enHoja(find.text('El servidor no pudo procesar la solicitud')), findsOneWidget);
+      expect(_enHoja(find.text(TextosAlta.noPudimosGuardar)), findsNothing);
+      expect(tester.widget<FilledButton>(crear).onPressed, isNotNull);
+
+      await _tocar(tester, crear);
+      expect(_enHoja(find.text(TextosAlta.noPudimosGuardar)), findsOneWidget);
+      expect(_enHoja(find.text('El servidor no pudo procesar la solicitud')), findsNothing);
+      expect(find.text('Local en planta baja, otra puerta'), findsOneWidget);
+      expect(tester.widget<FilledButton>(crear).onPressed, isNotNull);
+      expect(e.salidas, isEmpty);
+
+      await _tocar(tester, crear);
+      expect(e.salidas.single, isA<UbicacionCreada>());
     });
 
     group('regla D1 con el criterio real (las candidatas las calcula el criterio de la app)', () {

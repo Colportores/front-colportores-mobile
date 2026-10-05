@@ -6,6 +6,8 @@
 // (solapes, textos cortados) están en `alta_ubicacion_qa_geometria_test.dart`, que usa las fuentes
 // reales. Los tests con `skip` documentan un hallazgo de QA: el implementador les saca el `skip`
 // cuando lo arregla.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
@@ -54,17 +56,19 @@ void main() {
       },
     );
 
-    // skip: QA #193 — pegar una dirección en varias líneas deja las palabras pegadas («Italiaesquina»)
-    // y un `\r` suelto en la calle: el campo borra el `\n` en vez de cambiarlo por un espacio.
+    // QA #193: pegar una dirección en varias líneas no deja un `\r` suelto ni palabras pegadas. Los
+    // saltos `\r\n` (pegado desde Windows) y los `\r` pasan a un espacio. Un `\n` solo lo descarta
+    // antes el formateador propio de Flutter para campos de una línea y deja las palabras pegadas:
+    // eso queda como pendiente de decisión (campo de varias líneas), no se prueba acá.
     testWidgets(
-      'dado que pega un texto con saltos de línea en la calle, cuando registra, no llega ningún '
-      'salto ni se pegan las palabras',
+      'dado que pega un texto con saltos de línea `\\r\\n` en la calle, cuando registra, no llega '
+      'ningún salto ni se pegan las palabras',
       (tester) async {
         final repo = RepoAltaFalso();
         await montarAlta(tester, repo: repo, geocodificador: GeocodificadorFalso());
         await tester.enterText(
           find.widgetWithText(TextField, 'Calle'),
-          'Av. Italia\nesquina\r\nBlanes',
+          'Av. Italia\r\nesquina\rBlanes',
         );
         await tester.pump();
         await tocar(tester, find.text('Casa'));
@@ -74,8 +78,8 @@ void main() {
         expect(calle, isNotNull);
         expect(calle, isNot(contains('\r')));
         expect(calle, isNot(contains('Italiaesquina')));
+        expect(calle, 'Av. Italia esquina Blanes');
       },
-      skip: true,
     );
 
     testWidgets('dado que tocó «Registrar» y falló, cuando vuelve a tocarlo, la calle y el número '
@@ -94,7 +98,7 @@ void main() {
       await tocar(tester, find.text('Casa'));
 
       await tocar(tester, botonRegistrar);
-      expect(find.text('Ocurrió un error inesperado'), findsOneWidget);
+      expect(find.text(TextosAlta.noPudimosGuardar), findsOneWidget);
       expect(find.text('Ñandú'), findsOneWidget);
       expect(find.text('7'), findsOneWidget);
 
@@ -106,9 +110,11 @@ void main() {
   });
 
   group('QA #193 · vista 04 · paso de justificación (B·03)', () {
+    // Decisión del 05/10 (QA de #267): el atrás del sistema anda de a un paso, como el chevron «Volver».
     testWidgets(
-      'dado que está en B·03, cuando usa el atrás del sistema, la hoja se cierra y el alta '
-      'conserva todo lo cargado sin registrar nada nuevo',
+      'dado que está en B·03, cuando usa el atrás del sistema, vuelve a las candidatas y conserva '
+      'lo escrito; desde las candidatas el atrás cierra la hoja y el alta conserva todo sin '
+      'registrar nada nuevo',
       (tester) async {
         final repo = await hastaJustificacion(tester);
         await tester.enterText(find.byType(TextField).last, 'Otra casa en la misma calle');
@@ -118,9 +124,47 @@ void main() {
         await asentar(tester);
 
         expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
+        expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+
+        await tocar(tester, find.text('Crear igual'));
+        expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
+        expect(find.text('Otra casa en la misma calle'), findsOneWidget, reason: 'se conserva');
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+        expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+
+        expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+        expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
         expect(find.text('Nueva ubicación'), findsOneWidget);
         expect(find.text('Av. Italia'), findsOneWidget);
         expect(repo.llamadas, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'dado que «Crear igual» está guardando, cuando usa el atrás del sistema, no pasa nada '
+      'y la hoja sigue en B·03',
+      (tester) async {
+        final repo = await hastaJustificacion(tester);
+        repo
+          ..comportamiento = null
+          ..bloqueo = Completer<void>();
+        await tester.enterText(find.byType(TextField).last, 'Otra casa en la misma calle');
+        await tester.pump();
+        await tocar(tester, find.widgetWithText(FilledButton, 'Crear igual'));
+        expect(repo.llamadas, hasLength(2), reason: 'el segundo registro está en curso');
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+
+        expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
+        expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+        repo.bloqueo!.complete();
+        await asentar(tester);
       },
     );
 
@@ -191,7 +235,7 @@ void main() {
 
         final anunciado = find
             .ancestor(
-              of: find.text('Ocurrió un error inesperado'),
+              of: find.text(TextosAlta.noPudimosGuardar),
               matching: find.byWidgetPredicate(
                 (w) => w is Semantics && w.properties.liveRegion == true,
               ),
