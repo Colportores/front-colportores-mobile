@@ -105,16 +105,15 @@ void main() {
       expect(p.didExceedMaxLines, isFalse);
     });
 
-    // skip: QA #272 — a texto 2x el error del campo se corta con puntos suspensivos («Revisá el
-    // email: parece…»): el `InputDecoration` no pone `errorMaxLines` y por defecto es un renglón.
-    // Las otras cinco páginas con campos usan `errorMaxLines: 3`.
+    // QA #272: a texto 2x el error del campo no se corta con puntos suspensivos («Revisá el
+    // email: parece…»): el `InputDecoration` pone `errorMaxLines: 3`, como las otras páginas.
     testWidgets('a 360×640 y texto 2.0 el mensaje de A03 no se corta', (tester) async {
       await _montar(tester, tamano: const Size(360, 640), escala: 2);
       await _llegarAA03(tester);
 
       final p = tester.renderObject<RenderParagraph>(find.text(_incompleto));
       expect(p.didExceedMaxLines, isFalse, reason: 'el error quedó cortado: «$_incompleto»');
-    }, skip: true);
+    });
   });
 
   group('QA #272 · vista 14 · la etiqueta del botón dentro de la píldora', () {
@@ -124,22 +123,22 @@ void main() {
       expect(_esquinasFuera(tester), isEmpty);
     });
 
-    // skip: QA #272 — a texto 2x «Enviar enlace de recuperación» pasa a dos renglones y, sin
-    // relleno horizontal (`padding: symmetric(vertical: 17)` del tema), la primera letra de cada
-    // renglón cae sobre la curva de la píldora: blanco sobre el fondo, no se ve («ecuperación»).
+    // QA #272: a texto 2x «Enviar enlace de recuperación» pasa a dos renglones; el relleno
+    // horizontal del tema (24) evita que la primera letra de cada renglón caiga sobre la curva de la
+    // píldora (antes: blanco sobre el fondo, no se veía: «ecuperación»).
     testWidgets('a 360×640 y texto 2.0 ningún renglón de la etiqueta se sale de la píldora', (
       tester,
     ) async {
       await _montar(tester, tamano: const Size(360, 640), escala: 2);
 
       expect(_esquinasFuera(tester), isEmpty, reason: 'la etiqueta se sale de la píldora');
-    }, skip: true);
+    });
 
-    // skip: QA #272 — lo mismo en 412×915: al 200 % la etiqueta también pasa a dos renglones.
+    // Lo mismo en 412×915: al 200 % la etiqueta también pasa a dos renglones.
     testWidgets('a 412×915 y texto 2.0 la etiqueta entra en la píldora', (tester) async {
       await _montar(tester, tamano: const Size(412, 915), escala: 2);
 
       expect(_esquinasFuera(tester), isEmpty, reason: 'la etiqueta se sale de la píldora');
-    }, skip: true);
+    });
   });
 }
