@@ -9,6 +9,7 @@ import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../formato_ubicaciones.dart';
 import '../providers/alta_ubicacion_notifier.dart';
+import 'hoja_alta.dart';
 import 'piezas_alta.dart';
 
 /// Textos de la vista 04. Los literales de HU-UBI-001 («Reutilizar esta», «Crear igual»,
@@ -20,6 +21,12 @@ abstract final class TextosDuplicado {
   static const cancelar = 'Cancelar';
   static const volver = 'Volver';
   static const misma = 'Misma dirección y misma ciudad.';
+
+  /// Solo cuando no hay «Crear igual» (D1: misma dirección a menos de 100 m): por qué no se puede
+  /// crear otra y qué hacer (decisión del 05/10, revisión de #267).
+  static const sinCrearIgual =
+      'No puede haber dos ubicaciones con la misma dirección a menos de 100 m. '
+      'Si es otra puerta, abrí la existente y agregala como espacio.';
   static const revisa = 'Revisá si es el mismo lugar antes de crear otra.';
   static const siAlguna = 'Si alguna es este lugar, reutilizala.';
   static const porQue = '¿Por qué es otra ubicación?';
@@ -181,7 +188,15 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     return PopScope(
-      canPop: !_enviando,
+      // El atrás del sistema anda de a un paso, como el chevron «Volver»: desde la justificación
+      // (B·03) vuelve a las candidatas y recién desde ahí cierra la hoja. Lo escrito se conserva
+      // (el controlador vive en el estado). Mientras guarda no hace nada.
+      canPop: !_enviando && _paso == _Paso.candidatas,
+      onPopInvokedWithResult: (seCerro, _) {
+        if (!seCerro && !_enviando && _paso == _Paso.justificacion) {
+          setState(() => _paso = _Paso.candidatas);
+        }
+      },
       child: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + inset),
@@ -229,6 +244,15 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
                     TextosDuplicado.subtitulo(_candidatas),
                     style: theme.textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
                   ),
+                  // Sin «Crear igual» (D1) se dice por qué y qué hacer, no solo se oculta el botón.
+                  if (!_puedeCrearIgual) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      TextosDuplicado.sinCrearIgual,
+                      key: const Key('duplicado_sin_crear_igual'),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -335,10 +359,9 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           runSpacing: 4,
           children: [
             for (final motivo in TextosDuplicado.motivos)
-              ActionChip(
-                label: Text(motivo),
-                materialTapTargetSize: MaterialTapTargetSize.padded,
-                onPressed: _enviando
+              _MotivoRapido(
+                texto: motivo,
+                alTocar: _enviando
                     ? null
                     : () => setState(() {
                         _texto.value = TextEditingValue(
@@ -398,7 +421,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         ),
         if (_falla != null) ...[
           const SizedBox(height: 12),
-          AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _falla!.mensaje),
+          AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: mensajeFallaAlta(_falla!)),
         ],
         const SizedBox(height: 14),
         FilledButton(
@@ -411,6 +434,57 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           child: Text(_enviando ? TextosDuplicado.registrando : TextosDuplicado.crearIgual),
         ),
       ],
+    );
+  }
+}
+
+/// Un motivo sugerido de la justificación (B·03): toca y se copia al campo. Con el aspecto de chip
+/// del canvas, pero el texto parte en renglones en vez de cortarse: un `ActionChip` lo deja en una
+/// línea y lo desvanece con el texto al 200 % («Otra puerta en el mism…»).
+class _MotivoRapido extends StatelessWidget {
+  const _MotivoRapido({required this.texto, required this.alTocar});
+
+  final String texto;
+
+  /// `null` mientras se guarda.
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    final activo = alTocar != null;
+    return Semantics(
+      button: true,
+      enabled: activo,
+      label: texto,
+      excludeSemantics: true,
+      onTap: alTocar,
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: ColoresAlta.grisBorde, width: 1.5),
+        ),
+        child: InkWell(
+          onTap: alTocar,
+          borderRadius: BorderRadius.circular(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Center(
+                widthFactor: 1,
+                child: Text(
+                  texto,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: activo ? ColoresAlta.tinta : ColoresAlta.gris,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

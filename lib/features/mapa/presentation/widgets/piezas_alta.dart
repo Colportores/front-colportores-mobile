@@ -121,7 +121,7 @@ class EnlaceAlta extends StatelessWidget {
         foregroundColor: ColoresAlta.azul,
         minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600),
       ),
       child: Text(texto),
     );

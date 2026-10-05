@@ -181,7 +181,6 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                   child: _ZonaMapa(
                     parametros: widget.parametros,
                     estado: estado,
-                    sinTiles: sinTiles,
                     alCerrar: cierre.maybePop,
                     alMover: _notificador.moverPunto,
                     alTocar: _notificador.marcarPunto,
@@ -216,6 +215,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                                 ),
                               ),
                             ),
+                            if (sinTiles) const _AvisoSinTiles(),
                             HojaAlta(
                               parametros: widget.parametros,
                               alRegistrar: _registrar,
@@ -242,7 +242,6 @@ class _ZonaMapa extends StatefulWidget {
   const _ZonaMapa({
     required this.parametros,
     required this.estado,
-    required this.sinTiles,
     required this.alCerrar,
     required this.alMover,
     required this.alTocar,
@@ -252,7 +251,6 @@ class _ZonaMapa extends StatefulWidget {
 
   final ParametrosAlta parametros;
   final AltaUbicacionState estado;
-  final bool sinTiles;
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMover;
   final ValueChanged<Coordenadas> alTocar;
@@ -378,28 +376,31 @@ class _ZonaMapaState extends State<_ZonaMapa> {
               alPresionar: widget.alVolverAMiUbicacion,
             ),
           ),
-        if (widget.sinTiles)
-          Positioned(
-            left: 14,
-            right: 80,
-            bottom: 36,
-            child: Align(
-              alignment: Alignment.bottomLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: ColoresAlta.grisBorde),
-                ),
-                child: const Text(
-                  TextosAlta.sinTiles,
-                  style: TextStyle(fontSize: 12, color: ColoresAlta.tinta),
-                ),
-              ),
-            ),
-          ),
       ],
+    );
+  }
+}
+
+/// «Sin tiles para esta zona. Descargá tu ciudad en Configuración.» (HU-UBI-003). Va en la hoja de
+/// abajo y no flotando sobre el mapa: en el mapa chico (360×640, o con el texto al 200 %) el recuadro
+/// tapaba «Activar GPS», la pista del pin, el pin y «Volver a mi ubicación».
+class _AvisoSinTiles extends StatelessWidget {
+  const _AvisoSinTiles();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ColoresAlta.grisBorde),
+      ),
+      child: const Text(
+        TextosAlta.sinTiles,
+        style: TextStyle(fontSize: 12, color: ColoresAlta.tinta),
+      ),
     );
   }
 }

@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -46,10 +49,23 @@ abstract final class TextosAlta {
   static const sinCiudades = 'Tu campaña todavía no tiene ciudades. Avisale a tu coordinador.';
   static const ciudadesNoLeidas = 'No pudimos leer las ciudades de tu campaña. Probá de nuevo.';
 
+  /// Falla inesperada al guardar (decisión del 05/10, QA de #193): qué pasó y qué hacer. Las demás
+  /// fallas siguen con su propio texto; la causa va solo al log, nunca a la pantalla.
+  static const noPudimosGuardar =
+      'No pudimos guardar la ubicación. Lo que cargaste sigue acá: probá de nuevo.';
+
   static String gps(double metros) => 'GPS ±${metros.round()} m';
 
   static String usar(String valor) => 'Usar $valor';
 }
+
+/// El texto del aviso rojo cuando no se pudo registrar, el mismo en la hoja del alta (vista 03) y en
+/// la de duplicados (vista 04, «Crear igual»): la falla inesperada dice qué pasó y qué hacer
+/// ([TextosAlta.noPudimosGuardar]); las demás pasan por [mensajePara] con la acción del alta.
+String mensajeFallaAlta(Failure falla) => switch (falla) {
+  FailureInesperado() => TextosAlta.noPudimosGuardar,
+  _ => mensajePara(falla, accion: 'registrar la ubicación.'),
+};
 
 /// La hoja inferior de la vista 03: tipo, ciudad, calle, número y «Registrar».
 ///
@@ -188,11 +204,7 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
         ],
         if (estado.falla != null) ...[
           const SizedBox(height: 14),
-          AvisoAlta(
-            color: ColoresAlta.rojo,
-            glyph: '!',
-            texto: mensajePara(estado.falla!, accion: 'registrar la ubicación.'),
-          ),
+          AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: mensajeFallaAlta(estado.falla!)),
         ],
         const SizedBox(height: 14),
         FilledButton(
@@ -220,7 +232,9 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   static const _estiloAviso = ButtonStyle(
     minimumSize: WidgetStatePropertyAll(Size(0, 48)),
     padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-    textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+    textStyle: WidgetStatePropertyAll(
+      TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600),
+    ),
   );
 
   /// Por qué «Registrar» está deshabilitado, para que el colportor sepa qué falta.
@@ -332,22 +346,68 @@ class _SelectorTipo extends StatelessWidget {
     TipoUbicacion.edificio: Icons.apartment_outlined,
   };
 
+  static const _separacion = 8.0;
+
+  /// Si la etiqueta más larga entra entera en un botón de la fila de tres: sin eso («Negoc/io»,
+  /// «Edifici/o» con el texto al 200 %) los botones pasan a una columna, uno por renglón, con el
+  /// ícono y la etiqueta lado a lado. Se mide con la escala de texto real del teléfono.
+  static bool _entranEnFila(BuildContext context, double anchoDisponible) {
+    final cantidad = TipoUbicacion.values.length;
+    final anchoBoton = (anchoDisponible - _separacion * (cantidad - 1)) / cantidad;
+    final base = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+    final escala = MediaQuery.textScalerOf(context);
+    var masAncha = 0.0;
+    for (final t in TipoUbicacion.values) {
+      final medida = TextPainter(
+        text: TextSpan(
+          text: FormatoUbicaciones.tipo(t),
+          style: base.merge(_BotonTipo.estiloEtiqueta(elegido: true)),
+        ),
+        textDirection: TextDirection.ltr,
+        textScaler: escala,
+      )..layout();
+      masAncha = math.max(masAncha, medida.width);
+      medida.dispose();
+    }
+    // Relleno horizontal del botón (4 + 4) y el lugar del tilde del botón elegido (14 + 2).
+    return masAncha + _BotonTipo.relleno + _BotonTipo.reservaTilde <= anchoBoton;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (final t in TipoUbicacion.values) ...[
-          if (t != TipoUbicacion.values.first) const SizedBox(width: 8),
-          Expanded(
-            child: _BotonTipo(
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final enFila = _entranEnFila(context, caja.maxWidth);
+        final botones = [
+          for (final t in TipoUbicacion.values)
+            _BotonTipo(
               etiqueta: FormatoUbicaciones.tipo(t),
               icono: _iconos[t]!,
               elegido: tipo == t,
+              enFila: enFila,
               alTocar: () => alElegir(t),
             ),
-          ),
-        ],
-      ],
+        ];
+        if (!enFila) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final b in botones) ...[
+                if (b != botones.first) const SizedBox(height: _separacion),
+                b,
+              ],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            for (final b in botones) ...[
+              if (b != botones.first) const SizedBox(width: _separacion),
+              Expanded(child: b),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -357,18 +417,36 @@ class _BotonTipo extends StatelessWidget {
     required this.etiqueta,
     required this.icono,
     required this.elegido,
+    required this.enFila,
     required this.alTocar,
   });
 
   final String etiqueta;
   final IconData icono;
   final bool elegido;
+
+  /// `true`: ícono arriba y etiqueta abajo, en una fila de tres. `false`: un botón por renglón con
+  /// el ícono a la izquierda de la etiqueta (texto grande o pantalla angosta).
+  final bool enFila;
   final VoidCallback alTocar;
+
+  static const relleno = 8.0;
+  static const reservaTilde = 16.0;
+
+  static TextStyle estiloEtiqueta({required bool elegido}) =>
+      TextStyle(fontSize: 14, fontWeight: elegido ? FontWeight.w600 : FontWeight.w400);
 
   @override
   Widget build(BuildContext context) {
     final navy = Theme.of(context).colorScheme.primary;
     final color = elegido ? Colors.white : ColoresAlta.tinta;
+    final textoEtiqueta = Flexible(
+      child: Text(
+        etiqueta,
+        textAlign: TextAlign.center,
+        style: estiloEtiqueta(elegido: elegido).copyWith(color: color),
+      ),
+    );
     return Semantics(
       button: true,
       selected: elegido,
@@ -386,35 +464,36 @@ class _BotonTipo extends StatelessWidget {
           onTap: alTocar,
           borderRadius: BorderRadius.circular(14),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 60),
+            constraints: BoxConstraints(minHeight: enFila ? 60 : 52),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icono, size: 20, color: color),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (elegido) Icon(Icons.check, size: 14, color: color),
-                      if (elegido) const SizedBox(width: 2),
-                      Flexible(
-                        child: Text(
-                          etiqueta,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: color,
-                            fontWeight: elegido ? FontWeight.w600 : FontWeight.w400,
-                          ),
+              padding: const EdgeInsets.symmetric(horizontal: relleno / 2, vertical: 6),
+              child: enFila
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icono, size: 20, color: color),
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (elegido) Icon(Icons.check, size: 14, color: color),
+                            if (elegido) const SizedBox(width: 2),
+                            textoEtiqueta,
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icono, size: 20, color: color),
+                        const SizedBox(width: 8),
+                        if (elegido) Icon(Icons.check, size: 14, color: color),
+                        if (elegido) const SizedBox(width: 2),
+                        textoEtiqueta,
+                      ],
+                    ),
             ),
           ),
         ),
@@ -541,36 +620,37 @@ class _CampoCiudad extends StatelessWidget {
                 constraints: const BoxConstraints(minHeight: 48),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: Row(
+                  // `Wrap` en vez de `Row`: con el texto grande el origen y «Cambiar» pasan al
+                  // renglón de abajo y el nombre de la ciudad usa todo el ancho, sin partirse a
+                  // mitad de palabra («Montevide/o»).
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
                     children: [
-                      Expanded(
-                        child: Text(
-                          nombre,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: ciudad == null ? ColoresAlta.gris : null,
-                          ),
+                      Text(
+                        nombre,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: ciudad == null ? ColoresAlta.gris : null,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              if (origen != null) TextSpan(text: '$origen · '),
-                              if (enlace != null)
-                                TextSpan(
-                                  text: enlace,
-                                  style: const TextStyle(
-                                    color: ColoresAlta.azul,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            if (origen != null) TextSpan(text: '$origen · '),
+                            if (enlace != null)
+                              TextSpan(
+                                text: enlace,
+                                style: const TextStyle(
+                                  color: ColoresAlta.azul,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                            ],
-                          ),
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(fontSize: 12, color: ColoresAlta.tinta),
+                              ),
+                          ],
                         ),
+                        style: const TextStyle(fontSize: 12, color: ColoresAlta.tinta),
                       ),
                     ],
                   ),
@@ -658,7 +738,14 @@ class _CampoDireccion extends StatelessWidget {
           onChanged: alCambiar,
           textInputAction: accion,
           textCapitalization: TextCapitalization.sentences,
-          inputFormatters: [LengthLimitingTextInputFormatter(limite)],
+          inputFormatters: [
+            // Una dirección pegada en varias líneas queda en una: el `\r` suelto (el que deja un
+            // pegado con `\r\n`) y los separadores de línea de Unicode pasan a un espacio. El `\n`
+            // lo descarta antes el formateador propio de Flutter para los campos de una línea
+            // (`maxLines: 1`), que corre primero: un `\n` solo deja las palabras pegadas.
+            FilteringTextInputFormatter.deny(RegExp(r'[\r\n  ]+'), replacementString: ' '),
+            LengthLimitingTextInputFormatter(limite),
+          ],
           style: const TextStyle(fontSize: 15),
           decoration: InputDecoration(
             hintText: sugerencia,
