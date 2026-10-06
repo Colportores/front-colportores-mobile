@@ -152,6 +152,14 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
   void _reutilizar(CandidataDuplicado c) =>
       Navigator.of(context).pop(DecisionReutilizar(c.ubicacion.id));
 
+  /// Cambia de paso sin arrastrar el aviso rojo de un intento anterior: «No pudimos guardar…» habla
+  /// del último «Crear igual», y al volver o reentrar a la justificación no hubo ningún intento nuevo.
+  /// Lo escrito en la justificación se conserva (el controlador no se toca).
+  void _irA(_Paso paso) => setState(() {
+    _paso = paso;
+    _falla = null;
+  });
+
   Future<void> _crearIgual() async {
     if (_enviando || !_justificacionValida) return;
     setState(() {
@@ -194,7 +202,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
       canPop: !_enviando && _paso == _Paso.candidatas,
       onPopInvokedWithResult: (seCerro, _) {
         if (!seCerro && !_enviando && _paso == _Paso.justificacion) {
-          setState(() => _paso = _Paso.candidatas);
+          _irA(_Paso.candidatas);
         }
       },
       child: SafeArea(
@@ -284,7 +292,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         if (_puedeCrearIgual) ...[
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: () => setState(() => _paso = _Paso.justificacion),
+            onPressed: () => _irA(_Paso.justificacion),
             child: const Text(TextosDuplicado.crearIgual),
           ),
         ],
@@ -309,7 +317,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           children: [
             IconButton(
               tooltip: TextosDuplicado.volver,
-              onPressed: _enviando ? null : () => setState(() => _paso = _Paso.candidatas),
+              onPressed: _enviando ? null : () => _irA(_Paso.candidatas),
               icon: const Icon(Icons.chevron_left),
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             ),

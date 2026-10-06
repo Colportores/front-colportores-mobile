@@ -12,6 +12,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -167,6 +168,53 @@ void main() {
         await asentar(tester);
       },
     );
+
+    // Revisión de #267 (menor): el aviso rojo de «No pudimos guardar…» habla del último «Crear igual».
+    // Si la colportora vuelve a las candidatas (atrás del sistema o chevron) y reentra a B·03, no hubo
+    // ningún intento nuevo: la justificación sigue escrita y el aviso no reaparece.
+    for (final (como, volver) in <(String, Future<void> Function(WidgetTester))>[
+      (
+        'el atrás del sistema',
+        (tester) async {
+          await tester.binding.handlePopRoute();
+          await asentar(tester);
+        },
+      ),
+      ('el chevron «Volver»', (tester) => tocar(tester, find.byTooltip('Volver'))),
+    ]) {
+      testWidgets(
+        'dado que «Crear igual» falló, cuando vuelve a las candidatas con $como y reentra a B·03, '
+        'el aviso de la falla no reaparece y lo escrito sigue',
+        (tester) async {
+          final repo = await hastaJustificacion(tester);
+          repo.comportamiento = (_) async => const Left(FailureInesperado());
+          await tester.enterText(find.byType(TextField).last, 'Otra casa en la misma calle');
+          await tester.pump();
+          final crearIgual = find.widgetWithText(FilledButton, 'Crear igual');
+          // El aviso de la hoja, no el del alta que queda detrás de ella (también muestra la falla).
+          final avisoDeLaHoja = find.descendant(
+            of: find.byType(HojaDuplicadoAlta),
+            matching: find.text(TextosAlta.noPudimosGuardar),
+          );
+          await tocar(tester, crearIgual);
+          expect(avisoDeLaHoja, findsOneWidget);
+
+          await volver(tester);
+          expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+          await tocar(tester, find.text('Crear igual'));
+
+          expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
+          expect(avisoDeLaHoja, findsNothing);
+          expect(find.text('Otra casa en la misma calle'), findsOneWidget);
+          expect(tester.widget<FilledButton>(crearIgual).onPressed, isNotNull);
+
+          // Un intento nuevo que vuelve a fallar sí lo vuelve a mostrar.
+          await tocar(tester, crearIgual);
+          expect(repo.llamadas, hasLength(3));
+          expect(avisoDeLaHoja, findsOneWidget);
+        },
+      );
+    }
 
     testWidgets(
       'dado que escribe una justificación con Ñ, acentos y emoji, cuando toca «Crear igual», '
