@@ -108,6 +108,14 @@ Future<void> _pellizcar(
   await _asentar(tester);
 }
 
+/// Dos toques seguidos en [donde]: un doble toque. Entre uno y otro pasa un rato corto: el
+/// reconocedor de Flutter descarta un segundo toque que llega antes de `kDoubleTapMinTime` (40 ms).
+Future<void> _dobleToque(WidgetTester tester, Offset donde) async {
+  await tester.tapAt(donde);
+  await tester.pump(const Duration(milliseconds: 80));
+  await tester.tapAt(donde);
+}
+
 void main() {
   late FabricaMapaFalsa fabrica;
   late _Avisos avisos;
@@ -426,12 +434,204 @@ void main() {
       expect(fabrica.movimientos.last.centro, _italia);
     });
 
-    testWidgets('el doble toque no hace zoom: acercaría sobre el punto tocado', (tester) async {
+    testWidgets(
+      'el doble toque sigue prendido: acerca sobre el punto tocado y al terminar vuelve al centro',
+      (tester) async {
+        await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+        await _asentar(tester);
+        expect(fabrica.config!.dobleToqueZoom, isTrue);
+        expect(fabrica.config!.interaccion.zoom, isTrue);
+
+        await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)) + const Offset(80, 100));
+        await tester.pump(const Duration(milliseconds: 160));
+
+        expect(avisos.movidas, isEmpty, reason: 'durante el zoom no se avisa');
+        expect(
+          ProyeccionMercator.distanciaPixeles(
+            fabrica.camara!.centro,
+            _italia,
+            fabrica.camara!.zoom,
+          ),
+          greaterThan(1),
+          reason: 'la vista corrió el centro: acerca sobre el punto tocado, como la nativa',
+        );
+        await _asentar(tester, 20);
+
+        final camara = fabrica.camara!;
+        expect(camara.zoom, closeTo(_inicial.zoom + 1, 1e-9));
+        expect(camara.centro.lat, closeTo(_italia.lat, 1e-6));
+        expect(camara.centro.lon, closeTo(_italia.lon, 1e-6));
+        expect(avisos.movidas, isEmpty, reason: 'el regreso al centro tampoco es un gesto');
+        expect(avisos.toques, isEmpty, reason: 'un doble toque no es un toque al mapa');
+        expect(avisos.quietas.last.$1, camara);
+        expect(fabrica.movimientos.last.centro, _italia);
+      },
+    );
+
+    testWidgets('sin zoomSobreCentro el doble toque acerca y se avisa, sin restaurar nada', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)) + const Offset(80, 100));
+      await _asentar(tester, 20);
+
+      expect(fabrica.camara!.zoom, closeTo(_inicial.zoom + 1, 1e-9));
+      expect(avisos.movidas, isNotEmpty);
+      expect(fabrica.movimientos, isEmpty);
+      expect(
+        ProyeccionMercator.distanciaPixeles(fabrica.camara!.centro, _italia, fabrica.camara!.zoom),
+        greaterThan(1),
+      );
+    });
+
+    testWidgets('tocar dos veces y arrastrar (el zoom de un dedo) tampoco mueve el centro', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase)) + const Offset(40, 40);
+
+      await tester.tapAt(donde);
+      final segundo = await tester.startGesture(donde);
+      for (var i = 0; i < 6; i++) {
+        await segundo.moveBy(const Offset(0, 14));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(
+        ProyeccionMercator.distanciaPixeles(fabrica.camara!.centro, _italia, fabrica.camara!.zoom),
+        greaterThan(10),
+        reason: 'la vista sí movió el mapa',
+      );
+      expect(avisos.movidas, isEmpty, reason: 'durante el gesto no se avisa');
+      await segundo.up();
+      await _asentar(tester, 20);
+
+      expect(fabrica.camara!.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(fabrica.camara!.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(avisos.movidas, isEmpty);
+      expect(fabrica.movimientos.last.centro, _italia);
+    });
+
+    testWidgets('un toque solo se avisa como toque y no restaura nada', (tester) async {
       await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
       await _asentar(tester);
 
+      await tester.tapAt(tester.getCenter(find.byType(MapaBase)) + const Offset(30, 30));
+      await tester.pump(const Duration(milliseconds: 400));
+      await _asentar(tester, 20);
+
+      expect(avisos.toques, hasLength(1));
+      expect(fabrica.movimientos, isEmpty);
+      expect(fabrica.camara!.zoom, _inicial.zoom);
+    });
+
+    testWidgets('dos toques lejos uno del otro son dos toques, no un doble toque', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final arriba = tester.getTopLeft(find.byType(MapaBase)) + const Offset(20, 20);
+
+      await tester.tapAt(arriba);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(arriba + const Offset(250, 350));
+      await tester.pump(const Duration(milliseconds: 400));
+      await _asentar(tester, 20);
+
+      // (El `GestureDetector` de la vista falsa descarta uno de los dos cuando caen tan pegados;
+      // la vista nativa avisa los dos. Lo que importa acá es que no se armó ningún zoom.)
+      expect(avisos.toques, isNotEmpty);
+      expect(fabrica.movimientos, isEmpty, reason: 'no armó ningún zoom');
+      expect(fabrica.camara!.zoom, _inicial.zoom);
+    });
+
+    testWidgets('dos toques con más de 300 ms de por medio son dos toques', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase));
+
+      await tester.tapAt(donde);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tapAt(donde);
+      await tester.pump(const Duration(milliseconds: 400));
+      await _asentar(tester, 20);
+
+      expect(avisos.toques, hasLength(2));
+      expect(fabrica.movimientos, isEmpty, reason: 'no armó ningún zoom');
+      expect(fabrica.camara!.zoom, _inicial.zoom);
+    });
+
+    testWidgets('un «quieta» de antes de que arranque la animación no restaura el centro', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)) + const Offset(80, 100));
+      fabrica.avisarQuieta();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(fabrica.movimientos, isEmpty, reason: 'la animación todavía no terminó');
+      await _asentar(tester, 20);
+
+      expect(fabrica.camara!.zoom, closeTo(_inicial.zoom + 1, 1e-9));
+      expect(fabrica.camara!.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(fabrica.camara!.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(avisos.movidas, isEmpty);
+    });
+
+    testWidgets(
+      'si el doble toque no llega a mover la cámara no queda nada trabado: el próximo arrastre se avisa',
+      (tester) async {
+        fabrica.dobleToqueAnima = false;
+        await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+        await _asentar(tester);
+
+        await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)) + const Offset(80, 100));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(fabrica.movimientos, isEmpty, reason: 'todavía espera a la vista');
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(fabrica.movimientos.last.centro, _italia, reason: 'pasado el plazo, se destraba');
+
+        await tester.drag(find.byType(MapaBase), const Offset(0, 80));
+        await _asentar(tester);
+
+        expect(avisos.movidas, isNotEmpty);
+      },
+    );
+
+    testWidgets('dos dobles toques seguidos: cada uno vuelve a su centro', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase)) + const Offset(60, 60);
+
+      await _dobleToque(tester, donde);
+      await _asentar(tester, 20);
+      await _dobleToque(tester, donde);
+      await _asentar(tester, 20);
+
+      expect(fabrica.camara!.zoom, closeTo(_inicial.zoom + 2, 1e-9));
+      expect(fabrica.camara!.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(fabrica.camara!.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(avisos.movidas, isEmpty);
+    });
+
+    testWidgets('solo desplazar: el doble toque no hace nada ni arma nada', (tester) async {
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          zoomSobreCentro: true,
+          interaccion: const InteraccionMapa(zoom: false),
+        ),
+      );
+      await _asentar(tester);
+
+      await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)));
+      await _asentar(tester, 20);
+
       expect(fabrica.config!.dobleToqueZoom, isFalse);
-      expect(fabrica.config!.interaccion.zoom, isTrue);
+      expect(fabrica.camara!.zoom, _inicial.zoom);
+      expect(fabrica.movimientos, isEmpty);
     });
 
     testWidgets('con un solo dedo el mapa se arrastra y se avisa, sin volver atrás', (
@@ -502,6 +702,230 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pellizco y un dedo que sigue arrastrando: el arrastre se avisa y no se descarta', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final centro = tester.getCenter(find.byType(MapaBase));
+      final a = await tester.startGesture(centro - const Offset(40, 0), pointer: 1);
+      final b = await tester.startGesture(centro + const Offset(40, 0), pointer: 2);
+      for (var i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(-6, 0));
+        await b.moveBy(const Offset(14, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await a.up();
+      expect(avisos.movidas, isEmpty, reason: 'recién se soltó un dedo: sigue siendo el zoom');
+
+      for (var i = 0; i < 8; i++) {
+        await b.moveBy(const Offset(0, 12));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(avisos.movidas, isNotEmpty, reason: 'el dedo que queda arrastra el mapa');
+      await b.up();
+      await _asentar(tester);
+
+      expect(fabrica.movimientos, isEmpty, reason: 'no se vuelve atrás: el ajuste se conserva');
+      expect(fabrica.camara!.centro.lat, greaterThan(_italia.lat));
+      expect(avisos.movidas.last.centro, fabrica.camara!.centro);
+    });
+
+    testWidgets('pellizco y un dedo que queda apoyado sin moverse: al soltar vuelve al centro', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final centro = tester.getCenter(find.byType(MapaBase));
+      final a = await tester.startGesture(centro - const Offset(40, 0), pointer: 1);
+      final b = await tester.startGesture(centro + const Offset(40, 0), pointer: 2);
+      for (var i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(-6, 0));
+        await b.moveBy(const Offset(14, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await a.up();
+      await b.moveBy(const Offset(0, 4));
+      await tester.pump(const Duration(milliseconds: 200));
+      await b.up();
+      await _asentar(tester);
+
+      expect(avisos.movidas, isEmpty);
+      expect(fabrica.camara!.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(fabrica.camara!.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(fabrica.camara!.zoom, greaterThan(_inicial.zoom));
+    });
+
+    testWidgets('salir de la pantalla en pleno doble toque no deja un temporizador colgado', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('salir de la pantalla justo después de un toque no deja un temporizador colgado', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      await tester.tapAt(tester.getCenter(find.byType(MapaBase)));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('«Tu ubicación»: el punto azul para el lector de pantalla', () {
+    const gps = PuntoMapa(id: 'gps', coordenadas: _italia, estilo: EstiloPunto.gps);
+
+    Finder nodo() => find.bySemanticsLabel(MapaBase.textoTuUbicacion);
+
+    /// Un punto a [dx], [dy] píxeles del centro de la cámara inicial (zoom 16).
+    PuntoMapa gpsA(double dx, double dy) {
+      final c = ProyeccionMercator.aPixeles(_italia, _inicial.zoom);
+      return PuntoMapa(
+        id: 'gps',
+        coordenadas: ProyeccionMercator.aCoordenadas(c.x + dx, c.y + dy, _inicial.zoom),
+        estilo: EstiloPunto.gps,
+      );
+    }
+
+    testWidgets('es una imagen sin acciones, con la etiqueta del canvas y sin la precisión', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: const [gps]));
+      await _asentar(tester);
+
+      expect(MapaBase.textoTuUbicacion, 'Tu ubicación');
+      expect(nodo(), findsOneWidget);
+      expect(tester.getSemantics(nodo()), matchesSemantics(label: 'Tu ubicación', isImage: true));
+      handle.dispose();
+    });
+
+    testWidgets('queda sobre el punto, donde lo dibuja la vista', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(50, -30)]));
+      await _asentar(tester);
+
+      final centro = tester.getCenter(find.byType(MapaBase));
+      expect(tester.getCenter(nodo()).dx, closeTo(centro.dx + 50, 0.5));
+      expect(tester.getCenter(nodo()).dy, closeTo(centro.dy - 30, 0.5));
+      expect(tester.getSize(nodo()), const Size(24, 24));
+      handle.dispose();
+    });
+
+    testWidgets('se reubica cuando el mapa queda quieto, no mientras se mueve', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(50, -30)]));
+      await _asentar(tester);
+      final antes = tester.getCenter(nodo());
+      final c = ProyeccionMercator.aPixeles(_italia, _inicial.zoom);
+      final corrida = CamaraMapa(
+        centro: ProyeccionMercator.aCoordenadas(c.x + 100, c.y - 60, _inicial.zoom),
+        zoom: _inicial.zoom,
+      );
+
+      fabrica.moverSinTerminar(corrida);
+      await tester.pump();
+      expect(tester.getCenter(nodo()), antes, reason: 'el mapa sigue moviéndose');
+
+      fabrica.avisarQuieta();
+      await tester.pump();
+      final centro = tester.getCenter(find.byType(MapaBase));
+      expect(tester.getCenter(nodo()).dx, closeTo(centro.dx - 50, 0.5));
+      expect(tester.getCenter(nodo()).dy, closeTo(centro.dy + 30, 0.5));
+      handle.dispose();
+    });
+
+    testWidgets('si el punto cambia de lugar, el nodo lo sigue', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(50, -30)]));
+      await _asentar(tester);
+
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(-70, 20)]));
+      await _asentar(tester);
+
+      final centro = tester.getCenter(find.byType(MapaBase));
+      expect(tester.getCenter(nodo()).dx, closeTo(centro.dx - 70, 0.5));
+      expect(tester.getCenter(nodo()).dy, closeTo(centro.dy + 20, 0.5));
+      handle.dispose();
+    });
+
+    testWidgets('si el punto queda fuera de la pantalla no hay nodo', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(50, -30)]));
+      await _asentar(tester);
+      expect(nodo(), findsOneWidget);
+
+      fabrica.moverPorGesto(
+        CamaraMapa(
+          centro: ProyeccionMercator.aCoordenadas(
+            ProyeccionMercator.aPixeles(_italia, _inicial.zoom).x + 600,
+            ProyeccionMercator.aPixeles(_italia, _inicial.zoom).y,
+            _inicial.zoom,
+          ),
+          zoom: _inicial.zoom,
+        ),
+      );
+      await tester.pump();
+
+      expect(nodo(), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('sin punto del GPS no hay nodo, aunque haya otros puntos', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          puntos: [
+            const PuntoMapa(id: 'a', coordenadas: _italia),
+            const PuntoMapa(id: 'n', coordenadas: _italia, estilo: EstiloPunto.nuevo),
+            const PuntoMapa(id: 'c', coordenadas: _italia, estilo: EstiloPunto.candidata),
+          ],
+        ),
+      );
+      await _asentar(tester);
+
+      expect(nodo(), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('no atrapa toques: un toque justo encima llega al mapa', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, puntos: [gpsA(50, -30)]));
+      await _asentar(tester);
+
+      await tester.tapAt(tester.getCenter(nodo()));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(avisos.toques, hasLength(1));
+      handle.dispose();
+    });
+
+    testWidgets('después de un zoom sobre el centro sigue donde está el punto', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true, puntos: const [gps]));
+      await _asentar(tester);
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      final centro = tester.getCenter(find.byType(MapaBase));
+      expect(tester.getCenter(nodo()).dx, closeTo(centro.dx, 0.5));
+      expect(tester.getCenter(nodo()).dy, closeTo(centro.dy, 0.5));
+      handle.dispose();
     });
   });
 
@@ -595,6 +1019,8 @@ void main() {
       // Un toque justo sobre la atribución llega al mapa.
       final tamano = tester.getSize(find.byType(MapaBase));
       await tester.tapAt(tester.getTopLeft(find.byType(MapaBase)) + Offset(40, tamano.height - 14));
+      // Con el doble toque prendido, la vista confirma el toque pasado el plazo del segundo.
+      await tester.pump(const Duration(milliseconds: 400));
       expect(avisos.toques, hasLength(1));
     });
   });

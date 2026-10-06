@@ -14,7 +14,10 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 ///
 /// - arrastrar con un dedo mueve el centro; pellizcar con dos cambia el zoom **sobre el punto entre
 ///   los dedos** (el centro se corre, como en MapLibre);
-/// - un toque avisa las coordenadas tocadas;
+/// - un toque avisa las coordenadas tocadas (con el doble toque prendido, pasado el plazo del doble
+///   toque, como la nativa: ahí un toque se confirma recién al no venir otro);
+/// - con `dobleToqueZoom`, un doble toque acerca un nivel **sobre el punto tocado**, animado, y el
+///   centro se corre como en MapLibre;
 /// - un `moverCamara` deja la cámara ahí y responde como MapLibre: un movimiento de cámara y que
 ///   quedó quieta.
 ///
@@ -34,6 +37,10 @@ final class FabricaMapaFalsa {
 
   /// Si no es `null`, cada `moverCamara` lo lanza (la vista nativa no pudo mover la cámara).
   Object? fallaAlMover;
+
+  /// El doble toque acerca (animado). En `false` no pasa nada, como con el zoom ya en el máximo: la
+  /// vista nativa no manda ninguna cámara.
+  bool dobleToqueAnima = true;
 
   EventosVistaMapa? _eventos;
 
@@ -62,6 +69,15 @@ final class FabricaMapaFalsa {
       ..camaraQuieta(nueva);
   }
 
+  /// La vista avisa un movimiento de cámara y todavía no que quedó quieta (el gesto sigue).
+  void moverSinTerminar(CamaraMapa nueva) {
+    camara = nueva;
+    _eventos!.camaraMovida(nueva);
+  }
+
+  /// La vista avisa que la cámara quedó quieta donde está, sin que se haya movido.
+  void avisarQuieta() => _eventos!.camaraQuieta(camara!);
+
   /// Los overrides que meten esta vista en el árbol.
   Override get override => constructorVistaMapaProvider.overrideWithValue(construir);
 }
@@ -87,6 +103,7 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
   var _tamano = Size.zero;
   var _focoPrevio = Offset.zero;
   var _escalaPrevia = 1.0;
+  var _puntoDelDobleToque = Offset.zero;
 
   @override
   void initState() {
@@ -156,6 +173,35 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
 
   void _alTerminar(ScaleEndDetails d) => widget.eventos.camaraQuieta(_camara);
 
+  /// El doble toque de MapLibre: un nivel más de zoom, animado (unos 300 ms), sobre el punto tocado.
+  Future<void> _alDobleToque() async {
+    if (!widget.fabrica.dobleToqueAnima) return;
+    final config = widget.config;
+    final inicio = _camara;
+    final zoomFinal = (inicio.zoom + 1).clamp(config.zoomMinimo, config.zoomMaximo);
+    final foco = _desdeElCentro(_puntoDelDobleToque);
+    final centroInicio = ProyeccionMercator.aPixeles(inicio.centro, inicio.zoom);
+    final bajoElDedo = ProyeccionMercator.aCoordenadas(
+      centroInicio.x + foco.dx,
+      centroInicio.y + foco.dy,
+      inicio.zoom,
+    );
+    const pasos = 4;
+    for (var i = 1; i <= pasos; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 75));
+      if (!mounted) return;
+      final zoom = inicio.zoom + (zoomFinal - inicio.zoom) * i / pasos;
+      final enMundo = ProyeccionMercator.aPixeles(bajoElDedo, zoom);
+      final camara = CamaraMapa(
+        centro: ProyeccionMercator.aCoordenadas(enMundo.x - foco.dx, enMundo.y - foco.dy, zoom),
+        zoom: zoom,
+      );
+      _poner(camara);
+      widget.eventos.camaraMovida(camara);
+    }
+    widget.eventos.camaraQuieta(_camara);
+  }
+
   void _alTocar(TapUpDetails d) {
     final centro = ProyeccionMercator.aPixeles(_camara.centro, _camara.zoom);
     final foco = _desdeElCentro(d.localPosition);
@@ -167,6 +213,7 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
   @override
   Widget build(BuildContext context) {
     final config = widget.config;
+    final conDobleToque = config.dobleToqueZoom && config.interaccion.zoom;
     return LayoutBuilder(
       builder: (context, restricciones) {
         _tamano = restricciones.biggest;
@@ -178,6 +225,8 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
             onScaleUpdate: config.interaccion.hay ? _alActualizar : null,
             onScaleEnd: config.interaccion.hay ? _alTerminar : null,
             onTapUp: _alTocar,
+            onDoubleTapDown: conDobleToque ? (d) => _puntoDelDobleToque = d.localPosition : null,
+            onDoubleTap: conDobleToque ? _alDobleToque : null,
             child: SizedBox.expand(child: ColoredBox(color: config.fondo)),
           ),
         );

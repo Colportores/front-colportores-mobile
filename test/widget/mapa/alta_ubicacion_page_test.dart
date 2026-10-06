@@ -889,14 +889,75 @@ void main() {
       );
     });
 
-    testWidgets('el zoom con doble toque está apagado: acerca sobre el punto tocado, no el pin', (
+    testWidgets('el doble toque sigue prendido: es la forma de acercar con un dedo (AA)', (
       tester,
     ) async {
       final e = await _montar(tester);
 
-      expect(e.mapa.config!.dobleToqueZoom, isFalse);
+      expect(e.mapa.config!.dobleToqueZoom, isTrue);
       expect(e.mapa.config!.interaccion.zoom, isTrue);
       expect(e.mapa.config!.interaccion.desplazar, isTrue);
+      expect(find.byTooltip('Acercar'), findsNothing, reason: 'el canvas no trae «+» ni «−»');
+    });
+
+    testWidgets(
+      'el doble toque acerca y el mapa vuelve al punto: no lo mueve ni lo pasa a «Marcado a mano»',
+      (tester) async {
+        final e = await _montar(tester);
+        final zoomAntes = e.mapa.camara!.zoom;
+        final tocado = tester.getCenter(_mapa) + const Offset(70, 90);
+
+        await tester.tapAt(tocado);
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.tapAt(tocado);
+        await _asentar(tester, 20);
+
+        final camara = e.mapa.camara!;
+        expect(camara.zoom, closeTo(zoomAntes + 1, 1e-9), reason: 'el doble toque sí acercó');
+        expect(camara.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+        expect(camara.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+        expect(find.text('Marcado a mano'), findsNothing);
+        expect(find.text('GPS ±6 m'), findsOneWidget);
+        expect(find.text('-34.88761, -56.13024'), findsOneWidget);
+        expect(e.geocodificador.pedidos, hasLength(1), reason: 'no pidió una dirección nueva');
+      },
+    );
+
+    testWidgets('tocar dos veces y arrastrar (zoom de un dedo) tampoco mueve el punto', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      final centro = tester.getCenter(_mapa);
+
+      await tester.tapAt(centro);
+      final segundo = await tester.startGesture(centro);
+      for (var i = 0; i < 6; i++) {
+        await segundo.moveBy(const Offset(0, 14));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await segundo.up();
+      await _asentar(tester, 20);
+
+      expect(e.mapa.camara!.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+      expect(e.mapa.camara!.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+      expect(find.text('Marcado a mano'), findsNothing);
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+    });
+
+    testWidgets('después de un doble toque, arrastrar el mapa sí deja el punto «a mano»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      final tocado = tester.getCenter(_mapa) + const Offset(40, 40);
+      await tester.tapAt(tocado);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(tocado);
+      await _asentar(tester, 20);
+
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
+
+      expect(find.text('Marcado a mano'), findsOneWidget);
     });
 
     testWidgets('después de un pellizco, arrastrar el mapa sí deja el punto «a mano»', (
@@ -1717,6 +1778,73 @@ void main() {
       expect(e.mapa.config!.precision, const CirculoPrecision(centro: puntoItalia, radioMetros: 6));
     });
 
+    testWidgets('el punto azul es una imagen «Tu ubicación» para el lector de pantalla', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester);
+
+      final nodo = find.bySemanticsLabel('Tu ubicación');
+      expect(nodo, findsOneWidget);
+      // El punto del GPS es el del alta: está bajo el pin del centro.
+      expect(tester.getCenter(nodo).dx, closeTo(tester.getCenter(_mapa).dx, 1));
+      expect(tester.getCenter(nodo).dy, closeTo(tester.getCenter(_mapa).dy, 1));
+      expect(find.bySemanticsLabel('Punto de la nueva ubicación'), findsOneWidget);
+      expect(
+        tester.getSemantics(nodo),
+        matchesSemantics(label: 'Tu ubicación', isImage: true),
+        reason: 'sin acciones y sin repetir la precisión (la dice el chip «GPS ±N m»)',
+      );
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('«Tu ubicación» sigue al punto azul cuando el colportor mueve el mapa', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final e = await _montar(tester);
+      // Que termine la transición de la pantalla: durante ella el mapa todavía se está corriendo.
+      await tester.pumpAndSettle();
+      final antes = tester.getCenter(find.bySemanticsLabel('Tu ubicación'));
+
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
+
+      // El punto azul queda donde lo dibuja la vista: a tantos píxeles del centro como lo separan
+      // de la cámara en la que quedó el mapa (el arrastre se lleva un tramo de «slop» al empezar).
+      final camara = e.mapa.camara!;
+      final delPunto = ProyeccionMercator.aPixeles(puntoItalia, camara.zoom);
+      final delCentro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
+      final despues = tester.getCenter(find.bySemanticsLabel('Tu ubicación'));
+      expect(delPunto.y - delCentro.y, greaterThan(40), reason: 'el mapa se movió con el dedo');
+      expect(despues.dx, closeTo(antes.dx, 0.5));
+      expect(despues.dy, closeTo(tester.getCenter(_mapa).dy + delPunto.y - delCentro.y, 0.5));
+      handle.dispose();
+    });
+
+    testWidgets('si el punto azul queda fuera de la pantalla no hay «Tu ubicación»', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester);
+
+      await tester.drag(_mapa, const Offset(0, 900), warnIfMissed: false);
+      await _asentar(tester);
+
+      expect(find.bySemanticsLabel('Tu ubicación'), findsNothing);
+      expect(find.bySemanticsLabel('Punto de la nueva ubicación'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('sin GPS no hay punto azul ni «Tu ubicación»', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
+
+      expect(find.bySemanticsLabel('Tu ubicación'), findsNothing);
+      handle.dispose();
+    });
+
     testWidgets('sin GPS no hay punto azul ni radio, y el mapa muestra el país', (tester) async {
       final e = await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
 
@@ -1824,6 +1952,8 @@ void main() {
       // Entran las dos ubicaciones, con margen para que no queden pegadas al borde.
       expect(previa.ajuste!.puntos, [puntoItalia, candidata('c1').ubicacion.coordenadas]);
       expect(previa.ajuste!.margen, 40);
+      // Y no se acerca más de lo que se acercaba en #267 (escala de MapLibre: 17, no 18).
+      expect(previa.ajuste!.zoomMaximo, MapaAlta.zoomMaximoVistaPrevia);
       expect(find.bySemanticsLabel(RegExp('Vista previa del mapa')), findsOneWidget);
       handle.dispose();
     });
