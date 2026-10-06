@@ -13,6 +13,8 @@ import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/estilo_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
@@ -137,6 +139,16 @@ void _dentro(Rect pieza, Rect mapa, String que) => expect(
 void _sinSolape(Rect a, Rect b, String que) =>
     expect(a.overlaps(b), isFalse, reason: '$que: $a se pisa con $b');
 
+Future<void> _abrirTeclado(WidgetTester tester) async {
+  tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _cerrarTeclado(WidgetTester tester) async {
+  tester.view.resetViewInsets();
+  await tester.pumpAndSettle();
+}
+
 enum _EstadoMapa {
   gpsPreciso('03A · 01 GPS preciso'),
   sinGps('03A · 02 Sin GPS'),
@@ -199,30 +211,120 @@ void main() {
         }
       }
     }
+  });
 
-    for (final escala in [1.0, 1.3, 2.0]) {
-      testWidgets(
-        'con el teclado abierto (300 dp) a 360×640 y texto ${escala}x la pista y la atribución '
-        'siguen dentro del mapa y no se pisan',
-        (tester) async {
-          await _montar(tester, escala: escala);
-          await tester.pumpAndSettle();
-          tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-          await tester.pumpAndSettle();
+  // QA2 P1 (decisión del 06/10, mapa §2): con el teclado abierto el mapa de 360×640 queda de ~129 dp y la
+  // pista de dos renglones con la letra grande tapa la atribución o se corta. La pista no se muestra
+  // mientras el teclado está abierto y vuelve al cerrarlo; el resto del mapa queda como estaba.
+  group('QA2 #286 · teclado abierto en el alta: la pista se oculta y nada más', () {
+    for (final estado in [_EstadoMapa.gpsPreciso, _EstadoMapa.sinGps]) {
+      for (final escala in [1.0, 1.3, 2.0]) {
+        testWidgets(
+          '${estado.rotulo} con el teclado abierto (300 dp) a 360×640 y texto ${escala}x: sin pista, '
+          'con la atribución, el pin y los botones a la vista, y la pista vuelve al cerrarlo',
+          (tester) async {
+            final sinGps = estado == _EstadoMapa.sinGps;
+            await _montar(tester, gps: sinGps ? gpsSinPermiso : null, escala: escala);
+            await tester.pumpAndSettle();
+            expect(_textoPista, findsOneWidget, reason: 'sin teclado la pista está');
+            final altoSinTeclado = tester.getSize(find.byType(MapaAlta)).height;
 
-          expect(tester.takeException(), isNull);
-          final mapa = tester.getRect(find.byType(MapaAlta));
-          final pista = tester.getRect(_pastillaPista);
-          final atribucion = tester.getRect(_atribucionDelAlta);
-          _dentro(pista, mapa, 'la pista con el teclado');
-          _dentro(atribucion, mapa, 'la atribución con el teclado');
-          _sinSolape(pista, atribucion, 'pista vs atribución con el teclado');
-        },
-        // skip: QA #288: con el teclado abierto (mapa de ~129 dp a 360×640) y texto >= 1.3x la pista de
-        // dos renglones tapa la atribución «© OpenStreetMap» y, a 2x, se corta contra la hoja. Qué debe
-        // pasar con la pista en ese estado no está escrito: pendiente P1 del QA de la ronda 2.
-        skip: escala > 1.0,
-      );
+            await _abrirTeclado(tester);
+
+            expect(tester.takeException(), isNull);
+            expect(_textoPista, findsNothing, reason: 'con el teclado abierto no hay pista');
+            final mapa = tester.getRect(find.byType(MapaAlta));
+            expect(
+              mapa.height,
+              lessThan(altoSinTeclado - 100),
+              reason: 'el teclado achica el mapa',
+            );
+            final atribucion = tester.getRect(_atribucionDelAlta);
+            final pin = tester.getRect(find.byType(PinAlta));
+            final cerrar = tester.getRect(find.byTooltip(TextosAlta.cerrar));
+            _dentro(atribucion, mapa, 'la atribución con el teclado');
+            _dentro(pin, mapa, 'el pin con el teclado');
+            _dentro(cerrar, mapa, '«Cerrar» con el teclado');
+            _sinSolape(atribucion, pin, 'atribución vs pin con el teclado');
+            _sinSolape(atribucion, cerrar, 'atribución vs «Cerrar» con el teclado');
+            final volver = find.byTooltip(TextosAlta.volverAMiUbicacion);
+            if (sinGps) {
+              expect(volver, findsNothing, reason: 'sin lectura no hay botón');
+            } else {
+              final rv = tester.getRect(volver);
+              _dentro(rv, mapa, '«Volver a mi ubicación» con el teclado');
+              _sinSolape(atribucion, rv, 'atribución vs «Volver a mi ubicación» con el teclado');
+            }
+
+            // Cierra el teclado: la pista vuelve, entera y sin pisar la atribución.
+            await _cerrarTeclado(tester);
+            expect(_textoPista, findsOneWidget, reason: 'sin teclado la pista vuelve');
+            final mapaLibre = tester.getRect(find.byType(MapaAlta));
+            final pista = tester.getRect(_pastillaPista);
+            _dentro(pista, mapaLibre, 'la pista al cerrar el teclado');
+            _sinSolape(
+              pista,
+              tester.getRect(_atribucionDelAlta),
+              'pista vs atribución sin teclado',
+            );
+
+            // Y se oculta de nuevo cada vez que el teclado se abre.
+            await _abrirTeclado(tester);
+            expect(_textoPista, findsNothing, reason: 'el teclado se abrió otra vez');
+            await _cerrarTeclado(tester);
+            expect(_textoPista, findsOneWidget);
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('con el teclado abierto a 360×640 y texto ${escala}x «Volver a mi ubicación» se '
+          'toca y devuelve el punto a la lectura del GPS', (tester) async {
+        final m = await _montar(tester, escala: escala);
+        await tester.pumpAndSettle();
+        await _abrirTeclado(tester);
+
+        // El colportor movió el mapa con el teclado abierto: el punto queda «Marcado a mano».
+        m.fabrica.moverPorGesto(
+          CamaraMapa(
+            centro: Coordenadas(lat: puntoItalia.lat + 0.002, lon: puntoItalia.lon),
+            zoom: m.fabrica.camara!.zoom,
+          ),
+        );
+        await asentar(tester);
+        expect(find.text(TextosAlta.marcadoAMano), findsOneWidget);
+
+        final volver = find.byTooltip(TextosAlta.volverAMiUbicacion);
+        expect(volver.hitTestable(), findsOneWidget, reason: 'el botón recibe el toque');
+        final movimientos = m.fabrica.movimientos.length;
+        await tester.tap(volver);
+        await asentar(tester);
+
+        expect(find.text(TextosAlta.marcadoAMano), findsNothing, reason: 'volvió a la lectura');
+        expect(m.fabrica.movimientos, hasLength(movimientos + 1), reason: 'la cámara vuelve');
+        expect(m.fabrica.movimientos.last.centro.lat, closeTo(puntoItalia.lat, 1e-9));
+        expect(m.fabrica.movimientos.last.centro.lon, closeTo(puntoItalia.lon, 1e-9));
+        expect(_textoPista, findsNothing, reason: 'el teclado sigue abierto');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('con el teclado abierto a 360×640 y texto ${escala}x se puede marcar el punto '
+          'tocando el mapa (sin GPS)', (tester) async {
+        await _montar(tester, gps: gpsSinPermiso, escala: escala);
+        await tester.pumpAndSettle();
+        await _abrirTeclado(tester);
+        expect(find.text(TextosAlta.marcadoAMano), findsNothing);
+
+        await tester.tapAt(tester.getCenter(find.byType(MapaAlta)));
+        await asentar(tester, 10);
+
+        expect(find.text(TextosAlta.marcadoAMano), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 

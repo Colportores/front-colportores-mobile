@@ -170,6 +170,9 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
     final sinTiles = !ref.watch(fuenteMapaProvider).hayTiles;
     final sinGps = estado.gps == EstadoGps.sinGps;
     final cierre = Navigator.of(context);
+    // Se lee acá y no dentro del `Scaffold`: este le quita el inset del teclado al `MediaQuery` de su
+    // cuerpo (se achica él), y ahí `viewInsets.bottom` siempre da 0.
+    final tecladoAbierto = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return PopScope(
       // Mientras se guarda no se puede salir: el resultado se perdería.
@@ -183,6 +186,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                   child: _ZonaMapa(
                     parametros: widget.parametros,
                     estado: estado,
+                    tecladoAbierto: tecladoAbierto,
                     alCerrar: cierre.maybePop,
                     alMover: _notificador.moverPunto,
                     alTocar: _notificador.marcarPunto,
@@ -245,6 +249,7 @@ class _ZonaMapa extends StatefulWidget {
   const _ZonaMapa({
     required this.parametros,
     required this.estado,
+    required this.tecladoAbierto,
     required this.alCerrar,
     required this.alMover,
     required this.alTocar,
@@ -253,6 +258,11 @@ class _ZonaMapa extends StatefulWidget {
 
   final ParametrosAlta parametros;
   final AltaUbicacionState estado;
+
+  /// Con el teclado abierto el mapa queda de ~129 dp a 360×640 y la pista (dos renglones con la letra
+  /// grande) taparía la atribución o se cortaría: el colportor está escribiendo, no moviendo el mapa.
+  /// Se oculta mientras dura y vuelve al cerrarlo; el pin, «Volver a mi ubicación» y el resto siguen.
+  final bool tecladoAbierto;
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMover;
   final ValueChanged<Coordenadas> alTocar;
@@ -332,28 +342,29 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             child: _ChipGps(estado: estado),
           ),
         ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomSingleChildLayout(
-              delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
-              child: Semantics(
-                liveRegion: true,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xD10E1A2B),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    pista,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 12.5),
+        if (!widget.tecladoAbierto)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomSingleChildLayout(
+                delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xD10E1A2B),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      pista,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
         if (estado.lectura != null)
           Positioned(
             right: _derechaBotonVolver,
