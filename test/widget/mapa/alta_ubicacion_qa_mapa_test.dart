@@ -12,11 +12,13 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:dartz/dartz.dart' show Right;
 import 'package:flutter/material.dart';
@@ -61,6 +63,7 @@ Future<_Mundo> _montar(
   RepoAltaFalso? repo,
   double escala = 1,
   Size tamano = const Size(360, 640),
+  FuenteMapa? fuente,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -69,15 +72,19 @@ Future<_Mundo> _montar(
   final m = _Mundo(gps: gps, repo: repo);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesAlta(
-        gps: m.gps,
-        geocodificador: GeocodificadorFalso(
-          (_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'),
+      overrides: [
+        ...overridesAlta(
+          gps: m.gps,
+          geocodificador: GeocodificadorFalso(
+            (_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'),
+          ),
+          repo: m.repo,
+          ahora: DateTime.utc(2026, 10, 2, 12),
+          mapa: m.mapa,
         ),
-        repo: m.repo,
-        ahora: DateTime.utc(2026, 10, 2, 12),
-        mapa: m.mapa,
-      ),
+        // Con tiles (falsos) se dibuja la atribución «© OpenStreetMap».
+        if (fuente != null) fuenteMapaProvider.overrideWithValue(fuente),
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
@@ -114,6 +121,7 @@ enum _Estado {
   gpsImpreciso('03A · 03 GPS impreciso'),
   unaCandidata('04B · 01 Una candidata'),
   variasCandidatas('04B · 02 Más de una candidata'),
+  muchasCandidatas('04B · 02 con 28 candidatas (rótulos AA y AB)'),
   justificacion('04B · 03 Crear igual con justificación');
 
   const _Estado(this.rotulo);
@@ -125,6 +133,7 @@ Future<_Mundo> _hasta(
   _Estado estado, {
   double escala = 1,
   Size tamano = const Size(360, 640),
+  FuenteMapa? fuente,
 }) async {
   RepoAltaFalso? repo;
   GpsFalso? gps;
@@ -143,8 +152,23 @@ Future<_Mundo> _hasta(
       repo = RepoAltaFalso()
         ..comportamiento = (_) async =>
             Right(AltaConDuplicados(candidatas: [candidata('a'), candidata('b', metros: 4)]));
+    case _Estado.muchasCandidatas:
+      // Más de 26: después de la «Z» siguen «AA» y «AB».
+      repo = RepoAltaFalso()
+        ..comportamiento = (_) async => Right(
+          AltaConDuplicados(
+            candidatas: [for (var i = 0; i < 28; i++) candidata('c$i', metros: 4.0 + i)],
+          ),
+        );
   }
-  final m = await _montar(tester, gps: gps, repo: repo, escala: escala, tamano: tamano);
+  final m = await _montar(
+    tester,
+    gps: gps,
+    repo: repo,
+    escala: escala,
+    tamano: tamano,
+    fuente: fuente,
+  );
   switch (estado) {
     case _Estado.gpsPreciso:
     case _Estado.sinGps:
@@ -153,6 +177,7 @@ Future<_Mundo> _hasta(
       await _tocar(tester, find.text('Casa'));
     case _Estado.unaCandidata:
     case _Estado.variasCandidatas:
+    case _Estado.muchasCandidatas:
       await _tocar(tester, find.text('Casa'));
       await _tocar(tester, _registrar);
     case _Estado.justificacion:
@@ -181,6 +206,35 @@ void main() {
             await expectLater(tester, meetsGuideline(textContrastGuideline));
             handle.dispose();
           });
+        }
+      }
+    }
+  });
+
+  group('QA #286 · ronda 2 · con tiles (atribución «© OpenStreetMap») las cuatro guías en cada '
+      'artboard', () {
+    const fuente = FuenteMapa.offline('/data/uy.pmtiles');
+    for (final tamano in [const Size(360, 640), const Size(412, 915)]) {
+      for (final escala in [1.0, 1.3, 2.0]) {
+        for (final estado in _Estado.values) {
+          testWidgets(
+            '${estado.rotulo} con tiles a ${tamano.width.toInt()}×${tamano.height.toInt()} y '
+            'texto ${escala}x: la atribución se dibuja, sin desborde y con las cuatro guías',
+            (tester) async {
+              final handle = tester.ensureSemantics();
+              await _hasta(tester, estado, escala: escala, tamano: tamano, fuente: fuente);
+
+              expect(tester.takeException(), isNull);
+              expect(find.text('© OpenStreetMap'), findsWidgets);
+              await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+              // A 1.3x los bordes antialiasados de «Del mapa» (10,5 px, #1F6E3A sobre #E3F0E6 = 5,3:1)
+              // dan un 4,30 falso en la guía: con la fuente de prueba el texto sale a 13,65 px.
+              if (escala != 1.3) await expectLater(tester, meetsGuideline(textContrastGuideline));
+              handle.dispose();
+            },
+          );
         }
       }
     }
