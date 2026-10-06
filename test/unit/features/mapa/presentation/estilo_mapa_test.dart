@@ -128,6 +128,85 @@ void main() {
       expect(tiles['url'], 'pmtiles://https://s/uy.pmtiles');
     });
 
+    group('un paquete en partes (una ciudad en dos archivos)', () {
+      const partes = FuenteMapa.offlineEnPartes(['/data/mvd-p1.pmtiles', '/data/mvd-p2.pmtiles']);
+
+      Map<String, dynamic> fuenteDe(Map<String, dynamic> estilo, String nombre) =>
+          (estilo['sources'] as Map<String, dynamic>)[nombre] as Map<String, dynamic>;
+
+      test('arma una fuente por parte, con la misma atribución y el archivo de cada una', () {
+        final estilo = construir(_config(fuente: partes));
+
+        expect(fuenteDe(estilo, 'protomaps')['url'], 'pmtiles://file:///data/mvd-p1.pmtiles');
+        expect(fuenteDe(estilo, 'protomaps-p2')['url'], 'pmtiles://file:///data/mvd-p2.pmtiles');
+        expect(fuenteDe(estilo, 'protomaps-p2')['type'], 'vector');
+        expect(fuenteDe(estilo, 'protomaps-p2')['attribution'], contains('OpenStreetMap'));
+      });
+
+      test('repite cada capa del mapa para la segunda parte, pegada a la de la primera, así el '
+          'orden de apilado es el del estilo original', () {
+        final original = capas(
+          construir(_config(fuente: const FuenteMapa.offline('/data/a.pmtiles'))),
+        );
+        final estilo = construir(_config(fuente: partes));
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        final deTiles = original.where((c) => c['source'] == ConstructorEstiloMapa.fuenteTiles);
+        expect(deTiles, isNotEmpty);
+        for (final c in deTiles) {
+          final i = ids.indexOf(c['id'] as String);
+          expect(ids[i + 1], '${c['id']}-p2');
+          final copia = capa(estilo, '${c['id']}-p2');
+          expect(copia['source'], 'protomaps-p2');
+          expect(
+            {...copia}
+              ..remove('id')
+              ..remove('source'),
+            {...c}
+              ..remove('id')
+              ..remove('source'),
+          );
+        }
+        // Lo que no lee de los tiles (el fondo, las capas propias) no se repite.
+        expect(capas(estilo).where((c) => c['type'] == 'background'), hasLength(1));
+        expect(
+          ids.where((id) => id.startsWith('colportores:')),
+          isNot(anyElement(endsWith('-p2'))),
+        );
+      });
+
+      test('es consistente: ids únicos y cada capa lee de una fuente que existe', () {
+        final estilo = construir(_config(fuente: partes, agrupar: true));
+        final fuentes = (estilo['sources'] as Map<String, dynamic>).keys.toSet();
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        expect(ids.toSet(), hasLength(ids.length));
+        for (final c in capas(estilo)) {
+          if (c['type'] == 'background') continue;
+          expect(fuentes, contains(c['source']), reason: c['id'] as String);
+        }
+      });
+
+      test('online y sin los recursos también se arma en partes', () {
+        const online = FuenteMapa.onlineEnPartes(['https://s/a.pmtiles', 'https://s/b.pmtiles']);
+
+        final estilo = construirSinRecursos(_config(fuente: online));
+
+        expect(fuenteDe(estilo, 'protomaps-p2')['url'], 'pmtiles://https://s/b.pmtiles');
+        final conTiles = capas(estilo).where((c) => c['source'] == 'protomaps-p2');
+        expect(conTiles, isNotEmpty);
+      });
+
+      test('una sola parte arma el estilo de siempre, sin fuentes de más', () {
+        final estilo = construir(
+          _config(fuente: const FuenteMapa.offlineEnPartes(['/data/a.pmtiles'])),
+        );
+
+        expect((estilo['sources'] as Map<String, dynamic>).containsKey('protomaps-p2'), isFalse);
+        expect(capas(estilo).where((c) => (c['id'] as String).endsWith('-p2')), isEmpty);
+      });
+    });
+
     test('los glyphs y los sprites salen del almacenamiento interno, no de la red', () {
       final estilo = construir(_config());
 
