@@ -42,8 +42,11 @@ dependencies:
   equatable: ^2.1.0
   flutter:
     sdk: flutter
+  flutter_map: ^8.2.2       # mapa (ADR-009, ADR-011): alta de ubicación (#193); los tiles PMTiles llegan con #199
   flutter_riverpod: ^3.1.0  # estado / DI
   flutter_secure_storage: ^10.3.1  # Keystore/Keychain: sal de cifrado (ADR-003) — ver nota arriba
+  geolocator: ^14.0.2       # GPS del alta de ubicación (HU-UBI-001, ADR-009)
+  latlong2: ^0.9.1          # LatLng de flutter_map
   logger: ^2.7.0            # [NIVEL][MÓDULO][OPERACIÓN] (convenciones §7)
   path: ^1.9.1
   path_provider: ^2.1.6     # directorio de la DB local (core/database)

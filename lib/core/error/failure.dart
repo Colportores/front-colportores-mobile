@@ -433,18 +433,32 @@ final class FailureGpsNoDisponible extends Failure {
   List<Object?> get props => [...super.props, motivo];
 }
 
-/// El alta de ubicación llegó sin `ciudad_id` (HU-UBI-001, "Error - ciudad no en catálogo": "no
-/// permite crear la ubicación sin `ciudad_id`"). La pantalla ofrece "Seleccionar ciudad
-/// manualmente" o "Solicitar alta de ciudad al administrador".
+/// El alta (o la modificación) de una ubicación llegó sin `ciudad_id`. En el servidor `ciudad_id` es
+/// obligatorio y sin ciudad el push vuelve `invalid`: el caso de uso lo ataja antes de guardar.
 ///
-/// Texto para confirmar con Cristian: la HU nombra las dos acciones, no el aviso.
+/// La pantalla no lo muestra en el camino normal: la app siempre propone una ciudad de la campaña
+/// del colportor (decisión de Cristian, 02/10, front-colportores-mobile#267) y «Registrar» no se
+/// habilita sin ciudad. Es la red de seguridad del dominio.
 final class FailureCiudadRequerida extends Failure {
   const FailureCiudadRequerida()
     : super(
-        mensaje:
-            'No encontramos la ciudad de este punto en el catálogo. Seleccionala a mano o pedile '
-            'al administrador que la dé de alta.',
+        mensaje: 'Falta la ciudad de la ubicación. Elegí una de las ciudades de tu campaña.',
         codigo: 'UBI_SIN_CIUDAD',
+      );
+}
+
+/// No se pudieron leer las ciudades de la campaña del colportor (vista 03, «No pudimos leer las
+/// ciudades de tu campaña…»): la base local no se pudo leer o todavía no existe de dónde leerlas
+/// (`CiudadesParaAltaSinFuente`, hasta el adaptador real de front-colportores-mobile#274). Es **otra
+/// cosa** que una campaña sin ciudades: aquí no se sabe, y afirmar que no tiene mandaría al colportor
+/// a molestar al coordinador por algo que no es de la campaña. Se puede reintentar.
+///
+/// La HU no trae texto: el de acá lo aceptó el orquestador en #267 (mapa §2, 02/10).
+final class FailureCiudadesNoDisponibles extends Failure {
+  const FailureCiudadesNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer las ciudades de tu campaña. Probá de nuevo.',
+        codigo: 'UBI_CIUDADES_NO_DISPONIBLES',
       );
 }
 
@@ -564,9 +578,9 @@ final class FailurePaqueteTilesCorrupto extends Failure {
       );
 }
 
-/// "Conservar ambos" sobre dos ubicaciones con la misma calle, número y ciudad cuando la decisión
-/// D1 (backend-supabase#24) no lo admite (`CriterioDuplicadoUbicacion.
-/// mismaDireccionAdmiteConservarAmbos`): tiene que quedar una sola (HU-UBI-006).
+/// "Conservar ambos" sobre dos ubicaciones con la misma calle, número y ciudad a menos de 100 m
+/// (`CriterioDuplicadoUbicacion.radioMismaDireccionMetros`), que la decisión D1
+/// (backend-supabase#24) no admite: tiene que quedar una sola (HU-UBI-006).
 ///
 /// Texto para confirmar con Cristian: la HU y la vista 10 no traen uno para este caso.
 final class FailureDuplicadoMismaDireccion extends Failure {
