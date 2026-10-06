@@ -1,14 +1,17 @@
-// QA de la vista 12, artboard A05 «Ya verificado» (front-colportores-mobile#242, PR #271): el texto
-// según el destino —con sesión «Te llevamos a tu inicio…», sin sesión «Te llevamos al login…»—,
-// decisión de Cristian del 02/10. Complementa a `enlace_verificacion_usado_test.dart` con los casos
-// límite que ese archivo no toca: la salida con la sesión que termina y vuelve, el arranque en
-// frío con sesión guardada, el atrás del sistema y el segundo toque en la app entera, el ciclo de
-// vida, y las guías de accesibilidad de la variante con sesión.
+// QA de la vista 12, artboard A05 «Ya verificado» (front-colportores-mobile#279, que sigue a
+// #242 y al PR #271): la pantalla NO sale sola —decisión de Cristian del 02/10, WCAG 2.2.1: sin
+// cuenta regresiva ni barra de avance—; dice «Ya podés entrar a tu inicio.» con o sin sesión, y el
+// botón dice a dónde va de verdad: «Ir a mi inicio» (con sesión) o «Ir al login» (sin sesión).
+// Complementa a `enlace_verificacion_usado_test.dart` con los casos límite que ese archivo no
+// toca: la sesión que termina y vuelve, el arranque en frío con sesión guardada, el atrás del
+// sistema y el segundo toque en la app entera, el ciclo de vida, y las guías de accesibilidad de
+// la variante con sesión.
 import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -23,10 +26,9 @@ const _correo = 'lucia.silva@correo.com';
 const _clave = 'Secreto123';
 
 const _titulo = 'Tu email ya está verificado';
-const _conSesion = 'Te llevamos a tu inicio…';
-const _sinSesion = 'Te llevamos al login…';
-const _botonConSesion = 'Ir a mi inicio ahora';
-const _botonSinSesion = 'Ir al login ahora';
+const _texto = 'Ya podés entrar a tu inicio.';
+const _botonConSesion = 'Ir a mi inicio';
+const _botonSinSesion = 'Ir al login';
 
 final _botonSalir = find.byKey(const Key('verificacion_email_ir_login'));
 final _inicio = find.byKey(const Key('inicio_principal'));
@@ -137,17 +139,20 @@ Future<void> _a05Sola(
 }
 
 void main() {
-  group('QA 12-A05 (02/10) — criterios de aceptación: el texto según el destino', () {
+  group('QA 12-A05 (02/10) — criterios de aceptación: mismo texto, el botón sigue a la sesión', () {
     testWidgets(
-      'caso 1, sesión activa: texto y botón dicen «inicio», sin el correo ni nada de login',
+      'caso 1, sesión activa: texto fijo y botón «inicio», sin barra ni cuenta regresiva ni correo',
       (tester) async {
         await _a05ConSesion(tester);
 
         expect(find.text(_titulo), findsOneWidget);
-        expect(find.text(_conSesion), findsOneWidget);
+        expect(find.text(_texto), findsOneWidget);
         expect(find.text(_botonConSesion), findsOneWidget);
-        expect(find.text(_sinSesion), findsNothing);
         expect(find.text(_botonSinSesion), findsNothing);
+        // Sin salida automática: ni el texto de la cuenta regresiva ni la barra de avance.
+        expect(find.textContaining('Te llevamos'), findsNothing);
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(find.text('El enlace expiró'), findsNothing);
         expect(find.text('VERIFICACIÓN DE EMAIL'), findsNothing);
         expect(find.byKey(const Key('verificacion_email_reenviar')), findsNothing);
@@ -178,22 +183,23 @@ void main() {
 
       expect(remote.llamadasIniciarSesion, 1);
       expect(find.text(_titulo), findsOneWidget);
-      expect(find.text(_conSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonConSesion), findsOneWidget);
-      expect(find.text(_sinSesion), findsNothing);
+      expect(find.text(_botonSinSesion), findsNothing);
       expect(find.textContaining(_correo), findsNothing);
     });
 
-    testWidgets('sin sesión: el texto del diseño, «Te llevamos al login…» e «Ir al login ahora»', (
+    testWidgets('sin sesión: el mismo texto, «Ir al login» como botón y nada que cuente', (
       tester,
     ) async {
       await _a05Sola(tester, conSesion: false);
 
       expect(find.text(_titulo), findsOneWidget);
-      expect(find.text(_sinSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonSinSesion), findsOneWidget);
-      expect(find.text(_conSesion), findsNothing);
       expect(find.text(_botonConSesion), findsNothing);
+      expect(find.textContaining('Te llevamos'), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
     });
 
     testWidgets('el botón de cada variante tiene su nombre accesible y el título no se pierde', (
@@ -204,19 +210,19 @@ void main() {
         await _a05Sola(tester, conSesion: true);
         expect(find.bySemanticsLabel(_botonConSesion), findsOneWidget);
         expect(find.bySemanticsLabel(_botonSinSesion), findsNothing);
-        expect(find.bySemanticsLabel(_conSesion), findsOneWidget);
+        expect(find.bySemanticsLabel(_texto), findsOneWidget);
         expect(find.bySemanticsLabel(_titulo), findsOneWidget);
 
         await _a05Sola(tester, conSesion: false);
         expect(find.bySemanticsLabel(_botonSinSesion), findsOneWidget);
         expect(find.bySemanticsLabel(_botonConSesion), findsNothing);
-        expect(find.bySemanticsLabel(_sinSesion), findsOneWidget);
+        expect(find.bySemanticsLabel(_texto), findsOneWidget);
       } finally {
         semantica.dispose();
       }
     });
 
-    testWidgets('arranque en frío con la sesión guardada: el texto dice «inicio», no «login»', (
+    testWidgets('arranque en frío con la sesión guardada: el botón dice «inicio», no «login»', (
       tester,
     ) async {
       _pantalla(tester);
@@ -229,27 +235,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(_titulo), findsOneWidget);
-      expect(find.text(_conSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonConSesion), findsOneWidget);
-      expect(find.text(_sinSesion), findsNothing);
+      expect(find.text(_botonSinSesion), findsNothing);
     });
   });
 
-  group('QA 12-A05 (02/10) — salida y casos límite con la app entera', () {
-    testWidgets('con sesión: pasados 4 segundos entra solo a Inicio', (tester) async {
+  group('QA 12-A05 (02/10) — no sale sola y casos límite con la app entera', () {
+    testWidgets('con sesión: pasado un minuto la pantalla sigue ahí hasta que se toca el botón', (
+      tester,
+    ) async {
       await _a05ConSesion(tester);
 
-      await tester.pump(const Duration(seconds: 3));
-      expect(find.text(_conSesion), findsOneWidget);
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpAndSettle();
+      for (final segundos in [3, 5, 20, 60]) {
+        await tester.pump(Duration(seconds: segundos));
+        expect(find.text(_titulo), findsOneWidget, reason: 'a los $segundos s más');
+        expect(_inicio, findsNothing);
+      }
+      expect(tester.takeException(), isNull);
 
+      await tester.tap(_botonSalir);
+      await tester.pumpAndSettle();
       expect(find.text(_titulo), findsNothing);
       expect(_inicio, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('«Ir a mi inicio ahora» dos veces seguidas: sale una sola vez y sin errores', (
+    testWidgets('«Ir a mi inicio» dos veces seguidas: sale una sola vez y sin errores', (
       tester,
     ) async {
       await _a05ConSesion(tester);
@@ -265,7 +277,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el atrás del sistema con sesión vuelve a Inicio y cancela el temporizador', (
+    testWidgets('el atrás del sistema con sesión vuelve a Inicio y no deja nada pendiente', (
       tester,
     ) async {
       await _a05ConSesion(tester);
@@ -280,27 +292,25 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('si la sesión termina con la pantalla abierta, el temporizador sale al login', (
+    testWidgets('si la sesión termina con la pantalla abierta, el botón pasa a «Ir al login»', (
       tester,
     ) async {
       await _a05ConSesion(tester);
 
       await _contenedor(tester).read(sesionProvider.notifier).cerrarSesion();
       await tester.pump();
-      expect(find.text(_sinSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonSinSesion), findsOneWidget);
+      expect(find.text(_botonConSesion), findsNothing);
 
-      await tester.pump(const Duration(seconds: 5));
+      // Tampoco sale sola cuando la sesión termina.
+      await tester.pump(const Duration(seconds: 10));
       await tester.pumpAndSettle();
-      expect(find.text(_titulo), findsNothing);
-      expect(_login, findsOneWidget);
-      expect(_inicio, findsNothing);
+      expect(find.text(_titulo), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('si la sesión termina, «Ir al login ahora» lleva al login y no a Inicio', (
-      tester,
-    ) async {
+    testWidgets('si la sesión termina, «Ir al login» lleva al login y no a Inicio', (tester) async {
       await _a05ConSesion(tester);
 
       await _contenedor(tester).read(sesionProvider.notifier).cerrarSesion();
@@ -312,7 +322,42 @@ void main() {
       expect(_inicio, findsNothing);
     });
 
-    testWidgets('la sesión se cierra y se vuelve a abrir: texto y botón siguen a la sesión', (
+    // HU-AUTH-007 (decisión del 05/10, #279): «no sale sola» vale para los temporizadores de A05,
+    // no para un cierre forzado de la sesión. Si la sesión vence por inactividad o el servidor la
+    // revoca con A05 abierta, A05 cede al login con el aviso que explica qué pasó y qué hacer, como
+    // cualquier otra pantalla: con la sesión terminada, «Ir a mi inicio» ya no sería cierto.
+    for (final (motivo, aviso) in [
+      (MotivoExpiracion.inactividad, 'Tu sesión expiró por inactividad. Iniciá sesión nuevamente.'),
+      (
+        MotivoExpiracion.revocada,
+        'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la '
+            'contraseña. Entrá de nuevo.',
+      ),
+    ]) {
+      testWidgets(
+        'un cierre forzado de la sesión (${motivo.name}) con A05 abierta: cede al login y se ve el aviso',
+        (tester) async {
+          final remote = await _a05ConSesion(tester);
+
+          remote.simularExpiracion(motivo);
+          await tester.pumpAndSettle();
+
+          expect(find.text(_titulo), findsNothing);
+          expect(_botonSalir, findsNothing);
+          expect(_inicio, findsNothing);
+          expect(_login, findsOneWidget);
+          expect(find.text(aviso), findsOneWidget);
+          expect(tester.takeException(), isNull);
+
+          // Y se queda en el login: nada más la saca de ahí sola.
+          await tester.pump(const Duration(seconds: 30));
+          expect(_login, findsOneWidget);
+          expect(find.text(aviso), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets('la sesión se cierra y se vuelve a abrir: el texto no cambia y el botón sigue', (
       tester,
     ) async {
       await _a05ConSesion(tester);
@@ -320,33 +365,18 @@ void main() {
 
       await notifier.cerrarSesion();
       await tester.pump();
-      expect(find.text(_sinSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonSinSesion), findsOneWidget);
 
       await notifier.iniciarSesion(email: _correo, password: _clave);
       await tester.pump();
-      expect(find.text(_conSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
       expect(find.text(_botonConSesion), findsOneWidget);
-      expect(find.text(_sinSesion), findsNothing);
+      expect(find.text(_botonSinSesion), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('cambiar el texto no reinicia el temporizador: sale a los 4 segundos de abrirse', (
-      tester,
-    ) async {
-      await _a05ConSesion(tester);
-
-      await tester.pump(const Duration(seconds: 3));
-      await _contenedor(tester).read(sesionProvider.notifier).cerrarSesion();
-      await tester.pump();
-      expect(find.text(_titulo), findsOneWidget);
-
-      await tester.pump(const Duration(milliseconds: 1500));
-      await tester.pumpAndSettle();
-      expect(find.text(_titulo), findsNothing);
-    });
-
-    testWidgets('pasar la app a segundo plano y volver no rompe nada y sigue saliendo solo', (
+    testWidgets('pasar la app a segundo plano y volver: la pantalla sigue ahí, sin salir sola', (
       tester,
     ) async {
       await _a05ConSesion(tester);
@@ -359,7 +389,7 @@ void main() {
       ]) {
         tester.binding.handleAppLifecycleStateChanged(estado);
       }
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 30));
       for (final estado in [
         AppLifecycleState.hidden,
         AppLifecycleState.inactive,
@@ -368,47 +398,49 @@ void main() {
         tester.binding.handleAppLifecycleStateChanged(estado);
       }
       await tester.pump();
-      expect(find.text(_conSesion), findsOneWidget);
+      expect(find.text(_texto), findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 30));
       await tester.pumpAndSettle();
-      expect(_inicio, findsOneWidget);
+      expect(find.text(_titulo), findsOneWidget);
+      expect(_inicio, findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('un enlace usado más tarde vuelve a mostrar A05 con su propio temporizador', (
+    testWidgets('un enlace usado más tarde vuelve a mostrar A05, y tampoco sale solo', (
       tester,
     ) async {
       final remote = await _a05ConSesion(tester);
-      await tester.pump(const Duration(seconds: 5));
+      await tester.tap(_botonSalir);
       await tester.pumpAndSettle();
       expect(_inicio, findsOneWidget);
 
       remote.simularEnlaceVerificacionInvalido();
       await tester.pumpAndSettle();
-      expect(find.text(_conSesion), findsOneWidget);
-      await tester.pump(const Duration(seconds: 3));
+      expect(find.text(_texto), findsOneWidget);
+      await tester.pump(const Duration(seconds: 30));
       expect(find.text(_titulo), findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(_botonSalir);
       await tester.pumpAndSettle();
       expect(find.text(_titulo), findsNothing);
       expect(_inicio, findsOneWidget);
     });
-  });
 
-  group('QA 12-A05 (02/10) — contra el canvas', () {
-    testWidgets(
-      'QA #242: A05 muestra la barra de avance del canvas sobre «Te llevamos…»',
-      (tester) async {
-        await _a05Sola(tester, conSesion: false);
+    testWidgets('otro enlace usado con la pantalla abierta no apila una segunda A05', (
+      tester,
+    ) async {
+      final remote = await _a05ConSesion(tester);
 
-        // El canvas (12A·05) dibuja una barra de 4 px, a medias, entre el título y el texto: es lo
-        // que muestra que la pantalla se va sola.
-        expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      },
-      skip: true, // skip: QA #242 — A05 no dibuja la barra de avance del canvas (12A·05).
-    );
+      remote.simularEnlaceVerificacionInvalido();
+      await tester.pumpAndSettle();
+      expect(find.text(_titulo), findsOneWidget);
+
+      await tester.tap(_botonSalir);
+      await tester.pumpAndSettle();
+      expect(find.text(_titulo), findsNothing);
+      expect(_inicio, findsOneWidget);
+    });
   });
 
   group('QA 12-A05 (02/10) — accesibilidad y tamaños de la variante con sesión', () {
@@ -436,20 +468,19 @@ void main() {
       }
     }
 
-    testWidgets(
-      'con sesión, 360x640 y texto 2.0: «Ir a mi inicio ahora» se alcanza y se puede tocar',
-      (tester) async {
-        await _a05ConSesion(tester, tamanio: const Size(360, 640), escala: 2);
+    testWidgets('con sesión, 360x640 y texto 2.0: «Ir a mi inicio» se alcanza y se puede tocar', (
+      tester,
+    ) async {
+      await _a05ConSesion(tester, tamanio: const Size(360, 640), escala: 2);
 
-        await tester.ensureVisible(_botonSalir);
-        await tester.pump();
-        expect(tester.takeException(), isNull);
-        await tester.tap(_botonSalir);
-        await tester.pumpAndSettle();
+      await tester.ensureVisible(_botonSalir);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.tap(_botonSalir);
+      await tester.pumpAndSettle();
 
-        expect(_inicio, findsOneWidget);
-      },
-    );
+      expect(_inicio, findsOneWidget);
+    });
 
     testWidgets('con sesión y texto 2.0 la etiqueta del botón no queda cortada por la píldora', (
       tester,

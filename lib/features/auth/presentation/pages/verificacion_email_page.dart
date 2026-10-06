@@ -22,7 +22,8 @@ enum EstadoVerificacionEmail {
   expirado,
 
   /// El enlace abierto ya se había usado: la cuenta ya está verificada (HU-AUTH-002, «Error -
-  /// token ya usado»). Vuelve solo al login (o a la app, si hay sesión) tras unos segundos.
+  /// token ya usado»). Sin salida automática (decisión de Cristian, 02/10; WCAG 2.2.1): la
+  /// pantalla se queda hasta que la colportora toca «Ir a mi inicio» (con sesión) o «Ir al login».
   yaVerificado,
 
   /// El enlace ya no sirve y no hay forma de saber si se usó o venció (HU-AUTH-002, «"Vencido" vs
@@ -73,16 +74,12 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   /// ([bloqueoReenvioVerificacion], decisión de Cristian 29/09).
   static const Duration _cooldown = Duration(seconds: 60);
 
-  /// Cuánto se muestra «Tu email ya está verificado» antes de salir solo (el canvas no lo fija).
-  static const Duration _esperaYaVerificado = Duration(seconds: 4);
-
   static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
   Timer? _timer;
   Timer? _timerBloqueo;
-  Timer? _timerSalida;
   bool _saliendo = false;
   late final VerificacionEnEsperaNotifier _enEspera;
   DatosDeEsperaVerificacion? _datosEnEspera;
@@ -127,9 +124,6 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         if (mounted) _enEspera.abrir(datos);
       });
     }
-    if (_estado == EstadoVerificacionEmail.yaVerificado) {
-      _timerSalida = Timer(_esperaYaVerificado, _irAlLogin);
-    }
   }
 
   @override
@@ -139,7 +133,6 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     if (datos != null) scheduleMicrotask(() => _enEspera.cerrar(datos));
     _timer?.cancel();
     _timerBloqueo?.cancel();
-    _timerSalida?.cancel();
     _emailController.dispose();
     super.dispose();
   }
@@ -259,12 +252,11 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
 
   void _volverAlLogin() => Navigator.of(context).pop();
 
-  /// Sale de esta pantalla hacia la raíz: el login, o la app si hay sesión. Idempotente: el
-  /// temporizador y «Ir al login ahora» pueden coincidir.
+  /// Sale de esta pantalla hacia la raíz: el login, o la app si hay sesión. Idempotente: dos
+  /// toques seguidos en el botón salen una sola vez.
   void _irAlLogin() {
     if (_saliendo || !mounted) return;
     _saliendo = true;
-    _timerSalida?.cancel();
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
@@ -293,7 +285,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     // «Verificado» y «ya verificado» son pantallas de cierre: sin correo, sin avisos ni reenvío.
     final cierre = verificado || yaVerificado;
     final conAvisoDeReenvio = _mensajeReenvio != null;
-    // Con sesión, al salir la app entra a Inicio (casos 1 y 2 de HU-AUTH-002): el texto lo dice así.
+    // Con sesión, al salir la app entra a Inicio (casos 1 y 2 de HU-AUTH-002): el botón lo dice así.
     final haySesion = ref.watch(sesionProvider).value != null;
 
     return Scaffold(
@@ -338,14 +330,17 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                             style: theme.textTheme.labelSmall?.copyWith(color: esquema.primary),
                           ),
                         if (_titulo() case final titulo?)
-                          Text(
-                            titulo,
-                            key: const Key('verificacion_email_titulo'),
-                            style: theme.textTheme.headlineMedium,
+                          Semantics(
+                            header: true,
+                            child: Text(
+                              titulo,
+                              key: const Key('verificacion_email_titulo'),
+                              style: theme.textTheme.headlineMedium,
+                            ),
                           ),
                         if (!(conAvisoDeReenvio && _emailConocido))
                           Text(
-                            _mensaje(haySesion: haySesion),
+                            _mensaje(),
                             key: const Key('verificacion_email_mensaje'),
                             style: theme.textTheme.bodyLarge?.copyWith(
                               color: esquema.onSurfaceVariant,
@@ -434,7 +429,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   Widget _irAlLoginBoton({required bool haySesion}) => FilledButton(
     key: const Key('verificacion_email_ir_login'),
     onPressed: _irAlLogin,
-    child: Text(haySesion ? 'Ir a mi inicio ahora' : 'Ir al login ahora'),
+    child: Text(haySesion ? 'Ir a mi inicio' : 'Ir al login'),
   );
 
   /// Los avisos (arriba de las acciones) y las acciones de la espera, según el diseño.
@@ -545,7 +540,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     EstadoVerificacionEmail.enlaceInutil => null,
   };
 
-  String _mensaje({required bool haySesion}) => switch (_estado) {
+  String _mensaje() => switch (_estado) {
     EstadoVerificacionEmail.pendiente =>
       _emailConocido
           ? 'Te enviamos un correo a'
@@ -557,9 +552,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _emailConocido
           ? 'Pedí uno nuevo y abrilo desde este teléfono. Lo mandamos a ${widget.email}.'
           : 'Pedí uno nuevo y abrilo desde este teléfono.',
-    // 12-A05 (decisión de Cristian, 02/10): el texto según el destino. Sin sesión, el del diseño.
-    EstadoVerificacionEmail.yaVerificado =>
-      haySesion ? 'Te llevamos a tu inicio…' : 'Te llevamos al login…',
+    // 12-A05 (decisión de Cristian, 02/10): sin salida automática, el mismo texto con o sin sesión.
+    EstadoVerificacionEmail.yaVerificado => 'Ya podés entrar a tu inicio.',
     EstadoVerificacionEmail.enlaceInutil =>
       'Este enlace ya no sirve: puede que ya lo hayas usado o que haya vencido. Si ya '
           'verificaste tu email, entrá con tu contraseña. Si no, pedí un enlace nuevo.',
