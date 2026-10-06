@@ -73,7 +73,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          # `maplibre_gl` (el mapa, #286) compila su parte de Android con Java 21.
+          java-version: "21"
 
       - uses: subosito/flutter-action@v2
         with:
