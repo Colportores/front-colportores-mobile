@@ -1,0 +1,601 @@
+// `MapaBase` (HU-UBI-003, #286): el mapa común de las vistas 03, 04, 06, 07 y 10. La vista nativa de
+// MapLibre no se dibuja en `flutter test`: es la falsa de `mapa_base_falso.dart`, que se comporta
+// como ella en lo que `MapaBase` espera (gestos, `moverCamara`, toques).
+import 'dart:async';
+
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/mapa_base_falso.dart';
+
+const _italia = Coordenadas(lat: -34.88761, lon: -56.13024);
+const _inicial = CamaraMapa(centro: _italia, zoom: 16);
+const _otro = Coordenadas(lat: -34.9, lon: -56.2);
+
+/// Lo que `MapaBase` le avisó a quien lo usa.
+class _Avisos {
+  ControladorMapaBase? controlador;
+  var creado = 0;
+  final movidas = <CamaraMapa>[];
+  final quietas = <(CamaraMapa, AreaMapa)>[];
+  final toques = <Coordenadas>[];
+  final toquesPunto = <String>[];
+}
+
+/// Un `MapaBase` de 300 × 400 con la vista falsa.
+Widget _app(
+  FabricaMapaFalsa fabrica,
+  _Avisos avisos, {
+  FuenteMapa fuente = const FuenteMapa.sinTiles(),
+  CamaraMapa? camaraInicial = _inicial,
+  AjusteMapa? ajuste,
+  InteraccionMapa interaccion = const InteraccionMapa(),
+  bool zoomSobreCentro = false,
+  List<PuntoMapa> puntos = const [],
+  bool agrupar = false,
+  CirculoPrecision? precision,
+  bool conToquePunto = false,
+  double ancho = 300,
+  double alto = 400,
+  double textScale = 1,
+}) {
+  return ProviderScope(
+    overrides: [fabrica.override],
+    child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: ancho,
+            height: alto,
+            child: MapaBase(
+              fuente: fuente,
+              camaraInicial: camaraInicial,
+              ajuste: ajuste,
+              interaccion: interaccion,
+              zoomSobreCentro: zoomSobreCentro,
+              puntos: puntos,
+              agruparPuntos: agrupar,
+              precision: precision,
+              alCrearse: (c) {
+                avisos.controlador = c;
+                avisos.creado++;
+              },
+              alMoverCamara: avisos.movidas.add,
+              alQuedarQuieto: (c, a) => avisos.quietas.add((c, a)),
+              alTocar: avisos.toques.add,
+              alTocarPunto: conToquePunto ? avisos.toquesPunto.add : null,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _asentar(WidgetTester tester, [int veces = 10]) async {
+  for (var i = 0; i < veces; i++) {
+    await tester.pump(const Duration(milliseconds: 60));
+  }
+}
+
+Future<void> _pellizcar(
+  WidgetTester tester, {
+  required double izquierda,
+  required double derecha,
+}) async {
+  final centro = tester.getCenter(find.byType(MapaBase));
+  final a = await tester.startGesture(centro - const Offset(40, 0), pointer: 1);
+  final b = await tester.startGesture(centro + const Offset(40, 0), pointer: 2);
+  for (var i = 0; i < 6; i++) {
+    await a.moveBy(Offset(-izquierda, 0));
+    await b.moveBy(Offset(derecha, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await a.up();
+  await b.up();
+  await _asentar(tester);
+}
+
+void main() {
+  late FabricaMapaFalsa fabrica;
+  late _Avisos avisos;
+
+  setUp(() {
+    fabrica = FabricaMapaFalsa();
+    avisos = _Avisos();
+  });
+
+  group('arranque', () {
+    testWidgets('la vista arranca en la cámara inicial y se avisa una vez que el mapa existe', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      expect(avisos.creado, 1);
+      expect(avisos.controlador!.camara, _inicial);
+      expect(fabrica.config!.camaraInicial, _inicial);
+      expect(fabrica.camara, _inicial);
+    });
+
+    testWidgets('al estar lista avisa que quedó quieta, con el área que se ve', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      final (camara, area) = avisos.quietas.single;
+      expect(camara, _inicial);
+      expect(area.esValida, isTrue);
+      expect(area.contiene(_italia), isTrue);
+      // Es el área de la vista de 300 × 400 a ese zoom.
+      expect(area, ProyeccionMercator.areaVisible(_inicial, ancho: 300, alto: 400));
+      expect(avisos.movidas, isEmpty, reason: 'nadie tocó el mapa');
+    });
+
+    testWidgets('con un ajuste arranca en la cámara que deja a todos los puntos a la vista', (
+      tester,
+    ) async {
+      const puntos = [_italia, _otro];
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          camaraInicial: null,
+          ajuste: const AjusteMapa(puntos: puntos, margen: 40),
+          alto: 150,
+        ),
+      );
+      await _asentar(tester);
+
+      final esperada = ProyeccionMercator.camaraQueAjusta(
+        puntos,
+        ancho: 300,
+        alto: 150,
+        margen: 40,
+      );
+      expect(fabrica.config!.camaraInicial, esperada);
+      expect(avisos.controlador!.camara, esperada);
+    });
+
+    testWidgets('cambiar el ajuste mueve la cámara, sin contarlo como un gesto', (tester) async {
+      Widget montar(List<Coordenadas> puntos) => _app(
+        fabrica,
+        avisos,
+        camaraInicial: null,
+        ajuste: AjusteMapa(puntos: puntos, margen: 40),
+        alto: 150,
+      );
+      await tester.pumpWidget(montar(const [_italia, _otro]));
+      await _asentar(tester);
+
+      await tester.pumpWidget(montar(const [_italia, Coordenadas(lat: -34.8877, lon: -56.1303)]));
+      await _asentar(tester);
+
+      final esperada = ProyeccionMercator.camaraQueAjusta(
+        const [_italia, Coordenadas(lat: -34.8877, lon: -56.1303)],
+        ancho: 300,
+        alto: 150,
+        margen: 40,
+      );
+      expect(fabrica.movimientos.single, esperada);
+      expect(fabrica.camara, esperada);
+      expect(avisos.movidas, isEmpty);
+    });
+
+    testWidgets('el mismo ajuste en otro objeto no mueve nada', (tester) async {
+      Widget montar() => _app(
+        fabrica,
+        avisos,
+        camaraInicial: null,
+        ajuste: const AjusteMapa(puntos: [_italia, _otro], margen: 40),
+        alto: 150,
+      );
+      await tester.pumpWidget(montar());
+      await _asentar(tester);
+      await tester.pumpWidget(montar());
+      await _asentar(tester);
+
+      expect(fabrica.movimientos, isEmpty);
+    });
+
+    testWidgets('sin tamaño todavía, el ajuste no revienta', (tester) async {
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          camaraInicial: null,
+          ajuste: const AjusteMapa(puntos: [_italia]),
+          ancho: 0,
+          alto: 0,
+        ),
+      );
+      await _asentar(tester);
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('controlador', () {
+    testWidgets('moverCamara mueve la vista y no cuenta como un gesto del colportor', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+      const destino = CamaraMapa(centro: _otro, zoom: 17.5);
+
+      await avisos.controlador!.moverCamara(destino);
+      await _asentar(tester);
+
+      expect(fabrica.movimientos, [destino]);
+      expect(avisos.controlador!.camara, destino);
+      expect(avisos.movidas, isEmpty, reason: 'el eco del pedido no es un gesto');
+      expect(avisos.quietas.last.$1, destino);
+    });
+
+    testWidgets('un moverCamara pedido antes de que la vista esté lista se aplica al estarlo', (
+      tester,
+    ) async {
+      const destino = CamaraMapa(centro: _otro, zoom: 17);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [fabrica.override],
+          child: MaterialApp(
+            home: SizedBox(
+              width: 300,
+              height: 400,
+              child: MapaBase(
+                fuente: const FuenteMapa.sinTiles(),
+                camaraInicial: _inicial,
+                alCrearse: (c) => unawaited(c.moverCamara(destino)),
+                alQuedarQuieto: (c, a) => avisos.quietas.add((c, a)),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _asentar(tester);
+
+      expect(fabrica.movimientos, [destino]);
+      expect(avisos.quietas.last.$1, destino);
+    });
+
+    testWidgets('si la vista no puede mover la cámara no se rompe nada', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+      fabrica.fallaAlMover = StateError('la vista nativa se cayó');
+
+      await avisos.controlador!.moverCamara(const CamaraMapa(centro: _otro, zoom: 17));
+      await _asentar(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(MapaBase), findsOneWidget);
+    });
+  });
+
+  group('gestos del colportor', () {
+    testWidgets('arrastrar avisa cada cámara nueva', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      await tester.drag(find.byType(MapaBase), const Offset(-80, 0));
+      await _asentar(tester);
+
+      expect(avisos.movidas, isNotEmpty);
+      // Arrastrar el mapa hacia la izquierda mueve el centro al este.
+      expect(avisos.movidas.last.centro.lon, greaterThan(_italia.lon));
+      expect(avisos.movidas.last.zoom, 16);
+      expect(avisos.quietas.last.$1, avisos.movidas.last);
+    });
+
+    testWidgets('un movimiento del colportor lejos de lo que pidió el código sí es un gesto', (
+      tester,
+    ) async {
+      fabrica.ecoDeMoverCamara = false;
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+      await avisos.controlador!.moverCamara(const CamaraMapa(centro: _otro, zoom: 17));
+
+      // El eco todavía no llegó y el colportor mueve el mapa a otro lado.
+      fabrica.moverPorGesto(const CamaraMapa(centro: _italia, zoom: 17));
+      expect(avisos.movidas.single.centro, _italia);
+    });
+
+    testWidgets('lo que llega al mismo centro que pidió el código es su eco, no un gesto', (
+      tester,
+    ) async {
+      fabrica.ecoDeMoverCamara = false;
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+      await avisos.controlador!.moverCamara(const CamaraMapa(centro: _otro, zoom: 17));
+
+      fabrica.moverPorGesto(
+        const CamaraMapa(centro: Coordenadas(lat: -34.9, lon: -56.2000004), zoom: 17),
+      );
+
+      expect(avisos.movidas, isEmpty);
+    });
+
+    testWidgets('sin interacción el mapa es una imagen: no atrapa los toques ni se mueve', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, interaccion: InteraccionMapa.ninguna));
+      await _asentar(tester);
+
+      final ignora = find.descendant(
+        of: find.byType(MapaBase),
+        matching: find.byType(IgnorePointer),
+      );
+      expect(ignora, findsOneWidget);
+      expect(tester.widget<IgnorePointer>(ignora).ignoring, isTrue);
+      await tester.drag(find.byType(MapaBase), const Offset(-80, 0), warnIfMissed: false);
+      await _asentar(tester);
+      expect(avisos.movidas, isEmpty);
+      expect(avisos.toques, isEmpty);
+    });
+
+    testWidgets('con interacción no hay nada que ignore los toques', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      expect(
+        find.descendant(of: find.byType(MapaBase), matching: find.byType(IgnorePointer)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('solo desplazar: el pellizco no cambia el zoom', (tester) async {
+      await tester.pumpWidget(
+        _app(fabrica, avisos, interaccion: const InteraccionMapa(zoom: false)),
+      );
+      await _asentar(tester);
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      expect(fabrica.camara!.zoom, _inicial.zoom);
+      expect(fabrica.config!.dobleToqueZoom, isFalse);
+    });
+
+    testWidgets('un toque avisa dónde, y un punto, cuál', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, conToquePunto: true));
+      await _asentar(tester);
+
+      fabrica.tocar(_otro);
+      fabrica.tocarPunto('m7');
+
+      expect(avisos.toques, [_otro]);
+      expect(avisos.toquesPunto, ['m7']);
+      expect(fabrica.config!.puntosTocables, isTrue);
+    });
+
+    testWidgets('quien no pide el toque de un punto no lo recibe y la vista lo sabe', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      fabrica.tocarPunto('m7');
+
+      expect(avisos.toquesPunto, isEmpty);
+      expect(fabrica.config!.puntosTocables, isFalse);
+    });
+  });
+
+  group('zoom sobre el centro (el pin fijo de la vista 03)', () {
+    testWidgets('el pellizco no se avisa como gesto y al soltar el mapa vuelve al centro', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      // Los dedos no están centrados: MapLibre acercaría sobre el punto entre ellos.
+      final centro = tester.getCenter(find.byType(MapaBase));
+      final a = await tester.startGesture(centro + const Offset(20, 30), pointer: 1);
+      final b = await tester.startGesture(centro + const Offset(100, 30), pointer: 2);
+      for (var i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(-6, 0));
+        await b.moveBy(const Offset(14, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(avisos.movidas, isEmpty, reason: 'durante el pellizco no se avisa');
+      expect(
+        ProyeccionMercator.distanciaPixeles(fabrica.camara!.centro, _italia, fabrica.camara!.zoom),
+        greaterThan(1),
+        reason: 'la vista corrió el centro, como la nativa',
+      );
+      await a.up();
+      await b.up();
+      await _asentar(tester);
+
+      final camara = fabrica.camara!;
+      expect(camara.zoom, greaterThan(_inicial.zoom));
+      expect(camara.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(camara.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(avisos.movidas, isEmpty, reason: 'el regreso al centro tampoco es un gesto');
+      expect(avisos.quietas.last.$1, camara);
+      expect(fabrica.movimientos.last.centro, _italia);
+    });
+
+    testWidgets('el doble toque no hace zoom: acercaría sobre el punto tocado', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      expect(fabrica.config!.dobleToqueZoom, isFalse);
+      expect(fabrica.config!.interaccion.zoom, isTrue);
+    });
+
+    testWidgets('con un solo dedo el mapa se arrastra y se avisa, sin volver atrás', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      await tester.drag(find.byType(MapaBase), const Offset(0, 80));
+      await _asentar(tester);
+
+      expect(avisos.movidas, isNotEmpty);
+      expect(fabrica.movimientos, isEmpty, reason: 'nada que restaurar');
+      expect(fabrica.camara!.centro.lat, greaterThan(_italia.lat));
+    });
+
+    testWidgets('un arrastre después del pellizco se avisa como siempre', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      await tester.drag(find.byType(MapaBase), const Offset(0, 80));
+      await _asentar(tester);
+
+      expect(avisos.movidas, isNotEmpty);
+    });
+
+    testWidgets('dos pellizcos seguidos: cada uno vuelve a su centro', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+      final zoomPrimero = fabrica.camara!.zoom;
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      expect(fabrica.camara!.zoom, greaterThan(zoomPrimero));
+      expect(fabrica.camara!.centro.lat, closeTo(_italia.lat, 1e-6));
+      expect(fabrica.camara!.centro.lon, closeTo(_italia.lon, 1e-6));
+      expect(avisos.movidas, isEmpty);
+    });
+
+    testWidgets('sin zoomSobreCentro el pellizco se avisa y no restaura nada', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      expect(avisos.movidas, isNotEmpty);
+      expect(fabrica.movimientos, isEmpty);
+      expect(fabrica.config!.dobleToqueZoom, isTrue);
+    });
+
+    testWidgets('salir de la pantalla en pleno pellizco no deja un temporizador colgado', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final centro = tester.getCenter(find.byType(MapaBase));
+      final a = await tester.startGesture(centro - const Offset(40, 0), pointer: 1);
+      final b = await tester.startGesture(centro + const Offset(40, 0), pointer: 2);
+      await a.moveBy(const Offset(-10, 0));
+      await b.moveBy(const Offset(10, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await a.up();
+      await b.up();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('lo que se dibuja', () {
+    testWidgets('los puntos, los grupos y el radio de precisión viajan a la vista', (tester) async {
+      const puntos = [
+        PuntoMapa(id: 'a', coordenadas: _italia),
+        PuntoMapa(id: 'gps', coordenadas: _italia, estilo: EstiloPunto.gps),
+      ];
+      const precision = CirculoPrecision(centro: _italia, radioMetros: 12);
+      await tester.pumpWidget(
+        _app(fabrica, avisos, puntos: puntos, agrupar: true, precision: precision),
+      );
+      await _asentar(tester);
+
+      expect(fabrica.config!.puntos, puntos);
+      expect(fabrica.config!.agruparPuntos, isTrue);
+      expect(fabrica.config!.precision, precision);
+    });
+
+    testWidgets('si cambian los puntos, la vista recibe los nuevos', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          puntos: const [PuntoMapa(id: 'b', coordenadas: _otro)],
+        ),
+      );
+      await _asentar(tester);
+
+      expect(fabrica.config!.puntos.single.id, 'b');
+    });
+
+    testWidgets('el punto nuevo toma el color primario del tema', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      final tema = Theme.of(tester.element(find.byType(MapaBase)));
+      expect(fabrica.config!.colorNuevo, tema.colorScheme.primary);
+    });
+
+    testWidgets('los límites de zoom y el fondo pasan tal cual', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      expect(fabrica.config!.zoomMinimo, 3);
+      expect(fabrica.config!.zoomMaximo, 19);
+      expect(fabrica.config!.fondo, ColoresMapa.fondo);
+    });
+  });
+
+  group('atribución «© OpenStreetMap»', () {
+    testWidgets('con tiles se ve, porque la licencia de los datos la pide', (tester) async {
+      await tester.pumpWidget(
+        _app(fabrica, avisos, fuente: const FuenteMapa.offline('/data/uy.pmtiles')),
+      );
+      await _asentar(tester);
+
+      expect(find.text('© OpenStreetMap'), findsOneWidget);
+    });
+
+    testWidgets('también con los tiles del servidor', (tester) async {
+      await tester.pumpWidget(
+        _app(fabrica, avisos, fuente: const FuenteMapa.online('https://s/uy.pmtiles')),
+      );
+      await _asentar(tester);
+
+      expect(find.text('© OpenStreetMap'), findsOneWidget);
+    });
+
+    testWidgets('sin tiles no hay datos de OpenStreetMap que atribuir', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      expect(find.text('© OpenStreetMap'), findsNothing);
+    });
+
+    testWidgets('no se agranda con el texto del sistema ni atrapa toques', (tester) async {
+      const fuente = FuenteMapa.offline('/data/uy.pmtiles');
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente));
+      await _asentar(tester);
+      final normal = tester.getSize(find.text('© OpenStreetMap'));
+
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, textScale: 2));
+      await _asentar(tester);
+
+      expect(tester.getSize(find.text('© OpenStreetMap')), normal);
+      // Un toque justo sobre la atribución llega al mapa.
+      final tamano = tester.getSize(find.byType(MapaBase));
+      await tester.tapAt(tester.getTopLeft(find.byType(MapaBase)) + Offset(40, tamano.height - 14));
+      expect(avisos.toques, hasLength(1));
+    });
+  });
+}
