@@ -11,19 +11,24 @@ import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/logger_mudo.dart';
+import '../../helpers/mapa_base_falso.dart';
 
 /// Atajo: el GPS que no da ubicación por [motivo].
 GpsFalso _gpsSin(MotivoSinGps motivo) => GpsFalso(Left(FailureGpsNoDisponible(motivo: motivo)));
@@ -60,12 +65,16 @@ final class _Escenario {
     required this.geocodificador,
     required this.ciudades,
     required this.repo,
+    required this.mapa,
   });
 
   final GpsFalso gps;
   final GeocodificadorFalso geocodificador;
   final CiudadesFalsas ciudades;
   final RepoAltaFalso repo;
+
+  /// La vista del mapa (MapLibre no se dibuja en `flutter test`): su cámara y lo que se le pidió dibujar.
+  final FabricaMapaFalsa mapa;
   final salidas = <SalidaAltaUbicacion?>[];
 }
 
@@ -98,6 +107,7 @@ Future<_Escenario> _montar(
         GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234')),
     ciudades: ciudades ?? CiudadesFalsas(),
     repo: repo ?? RepoAltaFalso(),
+    mapa: FabricaMapaFalsa(),
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -109,6 +119,7 @@ Future<_Escenario> _montar(
         repo: e.repo,
         ahora: DateTime.utc(2026, 10, 2, 12),
         marcadores: marcadores,
+        mapa: e.mapa,
       ),
       child: MaterialApp(
         theme: temaClaro(),
@@ -150,7 +161,7 @@ Finder get _registrar => find.widgetWithText(FilledButton, TextosAlta.registrar)
 bool _habilitado(WidgetTester tester, Finder boton) =>
     tester.widget<FilledButton>(boton).onPressed != null;
 
-Finder get _mapa => find.byType(FlutterMap).first;
+Finder get _mapa => find.byType(MapaBase).first;
 
 /// Lo que está dentro de la hoja inferior abierta (y no en el alta que queda debajo).
 Finder _enHoja(Finder f) => find.descendant(of: find.byType(BottomSheet), matching: f);
@@ -185,7 +196,7 @@ Future<void> _pellizcar(
   }
   await a.up();
   await b.up();
-  await _asentar(tester);
+  await _asentar(tester, 10);
 }
 
 void main() {
@@ -851,16 +862,102 @@ void main() {
     testWidgets('un pellizco de zoom no mueve el punto del GPS ni lo pasa a «Marcado a mano»', (
       tester,
     ) async {
-      await _montar(tester);
-      final zoomAntes = MapCamera.of(tester.element(find.byType(MarkerLayer))).zoom;
+      final e = await _montar(tester);
+      final zoomAntes = e.mapa.camara!.zoom;
 
       await _pellizcar(tester, izquierda: 6, derecha: 14);
 
-      final zoomDespues = MapCamera.of(tester.element(find.byType(MarkerLayer))).zoom;
-      expect(zoomDespues, greaterThan(zoomAntes), reason: 'el pellizco sí hizo zoom');
+      expect(e.mapa.camara!.zoom, greaterThan(zoomAntes), reason: 'el pellizco sí hizo zoom');
       expect(find.text('Marcado a mano'), findsNothing);
       expect(find.text('GPS ±6 m'), findsOneWidget);
       expect(find.text('-34.88761, -56.13024'), findsOneWidget);
+    });
+
+    testWidgets('el pellizco hace el zoom sobre el centro: el mapa vuelve al punto al soltar', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+
+      await _pellizcar(tester, izquierda: 6, derecha: 14);
+
+      final camara = e.mapa.camara!;
+      expect(camara.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+      expect(camara.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+      expect(
+        ProyeccionMercator.distanciaPixeles(camara.centro, puntoItalia, camara.zoom),
+        lessThan(MapaAlta.umbralMovimientoPx),
+      );
+    });
+
+    testWidgets('el doble toque sigue prendido: es la forma de acercar con un dedo (AA)', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+
+      expect(e.mapa.config!.dobleToqueZoom, isTrue);
+      expect(e.mapa.config!.interaccion.zoom, isTrue);
+      expect(e.mapa.config!.interaccion.desplazar, isTrue);
+      expect(find.byTooltip('Acercar'), findsNothing, reason: 'el canvas no trae «+» ni «−»');
+    });
+
+    testWidgets(
+      'el doble toque acerca y el mapa vuelve al punto: no lo mueve ni lo pasa a «Marcado a mano»',
+      (tester) async {
+        final e = await _montar(tester);
+        final zoomAntes = e.mapa.camara!.zoom;
+        final tocado = tester.getCenter(_mapa) + const Offset(70, 90);
+
+        await tester.tapAt(tocado);
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.tapAt(tocado);
+        await _asentar(tester, 20);
+
+        final camara = e.mapa.camara!;
+        expect(camara.zoom, closeTo(zoomAntes + 1, 1e-9), reason: 'el doble toque sí acercó');
+        expect(camara.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+        expect(camara.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+        expect(find.text('Marcado a mano'), findsNothing);
+        expect(find.text('GPS ±6 m'), findsOneWidget);
+        expect(find.text('-34.88761, -56.13024'), findsOneWidget);
+        expect(e.geocodificador.pedidos, hasLength(1), reason: 'no pidió una dirección nueva');
+      },
+    );
+
+    testWidgets('tocar dos veces y arrastrar (zoom de un dedo) tampoco mueve el punto', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      final centro = tester.getCenter(_mapa);
+
+      await tester.tapAt(centro);
+      final segundo = await tester.startGesture(centro);
+      for (var i = 0; i < 6; i++) {
+        await segundo.moveBy(const Offset(0, 14));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await segundo.up();
+      await _asentar(tester, 20);
+
+      expect(e.mapa.camara!.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+      expect(e.mapa.camara!.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+      expect(find.text('Marcado a mano'), findsNothing);
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+    });
+
+    testWidgets('después de un doble toque, arrastrar el mapa sí deja el punto «a mano»', (
+      tester,
+    ) async {
+      await _montar(tester);
+      final tocado = tester.getCenter(_mapa) + const Offset(40, 40);
+      await tester.tapAt(tocado);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(tocado);
+      await _asentar(tester, 20);
+
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
+
+      expect(find.text('Marcado a mano'), findsOneWidget);
     });
 
     testWidgets('después de un pellizco, arrastrar el mapa sí deja el punto «a mano»', (
@@ -883,7 +980,7 @@ void main() {
         final repo = RepoAltaFalso()
           ..bloqueo = Completer<void>()
           ..comportamiento = (_) async => const Left(FailureInesperado());
-        await _montar(tester, repo: repo);
+        final e = await _montar(tester, repo: repo);
         await _tocar(tester, find.text('Casa'));
 
         await _traer(tester, _registrar);
@@ -897,9 +994,9 @@ void main() {
 
         expect(_registrar, findsOneWidget, reason: 'falló: el botón vuelve');
         expect(_habilitado(tester, _registrar), isTrue);
-        final centro = MapCamera.of(tester.element(find.byType(MarkerLayer))).center;
-        expect(centro.latitude, closeTo(puntoItalia.lat, 1e-6));
-        expect(centro.longitude, closeTo(puntoItalia.lon, 1e-6));
+        final centro = e.mapa.camara!.centro;
+        expect(centro.lat, closeTo(puntoItalia.lat, 1e-6));
+        expect(centro.lon, closeTo(puntoItalia.lon, 1e-6));
         expect(find.text('GPS ±6 m'), findsOneWidget);
         expect(find.text('Marcado a mano'), findsNothing);
         expect(find.text('-34.88761, -56.13024'), findsOneWidget);
@@ -957,13 +1054,11 @@ void main() {
     testWidgets('sin tiles: color liso del diseño y el aviso de la HU-UBI-003, sin capa de tiles', (
       tester,
     ) async {
-      await _montar(tester);
+      final e = await _montar(tester);
 
-      expect(find.byType(TileLayer), findsNothing);
-      expect(
-        tester.widget<FlutterMap>(find.byType(FlutterMap)).options.backgroundColor,
-        ColoresAlta.fondoMapa,
-      );
+      expect(e.mapa.config!.fuente.tipo, FuenteTiles.sinTiles);
+      expect(e.mapa.config!.fuente.hayTiles, isFalse);
+      expect(e.mapa.config!.fondo, ColoresAlta.fondoMapa);
       expect(
         find.text('Sin tiles para esta zona. Descargá tu ciudad en Configuración.'),
         findsOneWidget,
@@ -1027,7 +1122,7 @@ void main() {
 
       await _tocar(tester, _registrar);
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('Misma dirección y misma ciudad.'), findsOneWidget);
       expect(find.text('Av. Italia 1234'), findsOneWidget);
       expect(find.text('Casa · Montevideo'), findsOneWidget);
@@ -1069,7 +1164,7 @@ void main() {
 
       await _tocar(tester, find.text('Cancelar'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsNothing);
       expect(find.text('Nueva ubicación'), findsOneWidget);
       expect(find.widgetWithText(TextField, '1236'), findsOneWidget);
       expect(find.text('-34.88761, -56.13024'), findsOneWidget);
@@ -1093,7 +1188,7 @@ void main() {
 
       expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
       expect(find.text('A'), findsOneWidget);
-      expect(find.text('Av. Italia 1234 · a 12 m'), findsOneWidget);
+      expect(find.text('Av. Italia 1234 · a 12\u00A0m'), findsOneWidget);
       expect(find.text('JUSTIFICACIÓN · OBLIGATORIA'), findsOneWidget);
       expect(find.text('Otra puerta en el mismo número'), findsOneWidget);
       expect(find.text('Local en planta baja'), findsOneWidget);
@@ -1147,7 +1242,7 @@ void main() {
 
       await _tocar(tester, find.byTooltip('Volver'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
     });
 
@@ -1235,7 +1330,7 @@ void main() {
 
       await _tocar(tester, find.widgetWithText(FilledButton, 'Crear igual'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('Abrir la existente'), findsOneWidget);
       expect(find.text('Crear igual'), findsNothing);
     });
@@ -1417,7 +1512,7 @@ void main() {
         await _tocar(tester, find.text('Casa'));
         await _tocar(tester, _registrar);
 
-        expect(find.text('Ya existe una ubicación a 3 m'), findsOneWidget);
+        expect(find.text('Ya existe una ubicación a 3\u00A0m'), findsOneWidget);
         expect(find.text('Revisá si es el mismo lugar antes de crear otra.'), findsOneWidget);
       },
     );
@@ -1440,8 +1535,8 @@ void main() {
 
       expect(find.text('Hay 2 ubicaciones cerca'), findsOneWidget);
       expect(find.text('Si alguna es este lugar, reutilizala.'), findsOneWidget);
-      expect(find.text('A a 4 m'), findsOneWidget);
-      expect(find.text('B a 12 m'), findsOneWidget);
+      expect(find.text('A a 4\u00A0m'), findsOneWidget);
+      expect(find.text('B a 12\u00A0m'), findsOneWidget);
       expect(find.text('Reutilizar esta'), findsNWidgets(2));
       expect(find.text('Crear igual'), findsOneWidget);
       expect(find.text('Av. Italia 1236'), findsOneWidget);
@@ -1652,7 +1747,7 @@ void main() {
     testWidgets('las ubicaciones ya registradas alrededor se dibujan como marcadores', (
       tester,
     ) async {
-      await _montar(
+      final e = await _montar(
         tester,
         marcadores: [
           for (var i = 0; i < 3; i++)
@@ -1666,10 +1761,257 @@ void main() {
       );
       await _asentar(tester, 12);
 
-      expect(find.byType(MarkerLayer), findsOneWidget);
-      final capa = tester.widget<MarkerLayer>(find.byType(MarkerLayer));
-      expect(capa.markers.length, greaterThanOrEqualTo(3));
+      final contexto = e.mapa.config!.puntos.where((p) => p.estilo == EstiloPunto.contexto);
+      expect(contexto.map((p) => p.id), ['m0', 'm1', 'm2']);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('el mapa del alta sobre MapaBase (#286)', () {
+    testWidgets('con GPS: el punto azul y su radio de precisión son capas del mapa', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+
+      final gps = e.mapa.config!.puntos.singleWhere((p) => p.estilo == EstiloPunto.gps);
+      expect(gps.coordenadas, puntoItalia);
+      expect(e.mapa.config!.precision, const CirculoPrecision(centro: puntoItalia, radioMetros: 6));
+    });
+
+    testWidgets('el punto azul es una imagen «Tu ubicación» para el lector de pantalla', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester);
+
+      final nodo = find.bySemanticsLabel('Tu ubicación');
+      expect(nodo, findsOneWidget);
+      // El punto del GPS es el del alta: está bajo el pin del centro.
+      expect(tester.getCenter(nodo).dx, closeTo(tester.getCenter(_mapa).dx, 1));
+      expect(tester.getCenter(nodo).dy, closeTo(tester.getCenter(_mapa).dy, 1));
+      expect(find.bySemanticsLabel('Punto de la nueva ubicación'), findsOneWidget);
+      expect(
+        tester.getSemantics(nodo),
+        matchesSemantics(label: 'Tu ubicación', isImage: true),
+        reason: 'sin acciones y sin repetir la precisión (la dice el chip «GPS ±N m»)',
+      );
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('«Tu ubicación» sigue al punto azul cuando el colportor mueve el mapa', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final e = await _montar(tester);
+      // Que termine la transición de la pantalla: durante ella el mapa todavía se está corriendo.
+      await tester.pumpAndSettle();
+      final antes = tester.getCenter(find.bySemanticsLabel('Tu ubicación'));
+
+      await tester.drag(_mapa, const Offset(0, 80));
+      await _asentar(tester);
+
+      // El punto azul queda donde lo dibuja la vista: a tantos píxeles del centro como lo separan
+      // de la cámara en la que quedó el mapa (el arrastre se lleva un tramo de «slop» al empezar).
+      final camara = e.mapa.camara!;
+      final delPunto = ProyeccionMercator.aPixeles(puntoItalia, camara.zoom);
+      final delCentro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
+      final despues = tester.getCenter(find.bySemanticsLabel('Tu ubicación'));
+      expect(delPunto.y - delCentro.y, greaterThan(40), reason: 'el mapa se movió con el dedo');
+      expect(despues.dx, closeTo(antes.dx, 0.5));
+      expect(despues.dy, closeTo(tester.getCenter(_mapa).dy + delPunto.y - delCentro.y, 0.5));
+      handle.dispose();
+    });
+
+    testWidgets('si el punto azul queda fuera de la pantalla no hay «Tu ubicación»', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester);
+
+      await tester.drag(_mapa, const Offset(0, 900), warnIfMissed: false);
+      await _asentar(tester);
+
+      expect(find.bySemanticsLabel('Tu ubicación'), findsNothing);
+      expect(find.bySemanticsLabel('Punto de la nueva ubicación'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('sin GPS no hay punto azul ni «Tu ubicación»', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
+
+      expect(find.bySemanticsLabel('Tu ubicación'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('sin GPS no hay punto azul ni radio, y el mapa muestra el país', (tester) async {
+      final e = await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
+
+      expect(e.mapa.config!.puntos.where((p) => p.estilo == EstiloPunto.gps), isEmpty);
+      expect(e.mapa.config!.precision, isNull);
+      expect(e.mapa.camara!.centro, MapaAlta.centroPorDefecto);
+      expect(e.mapa.camara!.zoom, MapaAlta.zoomPais);
+      expect(e.mapa.movimientos, isEmpty, reason: 'sin punto no hay a dónde centrar');
+    });
+
+    testWidgets('con la lectura del GPS la cámara queda sobre el punto, a zoom de calle', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+
+      expect(e.mapa.camara!.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+      expect(e.mapa.camara!.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+      expect(e.mapa.camara!.zoom, greaterThanOrEqualTo(MapaAlta.zoomCalle));
+    });
+
+    testWidgets('«Volver a mi ubicación» devuelve la cámara al punto del GPS', (tester) async {
+      final e = await _montar(tester);
+      await tester.drag(_mapa, const Offset(0, 120));
+      await _asentar(tester);
+      expect(
+        ProyeccionMercator.distanciaPixeles(
+          e.mapa.camara!.centro,
+          puntoItalia,
+          e.mapa.camara!.zoom,
+        ),
+        greaterThan(MapaAlta.umbralMovimientoPx),
+        reason: 'el arrastre sí movió el mapa',
+      );
+
+      await _tocar(tester, find.byTooltip('Volver a mi ubicación'));
+      await _asentar(tester);
+
+      expect(e.mapa.camara!.centro.lat, closeTo(puntoItalia.lat, 1e-6));
+      expect(e.mapa.camara!.centro.lon, closeTo(puntoItalia.lon, 1e-6));
+      expect(find.text('Marcado a mano'), findsNothing);
+      expect(find.text('GPS ±6 m'), findsOneWidget);
+    });
+
+    testWidgets('un toque en el mapa centra la cámara ahí y deja el punto a mano', (tester) async {
+      final e = await _montar(tester, gps: _gpsSin(MotivoSinGps.sinSenal));
+      const tocado = Coordenadas(lat: -34.9, lon: -56.2);
+
+      e.mapa.tocar(tocado);
+      await _asentar(tester);
+
+      expect(find.text('Marcado a mano'), findsOneWidget);
+      expect(e.mapa.camara!.centro.lat, closeTo(tocado.lat, 1e-6));
+      expect(e.mapa.camara!.centro.lon, closeTo(tocado.lon, 1e-6));
+      expect(e.mapa.camara!.zoom, greaterThanOrEqualTo(MapaAlta.zoomCalle));
+    });
+
+    testWidgets('miles de ubicaciones alrededor son datos del mapa, no widgets', (tester) async {
+      final e = await _montar(
+        tester,
+        marcadores: [
+          for (var i = 0; i < 3000; i++)
+            MarcadorMapa(
+              ubicacionId: 'm$i',
+              tipo: TipoUbicacion.casa,
+              lat: puntoItalia.lat + (i % 50) * 0.00005,
+              lon: puntoItalia.lon + (i ~/ 50) * 0.00005,
+            ),
+        ],
+      );
+      await _asentar(tester, 12);
+
+      expect(e.mapa.config!.puntos, hasLength(3001));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('vista previa de la hoja de duplicados (#286)', () {
+    /// El `MapaBase` chico de la hoja: el único sin gestos.
+    MapaBase vistaPrevia(WidgetTester tester) => tester
+        .widgetList<MapaBase>(find.byType(MapaBase, skipOffstage: false))
+        .singleWhere((m) => !m.interaccion.hay);
+
+    Future<_Escenario> abrirHoja(WidgetTester tester, List<CandidataDuplicado> candidatas) async {
+      final repo = RepoAltaFalso()
+        ..comportamiento = (_) async => Right(AltaConDuplicados(candidatas: candidatas));
+      final e = await _montar(tester, repo: repo);
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, _registrar);
+      return e;
+    }
+
+    testWidgets('con una candidata: la nueva y la ya registrada, sin letras, sin gestos', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await abrirHoja(tester, [candidata('c1')]);
+
+      final previa = vistaPrevia(tester);
+      expect(previa.puntos.map((p) => p.id), ['c1', 'nueva']);
+      expect(previa.puntos.map((p) => p.estilo), [EstiloPunto.candidata, EstiloPunto.nuevo]);
+      expect(previa.puntos.map((p) => p.letra), [null, null]);
+      expect(previa.puntos.last.coordenadas, puntoItalia);
+      expect(previa.interaccion, InteraccionMapa.ninguna);
+      expect(previa.fondo, ColoresAlta.fondoMapa);
+      // Entran las dos ubicaciones, con margen para que no queden pegadas al borde.
+      expect(previa.ajuste!.puntos, [puntoItalia, candidata('c1').ubicacion.coordenadas]);
+      expect(previa.ajuste!.margen, 40);
+      // Y no se acerca más de lo que se acercaba en #267 (escala de MapLibre: 17, no 18).
+      expect(previa.ajuste!.zoomMaximo, MapaAlta.zoomMaximoVistaPrevia);
+      expect(find.bySemanticsLabel(RegExp('Vista previa del mapa')), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('con varias: A y B, en el orden de la lista', (tester) async {
+      await abrirHoja(tester, [candidata('lejos'), candidata('cerca', metros: 4)]);
+
+      final previa = vistaPrevia(tester);
+      expect(previa.puntos.map((p) => p.id), ['cerca', 'lejos', 'nueva']);
+      expect(previa.puntos.map((p) => p.letra), ['A', 'B', null]);
+      expect(previa.ajuste!.puntos, hasLength(3));
+    });
+
+    testWidgets('lista larga: todas las candidatas entran en el recuadro de la vista previa', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [for (var i = 0; i < 12; i++) candidata('c$i', metros: 5.0 + i)]);
+
+      final previa = vistaPrevia(tester);
+      expect(previa.puntos, hasLength(13));
+      expect(previa.ajuste!.puntos, hasLength(13));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      '28 candidatas, sin tope: A … Z, AA, AB, y la misma letra en el mapa, la leyenda y la lista',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await abrirHoja(tester, [for (var i = 0; i < 28; i++) candidata('c$i', metros: 5.0 + i)]);
+
+        expect(find.text('Hay 28 ubicaciones cerca'), findsOneWidget);
+        // El mapa: una letra distinta para cada una, de la «A» a la «AB».
+        final letras = vistaPrevia(tester).puntos.map((p) => p.letra).whereType<String>().toList();
+        expect(letras, hasLength(28));
+        expect(letras.toSet(), hasLength(28), reason: 'ninguna se repite');
+        expect(letras.first, 'A');
+        expect(letras[25], 'Z');
+        expect(letras[26], 'AA');
+        expect(letras[27], 'AB');
+        // La leyenda de debajo del mapa dice lo mismo.
+        expect(find.text('Z a 30 m'), findsOneWidget);
+        expect(find.text('AA a 31 m'), findsOneWidget);
+        expect(find.text('AB a 32 m'), findsOneWidget);
+        // Y la lista, con la etiqueta del lector de pantalla.
+        await tester.ensureVisible(find.text('AB'));
+        await tester.pump();
+        expect(find.text('AA'), findsOneWidget);
+        expect(find.text('AB'), findsOneWidget);
+        expect(find.bySemanticsLabel('Candidata AB'), findsOneWidget);
+        // Con dos letras la insignia se ensancha y la letra entra con aire a los lados.
+        final insignia = tester.getRect(
+          find.ancestor(of: find.text('AB'), matching: find.byType(Container)).first,
+        );
+        expect(insignia.width, greaterThan(24));
+        expect(insignia.width, greaterThanOrEqualTo(tester.getSize(find.text('AB')).width + 10));
+        expect(tester.takeException(), isNull);
+        handle.dispose();
+      },
+    );
   });
 }

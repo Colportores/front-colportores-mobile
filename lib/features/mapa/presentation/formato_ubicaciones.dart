@@ -10,11 +10,32 @@ abstract final class FormatoUbicaciones {
   };
 
   /// «12 m», o «1,2 km» desde el kilómetro. Nunca «0 m»: lo que está a menos de 1 m se ve como «1 m».
+  /// Entre el número y la unidad va un espacio duro ([espacioDuro]): en un renglón angosto la unidad
+  /// no queda sola.
   static String distancia(double metros) {
     if (!metros.isFinite || metros < 0) return '';
-    if (metros >= 1000) return '${(metros / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
+    if (metros >= 1000) {
+      return '${(metros / 1000).toStringAsFixed(1).replaceAll('.', ',')}${espacioDuro}km';
+    }
     final redondeado = metros.round();
-    return '${redondeado < 1 ? 1 : redondeado} m';
+    return '${redondeado < 1 ? 1 : redondeado}${espacioDuro}m';
+  }
+
+  /// El espacio que no deja partir el renglón (U+00A0).
+  static const espacioDuro = '\u00A0';
+
+  /// El rótulo de la candidata número [indice] (desde 0) de la vista 04: «A» … «Z», «AA», «AB» …,
+  /// como las columnas de una planilla. Lo usan la lista, el pin del mapa, la leyenda y la etiqueta
+  /// para el lector de pantalla, para que digan lo mismo con cualquier cantidad de candidatas.
+  static String rotuloCandidata(int indice) {
+    if (indice < 0) return '';
+    final letras = <int>[];
+    var resto = indice;
+    do {
+      letras.add(65 + resto % 26);
+      resto = resto ~/ 26 - 1;
+    } while (resto >= 0);
+    return String.fromCharCodes(letras.reversed);
   }
 
   /// «Av. Italia 1234»; solo la calle o solo el número si falta uno; «Sin dirección» si no hay

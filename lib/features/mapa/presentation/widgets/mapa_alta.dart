@@ -1,24 +1,28 @@
 import 'dart:async';
+import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/services/proyeccion_mercator.dart';
 import '../../domain/value_objects/area_mapa.dart';
+import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../../domain/value_objects/punto_capturado.dart';
+import '../mapa_base/mapa_base.dart';
+import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
+import '../providers/mapa_base_providers.dart';
 import 'piezas_alta.dart';
 
 /// El mapa de la vista 03: el pin queda fijo en el centro y se mueve el mapa; un toque en el mapa
 /// lo centra ahí. Dibuja la lectura del GPS (punto azul y radio de precisión) y las ubicaciones
 /// que el colportor ya tiene alrededor, sin estado de visita (todavía no está en el teléfono).
 ///
-/// Sin paquete de tiles ni servidor (HU-UBI-003, #199) no hay fondo: queda el color liso del
-/// diseño.
+/// Es un [MapaBase] (MapLibre): los tiles salen de `fuenteMapaProvider` y, sin ellos (HU-UBI-003),
+/// queda el color liso del diseño.
 class MapaAlta extends ConsumerStatefulWidget {
   const MapaAlta({
     super.key,
@@ -39,9 +43,26 @@ class MapaAlta extends ConsumerStatefulWidget {
 
   /// Dónde se centra el mapa si no hay GPS ni punto: Uruguay entero (HU-UBI-003, «ciudad del
   /// colportor» todavía no se conoce).
-  static const centroPorDefecto = LatLng(-32.5228, -55.7658);
-  static const zoomPais = 6.5;
-  static const zoomCalle = 17.0;
+  static const centroPorDefecto = Coordenadas(lat: -32.5228, lon: -55.7658);
+
+  // Los zoom del alta. Se eligieron con `flutter_map` (#267, teselas de 256 px) y MapLibre usa
+  // teselas de 512 px: el mismo número se ve al doble de cerca (Uruguay no entraría en la pantalla
+  // y el radio de ±85 m la llenaría de borde a borde). `zoomDeFlutterMap` es la traducción: los
+  // números de acá son los de #267, no se escriben ya convertidos.
+
+  /// Uruguay entero a la vista (en `flutter_map`, 6,5).
+  static final zoomPais = ProyeccionMercator.zoomDeFlutterMap(6.5);
+
+  /// El nivel de una calle, donde se ve el radio de precisión del GPS (en `flutter_map`, 17).
+  static final zoomCalle = ProyeccionMercator.zoomDeFlutterMap(17);
+
+  /// Hasta dónde se aleja y se acerca el colportor con los dedos (en `flutter_map`, 3 y 19).
+  static final zoomMinimo = ProyeccionMercator.zoomDeFlutterMap(3);
+  static final zoomMaximo = ProyeccionMercator.zoomDeFlutterMap(19);
+
+  /// Lo más cerca que se encuadra la vista previa de la hoja de duplicados (04), cuando la nueva y
+  /// la candidata están a pocos metros (en `flutter_map`, 18).
+  static final zoomMaximoVistaPrevia = ProyeccionMercator.zoomDeFlutterMap(18);
 
   /// Cuánto tiene que correrse el centro del mapa, en píxeles, para que cuente como «movió el
   /// punto». Un zoom o un temblor del dedo no mueven el pin: el punto del GPS sigue siendo del GPS.
@@ -52,15 +73,13 @@ class MapaAlta extends ConsumerStatefulWidget {
 }
 
 class _MapaAltaState extends ConsumerState<MapaAlta> {
-  final _controlador = MapController();
-  var _listo = false;
+  ControladorMapaBase? _mapa;
   AreaMapa? _area;
-  Timer? _esperaArea;
 
   /// El centro del mapa donde está el punto: el del último centrado, o el último que se le avisó al
   /// estado. Mientras el punto sea el del GPS (o no haya), un gesto que no se aleja de acá más del
   /// umbral —un zoom con el pellizco, por ejemplo— no lo mueve.
-  LatLng? _centroDelPunto;
+  Coordenadas? _centroDelPunto;
 
   @override
   void didUpdateWidget(MapaAlta anterior) {
@@ -68,20 +87,20 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
     if (widget.estado.movimientosCamara != anterior.estado.movimientosCamara) _centrar();
   }
 
-  @override
-  void dispose() {
-    _esperaArea?.cancel();
-    _controlador.dispose();
-    super.dispose();
+  void _alCrearse(ControladorMapaBase mapa) {
+    _mapa = mapa;
+    _centroDelPunto ??= mapa.camara.centro;
   }
 
   void _centrar() {
     final punto = widget.estado.punto;
-    if (punto == null || !_listo) return;
-    final zoom = _controlador.camera.zoom;
-    final centro = LatLng(punto.lat, punto.lon);
-    _centroDelPunto = centro;
-    _controlador.move(centro, zoom < MapaAlta.zoomCalle ? MapaAlta.zoomCalle : zoom);
+    final mapa = _mapa;
+    if (punto == null || mapa == null) return;
+    final zoom = mapa.camara.zoom;
+    _centroDelPunto = punto;
+    unawaited(
+      mapa.moverCamara(CamaraMapa(centro: punto, zoom: math.max(zoom, MapaAlta.zoomCalle))),
+    );
   }
 
   /// ¿Los gestos movieron el centro lo suficiente como para mover el punto?
@@ -89,30 +108,24 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
   /// Una vez que el punto es «a mano» se informa todo movimiento, para que quede exacto donde el
   /// colportor soltó el mapa. El umbral solo protege al punto del GPS (o al pin sin colocar) de los
   /// gestos que no lo mueven.
-  bool _movioElPunto(MapCamera camara) {
+  bool _movioElPunto(CamaraMapa camara) {
     if (widget.estado.origen == OrigenCoordenadas.manual && widget.estado.punto != null) {
       return true;
     }
     final referencia = _centroDelPunto;
     if (referencia == null) return true;
-    final distancia =
-        (camara.projectAtZoom(camara.center) - camara.projectAtZoom(referencia)).distance;
+    final distancia = ProyeccionMercator.distanciaPixeles(camara.centro, referencia, camara.zoom);
     return distancia > MapaAlta.umbralMovimientoPx;
   }
 
-  void _alCambiarCamara(MapCamera camara, bool conGesto) {
-    if (conGesto && _movioElPunto(camara)) {
-      _centroDelPunto = camara.center;
-      widget.alMoverCentro(Coordenadas(lat: camara.center.latitude, lon: camara.center.longitude));
-    }
-    _esperaArea?.cancel();
-    _esperaArea = Timer(const Duration(milliseconds: 400), () => _actualizarArea(camara));
+  void _alMoverCamara(CamaraMapa camara) {
+    if (!_movioElPunto(camara)) return;
+    _centroDelPunto = camara.centro;
+    widget.alMoverCentro(camara.centro);
   }
 
-  void _actualizarArea(MapCamera camara) {
+  void _alQuedarQuieto(CamaraMapa camara, AreaMapa area) {
     if (!mounted) return;
-    final b = camara.visibleBounds;
-    final area = AreaMapa(sur: b.south, oeste: b.west, norte: b.north, este: b.east);
     if (area.esValida && area != _area) setState(() => _area = area);
   }
 
@@ -120,7 +133,7 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
   Widget build(BuildContext context) {
     final estado = widget.estado;
     final punto = estado.punto ?? estado.lectura?.coordenadas;
-    final centro = punto == null ? MapaAlta.centroPorDefecto : LatLng(punto.lat, punto.lon);
+    final centro = punto ?? MapaAlta.centroPorDefecto;
     final area = _area;
     final cercanos = area == null
         ? const <MarcadorMapa>[]
@@ -133,105 +146,39 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
                   )
                   .value ??
               const <MarcadorMapa>[];
-    final lectura = estado.lectura;
+    // El punto azul y el radio de precisión solo con una lectura vigente del GPS.
+    final lectura = estado.gps == EstadoGps.conLectura ? estado.lectura : null;
 
     return Semantics(
       label: 'Mapa. Mové el mapa para ajustar el punto de la nueva ubicación.',
       container: true,
-      child: FlutterMap(
-        mapController: _controlador,
-        options: MapOptions(
-          initialCenter: centro,
-          initialZoom: punto == null ? MapaAlta.zoomPais : MapaAlta.zoomCalle,
-          minZoom: 3,
-          maxZoom: 19,
-          backgroundColor: ColoresAlta.fondoMapa,
-          // Sin rotar y sin que el pellizco arrastre: el pin está fijo en el centro y el zoom se hace
-          // sobre él, así el punto no se corre al acercar o alejar el mapa.
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate & ~InteractiveFlag.pinchMove,
-          ),
-          onMapReady: () {
-            _listo = true;
-            _centroDelPunto ??= _controlador.camera.center;
-            _actualizarArea(_controlador.camera);
-          },
-          onPositionChanged: _alCambiarCamara,
-          onTap: (_, p) => widget.alTocar(Coordenadas(lat: p.latitude, lon: p.longitude)),
+      child: MapaBase(
+        fuente: ref.watch(fuenteMapaProvider),
+        camaraInicial: CamaraMapa(
+          centro: centro,
+          zoom: punto == null ? MapaAlta.zoomPais : MapaAlta.zoomCalle,
         ),
-        children: [
-          if (lectura != null && estado.gps == EstadoGps.conLectura)
-            CircleLayer(
-              circles: [
-                CircleMarker(
-                  point: LatLng(lectura.coordenadas.lat, lectura.coordenadas.lon),
-                  radius: lectura.precisionMetros.isFinite ? lectura.precisionMetros : 0,
-                  useRadiusInMeter: true,
-                  color: ColoresAlta.puntoGps.withValues(alpha: .14),
-                  borderColor: ColoresAlta.puntoGps.withValues(alpha: .45),
-                  borderStrokeWidth: 1.5,
-                ),
-              ],
-            ),
-          MarkerLayer(
-            markers: [
-              for (final m in cercanos)
-                Marker(
-                  point: LatLng(m.lat, m.lon),
-                  width: 24,
-                  height: 24,
-                  child: const ExcludeSemantics(child: _MarcadorContexto()),
-                ),
-              if (lectura != null && estado.gps == EstadoGps.conLectura)
-                Marker(
-                  point: LatLng(lectura.coordenadas.lat, lectura.coordenadas.lon),
-                  width: 18,
-                  height: 18,
-                  child: const _PuntoGps(),
-                ),
-            ],
-          ),
+        zoomMinimo: MapaAlta.zoomMinimo,
+        zoomMaximo: MapaAlta.zoomMaximo,
+        fondo: ColoresAlta.fondoMapa,
+        // Sin rotar y con el zoom sobre el centro: el pin está fijo en el centro, así el punto no se
+        // corre al acercar o alejar el mapa.
+        zoomSobreCentro: true,
+        puntos: [
+          for (final m in cercanos) PuntoMapa(id: m.ubicacionId, coordenadas: m.coordenadas),
+          if (lectura != null)
+            PuntoMapa(id: 'gps', coordenadas: lectura.coordenadas, estilo: EstiloPunto.gps),
         ],
-      ),
-    );
-  }
-}
-
-/// Una ubicación que ya existe, sin estado de visita: círculo blanco con borde gris (el «Sin
-/// visita» del diseño).
-class _MarcadorContexto extends StatelessWidget {
-  const _MarcadorContexto();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF6B7688), width: 2.5),
-        boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 3, offset: Offset(0, 1))],
-      ),
-    );
-  }
-}
-
-/// «Tu ubicación»: el punto azul del GPS.
-class _PuntoGps extends StatelessWidget {
-  const _PuntoGps();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Tu ubicación',
-      child: Container(
-        decoration: BoxDecoration(
-          color: ColoresAlta.puntoGps,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(color: ColoresAlta.puntoGps.withValues(alpha: .16), spreadRadius: 8),
-          ],
-        ),
+        precision: lectura != null
+            ? CirculoPrecision(
+                centro: lectura.coordenadas,
+                radioMetros: lectura.precisionMetros.isFinite ? lectura.precisionMetros : 0,
+              )
+            : null,
+        alCrearse: _alCrearse,
+        alMoverCamara: _alMoverCamara,
+        alQuedarQuieto: _alQuedarQuieto,
+        alTocar: widget.alTocar,
       ),
     );
   }

@@ -42,12 +42,11 @@ dependencies:
   equatable: ^2.1.0
   flutter:
     sdk: flutter
-  flutter_map: ^8.2.2       # mapa (ADR-009, ADR-011): alta de ubicación (#193); los tiles PMTiles llegan con #199
   flutter_riverpod: ^3.1.0  # estado / DI
   flutter_secure_storage: ^10.3.1  # Keystore/Keychain: sal de cifrado (ADR-003) — ver nota arriba
   geolocator: ^14.0.2       # GPS del alta de ubicación (HU-UBI-001, ADR-009)
-  latlong2: ^0.9.1          # LatLng de flutter_map
   logger: ^2.7.0            # [NIVEL][MÓDULO][OPERACIÓN] (convenciones §7)
+  maplibre_gl: ^0.27.1      # mapa nativo MapLibre (ADR-009/011, decisión del 06/10, #286): PMTiles propios, online y offline
   path: ^1.9.1
   path_provider: ^2.1.6     # directorio de la DB local (core/database)
   riverpod_annotation: ^4.0.0
@@ -72,6 +71,17 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Estilo, glyphs y sprites del mapa (copia de lo que publica backend-supabase#42, ver
+  # assets/mapa/NOTICE.md). Los glyphs y sprites se copian al almacenamiento interno al abrir el
+  # mapa (`PreparadorRecursosMapa`): MapLibre los lee con `file://`.
+  assets:
+    - assets/mapa/estilo/
+    - assets/mapa/glyphs/NotoSans-Regular/
+    - assets/mapa/glyphs/NotoSans-Medium/
+    - assets/mapa/glyphs/NotoSans-Italic/
+    - assets/mapa/glyphs/OFL.txt
+    - assets/mapa/sprites/
 
   # Offline-first: nada de `google_fonts` con fetch en runtime. Empaquetadas desde el repo oficial
   # https://github.com/google/fonts (licencia OFL, ver assets/fonts/*-OFL.txt). Las tres familias

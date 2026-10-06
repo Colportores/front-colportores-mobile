@@ -20,7 +20,6 @@ import '../../domain/services/ciudades_para_alta.dart';
 import '../../domain/services/geocodificador_inverso.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/services/proveedor_gps.dart';
-import '../../domain/services/resolutores_mapa.dart';
 import '../../domain/services/ubicador_zona.dart';
 import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
 import '../../domain/usecases/registrar_ubicacion_use_case.dart';
@@ -108,11 +107,6 @@ final geocodificadorInversoProvider = Provider<GeocodificadorInverso>(
 /// catálogos): [CiudadesParaAltaSinFuente] devuelve la falla de lectura, y toda alta muestra «No
 /// pudimos leer las ciudades de tu campaña». La app no sale a producción así.
 final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) => CiudadesParaAltaSinFuente());
-
-/// De dónde salen los tiles del mapa de fondo (HU-UBI-003, ADR-011). El paquete PMTiles offline y
-/// el servidor online llegan con la vista del mapa (#199): hasta entonces no hay fondo y la vista
-/// avisa «Sin tiles para esta zona. Descargá tu ciudad en Configuración.».
-final fuenteTilesAltaProvider = Provider<FuenteTiles>((ref) => FuenteTiles.sinTiles);
 
 /// Las ubicaciones del colportor dentro de [consulta] (colportor y área visible), para el contexto
 /// del mapa del alta. Emite vacío si la DB no está abierta.

@@ -21,6 +21,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubi
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
+import 'mapa_base_falso.dart';
 import 'ubicacion_sin_modificar.dart';
 import 'zonas_falsas.dart';
 
@@ -242,6 +243,7 @@ List<Override> overridesAlta({
   Duration espera = const Duration(milliseconds: 20),
   DateTime? ahora,
   List<MarcadorMapa> marcadores = const [],
+  FabricaMapaFalsa? mapa,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
@@ -256,6 +258,8 @@ List<Override> overridesAlta({
     generadorIdUbicacionProvider.overrideWithValue(() => 'id-${++secuencia}'),
     relojAltaUbicacionProvider.overrideWithValue(() => ahora ?? DateTime.utc(2026, 10, 2, 14, 35)),
     marcadoresCercanosProvider.overrideWith((ref, consulta) => Stream.value(marcadores)),
+    // MapLibre no se dibuja en `flutter test`: el mapa es la vista falsa.
+    (mapa ?? FabricaMapaFalsa()).override,
   ];
 }
 

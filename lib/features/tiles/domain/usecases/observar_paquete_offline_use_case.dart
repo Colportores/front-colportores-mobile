@@ -7,7 +7,8 @@ import '../repositories/paquetes_tiles_repository.dart';
 /// servidor online o a "sin tiles".
 ///
 /// Enganche con #198 (PR #216): `ResolutorFuenteTiles.resolver(hayPaqueteOffline: paquete !=
-/// null, ...)`, y el archivo que abre `flutter_map_pmtiles` es [PaqueteDescargado.ruta].
+/// null, ...)`, y el archivo que abre MapLibre (`pmtiles://file://` más la ruta, ver `FuenteMapa`) es
+/// [PaqueteDescargado.ruta].
 final class ObservarPaqueteOfflineUseCase
     implements StreamUseCase<PaqueteDescargado?, AmbitoTrabajo> {
   ObservarPaqueteOfflineUseCase(this._repository);

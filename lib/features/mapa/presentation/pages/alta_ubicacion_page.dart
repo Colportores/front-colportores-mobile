@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
-import '../../domain/services/resolutores_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
+import '../providers/mapa_base_providers.dart';
 import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
@@ -166,9 +167,12 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
   Widget build(BuildContext context) {
     final proveedor = altaUbicacionProvider(widget.parametros);
     final estado = ref.watch(proveedor);
-    final sinTiles = ref.watch(fuenteTilesAltaProvider) == FuenteTiles.sinTiles;
+    final sinTiles = !ref.watch(fuenteMapaProvider).hayTiles;
     final sinGps = estado.gps == EstadoGps.sinGps;
     final cierre = Navigator.of(context);
+    // Se lee acá y no dentro del `Scaffold`: este le quita el inset del teclado al `MediaQuery` de su
+    // cuerpo (se achica él), y ahí `viewInsets.bottom` siempre da 0.
+    final tecladoAbierto = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return PopScope(
       // Mientras se guarda no se puede salir: el resultado se perdería.
@@ -182,6 +186,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                   child: _ZonaMapa(
                     parametros: widget.parametros,
                     estado: estado,
+                    tecladoAbierto: tecladoAbierto,
                     alCerrar: cierre.maybePop,
                     alMover: _notificador.moverPunto,
                     alTocar: _notificador.marcarPunto,
@@ -244,6 +249,7 @@ class _ZonaMapa extends StatefulWidget {
   const _ZonaMapa({
     required this.parametros,
     required this.estado,
+    required this.tecladoAbierto,
     required this.alCerrar,
     required this.alMover,
     required this.alTocar,
@@ -252,6 +258,11 @@ class _ZonaMapa extends StatefulWidget {
 
   final ParametrosAlta parametros;
   final AltaUbicacionState estado;
+
+  /// Con el teclado abierto el mapa queda de ~129 dp a 360×640 y la pista (dos renglones con la letra
+  /// grande) taparía la atribución o se cortaría: el colportor está escribiendo, no moviendo el mapa.
+  /// Se oculta mientras dura y vuelve al cerrarlo; el pin, «Volver a mi ubicación» y el resto siguen.
+  final bool tecladoAbierto;
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMover;
   final ValueChanged<Coordenadas> alTocar;
@@ -331,30 +342,35 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             child: _ChipGps(estado: estado),
           ),
         ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Align(
-              alignment: const Alignment(0, .3),
-              child: Semantics(
-                liveRegion: true,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xD10E1A2B),
-                    borderRadius: BorderRadius.circular(999),
+        if (!widget.tecladoAbierto)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomSingleChildLayout(
+                delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xD10E1A2B),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      pista,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                    ),
                   ),
-                  child: Text(pista, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
                 ),
               ),
             ),
           ),
-        ),
         if (estado.lectura != null)
           Positioned(
-            right: 14,
+            right: _derechaBotonVolver,
             bottom: 36,
             child: _BotonRedondo(
-              tamano: 52,
+              tamano: _ladoBotonVolver,
               icono: Icons.my_location,
               etiqueta: TextosAlta.volverAMiUbicacion,
               alPresionar: widget.alVolverAMiUbicacion,
@@ -363,6 +379,53 @@ class _ZonaMapaState extends State<_ZonaMapa> {
       ],
     );
   }
+}
+
+/// «Volver a mi ubicación» flota abajo a la derecha del mapa: a [_derechaBotonVolver] del borde y de
+/// [_ladoBotonVolver] de lado. La pista del pin le deja ese lugar.
+const _derechaBotonVolver = 14.0;
+const _ladoBotonVolver = 52.0;
+
+/// Dónde va la pista «Mové el mapa para ajustar el punto»: centrada debajo de la punta del pin (que
+/// está en el centro del mapa), con [margen] a los bordes y sin pasar por «Volver a mi ubicación».
+/// Con el texto grande la pista baja a dos renglones o más; no ocupa todo el ancho ni sube a taparle
+/// la punta al pin.
+class _PosicionPista extends SingleChildLayoutDelegate {
+  const _PosicionPista({required this.conBotonVolver});
+
+  final bool conBotonVolver;
+
+  static const margen = 16.0;
+
+  /// Lo que la pista deja libre al lado del botón y, más chico, debajo de la punta del pin: en el
+  /// mapa chico con el texto grande abajo todavía entra la atribución de OpenStreetMap.
+  static const separacion = 8.0;
+  static const separacionDelPin = 4.0;
+
+  /// El borde derecho de donde cabe la pista.
+  double _limiteDerecho(double ancho) => conBotonVolver
+      ? ancho - (_derechaBotonVolver + _ladoBotonVolver + separacion)
+      : ancho - margen;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) => BoxConstraints(
+    maxWidth: math.max(0, _limiteDerecho(constraints.maxWidth) - margen),
+    maxHeight: constraints.maxHeight,
+  );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    // Centrada bajo el pin y, si así tocaría el botón, corrida a la izquierda.
+    final centrada = (size.width - childSize.width) / 2;
+    final x = math.max(margen, math.min(centrada, _limiteDerecho(size.width) - childSize.width));
+    // Donde estaba (alineada en (0, .3)), pero nunca más arriba que la punta del pin.
+    final habitual = (size.height - childSize.height) * 0.65;
+    final y = math.max(habitual, size.height / 2 + separacionDelPin);
+    return Offset(x, y);
+  }
+
+  @override
+  bool shouldRelayout(_PosicionPista anterior) => anterior.conBotonVolver != conBotonVolver;
 }
 
 /// «No tenemos tu ubicación. Tocá el mapa donde está el lugar o activá el GPS.» con «Activar GPS»
