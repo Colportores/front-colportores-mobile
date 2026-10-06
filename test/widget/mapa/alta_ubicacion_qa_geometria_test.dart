@@ -111,6 +111,41 @@ void main() {
     }
   });
 
+  group('QA #193 (ronda 2) · vista 03 A·02 «Sin GPS» · el aviso de sin GPS en el mapa chico', () {
+    final avisoSinGps = find.ancestor(
+      of: find.text('Activar GPS'),
+      matching: find.byType(AvisoAlta),
+    );
+
+    // skip: QA #193 (ronda 2) — a 360×640 el mapa mide ~243 px y el aviso de sin GPS ocupa ~156: la
+    // pista «Tocá donde está el lugar» (centrada al 30 % bajo el centro) se monta sobre el último
+    // renglón del aviso («…activá el GPS.»). Antes el aviso «Sin tiles…» lo tapaba todo y no se veía.
+    testWidgets('a texto 1x la pista del pin no se pisa con el aviso de sin GPS', (tester) async {
+      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640));
+
+      _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
+    }, skip: true);
+
+    // skip: QA #193 (ronda 2) — a texto 2x el aviso de sin GPS (5 renglones, ~250 px) es más alto que
+    // el mapa (~243 px): la hoja de abajo lo tapa y «Activar GPS» queda debajo de ella, sin poder
+    // tocarse ni verse (WCAG 1.4.4); la pista también se monta sobre el texto del aviso.
+    testWidgets('a texto 2x «Activar GPS» se ve y se puede tocar, y la pista no pisa el aviso', (
+      tester,
+    ) async {
+      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640), escala: 2);
+
+      expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
+      _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
+    }, skip: true);
+
+    testWidgets('a 412×915 y texto 1x el aviso de sin GPS no se pisa con la pista', (tester) async {
+      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(412, 915));
+
+      expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
+      _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
+    });
+  });
+
   group('QA #193 · vista 04 · paso de justificación (B·03) con las fuentes reales', () {
     // A texto 2x los motivos sugeridos parten en renglones en vez de cortarse («Otra puerta en el
     // mism…»): ya no son `ActionChip` (una sola línea) sino botones que crecen con el texto.
