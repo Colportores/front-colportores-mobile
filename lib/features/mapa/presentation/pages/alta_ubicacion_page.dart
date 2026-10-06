@@ -167,6 +167,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
     final proveedor = altaUbicacionProvider(widget.parametros);
     final estado = ref.watch(proveedor);
     final sinTiles = ref.watch(fuenteTilesAltaProvider) == FuenteTiles.sinTiles;
+    final sinGps = estado.gps == EstadoGps.sinGps;
     final cierre = Navigator.of(context);
 
     return PopScope(
@@ -184,7 +185,6 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                     alCerrar: cierre.maybePop,
                     alMover: _notificador.moverPunto,
                     alTocar: _notificador.marcarPunto,
-                    alActivarGps: _notificador.activarGps,
                     alVolverAMiUbicacion: _notificador.volverAMiUbicacion,
                   ),
                 ),
@@ -215,6 +215,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                                 ),
                               ),
                             ),
+                            if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
                             if (sinTiles) const _AvisoSinTiles(),
                             HojaAlta(
                               parametros: widget.parametros,
@@ -237,7 +238,8 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
 }
 
 /// La parte de arriba: el mapa con el pin fijo y todo lo que flota encima (cerrar, chip del GPS,
-/// aviso de sin GPS, pista, «Volver a mi ubicación»).
+/// pista, «Volver a mi ubicación»). Los avisos largos no flotan acá: van arriba de la hoja de abajo
+/// ([_AvisoSinGps], [_AvisoSinTiles]), que se desplaza y no pisa el pin.
 class _ZonaMapa extends StatefulWidget {
   const _ZonaMapa({
     required this.parametros,
@@ -245,7 +247,6 @@ class _ZonaMapa extends StatefulWidget {
     required this.alCerrar,
     required this.alMover,
     required this.alTocar,
-    required this.alActivarGps,
     required this.alVolverAMiUbicacion,
   });
 
@@ -254,7 +255,6 @@ class _ZonaMapa extends StatefulWidget {
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMover;
   final ValueChanged<Coordenadas> alTocar;
-  final VoidCallback alActivarGps;
   final VoidCallback alVolverAMiUbicacion;
 
   @override
@@ -284,7 +284,6 @@ class _ZonaMapaState extends State<_ZonaMapa> {
   Widget build(BuildContext context) {
     final estado = widget.estado;
     final arriba = MediaQuery.paddingOf(context).top;
-    final sinGps = estado.gps == EstadoGps.sinGps;
     final String pista = _mostrandoAvisoCalle
         ? TextosAlta.calleActualizada
         : (estado.punto == null ? TextosAlta.tocar : TextosAlta.mover);
@@ -332,21 +331,6 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             child: _ChipGps(estado: estado),
           ),
         ),
-        if (sinGps)
-          Positioned(
-            left: 20,
-            right: 20,
-            top: arriba + 70,
-            child: AvisoAlta(
-              color: ColoresAlta.gris,
-              glyph: '!',
-              texto: TextosAlta.sinGpsAviso,
-              acciones: Align(
-                alignment: Alignment.centerRight,
-                child: EnlaceAlta(texto: TextosAlta.activarGps, alPresionar: widget.alActivarGps),
-              ),
-            ),
-          ),
         Positioned.fill(
           child: IgnorePointer(
             child: Align(
@@ -377,6 +361,34 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// «No tenemos tu ubicación. Tocá el mapa donde está el lugar o activá el GPS.» con «Activar GPS»
+/// (artboard 03A · 02). El canvas lo dibuja flotando sobre el mapa, pero el mapa de un teléfono es
+/// más chico que el del canvas (la hoja ocupa hasta el 62 % del alto): ahí el recuadro tapaba el pin
+/// y la pista, y a 360×640 con el texto al 200 % (más alto que el mapa entero) la hoja dejaba
+/// «Activar GPS» inalcanzable. Arriba de la hoja, que se desplaza, el recuadro conserva su forma y su
+/// texto, el botón queda siempre a la vista y el pin y la pista quedan libres.
+class _AvisoSinGps extends StatelessWidget {
+  const _AvisoSinGps({required this.alActivarGps});
+
+  final VoidCallback alActivarGps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AvisoAlta(
+        color: ColoresAlta.gris,
+        glyph: '!',
+        texto: TextosAlta.sinGpsAviso,
+        acciones: Align(
+          alignment: Alignment.centerRight,
+          child: EnlaceAlta(texto: TextosAlta.activarGps, alPresionar: alActivarGps),
+        ),
+      ),
     );
   }
 }

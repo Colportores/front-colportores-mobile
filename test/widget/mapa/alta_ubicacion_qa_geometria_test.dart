@@ -6,6 +6,7 @@
 // da falsos negativos en letra chica; está en `alta_ubicacion_qa_test.dart`.
 //
 // Los hallazgos de QA ya arreglados quedan como tests normales (el implementador les sacó el `skip`).
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
@@ -117,18 +118,16 @@ void main() {
       matching: find.byType(AvisoAlta),
     );
 
-    // skip: QA #193 (ronda 2) — a 360×640 el mapa mide ~243 px y el aviso de sin GPS ocupa ~156: la
-    // pista «Tocá donde está el lugar» (centrada al 30 % bajo el centro) se monta sobre el último
-    // renglón del aviso («…activá el GPS.»). Antes el aviso «Sin tiles…» lo tapaba todo y no se veía.
+    // El mapa de un teléfono es más chico que el del canvas (la hoja ocupa hasta el 62 % del alto):
+    // a 360×640 mide ~243 px y a texto 2x el aviso solo mide ~250. Por eso el aviso va arriba de la hoja
+    // de abajo, que se desplaza, y no flotando sobre el mapa: «Activar GPS» siempre se ve y se toca, y
+    // el pin, el chip del GPS y la pista quedan libres.
     testWidgets('a texto 1x la pista del pin no se pisa con el aviso de sin GPS', (tester) async {
       await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640));
 
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
-    }, skip: true);
+    });
 
-    // skip: QA #193 (ronda 2) — a texto 2x el aviso de sin GPS (5 renglones, ~250 px) es más alto que
-    // el mapa (~243 px): la hoja de abajo lo tapa y «Activar GPS» queda debajo de ella, sin poder
-    // tocarse ni verse (WCAG 1.4.4); la pista también se monta sobre el texto del aviso.
     testWidgets('a texto 2x «Activar GPS» se ve y se puede tocar, y la pista no pisa el aviso', (
       tester,
     ) async {
@@ -136,13 +135,51 @@ void main() {
 
       expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
-    }, skip: true);
+    });
 
     testWidgets('a 412×915 y texto 1x el aviso de sin GPS no se pisa con la pista', (tester) async {
       await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(412, 915));
 
       expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
+    });
+
+    // El aviso entero está dentro de la pantalla, no cortado, y no tapa nada de lo que hay sobre el
+    // mapa: el pin (sin punto todavía, punteado), el chip «Sin GPS» y el botón de cerrar.
+    for (final (tamano, escala) in [
+      (const Size(360, 640), 1.0),
+      (const Size(360, 640), 2.0),
+      (const Size(412, 915), 1.0),
+    ]) {
+      testWidgets(
+        'a ${tamano.width.toInt()}×${tamano.height.toInt()} y texto $escala el aviso de sin GPS se '
+        'lee completo y no tapa el pin, el chip ni «Cerrar»',
+        (tester) async {
+          await montarAlta(tester, gps: gpsSinPermiso, tamano: tamano, escala: escala);
+
+          expect(tester.takeException(), isNull);
+          final aviso = tester.getRect(avisoSinGps);
+          expect(aviso.left, greaterThanOrEqualTo(0), reason: 'el aviso se sale de la pantalla');
+          expect(aviso.top, greaterThanOrEqualTo(0), reason: 'el aviso se sale de la pantalla');
+          expect(aviso.right, lessThanOrEqualTo(tamano.width), reason: 'se sale de la pantalla');
+          expect(aviso.bottom, lessThanOrEqualTo(tamano.height), reason: 'se sale de la pantalla');
+          final texto = tester.renderObject<RenderParagraph>(find.text(TextosAlta.sinGpsAviso));
+          expect(texto.didExceedMaxLines, isFalse, reason: 'el texto del aviso se corta');
+          _sinSolape(tester, avisoSinGps, find.byType(PinAlta), 'aviso sin GPS vs pin');
+          _sinSolape(tester, avisoSinGps, find.text('Sin GPS'), 'aviso sin GPS vs chip del GPS');
+          _sinSolape(tester, avisoSinGps, find.byTooltip(TextosAlta.cerrar), 'aviso vs «Cerrar»');
+        },
+      );
+    }
+
+    testWidgets('a 360×640 y texto 2x tocar «Activar GPS» pide lo que corresponde', (tester) async {
+      final gps = gpsSinPermiso;
+      await montarAlta(tester, gps: gps, tamano: const Size(360, 640), escala: 2);
+
+      await tester.tap(find.text('Activar GPS'));
+      await asentar(tester);
+
+      expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
     });
   });
 
