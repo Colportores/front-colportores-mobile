@@ -44,8 +44,25 @@ class MapaAlta extends ConsumerStatefulWidget {
   /// Dónde se centra el mapa si no hay GPS ni punto: Uruguay entero (HU-UBI-003, «ciudad del
   /// colportor» todavía no se conoce).
   static const centroPorDefecto = Coordenadas(lat: -32.5228, lon: -55.7658);
-  static const zoomPais = 6.5;
-  static const zoomCalle = 17.0;
+
+  // Los zoom del alta. Se eligieron con `flutter_map` (#267, teselas de 256 px) y MapLibre usa
+  // teselas de 512 px: el mismo número se ve al doble de cerca (Uruguay no entraría en la pantalla
+  // y el radio de ±85 m la llenaría de borde a borde). `zoomDeFlutterMap` es la traducción: los
+  // números de acá son los de #267, no se escriben ya convertidos.
+
+  /// Uruguay entero a la vista (en `flutter_map`, 6,5).
+  static final zoomPais = ProyeccionMercator.zoomDeFlutterMap(6.5);
+
+  /// El nivel de una calle, donde se ve el radio de precisión del GPS (en `flutter_map`, 17).
+  static final zoomCalle = ProyeccionMercator.zoomDeFlutterMap(17);
+
+  /// Hasta dónde se aleja y se acerca el colportor con los dedos (en `flutter_map`, 3 y 19).
+  static final zoomMinimo = ProyeccionMercator.zoomDeFlutterMap(3);
+  static final zoomMaximo = ProyeccionMercator.zoomDeFlutterMap(19);
+
+  /// Lo más cerca que se encuadra la vista previa de la hoja de duplicados (04), cuando la nueva y
+  /// la candidata están a pocos metros (en `flutter_map`, 18).
+  static final zoomMaximoVistaPrevia = ProyeccionMercator.zoomDeFlutterMap(18);
 
   /// Cuánto tiene que correrse el centro del mapa, en píxeles, para que cuente como «movió el
   /// punto». Un zoom o un temblor del dedo no mueven el pin: el punto del GPS sigue siendo del GPS.
@@ -141,8 +158,8 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
           centro: centro,
           zoom: punto == null ? MapaAlta.zoomPais : MapaAlta.zoomCalle,
         ),
-        zoomMinimo: 3,
-        zoomMaximo: 19,
+        zoomMinimo: MapaAlta.zoomMinimo,
+        zoomMaximo: MapaAlta.zoomMaximo,
         fondo: ColoresAlta.fondoMapa,
         // Sin rotar y con el zoom sobre el centro: el pin está fijo en el centro, así el punto no se
         // corre al acercar o alejar el mapa.

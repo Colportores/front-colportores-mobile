@@ -12,6 +12,7 @@ import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/mapa_base_providers.dart';
 import 'hoja_alta.dart';
+import 'mapa_alta.dart';
 import 'piezas_alta.dart';
 
 /// Textos de la vista 04. Los literales de HU-UBI-001 («Reutilizar esta», «Crear igual»,
@@ -640,7 +641,7 @@ class _VistaPreviaMapa extends ConsumerWidget {
                 ajuste: AjusteMapa(
                   puntos: [nueva, for (final c in candidatas) c.ubicacion.coordenadas],
                   margen: 40,
-                  zoomMaximo: 18,
+                  zoomMaximo: MapaAlta.zoomMaximoVistaPrevia,
                 ),
                 interaccion: InteraccionMapa.ninguna,
                 fondo: ColoresAlta.fondoMapa,

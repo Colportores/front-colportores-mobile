@@ -16,8 +16,28 @@ abstract final class ProyeccionMercator {
   /// Más allá de esta latitud Mercator no representa el mapa (se estira al infinito).
   static const latitudMaxima = 85.0511287798066;
 
+  /// Los niveles de zoom que separan esta escala de la de `flutter_map` (teselas de 256 px: el mundo
+  /// mide `256 · 2^z`): `512 · 2^(z − 1) = 256 · 2^z`. Un zoom pensado para `flutter_map` se ve al
+  /// doble de cerca en MapLibre si se usa tal cual; [zoomDeFlutterMap] lo traduce.
+  static const nivelesSobreFlutterMap = 1.0;
+
   /// Lado del mundo, en píxeles, a [zoom].
   static double tamanoMundo(double zoom) => tamanoTesela * math.pow(2, zoom);
+
+  /// El zoom de MapLibre que encuadra lo mismo que [zoomFlutterMap] en `flutter_map` (teselas de
+  /// 256 px). Los zoom que vienen de #267 (el alta de ubicación se diseñó con `flutter_map`) pasan
+  /// por acá: es el único lugar donde está esa equivalencia.
+  static double zoomDeFlutterMap(double zoomFlutterMap) => zoomFlutterMap - nivelesSobreFlutterMap;
+
+  /// Radio de la esfera de Web Mercator (WGS84, el eje mayor), en metros.
+  static const radioTierraMetros = 6378137.0;
+
+  /// Cuántos metros mide un píxel (lógico) a la latitud [lat] y a [zoom]. A zoom 17 son unos 0,49 m
+  /// en Montevideo; cada nivel de zoom lo divide por dos.
+  static double metrosPorPixel(double lat, double zoom) {
+    final latitud = lat.clamp(-latitudMaxima, latitudMaxima);
+    return 2 * math.pi * radioTierraMetros * math.cos(latitud * math.pi / 180) / tamanoMundo(zoom);
+  }
 
   /// El punto en píxeles del mundo a [zoom]: `(0, 0)` es la esquina noroeste, `x` crece al este e
   /// `y` hacia el sur.

@@ -64,6 +64,47 @@ void main() {
     });
   });
 
+  group('ProyeccionMercator · escala de flutter_map y metros por píxel', () {
+    test('un zoom de flutter_map (teselas de 256 px) es uno menos en MapLibre (512 px)', () {
+      for (final z in [3.0, 6.5, 17.0, 19.0]) {
+        // Mismo mundo en píxeles: `256 · 2^z` en flutter_map, `512 · 2^(z − 1)` acá.
+        expect(
+          ProyeccionMercator.tamanoMundo(ProyeccionMercator.zoomDeFlutterMap(z)),
+          closeTo(256 * math.pow(2, z), 1e-6),
+        );
+      }
+      expect(ProyeccionMercator.zoomDeFlutterMap(17), 16);
+      expect(ProyeccionMercator.zoomDeFlutterMap(6.5), 5.5);
+    });
+
+    test('a zoom 17 un píxel son unos 0,49 m en Montevideo y 0,60 m en el ecuador', () {
+      expect(ProyeccionMercator.metrosPorPixel(montevideo.lat, 17), closeTo(0.49, 0.005));
+      expect(ProyeccionMercator.metrosPorPixel(0, 17), closeTo(0.5972, 0.0005));
+    });
+
+    test('cada nivel de zoom divide por dos los metros por píxel', () {
+      final z16 = ProyeccionMercator.metrosPorPixel(montevideo.lat, 16);
+      final z17 = ProyeccionMercator.metrosPorPixel(montevideo.lat, 17);
+      expect(z16, closeTo(2 * z17, 1e-9));
+    });
+
+    test('coincide con lo que miden dos puntos conocidos en píxeles', () {
+      // 0,001° de latitud son unos 111,3 m en la esfera de Web Mercator.
+      const otro = Coordenadas(lat: -34.88661, lon: -56.13024);
+      final px = ProyeccionMercator.distanciaPixeles(montevideo, otro, 17);
+      final metros = px * ProyeccionMercator.metrosPorPixel(montevideo.lat, 17);
+
+      expect(metros, closeTo(111.3, 0.3));
+    });
+
+    test('más allá de la latitud máxima no se va al infinito ni da cero', () {
+      final polo = ProyeccionMercator.metrosPorPixel(90, 3);
+
+      expect(polo.isFinite, isTrue);
+      expect(polo, greaterThan(0));
+    });
+  });
+
   group('ProyeccionMercator · área visible', () {
     test('un teléfono a zoom 17 ve un recuadro de unos 175 m de ancho, centrado', () {
       const camara = CamaraMapa(centro: montevideo, zoom: 17);
