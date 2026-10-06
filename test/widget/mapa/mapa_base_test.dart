@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -615,6 +616,55 @@ void main() {
       expect(avisos.movidas, isEmpty);
     });
 
+    // El alta centra el mapa donde se toca (`moverCamara`). Si eso pasa con un zoom sobre el centro
+    // en curso, ese centro es al que hay que volver al terminar; no el de antes del zoom.
+    testWidgets(
+      'un moverCamara del código durante el doble toque es el centro al que se vuelve al terminar',
+      (tester) async {
+        // La vista no acerca (por ejemplo, con el zoom ya en el máximo): el zoom queda pendiente
+        // hasta que vence la espera.
+        fabrica.dobleToqueAnima = false;
+        await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+        await _asentar(tester);
+
+        await _dobleToque(tester, tester.getCenter(find.byType(MapaBase)) + const Offset(80, 100));
+        await tester.pump(const Duration(milliseconds: 160));
+        await avisos.controlador!.moverCamara(const CamaraMapa(centro: _otro, zoom: 16));
+        await _asentar(tester, 30);
+
+        expect(fabrica.camara!.centro.lat, closeTo(_otro.lat, 1e-6));
+        expect(fabrica.camara!.centro.lon, closeTo(_otro.lon, 1e-6));
+        expect(fabrica.movimientos.last.centro, _otro, reason: 'no se deshizo el pedido');
+        expect(avisos.movidas, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'un moverCamara del código durante el pellizco es el centro al que se vuelve al soltar',
+      (tester) async {
+        await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+        await _asentar(tester);
+        final centro = tester.getCenter(find.byType(MapaBase));
+        final a = await tester.startGesture(centro + const Offset(20, 30), pointer: 1);
+        final b = await tester.startGesture(centro + const Offset(100, 30), pointer: 2);
+        for (var i = 0; i < 4; i++) {
+          await a.moveBy(const Offset(-6, 0));
+          await b.moveBy(const Offset(14, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+
+        await avisos.controlador!.moverCamara(const CamaraMapa(centro: _otro, zoom: 17));
+        await tester.pump(const Duration(milliseconds: 16));
+        await a.up();
+        await b.up();
+        await _asentar(tester, 20);
+
+        expect(fabrica.camara!.centro.lat, closeTo(_otro.lat, 1e-6));
+        expect(fabrica.camara!.centro.lon, closeTo(_otro.lon, 1e-6));
+        expect(avisos.movidas, isEmpty);
+      },
+    );
+
     testWidgets('solo desplazar: el doble toque no hace nada ni arma nada', (tester) async {
       await tester.pumpWidget(
         _app(
@@ -1006,22 +1056,71 @@ void main() {
       expect(find.text('© OpenStreetMap'), findsNothing);
     });
 
-    testWidgets('no se agranda con el texto del sistema ni atrapa toques', (tester) async {
+    testWidgets('crece con el texto del sistema (AA): la licencia se tiene que poder leer', (
+      tester,
+    ) async {
       const fuente = FuenteMapa.offline('/data/uy.pmtiles');
-      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente));
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, ancho: 600));
       await _asentar(tester);
       final normal = tester.getSize(find.text('© OpenStreetMap'));
 
-      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, textScale: 2));
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, ancho: 600, textScale: 2));
       await _asentar(tester);
 
-      expect(tester.getSize(find.text('© OpenStreetMap')), normal);
-      // Un toque justo sobre la atribución llega al mapa.
-      final tamano = tester.getSize(find.byType(MapaBase));
-      await tester.tapAt(tester.getTopLeft(find.byType(MapaBase)) + Offset(40, tamano.height - 14));
+      expect(tester.getSize(find.text('© OpenStreetMap')).height, closeTo(normal.height * 2, 0.5));
+      expect(tester.widget<Text>(find.text('© OpenStreetMap')).textScaler, isNull);
+    });
+
+    testWidgets('el lector de pantalla la lee', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _app(fabrica, avisos, fuente: const FuenteMapa.offline('/data/uy.pmtiles')),
+      );
+      await _asentar(tester);
+
+      expect(find.bySemanticsLabel('© OpenStreetMap'), findsOneWidget);
+      semantica.dispose();
+    });
+
+    testWidgets('no atrapa toques: uno justo encima llega al mapa', (tester) async {
+      await tester.pumpWidget(
+        _app(fabrica, avisos, fuente: const FuenteMapa.offline('/data/uy.pmtiles'), textScale: 2),
+      );
+      await _asentar(tester);
+
+      final atribucion = tester.getRect(find.text('© OpenStreetMap'));
+      await tester.tapAt(atribucion.center);
       // Con el doble toque prendido, la vista confirma el toque pasado el plazo del segundo.
       await tester.pump(const Duration(milliseconds: 400));
+
       expect(avisos.toques, hasLength(1));
+    });
+
+    testWidgets('si no entra en una línea baja a dos renglones, sin elipsis, y deja libre el botón', (
+      tester,
+    ) async {
+      // Con la fuente de pruebas (cada letra, un cuadrado del tamaño del texto) a 2x no entra en 360.
+      await tester.pumpWidget(
+        _app(
+          fabrica,
+          avisos,
+          fuente: const FuenteMapa.offline('/data/uy.pmtiles'),
+          ancho: 360,
+          textScale: 2,
+        ),
+      );
+      await _asentar(tester);
+
+      final texto = find.text('© OpenStreetMap');
+      final mapa = tester.getRect(find.byType(MapaBase));
+      final atribucion = tester.getRect(texto);
+      expect(atribucion.height, closeTo(2 * 24, 0.5), reason: 'dos renglones: $atribucion');
+      expect(tester.renderObject<RenderParagraph>(texto).didExceedMaxLines, isFalse);
+      expect(tester.widget<Text>(texto).overflow, isNull, reason: 'sin elipsis ni recorte');
+      expect(tester.widget<Text>(texto).maxLines, isNull);
+      expect(atribucion.left, greaterThanOrEqualTo(mapa.left));
+      expect(atribucion.right, lessThanOrEqualTo(mapa.right - 80), reason: 'el botón flotante');
+      expect(atribucion.bottom, lessThanOrEqualTo(mapa.bottom - 4));
     });
   });
 }

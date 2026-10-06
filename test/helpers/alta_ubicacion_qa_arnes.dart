@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
@@ -62,6 +64,7 @@ Future<List<SalidaAltaUbicacion?>> montarAlta(
   RepoAltaFalso? repo,
   double escala = 1,
   Size tamano = const Size(390, 844),
+  FuenteMapa? fuente,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -69,16 +72,20 @@ Future<List<SalidaAltaUbicacion?>> montarAlta(
   final salidas = <SalidaAltaUbicacion?>[];
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesAlta(
-        gps: gps,
-        geocodificador:
-            geocodificador ??
-            GeocodificadorFalso(
-              (_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'),
-            ),
-        repo: repo,
-        ahora: DateTime.utc(2026, 10, 2, 12),
-      ),
+      overrides: [
+        ...overridesAlta(
+          gps: gps,
+          geocodificador:
+              geocodificador ??
+              GeocodificadorFalso(
+                (_) => const DireccionDelPunto(calle: 'Av. Italia', numero: '1234'),
+              ),
+          repo: repo,
+          ahora: DateTime.utc(2026, 10, 2, 12),
+        ),
+        // Con tiles (falsos: la vista de mapa es la falsa) se dibuja la atribución «© OpenStreetMap».
+        if (fuente != null) fuenteMapaProvider.overrideWithValue(fuente),
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(

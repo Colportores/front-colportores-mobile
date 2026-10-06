@@ -125,7 +125,7 @@ void main() {
         await asentar(tester);
 
         expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
-        expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+        expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
 
         await tocar(tester, find.text('Crear igual'));
         expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
@@ -133,12 +133,12 @@ void main() {
 
         await tester.binding.handlePopRoute();
         await asentar(tester);
-        expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+        expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
 
         await tester.binding.handlePopRoute();
         await asentar(tester);
 
-        expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+        expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsNothing);
         expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
         expect(find.text('Nueva ubicación'), findsOneWidget);
         expect(find.text('Av. Italia'), findsOneWidget);
@@ -163,7 +163,7 @@ void main() {
         await asentar(tester);
 
         expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
-        expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+        expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsNothing);
         repo.bloqueo!.complete();
         await asentar(tester);
       },
@@ -200,7 +200,7 @@ void main() {
           expect(avisoDeLaHoja, findsOneWidget);
 
           await volver(tester);
-          expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+          expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
           await tocar(tester, find.text('Crear igual'));
 
           expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);

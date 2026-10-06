@@ -276,7 +276,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           if (i > 0) const SizedBox(height: 10),
           _TarjetaCandidata(
             candidata: _candidatas[i],
-            letra: varias ? String.fromCharCode(65 + i) : null,
+            letra: varias ? FormatoUbicaciones.rotuloCandidata(i) : null,
             ciudad: widget.nombresCiudad[_candidatas[i].ubicacion.ciudadId],
             ahora: widget.ahora(),
             etiquetaBoton: _candidatas[i].admiteConservarAmbos
@@ -343,7 +343,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         const SizedBox(height: 10),
         Row(
           children: [
-            const _Letra('A'),
+            _Letra(FormatoUbicaciones.rotuloCandidata(0)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -510,11 +510,13 @@ class _Letra extends StatelessWidget {
     return Semantics(
       label: 'Candidata $letra',
       excludeSemantics: true,
+      // Un círculo de 24 con una letra; con dos («AA», «AB»…) se ensancha y queda una pastilla.
       child: Container(
-        width: 24,
+        constraints: const BoxConstraints(minWidth: 24),
         height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         alignment: Alignment.center,
-        decoration: const BoxDecoration(color: ColoresAlta.azul, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: ColoresAlta.azul, borderRadius: BorderRadius.circular(12)),
         child: Text(
           letra,
           style: const TextStyle(
@@ -651,7 +653,7 @@ class _VistaPreviaMapa extends ConsumerWidget {
                       id: candidatas[i].ubicacion.id,
                       coordenadas: candidatas[i].ubicacion.coordenadas,
                       estilo: EstiloPunto.candidata,
-                      letra: varias ? String.fromCharCode(65 + i) : null,
+                      letra: varias ? FormatoUbicaciones.rotuloCandidata(i) : null,
                     ),
                   PuntoMapa(id: 'nueva', coordenadas: nueva, estilo: EstiloPunto.nuevo),
                 ],
@@ -667,7 +669,7 @@ class _VistaPreviaMapa extends ConsumerWidget {
             if (varias)
               for (var i = 0; i < candidatas.length; i++)
                 Text(
-                  '${String.fromCharCode(65 + i)} a ${FormatoUbicaciones.distancia(candidatas[i].distanciaMetros)}',
+                  '${FormatoUbicaciones.rotuloCandidata(i)} a ${FormatoUbicaciones.distancia(candidatas[i].distanciaMetros)}',
                   style: const TextStyle(fontSize: 12.5, color: ColoresAlta.tinta),
                 ),
             _Leyenda(color: Theme.of(context).colorScheme.primary, texto: TextosDuplicado.laNueva),

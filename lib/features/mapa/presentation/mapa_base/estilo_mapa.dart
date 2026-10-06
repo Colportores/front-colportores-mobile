@@ -25,6 +25,10 @@ abstract final class ConstructorEstiloMapa {
   static const capaNuevo = 'colportores:nuevo';
   static const capaGps = 'colportores:gps';
 
+  /// El radio del círculo de una candidata (en px): con una letra y con dos («AA», «AB»…).
+  static const radioCandidata = 11.5;
+  static const radioCandidataDosLetras = 14.5;
+
   /// Las capas que responden al toque de un punto o un grupo.
   static const capasTocables = [capaGrupos, capaContexto, capaCandidata, capaNuevo, capaGps];
 
@@ -250,7 +254,24 @@ abstract final class ConstructorEstiloMapa {
         'filter': _filtroEstilo(EstiloPunto.candidata),
         'paint': {
           'circle-color': blanco,
-          'circle-radius': 11.5,
+          // Con dos letras («AA», «AB»…, de la candidata 27 en adelante) el círculo crece para que
+          // entren. `to-string` deja la letra de las candidatas sin rótulo en «».
+          'circle-radius': [
+            'case',
+            [
+              '>',
+              [
+                'length',
+                [
+                  'to-string',
+                  ['get', 'letra'],
+                ],
+              ],
+              1,
+            ],
+            radioCandidataDosLetras,
+            radioCandidata,
+          ],
           'circle-stroke-width': 2.5,
           'circle-stroke-color': _hex(ColoresMapa.bordeCandidata),
         },

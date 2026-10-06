@@ -1122,7 +1122,7 @@ void main() {
 
       await _tocar(tester, _registrar);
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('Misma dirección y misma ciudad.'), findsOneWidget);
       expect(find.text('Av. Italia 1234'), findsOneWidget);
       expect(find.text('Casa · Montevideo'), findsOneWidget);
@@ -1164,7 +1164,7 @@ void main() {
 
       await _tocar(tester, find.text('Cancelar'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsNothing);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsNothing);
       expect(find.text('Nueva ubicación'), findsOneWidget);
       expect(find.widgetWithText(TextField, '1236'), findsOneWidget);
       expect(find.text('-34.88761, -56.13024'), findsOneWidget);
@@ -1188,7 +1188,7 @@ void main() {
 
       expect(find.text('¿Por qué es otra ubicación?'), findsOneWidget);
       expect(find.text('A'), findsOneWidget);
-      expect(find.text('Av. Italia 1234 · a 12 m'), findsOneWidget);
+      expect(find.text('Av. Italia 1234 · a 12\u00A0m'), findsOneWidget);
       expect(find.text('JUSTIFICACIÓN · OBLIGATORIA'), findsOneWidget);
       expect(find.text('Otra puerta en el mismo número'), findsOneWidget);
       expect(find.text('Local en planta baja'), findsOneWidget);
@@ -1242,7 +1242,7 @@ void main() {
 
       await _tocar(tester, find.byTooltip('Volver'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('¿Por qué es otra ubicación?'), findsNothing);
     });
 
@@ -1330,7 +1330,7 @@ void main() {
 
       await _tocar(tester, find.widgetWithText(FilledButton, 'Crear igual'));
 
-      expect(find.text('Ya existe una ubicación a 12 m'), findsOneWidget);
+      expect(find.text('Ya existe una ubicación a 12\u00A0m'), findsOneWidget);
       expect(find.text('Abrir la existente'), findsOneWidget);
       expect(find.text('Crear igual'), findsNothing);
     });
@@ -1512,7 +1512,7 @@ void main() {
         await _tocar(tester, find.text('Casa'));
         await _tocar(tester, _registrar);
 
-        expect(find.text('Ya existe una ubicación a 3 m'), findsOneWidget);
+        expect(find.text('Ya existe una ubicación a 3\u00A0m'), findsOneWidget);
         expect(find.text('Revisá si es el mismo lugar antes de crear otra.'), findsOneWidget);
       },
     );
@@ -1535,8 +1535,8 @@ void main() {
 
       expect(find.text('Hay 2 ubicaciones cerca'), findsOneWidget);
       expect(find.text('Si alguna es este lugar, reutilizala.'), findsOneWidget);
-      expect(find.text('A a 4 m'), findsOneWidget);
-      expect(find.text('B a 12 m'), findsOneWidget);
+      expect(find.text('A a 4\u00A0m'), findsOneWidget);
+      expect(find.text('B a 12\u00A0m'), findsOneWidget);
       expect(find.text('Reutilizar esta'), findsNWidgets(2));
       expect(find.text('Crear igual'), findsOneWidget);
       expect(find.text('Av. Italia 1236'), findsOneWidget);
@@ -1977,5 +1977,41 @@ void main() {
       expect(previa.ajuste!.puntos, hasLength(13));
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      '28 candidatas, sin tope: A … Z, AA, AB, y la misma letra en el mapa, la leyenda y la lista',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await abrirHoja(tester, [for (var i = 0; i < 28; i++) candidata('c$i', metros: 5.0 + i)]);
+
+        expect(find.text('Hay 28 ubicaciones cerca'), findsOneWidget);
+        // El mapa: una letra distinta para cada una, de la «A» a la «AB».
+        final letras = vistaPrevia(tester).puntos.map((p) => p.letra).whereType<String>().toList();
+        expect(letras, hasLength(28));
+        expect(letras.toSet(), hasLength(28), reason: 'ninguna se repite');
+        expect(letras.first, 'A');
+        expect(letras[25], 'Z');
+        expect(letras[26], 'AA');
+        expect(letras[27], 'AB');
+        // La leyenda de debajo del mapa dice lo mismo.
+        expect(find.text('Z a 30 m'), findsOneWidget);
+        expect(find.text('AA a 31 m'), findsOneWidget);
+        expect(find.text('AB a 32 m'), findsOneWidget);
+        // Y la lista, con la etiqueta del lector de pantalla.
+        await tester.ensureVisible(find.text('AB'));
+        await tester.pump();
+        expect(find.text('AA'), findsOneWidget);
+        expect(find.text('AB'), findsOneWidget);
+        expect(find.bySemanticsLabel('Candidata AB'), findsOneWidget);
+        // Con dos letras la insignia se ensancha y la letra entra con aire a los lados.
+        final insignia = tester.getRect(
+          find.ancestor(of: find.text('AB'), matching: find.byType(Container)).first,
+        );
+        expect(insignia.width, greaterThan(24));
+        expect(insignia.width, greaterThanOrEqualTo(tester.getSize(find.text('AB')).width + 10));
+        expect(tester.takeException(), isNull);
+        handle.dispose();
+      },
+    );
   });
 }

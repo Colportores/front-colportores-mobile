@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -333,8 +334,8 @@ class _ZonaMapaState extends State<_ZonaMapa> {
         ),
         Positioned.fill(
           child: IgnorePointer(
-            child: Align(
-              alignment: const Alignment(0, .3),
+            child: CustomSingleChildLayout(
+              delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
               child: Semantics(
                 liveRegion: true,
                 child: Container(
@@ -343,7 +344,11 @@ class _ZonaMapaState extends State<_ZonaMapa> {
                     color: const Color(0xD10E1A2B),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(pista, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
+                  child: Text(
+                    pista,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                  ),
                 ),
               ),
             ),
@@ -351,10 +356,10 @@ class _ZonaMapaState extends State<_ZonaMapa> {
         ),
         if (estado.lectura != null)
           Positioned(
-            right: 14,
+            right: _derechaBotonVolver,
             bottom: 36,
             child: _BotonRedondo(
-              tamano: 52,
+              tamano: _ladoBotonVolver,
               icono: Icons.my_location,
               etiqueta: TextosAlta.volverAMiUbicacion,
               alPresionar: widget.alVolverAMiUbicacion,
@@ -363,6 +368,53 @@ class _ZonaMapaState extends State<_ZonaMapa> {
       ],
     );
   }
+}
+
+/// «Volver a mi ubicación» flota abajo a la derecha del mapa: a [_derechaBotonVolver] del borde y de
+/// [_ladoBotonVolver] de lado. La pista del pin le deja ese lugar.
+const _derechaBotonVolver = 14.0;
+const _ladoBotonVolver = 52.0;
+
+/// Dónde va la pista «Mové el mapa para ajustar el punto»: centrada debajo de la punta del pin (que
+/// está en el centro del mapa), con [margen] a los bordes y sin pasar por «Volver a mi ubicación».
+/// Con el texto grande la pista baja a dos renglones o más; no ocupa todo el ancho ni sube a taparle
+/// la punta al pin.
+class _PosicionPista extends SingleChildLayoutDelegate {
+  const _PosicionPista({required this.conBotonVolver});
+
+  final bool conBotonVolver;
+
+  static const margen = 16.0;
+
+  /// Lo que la pista deja libre al lado del botón y, más chico, debajo de la punta del pin: en el
+  /// mapa chico con el texto grande abajo todavía entra la atribución de OpenStreetMap.
+  static const separacion = 8.0;
+  static const separacionDelPin = 4.0;
+
+  /// El borde derecho de donde cabe la pista.
+  double _limiteDerecho(double ancho) => conBotonVolver
+      ? ancho - (_derechaBotonVolver + _ladoBotonVolver + separacion)
+      : ancho - margen;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) => BoxConstraints(
+    maxWidth: math.max(0, _limiteDerecho(constraints.maxWidth) - margen),
+    maxHeight: constraints.maxHeight,
+  );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    // Centrada bajo el pin y, si así tocaría el botón, corrida a la izquierda.
+    final centrada = (size.width - childSize.width) / 2;
+    final x = math.max(margen, math.min(centrada, _limiteDerecho(size.width) - childSize.width));
+    // Donde estaba (alineada en (0, .3)), pero nunca más arriba que la punta del pin.
+    final habitual = (size.height - childSize.height) * 0.65;
+    final y = math.max(habitual, size.height / 2 + separacionDelPin);
+    return Offset(x, y);
+  }
+
+  @override
+  bool shouldRelayout(_PosicionPista anterior) => anterior.conBotonVolver != conBotonVolver;
 }
 
 /// «No tenemos tu ubicación. Tocá el mapa donde está el lugar o activá el GPS.» con «Activar GPS»

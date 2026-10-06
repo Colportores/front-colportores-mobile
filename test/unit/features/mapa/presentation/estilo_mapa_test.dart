@@ -401,6 +401,34 @@ void main() {
         expect((letra['layout'] as Map<String, dynamic>)['text-field'], ['get', 'letra']);
       });
 
+      test('el círculo de la candidata crece cuando la letra tiene dos caracteres (AA, AB…)', () {
+        final paint =
+            capa(construir(_config()), ConstructorEstiloMapa.capaCandidata)['paint']
+                as Map<String, dynamic>;
+
+        expect(paint['circle-radius'], [
+          'case',
+          [
+            '>',
+            [
+              'length',
+              [
+                'to-string',
+                ['get', 'letra'],
+              ],
+            ],
+            1,
+          ],
+          ConstructorEstiloMapa.radioCandidataDosLetras,
+          ConstructorEstiloMapa.radioCandidata,
+        ]);
+        expect(
+          ConstructorEstiloMapa.radioCandidataDosLetras,
+          greaterThan(ConstructorEstiloMapa.radioCandidata),
+        );
+        expect(ConstructorEstiloMapa.radioCandidata, 11.5, reason: 'el de una letra no cambia');
+      });
+
       test('el punto nuevo toma el color primario del tema', () {
         final estilo = construir(_config(colorNuevo: const Color(0xFF123456)));
 

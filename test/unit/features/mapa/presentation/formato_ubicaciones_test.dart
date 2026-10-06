@@ -18,19 +18,57 @@ Ubicacion _u({String? calle, String? numero}) => Ubicacion(
 void main() {
   group('distancia', () {
     test('metros redondeados, nunca «0 m»', () {
-      expect(FormatoUbicaciones.distancia(12.4), '12 m');
-      expect(FormatoUbicaciones.distancia(0.2), '1 m');
-      expect(FormatoUbicaciones.distancia(0), '1 m');
+      expect(FormatoUbicaciones.distancia(12.4), '12\u00A0m');
+      expect(FormatoUbicaciones.distancia(0.2), '1\u00A0m');
+      expect(FormatoUbicaciones.distancia(0), '1\u00A0m');
     });
 
     test('desde el kilómetro, en km con coma', () {
-      expect(FormatoUbicaciones.distancia(1000), '1,0 km');
-      expect(FormatoUbicaciones.distancia(1234), '1,2 km');
+      expect(FormatoUbicaciones.distancia(1000), '1,0\u00A0km');
+      expect(FormatoUbicaciones.distancia(1234), '1,2\u00A0km');
+    });
+
+    test('el número y la unidad van unidos por un espacio duro: el renglón no los separa', () {
+      for (final metros in [0.2, 12, 999, 1000, 5400]) {
+        final texto = FormatoUbicaciones.distancia(metros.toDouble());
+        expect(texto, isNot(contains(' ')), reason: '$metros: sin espacio común');
+        expect(texto, contains(FormatoUbicaciones.espacioDuro), reason: '$metros');
+      }
     });
 
     test('un valor que no es una distancia da vacío', () {
       expect(FormatoUbicaciones.distancia(double.nan), '');
       expect(FormatoUbicaciones.distancia(-3), '');
+    });
+  });
+
+  group('rotuloCandidata', () {
+    test('las primeras 26 son A … Z', () {
+      expect(FormatoUbicaciones.rotuloCandidata(0), 'A');
+      expect(FormatoUbicaciones.rotuloCandidata(1), 'B');
+      expect(FormatoUbicaciones.rotuloCandidata(25), 'Z');
+    });
+
+    test('de la 27 en adelante siguen AA, AB … como las columnas de una planilla', () {
+      expect(FormatoUbicaciones.rotuloCandidata(26), 'AA');
+      expect(FormatoUbicaciones.rotuloCandidata(27), 'AB');
+      expect(FormatoUbicaciones.rotuloCandidata(51), 'AZ');
+      expect(FormatoUbicaciones.rotuloCandidata(52), 'BA');
+      expect(FormatoUbicaciones.rotuloCandidata(701), 'ZZ');
+      expect(FormatoUbicaciones.rotuloCandidata(702), 'AAA');
+    });
+
+    test('nunca se repite ni sale un símbolo que no sea una letra', () {
+      final vistos = <String>{};
+      for (var i = 0; i < 1500; i++) {
+        final rotulo = FormatoUbicaciones.rotuloCandidata(i);
+        expect(RegExp(r'^[A-Z]+$').hasMatch(rotulo), isTrue, reason: '$i: $rotulo');
+        expect(vistos.add(rotulo), isTrue, reason: '$i repite $rotulo');
+      }
+    });
+
+    test('un índice negativo no es una candidata: vacío', () {
+      expect(FormatoUbicaciones.rotuloCandidata(-1), '');
     });
   });
 

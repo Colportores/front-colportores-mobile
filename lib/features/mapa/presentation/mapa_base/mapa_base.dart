@@ -206,6 +206,9 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   Future<void> moverCamara(CamaraMapa camara) async {
     _camara = camara;
     _eco = camara;
+    // Con un zoom sobre el centro en curso, lo que pide el código (por ejemplo, centrar en el punto
+    // que se tocó) es el centro al que se vuelve al terminar, no el de antes del zoom.
+    if (_zoomPendiente) _centroPrevio = camara.centro;
     final puerto = _puerto;
     if (puerto == null) {
       _pendiente = camara;
@@ -506,30 +509,41 @@ class _Dedo {
   void reiniciarReferencia() => referencia = posicion;
 }
 
-/// «© OpenStreetMap»: la atribución que pide la licencia de los datos (ODbL).
+/// «© OpenStreetMap»: la atribución que pide la licencia de los datos (ODbL). Crece con el texto del
+/// sistema y el lector de pantalla la lee. Si no entra en una línea baja a dos renglones, sin
+/// elipsis, y a la derecha deja libre lo que ocupa un botón flotante del mapa.
 class _AtribucionOsm extends StatelessWidget {
   const _AtribucionOsm();
 
   static const texto = '© OpenStreetMap';
 
+  /// Del borde derecho: un botón de 52 dp a 14 dp del borde, y un respiro.
+  static const _reservaDerecha = 80.0;
+
   @override
   Widget build(BuildContext context) {
     return Positioned(
       left: 6,
-      bottom: 6,
-      child: ExcludeSemantics(
+      right: _reservaDerecha,
+      bottom: 4,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        heightFactor: 1,
         child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xCCFFFFFF),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              child: Text(
-                texto,
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(fontSize: 10, height: 1.2, color: ColoresMapa.tinta),
+          // Un nodo propio para el lector de pantalla: no se mezcla con el rótulo del mapa.
+          child: Semantics(
+            container: true,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xCCFFFFFF),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                child: Text(
+                  texto,
+                  style: TextStyle(fontSize: 10, height: 1.2, color: ColoresMapa.tinta),
+                ),
               ),
             ),
           ),
