@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../formato_ubicaciones.dart';
+import '../mapa_base/mapa_base.dart';
+import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/alta_ubicacion_notifier.dart';
+import '../providers/mapa_base_providers.dart';
 import 'hoja_alta.dart';
 import 'piezas_alta.dart';
 
@@ -611,19 +613,14 @@ class _TarjetaCandidata extends StatelessWidget {
 
 /// Vista previa de la vista 04: la ubicación nueva y las candidatas (A, B…) en un mapa chico, sin
 /// moverlo.
-class _VistaPreviaMapa extends StatelessWidget {
+class _VistaPreviaMapa extends ConsumerWidget {
   const _VistaPreviaMapa({required this.nueva, required this.candidatas});
 
   final Coordenadas nueva;
   final List<CandidataDuplicado> candidatas;
 
   @override
-  Widget build(BuildContext context) {
-    final puntoNuevo = LatLng(nueva.lat, nueva.lon);
-    final puntos = [
-      puntoNuevo,
-      for (final c in candidatas) LatLng(c.ubicacion.lat, c.ubicacion.lon),
-    ];
+  Widget build(BuildContext context, WidgetRef ref) {
     final varias = candidatas.length > 1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -637,62 +634,25 @@ class _VistaPreviaMapa extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
               height: 150,
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCameraFit: CameraFit.coordinates(
-                    coordinates: puntos,
-                    padding: const EdgeInsets.all(40),
-                    maxZoom: 18,
-                  ),
-                  backgroundColor: ColoresAlta.fondoMapa,
-                  interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+              // Una imagen del mapa, sin gestos: los toques siguen de largo hacia el scroll de la hoja.
+              child: MapaBase(
+                fuente: ref.watch(fuenteMapaProvider),
+                ajuste: AjusteMapa(
+                  puntos: [nueva, for (final c in candidatas) c.ubicacion.coordenadas],
+                  margen: 40,
+                  zoomMaximo: 18,
                 ),
-                children: [
-                  MarkerLayer(
-                    markers: [
-                      for (var i = 0; i < candidatas.length; i++)
-                        Marker(
-                          point: puntos[i + 1],
-                          width: 28,
-                          height: 28,
-                          child: ExcludeSemantics(
-                            child: Container(
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: ColoresAlta.gris, width: 2.5),
-                              ),
-                              child: varias
-                                  ? Text(
-                                      String.fromCharCode(65 + i),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: ColoresAlta.tinta,
-                                        height: 1,
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      Marker(
-                        point: puntoNuevo,
-                        width: 28,
-                        height: 28,
-                        child: ExcludeSemantics(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                interaccion: InteraccionMapa.ninguna,
+                fondo: ColoresAlta.fondoMapa,
+                puntos: [
+                  for (var i = 0; i < candidatas.length; i++)
+                    PuntoMapa(
+                      id: candidatas[i].ubicacion.id,
+                      coordenadas: candidatas[i].ubicacion.coordenadas,
+                      estilo: EstiloPunto.candidata,
+                      letra: varias ? String.fromCharCode(65 + i) : null,
+                    ),
+                  PuntoMapa(id: 'nueva', coordenadas: nueva, estilo: EstiloPunto.nuevo),
                 ],
               ),
             ),

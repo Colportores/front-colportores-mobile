@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
-import '../../domain/services/resolutores_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
+import '../providers/mapa_base_providers.dart';
 import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
@@ -166,7 +166,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
   Widget build(BuildContext context) {
     final proveedor = altaUbicacionProvider(widget.parametros);
     final estado = ref.watch(proveedor);
-    final sinTiles = ref.watch(fuenteTilesAltaProvider) == FuenteTiles.sinTiles;
+    final sinTiles = !ref.watch(fuenteMapaProvider).hayTiles;
     final sinGps = estado.gps == EstadoGps.sinGps;
     final cierre = Navigator.of(context);
 
