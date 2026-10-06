@@ -36,13 +36,36 @@ abstract final class ConstructorEstiloMapa {
     required String estiloBase,
     required String directorioRecursos,
     required ConfigVistaMapa config,
+  }) => _armar(estiloBase: estiloBase, directorioRecursos: directorioRecursos, config: config);
+
+  /// El estilo cuando no se pudieron copiar los glyphs y sprites (disco lleno, por ejemplo): sin
+  /// tipografías ni íconos, o sea sin las capas que los usan (nombres de calles, números de los
+  /// grupos y letras de las candidatas). Lo demás se ve igual: los tiles, los puntos y el radio del
+  /// GPS, que son círculos y polígonos. Así el mapa responde y se puede marcar el punto.
+  static String construirSinRecursos({
+    required String estiloBase,
+    required ConfigVistaMapa config,
+  }) => _armar(estiloBase: estiloBase, directorioRecursos: null, config: config);
+
+  static String _armar({
+    required String estiloBase,
+    required String? directorioRecursos,
+    required ConfigVistaMapa config,
   }) {
+    final conRecursos = directorioRecursos != null;
     final estilo = Map<String, dynamic>.from(jsonDecode(estiloBase) as Map<String, dynamic>);
-    estilo['glyphs'] = 'file://$directorioRecursos/glyphs/{fontstack}/{range}.pbf';
-    estilo['sprite'] = 'file://$directorioRecursos/sprites/grayscale';
+    if (conRecursos) {
+      estilo['glyphs'] = 'file://$directorioRecursos/glyphs/{fontstack}/{range}.pbf';
+      estilo['sprite'] = 'file://$directorioRecursos/sprites/grayscale';
+    } else {
+      estilo.remove('glyphs');
+      estilo.remove('sprite');
+    }
 
     final capas = <Map<String, dynamic>>[
-      for (final capa in estilo['layers'] as List<dynamic>) capa as Map<String, dynamic>,
+      for (final capa in estilo['layers'] as List<dynamic>)
+        if (conRecursos || !_usaRecursos(capa as Map<String, dynamic>))
+          capa as Map<String, dynamic>,
     ];
     final fuentes = Map<String, dynamic>.from(estilo['sources'] as Map<String, dynamic>);
 
@@ -71,8 +94,15 @@ abstract final class ConstructorEstiloMapa {
     fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
 
     estilo['sources'] = fuentes;
-    estilo['layers'] = [...capas, ..._capasPropias(config)];
+    estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
     return jsonEncode(estilo);
+  }
+
+  /// ¿La capa necesita glyphs o sprites? Los textos (`symbol`) y los rellenos y líneas con patrón.
+  static bool _usaRecursos(Map<String, dynamic> capa) {
+    if (capa['type'] == 'symbol') return true;
+    final paint = capa['paint'];
+    return paint is Map<String, dynamic> && paint.keys.any((k) => k.endsWith('-pattern'));
   }
 
   /// Los puntos como `FeatureCollection` de GeoJSON, con `id`, `estilo` y `letra` como propiedades.
@@ -135,7 +165,10 @@ abstract final class ConstructorEstiloMapa {
     ],
   ];
 
-  static List<Map<String, dynamic>> _capasPropias(ConfigVistaMapa config) {
+  static List<Map<String, dynamic>> _capasPropias(
+    ConfigVistaMapa config, {
+    required bool conRecursos,
+  }) {
     final blanco = _hex(const Color(0xFFFFFFFF));
     return [
       {
@@ -195,20 +228,21 @@ abstract final class ConstructorEstiloMapa {
           'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
         },
       },
-      {
-        'id': 'colportores:grupos-cuenta',
-        'type': 'symbol',
-        'source': fuentePuntos,
-        'filter': ['has', 'point_count'],
-        'layout': {
-          'text-field': ['get', 'point_count_abbreviated'],
-          'text-font': ['NotoSans-Medium'],
-          'text-size': 12,
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
+      if (conRecursos)
+        {
+          'id': 'colportores:grupos-cuenta',
+          'type': 'symbol',
+          'source': fuentePuntos,
+          'filter': ['has', 'point_count'],
+          'layout': {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 12,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
         },
-        'paint': {'text-color': _hex(ColoresMapa.tinta)},
-      },
       {
         'id': capaCandidata,
         'type': 'circle',
@@ -221,24 +255,25 @@ abstract final class ConstructorEstiloMapa {
           'circle-stroke-color': _hex(ColoresMapa.bordeCandidata),
         },
       },
-      {
-        'id': 'colportores:candidata-letra',
-        'type': 'symbol',
-        'source': fuentePuntos,
-        'filter': [
-          'all',
-          _filtroEstilo(EstiloPunto.candidata),
-          ['has', 'letra'],
-        ],
-        'layout': {
-          'text-field': ['get', 'letra'],
-          'text-font': ['NotoSans-Medium'],
-          'text-size': 12,
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
+      if (conRecursos)
+        {
+          'id': 'colportores:candidata-letra',
+          'type': 'symbol',
+          'source': fuentePuntos,
+          'filter': [
+            'all',
+            _filtroEstilo(EstiloPunto.candidata),
+            ['has', 'letra'],
+          ],
+          'layout': {
+            'text-field': ['get', 'letra'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 12,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
         },
-        'paint': {'text-color': _hex(ColoresMapa.tinta)},
-      },
       {
         'id': capaNuevo,
         'type': 'circle',

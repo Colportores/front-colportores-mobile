@@ -55,11 +55,17 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     final config = widget.config;
     final clave = (recursos, config.fuente, config.agruparPuntos, config.fondo, config.colorNuevo);
     if (_estilo == null || _claveEstilo != clave) {
-      _estilo = ConstructorEstiloMapa.construir(
-        estiloBase: recursos.estiloBase,
-        directorioRecursos: recursos.directorio,
-        config: config,
-      );
+      final directorio = recursos.directorio;
+      _estilo = directorio == null
+          ? ConstructorEstiloMapa.construirSinRecursos(
+              estiloBase: recursos.estiloBase,
+              config: config,
+            )
+          : ConstructorEstiloMapa.construir(
+              estiloBase: recursos.estiloBase,
+              directorioRecursos: directorio,
+              config: config,
+            );
       _claveEstilo = clave;
       _estiloListo = false;
     }

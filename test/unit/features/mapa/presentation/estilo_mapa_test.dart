@@ -55,6 +55,10 @@ void main() {
           )
           as Map<String, dynamic>;
 
+  Map<String, dynamic> construirSinRecursos(ConfigVistaMapa config) =>
+      jsonDecode(ConstructorEstiloMapa.construirSinRecursos(estiloBase: estiloBase, config: config))
+          as Map<String, dynamic>;
+
   List<Map<String, dynamic>> capas(Map<String, dynamic> estilo) => [
     for (final capa in estilo['layers'] as List<dynamic>) capa as Map<String, dynamic>,
   ];
@@ -195,6 +199,101 @@ void main() {
           expect(Directory('assets/mapa/glyphs/$fuente').existsSync(), isTrue);
         }
       }
+    });
+
+    group('sin los glyphs y sprites (no se pudieron copiar)', () {
+      const conTiles = FuenteMapa.online('https://s/uy.pmtiles');
+      const puntos = [
+        PuntoMapa(id: 'm1', coordenadas: _montevideo),
+        PuntoMapa(id: 'gps', coordenadas: _montevideo, estilo: EstiloPunto.gps),
+        PuntoMapa(id: 'c1', coordenadas: _montevideo, estilo: EstiloPunto.candidata, letra: 'A'),
+      ];
+
+      test('no apunta a glyphs ni a sprites', () {
+        final estilo = construirSinRecursos(_config(fuente: conTiles));
+
+        expect(estilo.containsKey('glyphs'), isFalse);
+        expect(estilo.containsKey('sprite'), isFalse);
+        expect(jsonEncode(estilo), isNot(contains('ejemplo.invalid')));
+        expect(jsonEncode(estilo), isNot(contains('REEMPLAZAR')));
+      });
+
+      test('no queda ninguna capa que necesite tipografías o íconos', () {
+        for (final fuente in const [FuenteMapa.sinTiles(), conTiles]) {
+          final estilo = construirSinRecursos(_config(fuente: fuente, agrupar: true));
+
+          for (final c in capas(estilo)) {
+            expect(c['type'], isNot('symbol'), reason: c['id'] as String);
+            final layout = (c['layout'] as Map<String, dynamic>?) ?? const {};
+            expect(layout.containsKey('text-font'), isFalse, reason: c['id'] as String);
+            expect(layout.containsKey('icon-image'), isFalse, reason: c['id'] as String);
+            final paint = (c['paint'] as Map<String, dynamic>?) ?? const {};
+            expect(paint.keys.where((k) => k.endsWith('-pattern')), isEmpty);
+          }
+        }
+      });
+
+      test('los tiles, los puntos y el radio del GPS se siguen viendo', () {
+        final estilo = construirSinRecursos(
+          _config(
+            fuente: conTiles,
+            puntos: puntos,
+            precision: const CirculoPrecision(centro: _montevideo, radioMetros: 30),
+          ),
+        );
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        final tiles =
+            (estilo['sources'] as Map<String, dynamic>)[ConstructorEstiloMapa.fuenteTiles]
+                as Map<String, dynamic>;
+        expect(tiles['url'], 'pmtiles://https://s/uy.pmtiles');
+        expect(
+          capas(estilo).where((c) => c['source'] == ConstructorEstiloMapa.fuenteTiles),
+          isNotEmpty,
+          reason: 'las calles (líneas y áreas) no necesitan recursos',
+        );
+        for (final tocable in ConstructorEstiloMapa.capasTocables) {
+          expect(ids, contains(tocable));
+        }
+        expect(ids, contains('colportores:precision-relleno'));
+        expect(ids, contains('colportores:gps-halo'));
+        final fuentePuntos =
+            (estilo['sources'] as Map<String, dynamic>)[ConstructorEstiloMapa.fuentePuntos]
+                as Map<String, dynamic>;
+        expect((fuentePuntos['data'] as Map<String, dynamic>)['features'], hasLength(3));
+      });
+
+      test('es consistente: ids únicos y cada capa lee de una fuente que existe', () {
+        for (final fuente in const [FuenteMapa.sinTiles(), conTiles]) {
+          final estilo = construirSinRecursos(_config(fuente: fuente, agrupar: true));
+          final fuentes = (estilo['sources'] as Map<String, dynamic>).keys.toSet();
+          final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+          expect(ids.toSet(), hasLength(ids.length));
+          for (final c in capas(estilo)) {
+            if (c['type'] == 'background') continue;
+            expect(fuentes, contains(c['source']), reason: c['id'] as String);
+          }
+        }
+      });
+
+      test('el fondo y el color de la ubicación nueva se aplican igual', () {
+        final estilo = construirSinRecursos(
+          _config(fondo: const Color(0xFFE8F0EC), colorNuevo: const Color(0xFF123456)),
+        );
+
+        expect(capas(estilo).first['paint'], {'background-color': '#E8F0EC'});
+        final nuevo = capa(estilo, ConstructorEstiloMapa.capaNuevo);
+        expect((nuevo['paint'] as Map<String, dynamic>)['circle-color'], '#123456');
+      });
+
+      test('con recursos sí están las capas de texto (el degradado es solo sin ellos)', () {
+        final ids = [for (final c in capas(construir(_config()))) c['id'] as String];
+
+        expect(ids, contains('colportores:grupos-cuenta'));
+        expect(ids, contains('colportores:candidata-letra'));
+        expect(capas(construir(_config())).where((c) => c['type'] == 'symbol'), isNotEmpty);
+      });
     });
 
     group('puntos', () {
