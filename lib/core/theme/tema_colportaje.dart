@@ -64,7 +64,9 @@ ThemeData temaClaro() {
         foregroundColor: colorScheme.onPrimary,
         disabledBackgroundColor: colorScheme.primary.withValues(alpha: .5),
         shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(vertical: 17),
+        // El relleno horizontal de Material (24): con la etiqueta en dos renglones (texto al 200 %)
+        // la primera letra de cada renglón no cae sobre la curva de la píldora.
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
         textStyle: const TextStyle(
           fontFamily: 'Inter',
           fontSize: 15.5,

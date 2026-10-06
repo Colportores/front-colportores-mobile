@@ -9,9 +9,14 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import '../providers/auth_providers.dart';
 
-/// Pantalla "Olvidé mi contraseña" (HU-AUTH-004), vista 14 del diseño (#223): el formulario con la
-/// advertencia arriba y la casilla pegada al botón (A01 a A04 y A06) y, al enviar, una pantalla
-/// aparte con el mensaje neutro, «Reenviar» con cuenta regresiva y «Volver al login» (A05).
+/// Pantalla "Olvidé mi contraseña" (HU-AUTH-004), vista 14 del diseño (#223): el formulario con el
+/// aviso informativo arriba y el botón al pie (A01 a A04 y A06) y, al enviar, una pantalla aparte
+/// con el mensaje neutro, «Reenviar» con cuenta regresiva y «Volver al login» (A05).
+///
+/// Sin casilla «Entiendo el impacto» ni ⚠ (decisión de Cristian del 02/10, #272): como los datos
+/// del teléfono se conservan, no hay impacto que aceptar, así que el botón está habilitado desde el
+/// principio y un campo vacío se avisa al tocarlo. El canvas todavía dibuja la casilla en A01 y A02
+/// y el ⚠; esta decisión manda sobre el canvas.
 ///
 /// Llama directo a `solicitarRecuperacionPasswordUseCaseProvider`, no a través de
 /// `SesionNotifier`: la solicitud no toca el estado de sesión (igual que
@@ -58,9 +63,9 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// Apoyo de la pantalla de éxito (A05).
   static const String _textoSpam = 'Si no lo encontrás, revisá la carpeta de spam.';
 
-  /// Aviso de impacto (decisión de Cristian 01/10): el mismo texto de la vista 15 (15-A02). La
+  /// Aviso informativo (decisión de Cristian 01/10): el mismo texto de la vista 15 (15-A02). La
   /// clave de los datos del teléfono queda protegida (ADR-006, HU-AUTH-004): nada se pierde. Se
-  /// muestra siempre, antes de enviar.
+  /// muestra siempre, antes de enviar, sin casilla que aceptar (#272).
   static const String _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
   late final _email = TextEditingController(text: widget.emailInicial);
@@ -91,7 +96,6 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
   bool _enviado = false;
-  bool _entiendeImpacto = false;
   bool _enviando = false;
 
   @override
@@ -121,7 +125,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// Gatea tanto el `onPressed` del botón como el envío por teclado (`onSubmitted`) y la reentrada
   /// de [_enviar]: sin esto, un doble tap o un "Listo" del teclado justo antes del próximo rebuild
   /// podría disparar dos solicitudes (el botón recién se deshabilita cuando `setState` repinta).
-  bool get _puedeEnviar => _entiendeImpacto && !_enviando && _segundosRestantes == 0;
+  bool get _puedeEnviar => !_enviando && _segundosRestantes == 0;
 
   Future<void> _enviar() async {
     if (!_puedeEnviar) return;
@@ -184,8 +188,8 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     );
   }
 
-  /// A01 a A04 y A06: el formulario. Enviando (A04) el campo, la casilla y el botón quedan
-  /// deshabilitados y el botón dice «Enviando…».
+  /// A01 a A04 y A06: el formulario. Enviando (A04) el campo y el botón quedan deshabilitados y el
+  /// botón dice «Enviando…».
   Widget _formulario(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
@@ -213,7 +217,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 18),
-            const _AvisoImpacto(texto: _textoAviso),
+            const _AvisoDatos(texto: _textoAviso),
             const SizedBox(height: 22),
             _CampoRecuperacion(
               controller: _email,
@@ -231,23 +235,6 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 16),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48),
-              child: CheckboxListTile(
-                key: const Key('recuperacion_password_checkbox'),
-                value: _entiendeImpacto,
-                onChanged: _enviando
-                    ? null
-                    : (valor) => setState(() => _entiendeImpacto = valor ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  'Entiendo el impacto sobre mis datos locales',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
             FilledButton(
               key: const Key('recuperacion_password_enviar'),
               onPressed: _puedeEnviar ? _enviar : null,
@@ -358,9 +345,9 @@ class _Enviando extends StatelessWidget {
   );
 }
 
-/// La advertencia de impacto sobre los datos locales, arriba del campo (A01).
-class _AvisoImpacto extends StatelessWidget {
-  const _AvisoImpacto({required this.texto});
+/// El aviso sobre los datos locales, arriba del campo (A01): solo informa, sin ⚠ ni casilla (#272).
+class _AvisoDatos extends StatelessWidget {
+  const _AvisoDatos({required this.texto});
 
   final String texto;
 
@@ -377,19 +364,10 @@ class _AvisoImpacto extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: esquema.primary, width: 1.5),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 12,
-          children: [
-            ExcludeSemantics(child: Icon(Icons.warning_amber_rounded, color: esquema.primary)),
-            Expanded(
-              child: Text(
-                texto,
-                key: const Key('recuperacion_password_aviso'),
-                style: theme.textTheme.bodySmall?.copyWith(color: esquema.onSurface, height: 1.45),
-              ),
-            ),
-          ],
+        child: Text(
+          texto,
+          key: const Key('recuperacion_password_aviso'),
+          style: theme.textTheme.bodySmall?.copyWith(color: esquema.onSurface, height: 1.45),
         ),
       ),
     );
@@ -462,6 +440,9 @@ class _CampoRecuperacion extends StatelessWidget {
           decoration: InputDecoration(
             hintText: 'lucia.silva@correo.com',
             errorText: errorText,
+            // Con el texto al 200 % el error pasa a más de un renglón: sin esto se corta con
+            // puntos suspensivos (WCAG 1.4.4). Igual que el resto de los campos de auth.
+            errorMaxLines: 3,
             constraints: const BoxConstraints(minHeight: 48),
           ),
         ),
