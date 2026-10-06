@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.StatFs
 import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
@@ -20,6 +21,37 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         registrarCanalSeguridadDispositivo(flutterEngine)
+        registrarCanalAlmacenamientoTiles(flutterEngine)
+    }
+
+    /**
+     * Canal `colportores/almacenamiento_tiles` (HU-SYNC-010, #189): lo que la descarga de los mapas
+     * offline pregunta del almacenamiento. Del lado de Dart, `AlmacenamientoTilesCanal`. Los dos
+     * métodos reciben `{ruta}`.
+     *
+     * - `bytesLibres` → bytes que la app puede usar en el volumen de `ruta` (`StatFs.availableBytes`).
+     * - `excluirDeBackup` → `true` sin hacer nada: en Android la app ya tiene `allowBackup="false"`
+     *   (AndroidManifest.xml), así que ni los mapas ni nada de la app viajan a la copia de seguridad.
+     */
+    private fun registrarCanalAlmacenamientoTiles(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_TILES).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "bytesLibres" -> {
+                        val ruta = call.argument<String>("ruta")
+                        if (ruta == null) {
+                            result.error("ALMACENAMIENTO_TILES", "falta la ruta", null)
+                        } else {
+                            result.success(StatFs(ruta).availableBytes)
+                        }
+                    }
+                    "excluirDeBackup" -> result.success(true)
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("ALMACENAMIENTO_TILES", e.javaClass.simpleName, null)
+            }
+        }
     }
 
     /**
@@ -145,6 +177,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CANAL = "colportores/seguridad_dispositivo"
+        private const val CANAL_TILES = "colportores/almacenamiento_tiles"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ALIAS_PRUEBA = "colportores_sonda_nivel_keystore"
     }
