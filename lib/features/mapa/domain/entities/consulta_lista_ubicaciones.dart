@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../value_objects/coordenadas.dart';
+import 'estado_casa.dart';
 import 'ubicacion.dart';
 
 /// Orden de la lista de ubicaciones (HU-UBI-002).
@@ -15,12 +16,15 @@ enum OrdenListaUbicaciones {
 /// Qué lista de ubicaciones quiere ver el colportor (HU-UBI-002).
 ///
 /// Todos los filtros son opcionales y **se combinan con Y**: una ubicación tiene que cumplirlos
-/// todos. El filtro por `house_status` de la HU no está acá: hoy no hay tabla local de
-/// `house_status` de la que leerlo (ver el comentario del issue #195).
+/// todos. Dentro de un filtro de varios valores (tipo, estado) alcanza con uno: «Casa» y
+/// «Negocio» muestran las dos. El filtro por estado (`house_status`) filtra por el
+/// `UbicacionConResumen.estado` que trae el repositorio: una ubicación de estado desconocido
+/// (`null`) no cumple ningún estado pedido.
 final class ConsultaListaUbicaciones extends Equatable {
   const ConsultaListaUbicaciones({
     required this.colportorId,
     this.tipos = const {},
+    this.estados = const {},
     this.ciudadId,
     this.incluirBajas = false,
     this.busqueda,
@@ -38,6 +42,9 @@ final class ConsultaListaUbicaciones extends Equatable {
 
   /// Vacío = todos los tipos.
   final Set<TipoUbicacion> tipos;
+
+  /// Vacío = todos los estados (también las de estado desconocido).
+  final Set<EstadoCasa> estados;
 
   final String? ciudadId;
 
@@ -71,6 +78,7 @@ final class ConsultaListaUbicaciones extends Equatable {
   List<Object?> get props => [
     colportorId,
     tipos,
+    estados,
     ciudadId,
     incluirBajas,
     busqueda,

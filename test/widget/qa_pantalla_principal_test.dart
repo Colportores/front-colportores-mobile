@@ -418,7 +418,8 @@ void main() {
       await _montar(tester, _DataSource());
       await tester.pumpAndSettle();
 
-      for (final pestana in PestanaInicio.values.skip(1)) {
+      // «Lista» ya tiene contenido (HU-UBI-002): lo cubren sus propios tests.
+      for (final pestana in PestanaInicio.values.skip(1).where((p) => p != PestanaInicio.lista)) {
         await _tocar(tester, 'inicio_pestana_${pestana.name}');
         final seccion = find.byKey(Key('pestana_${pestana.name}'));
         expect(

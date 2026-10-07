@@ -27,10 +27,12 @@ class _SalidaEnMemoria extends LogOutput {
 
 /// Data source que responde lo que se le fije (o lanza [error]).
 final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocalDataSource {
-  _LocalFijo({this.respuesta, this.error});
+  _LocalFijo({this.respuesta, this.error, this.lista = const Stream.empty()});
 
   final InsercionUbicacion? respuesta;
   final Object? error;
+  final Stream<List<UbicacionConEspacios>> lista;
+  ({String colportorId, bool incluirBajas})? listaPedida;
   CriterioDuplicadoUbicacion? duplicadosRecibido;
   EspacioModel? espacioRecibido;
 
@@ -59,6 +61,15 @@ final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocal
     String? ciudadId,
     bool incluirBajas = false,
   }) => const Stream.empty();
+
+  @override
+  Stream<List<UbicacionConEspacios>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) {
+    listaPedida = (colportorId: colportorId, incluirBajas: incluirBajas);
+    return lista;
+  }
 }
 
 void main() {
@@ -183,6 +194,32 @@ void main() {
       ]);
 
       expect(e.toString(), 'UbicacionDuplicadaException(1)');
+    });
+  });
+  group('UbicacionRepositoryImpl.observarListaDelColportor', () {
+    test('devuelve entidades con sus espacios y sin estado (aún no hay house_status)', () async {
+      final modelo = UbicacionModel.fromEntity(ubicacion);
+      final local = _LocalFijo(lista: Stream.value([(ubicacion: modelo, cantidadEspacios: 3)]));
+
+      final lista = await UbicacionRepositoryImpl(
+        local,
+      ).observarListaDelColportor(colportorId: 'col-1', incluirBajas: true).first;
+
+      expect(local.listaPedida, (colportorId: 'col-1', incluirBajas: true));
+      expect(lista.single.ubicacion, ubicacion);
+      expect(lista.single.cantidadEspacios, 3);
+      expect(lista.single.estado, isNull);
+      expect(lista.single.proximaEntrevista, isNull);
+    });
+
+    test('un error de lectura llega al stream', () async {
+      final local = _LocalFijo(lista: Stream.error(StateError('db cerrada')));
+      final repo = UbicacionRepositoryImpl(local);
+
+      await expectLater(
+        repo.observarListaDelColportor(colportorId: 'col-1'),
+        emitsError(isA<StateError>()),
+      );
     });
   });
 }

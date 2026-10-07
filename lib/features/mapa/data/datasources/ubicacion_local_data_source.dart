@@ -8,6 +8,9 @@ import '../models/ubicacion_model.dart';
 /// Resultado de [UbicacionLocalDataSource.insertar]: la ubicación guardada y si ya estaba.
 typedef InsercionUbicacion = ({UbicacionModel ubicacion, bool yaEstaba});
 
+/// Una ubicación con la cantidad de espacios sin baja que tiene (para la lista, HU-UBI-002).
+typedef UbicacionConEspacios = ({UbicacionModel ubicacion, int cantidadEspacios});
+
 /// Persistencia local de las ubicaciones y sus espacios.
 ///
 /// La implementación real es `UbicacionLocalDataSourceDrift`, sobre las tablas `ubicacion` y
@@ -81,6 +84,13 @@ abstract interface class UbicacionLocalDataSource {
   Stream<List<UbicacionModel>> observarDelColportor({
     required String colportorId,
     String? ciudadId,
+    bool incluirBajas = false,
+  });
+
+  /// Lo mismo que [observarDelColportor] (sin filtro de ciudad), cada ubicación con la cantidad de
+  /// espacios sin baja que tiene: un solo `JOIN` con `COUNT`, para la lista (HU-UBI-002).
+  Stream<List<UbicacionConEspacios>> observarListaDelColportor({
+    required String colportorId,
     bool incluirBajas = false,
   });
 

@@ -72,7 +72,8 @@ void main() {
 
   for (final MapEntry(key: nombre, value: tam) in tamanios.entries) {
     for (final escala in [1.0, 2.0]) {
-      for (final pestana in PestanaInicio.values.skip(1)) {
+      // «Lista» ya tiene pantalla (#196): sus pruebas están en `lista_ubicaciones_*_test.dart`.
+      for (final pestana in PestanaInicio.values.skip(1).where((p) => p != PestanaInicio.lista)) {
         testWidgets('pestaña ${pestana.name} en $nombre, texto $escala: sin overflow y accesible', (
           tester,
         ) async {
