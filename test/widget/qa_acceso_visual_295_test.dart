@@ -2,8 +2,8 @@
 // (Inter, Source Serif 4, JetBrains Mono) y por eso va en un archivo aparte: cargarlas cambia el
 // ancho de todo el texto del archivo.
 //
-// Los tests con `skip:` documentan un hallazgo del comentario de QA del PR #295: el implementador
-// saca el `skip` cuando lo arregla.
+// Los hallazgos de la ronda 1 que esta suite dejaba con `skip:` quedaron arreglados (ronda 1 de la
+// revisión del PR #295): ningún test de acá está salteado.
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +25,6 @@ void main() {
 
   group('Acceso — revisión visual con las fuentes reales', () {
     for (final ancho in [360.0, 390.0]) {
-      // skip: QA #265: a 360 y 390 de ancho (el ancho del diseño) el enlace «¿Olvidaste tu clave?» queda «¿Olvidaste tu c…»
       testWidgets('el enlace «¿Olvidaste tu clave?» se lee entero a ${ancho.toInt()} de ancho', (
         tester,
       ) async {
@@ -34,7 +33,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(_seVeEntero(tester, find.text('¿Olvidaste tu clave?')), isTrue);
-      }, skip: true);
+      });
     }
 
     testWidgets('el enlace «¿Olvidaste tu clave?» se lee entero a 412 de ancho', (tester) async {
@@ -56,7 +55,6 @@ void main() {
       expect(_seVeEntero(tester, find.text('¿Olvidaste tu clave?')), isTrue);
     });
 
-    // skip: QA #265: el tema pinta las casillas sin marcar con el mismo azul macizo que las marcadas (tema_colportaje.dart:92)
     testWidgets(
       'una casilla sin marcar no se pinta igual que una marcada (términos del registro)',
       (tester) async {
@@ -72,7 +70,6 @@ void main() {
 
         expect(sinMarcar, isNot(marcada));
       },
-      skip: true,
     );
   });
 }

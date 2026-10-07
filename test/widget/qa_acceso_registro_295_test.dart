@@ -1,8 +1,8 @@
 // QA del registro tras sacar el ingreso con Google (#265, PR #295), ronda 1: HU-AUTH-001 y el
 // artboard «1a · Registro» de `disenio-vistas/mobile/Login Colportor.dc.html`.
 //
-// Los tests con `skip:` documentan un hallazgo del comentario de QA del PR #295: el implementador
-// saca el `skip` cuando lo arregla.
+// Los hallazgos de la ronda 1 que esta suite dejaba con `skip:` quedaron arreglados (ronda 1 de la
+// revisión del PR #295): ningún test de acá está salteado.
 import 'dart:async';
 
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -149,7 +149,6 @@ void main() {
   });
 
   group('Registro — los errores se anuncian y los botones tienen nombre', () {
-    // skip: QA #265: registro_error_general («Ya existe una cuenta…») no es liveRegion: el lector de pantalla no anuncia el fallo
     testWidgets('el error de «email ya registrado» es una región viva (liveRegion)', (
       tester,
     ) async {
@@ -158,18 +157,16 @@ void main() {
 
       expect(tester.getSemantics(find.byKey(_errorGeneral)), isSemantics(isLiveRegion: true));
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: el aviso sin conexión del registro (registro_error_general) no es liveRegion: el lector de pantalla no lo anuncia
     testWidgets('el aviso sin conexión es una región viva (liveRegion)', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.sinConexion);
 
       expect(tester.getSemantics(find.byKey(_errorGeneral)), isSemantics(isLiveRegion: true));
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: el aviso del 5xx del registro (BannerErrorConAccion) no es liveRegion: el lector de pantalla no lo anuncia
     testWidgets('el aviso del fallo del servidor (con «Reintentar») es una región viva', (
       tester,
     ) async {
@@ -178,9 +175,8 @@ void main() {
 
       expect(tester.getSemantics(find.byKey(_errorGeneral)), isSemantics(isLiveRegion: true));
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: «Tenés que aceptar los términos.» no es liveRegion: el lector de pantalla no lo anuncia
     testWidgets('«Tenés que aceptar los términos.» se anuncia (liveRegion)', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.erroresDeCampo);
@@ -190,16 +186,18 @@ void main() {
         isSemantics(isLiveRegion: true),
       );
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: la flecha de volver (registro_atras) se lee «‹»: sin tooltip ni Semantics.label «Volver»
     testWidgets('la flecha de volver se llama «Volver» para el lector de pantalla', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.inicial);
 
-      expect(tester.getSemantics(find.byKey(const Key('registro_atras'))).label, 'Volver');
+      // El nombre viaja como `tooltip` (igual que el resto de los botones de ícono de la app).
+      final nodo = tester.getSemantics(find.byKey(const Key('registro_atras')));
+      expect(nodo.tooltip, 'Volver');
+      expect(nodo.label.contains('‹'), isFalse);
       semantica.dispose();
-    }, skip: true);
+    });
 
     testWidgets('la flecha de volver mide al menos 48x48', (tester) async {
       await _llegarA(tester, _Estado.inicial);
@@ -209,7 +207,6 @@ void main() {
       expect(caja.height, greaterThanOrEqualTo(48));
     });
 
-    // skip: QA #265: con el envío en vuelo «Continuar» solo muestra el spinner y queda sin nombre accesible
     testWidgets('«Continuar» ocupado conserva un nombre para el lector de pantalla', (
       tester,
     ) async {
@@ -218,7 +215,7 @@ void main() {
 
       expect(tester.getSemantics(find.byKey(_continuar)).label, isNotEmpty);
       semantica.dispose();
-    }, skip: true);
+    });
   });
 
   group('Registro — tamaños, texto grande y teclado', () {
@@ -277,7 +274,6 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // skip: QA #265: a 360x640, al tocar «Continuar» con el formulario vacío el error del primer campo queda fuera de pantalla y no se mueve el foco
     testWidgets('con los errores en pantalla, al tocar «Continuar» el primer error queda a la '
         'vista (360x640)', (tester) async {
       fijarPantalla(tester, tamanosAcceso.first);
@@ -292,7 +288,7 @@ void main() {
         isTrue,
         reason: 'el error del primer campo queda fuera de la pantalla: ${nombre.top}',
       );
-    }, skip: true);
+    });
 
     testWidgets(
       'texto pegado muy largo en nombre, correo y contraseña: sin overflow (360x640 ×2)',
@@ -400,18 +396,18 @@ void main() {
       expect(usuario.apellido, "D'Ávila-Müller");
     });
 
-    // skip: QA #265: nombre/apellido/correo no tienen tope de largo: un texto pegado de 5000 caracteres llega al servidor
-    testWidgets('el nombre tiene un tope de largo (un texto pegado de 5000 caracteres no viaja)', (
+    testWidgets('el nombre tiene un tope de 60 caracteres (un texto pegado de 5000 no viaja)', (
       tester,
     ) async {
       final remoto = await _llegarA(tester, _Estado.inicial);
 
       await _completar(tester);
       await _escribir(tester, _nombre, 'N' * 5000);
+      expect(_texto(tester, _nombre), 'N' * 60);
       await _enviar(tester);
 
-      expect(remoto.llamadasRegistrar, 0);
-    }, skip: true);
+      expect(remoto.interno.usuariosRegistrados[_correoNuevo]!.nombre, 'N' * 60);
+    });
 
     testWidgets('con errores a la vista, lo tipeado se conserva y las casillas siguen marcadas', (
       tester,

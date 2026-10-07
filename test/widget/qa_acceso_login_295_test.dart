@@ -1,8 +1,8 @@
 // QA del login tras sacar el ingreso con Google (#265, PR #295), ronda 1: HU-AUTH-003 y el
 // artboard «1a · Login» de `disenio-vistas/mobile/Login Colportor.dc.html`.
 //
-// Los tests con `skip:` documentan un hallazgo del comentario de QA del PR #295: el implementador
-// saca el `skip` cuando lo arregla.
+// Los hallazgos de la ronda 1 que esta suite dejaba con `skip:` quedaron arreglados (ronda 1 de la
+// revisión del PR #295): ningún test de acá está salteado.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -138,32 +138,29 @@ void main() {
   });
 
   group('Login — los errores se anuncian al lector de pantalla', () {
-    // skip: QA #265: login_error_general («Email o contraseña incorrectos») no es liveRegion: el lector de pantalla no anuncia el fallo
     testWidgets('el error de credenciales es una región viva (liveRegion)', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.credencialesIncorrectas);
 
       expect(tester.getSemantics(find.byKey(_errorGeneral)), isSemantics(isLiveRegion: true));
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: el aviso sin conexión del login (login_error_general) no es liveRegion: el lector de pantalla no lo anuncia
     testWidgets('el aviso sin conexión es una región viva (liveRegion)', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.sinConexion);
 
       expect(tester.getSemantics(find.byKey(_errorGeneral)), isSemantics(isLiveRegion: true));
       semantica.dispose();
-    }, skip: true);
+    });
 
-    // skip: QA #265: con el envío en vuelo «Entrar» solo muestra el spinner y queda sin nombre accesible
     testWidgets('«Entrar» ocupado conserva un nombre para el lector de pantalla', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.cargando);
 
       expect(tester.getSemantics(find.byKey(_enviar)).label, isNotEmpty);
       semantica.dispose();
-    }, skip: true);
+    });
   });
 
   // Item 7 y 5b: tamaños, texto grande y teclado abierto.
@@ -402,8 +399,9 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    // skip: QA #265: el 5xx del login muestra «El servidor no pudo procesar la solicitud» sin decir qué hacer (convenciones §10)
-    testWidgets('una falla del servidor (5xx) dice qué hacer (convenciones §10)', (tester) async {
+    testWidgets('una falla del servidor (5xx) dice qué hacer y ofrece «Reintentar» (§10)', (
+      tester,
+    ) async {
       final remoto = await _llegarA(tester, _Estado.inicial);
       remoto.falla = const ServidorException(status: 503);
       await _escribir(tester);
@@ -412,8 +410,9 @@ void main() {
       await tester.pumpAndSettle();
 
       final aviso = tester.widget<Text>(find.byKey(_errorGeneral)).data!;
-      expect(aviso.toLowerCase(), contains('reintent'), reason: aviso);
-    }, skip: true);
+      expect(aviso, 'Servicio temporalmente no disponible, reintentá en unos minutos');
+      expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+    });
 
     testWidgets('«¿Olvidaste tu clave?» lleva el correo tipeado y al volver el login lo conserva', (
       tester,
