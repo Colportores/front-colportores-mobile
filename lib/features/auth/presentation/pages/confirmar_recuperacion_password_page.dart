@@ -62,6 +62,14 @@ abstract final class TextosConfirmacionRecuperacion {
   static const sinConexionTitulo = 'Sin conexión';
   static const sinConexionDetalle =
       'Conectate para guardar la contraseña. No perdés lo que escribiste.';
+
+  /// La salida de 15-A06 y del aviso de enlace sin conexión cuando no hay sesión: la raíz de la
+  /// pila es el login (canvas y decisión de Cristian).
+  static const volverAlLogin = 'Volver al login';
+
+  /// La misma salida cuando quien abrió el enlace ya tenía la sesión abierta: no hay login al que
+  /// volver, la raíz es su inicio (decisión del 02/10 sobre #264, mismo criterio que la vista 12).
+  static const irAMiInicio = 'Ir a mi inicio';
 }
 
 /// Contraseña nueva después de abrir el enlace de recuperación (HU-AUTH-005, #51, vista 15).
@@ -74,11 +82,15 @@ abstract final class TextosConfirmacionRecuperacion {
 ///   pantalla muestra «Contraseña actualizada. Iniciá sesión.» con el botón al login (15-A09).
 /// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): 15-A06,
 ///   «Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.» con el rótulo «ENLACE NO
-///   VÁLIDO», el botón para pedir otro (HU-AUTH-004) y volver al login. Una sola pantalla para el
-///   enlace vencido y el ya usado: Supabase los rechaza igual y la app no adivina cuál es (decisión
-///   de Cristian, 02/10; el canvas dibuja además 15-A07 «ya fue utilizado», que se quitó).
+///   VÁLIDO», el botón para pedir otro (HU-AUTH-004) y la salida a la raíz. Una sola pantalla para
+///   el enlace vencido y el ya usado: Supabase los rechaza igual y la app no adivina cuál es
+///   (decisión de Cristian, 02/10; el canvas dibuja además 15-A07 «ya fue utilizado», que se quitó).
 /// - Con [EnlaceRecuperacion.sinConexion]: que hace falta conexión y que el enlace se vuelve a
 ///   abrir desde el correo (sigue sirviendo).
+///
+/// La salida de 15-A06 y del aviso sin conexión vuelve a la raíz de la pila: el login, o el inicio
+/// de quien ya tenía la sesión abierta. El botón lo dice así: «Volver al login» sin sesión y
+/// «Ir a mi inicio» con sesión (decisión del 02/10 sobre #264, #277); la sesión no se toca.
 ///
 /// Si el usuario sale sin terminar, se suelta la sesión que abrió el enlace: si no, el próximo
 /// arranque lo dejaría adentro sin haber puesto ninguna contraseña. Mientras guarda no se puede
@@ -253,7 +265,7 @@ class _ConfirmarRecuperacionPasswordPageState
     if (salio) {
       _soltarSesionDelEnlace();
     } else if (_terminado) {
-      _irAlLogin();
+      _irALaRaiz();
     }
   }
 
@@ -278,12 +290,21 @@ class _ConfirmarRecuperacionPasswordPageState
     );
   }
 
-  void _irAlLogin() => Navigator.of(context).popUntil((route) => route.isFirst);
+  /// Vuelve a la raíz de la pila: el login o, si la sesión sigue abierta, el inicio. No toca la
+  /// sesión: el rótulo de los botones lo dice según corresponda (ver [_rotuloVolver]).
+  void _irALaRaiz() => Navigator.of(context).popUntil((route) => route.isFirst);
+
+  /// El rótulo de la salida a la raíz: sin sesión la raíz es el login; con sesión, su inicio.
+  String _rotuloVolver({required bool haySesion}) => haySesion
+      ? TextosConfirmacionRecuperacion.irAMiInicio
+      : TextosConfirmacionRecuperacion.volverAlLogin;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const paddingHorizontal = 30.0;
+    // Con la sesión abierta no hay login al que volver: las salidas dicen «Ir a mi inicio».
+    final haySesion = ref.watch(sesionProvider).value != null;
     final formulario = !_vencido && widget.enlace == EnlaceRecuperacion.valido;
     // 15-A06 tiene su propio armado: centrado, sin flecha, con las salidas al pie.
     final enlaceInservible = !_terminado && _vencido;
@@ -295,7 +316,7 @@ class _ConfirmarRecuperacionPasswordPageState
       child: Scaffold(
         body: SafeArea(
           child: enlaceInservible
-              ? _enlaceInservible(theme)
+              ? _enlaceInservible(theme, haySesion: haySesion)
               : LayoutBuilder(
                   builder: (context, constraints) => SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
@@ -329,7 +350,7 @@ class _ConfirmarRecuperacionPasswordPageState
                                 ),
                                 const SizedBox(height: 12),
                                 if (widget.enlace == EnlaceRecuperacion.sinConexion)
-                                  _sinConexionContenido(theme)
+                                  _sinConexionContenido(theme, haySesion: haySesion)
                                 else
                                   _formularioArriba(theme),
                               ],
@@ -348,7 +369,7 @@ class _ConfirmarRecuperacionPasswordPageState
 
   /// 15-A06 (el enlace no sirve: venció o ya se usó), como el canvas: el contenido centrado en lo
   /// que sobra encima de las salidas, que van pegadas al pie. Sin flecha de atrás.
-  Widget _enlaceInservible(ThemeData theme) {
+  Widget _enlaceInservible(ThemeData theme, {required bool haySesion}) {
     final colores = theme.extension<ColoresColportaje>()!;
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
@@ -366,7 +387,7 @@ class _ConfirmarRecuperacionPasswordPageState
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-                child: _vencidoSalidas(context),
+                child: _vencidoSalidas(context, haySesion: haySesion),
               ),
             ],
           ),
@@ -419,7 +440,7 @@ class _ConfirmarRecuperacionPasswordPageState
       const SizedBox(height: 32),
       FilledButton(
         key: const Key('confirmar_recuperacion_exito_ir_al_login'),
-        onPressed: _irAlLogin,
+        onPressed: _irALaRaiz,
         style: _estiloTextoGrande(context),
         child: Text(_cierreFallido ? 'Volver al inicio' : 'Ir al login'),
       ),
@@ -456,8 +477,9 @@ class _ConfirmarRecuperacionPasswordPageState
     ],
   );
 
-  /// 15-A06, al pie: pedir un enlace nuevo y volver al login.
-  Widget _vencidoSalidas(BuildContext context) => Column(
+  /// 15-A06, al pie: pedir un enlace nuevo y volver a la raíz («Volver al login» o, con sesión
+  /// abierta, «Ir a mi inicio»).
+  Widget _vencidoSalidas(BuildContext context, {required bool haySesion}) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     spacing: 10,
     children: [
@@ -469,13 +491,13 @@ class _ConfirmarRecuperacionPasswordPageState
       ),
       TextButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
-        onPressed: _irAlLogin,
-        child: const Text('Volver al login'),
+        onPressed: _irALaRaiz,
+        child: Text(_rotuloVolver(haySesion: haySesion)),
       ),
     ],
   );
 
-  Widget _sinConexionContenido(ThemeData theme) => Column(
+  Widget _sinConexionContenido(ThemeData theme, {required bool haySesion}) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _encabezado(theme, 'RECUPERAR CONTRASEÑA', 'Sin conexión'),
@@ -494,9 +516,9 @@ class _ConfirmarRecuperacionPasswordPageState
       const SizedBox(height: 24),
       FilledButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
-        onPressed: _irAlLogin,
+        onPressed: _irALaRaiz,
         style: _estiloTextoGrande(context),
-        child: const Text('Volver al login'),
+        child: Text(_rotuloVolver(haySesion: haySesion)),
       ),
     ],
   );
