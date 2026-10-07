@@ -1,10 +1,12 @@
 // QA del acceso (login y registro), ronda 2 del PR #295 (#265): casos adversariales sobre lo que
 // arregló la ronda 1: los avisos que se anuncian, los topes de largo (60 / 254 / 72 bytes UTF-8) y el
-// foco al primer error. Cada test falla si el arreglo se rompe; los que documentan un hallazgo
-// nuevo llevan `skip` con el motivo arriba.
+// foco al primer error. Cada test falla si el arreglo se rompe. Los hallazgos de esta ronda
+// («Reintentar» con más de 72 bytes, errores de campo a 2x, aviso del 5xx del login a la vista y
+// borde de la casilla sin marcar) quedaron arreglados y sin `skip`.
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:colportores_mobile/core/theme/colores_colportaje.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
@@ -370,9 +372,8 @@ void main() {
       expect(tester.widget<Checkbox>(find.byKey(_tradeOff)).value, isTrue);
     });
 
-    // skip: QA #295 — tras un 5xx, si se edita la contraseña por encima de 72 bytes, «Reintentar» sigue
-    // habilitado y su toque no hace nada (el guardián de `_enviar` sale en silencio); debería quedar
-    // apagado como «Continuar» (registro_page.dart:469).
+    // Tras un 5xx, si se edita la contraseña por encima de 72 bytes, «Reintentar» queda apagado como
+    // «Continuar»: su toque no haría nada (el guardián de `_enviar` sale en silencio).
     testWidgets('«Reintentar» (5xx) se apaga si la contraseña editada pasa los 72 bytes', (
       tester,
     ) async {
@@ -387,7 +388,7 @@ void main() {
 
       final reintentar = find.widgetWithText(FilledButton, 'Reintentar');
       expect(tester.widget<FilledButton>(reintentar).onPressed, isNull);
-    }, skip: true);
+    });
 
     testWidgets('«Reintentar» con la contraseña de más de 72 bytes no manda nada al servidor', (
       tester,
@@ -632,23 +633,25 @@ void main() {
       semantica.dispose();
     });
 
-    // skip: QA #295 — a 200 % el error de un campo del registro se corta con puntos suspensivos
-    // («Es demasiado larga. A...», «Ingresá t...»): `_CampoRegistro` no pone `errorMaxLines` (por
-    // defecto es 1 línea) y se pierde justo lo que hay que hacer (registro_page.dart:611).
+    // A 200 % el error de un campo del registro se lee entero («Es demasiado larga. Acortala.»,
+    // «Ingresá tu nombre»): `_CampoRegistro` pone `errorMaxLines` y no se cortan con puntos
+    // suspensivos.
     testWidgets('registro, texto al 200 % a 360x640: los errores de campo se leen enteros', (
       tester,
     ) async {
       await cargarFuentesReales(); // con la fuente de prueba (cuadrados) el corte no es el real
       await _montarRegistro(tester, tamano: tamanosAcceso.first, escala: 2);
+      // Primero el envío con el formulario vacío (con la contraseña larga «Continuar» ya está apagado)
+      // y después la contraseña de más de 72 bytes: los tres avisos de campo quedan a la vista.
+      await _enviarSinTocar(tester);
       await _escribir(tester, _clave, 'Aa1${'x' * 80}');
       await tester.pumpAndSettle();
-      await _enviarSinTocar(tester);
 
       for (final texto in [_topeLargo, 'Ingresá tu nombre', 'Ingresá tu apellido']) {
         final aviso = tester.renderObject<RenderParagraph>(find.text(texto));
         expect(aviso.didExceedMaxLines, isFalse, reason: '«$texto» se corta a 2x');
       }
-    }, skip: true);
+    });
 
     testWidgets('login con el 5xx, texto al 200 % a 360x640: aviso entero y «Reintentar» a tocar', (
       tester,
@@ -696,9 +699,8 @@ void main() {
       );
     });
 
-    // skip: QA #295 — con el texto al 200 % en 360x640 y «Entrar» al borde de abajo, el aviso del 5xx
-    // se ve pero «Reintentar» queda debajo del borde (asoma cortado): el login no baja hasta el
-    // aviso como sí hace el registro (login_page.dart, sin `ensureVisible` del error).
+    // Con el texto al 200 % en 360x640 y «Entrar» al borde de abajo, el login baja hasta el aviso del
+    // 5xx como el registro: «Reintentar» queda entero a la vista.
     testWidgets(
       'login 5xx a 360x640 al 200 % con «Entrar» al borde de abajo: «Reintentar» queda a la vista',
       (tester) async {
@@ -711,26 +713,44 @@ void main() {
           reason: '${tester.getRect(boton)}',
         );
       },
-      skip: true,
     );
   });
 
   group('Casillas sin marcar', () {
-    // skip: QA #295 — el borde de la casilla sin marcar es `bordeInput` (#CFD6E1): 1,4:1 contra el
-    // fondo, y el canvas dibuja #90A0B7 sobre blanco. WCAG 1.4.11 (AA) pide 3:1 para identificar el
-    // componente; con el relleno transparente el borde es lo único que se ve (tema_colportaje.dart:99).
+    // WCAG 1.4.11 (AA) pide 3:1 para identificar el componente; con el relleno transparente el
+    // borde es lo único que se ve de la casilla sin marcar. El tema lo pinta con `gris` (#5B6B82,
+    // 5,19:1; decisión del 07/10), no con `bordeInput` (#CFD6E1, 1,4:1). `side` depende del estado:
+    // se resuelve con el conjunto vacío (sin marcar), como lo hace `Checkbox`.
     testWidgets('el borde de la casilla sin marcar se distingue del fondo (WCAG 1.4.11, 3:1)', (
       tester,
     ) async {
       final tema = temaClaro();
-      final borde = tema.checkboxTheme.side!.color;
+      final side = WidgetStateProperty.resolveAs<BorderSide?>(
+        tema.checkboxTheme.side,
+        <WidgetState>{},
+      )!;
 
       expect(
-        _contraste(borde, tema.scaffoldBackgroundColor),
+        _contraste(side.color, tema.scaffoldBackgroundColor),
         greaterThanOrEqualTo(3),
-        reason: 'borde $borde sobre ${tema.scaffoldBackgroundColor}',
+        reason: 'borde ${side.color} sobre ${tema.scaffoldBackgroundColor}',
       );
-    }, skip: true);
+      expect(side.color, tema.extension<ColoresColportaje>()!.gris);
+      expect(side.width, 1.5);
+    });
+
+    testWidgets('marcada, el borde sigue del color del relleno (no cambia la casilla marcada)', (
+      tester,
+    ) async {
+      final tema = temaClaro();
+      final side = WidgetStateProperty.resolveAs<BorderSide?>(
+        tema.checkboxTheme.side,
+        <WidgetState>{WidgetState.selected},
+      )!;
+
+      expect(side.color, tema.colorScheme.primary);
+      expect(side.width, 1.5);
+    });
 
     testWidgets('marcada y sin marcar se distinguen en las dos casillas del registro', (
       tester,
