@@ -54,8 +54,8 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
   final String email;
 
   /// Contraseña recién tipeada en el registro, solo en memoria mientras esta pantalla está viva
-  /// (no se persiste, igual que el checkbox "mantener sesión" del login). Habilita "Ya verifiqué
-  /// mi email"; `null` cuando se llegó por el deep link de error, sin ese contexto.
+  /// (no se persiste). Habilita "Ya verifiqué mi email"; `null` cuando se llegó por el deep link
+  /// de error, sin ese contexto.
   final String? password;
 
   final EstadoVerificacionEmail estadoInicial;

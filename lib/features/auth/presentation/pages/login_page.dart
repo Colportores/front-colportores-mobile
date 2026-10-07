@@ -71,10 +71,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// «primer login en este dispositivo» y el aviso sin conexión de «Entrar» no debe decirlo.
   bool _habiaCorreoGuardado = false;
 
-  // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
-  // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
-  bool _mantenerSesion = true;
-
   @override
   void initState() {
     super.initState();
@@ -332,18 +328,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           ),
                       ],
                       const SizedBox(height: 16),
-                      _FilaMantenerSesion(
-                        mantener: _mantenerSesion,
-                        alCambiar: (valor) => setState(() => _mantenerSesion = valor),
-                        // 17-A02 no dibuja el enlace: recuperar la contraseña también pide red.
-                        textoEnlace: vencidaSinConexion
-                            ? null
-                            : reingreso == null
-                            ? '¿Olvidaste tu clave?'
-                            : 'Recuperar acceso',
-                        alRecuperar: _abrirRecuperacion,
-                      ),
-                      const SizedBox(height: 16),
+                      // 17-A02 no dibuja el enlace: recuperar la contraseña también pide red.
+                      if (!vencidaSinConexion) ...[
+                        _EnlaceRecuperacion(
+                          texto: reingreso == null ? '¿Olvidaste tu clave?' : 'Recuperar acceso',
+                          alRecuperar: _abrirRecuperacion,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       FilledButton(
                         key: const Key('login_enviar'),
                         onPressed: _enviando ? null : _enviar,
@@ -624,61 +616,35 @@ class _CampoLoginState extends State<_CampoLogin> {
   }
 }
 
-/// «Mantener sesión» y el enlace de recuperación. En la misma línea si entran; si no (360 y 390 de
-/// ancho con las fuentes reales, o texto grande), el enlace pasa a la línea de abajo en vez de
-/// cortarse con «…», y la etiqueta del checkbox se parte en líneas en vez de recortarse.
-class _FilaMantenerSesion extends StatelessWidget {
-  const _FilaMantenerSesion({
-    required this.mantener,
-    required this.alCambiar,
-    required this.textoEnlace,
-    required this.alRecuperar,
-  });
+/// El enlace de recuperación, a la derecha, debajo de la contraseña (HU-AUTH-004). El login no
+/// ofrece «Mantener sesión»: la sesión es siempre la de HU-AUTH-007, 30 días desde el último uso, y
+/// solo se cierra con «Cerrar sesión» (decisión de Cristian, 07/10, #303).
+class _EnlaceRecuperacion extends StatelessWidget {
+  const _EnlaceRecuperacion({required this.texto, required this.alRecuperar});
 
-  final bool mantener;
-  final ValueChanged<bool> alCambiar;
-
-  /// `null` no dibuja el enlace (17-A02: recuperar la contraseña también pide red).
-  final String? textoEnlace;
+  final String texto;
   final VoidCallback alRecuperar;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final casilla = Checkbox(
-      value: mantener,
-      semanticLabel: 'Mantener sesión',
-      // Sin achicar: el área de toque tiene que ser de 48x48 (accesibilidad).
-      materialTapTargetSize: MaterialTapTargetSize.padded,
-      onChanged: (valor) => alCambiar(valor ?? true),
-    );
-    final etiqueta = Flexible(
-      // La etiqueta ya la lleva el checkbox para el lector de pantalla.
-      child: ExcludeSemantics(child: Text('Mantener sesión', style: theme.textTheme.bodyMedium)),
-    );
-    final enlace = textoEnlace;
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [casilla, etiqueta]),
-        if (enlace != null)
-          TextButton(
-            key: const Key('login_olvidaste_clave'),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              minimumSize: const Size(48, 48),
-            ),
-            onPressed: alRecuperar,
-            child: Text(
-              enlace,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.secondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: TextButton(
+        key: const Key('login_olvidaste_clave'),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size(48, 48),
+        ),
+        onPressed: alRecuperar,
+        child: Text(
+          texto,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.secondary,
+            fontWeight: FontWeight.w600,
           ),
-      ],
+        ),
+      ),
     );
   }
 }

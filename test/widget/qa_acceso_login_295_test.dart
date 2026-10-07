@@ -16,6 +16,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/aviso_se
 import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -103,6 +104,31 @@ String _texto(WidgetTester tester, Key k) =>
     tester.widget<TextField>(find.byKey(k)).controller!.text;
 
 String _tam(Size t) => '${t.width.toInt()}x${t.height.toInt()}';
+
+/// Dónde está el foco del teclado, en el vocabulario del login (o `null` si no hay).
+String? _dondeEstaElFoco(WidgetTester tester) {
+  final contexto = FocusManager.instance.primaryFocus?.context;
+  if (contexto == null) return null;
+  bool dentroDe(Finder f) {
+    if (f.evaluate().isEmpty) return false;
+    final objetivo = tester.element(f);
+    if (contexto == objetivo) return true;
+    var halla = false;
+    contexto.visitAncestorElements((a) {
+      if (a == objetivo) halla = true;
+      return !halla;
+    });
+    return halla;
+  }
+
+  if (dentroDe(find.byTooltip('Mostrar contraseña'))) return 'ojo';
+  if (dentroDe(find.byKey(_correo))) return 'correo';
+  if (dentroDe(find.byKey(_clave))) return 'contraseña';
+  if (dentroDe(find.byKey(const Key('login_olvidaste_clave')))) return 'recuperar';
+  if (dentroDe(find.byKey(_enviar))) return 'entrar';
+  if (dentroDe(find.byKey(const Key('login_ir_a_registro')))) return 'registro';
+  return 'otro';
+}
 
 void main() {
   // Item 6 del checklist: tamaño de toque (Android e iOS), etiquetas y contraste en cada estado y
@@ -465,7 +491,7 @@ void main() {
     });
   });
 
-  group('Login — contraseña visible y casilla «Mantener sesión»', () {
+  group('Login — contraseña visible y sin casilla «Mantener sesión» (#303)', () {
     testWidgets('el ojo muestra y oculta la contraseña sin perder lo escrito', (tester) async {
       final semantica = tester.ensureSemantics();
       await _llegarA(tester, _Estado.inicial);
@@ -483,17 +509,56 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('la casilla «Mantener sesión» tiene nombre y rol de casilla para el lector', (
-      tester,
-    ) async {
-      final semantica = tester.ensureSemantics();
+    // Decisión de Cristian, 07/10: la sesión es siempre la de HU-AUTH-007 (30 días desde el último
+    // uso, se cierra con «Cerrar sesión»); el login no promete una opción que no existe.
+    for (final estado in _Estado.values) {
+      testWidgets('${estado.nombre}: el login no ofrece «Mantener sesión», ni casilla ni texto', (
+        tester,
+      ) async {
+        final semantica = tester.ensureSemantics();
+        await _llegarA(tester, estado);
+
+        expect(find.byType(Checkbox), findsNothing);
+        expect(find.byType(CheckboxListTile), findsNothing);
+        expect(find.text('Mantener sesión'), findsNothing);
+        expect(find.bySemanticsLabel('Mantener sesión'), findsNothing);
+        semantica.dispose();
+      });
+    }
+
+    for (final (estado, texto) in [
+      (_Estado.inicial, '¿Olvidaste tu clave?'),
+      (_Estado.sesionVencida, 'Recuperar acceso'),
+    ]) {
+      testWidgets('${estado.nombre}: «$texto» queda a la derecha, al ras del campo de contraseña, '
+          'entre el campo y «Entrar»', (tester) async {
+        await _llegarA(tester, estado);
+
+        final enlace = find.byKey(const Key('login_olvidaste_clave'));
+        expect(find.descendant(of: enlace, matching: find.text(texto)), findsOneWidget);
+        final rEnlace = tester.getRect(enlace);
+        final rClave = tester.getRect(find.byKey(_clave));
+        expect(rEnlace.right, closeTo(rClave.right, 0.5), reason: '$rEnlace contra $rClave');
+        expect(rEnlace.top, greaterThanOrEqualTo(rClave.bottom));
+        expect(rEnlace.bottom, lessThanOrEqualTo(tester.getRect(find.byKey(_enviar)).top));
+        expect(rEnlace.height, greaterThanOrEqualTo(48));
+      });
+    }
+
+    testWidgets('con el teclado, el foco recorre correo, contraseña, ojo, enlace de recuperación, '
+        '«Entrar» y «Registrate», y da la vuelta sin trampas', (tester) async {
+      fijarPantalla(tester, const Size(412, 915));
       await _llegarA(tester, _Estado.inicial);
 
-      expect(
-        tester.getSemantics(find.byType(Checkbox)),
-        isSemantics(label: 'Mantener sesión', hasCheckedState: true, isChecked: true),
-      );
-      semantica.dispose();
+      final visitados = <String?>[];
+      for (var i = 0; i < 7; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        visitados.add(_dondeEstaElFoco(tester));
+      }
+
+      expect(visitados.take(6), ['correo', 'contraseña', 'ojo', 'recuperar', 'entrar', 'registro']);
+      expect(visitados[6], 'correo', reason: 'dio la vuelta: no hay trampa de foco');
     });
   });
 }
