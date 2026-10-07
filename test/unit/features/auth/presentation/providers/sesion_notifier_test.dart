@@ -958,8 +958,15 @@ void main() {
     /// Un arranque de la app: lo que está en el almacén seguro (el correo y el motivo del cierre)
     /// sobrevive entre arranques; el remoto, la sesión en memoria y los avisos empiezan de cero.
     /// Para que además haya sesión guardada, se pasa el mismo [sesionLocal] del arranque anterior.
-    ProviderContainer arrancar({_LocalQueFalla? sesionLocal, CierreForzadoRepository? repo}) {
-      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'});
+    ProviderContainer arrancar({
+      _LocalQueFalla? sesionLocal,
+      CierreForzadoRepository? repo,
+      bool verificarAlRegistrar = false,
+    }) {
+      remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'ana@example.com': 'secreto123'},
+        requiereVerificacionAlRegistrar: verificarAlRegistrar,
+      );
       local = sesionLocal ?? _LocalQueFalla();
       return ProviderContainer(
         overrides: [
@@ -1160,6 +1167,57 @@ void main() {
         await pumpEventQueue();
 
         expect(await cierres.leer(), isNull);
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(await correo.leer(), 'nueva@example.com');
+      });
+
+      test('y también al registrarse sin sesión (falta verificar el email): decisión del 07/10, '
+          'el arranque siguiente es un login común con el correo de la cuenta nueva', () async {
+        container.dispose();
+        container = arrancar(verificarAlRegistrar: true);
+        await container.read(sesionProvider.future);
+        expect(container.read(avisoSesionProvider), isNotNull);
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345672',
+              email: 'nueva@example.com',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            );
+        await pumpEventQueue();
+
+        expect(resultado.getOrElse(() => throw StateError('falló el registro')).sesion, isNull);
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+        expect(await cierres.leer(), isNull);
+        expect(await correo.leer(), 'nueva@example.com');
+        await reiniciar();
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+      });
+
+      test('un registro que falla no lo borra: el aviso sigue en el arranque siguiente', () async {
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345672',
+              email: 'esto-no-es-un-correo',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            );
+        await pumpEventQueue();
+
+        expect(resultado.isLeft(), isTrue);
+        expect(await cierres.leer(), isNotNull);
+        expect(container.read(avisoSesionProvider), isNotNull);
       });
 
       test(
@@ -1192,21 +1250,28 @@ void main() {
       expect(container.read(avisoSesionProvider), isNull);
     });
 
-    test('detectar el cierre con el almacén lento y entrar enseguida: queda sin cierre', () async {
-      final lento = _AlmacenLento();
-      container.dispose();
-      container = arrancar(repo: CierreForzadoRepositoryImpl(lento, logger: loggerMudo()));
-      remote.vencidaPorInactividadAlArrancar = true;
-      await container.read(sesionProvider.future);
+    // Ojo: acá `build()` ya esperó el guardado cuando se entra, así que esto prueba solo el orden de
+    // la cola del repositorio en el arranque. La carrera real —el fin de sesión llega por el stream
+    // con la app abierta y la persona entra antes de que termine— la cubren
+    // `qa_sesion_vencida_302_test.dart` (el almacén lento y la lectura lenta del reloj, M1 y M1b).
+    test(
+      'detectar el cierre en el arranque con el almacén lento y entrar: queda sin cierre',
+      () async {
+        final lento = _AlmacenLento();
+        container.dispose();
+        container = arrancar(repo: CierreForzadoRepositoryImpl(lento, logger: loggerMudo()));
+        remote.vencidaPorInactividadAlArrancar = true;
+        await container.read(sesionProvider.future);
 
-      await container
-          .read(sesionProvider.notifier)
-          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
-      await pumpEventQueue();
+        await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
 
-      expect(lento.contenido, isNull);
-      expect(lento.operaciones, ['escribir', 'borrar']);
-    });
+        expect(lento.contenido, isNull);
+        expect(lento.operaciones, ['escribir', 'borrar']);
+      },
+    );
 
     group('se borra con el correo', () {
       test('al cerrar sesión a propósito', () async {

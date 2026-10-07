@@ -39,6 +39,10 @@ class SesionNotifier extends _$SesionNotifier {
 
   final AppLogger _log;
 
+  /// Cuenta las veces que la persona resolvió el cierre (entró, se registró, cerró a propósito o
+  /// borró los datos): lo que se guarda tras una espera lenta mira si cambió mientras esperaba.
+  int _generacionCierre = 0;
+
   @override
   Future<Sesion?> build() async {
     // HU-AUTH-007: la sesión puede terminar sin que el usuario lo pida (el servidor la revocó, o
@@ -81,18 +85,31 @@ class SesionNotifier extends _$SesionNotifier {
     // La sesión sigue en pie: un cierre guardado ya no corresponde (se cortó justo antes de
     // soltarla, o el servidor la volvió a aceptar). Una sesión restaurada también deja el correo:
     // cubre las cuentas que entraron antes de que se guardara.
-    unawaited(ref.read(cierreForzadoRepositoryProvider).borrar());
+    unawaited(_borrarCierre());
     unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
     return sesion;
   }
 
   /// Guarda el motivo y la fecha del cierre que la persona no pidió, al lado del último correo:
   /// sin esto, el aviso de la vista 17 valdría solo en el arranque que lo detectó.
+  ///
+  /// Leer la fecha del reloj puede tardar (Keystore) y la persona puede resolver el cierre mientras
+  /// tanto: entra, se registra, cierra a propósito. Si pasó, el guardado se descarta: el borrado ya
+  /// está pedido y guardar después lo desharía, dejando el motivo con la sesión abierta.
   Future<void> _guardarCierre(MotivoExpiracion motivo) async {
+    final generacion = _generacionCierre;
     final fecha = await ref.read(relojSesionProvider).ahora();
+    if (!ref.mounted || generacion != _generacionCierre) return;
     await ref
         .read(cierreForzadoRepositoryProvider)
         .guardar(CierreForzado(motivo: motivo, fecha: fecha));
+  }
+
+  /// Borra el motivo guardado del último cierre: todo borrado pasa por acá para que un guardado
+  /// que sigue esperando el reloj (ver [_guardarCierre]) se entere.
+  Future<void> _borrarCierre() {
+    _generacionCierre++;
+    return ref.read(cierreForzadoRepositoryProvider).borrar();
   }
 
   /// Sin sesión que leer (se descartó, ahora o en un arranque anterior): el saludo no tiene a quién
@@ -166,7 +183,7 @@ class SesionNotifier extends _$SesionNotifier {
         state = AsyncData(sesion);
         unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
         // Entrar resuelve el cierre que la persona no pidió: el motivo guardado se borra.
-        unawaited(ref.read(cierreForzadoRepositoryProvider).borrar());
+        unawaited(_borrarCierre());
         ref.read(avisoSesionProvider.notifier).descartar();
         ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
@@ -212,12 +229,13 @@ class SesionNotifier extends _$SesionNotifier {
       (r) {
         if (r.sesion != null) ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(r.sesion);
-        if (r.sesion case final sesion?) {
-          unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
-          unawaited(ref.read(cierreForzadoRepositoryProvider).borrar());
-          ref.read(avisoSesionProvider.notifier).descartar();
-          ref.read(reingresoSesionProvider.notifier).limpiar();
-        }
+        // Un registro que termina bien, con sesión o con la verificación del email pendiente,
+        // deja atrás la cuenta anterior (decisión del 07/10, #308): el aviso de la vista 17 y su
+        // motivo se borran y el último correo pasa a ser el de la cuenta nueva.
+        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(r.sesion?.email ?? r.email));
+        unawaited(_borrarCierre());
+        ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         return Right(r);
       },
     );
@@ -285,7 +303,7 @@ class SesionNotifier extends _$SesionNotifier {
       // Cerrar a propósito: el correo de la última cuenta no se queda en el teléfono.
       if (!conservarCorreo) {
         await ref.read(ultimoCorreoRepositoryProvider).borrar();
-        await ref.read(cierreForzadoRepositoryProvider).borrar();
+        await _borrarCierre();
       }
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
@@ -329,7 +347,7 @@ class SesionNotifier extends _$SesionNotifier {
     if (resultado.isRight()) {
       _olvidarPassword();
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
-      await ref.read(cierreForzadoRepositoryProvider).borrar();
+      await _borrarCierre();
       state = const AsyncData(null);
     }
     return resultado;
@@ -374,7 +392,7 @@ class SesionNotifier extends _$SesionNotifier {
       _log.warn(LogModulo.auth, 'ULTIMO_CORREO_BORRAR', 'no se pudo borrar el último correo');
     }
     try {
-      await ref.read(cierreForzadoRepositoryProvider).borrar();
+      await _borrarCierre();
     } on Object {
       _log.warn(LogModulo.auth, 'CIERRE_FORZADO_BORRAR', 'no se pudo borrar el motivo del cierre');
     }

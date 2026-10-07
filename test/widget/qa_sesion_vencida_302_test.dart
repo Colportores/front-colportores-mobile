@@ -496,13 +496,12 @@ void main() {
   });
 
   group('QA #302 — hallazgos de la revisión', () {
-    testWidgets('M2 (hoy): registrar una cuenta que queda pendiente de verificar NO limpia el '
-        'motivo ni el aviso de la cuenta anterior; el arranque siguiente los trae con su correo', (
+    testWidgets('M2: registrar una cuenta (que queda pendiente de verificar) limpia el motivo y el '
+        'aviso de la cuenta anterior; el arranque siguiente es un login común con el correo nuevo', (
       tester,
     ) async {
-      // Pendiente de decisión (P1 del archivo de pendientes de este QA): la regla escrita es «se
-      // borra al entrar» y registrar sin sesión no es entrar. Si Cristian decide limpiar, este test
-      // se invierte.
+      // Decisión del 07/10 (P1 del archivo de pendientes de este QA): un registro que termina bien,
+      // con sesión o sin ella, deja atrás la cuenta anterior.
       final almacen = AlmacenSeguroEnMemoria({
         ClaveSegura.ultimoCorreo: _correo,
         ClaveSegura.cierreForzado: _guardadoInactividad,
@@ -520,7 +519,7 @@ void main() {
             nombre: 'Ana',
             apellido: 'Pérez',
             cedula: '12345672',
-            email: 'nueva@correo.com',
+            email: 'Nueva@Correo.com',
             password: _password,
             aceptaTerminos: true,
             aceptaTradeOffE2E: true,
@@ -528,21 +527,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(resultado.isRight(), isTrue);
-      expect(almacen.contenido[ClaveSegura.cierreForzado], _guardadoInactividad);
-      expect(container.read(avisoSesionProvider), isNotNull);
+      expect(container.read(sesionProvider).value, isNull, reason: 'falta verificar el email');
+      expect(container.read(avisoSesionProvider), isNull);
+      expect(find.text(_inactividad), findsNothing);
+      expect(almacen.contenido.containsKey(ClaveSegura.cierreForzado), isFalse);
+      expect(almacen.contenido[ClaveSegura.ultimoCorreo], 'nueva@correo.com');
       await _reiniciarApp(tester);
       await _arrancar(tester, almacen);
-      expect(find.text(_inactividad), findsOneWidget);
-      expect(_campoCorreo(tester), _correo, reason: 'el correo de la cuenta anterior, no el nuevo');
+      expect(_aviso, findsNothing, reason: 'login común: no hay motivo guardado');
+      expect(find.text(_inactividad), findsNothing);
+      expect(_campoCorreo(tester), 'nueva@correo.com', reason: 'el correo de la cuenta nueva');
     });
 
-    // skip: QA #308 — M3: con un motivo guardado, el aviso se fija al final de `build()` y
-    // `app.dart:73-76` hace `popUntil(isFirst)`: un enlace de recuperación que llegó antes saca la
-    // pantalla «Nueva contraseña» y la persona queda en el login con el aviso (y el enlace gastado).
+    // M3 (arreglado en `app.dart`): con un motivo guardado, el aviso se fija al final de `build()`;
+    // el `popUntil(isFirst)` sacaba la pantalla «Nueva contraseña» de un enlace de recuperación que
+    // llegó antes y la persona quedaba en el login con el aviso (y el enlace gastado).
     testWidgets(
       'M3: arranque en frío con el motivo guardado y el enlace de recuperación que llega antes de '
       'que se lea el almacén: la pantalla de la contraseña nueva se queda',
-      skip: true,
       (tester) async {
         final puerta = Completer<void>();
         final recuperacion = RecuperacionPasswordEnMemoria();
@@ -589,11 +591,10 @@ void main() {
       },
     );
 
-    // skip: QA #308 — M3 (mismo origen): el enlace de verificación del email que llega antes.
+    // M3 (mismo origen): el enlace de verificación del email que llega antes.
     testWidgets(
       'M3: arranque en frío con el motivo guardado y el enlace de verificación que llega antes de '
       'que se lea el almacén: «Email verificado» se queda',
-      skip: true,
       (tester) async {
         final puerta = Completer<void>();
         final remoto = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _password});
@@ -698,37 +699,33 @@ void main() {
         expect(lento.contenido, isNull);
       });
 
-      // skip: QA #308 — M1b: la cola del repositorio ordena `guardar` y `borrar` desde que se piden,
-      // pero `_alExpirar` primero espera `relojSesion.ahora()` (Keystore) y recién después pide
-      // `guardar`: si «Entrar» termina antes, el `borrar` entra primero en la cola y el motivo queda
-      // guardado con la persona adentro (se cura al arrancar con sesión o al cerrar sesión).
-      test(
-        'M1b: la lectura del reloj tarda y la persona entra antes: el motivo no queda guardado '
-        'con la sesión abierta',
-        skip: true,
-        () async {
-          final lento = _AlmacenLento();
-          final reloj = _RelojLento();
-          final container = contenedor(
-            CierreForzadoRepositoryImpl(lento, logger: loggerMudo()),
-            reloj: reloj,
-          );
-          await container.read(sesionProvider.future);
-          final remoto = container.read(authRemoteDataSourceProvider);
+      // M1b (arreglado en `SesionNotifier._guardarCierre`): la cola del repositorio ordena `guardar` y
+      // `borrar` desde que se piden, pero `_alExpirar` primero espera `relojSesion.ahora()` (Keystore)
+      // y recién después pedía `guardar`: si «Entrar» terminaba antes, el `borrar` entraba primero en
+      // la cola y el motivo quedaba guardado con la persona adentro.
+      test('M1b: la lectura del reloj tarda y la persona entra antes: el motivo no queda guardado '
+          'con la sesión abierta', () async {
+        final lento = _AlmacenLento();
+        final reloj = _RelojLento();
+        final container = contenedor(
+          CierreForzadoRepositoryImpl(lento, logger: loggerMudo()),
+          reloj: reloj,
+        );
+        await container.read(sesionProvider.future);
+        final remoto = container.read(authRemoteDataSourceProvider);
 
-          (remoto as AuthRemoteDataSourceEnMemoria).simularExpiracion(MotivoExpiracion.revocada);
-          await pumpEventQueue();
-          final falla = await container
-              .read(sesionProvider.notifier)
-              .iniciarSesion(email: _correo, password: _password);
-          reloj.puerta.complete(DateTime.utc(2026, 10, 7, 8, 2, 30));
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+        (remoto as AuthRemoteDataSourceEnMemoria).simularExpiracion(MotivoExpiracion.revocada);
+        await pumpEventQueue();
+        final falla = await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: _correo, password: _password);
+        reloj.puerta.complete(DateTime.utc(2026, 10, 7, 8, 2, 30));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
 
-          expect(falla, isNull);
-          expect(container.read(sesionProvider).value, isNotNull);
-          expect(lento.contenido, isNull, reason: 'entró: el motivo no debería quedar guardado');
-        },
-      );
+        expect(falla, isNull);
+        expect(container.read(sesionProvider).value, isNotNull);
+        expect(lento.contenido, isNull, reason: 'entró: el motivo no debería quedar guardado');
+      });
 
       test('control: sin la cola el mismo escenario deja el motivo guardado (el test de arriba sí '
           'puede fallar)', () async {
