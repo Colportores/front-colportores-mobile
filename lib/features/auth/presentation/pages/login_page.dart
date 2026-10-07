@@ -618,7 +618,7 @@ class _CampoLoginState extends State<_CampoLogin> {
 
 /// El enlace de recuperación, a la derecha, debajo de la contraseña (HU-AUTH-004). El login no
 /// ofrece «Mantener sesión»: la sesión es siempre la de HU-AUTH-007, 30 días desde el último uso, y
-/// solo se cierra con «Cerrar sesión» (decisión de Cristian, 07/10, #303).
+/// se cierra con «Cerrar sesión» (decisión de Cristian, 07/10, #303).
 class _EnlaceRecuperacion extends StatelessWidget {
   const _EnlaceRecuperacion({required this.texto, required this.alRecuperar});
 
