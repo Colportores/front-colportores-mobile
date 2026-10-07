@@ -59,10 +59,18 @@ abstract interface class UbicacionRepository {
   ///
   /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
   /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).
+  ///
+  /// [dejaDeSerEdificio] es `true` cuando la edición pasa la ubicación de `EDIFICIO` a `CASA` o
+  /// `NEGOCIO` (S17). Dentro de la misma transacción se cuentan los espacios activos: con dos o más
+  /// no escribe nada y devuelve [FailureUbicacionConEspacios]; con exactamente uno, ese depto pasa a
+  /// ser el espacio de la casa y se le quita el `numero_depto` (decisión de Cristian, 07/10), y el
+  /// `update` del espacio se encola junto al de la ubicación. Contar acá y no antes evita que un
+  /// espacio que aparece entre la lectura y la escritura quede con número en una casa.
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   });
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación

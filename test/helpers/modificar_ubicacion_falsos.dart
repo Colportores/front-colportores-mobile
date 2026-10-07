@@ -58,6 +58,7 @@ typedef EscrituraEdicion = ({
   Ubicacion nueva,
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
+  bool dejaDeSerEdificio,
 });
 
 /// El repositorio de ubicaciones de la edición: guarda la ubicación en memoria y deja que el test
@@ -117,8 +118,14 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   }) async {
-    escrituras.add((nueva: nueva, baseUpdatedAt: baseUpdatedAt, duplicados: duplicados));
+    escrituras.add((
+      nueva: nueva,
+      baseUpdatedAt: baseUpdatedAt,
+      duplicados: duplicados,
+      dejaDeSerEdificio: dejaDeSerEdificio,
+    ));
     final espera = bloqueoEscritura;
     if (espera != null) await espera.future;
     final f = comportamiento;

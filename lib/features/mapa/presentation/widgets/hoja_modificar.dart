@@ -95,8 +95,9 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// «Dar de baja».
 ///
 /// - «Guardar cambios» se habilita recién cuando hay un cambio; los campos cambiados dicen «Editado».
-/// - De edificio a otro tipo con espacios no se puede (S17): el aviso lo dice y el botón queda sin
-///   efecto.
+/// - De edificio a otro tipo con dos o más espacios no se puede (S17): el aviso lo dice y el botón
+///   queda sin efecto. Con un solo depto sí: no hay aviso ni paso de más (el depto pasa a ser el
+///   espacio de la casa).
 /// - «Guardar cambios» y «Dar de baja» quedan fijos al pie de la hoja y se desplaza el resto: con un
 ///   teléfono chico o el texto grande la acción principal se ve siempre. Con el teclado abierto «Dar
 ///   de baja» no se dibuja (se está escribiendo).

@@ -1028,7 +1028,26 @@ void main() {
       expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
     });
 
-    testWidgets('con un solo espacio el aviso va en singular', (tester) async {
+    testWidgets('con 2 espacios el aviso también va en plural y no deja guardar', (tester) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 2,
+      );
+
+      await _tocar(tester, find.text('Negocio'));
+
+      expect(
+        find.text('Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.'),
+        findsOneWidget,
+      );
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(e.repo.escrituras, isEmpty);
+    });
+
+    testWidgets('con un solo departamento no hay aviso: pasa a Casa y se guarda (S17)', (
+      tester,
+    ) async {
       final e = await _montar(
         tester,
         ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
@@ -1037,16 +1056,71 @@ void main() {
 
       await _tocar(tester, find.text('Casa'));
 
-      expect(
-        find.text('Esta ubicación tiene 1 espacio. Borralo o reubicalo primero.'),
-        findsOneWidget,
+      expect(find.textContaining('Borralo'), findsNothing);
+      expect(find.textContaining('tiene 1 espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
+
+      await _tocar(tester, _guardar);
+
+      final escritura = e.repo.escrituras.single;
+      expect(escritura.nueva.tipo, TipoUbicacion.casa);
+      expect(escritura.dejaDeSerEdificio, isTrue, reason: 'el repositorio suelta el número');
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('con un solo departamento, a Negocio también se guarda', (tester) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 1,
       );
-      expect(find.textContaining('1 espacios'), findsNothing);
+
+      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, _guardar);
+
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+      expect(e.repo.escrituras.single.dejaDeSerEdificio, isTrue);
+    });
+
+    testWidgets('con un solo departamento, pasar a Casa y volver a Edificio no cambia nada', (
+      tester,
+    ) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 1,
+      );
+
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, find.text('Edificio'));
+
       expect(_habilitado(tester, _guardar), isFalse);
       expect(e.repo.escrituras, isEmpty);
     });
 
-    testWidgets('con un solo espacio que aparece al guardar, el aviso también va en singular', (
+    testWidgets(
+      'un solo departamento que se suma otro mientras se edita: avisa con 2 y no guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 1,
+        );
+        await _tocar(tester, find.text('Casa'));
+        e.repo.espacios = 2;
+
+        await _tocar(tester, _guardar);
+
+        expect(
+          find.text('Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.'),
+          findsOneWidget,
+        );
+        expect(e.repo.escrituras, isEmpty);
+        expect(_habilitado(tester, _guardar), isTrue, reason: 'puede volver a intentarlo');
+      },
+    );
+
+    testWidgets('con un departamento que aparece al guardar sobre un edificio vacío, se guarda', (
       tester,
     ) async {
       final e = await _montar(
@@ -1059,11 +1133,67 @@ void main() {
 
       await _tocar(tester, _guardar);
 
-      expect(
-        find.text('Esta ubicación tiene 1 espacio. Borralo o reubicalo primero.'),
-        findsOneWidget,
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+      expect(find.textContaining('Borralo'), findsNothing);
+    });
+
+    testWidgets('doble toque en «Guardar cambios» con un solo departamento: una sola escritura', (
+      tester,
+    ) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 1,
       );
-      expect(e.repo.escrituras, isEmpty);
+      await _tocar(tester, find.text('Casa'));
+      e.repo.bloqueoEscritura = Completer<void>();
+
+      await tester.tap(_guardar);
+      await tester.tap(_guardar, warnIfMissed: false);
+      await tester.pump();
+      e.repo.bloqueoEscritura!.complete();
+      await _asentar(tester);
+
+      expect(e.repo.escrituras, hasLength(1));
+      expect(e.salidas, hasLength(1));
+    });
+
+    testWidgets('si el guardado falla a mitad, el botón vuelve y el reintento sigue soltando el '
+        'número del departamento', (tester) async {
+      final repo = RepoEdicionFalso(ubicacionGuardada(tipo: TipoUbicacion.edificio), espacios: 1)
+        ..comportamiento = (u, n, _) async =>
+            n == 1 ? const Left(FailureInesperado()) : Right(UbicacionModificada(ubicacion: u));
+      final e = await _montar(tester, repo: repo);
+      await _tocar(tester, find.text('Casa'));
+
+      await _tocar(tester, _guardar);
+
+      expect(find.text(TextosModificar.noPudimosGuardar), findsOneWidget);
+      expect(_habilitado(tester, _guardar), isTrue);
+      expect(_guardandoBoton, findsNothing);
+
+      await _tocar(tester, _guardar);
+
+      expect(repo.escrituras.map((x) => x.dejaDeSerEdificio), [true, true]);
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('con un solo departamento y texto 2x, el cambio de tipo se guarda sin desbordes', (
+      tester,
+    ) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 1,
+        escala: 2,
+        tamano: const Size(360, 640),
+      );
+
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, _guardar);
+
+      expect(tester.takeException(), isNull);
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
     });
 
     testWidgets('de edificio sin espacios a otro tipo se guarda', (tester) async {

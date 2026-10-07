@@ -45,6 +45,13 @@ abstract interface class UbicacionLocalDataSource {
   /// - Sin fila con ese `id`: lanza [UbicacionInexistenteException].
   /// - Si `updated_at` de la fila no es [baseUpdatedAt] (cambió desde que se leyó): no escribe y
   ///   lanza [UbicacionCambioException].
+  /// - Si [dejaDeSerEdificio] (la edición saca a la ubicación de `EDIFICIO`, S17), **dentro de la
+  ///   misma transacción** se cuentan los espacios sin baja: con dos o más no escribe nada y lanza
+  ///   [UbicacionConEspaciosException]; con exactamente uno, a ese espacio se le quita el
+  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
+  ///   igual) y se encola su `update` con la fila entera, después del de la ubicación. Si ya no
+  ///   tenía número, no se escribe ni se encola nada del espacio. Los espacios dados de baja no
+  ///   cuentan ni se tocan.
   /// - Si llega [duplicados] y hay candidatas (que nunca incluyen a la misma ubicación): no
   ///   escribe y lanza [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
@@ -52,6 +59,7 @@ abstract interface class UbicacionLocalDataSource {
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   });
 
   /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con
@@ -129,6 +137,17 @@ final class UbicacionCambioException implements Exception {
 
   @override
   String toString() => 'UbicacionCambioException';
+}
+
+/// Se quiso sacar un `EDIFICIO` de ese tipo teniendo [cantidad] espacios activos (dos o más, S17);
+/// el repositorio la traduce a `FailureUbicacionConEspacios`.
+final class UbicacionConEspaciosException implements Exception {
+  const UbicacionConEspaciosException(this.cantidad);
+
+  final int cantidad;
+
+  @override
+  String toString() => 'UbicacionConEspaciosException($cantidad)';
 }
 
 /// Al marcar un duplicado, la ubicación que se conserva ya está de baja (HU-UBI-006).

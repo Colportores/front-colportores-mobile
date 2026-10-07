@@ -21,6 +21,7 @@ mixin UbicacionRepositorySinModificar {
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   }) => throw UnimplementedError();
 
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
@@ -56,6 +57,7 @@ mixin UbicacionLocalSinModificar {
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({

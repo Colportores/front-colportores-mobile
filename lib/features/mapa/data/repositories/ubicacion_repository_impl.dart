@@ -115,16 +115,19 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool dejaDeSerEdificio = false,
   }) async {
     try {
       final guardada = await _local.actualizar(
         UbicacionModel.fromEntity(nueva),
         baseUpdatedAt: baseUpdatedAt,
         duplicados: duplicados,
+        dejaDeSerEdificio: dejaDeSerEdificio,
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,
         'seguir_igual': duplicados?.esSeguirIgual ?? true,
+        'deja_de_ser_edificio': dejaDeSerEdificio,
       });
       return Right(UbicacionModificada(ubicacion: guardada.toEntity()));
     } on UbicacionDuplicadaException catch (e) {
@@ -134,6 +137,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'motivos': [for (final c in e.candidatas) c.motivo.name],
       });
       return Right(ModificacionConDuplicados(candidatas: e.candidatas));
+    } on UbicacionConEspaciosException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CON_ESPACIOS',
+        'edificio con espacios: no cambia de tipo',
+        {'ubicacion_id': nueva.id, 'espacios': e.cantidad},
+      );
+      return Left(FailureUbicacionConEspacios(cantidadEspacios: e.cantidad));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {

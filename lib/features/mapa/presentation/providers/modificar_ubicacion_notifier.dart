@@ -158,15 +158,16 @@ final class ModificarUbicacionState extends Equatable {
     return p.distanciaMetrosA(o.coordenadas);
   }
 
-  /// S17: de edificio a otro tipo con espacios activos no se puede (HU-UBI-004). Es la cantidad de
-  /// espacios, o `null` si el borrador no cae en el bloqueo.
+  /// S17: de edificio a otro tipo con **dos o más** espacios activos no se puede (HU-UBI-004;
+  /// con un solo depto sí, decisión de Cristian del 07/10: pasa a ser el espacio de la casa). Es la
+  /// cantidad de espacios, o `null` si el borrador no cae en el bloqueo.
   int? get bloqueoPorEspacios {
     final cantidad = espacios;
     if (original?.tipo == TipoUbicacion.edificio &&
         tipo != null &&
         tipo != TipoUbicacion.edificio &&
         cantidad != null &&
-        cantidad > 0) {
+        cantidad > 1) {
       return cantidad;
     }
     return null;
