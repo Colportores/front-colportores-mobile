@@ -468,7 +468,9 @@ void main() {
       final consultas = servidor.pedidos.length;
 
       await tester.fling(find.byType(Scrollable).first, const Offset(0, 400), 1500);
-      await tester.pump(const Duration(milliseconds: 500));
+      // Tiempo de sobra para que el indicador de deslizar termine con el reintento todavía en
+      // vuelo: si no, su consulta salía recién al terminar el reintento.
+      await tester.pump(const Duration(seconds: 3));
 
       expect(servidor.pedidos, hasLength(consultas), reason: 'el gesto no suma otra consulta');
       servidor.pedidos[reintento].complete(EstadoCuenta.pendienteAsignacion);
