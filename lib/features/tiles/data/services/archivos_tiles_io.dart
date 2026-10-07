@@ -105,9 +105,21 @@ final class _EscrituraIo implements EscrituraArchivo {
 
   final IOSink _sink;
 
+  /// La última escritura pedida, sin su error (ese le llega a quien esperó `agregar`). Un `IOSink`
+  /// no admite `add`, `flush` ni `close` mientras un `flush` está pendiente («StreamSink is bound to
+  /// a stream»): pausar, eliminar o perder el Wi-Fi corta la descarga justo ahí, así que `cerrar`
+  /// y cada `agregar` esperan a esta antes de tocar el sink.
+  Future<void> _enVuelo = Future<void>.value();
+
   /// `flush` espera a que el pedazo salga al archivo: es lo que le da contrapresión a la descarga.
   @override
-  Future<void> agregar(List<int> bytes) async {
+  Future<void> agregar(List<int> bytes) {
+    final escritura = _enVuelo.then((_) => _escribir(bytes));
+    _enVuelo = escritura.then((_) {}, onError: (Object _) {});
+    return escritura;
+  }
+
+  Future<void> _escribir(List<int> bytes) async {
     try {
       _sink.add(bytes);
       await _sink.flush();
@@ -116,8 +128,11 @@ final class _EscrituraIo implements EscrituraArchivo {
     }
   }
 
+  /// Espera a la escritura en vuelo (si la hay) y cierra: el pedazo que ya salió hacia el disco
+  /// queda entero en el `.part`, que es lo que la descarga retoma con `Range`.
   @override
   Future<void> cerrar() async {
+    await _enVuelo;
     try {
       await _sink.close();
     } on Object catch (e, pila) {

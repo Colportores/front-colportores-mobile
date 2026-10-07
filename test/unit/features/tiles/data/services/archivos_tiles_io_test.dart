@@ -1,4 +1,5 @@
 // Test de data: ArchivosTilesIo contra un directorio temporal real.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:colportores_mobile/features/tiles/data/services/archivos_tiles_io.dart';
@@ -74,6 +75,44 @@ void main() {
     await escritura.cerrar();
 
     expect(directorio.existsSync(), isTrue);
+  });
+
+  group('un pedazo todavía escribiéndose', () {
+    test(
+      'cerrar espera a que salga al archivo y no lanza «StreamSink is bound to a stream»',
+      () async {
+        final parcial = archivos.rutaParcial('zona-1');
+        final escritura = await archivos.abrir(parcial, anexar: false);
+
+        // Sin esperarlo: el `flush` de este pedazo sigue pendiente cuando se pide cerrar (pausar,
+        // eliminar o perder el Wi-Fi a mitad de la descarga).
+        final pedazo = escritura.agregar(List.filled(1 << 20, 1));
+        await escritura.cerrar();
+        await pedazo;
+
+        expect(await archivos.tamano(parcial), 1 << 20);
+      },
+    );
+
+    test('dos pedazos sin esperar el primero se escriben enteros y en orden', () async {
+      final parcial = archivos.rutaParcial('zona-1');
+      final escritura = await archivos.abrir(parcial, anexar: false);
+
+      final primero = escritura.agregar([1, 2, 3]);
+      final segundo = escritura.agregar([4, 5]);
+      await escritura.cerrar();
+      await Future.wait([primero, segundo]);
+
+      expect(await File(parcial).readAsBytes(), [1, 2, 3, 4, 5]);
+    });
+
+    test('cerrar dos veces no vuelve a fallar', () async {
+      final escritura = await archivos.abrir(archivos.rutaParcial('zona-1'), anexar: false);
+      unawaited(escritura.agregar([1]));
+
+      await escritura.cerrar();
+      await escritura.cerrar();
+    });
   });
 
   group('listar', () {
