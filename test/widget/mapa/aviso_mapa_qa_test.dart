@@ -1,6 +1,6 @@
 // QA del PR #291 (#190): los avisos del mapa de la vista 06 (06C·05, 06C·06 y 06C·07) contrastados
-// con HU-SYNC-010, HU-UBI-003 y las convenciones de avisos de error (§10). Los tests con `skip`
-// documentan un hallazgo de QA: el implementador les saca el `skip` cuando lo arregla.
+// con HU-SYNC-010, HU-UBI-003 y las convenciones de avisos de error (§10). Cada test es un hallazgo
+// de la ronda 1 de QA; nacieron con `skip` y pasan desde que se arregló cada uno.
 import 'dart:async';
 
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
@@ -55,9 +55,6 @@ void main() {
 
           expect(find.text(_seDescargaSola), findsOneWidget);
         },
-        // skip: issue #190 — QA #190: con el pedido en cola la píldora sigue diciendo «Descargar
-        // mapa» y el segundo toque no hace nada ni dice nada (el SnackBar salió una sola vez).
-        skip: true,
       );
     });
 
@@ -83,9 +80,6 @@ void main() {
           expect(montaje.arnes.montevideoDescargado, isFalse);
           expect(find.textContaining('Espacio insuficiente'), findsWidgets);
         },
-        // skip: issue #190 — QA #190: tras «Ahora no» la falla de la descarga que el colportor pidió
-        // no se muestra en ningún lado (la tarjeta está oculta toda la sesión y no hay SnackBar).
-        skip: true,
       );
     });
 
@@ -113,9 +107,6 @@ void main() {
           );
           expect(textos.where(conGuia.hasMatch), isNotEmpty, reason: textos.join(' | '));
         },
-        // skip: issue #190 — QA #190: «El servidor no pudo procesar la solicitud» dice qué pasó pero
-        // no qué hacer (convenciones §10); el botón queda a mano, el texto no lo guía.
-        skip: true,
       );
     });
 
@@ -135,9 +126,6 @@ void main() {
 
           expect(find.textContaining('Espacio insuficiente - faltan 8 MB'), findsOneWidget);
         },
-        // skip: issue #190 — QA #190: la HU pide «faltan X MB» con X = peso − espacio libre; hoy dice
-        // «se requieren 11 MB» (el peso que falta bajar, sin descontar el espacio libre). Viene de #189.
-        skip: true,
       );
     });
   });

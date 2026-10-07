@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.
 import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/repositories/paquetes_tiles_repository.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -510,6 +511,104 @@ void main() {
       await _dejarCorrer();
       expect(contenedor.read(provider), const EstadoSolicitudMapa());
       expect(arnes.montevideoDescargado, isTrue);
+    });
+
+    // Entre el pedido y el primer `DescargaEnCurso` el descargador todavía no dice nada (espera los
+    // encabezados del servidor, hasta 30 s): el pedido ya está en marcha y el botón no se libera.
+    group('con el servidor tardando en contestar', () {
+      late Completer<void> espera;
+
+      Future<void> montarConServidorLento() async {
+        arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+        contenedor = armar(arnes);
+        observar(contenedor, paqueteDelAmbitoProvider(ambitoMontevideo));
+        observar(contenedor, solicitudMapaProvider(ambitoMontevideo));
+        await _dejarCorrer();
+        espera = Completer<void>();
+        arnes.servidor.esperaAntesDeContestar = espera;
+        addTearDown(() {
+          if (!espera.isCompleted) espera.complete();
+        });
+      }
+
+      test(
+        'queda «bajando» desde el pedido, sin ocupada ni falla, y al terminar vuelve a nada',
+        () async {
+          await montarConServidorLento();
+          final provider = solicitudMapaProvider(ambitoMontevideo);
+
+          await contenedor.read(provider.notifier).pedir();
+          await _dejarCorrer();
+
+          expect(arnes.servidor.pedidos, hasLength(1));
+          expect(arnes.descargador.estadoDe('ciudad-montevideo'), isNull);
+          var estado = contenedor.read(provider);
+          expect(estado.bajando, isTrue);
+          expect(estado.enMarcha, isTrue);
+          expect(estado.ocupada, isFalse);
+          expect(estado.esperaSenal, isFalse);
+          expect(estado.falla, isNull);
+
+          // Otro pedido mientras tanto no hace nada.
+          await contenedor.read(provider.notifier).pedir();
+          expect(arnes.servidor.pedidos, hasLength(1));
+
+          espera.complete();
+          await arnes.descargador.esperar('ciudad-montevideo');
+          await _dejarCorrer();
+
+          estado = contenedor.read(provider);
+          expect(estado, const EstadoSolicitudMapa());
+          expect(arnes.montevideoDescargado, isTrue);
+        },
+      );
+
+      test('si el servidor responde con error, llega la falla y nada queda «en marcha»', () async {
+        await montarConServidorLento();
+        arnes.servidor.statusError = 500;
+        final provider = solicitudMapaProvider(ambitoMontevideo);
+
+        await contenedor.read(provider.notifier).pedir();
+        await _dejarCorrer();
+        expect(contenedor.read(provider).bajando, isTrue);
+
+        espera.complete();
+        await arnes.descargador.esperar('ciudad-montevideo');
+        await _dejarCorrer();
+
+        final estado = contenedor.read(provider);
+        expect(estado.falla, const FailureServidor(status: 500));
+        expect(estado.enMarcha, isFalse);
+      });
+
+      test(
+        'con una falla anterior en el descargador, el pedido nuevo también queda «bajando»',
+        () async {
+          await montarConServidorLento();
+          final provider = solicitudMapaProvider(ambitoMontevideo);
+          arnes.servidor
+            ..esperaAntesDeContestar = null
+            ..statusError = 500;
+          await contenedor.read(provider.notifier).pedir();
+          await arnes.descargador.esperar('ciudad-montevideo');
+          await _dejarCorrer();
+          expect(arnes.descargador.estadoDe('ciudad-montevideo'), isA<DescargaFallida>());
+          expect(contenedor.read(provider).falla, isNotNull);
+
+          // El estado que queda en el descargador es el de la falla vieja; el pedido nuevo es otro.
+          arnes.servidor
+            ..statusError = null
+            ..esperaAntesDeContestar = espera;
+          await contenedor.read(provider.notifier).pedir();
+          await _dejarCorrer();
+
+          expect(arnes.descargador.estadoDe('ciudad-montevideo'), isA<DescargaFallida>());
+          final estado = contenedor.read(provider);
+          expect(estado.bajando, isTrue);
+          expect(estado.enMarcha, isTrue);
+          expect(estado.falla, isNull);
+        },
+      );
     });
 
     test('el pedido en espera del catálogo cuenta como «esperando la señal»', () async {

@@ -121,21 +121,28 @@ void main() {
       expect(estados[estados.length - 2], DescargaVerificando(paquete.id));
     });
 
-    test('Escenario: Sin espacio — dado que el teléfono no tiene espacio, cuando intento '
-        'descargar, bloquea con "Espacio insuficiente - se requieren X MB"', () async {
-      final grande = conTamano(paquete, 87 * 1000 * 1000 + 1);
-      espacio.libres = 50 * 1000 * 1000;
+    test(
+      'Escenario: Sin espacio — dado que el teléfono no tiene espacio, cuando intento '
+      'descargar, bloquea con "Espacio insuficiente - faltan X MB", X lo que falta de espacio',
+      () async {
+        final grande = conTamano(paquete, 87 * 1000 * 1000 + 1);
+        espacio.libres = 50 * 1000 * 1000;
 
-      final resultado = await descargador.descargar(grande);
+        final resultado = await descargador.descargar(grande);
 
-      final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
-      expect(failure, const FailureEspacioInsuficiente(megabytesRequeridos: 88));
-      expect(failure.mensaje, startsWith('Espacio insuficiente - se requieren 88 MB'));
-      expect(servidor.pedidos, isEmpty);
-      expect(descargador.estadoDe(paquete.id), isNull);
-    });
+        // 87 000 001 B por bajar menos 50 000 000 B libres = 37 000 001 B: faltan 38 MB (para arriba).
+        final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
+        expect(failure, const FailureEspacioInsuficiente(megabytesFaltantes: 38));
+        expect(
+          failure.mensaje,
+          'Espacio insuficiente - faltan 38 MB. Liberá espacio en el teléfono y probá de nuevo.',
+        );
+        expect(servidor.pedidos, isEmpty);
+        expect(descargador.estadoDe(paquete.id), isNull);
+      },
+    );
 
-    test('dado que hay un .part, cuando falta espacio, pide solo lo que falta bajar', () async {
+    test('dado que hay un .part, cuando falta espacio, cuenta solo lo que falta bajar', () async {
       archivos.contenido[parcial] = bytes.sublist(0, 2000);
       final grande = conTamano(paquete, 3 * 1000 * 1000);
       espacio.libres = 1000;
@@ -143,7 +150,7 @@ void main() {
       final resultado = await descargador.descargar(grande);
 
       final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
-      expect(failure, const FailureEspacioInsuficiente(megabytesRequeridos: 3));
+      expect(failure, const FailureEspacioInsuficiente(megabytesFaltantes: 3));
       espacio.libres = 3500;
       expect(await descargar(), const Right<Failure, Unit>(unit));
       expect(servidor.pedidos, [2000]);
@@ -387,7 +394,8 @@ void main() {
 
       expect(
         descargador.estadoDe(paquete.id),
-        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesRequeridos: 1)),
+        // La medición dice que sobra lugar (el fake sigue informando muchísimo): sin número.
+        DescargaFallida(paquete.id, const FailureEspacioInsuficiente()),
       );
       expect(archivos.contenido[parcial], bytes.sublist(0, 2000));
       archivos.discoLlenoDespuesDe = null;
@@ -396,6 +404,66 @@ void main() {
 
       expect(servidor.pedidos, [0, 2000]);
       expectCompleta();
+    });
+
+    test('dado que el disco se llena a mitad y el teléfono informa cuánto queda, dice cuánto falta '
+        'de espacio', () async {
+      archivos.discoLlenoDespuesDe = 2500;
+      // Quedan 1500 B libres de los 3500 B que faltan bajar: faltan 2000 B, o sea 1 MB.
+      espacio.libresDespuesDeLaPrimera = 1500;
+
+      await descargar();
+
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesFaltantes: 1)),
+      );
+      expect(
+        (descargador.estadoDe(paquete.id)! as DescargaFallida).failure.mensaje,
+        'Espacio insuficiente - faltan 1 MB. Liberá espacio en el teléfono y probá de nuevo.',
+      );
+    });
+
+    test('dado que el disco se llena a mitad y el teléfono no contesta cuánto queda, falla sin '
+        'número y sin error suelto', () async {
+      archivos.discoLlenoDespuesDe = 2500;
+      espacio.lanzaDespuesDeLaPrimera = true;
+
+      await descargar();
+
+      final falla = (descargador.estadoDe(paquete.id)! as DescargaFallida).failure;
+      expect(falla, const FailureEspacioInsuficiente());
+      expect(
+        falla.mensaje,
+        'Espacio insuficiente. Liberá espacio en el teléfono y probá de nuevo.',
+      );
+    });
+
+    test('estaDescargando es verdadero desde el pedido —aunque estadoDe todavía no diga nada— y '
+        'deja de serlo al terminar', () async {
+      final espera = Completer<void>();
+      servidor.esperaAntesDeContestar = espera;
+      expect(descargador.estaDescargando(paquete.id), isFalse);
+
+      expect(await descargador.descargar(paquete), const Right<Failure, Unit>(unit));
+
+      expect(descargador.estaDescargando(paquete.id), isTrue);
+      expect(descargador.estadoDe(paquete.id), isNull);
+
+      espera.complete();
+      await descargador.esperar(paquete.id);
+      expect(descargador.estaDescargando(paquete.id), isFalse);
+      expectCompleta();
+    });
+
+    test('estaDescargando es falso mientras el pedido espera en cola la conexión', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+
+      await descargar(datosMoviles: true, esperarConexion: true);
+
+      expect(descargador.estadoDe(paquete.id), isA<DescargaPausada>());
+      expect(descargador.estaDescargando(paquete.id), isFalse);
+      expect(descargador.estaDescargando('otro'), isFalse);
     });
 
     test(
@@ -497,7 +565,7 @@ void main() {
 
         expect(
           resultado,
-          const Left<Failure, Unit>(FailureEspacioInsuficiente(megabytesRequeridos: 1)),
+          const Left<Failure, Unit>(FailureEspacioInsuficiente(megabytesFaltantes: 1)),
         );
         expect(servidor.pedidos, isEmpty);
       },
@@ -633,7 +701,7 @@ void main() {
 
       expect(
         descargador.estadoDe(paquete.id),
-        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesRequeridos: 1)),
+        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesFaltantes: 1)),
       );
       espacio.libres = 1 << 40;
       expect(
@@ -777,7 +845,7 @@ void main() {
 
       expect(
         descargador.estadoDe(paquete.id),
-        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesRequeridos: 1)),
+        DescargaFallida(paquete.id, const FailureEspacioInsuficiente(megabytesFaltantes: 1)),
       );
     });
 
