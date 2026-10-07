@@ -18,7 +18,7 @@ typedef _Escritura = ({
   Ubicacion nueva,
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
-  bool dejaDeSerEdificio,
+  bool reduceAUnEspacio,
 });
 
 /// Un repositorio con una ubicación y N espacios, que anota lo que se le manda a escribir.
@@ -45,13 +45,13 @@ final class _Repositorio implements UbicacionRepository {
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   }) async {
     escrituras.add((
       nueva: nueva,
       baseUpdatedAt: baseUpdatedAt,
       duplicados: duplicados,
-      dejaDeSerEdificio: dejaDeSerEdificio,
+      reduceAUnEspacio: reduceAUnEspacio,
     ));
     return respuesta ?? Right(UbicacionModificada(ubicacion: nueva));
   }
@@ -321,11 +321,56 @@ void main() {
     );
   });
 
-  group('Cambio de tipo de un edificio (S17, decisión de Cristian del 07/10)', () {
-    void conEdificio(int espacios) {
-      repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: espacios);
+  group('Cambio de tipo de un edificio o un negocio (S17, decisión de Cristian del 07/10)', () {
+    void conTipo(TipoUbicacion tipo, int espacios) {
+      repo = _Repositorio(ubicacion(tipo: tipo), espacios: espacios);
       modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
     }
+
+    void conEdificio(int espacios) => conTipo(TipoUbicacion.edificio, espacios);
+
+    void conNegocio(int espacios) => conTipo(TipoUbicacion.negocio, espacios);
+
+    test('dado un NEGOCIO con 2 espacios activos, cuando lo pasa a CASA, se bloquea con el mismo '
+        'texto que un edificio y no se escribe', () async {
+      conNegocio(2);
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 2));
+      expect(f.mensaje, 'Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.');
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado un NEGOCIO con un solo espacio activo, cuando lo pasa a CASA, se permite y le avisa '
+        'al repositorio que deje un solo espacio', () async {
+      conNegocio(1);
+
+      expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
+
+      expect(repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
+    });
+
+    test('dado un NEGOCIO con 2 espacios activos, cuando lo pasa a EDIFICIO, se permite y no toca '
+        'los espacios', () async {
+      conNegocio(2);
+
+      expect(await ok(params(tipo: TipoUbicacion.edificio)), isA<UbicacionModificada>());
+
+      expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
+    });
+
+    test('dado un EDIFICIO con 2 espacios activos, cuando lo pasa a NEGOCIO, sigue bloqueado '
+        '(igual que a CASA)', () async {
+      conEdificio(2);
+
+      expect(
+        await falla(params(tipo: TipoUbicacion.negocio)),
+        const FailureUbicacionConEspacios(cantidadEspacios: 2),
+      );
+      expect(repo.escrituras, isEmpty);
+    });
 
     test('dado un EDIFICIO con 3 espacios activos, cuando lo pasa a CASA o NEGOCIO, se bloquea con '
         'el texto literal y no se escribe', () async {
@@ -359,7 +404,7 @@ void main() {
       }
 
       expect(repo.escrituras.map((e) => e.nueva.tipo), [TipoUbicacion.casa, TipoUbicacion.negocio]);
-      expect(repo.escrituras.map((e) => e.dejaDeSerEdificio), [true, true]);
+      expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [true, true]);
     });
 
     test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
@@ -367,7 +412,7 @@ void main() {
 
       expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
       // Igual se avisa: el repositorio vuelve a contar dentro de la transacción.
-      expect(repo.escrituras.single.dejaDeSerEdificio, isTrue);
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
     });
 
     test('dado que no se pueden contar los espacios, cuando saca el edificio de su tipo, falla y '
@@ -385,7 +430,7 @@ void main() {
 
       expect(await ok(params(tipo: TipoUbicacion.edificio)), isA<UbicacionModificada>());
       expect(await ok(params(tipo: TipoUbicacion.negocio)), isA<UbicacionModificada>());
-      expect(repo.escrituras.map((e) => e.dejaDeSerEdificio), [false, false]);
+      expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [false, false]);
     });
 
     test('dado un EDIFICIO con espacios, cuando cambia solo el número, no se bloquea ni toca los '
@@ -396,7 +441,7 @@ void main() {
         await ok(params(tipo: TipoUbicacion.edificio, numero: '1236')),
         isA<UbicacionModificada>(),
       );
-      expect(repo.escrituras.single.dejaDeSerEdificio, isFalse);
+      expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
     });
 
     test('dado un EDIFICIO con un espacio, cuando además mueve el punto más de 100 m, primero pide '
@@ -417,7 +462,7 @@ void main() {
         ),
       );
 
-      expect(repo.escrituras.single.dejaDeSerEdificio, isTrue);
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
     });
   });
 

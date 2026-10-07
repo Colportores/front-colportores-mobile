@@ -89,13 +89,14 @@ final class ModificarUbicacionParams extends Equatable {
 ///    pedidos (doble toque en "Guardar": el primero entró), es un éxito idempotente:
 ///    `Right(UbicacionModificada)` con la fila tal cual, sin escribir ni encolar.
 ///    Si no es ese caso y la fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
-/// 4. `EDIFICIO` → `CASA`/`NEGOCIO` con **dos o más** espacios activos:
-///    `Left(FailureUbicacionConEspacios)` (S17). Es un bloqueo, no una confirmación. Con un solo
-///    espacio activo se permite (decisión de Cristian, 07/10): ese depto pasa a ser el espacio de
-///    la casa y en la misma transacción se le quita el `numero_depto`; con ninguno, no hay nada
-///    más que hacer. Solo cuentan los activos. Al revés (`CASA`/`NEGOCIO` → `EDIFICIO`) no se
-///    toca ningún espacio: el de la casa ya tiene `numero_depto` nulo y pasa a ser el primer
-///    depto, que la lista de deptos muestra «Sin número» (HU-UBI-007).
+/// 4. `EDIFICIO` → `CASA`/`NEGOCIO` y `NEGOCIO` → `CASA` ([TipoUbicacion.reduceAUnEspacioHacia])
+///    con **dos o más** espacios activos: `Left(FailureUbicacionConEspacios)` (S17). Es un
+///    bloqueo, no una confirmación. Con un solo espacio activo se permite (decisión de Cristian,
+///    07/10): ese depto pasa a ser el espacio de la casa o del negocio y en la misma transacción
+///    se le quita el `numero_depto`; con ninguno, no hay nada más que hacer. Solo cuentan los
+///    activos. Al revés (`CASA`/`NEGOCIO` → `EDIFICIO`, `CASA` → `NEGOCIO`) no se toca ningún
+///    espacio: el de la casa ya tiene `numero_depto` nulo y pasa a ser el primer depto, que la
+///    lista de deptos muestra «Sin número» (HU-UBI-007).
 /// 5. Si se mueve (cambia el punto o la ciudad), la zona pasa a ser la que contiene el punto nuevo,
 ///    o `null` fuera de toda zona ([UbicadorZona]); si no se mueve, conserva la que tenía. Si la
 ///    ubicación la registró otro colportor y la zona nueva no es una de las de quien la mueve:
@@ -205,9 +206,8 @@ final class ModificarUbicacionUseCase
     // S17: el repositorio vuelve a contar dentro de la transacción (un espacio puede aparecer entre
     // esta lectura y la escritura); acá se corta antes, para que el bloqueo salga antes que las
     // confirmaciones.
-    final dejaDeSerEdificio =
-        actual.tipo == TipoUbicacion.edificio && params.tipo != TipoUbicacion.edificio;
-    if (dejaDeSerEdificio) {
+    final reduceAUnEspacio = actual.tipo.reduceAUnEspacioHacia(params.tipo);
+    if (reduceAUnEspacio) {
       final espacios = await _repository.contarEspaciosActivos(actual.id);
       final bloqueo = espacios.fold<Failure?>(
         (falla) => falla,
@@ -280,7 +280,7 @@ final class ModificarUbicacionUseCase
           : seguirIgual
           ? _criterio.alSeguirIgual
           : _criterio,
-      dejaDeSerEdificio: dejaDeSerEdificio,
+      reduceAUnEspacio: reduceAUnEspacio,
     );
     return resultado.map(
       (r) => r is UbicacionModificada

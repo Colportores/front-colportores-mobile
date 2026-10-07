@@ -58,17 +58,20 @@ typedef EscrituraEdicion = ({
   Ubicacion nueva,
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
-  bool dejaDeSerEdificio,
+  bool reduceAUnEspacio,
 });
 
 /// El repositorio de ubicaciones de la edición: guarda la ubicación en memoria y deja que el test
 /// decida qué se lee, cuántos espacios tiene y cómo termina cada `modificar`.
 final class RepoEdicionFalso with UbicacionRepositorySinModificar implements UbicacionRepository {
-  RepoEdicionFalso(this.actual, {this.espacios = 2});
+  RepoEdicionFalso(this.actual, {this.espacios = 2, this.numeroDepto});
 
   /// Lo que hay en el teléfono; `null` = la ubicación no está.
   Ubicacion? actual;
   int espacios;
+
+  /// El `numero_depto` del único espacio (solo se devuelve si [espacios] es 1).
+  String? numeroDepto;
 
   /// Si no es `null`, `obtener` devuelve esta falla (o lanza [lanzaAlLeer]).
   Failure? fallaAlLeer;
@@ -78,6 +81,9 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
   Completer<void>? bloqueoLectura;
 
   Failure? fallaAlContar;
+
+  /// Si no es `null`, `numeroDelUnicoDepto` devuelve esta falla.
+  Failure? fallaAlLeerDepto;
 
   /// Si no es `null`, `modificar` espera a que se complete.
   Completer<void>? bloqueoEscritura;
@@ -114,17 +120,23 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
   }
 
   @override
+  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) async {
+    final falla = fallaAlLeerDepto;
+    return falla != null ? Left(falla) : Right(espacios == 1 ? numeroDepto : null);
+  }
+
+  @override
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   }) async {
     escrituras.add((
       nueva: nueva,
       baseUpdatedAt: baseUpdatedAt,
       duplicados: duplicados,
-      dejaDeSerEdificio: dejaDeSerEdificio,
+      reduceAUnEspacio: reduceAUnEspacio,
     ));
     final espera = bloqueoEscritura;
     if (espera != null) await espera.future;

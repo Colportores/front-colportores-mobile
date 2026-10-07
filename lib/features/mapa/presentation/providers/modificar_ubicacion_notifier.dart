@@ -68,6 +68,7 @@ final class ModificarUbicacionState extends Equatable {
     this.fallaCarga,
     this.original,
     this.espacios,
+    this.numeroDeptoUnico,
     this.tipo,
     this.ciudadId,
     this.ciudadNombre,
@@ -95,6 +96,11 @@ final class ModificarUbicacionState extends Equatable {
   /// Cuántos espacios sin baja tiene; `null` si no se pudo contar (el caso de uso igual bloquea el
   /// cambio de edificio a otro tipo).
   final int? espacios;
+
+  /// El `numero_depto` del único espacio activo, cuando [espacios] es 1 y ese tiene número; `null`
+  /// en cualquier otro caso (S17: es lo que la línea «El departamento 3B queda como…» le dice al
+  /// colportor que va a perder).
+  final String? numeroDeptoUnico;
 
   // El borrador: lo que quedaría guardado.
   final TipoUbicacion? tipo;
@@ -158,19 +164,29 @@ final class ModificarUbicacionState extends Equatable {
     return p.distanciaMetrosA(o.coordenadas);
   }
 
-  /// S17: de edificio a otro tipo con **dos o más** espacios activos no se puede (HU-UBI-004;
-  /// con un solo depto sí, decisión de Cristian del 07/10: pasa a ser el espacio de la casa). Es la
-  /// cantidad de espacios, o `null` si el borrador no cae en el bloqueo.
+  /// Si el borrador deja a la ubicación con un solo espacio (S17: de edificio a casa o negocio, de
+  /// negocio a casa; [TipoUbicacion.reduceAUnEspacioHacia]).
+  bool get _reduceAUnEspacio {
+    final guardado = original?.tipo;
+    final nuevo = tipo;
+    return guardado != null && nuevo != null && guardado.reduceAUnEspacioHacia(nuevo);
+  }
+
+  /// S17: pasar a un solo espacio con **dos o más** espacios activos no se puede (HU-UBI-004; con
+  /// un solo depto sí, decisión de Cristian del 07/10: pasa a ser el espacio de la casa o del
+  /// negocio). Es la cantidad de espacios, o `null` si el borrador no cae en el bloqueo.
   int? get bloqueoPorEspacios {
     final cantidad = espacios;
-    if (original?.tipo == TipoUbicacion.edificio &&
-        tipo != null &&
-        tipo != TipoUbicacion.edificio &&
-        cantidad != null &&
-        cantidad > 1) {
-      return cantidad;
-    }
-    return null;
+    return _reduceAUnEspacio && cantidad != null && cantidad > 1 ? cantidad : null;
+  }
+
+  /// S17: el número del depto que el borrador deja sin número —«3B» en «El departamento 3B queda
+  /// como el espacio de la casa, sin número.»—; `null` si el borrador no cambia a un solo espacio,
+  /// si no hay exactamente un espacio activo o si ese no tenía número. Solo informa: no bloquea ni
+  /// pide confirmar.
+  String? get deptoQueQuedaSinNumero {
+    final numero = numeroDeptoUnico;
+    return _reduceAUnEspacio && espacios == 1 && numero != null ? numero : null;
   }
 
   /// La ubicación cambió mientras se editaba: el borrador ya no se puede guardar (hay que volver a
@@ -205,6 +221,7 @@ final class ModificarUbicacionState extends Equatable {
     Ubicacion? original,
     int? espacios,
     bool borrarEspacios = false,
+    String? numeroDeptoUnico,
     TipoUbicacion? tipo,
     String? ciudadId,
     String? ciudadNombre,
@@ -226,6 +243,7 @@ final class ModificarUbicacionState extends Equatable {
     fallaCarga: borrarFallaCarga ? null : (fallaCarga ?? this.fallaCarga),
     original: original ?? this.original,
     espacios: borrarEspacios ? null : (espacios ?? this.espacios),
+    numeroDeptoUnico: borrarEspacios ? null : (numeroDeptoUnico ?? this.numeroDeptoUnico),
     tipo: tipo ?? this.tipo,
     ciudadId: ciudadId ?? this.ciudadId,
     ciudadNombre: borrarCiudadNombre ? null : (ciudadNombre ?? this.ciudadNombre),
@@ -247,6 +265,7 @@ final class ModificarUbicacionState extends Equatable {
     fallaCarga,
     original,
     espacios,
+    numeroDeptoUnico,
     tipo,
     ciudadId,
     ciudadNombre,
@@ -382,12 +401,21 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
       }
       final cuenta = await repo.contarEspaciosActivos(ubicacion.id);
       if (!ref.mounted || numero != _secuenciaCarga) return;
+      // Solo con un depto, y solo si algún cambio de tipo lo va a dejar sin número: la línea es
+      // informativa, así que si no se puede leer simplemente no se muestra.
+      String? numeroDepto;
+      if (cuenta.getOrElse(() => 0) == 1 && ubicacion.tipo != TipoUbicacion.casa) {
+        final leido = await repo.numeroDelUnicoDepto(ubicacion.id);
+        if (!ref.mounted || numero != _secuenciaCarga) return;
+        numeroDepto = leido.getOrElse(() => null);
+      }
       final nombre = await _nombreDeCiudad(ubicacion.ciudadId);
       if (!ref.mounted || numero != _secuenciaCarga) return;
       state = ModificarUbicacionState(
         carga: CargaEdicion.lista,
         original: ubicacion,
         espacios: cuenta.fold<int?>((_) => null, (n) => n),
+        numeroDeptoUnico: numeroDepto,
         tipo: ubicacion.tipo,
         ciudadId: ubicacion.ciudadId,
         ciudadNombre: nombre,
@@ -665,8 +693,15 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
 
   /// Con [FailureUbicacionCambio] el borrador queda a la vista pero ya no se puede guardar
   /// ([ModificarUbicacionState.desactualizada]): el aviso dice «Abrila de nuevo y repetí el cambio».
+  /// Con [FailureUbicacionConEspacios] (apareció otro depto entre abrir y guardar) la cuenta de la
+  /// hoja pasa a ser la que contó el guardado: el resumen no se contradice con el aviso y
+  /// «Guardar cambios» queda sin efecto ([ModificarUbicacionState.bloqueoPorEspacios]).
   ResultadoGuardadoEdicion _alFallar(Failure falla) {
-    state = state.copyWith(guardando: false, falla: falla);
+    state = state.copyWith(
+      guardando: false,
+      falla: falla,
+      espacios: falla is FailureUbicacionConEspacios ? falla.cantidadEspacios : null,
+    );
     return EdicionFallida(falla);
   }
 }

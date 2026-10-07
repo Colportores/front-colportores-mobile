@@ -84,6 +84,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (await consulta.getSingle()).read(cantidad) ?? 0;
   }
 
+  @override
+  Future<String?> numeroDelUnicoDepto(String ubicacionId) async {
+    final activos =
+        await (select(espacios)
+              ..where((e) => e.ubicacionId.equals(ubicacionId) & e.deletedAt.isNull())
+              ..limit(2))
+            .get();
+    return activos.length == 1 ? activos.single.numeroDepto : null;
+  }
+
   /// Leer, comparar, contar espacios, buscar duplicados, escribir y encolar van en una sola
   /// transacción, como el alta: una escritura concurrente (el sync entrante, un espacio que se
   /// agrega) se serializa y esta ve su resultado.
@@ -92,16 +102,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
 
-    // S17: de edificio a casa o negocio solo con un depto; ese depto pasa a ser el espacio de la
-    // casa y pierde el número. Los de baja no cuentan.
+    // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
+    // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
+    // pierde el número. Los de baja no cuentan.
     EspacioFila? deptoConNumero;
-    if (dejaDeSerEdificio) {
+    if (reduceAUnEspacio) {
       final activos = await (select(
         espacios,
       )..where((e) => e.ubicacionId.equals(nueva.id) & e.deletedAt.isNull())).get();

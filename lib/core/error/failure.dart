@@ -485,18 +485,19 @@ final class FailureUltimoEspacioConPersonas extends Failure {
       );
 }
 
-/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO` teniendo **dos o más** espacios activos
-/// (HU-UBI-004, "Cambio de tipo bloqueado", Supuesto S17 con la decisión de Cristian del 07/10: con
-/// un solo espacio el cambio se permite y el depto pasa a ser el de la casa). Texto literal del
-/// criterio de aceptación.
+/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO`, o un `NEGOCIO` a `CASA`, teniendo **dos o
+/// más** espacios activos (HU-UBI-004, "Cambio de tipo bloqueado", Supuesto S17 con la decisión de
+/// Cristian del 07/10: con un solo espacio el cambio se permite y el depto pasa a ser el de la casa
+/// o el del negocio). Texto literal del criterio de aceptación.
 final class FailureUbicacionConEspacios extends Failure {
   const FailureUbicacionConEspacios({required this.cantidadEspacios})
-    : super(
+    : assert(cantidadEspacios > 1, 'el bloqueo es de dos o más espacios'),
+      super(
         mensaje: 'Esta ubicación tiene $cantidadEspacios espacios. Borralos o reubicalos primero.',
         codigo: 'UBI_CON_ESPACIOS',
       );
 
-  /// Cuántos espacios activos tiene: siempre 2 o más.
+  /// Cuántos espacios activos tiene: siempre 2 o más (el mensaje es solo plural).
   final int cantidadEspacios;
 
   @override

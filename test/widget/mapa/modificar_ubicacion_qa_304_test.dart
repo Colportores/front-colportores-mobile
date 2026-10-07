@@ -9,8 +9,8 @@
 //  3. De punta a punta con la base real (pantalla, caso de uso, repositorio y Drift en memoria):
 //     el espacio queda sin número, se encolan los dos cambios en orden y volver a Edificio no pisa nada.
 //
-// Los tests que documentan un hallazgo van con `skip: true` y, arriba, el comentario
-// `// skip: QA #310 — <hallazgo>` (en `testWidgets` el `skip` es un bool).
+// Los hallazgos de QA r1 (el aviso de bloqueo bajo el botón fijo a 200 % y el resumen viejo tras el
+// rechazo) quedaron arreglados en la ronda final del PR: sus tests ya no van con `skip`.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -275,47 +275,38 @@ void main() {
       );
     }
 
-    // skip: QA #310 — con texto al 200 % en 360x640 el aviso «Esta ubicación tiene 2 espacios…» queda
-    // bajo el pliegue (debajo del botón fijo): se ve un «Guardar cambios» gris y no se ve por qué.
-    testWidgets(
-      'con texto al 200 % en 360x640 el aviso de bloqueo se ve sin hacer scroll',
-      skip: true,
-      (tester) async {
-        await _montar(tester, _edificioFalso(2), tamano: const Size(360, 640), escala: 2);
-        await _tocar(tester, find.text('Casa'));
+    testWidgets('con texto al 200 % en 360x640 el aviso de bloqueo se ve sin hacer scroll', (
+      tester,
+    ) async {
+      await _montar(tester, _edificioFalso(2), tamano: const Size(360, 640), escala: 2);
+      await _tocar(tester, find.text('Casa'));
 
-        expect(find.text(_aviso2), findsOneWidget);
-        expect(
-          tester.getRect(find.text(_aviso2)).bottom,
-          lessThanOrEqualTo(tester.getRect(_guardar).top),
-          reason: 'el aviso queda tapado por el botón fijo',
-        );
-      },
-    );
+      expect(find.text(_aviso2), findsOneWidget);
+      expect(
+        tester.getRect(find.text(_aviso2)).bottom,
+        lessThanOrEqualTo(tester.getRect(_guardar).top),
+        reason: 'el aviso queda tapado por el botón fijo',
+      );
+    });
   });
 
   group('QA #304 · rechazo tardío: aparece un 2.º depto entre abrir y guardar', () {
-    // skip: QA #310 — `_alFallar` no copia `cantidadEspacios` a `state.espacios`: tras el rechazo con
-    // 2 espacios la hoja sigue diciendo «Edificio · 1 espacio» arriba del aviso rojo que dice 2.
-    testWidgets(
-      'tras el rechazo la hoja no se contradice: el resumen dice los 2 espacios del aviso',
-      skip: true,
-      (tester) async {
-        final repo = _edificioFalso(1);
-        await _montar(tester, repo);
-        repo.espacios = 2;
-        await _tocar(tester, find.text('Casa'));
+    testWidgets('tras el rechazo la hoja no se contradice: el resumen dice los 2 espacios del '
+        'aviso', (tester) async {
+      final repo = _edificioFalso(1);
+      await _montar(tester, repo);
+      repo.espacios = 2;
+      await _tocar(tester, find.text('Casa'));
 
-        await _tocar(tester, _guardar);
+      await _tocar(tester, _guardar);
 
-        expect(find.text(_aviso2), findsOneWidget);
-        expect(find.textContaining('1 espacio'), findsNothing, reason: 'el resumen quedó viejo');
-        expect(repo.escrituras, isEmpty);
-      },
-    );
+      expect(find.text(_aviso2), findsOneWidget);
+      expect(find.textContaining('1 espacio'), findsNothing, reason: 'el resumen quedó viejo');
+      expect(repo.escrituras, isEmpty);
+    });
 
-    testWidgets('tras el rechazo no se escribe nada, «Guardar cambios» sigue habilitado para '
-        'reintentar y no queda «Guardando…» trabado', (tester) async {
+    testWidgets('tras el rechazo no se escribe nada, «Guardar cambios» queda sin efecto (el aviso '
+        'de bloqueo sigue a la vista) y no queda «Guardando…» trabado', (tester) async {
       final repo = _edificioFalso(1);
       await _montar(tester, repo);
       repo.espacios = 2;
@@ -325,7 +316,7 @@ void main() {
 
       expect(find.text(_aviso2), findsOneWidget);
       expect(repo.escrituras, isEmpty);
-      expect(_habilitado(tester, _guardar), isTrue);
+      expect(_habilitado(tester, _guardar), isFalse);
       expect(_guardandoBoton, findsNothing, reason: 'no queda «Guardando…» trabado');
     });
 

@@ -9,7 +9,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplic
 import 'package:dartz/dartz.dart';
 
 /// Para los fakes de [UbicacionRepository] de los tests que no modifican ubicaciones: completa
-/// los métodos de HU-UBI-004 (`obtener`, `contarEspaciosActivos`, `modificar`) sin usarlos, así
+/// los métodos de HU-UBI-004 (`obtener`, `contarEspaciosActivos`, `numeroDelUnicoDepto`, `modificar`) sin usarlos, así
 /// agregar uno a la interfaz no obliga a tocar cada fake.
 mixin UbicacionRepositorySinModificar {
   Future<Either<Failure, Ubicacion?>> obtener(String id) => throw UnimplementedError();
@@ -17,11 +17,14 @@ mixin UbicacionRepositorySinModificar {
   Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId) =>
       throw UnimplementedError();
 
+  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) =>
+      throw UnimplementedError();
+
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   }) => throw UnimplementedError();
 
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
@@ -45,6 +48,8 @@ mixin UbicacionLocalSinModificar {
 
   Future<int> contarEspaciosActivos(String ubicacionId) => throw UnimplementedError();
 
+  Future<String?> numeroDelUnicoDepto(String ubicacionId) => throw UnimplementedError();
+
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
     String id, {
     required DateTime baseUpdatedAt,
@@ -57,7 +62,7 @@ mixin UbicacionLocalSinModificar {
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({

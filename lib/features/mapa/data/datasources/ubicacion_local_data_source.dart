@@ -36,6 +36,10 @@ abstract interface class UbicacionLocalDataSource {
   /// Cuántos espacios sin baja tiene [ubicacionId].
   Future<int> contarEspaciosActivos(String ubicacionId);
 
+  /// El `numero_depto` del espacio de [ubicacionId] si tiene exactamente uno sin baja y ese tiene
+  /// número; `null` en cualquier otro caso.
+  Future<String?> numeroDelUnicoDepto(String ubicacionId);
+
   /// Escribe [nueva] sobre la fila con su mismo `id` y encola el `update` con la fila entera,
   /// **todo en una transacción** (HU-UBI-004; contrato-sync-engine §3). Solo cambian `tipo`,
   /// `calle`, `numero`, `lat`, `lon`, `ciudad_id`, `zona_id` (la que calculó el caso de uso por la
@@ -45,7 +49,8 @@ abstract interface class UbicacionLocalDataSource {
   /// - Sin fila con ese `id`: lanza [UbicacionInexistenteException].
   /// - Si `updated_at` de la fila no es [baseUpdatedAt] (cambió desde que se leyó): no escribe y
   ///   lanza [UbicacionCambioException].
-  /// - Si [dejaDeSerEdificio] (la edición saca a la ubicación de `EDIFICIO`, S17), **dentro de la
+  /// - Si [reduceAUnEspacio] (el cambio de tipo la deja con un solo espacio: de `EDIFICIO` a
+  ///   `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA`, S17), **dentro de la
   ///   misma transacción** se cuentan los espacios sin baja: con dos o más no escribe nada y lanza
   ///   [UbicacionConEspaciosException]; con exactamente uno, a ese espacio se le quita el
   ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
@@ -59,7 +64,7 @@ abstract interface class UbicacionLocalDataSource {
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
-    bool dejaDeSerEdificio = false,
+    bool reduceAUnEspacio = false,
   });
 
   /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con
@@ -139,8 +144,9 @@ final class UbicacionCambioException implements Exception {
   String toString() => 'UbicacionCambioException';
 }
 
-/// Se quiso sacar un `EDIFICIO` de ese tipo teniendo [cantidad] espacios activos (dos o más, S17);
-/// el repositorio la traduce a `FailureUbicacionConEspacios`.
+/// Se quiso reducir una ubicación a un solo espacio (de `EDIFICIO` a `CASA` o `NEGOCIO`, o de
+/// `NEGOCIO` a `CASA`) teniendo [cantidad] espacios activos (dos o más, S17); el repositorio la
+/// traduce a `FailureUbicacionConEspacios`.
 final class UbicacionConEspaciosException implements Exception {
   const UbicacionConEspaciosException(this.cantidad);
 

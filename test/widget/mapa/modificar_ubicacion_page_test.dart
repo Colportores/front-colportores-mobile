@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_modificar.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart'
     show TipoConexion;
 import 'package:dartz/dartz.dart' show Left, Right;
@@ -209,6 +210,14 @@ Future<void> _moverYGuardarPosicion(WidgetTester tester, _Escenario e, double gr
 }
 
 Finder get _cerrar => find.byTooltip('Cerrar');
+
+const _avisoDos = 'Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.';
+const _lineaCasa = 'El departamento 3B queda como el espacio de la casa, sin número.';
+const _lineaNegocio = 'El departamento 3B queda como el espacio del negocio, sin número.';
+
+/// Una ubicación de [tipo] con un único departamento activo, con el número [numero].
+RepoEdicionFalso _conUnDepto(TipoUbicacion tipo, {String? numero = '3B'}) =>
+    RepoEdicionFalso(ubicacionGuardada(tipo: tipo), espacios: 1, numeroDepto: numero);
 
 void main() {
   group('artboard 07 · 01 «Editar datos»', () {
@@ -1064,7 +1073,7 @@ void main() {
 
       final escritura = e.repo.escrituras.single;
       expect(escritura.nueva.tipo, TipoUbicacion.casa);
-      expect(escritura.dejaDeSerEdificio, isTrue, reason: 'el repositorio suelta el número');
+      expect(escritura.reduceAUnEspacio, isTrue, reason: 'el repositorio suelta el número');
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
@@ -1079,7 +1088,7 @@ void main() {
       await _tocar(tester, _guardar);
 
       expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
-      expect(e.repo.escrituras.single.dejaDeSerEdificio, isTrue);
+      expect(e.repo.escrituras.single.reduceAUnEspacio, isTrue);
     });
 
     testWidgets('con un solo departamento, pasar a Casa y volver a Edificio no cambia nada', (
@@ -1116,7 +1125,11 @@ void main() {
           findsOneWidget,
         );
         expect(e.repo.escrituras, isEmpty);
-        expect(_habilitado(tester, _guardar), isTrue, reason: 'puede volver a intentarlo');
+        expect(
+          _habilitado(tester, _guardar),
+          isFalse,
+          reason: 'el aviso de bloqueo quedó a la vista',
+        );
       },
     );
 
@@ -1174,7 +1187,7 @@ void main() {
 
       await _tocar(tester, _guardar);
 
-      expect(repo.escrituras.map((x) => x.dejaDeSerEdificio), [true, true]);
+      expect(repo.escrituras.map((x) => x.reduceAUnEspacio), [true, true]);
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
@@ -1195,6 +1208,277 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
     });
+
+    testWidgets('de negocio a casa con 2 espacios: avisa lo mismo que un edificio y no deja '
+        'guardar', (tester) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.negocio),
+        espacios: 2,
+      );
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_avisoDos), findsOneWidget);
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(e.repo.escrituras, isEmpty);
+
+      await _tocar(tester, find.text('Negocio'));
+
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+      expect(_habilitado(tester, _guardar), isFalse, reason: 'no hay cambios');
+    });
+
+    testWidgets('de negocio con 2 espacios a edificio no se bloquea y se guarda sin tocar los '
+        'espacios', (tester) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.negocio),
+        espacios: 2,
+      );
+
+      await _tocar(tester, find.text('Edificio'));
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+      await _tocar(tester, _guardar);
+
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.edificio);
+      expect(e.repo.escrituras.single.reduceAUnEspacio, isFalse);
+    });
+
+    testWidgets('de negocio con un solo departamento a casa se guarda y el repositorio suelta el '
+        'número', (tester) async {
+      final e = await _montar(tester, repo: _conUnDepto(TipoUbicacion.negocio));
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+      await _tocar(tester, _guardar);
+
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+      expect(e.repo.escrituras.single.reduceAUnEspacio, isTrue);
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets(
+      'de negocio a casa, si apareció otro espacio al guardar, avisa con 2 y deja la hoja '
+      'sin contradicciones',
+      (tester) async {
+        final repo = _conUnDepto(TipoUbicacion.negocio);
+        final e = await _montar(tester, repo: repo);
+        repo.espacios = 2;
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _guardar);
+
+        expect(find.text(_avisoDos), findsOneWidget);
+        expect(find.textContaining('1 espacio'), findsNothing);
+        expect(_habilitado(tester, _guardar), isFalse);
+        expect(e.repo.escrituras, isEmpty);
+      },
+    );
+
+    testWidgets('tras el rechazo de un guardado con 2 espacios, el resumen dice 2 y «Guardar '
+        'cambios» queda sin efecto hasta volver al tipo guardado', (tester) async {
+      final repo = _conUnDepto(TipoUbicacion.edificio);
+      final e = await _montar(tester, repo: repo);
+      expect(find.textContaining('1 espacio'), findsOneWidget);
+      repo.espacios = 2;
+      await _tocar(tester, find.text('Casa'));
+
+      await _tocar(tester, _guardar);
+
+      expect(find.text(_avisoDos), findsOneWidget, reason: 'un solo aviso, no se apilan');
+      expect(find.textContaining('2 espacios'), findsNWidgets(2), reason: 'resumen y aviso');
+      expect(find.textContaining('1 espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(_guardandoBoton, findsNothing);
+      expect(e.repo.escrituras, isEmpty);
+
+      await _tocar(tester, find.text('Edificio'));
+
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+    });
+
+    testWidgets('edificio con un departamento "3B" a casa: una línea avisa que queda sin número, '
+        'sin bloquear ni pedir confirmar', (tester) async {
+      final e = await _montar(tester, repo: _conUnDepto(TipoUbicacion.edificio));
+      expect(find.text(_lineaCasa), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_lineaCasa), findsOneWidget);
+      final aviso = find.ancestor(of: find.text(_lineaCasa), matching: find.byType(AvisoAlta));
+      expect(aviso, findsOneWidget);
+      expect(
+        tester.widget<AvisoAlta>(aviso).color,
+        isNot(ColoresAlta.rojo),
+        reason: 'informa, no es un error',
+      );
+      expect(
+        find.descendant(of: aviso, matching: find.byType(ButtonStyleButton)),
+        findsNothing,
+        reason: 'sin botón',
+      );
+      expect(
+        find.ancestor(
+          of: find.text(_lineaCasa),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsWidgets,
+        reason: 'se anuncia a los lectores de pantalla',
+      );
+      expect(_habilitado(tester, _guardar), isTrue);
+
+      await _tocar(tester, _guardar);
+
+      expect(find.text(TextosModificar.confirmar), findsNothing, reason: 'sin confirmación');
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+      expect(e.repo.escrituras.single.reduceAUnEspacio, isTrue);
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('la línea dice «de la casa» o «del negocio» según el tipo nuevo y se va al volver '
+        'al tipo guardado', (tester) async {
+      await _montar(tester, repo: _conUnDepto(TipoUbicacion.edificio));
+
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.text(_lineaNegocio), findsOneWidget);
+      expect(find.text(_lineaCasa), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.text(_lineaCasa), findsOneWidget);
+      expect(find.text(_lineaNegocio), findsNothing);
+
+      await _tocar(tester, find.text('Edificio'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isFalse);
+    });
+
+    testWidgets('de negocio con un departamento "3B" a casa: «El departamento 3B queda como el '
+        'espacio de la casa, sin número.»', (tester) async {
+      await _montar(tester, repo: _conUnDepto(TipoUbicacion.negocio));
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_lineaCasa), findsOneWidget);
+
+      await _tocar(tester, find.text('Negocio'));
+
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+    });
+
+    testWidgets('si el único departamento no tenía número, no hay línea y el cambio se guarda', (
+      tester,
+    ) async {
+      final e = await _montar(tester, repo: _conUnDepto(TipoUbicacion.edificio, numero: null));
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
+      await _tocar(tester, _guardar);
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+    });
+
+    testWidgets('si el edificio no tiene espacios, no hay línea', (tester) async {
+      await _montar(
+        tester,
+        repo: RepoEdicionFalso(
+          ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 0,
+          numeroDepto: '3B',
+        ),
+      );
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+    });
+
+    testWidgets('de casa hacia edificio o negocio no hay línea: no queda menos de un espacio', (
+      tester,
+    ) async {
+      await _montar(tester, repo: _conUnDepto(TipoUbicacion.casa));
+
+      await _tocar(tester, find.text('Edificio'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+    });
+
+    testWidgets('si no se puede leer el número del departamento, no hay línea pero el cambio de '
+        'tipo se guarda igual', (tester) async {
+      final repo = _conUnDepto(TipoUbicacion.edificio)
+        ..fallaAlLeerDepto = const FailureInesperado();
+      final e = await _montar(tester, repo: repo);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      await _tocar(tester, _guardar);
+
+      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+    });
+
+    testWidgets('si el guardado falla con la línea a la vista, la línea sigue y el reintento '
+        'guarda', (tester) async {
+      final repo = _conUnDepto(TipoUbicacion.edificio)
+        ..comportamiento = (u, n, _) async =>
+            n == 1 ? const Left(FailureInesperado()) : Right(UbicacionModificada(ubicacion: u));
+      final e = await _montar(tester, repo: repo);
+      await _tocar(tester, find.text('Casa'));
+
+      await _tocar(tester, _guardar);
+
+      expect(find.text(TextosModificar.noPudimosGuardar), findsOneWidget);
+      expect(find.text(_lineaCasa), findsOneWidget);
+      expect(_habilitado(tester, _guardar), isTrue);
+
+      await _tocar(tester, _guardar);
+
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('si aparece otro departamento antes de guardar, la línea se cambia por el aviso de '
+        'bloqueo', (tester) async {
+      final repo = _conUnDepto(TipoUbicacion.edificio);
+      await _montar(tester, repo: repo);
+      repo.espacios = 2;
+      await _tocar(tester, find.text('Casa'));
+      expect(find.text(_lineaCasa), findsOneWidget);
+
+      await _tocar(tester, _guardar);
+
+      expect(find.text(_lineaCasa), findsNothing);
+      expect(find.text(_avisoDos), findsOneWidget);
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('la línea del departamento sin número se ve entera, sin desbordes y encima del '
+          'botón fijo con el texto al ${(escala * 100).round()} % en 360x640', (tester) async {
+        final handle = tester.ensureSemantics();
+        await _montar(
+          tester,
+          repo: _conUnDepto(TipoUbicacion.edificio),
+          escala: escala,
+          tamano: const Size(360, 640),
+        );
+
+        await _tocar(tester, find.text('Casa'));
+
+        expect(tester.takeException(), isNull);
+        expect(find.text(_lineaCasa), findsOneWidget);
+        expect(
+          tester.getRect(find.text(_lineaCasa)).bottom,
+          lessThanOrEqualTo(tester.getRect(_guardar).top),
+          reason: 'la línea queda tapada por el botón fijo',
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        handle.dispose();
+      });
+    }
 
     testWidgets('de edificio sin espacios a otro tipo se guarda', (tester) async {
       final e = await _montar(
@@ -1238,7 +1522,11 @@ void main() {
         findsOneWidget,
       );
       expect(e.repo.escrituras, isEmpty);
-      expect(_habilitado(tester, _guardar), isTrue, reason: 'puede volver a intentarlo');
+      expect(
+        _habilitado(tester, _guardar),
+        isFalse,
+        reason: 'el aviso de bloqueo quedó a la vista',
+      );
     });
 
     testWidgets('si no se pueden contar los espacios, el guardado de edificio a otro tipo falla', (
