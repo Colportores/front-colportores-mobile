@@ -38,7 +38,9 @@ final rutasDescargadasProvider = StreamProvider.autoDispose.family<List<String>,
 });
 
 /// Qué dice el catálogo del paquete que cubre [AmbitoTrabajo]. Sin conexión no se le pregunta: se
-/// vuelve a preguntar solo cuando la conexión vuelve.
+/// vuelve a preguntar solo cuando la conexión vuelve, y cuando aparece o desaparece lo descargado
+/// (el caso de uso contesta `null` tanto si el paquete ya está descargado como si el catálogo no
+/// trae ninguno; sin mirar el registro, un mapa recién borrado quedaría como «no disponible»).
 final paqueteDelAmbitoProvider = FutureProvider.autoDispose.family<PaqueteDelAmbito, AmbitoTrabajo>(
   (ref, ambito) async {
     if (!ambito.conocido) return const PaqueteSinAmbito();
@@ -50,12 +52,19 @@ final paqueteDelAmbitoProvider = FutureProvider.autoDispose.family<PaqueteDelAmb
         },
       ),
     );
+    final hayDescargado = ref.watch(
+      rutasDescargadasProvider(ambito).select((rutas) => rutas.value?.isNotEmpty ?? false),
+    );
     if (conectado != true) return const PaqueteSinRed();
     try {
       final sugerido = await ref.read(sugerirPaqueteTilesUseCaseProvider)(ambito);
       return sugerido.fold<PaqueteDelAmbito>(
         (_) => const PaqueteNoDisponible(),
-        (paquete) => paquete == null ? const PaqueteNoDisponible() : PaqueteHallado(paquete),
+        (paquete) => switch (paquete) {
+          final PaqueteTiles hallado => PaqueteHallado(hallado),
+          null when hayDescargado => const PaqueteYaDescargado(),
+          null => const PaqueteNoDisponible(),
+        },
       );
     } on Object {
       return const PaqueteNoDisponible();
