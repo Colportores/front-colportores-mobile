@@ -55,7 +55,7 @@ abstract final class TextosEsperaAsignacion {
       'Necesitás conexión para saber si ya te asignaron a una campaña. Conectate y tocá '
       'Actualizar.';
   static const sinEstado =
-      'No pudimos consultar el estado de tu cuenta. Tocá Actualizar para probar de nuevo; si '
+      'No pudimos consultar el estado de tu cuenta. Tocá Reintentar para probar de nuevo; si '
       'sigue pasando, avisale a tu coordinador.';
 
   static String revisadoRecien(String hora) => 'Revisado recién, a las $hora.';
@@ -156,11 +156,13 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
 
   void _tocoModulo(PestanaInicio pestana) {
     if (pestana == PestanaInicio.hoy) return; // «Hoy» es esta pantalla.
-    // Sin estado conocido, el aviso es el de esta pantalla para la misma causa (#278).
+    // Sin estado conocido, el aviso es el de esta pantalla para la misma causa y trae «Reintentar»
+    // (#278): consulta igual que el botón de la pantalla.
     avisarModuloBloqueado(
       context,
       widget.estado,
       sinConexion: _resultadoVisible == _Resultado.sinConexion,
+      alReintentar: () => unawaited(_actualizar()),
     );
   }
 

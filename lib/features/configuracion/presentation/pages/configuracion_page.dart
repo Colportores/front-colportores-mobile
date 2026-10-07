@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../auth/domain/entities/estado_cuenta.dart';
 import '../../../auth/domain/entities/resultado_cierre_sesion.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
@@ -37,6 +38,68 @@ class ConfiguracionPage extends ConsumerStatefulWidget {
 class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
   /// Mientras se cuentan las operaciones pendientes antes de abrir la hoja.
   bool _revisando = false;
+
+  /// Mientras «Reintentar» del aviso de módulo bloqueado consulta la cuenta: una sola consulta
+  /// aunque se toque dos veces (#278).
+  bool _reintentandoCuenta = false;
+
+  /// Toca un módulo de la barra bloqueada. Sin estado conocido el aviso es el de la causa y trae
+  /// «Reintentar»; si ya hay una consulta en curso, muestra que está revisando.
+  void _tocoModuloBloqueado(EstadoCuenta? estado, Object? error) {
+    if (_reintentandoCuenta) {
+      _mostrarRevisando();
+      return;
+    }
+    avisarModuloBloqueado(
+      context,
+      estado,
+      sinConexion: error is FailureSinConexion,
+      alReintentar: () => unawaited(_reintentarCuenta()),
+    );
+  }
+
+  void _mostrarRevisando() {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          key: Key('modulo_bloqueado_revisando'),
+          // Dura lo que tarde la consulta: se saca al terminar.
+          duration: Duration(days: 1),
+          content: Text(TextosModuloBloqueado.revisando),
+        ),
+      );
+  }
+
+  /// «Reintentar» del aviso: consulta la cuenta con «Revisando con el servidor…» y después avisa
+  /// el estado nuevo o la causa de nuevo con «Reintentar». Si la cuenta ya accede, no avisa nada:
+  /// la raíz muestra el inicio.
+  Future<void> _reintentarCuenta() async {
+    if (_reintentandoCuenta) return;
+    _reintentandoCuenta = true;
+    final messenger = ScaffoldMessenger.of(context);
+    _mostrarRevisando();
+    Failure? falla;
+    try {
+      falla = await ref.read(estadoCuentaProvider.notifier).refrescar();
+    } on Object catch (e) {
+      falla = FailureInesperado(causa: e);
+    }
+    _reintentandoCuenta = false;
+    messenger.clearSnackBars();
+    if (!mounted) return;
+    final estado = ref.read(estadoCuentaProvider).value;
+    if (falla == null) {
+      if (estado != null && !estado.accedeAModulosDeCampo) avisarModuloBloqueado(context, estado);
+      return;
+    }
+    avisarModuloBloqueado(
+      context,
+      estado,
+      sinConexion: falla is FailureSinConexion,
+      alReintentar: () => unawaited(_reintentarCuenta()),
+    );
+  }
 
   Future<void> _cerrarSesion() async {
     if (_revisando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
@@ -201,11 +264,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
                 if (accede || pestana == PestanaInicio.hoy) {
                   Navigator.of(context).pop(pestana);
                 } else {
-                  avisarModuloBloqueado(
-                    context,
-                    estado,
-                    sinConexion: estadoCuenta.error is FailureSinConexion,
-                  );
+                  _tocoModuloBloqueado(estado, estadoCuenta.error);
                 }
               },
             )

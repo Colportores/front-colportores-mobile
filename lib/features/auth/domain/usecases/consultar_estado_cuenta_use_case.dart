@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
@@ -8,7 +10,11 @@ import '../repositories/cuenta_repository.dart';
 
 /// Parámetros de [ConsultarEstadoCuentaUseCase].
 final class ConsultarEstadoCuentaParams extends Equatable {
-  const ConsultarEstadoCuentaParams({required this.usuarioId, required this.admiteUltimoConocido});
+  const ConsultarEstadoCuentaParams({
+    required this.usuarioId,
+    required this.admiteUltimoConocido,
+    this.alLlegarTarde,
+  });
 
   final String usuarioId;
 
@@ -16,6 +22,11 @@ final class ConsultarEstadoCuentaParams extends Equatable {
   /// informó el backend. `false` al refrescar a mano: el usuario pidió saber si cambió, y un
   /// estado viejo lo engañaría.
   final bool admiteUltimoConocido;
+
+  /// Con [admiteUltimoConocido]: se llama con el estado si el backend contesta bien pasado el
+  /// límite de espera (la consulta ya se resolvió con lo que había). Quien llama decide si le sirve
+  /// (#278).
+  final void Function(EstadoCuenta estado)? alLlegarTarde;
 
   @override
   List<Object?> get props => [usuarioId, admiteUltimoConocido];
@@ -47,7 +58,7 @@ final class ConsultarEstadoCuentaUseCase
   @override
   Future<Either<Failure, EstadoCuenta>> call(ConsultarEstadoCuentaParams params) async {
     final consultado = params.admiteUltimoConocido
-        ? await _consultarConLimite(params.usuarioId)
+        ? await _consultarConLimite(params)
         : await _repository.consultar(params.usuarioId);
     if (consultado.isRight() || !params.admiteUltimoConocido) return consultado;
     final ultimo = await _repository.ultimoConocido(params.usuarioId);
@@ -55,11 +66,24 @@ final class ConsultarEstadoCuentaUseCase
   }
 
   /// La respuesta que llega pasado el límite no cambia lo que ya se resolvió: el repositorio igual
-  /// la recuerda para el próximo arranque, y «Reintentar» consulta de nuevo.
-  Future<Either<Failure, EstadoCuenta>> _consultarConLimite(String usuarioId) => _repository
-      .consultar(usuarioId)
-      .timeout(
-        limiteAlEntrar,
-        onTimeout: () => const Left<Failure, EstadoCuenta>(FailureSinConexion()),
-      );
+  /// la recuerda para el próximo arranque y, si hay quien la espere, se la pasa
+  /// [ConsultarEstadoCuentaParams.alLlegarTarde].
+  Future<Either<Failure, EstadoCuenta>> _consultarConLimite(ConsultarEstadoCuentaParams params) {
+    final consulta = _repository.consultar(params.usuarioId);
+    var vencio = false;
+    final alLlegarTarde = params.alLlegarTarde;
+    if (alLlegarTarde != null) {
+      void entregarSiVencio(Either<Failure, EstadoCuenta> respuesta) {
+        if (vencio) respuesta.fold((_) {}, alLlegarTarde);
+      }
+
+      unawaited(consulta.then<void>(entregarSiVencio, onError: (Object _) {}));
+    }
+    Either<Failure, EstadoCuenta> alVencer() {
+      vencio = true;
+      return const Left<Failure, EstadoCuenta>(FailureSinConexion());
+    }
+
+    return consulta.timeout(limiteAlEntrar, onTimeout: alVencer);
+  }
 }
