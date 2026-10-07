@@ -1,7 +1,9 @@
 // Test de dominio: Dart puro. Casos de uso de tiles offline (HU-SYNC-010, HU-CAM-005, HU-UBI-003).
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/descargador_paquetes_tiles.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/usecases/descarga_paquete_tiles_use_cases.dart';
 import 'package:colportores_mobile/features/tiles/domain/usecases/listar_cobertura_tiles_use_case.dart';
 import 'package:colportores_mobile/features/tiles/domain/usecases/observar_paquete_offline_use_case.dart';
@@ -20,9 +22,7 @@ void main() {
     return paqueteDe(bytes, id: '${nivel.name}-$ambitoId', nivel: nivel, ambitoId: ambitoId);
   }
 
-  PaqueteDescargado descargado(PaqueteTiles paquete) {
-    return PaqueteDescargado(paquete: paquete, ruta: '/tiles/${paquete.id}.pmtiles');
-  }
+  PaqueteDescargado descargado(PaqueteTiles paquete) => descargadoDe(paquete);
 
   final zona = construir(NivelCobertura.zona, 'z-1');
   final ciudad = construir(NivelCobertura.ciudad, 'c-1');
@@ -133,12 +133,14 @@ void main() {
 
   group('descargar, pausar y eliminar', () {
     late DescargadorPaquetesTiles descargador;
+    late ConectividadFalsa conectividad;
     final paquete = paqueteDe(bytesDePrueba(3000));
 
     setUp(() {
       final archivos = ArchivosEnMemoria();
+      conectividad = ConectividadFalsa();
       descargador = DescargadorPaquetesTiles(
-        conectividad: ConectividadFalsa(),
+        conectividad: conectividad,
         espacio: EspacioFalso(),
         cliente: ServidorFalso()..archivos[paquete.origen] = bytesDePrueba(3000),
         archivos: archivos,
@@ -152,6 +154,7 @@ void main() {
     test('dado un paquete, lo descarga, pausar sin descarga no falla y eliminar lo saca', () async {
       final params = DescargarPaqueteTilesParams(paquete: paquete, permitirDatosMoviles: true);
       expect(params, DescargarPaqueteTilesParams(paquete: paquete, permitirDatosMoviles: true));
+      expect(params, isNot(DescargarPaqueteTilesParams(paquete: paquete)));
 
       final resultado = await DescargarPaqueteTilesUseCase(descargador)(params);
       await descargador.esperar(paquete.id);
@@ -163,6 +166,21 @@ void main() {
       final eliminado = await EliminarPaqueteTilesUseCase(descargador)(paquete.id);
       expect(eliminado, const Right<Failure, Unit>(unit));
       expect(repositorio.registrados, isEmpty);
+    });
+
+    test('«Descargar mapa» sin conexión pide esperarla: queda en cola y no falla', () async {
+      conectividad.cambiarA(TipoConexion.sinConexion);
+      final params = DescargarPaqueteTilesParams(
+        paquete: paquete,
+        permitirDatosMoviles: true,
+        esperarConexion: true,
+      );
+      expect(params.esperarConexion, isTrue);
+
+      final resultado = await DescargarPaqueteTilesUseCase(descargador)(params);
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(descargador.estadoDe(paquete.id), isA<DescargaPausada>());
     });
   });
 }

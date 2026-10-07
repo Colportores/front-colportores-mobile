@@ -66,22 +66,36 @@ abstract final class ConstructorEstiloMapa {
       estilo.remove('sprite');
     }
 
-    final capas = <Map<String, dynamic>>[
+    var capas = <Map<String, dynamic>>[
       for (final capa in estilo['layers'] as List<dynamic>)
         if (conRecursos || !_usaRecursos(capa as Map<String, dynamic>))
           capa as Map<String, dynamic>,
     ];
     final fuentes = Map<String, dynamic>.from(estilo['sources'] as Map<String, dynamic>);
 
-    final urlTiles = config.fuente.urlPmtiles;
-    if (urlTiles == null) {
+    final urlsTiles = config.fuente.urlsPmtiles;
+    if (urlsTiles.isEmpty) {
       // Sin tiles queda el fondo: ninguna capa del estilo de backend tiene de dónde leer.
       fuentes.remove(fuenteTiles);
       capas.removeWhere((c) => c['source'] == fuenteTiles);
     } else {
       final tiles = Map<String, dynamic>.from(fuentes[fuenteTiles] as Map<String, dynamic>);
-      tiles['url'] = urlTiles;
+      tiles['url'] = urlsTiles.first;
       fuentes[fuenteTiles] = tiles;
+      if (urlsTiles.length > 1) {
+        // Un paquete en varias partes: una fuente por parte y las capas de los tiles repetidas
+        // para cada una, en el mismo orden de apilado (capa por capa, no parte por parte).
+        for (var i = 1; i < urlsTiles.length; i++) {
+          fuentes[_fuenteDeParte(i)] = {...tiles, 'url': urlsTiles[i]};
+        }
+        capas = [
+          for (final capa in capas)
+            if (capa['source'] == fuenteTiles)
+              for (var i = 0; i < urlsTiles.length; i++) _capaDeParte(capa, i)
+            else
+              capa,
+        ];
+      }
     }
 
     for (final capa in capas) {
@@ -100,6 +114,16 @@ abstract final class ConstructorEstiloMapa {
     estilo['sources'] = fuentes;
     estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
     return jsonEncode(estilo);
+  }
+
+  /// El nombre de la fuente de la parte [indice] (0 es la primera: [fuenteTiles]).
+  static String _fuenteDeParte(int indice) =>
+      indice == 0 ? fuenteTiles : '$fuenteTiles-p${indice + 1}';
+
+  /// La copia de [capa] para la parte [indice]; la de la primera parte es la capa tal cual.
+  static Map<String, dynamic> _capaDeParte(Map<String, dynamic> capa, int indice) {
+    if (indice == 0) return capa;
+    return {...capa, 'id': '${capa['id']}-p${indice + 1}', 'source': _fuenteDeParte(indice)};
   }
 
   /// ¿La capa necesita glyphs o sprites? Los textos (`symbol`) y los rellenos y líneas con patrón.

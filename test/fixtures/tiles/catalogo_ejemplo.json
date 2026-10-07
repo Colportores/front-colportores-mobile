@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "generado_en": "2026-10-08T12:00:00Z",
+  "fuente": "EJEMPLO para los tests de la app: no es el catálogo publicado",
+  "estilo": {
+    "url": "estilo/colportores-5.7.2-1.json",
+    "fuente_de_tiles": "protomaps",
+    "version": "5.7.2-1"
+  },
+  "paquetes": [
+    {
+      "id": "ciudad-montevideo",
+      "nivel": "ciudad",
+      "ambito_id": "0b9e0f10-0000-4000-8000-000000000001",
+      "nombre": "Montevideo",
+      "bbox": [
+        -56.43,
+        -35.0,
+        -55.95,
+        -34.7
+      ],
+      "zoom_min": 0,
+      "zoom_max": 15,
+      "tamano_bytes": 10920234,
+      "version": "20228d8171dfceea4b67626600a5a2c7b76d02146ae78692d74b77a5ec3dca2c",
+      "partes": [
+        {
+          "archivo": "ciudad-montevideo-3f9c1a2b7d44.pmtiles",
+          "tamano_bytes": 10920234,
+          "sha256": "20228d8171dfceea4b67626600a5a2c7b76d02146ae78692d74b77a5ec3dca2c",
+          "bbox": [
+            -56.43,
+            -35.0,
+            -55.95,
+            -34.7
+          ]
+        }
+      ],
+      "fuente_build": "protomaps-20261001",
+      "actualizado_en": "2026-10-08T11:30:00Z"
+    },
+    {
+      "id": "ciudad-salto",
+      "nivel": "ciudad",
+      "ambito_id": "0b9e0f10-0000-4000-8000-000000000002",
+      "nombre": "Salto",
+      "bbox": [
+        -58.2,
+        -31.45,
+        -57.6,
+        -31.3
+      ],
+      "zoom_min": 0,
+      "zoom_max": 15,
+      "tamano_bytes": 79750000,
+      "version": "d77246d66c32ec381dcbe2ec1fdc3c9e36e786ba219560cf4c9675d20dec3bea",
+      "partes": [
+        {
+          "archivo": "ciudad-salto-9a1b2c3d4e5f-p1.pmtiles",
+          "tamano_bytes": 41500000,
+          "sha256": "ca6a5bfa2cbe437e0b53e1fcfa3e0dfc85374fab3e7be0ca1cba8382dd6adff9",
+          "bbox": [
+            -58.2,
+            -31.45,
+            -57.9,
+            -31.3
+          ]
+        },
+        {
+          "archivo": "ciudad-salto-0f1e2d3c4b5a-p2.pmtiles",
+          "tamano_bytes": 38250000,
+          "sha256": "b275ed87f887954f615dd50922620146ae86a703068f6b5a6872de787497091c",
+          "bbox": [
+            -57.9,
+            -31.45,
+            -57.6,
+            -31.3
+          ]
+        }
+      ],
+      "fuente_build": "protomaps-20261001",
+      "actualizado_en": "2026-10-08T11:35:00Z"
+    },
+    {
+      "id": "zona-centro-mvd",
+      "nivel": "zona",
+      "ambito_id": "0b9e0f10-0000-4000-8000-0000000000a1",
+      "bbox": [
+        -56.2,
+        -34.92,
+        -56.15,
+        -34.88
+      ],
+      "zoom_min": 0,
+      "zoom_max": 15,
+      "tamano_bytes": 4800000,
+      "version": "a4f8685767dc5928463db4adb9860718a952c40827335c889177db2335116a2f",
+      "partes": [
+        {
+          "archivo": "zona-centro-aa11bb22cc33.pmtiles",
+          "tamano_bytes": 4800000,
+          "sha256": "a4f8685767dc5928463db4adb9860718a952c40827335c889177db2335116a2f",
+          "bbox": [
+            -56.2,
+            -34.92,
+            -56.15,
+            -34.88
+          ]
+        }
+      ],
+      "fuente_build": "protomaps-20261001",
+      "actualizado_en": "2026-10-08T11:40:00Z"
+    }
+  ],
+  "retirados": [
+    {
+      "archivo": "ciudad-montevideo-1111aaaa2222.pmtiles",
+      "retirado_en": "2026-10-05T10:00:00Z",
+      "borrar_despues_de": "2026-10-12T10:00:00Z"
+    }
+  ]
+}

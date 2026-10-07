@@ -4,10 +4,10 @@ import '../../features/tiles/domain/services/puertos_descarga.dart';
 
 /// Conexión del teléfono (puerto [MonitorConectividad]).
 ///
-/// **Provisorio:** el repo no tiene librería de conectividad y elegirla es de Cristian (#189), así
-/// que hasta entonces se asume que hay conexión y nunca avisa un cambio. Las pantallas que muestran
-/// "sin conexión" (vista 19, artboard 09) lo van a mostrar cuando esto tenga una fuente real; los
-/// tests lo reemplazan con un monitor propio.
+/// El valor por defecto es **provisorio** y es el de los tests y el modo demo: asume que hay Wi-Fi
+/// y nunca avisa un cambio. `main.dart` lo reemplaza con `MonitorConectividadPlus`
+/// (`connectivity_plus`, #189), el que lee la conexión real del teléfono. Los tests de las
+/// pantallas que cambian con la conexión lo reemplazan con un monitor propio.
 final monitorConectividadProvider = Provider<MonitorConectividad>(
   (ref) => const _MonitorConectividadProvisorio(),
 );

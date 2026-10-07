@@ -4,6 +4,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/conectividad/conectividad_providers.dart';
+import 'core/conectividad/monitor_conectividad_plus.dart';
 import 'core/config/config_supabase.dart';
 import 'core/database/database_helper.dart';
 import 'core/database/database_providers.dart';
@@ -19,6 +21,8 @@ import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/tiles/data/composicion_tiles.dart';
+import 'features/tiles/presentation/providers/tiles_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +62,28 @@ Future<void> main() async {
     );
   }
 
+  // Paquetes de mapas offline (#189): conexión real del teléfono, catálogo del bucket `mapas`,
+  // descarga con Range y checksum. Si no se puede preparar la carpeta, la app arranca igual y el
+  // mapa queda con el servidor online.
+  final conectividad = MonitorConectividadPlus();
+  ComposicionTiles? tiles;
+  try {
+    tiles = await ComposicionTiles.crear(
+      directorioApp: await getApplicationSupportDirectory(),
+      conectividad: conectividad,
+      supabaseUrl: ConfigSupabase.url,
+    );
+  } on Object catch (e, st) {
+    AppLogger.instance.error(
+      LogModulo.map,
+      'main',
+      'no se pudo preparar la carpeta de los mapas',
+      const {},
+      e,
+      st,
+    );
+  }
+
   runApp(
     ProviderScope(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
@@ -83,6 +109,11 @@ Future<void> main() async {
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
+        monitorConectividadProvider.overrideWithValue(conectividad),
+        if (tiles != null) ...[
+          paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
+          descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
+        ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de
         // cada login y al restaurar la sesión. El archivo vive en el directorio de documentos

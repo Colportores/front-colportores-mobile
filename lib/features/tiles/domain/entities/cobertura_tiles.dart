@@ -16,11 +16,11 @@ final class OpcionCobertura extends Equatable {
   /// El paquete de este nivel que ya está en el teléfono; `null` si no hay.
   final PaqueteDescargado? descargado;
 
-  /// El catálogo tiene otra versión (otro checksum) que la descargada.
+  /// El catálogo tiene otra versión del mapa que la descargada (`version` distinta).
   bool get hayActualizacion {
     final nuevo = paquete;
     final actual = descargado;
-    return nuevo != null && actual != null && nuevo.checksum != actual.paquete.checksum;
+    return nuevo != null && actual != null && nuevo.version != actual.paquete.version;
   }
 
   @override
