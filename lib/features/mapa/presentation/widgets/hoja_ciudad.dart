@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/services/ciudades_para_alta.dart';
-import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
 import 'hoja_alta.dart';
 import 'piezas_alta.dart';
@@ -16,9 +15,14 @@ import 'piezas_alta.dart';
 /// Esta hoja **no tiene diseño** en el canvas (la vista 03 solo dibuja el campo «Montevideo
 /// detectada · Cambiar»): es una lista simple (cargando, vacía, error con «Reintentar»), con la misma
 /// forma que las pantallas vecinas.
+///
+/// Sirve al alta (vista 03) y a la edición (vista 07): [alElegir] aplica la ciudad en el momento del
+/// toque, antes de que la hoja se cierre, y [elegidaId] marca la que está puesta.
 Future<CiudadCatalogo?> mostrarHojaCiudad(
   BuildContext context, {
-  required ParametrosAlta parametros,
+  required String colportorId,
+  String? elegidaId,
+  required ValueChanged<CiudadCatalogo> alElegir,
 }) => showModalBottomSheet<CiudadCatalogo>(
   context: context,
   isScrollControlled: true,
@@ -28,13 +32,17 @@ Future<CiudadCatalogo?> mostrarHojaCiudad(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaCiudad(parametros: parametros),
+  builder: (_) => HojaCiudad(colportorId: colportorId, elegidaId: elegidaId, alElegir: alElegir),
 );
 
 class HojaCiudad extends ConsumerStatefulWidget {
-  const HojaCiudad({super.key, required this.parametros});
+  const HojaCiudad({super.key, required this.colportorId, this.elegidaId, required this.alElegir});
 
-  final ParametrosAlta parametros;
+  final String colportorId;
+
+  /// La ciudad que está puesta, para marcarla en la lista.
+  final String? elegidaId;
+  final ValueChanged<CiudadCatalogo> alElegir;
 
   @override
   ConsumerState<HojaCiudad> createState() => _HojaCiudadState();
@@ -55,7 +63,7 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
   /// Las ciudades de la campaña. Si el puerto lanza en vez de devolver una falla, el `FutureBuilder`
   /// lo muestra como error con «Reintentar».
   Future<Either<Failure, List<CiudadCatalogo>>> _leer() async =>
-      ref.read(ciudadesParaAltaProvider).deMiCampania(widget.parametros.colportorId);
+      ref.read(ciudadesParaAltaProvider).deMiCampania(widget.colportorId);
 
   void _reintentar() {
     final nuevas = _leer();
@@ -66,8 +74,6 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
 
   @override
   Widget build(BuildContext context) {
-    final proveedor = altaUbicacionProvider(widget.parametros);
-    final estado = ref.watch(proveedor);
     final theme = Theme.of(context);
 
     return SafeArea(
@@ -122,11 +128,11 @@ class _HojaCiudadState extends ConsumerState<HojaCiudad> {
                               for (final c in ciudades)
                                 _OpcionCiudad(
                                   ciudad: c,
-                                  elegida: estado.ciudad?.id == c.id,
+                                  elegida: widget.elegidaId == c.id,
                                   alElegir: () {
                                     if (_cerrando) return;
                                     _cerrando = true;
-                                    ref.read(proveedor.notifier).elegirCiudad(c);
+                                    widget.alElegir(c);
                                     Navigator.of(context).pop(c);
                                   },
                                 ),

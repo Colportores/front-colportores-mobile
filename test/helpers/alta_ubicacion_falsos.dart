@@ -247,7 +247,7 @@ List<Override> overridesAlta({
   GeocodificadorFalso? geocodificador,
   CiudadesFalsas? ciudades,
   CiudadesParaAlta? puertoCiudades,
-  RepoAltaFalso? repo,
+  UbicacionRepository? repo,
   Duration espera = const Duration(milliseconds: 20),
   DateTime? ahora,
   List<MarcadorMapa> marcadores = const [],

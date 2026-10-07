@@ -8,6 +8,7 @@
 // Los hallazgos de QA ya arreglados quedan como tests normales (el implementador les sacó el `skip`).
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/campos_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
@@ -239,5 +240,45 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       handle.dispose();
     });
+  });
+
+  // Lo mismo que se probó en la vista 07 (#202, tanda 34): las insignias de los campos son compartidas
+  // y el alta usa el mismo esqueleto de hoja.
+  group('vistas 03 y 07 · campos compartidos en 360×640', () {
+    testWidgets('a texto 2x las insignias «Del mapa» no se parten ni se salen de su columna', (
+      tester,
+    ) async {
+      await montarAlta(tester, tamano: const Size(360, 640), escala: 2);
+      await asentar(tester);
+
+      final insignias = find.byType(InsigniaCampo);
+      expect(insignias, findsWidgets);
+      for (var i = 0; i < insignias.evaluate().length; i++) {
+        final insignia = tester.getRect(insignias.at(i));
+        expect(insignia.left, greaterThanOrEqualTo(0));
+        expect(insignia.right, lessThanOrEqualTo(360), reason: 'la insignia no se sale de la hoja');
+      }
+      final textos = find.text('Del mapa');
+      for (var i = 0; i < textos.evaluate().length; i++) {
+        final parrafo = tester.renderObject<RenderParagraph>(textos.at(i));
+        final cajas = parrafo.getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: 'Del mapa'.length),
+        );
+        expect(cajas, hasLength(1), reason: '«Del mapa» no se parte en dos renglones');
+      }
+    });
+
+    // skip: #305 — en 360×640 con un campo editado «Registrar» queda cortado al pie (termina en 712 dp):
+    // la hoja del alta es un solo scroll con el botón adentro. Se arregla como la 07 (botón fijo al
+    // pie, ver #202) y entonces se le saca el `skip`.
+    testWidgets('con un campo editado, «Registrar» queda entero a la vista', (tester) async {
+      await montarAlta(tester, tamano: const Size(360, 640));
+      await tester.enterText(find.byType(TextField).at(1), '1238');
+      await asentar(tester);
+
+      final r = tester.getRect(find.widgetWithText(FilledButton, TextosAlta.registrar));
+      expect(r.bottom, lessThanOrEqualTo(640), reason: '«Registrar» queda cortado al pie');
+      expect(r.top, greaterThanOrEqualTo(0));
+    }, skip: true);
   });
 }

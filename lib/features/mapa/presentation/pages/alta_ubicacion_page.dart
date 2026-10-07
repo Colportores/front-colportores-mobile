@@ -158,7 +158,12 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
     if (_eligiendoCiudad) return;
     _eligiendoCiudad = true;
     try {
-      await mostrarHojaCiudad(context, parametros: widget.parametros);
+      await mostrarHojaCiudad(
+        context,
+        colportorId: widget.parametros.colportorId,
+        elegidaId: ref.read(altaUbicacionProvider(widget.parametros)).ciudad?.id,
+        alElegir: _notificador.elegirCiudad,
+      );
     } finally {
       _eligiendoCiudad = false;
     }
@@ -327,7 +332,7 @@ class _ZonaMapaState extends State<_ZonaMapa> {
         Positioned(
           left: 14,
           top: arriba + 8,
-          child: _BotonRedondo(
+          child: BotonRedondoMapa(
             tamano: 48,
             icono: Icons.close,
             etiqueta: TextosAlta.cerrar,
@@ -371,7 +376,7 @@ class _ZonaMapaState extends State<_ZonaMapa> {
           Positioned(
             right: _derechaBotonVolver,
             bottom: 36,
-            child: _BotonRedondo(
+            child: BotonRedondoMapa(
               tamano: _ladoBotonVolver,
               icono: Icons.my_location,
               etiqueta: TextosAlta.volverAMiUbicacion,
@@ -453,36 +458,6 @@ class _AvisoSinGps extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: EnlaceAlta(texto: TextosAlta.activarGps, alPresionar: alActivarGps),
         ),
-      ),
-    );
-  }
-}
-
-class _BotonRedondo extends StatelessWidget {
-  const _BotonRedondo({
-    required this.tamano,
-    required this.icono,
-    required this.etiqueta,
-    required this.alPresionar,
-  });
-
-  final double tamano;
-  final IconData icono;
-  final String etiqueta;
-  final VoidCallback? alPresionar;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 3,
-      shape: const CircleBorder(),
-      child: IconButton(
-        tooltip: etiqueta,
-        onPressed: alPresionar,
-        icon: Icon(icono, color: Theme.of(context).colorScheme.primary),
-        constraints: BoxConstraints.tightFor(width: tamano, height: tamano),
-        padding: EdgeInsets.zero,
       ),
     );
   }

@@ -131,15 +131,18 @@ class EnlaceAlta extends StatelessWidget {
 /// El pin de la nueva ubicación: una gota navy con el pico abajo. Con [colocado] en `false` (todavía
 /// sin punto) es una gota blanca con borde punteado (vista 03, artboard «Sin GPS o permiso denegado»).
 class PinAlta extends StatelessWidget {
-  const PinAlta({super.key, this.colocado = true});
+  const PinAlta({super.key, this.colocado = true, this.etiqueta = 'Punto de la nueva ubicación'});
 
   final bool colocado;
+
+  /// Lo que dice el lector de pantalla del pin.
+  final String etiqueta;
 
   @override
   Widget build(BuildContext context) {
     final navy = Theme.of(context).colorScheme.primary;
     return Semantics(
-      label: 'Punto de la nueva ubicación',
+      label: etiqueta,
       child: SizedBox(
         width: 36,
         height: 36 + 8,
@@ -203,4 +206,37 @@ class BordePunteadoGota extends CustomPainter {
 
   @override
   bool shouldRepaint(BordePunteadoGota anterior) => anterior.color != color;
+}
+
+/// Un botón redondo y blanco que flota sobre el mapa («Cerrar», «Volver a mi ubicación»), con el
+/// lado que se pida (nunca menos de un objetivo táctil de 48 dp).
+class BotonRedondoMapa extends StatelessWidget {
+  const BotonRedondoMapa({
+    super.key,
+    required this.tamano,
+    required this.icono,
+    required this.etiqueta,
+    required this.alPresionar,
+  });
+
+  final double tamano;
+  final IconData icono;
+  final String etiqueta;
+  final VoidCallback? alPresionar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: etiqueta,
+        onPressed: alPresionar,
+        icon: Icon(icono, color: Theme.of(context).colorScheme.primary),
+        constraints: BoxConstraints.tightFor(width: tamano, height: tamano),
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
 }

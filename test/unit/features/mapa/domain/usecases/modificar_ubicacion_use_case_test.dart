@@ -330,6 +330,17 @@ void main() {
       },
     );
 
+    test('dado un EDIFICIO con un solo espacio activo, el texto va en singular', () async {
+      repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: 1);
+      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 1));
+      expect(f.mensaje, 'Esta ubicación tiene 1 espacio. Borralo o reubicalo primero.');
+      expect(repo.escrituras, isEmpty);
+    });
+
     test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
       repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio));
       modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
