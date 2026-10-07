@@ -201,7 +201,11 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
                 if (accede || pestana == PestanaInicio.hoy) {
                   Navigator.of(context).pop(pestana);
                 } else {
-                  avisarModuloBloqueado(context, estado);
+                  avisarModuloBloqueado(
+                    context,
+                    estado,
+                    sinConexion: estadoCuenta.error is FailureSinConexion,
+                  );
                 }
               },
             )

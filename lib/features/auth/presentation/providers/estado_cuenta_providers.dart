@@ -56,16 +56,24 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
   }
 
   /// Vuelve a consultar al backend (pull-to-refresh o "Actualizar"). Devuelve el [Failure] si no
-  /// se pudo (el estado queda como estaba) o `null` si se consultó.
+  /// se pudo (el estado queda como estaba; si nunca se conoció, el error pasa a ser el de esta
+  /// falla, para que Configuración diga lo mismo que la pantalla de espera) o `null` si se
+  /// consultó.
   Future<Failure?> refrescar() async {
     final sesion = ref.read(sesionProvider).value;
     if (sesion == null) return null;
     final resultado = await ref.read(consultarEstadoCuentaUseCaseProvider)(
       ConsultarEstadoCuentaParams(usuarioId: sesion.usuarioId, admiteUltimoConocido: false),
     );
-    return resultado.fold((falla) => falla, (estado) {
-      state = AsyncData(estado);
-      return null;
-    });
+    return resultado.fold(
+      (falla) {
+        if (state.hasError) state = AsyncError<EstadoCuenta?>(falla, StackTrace.current);
+        return falla;
+      },
+      (estado) {
+        state = AsyncData(estado);
+        return null;
+      },
+    );
   }
 }

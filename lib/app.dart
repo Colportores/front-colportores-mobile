@@ -15,6 +15,7 @@ import 'features/auth/presentation/pages/cuenta_asignada_page.dart';
 import 'features/auth/presentation/pages/esperando_asignacion_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/preparacion_db_local_page.dart';
+import 'features/auth/presentation/pages/revisando_cuenta_page.dart';
 import 'features/auth/presentation/pages/verificacion_email_page.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/aviso_sesion_notifier.dart';
@@ -240,7 +241,9 @@ class _PrincipalState extends ConsumerState<_Principal> {
       AsyncError(:final error) => EsperandoAsignacionPage(
         falla: error is Failure ? error : FailureInesperado(causa: error),
       ),
-      _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      // Consultando al entrar: con texto, y con un tope (15 s, en el caso de uso) pasado el cual
+      // llega el `AsyncError(FailureSinConexion)` de arriba, con «Reintentar» y Configuración.
+      _ => const RevisandoCuentaPage(),
     };
   }
 }

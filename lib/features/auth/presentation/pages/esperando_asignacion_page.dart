@@ -156,7 +156,12 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
 
   void _tocoModulo(PestanaInicio pestana) {
     if (pestana == PestanaInicio.hoy) return; // «Hoy» es esta pantalla.
-    avisarModuloBloqueado(context, widget.estado);
+    // Sin estado conocido, el aviso es el de esta pantalla para la misma causa (#278).
+    avisarModuloBloqueado(
+      context,
+      widget.estado,
+      sinConexion: _resultadoVisible == _Resultado.sinConexion,
+    );
   }
 
   @override
