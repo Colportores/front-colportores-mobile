@@ -84,17 +84,41 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (await consulta.getSingle()).read(cantidad) ?? 0;
   }
 
-  /// Leer, comparar, buscar duplicados, escribir y encolar van en una sola transacción, como el
-  /// alta: una escritura concurrente (el sync entrante) se serializa y esta ve su resultado.
+  @override
+  Future<String?> numeroDelUnicoDepto(String ubicacionId) async {
+    final activos =
+        await (select(espacios)
+              ..where((e) => e.ubicacionId.equals(ubicacionId) & e.deletedAt.isNull())
+              ..limit(2))
+            .get();
+    return activos.length == 1 ? activos.single.numeroDepto : null;
+  }
+
+  /// Leer, comparar, contar espacios, buscar duplicados, escribir y encolar van en una sola
+  /// transacción, como el alta: una escritura concurrente (el sync entrante, un espacio que se
+  /// agrega) se serializa y esta ve su resultado.
   @override
   Future<UbicacionModel> actualizar(
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+
+    // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
+    // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
+    // pierde el número. Los de baja no cuentan.
+    EspacioFila? deptoConNumero;
+    if (reduceAUnEspacio) {
+      final activos = await (select(
+        espacios,
+      )..where((e) => e.ubicacionId.equals(nueva.id) & e.deletedAt.isNull())).get();
+      if (activos.length > 1) throw UbicacionConEspaciosException(activos.length);
+      deptoConNumero = activos.where((e) => e.numeroDepto != null).firstOrNull;
+    }
 
     if (duplicados != null) {
       final candidatas = await _candidatas(nueva, duplicados);
@@ -118,6 +142,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingle(),
     );
     await _encolador.encolar('ubicacion', OperacionSync.update, guardada.toJson());
+    if (deptoConNumero != null) {
+      await _escribirEspacio(
+        deptoConNumero.id,
+        EspaciosCompanion(
+          numeroDepto: const Value(null),
+          updatedAt: Value(guardada.auditoria.updatedAt),
+        ),
+      );
+    }
     return guardada;
   });
 

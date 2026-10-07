@@ -47,6 +47,11 @@ abstract interface class UbicacionRepository {
   /// HU-UBI-004).
   Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId);
 
+  /// El `numero_depto` del espacio de [ubicacionId] cuando tiene **exactamente uno** sin baja y
+  /// ese tiene número; `null` en cualquier otro caso. Es para avisar antes de guardar que el cambio
+  /// de tipo le quita el número (S17); el que decide al guardar es [modificar].
+  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId);
+
   /// Guarda [nueva] —la ubicación ya modificada: mismo `id`, `updated_at` nuevo— y encola el
   /// `update` para el sync, en **una sola transacción** (HU-UBI-004; contrato-sync-engine §3).
   ///
@@ -59,10 +64,18 @@ abstract interface class UbicacionRepository {
   ///
   /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
   /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).
+  ///
+  /// [reduceAUnEspacio] es `true` cuando la edición deja a la ubicación con un solo espacio: de
+  /// `EDIFICIO` a `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA` (S17). Dentro de la misma transacción se cuentan los espacios activos: con dos o más
+  /// no escribe nada y devuelve [FailureUbicacionConEspacios]; con exactamente uno, ese depto pasa a
+  /// ser el espacio de la casa y se le quita el `numero_depto` (decisión de Cristian, 07/10), y el
+  /// `update` del espacio se encola junto al de la ubicación. Contar acá y no antes evita que un
+  /// espacio que aparece entre la lectura y la escritura quede con número en una casa.
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
   });
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación

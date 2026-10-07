@@ -111,20 +111,40 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
   }
 
   @override
+  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) async {
+    try {
+      return Right(await _local.numeroDelUnicoDepto(ubicacionId));
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'UBICACION_ESPACIOS_FAIL',
+        'no se pudo leer el depto',
+        {'ubicacion_id': ubicacionId},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
   }) async {
     try {
       final guardada = await _local.actualizar(
         UbicacionModel.fromEntity(nueva),
         baseUpdatedAt: baseUpdatedAt,
         duplicados: duplicados,
+        reduceAUnEspacio: reduceAUnEspacio,
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,
         'seguir_igual': duplicados?.esSeguirIgual ?? true,
+        'reduce_a_un_espacio': reduceAUnEspacio,
       });
       return Right(UbicacionModificada(ubicacion: guardada.toEntity()));
     } on UbicacionDuplicadaException catch (e) {
@@ -134,6 +154,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'motivos': [for (final c in e.candidatas) c.motivo.name],
       });
       return Right(ModificacionConDuplicados(candidatas: e.candidatas));
+    } on UbicacionConEspaciosException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CON_ESPACIOS',
+        'ubicación con espacios: no cambia de tipo',
+        {'ubicacion_id': nueva.id, 'espacios': e.cantidad},
+      );
+      return Left(FailureUbicacionConEspacios(cantidadEspacios: e.cantidad));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {

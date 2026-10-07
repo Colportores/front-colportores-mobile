@@ -67,6 +67,14 @@ abstract final class TextosModificar {
   static const noPudimosAbrir = 'No pudimos abrir esta ubicación. Probá de nuevo.';
   static const abrirDeNuevo = 'Abrir de nuevo';
 
+  /// S17, decisión de Cristian del 07/10: «El departamento 3B queda como el espacio de la casa,
+  /// sin número.» (o «del negocio»). Solo informa; la pone el cambio de tipo a Casa o Negocio con
+  /// un único depto que tiene número.
+  static String deptoSinNumero(String numeroDepto, TipoUbicacion tipoNuevo) {
+    final lugar = tipoNuevo == TipoUbicacion.negocio ? 'del negocio' : 'de la casa';
+    return 'El departamento $numeroDepto queda como el espacio $lugar, sin número.';
+  }
+
   /// «2 espacios», «1 espacio», «Sin espacios».
   static String espacios(int n) => switch (n) {
     0 => 'Sin espacios',
@@ -95,8 +103,11 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// «Dar de baja».
 ///
 /// - «Guardar cambios» se habilita recién cuando hay un cambio; los campos cambiados dicen «Editado».
-/// - De edificio a otro tipo con espacios no se puede (S17): el aviso lo dice y el botón queda sin
-///   efecto.
+/// - Pasar a un solo espacio (de edificio a casa o negocio, de negocio a casa) con dos o más
+///   espacios no se puede (S17): el aviso lo dice y el botón queda sin efecto. Con un solo depto sí,
+///   sin paso de más: el depto pasa a ser el espacio de la casa o del negocio y, si tenía número,
+///   una línea informativa avisa que queda sin número. El aviso de bloqueo y esa línea se llevan a
+///   la vista al aparecer, arriba del botón fijo.
 /// - «Guardar cambios» y «Dar de baja» quedan fijos al pie de la hoja y se desplaza el resto: con un
 ///   teléfono chico o el texto grande la acción principal se ve siempre. Con el teclado abierto «Dar
 ///   de baja» no se dibuja (se está escribiendo).
@@ -133,6 +144,11 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
 
   /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
   final _claveFalla = GlobalKey();
+
+  /// El aviso de bloqueo por espacios o la línea informativa del depto sin número (nunca están los
+  /// dos): al aparecer se llevan a la vista, para que no queden bajo el botón fijo con el texto
+  /// grande.
+  final _claveAvisoTipo = GlobalKey();
 
   ModificarUbicacionNotifier get _notificador =>
       ref.read(modificarUbicacionProvider(widget.parametros).notifier);
@@ -171,9 +187,28 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
         }
       });
     });
+    ref.listen(proveedor.select((s) => (s.bloqueoPorEspacios, s.deptoQueQuedaSinNumero)), (
+      anterior,
+      nuevo,
+    ) {
+      if (nuevo == anterior || (nuevo.$1 == null && nuevo.$2 == null)) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final contexto = _claveAvisoTipo.currentContext;
+        if (mounted && contexto != null) {
+          unawaited(
+            Scrollable.ensureVisible(
+              contexto,
+              duration: Duration.zero,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            ),
+          );
+        }
+      });
+    });
     final original = estado.original!;
     final theme = Theme.of(context);
     final bloqueo = estado.bloqueoPorEspacios;
+    final deptoSinNumero = estado.deptoQueQuedaSinNumero;
     final falla = estado.falla;
     // El bloqueo por espacios ya tiene su aviso (con la cuenta que se leyó): el de la falla sería el
     // mismo texto dos veces.
@@ -195,9 +230,18 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                 if (bloqueo != null) ...[
                   const SizedBox(height: 10),
                   AvisoAlta(
+                    key: _claveAvisoTipo,
                     color: ColoresAlta.rojo,
                     glyph: '!',
                     texto: FailureUbicacionConEspacios(cantidadEspacios: bloqueo).mensaje,
+                  ),
+                ] else if (deptoSinNumero != null) ...[
+                  const SizedBox(height: 10),
+                  AvisoAlta(
+                    key: _claveAvisoTipo,
+                    color: ColoresAlta.gris,
+                    glyph: 'i',
+                    texto: TextosModificar.deptoSinNumero(deptoSinNumero, estado.tipo!),
                   ),
                 ],
                 const SizedBox(height: 14),
