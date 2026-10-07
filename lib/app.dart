@@ -70,8 +70,14 @@ class ColportoresApp extends ConsumerWidget {
     // HU-AUTH-007: si la sesión vence o el servidor la revoca con la app abierta, `home:` pasa al
     // login, pero lo que estuviera apilado encima (configuración, otra pantalla) seguiría a la
     // vista: se vacía la pila para que se vea el login con el aviso.
+    //
+    // No en el arranque (#308): con el motivo del cierre guardado, el aviso se fija al terminar de
+    // leer la sesión, y un enlace de recuperación o de verificación que llegó antes ya abrió su
+    // pantalla; vaciar la pila la sacaría y gastaría el enlace. Mientras la sesión no se resolvió
+    // ni una vez (el arranque), lo único apilado puede ser esa pantalla.
     ref.listen(avisoSesionProvider, (previous, next) {
       if (next == null) return;
+      if (!ref.read(sesionProvider).hasValue) return;
       navigatorKeyColportores.currentState?.popUntil((route) => route.isFirst);
     });
 

@@ -97,6 +97,8 @@ void main() {
       expect(ClaveSegura.dekDb.id, 'db_dek');
       expect(ClaveSegura.dbInicializada.id, 'db_initialized');
       expect(ClaveSegura.consentimientoAlmacenSoftware.id, 'keystore_software_aceptado');
+      expect(ClaveSegura.ultimoCorreo.id, 'last_account_email');
+      expect(ClaveSegura.cierreForzado.id, 'last_forced_close');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });

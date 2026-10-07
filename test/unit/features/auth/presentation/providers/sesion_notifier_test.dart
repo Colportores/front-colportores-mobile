@@ -10,15 +10,20 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/cierre_forzado_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -118,6 +123,19 @@ final class _CorreoQueExplotaAlBorrar implements UltimoCorreoRepository {
 
   @override
   Future<void> guardar(String email) async {}
+
+  @override
+  Future<void> borrar() async => throw StateError('el almacén no responde');
+}
+
+/// Un cierre guardado que, contra su contrato, lanza al borrar: el cierre de sesión que ya está
+/// fallando no puede perder el error original por eso.
+final class _CierreQueExplotaAlBorrar implements CierreForzadoRepository {
+  @override
+  Future<CierreForzado?> leer() async => null;
+
+  @override
+  Future<void> guardar(CierreForzado cierre) async {}
 
   @override
   Future<void> borrar() async => throw StateError('el almacén no responde');
@@ -921,6 +939,504 @@ void main() {
           expect(helper.abierta, isFalse);
           expect(clave.destruida, isTrue);
           expect(c.read(sesionProvider).value, isNull);
+        },
+      );
+    });
+  });
+
+  group('SesionNotifier — motivo del último cierre (decisión de Cristian, 07/10, #302)', () {
+    late Directory directorio;
+    late DatabaseHelper helper;
+    late AuthRemoteDataSourceEnMemoria remote;
+    late _LocalQueFalla local;
+    late UltimoCorreoEnMemoria correo;
+    late CierreForzadoEnMemoria cierres;
+    late _DatosQueBorran datos;
+    late DateTime ahora;
+    late ProviderContainer container;
+
+    /// Un arranque de la app: lo que está en el almacén seguro (el correo y el motivo del cierre)
+    /// sobrevive entre arranques; el remoto, la sesión en memoria y los avisos empiezan de cero.
+    /// Para que además haya sesión guardada, se pasa el mismo [sesionLocal] del arranque anterior.
+    ProviderContainer arrancar({
+      _LocalQueFalla? sesionLocal,
+      CierreForzadoRepository? repo,
+      bool verificarAlRegistrar = false,
+    }) {
+      remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'ana@example.com': 'secreto123'},
+        requiereVerificacionAlRegistrar: verificarAlRegistrar,
+      );
+      local = sesionLocal ?? _LocalQueFalla();
+      return ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          ultimoCorreoRepositoryProvider.overrideWithValue(correo),
+          cierreForzadoRepositoryProvider.overrideWithValue(repo ?? cierres),
+          datosLocalesRepositoryProvider.overrideWithValue(datos),
+          relojSesionProvider.overrideWithValue(RelojSesionEnMemoria(sistema: () => ahora)),
+        ],
+      );
+    }
+
+    /// Cierra la app y la vuelve a abrir dos horas después, sin sesión guardada.
+    Future<Object?> reiniciar({CierreForzadoRepository? repo}) async {
+      container.dispose();
+      ahora = ahora.add(const Duration(hours: 2));
+      container = arrancar(repo: repo);
+      return container.read(sesionProvider.future);
+    }
+
+    setUp(() async {
+      directorio = await Directory.systemTemp.createTemp('colportores_cierre_forzado_test');
+      helper = DatabaseHelper(
+        directorio: () async => directorio,
+        directorioTemporal: () async => directorio,
+        logger: loggerMudo(),
+      );
+      ahora = DateTime.now().toUtc();
+      correo = UltimoCorreoEnMemoria();
+      cierres = CierreForzadoEnMemoria();
+      datos = _DatosQueBorran();
+      container = arrancar();
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await helper.cerrar();
+      await directorio.delete(recursive: true);
+    });
+
+    Future<void> entrar() async {
+      await container.read(sesionProvider.future);
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      expect(falla, isNull);
+      await pumpEventQueue();
+    }
+
+    /// El cierre de la DB pasa por el isolate de drift: `pumpEventQueue` solo no alcanza.
+    Future<void> esperarCierreDeSesion() async {
+      await pumpEventQueue();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+
+    CierreForzado cierre(MotivoExpiracion motivo, [DateTime? fecha]) =>
+        CierreForzado(motivo: motivo, fecha: fecha ?? ahora);
+
+    test('dado el arranque en que se descarta la sesión por 30 días sin uso, cuando termina de '
+        'leerla, el motivo y la fecha quedan guardados', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      expect(await container.read(sesionProvider.future), isNull);
+
+      expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+    });
+
+    test('dado un arranque sin cierre de por medio, no se guarda ni se avisa nada', () async {
+      expect(await container.read(sesionProvider.future), isNull);
+
+      expect(await cierres.leer(), isNull);
+      expect(container.read(avisoSesionProvider), isNull);
+      expect(container.read(reingresoSesionProvider), isNull);
+    });
+
+    test('Escenario: segundo arranque — la sesión ya se descartó y no hay nada que detectar, pero '
+        'el aviso de la vista 17 sigue, con el correo de la cuenta', () async {
+      await correo.guardar('ana@example.com');
+      remote.vencidaPorInactividadAlArrancar = true;
+      await container.read(sesionProvider.future);
+      final fechaDelCierre = ahora;
+
+      expect(await reiniciar(), isNull);
+
+      expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
+      final reingreso = container.read(reingresoSesionProvider)!;
+      expect(reingreso.motivo, MotivoExpiracion.inactividad);
+      expect(reingreso.email, 'ana@example.com');
+      expect(
+        await cierres.leer(),
+        cierre(MotivoExpiracion.inactividad, fechaDelCierre),
+        reason: 'la fecha es la del cierre, no la del arranque que lo volvió a ver',
+      );
+    });
+
+    test('el aviso vale en cada arranque sin sesión, no solo en el segundo', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+      await container.read(sesionProvider.future);
+
+      for (var arranque = 2; arranque <= 4; arranque++) {
+        await reiniciar();
+
+        expect(
+          container.read(avisoSesionProvider),
+          const FailureSesionExpiradaPorInactividad(),
+          reason: 'arranque $arranque',
+        );
+      }
+    });
+
+    test('la sesión revocada por el servidor también: vuelve al login con su aviso y en el '
+        'arranque siguiente sigue', () async {
+      await correo.guardar('ana@example.com');
+      await entrar();
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+      await esperarCierreDeSesion();
+      expect(await cierres.leer(), cierre(MotivoExpiracion.revocada));
+
+      await reiniciar();
+
+      expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+      final reingreso = container.read(reingresoSesionProvider)!;
+      expect(reingreso.motivo, MotivoExpiracion.revocada);
+      expect(reingreso.email, 'ana@example.com');
+    });
+
+    test('con la app abierta y 30 días sin uso, el cierre queda guardado y el arranque siguiente '
+        'lo avisa', () async {
+      await entrar();
+
+      remote.simularExpiracion(MotivoExpiracion.inactividad);
+      await esperarCierreDeSesion();
+
+      expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+      await reiniciar();
+      expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
+    });
+
+    test('un fin de sesión con el login ya a la vista (nadie adentro) también se guarda', () async {
+      await container.read(sesionProvider.future);
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+      await esperarCierreDeSesion();
+
+      expect(await cierres.leer(), cierre(MotivoExpiracion.revocada));
+    });
+
+    test(
+      'el segundo arranque sin correo guardado: el aviso sale igual, sin correo que precargar',
+      () async {
+        remote.vencidaPorInactividadAlArrancar = true;
+        await container.read(sesionProvider.future);
+
+        await reiniciar();
+
+        expect(container.read(avisoSesionProvider), isNotNull);
+        expect(container.read(reingresoSesionProvider)!.email, isNull);
+      },
+    );
+
+    group('el motivo se borra cuando la persona entra', () {
+      setUp(() async {
+        remote.vencidaPorInactividadAlArrancar = true;
+        await container.read(sesionProvider.future);
+        await reiniciar();
+        expect(container.read(avisoSesionProvider), isNotNull);
+      });
+
+      test('al iniciar sesión: el arranque siguiente es un login común', () async {
+        final falla = await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(falla, isNull);
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(await cierres.leer(), isNull);
+        await reiniciar();
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+      });
+
+      test('al registrarse con una sesión que queda adentro', () async {
+        await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345672',
+              email: 'nueva@example.com',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            );
+        await pumpEventQueue();
+
+        expect(await cierres.leer(), isNull);
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(await correo.leer(), 'nueva@example.com');
+      });
+
+      test('y también al registrarse sin sesión (falta verificar el email): decisión del 07/10, '
+          'el arranque siguiente es un login común con el correo de la cuenta nueva', () async {
+        container.dispose();
+        container = arrancar(verificarAlRegistrar: true);
+        await container.read(sesionProvider.future);
+        expect(container.read(avisoSesionProvider), isNotNull);
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345672',
+              email: 'nueva@example.com',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            );
+        await pumpEventQueue();
+
+        expect(resultado.getOrElse(() => throw StateError('falló el registro')).sesion, isNull);
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+        expect(await cierres.leer(), isNull);
+        expect(await correo.leer(), 'nueva@example.com');
+        await reiniciar();
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+      });
+
+      test('un registro que falla no lo borra: el aviso sigue en el arranque siguiente', () async {
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .registrar(
+              nombre: 'Ana',
+              apellido: 'Pérez',
+              cedula: '12345672',
+              email: 'esto-no-es-un-correo',
+              password: 'Secreto123',
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            );
+        await pumpEventQueue();
+
+        expect(resultado.isLeft(), isTrue);
+        expect(await cierres.leer(), isNotNull);
+        expect(container.read(avisoSesionProvider), isNotNull);
+      });
+
+      test(
+        'una contraseña incorrecta no lo borra: el aviso sigue en el arranque siguiente',
+        () async {
+          final falla = await container
+              .read(sesionProvider.notifier)
+              .iniciarSesion(email: 'ana@example.com', password: 'equivocada1');
+          await pumpEventQueue();
+
+          expect(falla, isA<FailureCredencialesInvalidas>());
+          expect(await cierres.leer(), isNotNull);
+          await reiniciar();
+          expect(container.read(avisoSesionProvider), isNotNull);
+        },
+      );
+    });
+
+    test('una sesión restaurada al arrancar descarta un motivo viejo que haya quedado', () async {
+      await entrar();
+      await cierres.guardar(cierre(MotivoExpiracion.revocada));
+      container.dispose();
+      container = arrancar(sesionLocal: local);
+
+      final sesion = await container.read(sesionProvider.future);
+      await pumpEventQueue();
+
+      expect(sesion, isNotNull);
+      expect(await cierres.leer(), isNull);
+      expect(container.read(avisoSesionProvider), isNull);
+    });
+
+    // Ojo: acá `build()` ya esperó el guardado cuando se entra, así que esto prueba solo el orden de
+    // la cola del repositorio en el arranque. La carrera real —el fin de sesión llega por el stream
+    // con la app abierta y la persona entra antes de que termine— la cubren
+    // `qa_sesion_vencida_302_test.dart` (el almacén lento y la lectura lenta del reloj, M1 y M1b).
+    test(
+      'detectar el cierre en el arranque con el almacén lento y entrar: queda sin cierre',
+      () async {
+        final lento = _AlmacenLento();
+        container.dispose();
+        container = arrancar(repo: CierreForzadoRepositoryImpl(lento, logger: loggerMudo()));
+        remote.vencidaPorInactividadAlArrancar = true;
+        await container.read(sesionProvider.future);
+
+        await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(lento.contenido, isNull);
+        expect(lento.operaciones, ['escribir', 'borrar']);
+      },
+    );
+
+    group('se borra con el correo', () {
+      test('al cerrar sesión a propósito', () async {
+        await entrar();
+        await cierres.guardar(cierre(MotivoExpiracion.inactividad));
+
+        await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(await cierres.leer(), isNull);
+        expect(await correo.leer(), isNull);
+      });
+
+      test('si cerrar sesión falla (el usuario sigue adentro) se conserva', () async {
+        await entrar();
+        await cierres.guardar(cierre(MotivoExpiracion.inactividad));
+        local.explotar = true;
+
+        final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(resultado.isLeft(), isTrue);
+        expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+      });
+
+      test('el cierre que hace la app por la recuperación de contraseña lo conserva', () async {
+        await entrar();
+        await cierres.guardar(cierre(MotivoExpiracion.inactividad));
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .cerrarSesion(conservarCorreo: true);
+
+        expect(resultado.isRight(), isTrue);
+        expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+        expect(await correo.leer(), 'ana@example.com');
+      });
+
+      test('al borrar los datos locales', () async {
+        await entrar();
+        await cierres.guardar(cierre(MotivoExpiracion.revocada));
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+        expect(resultado.isRight(), isTrue);
+        expect(await cierres.leer(), isNull);
+        expect(await correo.leer(), isNull);
+      });
+
+      test('si el borrado de datos falla, el usuario sigue adentro y se conserva', () async {
+        await entrar();
+        await cierres.guardar(cierre(MotivoExpiracion.revocada));
+        datos.respuesta = const Left(FailureDatosLocalesIlegibles());
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+        expect(resultado.isLeft(), isTrue);
+        expect(await cierres.leer(), cierre(MotivoExpiracion.revocada));
+      });
+
+      group('cuando el use case de cerrar sesión lanza pero la sesión se cierra igual', () {
+        Future<ProviderContainer> conUseCaseQueLanza(CierreForzadoRepository repoCierre) async {
+          final repo = _MockAuthRepository();
+          when(repo.sesionActual).thenAnswer((_) async => const Right(null));
+          when(repo.reintentarRevocacionPendiente).thenAnswer((_) async => const Right(unit));
+          when(() => repo.expiraciones).thenAnswer((_) => const Stream.empty());
+          when(repo.cerrarSesion).thenThrow(const _FallaDeAlmacen());
+          final c = ProviderContainer(
+            overrides: [
+              authRepositoryProvider.overrideWithValue(repo),
+              databaseHelperProvider.overrideWithValue(helper),
+              ultimoCorreoRepositoryProvider.overrideWithValue(correo),
+              cierreForzadoRepositoryProvider.overrideWithValue(repoCierre),
+            ],
+          );
+          addTearDown(c.dispose);
+          await c.read(sesionProvider.future);
+          return c;
+        }
+
+        test('se borra igual y el error original se propaga', () async {
+          await cierres.guardar(cierre(MotivoExpiracion.inactividad));
+          final c = await conUseCaseQueLanza(cierres);
+
+          await expectLater(
+            c.read(sesionProvider.notifier).cerrarSesion(),
+            throwsA(isA<_FallaDeAlmacen>()),
+          );
+
+          expect(await cierres.leer(), isNull);
+          expect(c.read(sesionProvider).value, isNull);
+        });
+
+        test('con conservarCorreo, queda', () async {
+          await cierres.guardar(cierre(MotivoExpiracion.inactividad));
+          final c = await conUseCaseQueLanza(cierres);
+
+          await expectLater(
+            c.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true),
+            throwsA(isA<_FallaDeAlmacen>()),
+          );
+
+          expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+        });
+
+        test(
+          'si borrarlo también falla, no tapa el error original ni deja la DB abierta',
+          () async {
+            final c = await conUseCaseQueLanza(_CierreQueExplotaAlBorrar());
+            final clave = ClaveDb(Uint8List.fromList(List<int>.filled(32, 4)));
+            await c.read(dbLocalProvider.notifier).abrir(clave);
+
+            await expectLater(
+              c.read(sesionProvider.notifier).cerrarSesion(),
+              throwsA(isA<_FallaDeAlmacen>()),
+            );
+
+            expect(helper.abierta, isFalse);
+            expect(clave.destruida, isTrue);
+            expect(c.read(sesionProvider).value, isNull);
+          },
+        );
+      });
+    });
+
+    group('con el almacén seguro roto o con basura', () {
+      test('si no se puede guardar, el aviso de este arranque sale igual y el siguiente es un '
+          'login común (no se inventa)', () async {
+        final roto = AlmacenSeguroEnMemoria()..simularFalla = true;
+        final repo = CierreForzadoRepositoryImpl(roto, logger: loggerMudo());
+        container.dispose();
+        container = arrancar(repo: repo);
+        remote.vencidaPorInactividadAlArrancar = true;
+
+        expect(await container.read(sesionProvider.future), isNull);
+        expect(container.read(avisoSesionProvider), isNotNull);
+
+        await reiniciar(repo: repo);
+        expect(container.read(avisoSesionProvider), isNull);
+      });
+
+      test('un valor guardado ilegible es un login común, sin aviso ni saludo', () async {
+        final almacen = AlmacenSeguroEnMemoria({ClaveSegura.cierreForzado: 'cualquier cosa'});
+
+        await reiniciar(repo: CierreForzadoRepositoryImpl(almacen, logger: loggerMudo()));
+
+        expect(container.read(avisoSesionProvider), isNull);
+        expect(container.read(reingresoSesionProvider), isNull);
+      });
+
+      test(
+        'con el almacén seguro real: el arranque siguiente lee lo que guardó el anterior',
+        () async {
+          final almacen = AlmacenSeguroEnMemoria();
+          container.dispose();
+          container = arrancar(repo: CierreForzadoRepositoryImpl(almacen, logger: loggerMudo()));
+          remote.vencidaPorInactividadAlArrancar = true;
+          await container.read(sesionProvider.future);
+          expect(almacen.contenido.keys, [ClaveSegura.cierreForzado]);
+
+          await reiniciar(repo: CierreForzadoRepositoryImpl(almacen, logger: loggerMudo()));
+
+          expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
         },
       );
     });

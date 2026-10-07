@@ -13,9 +13,11 @@ import '../../data/datasources/backup_drive_data_source.dart';
 import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import '../../data/datasources/reloj_sesion_en_almacen.dart';
 import '../../data/repositories/auth_repository_impl.dart';
+import '../../data/repositories/cierre_forzado_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
 import '../../data/repositories/ultimo_correo_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/repositories/cierre_forzado_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/repositories/ultimo_correo_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
@@ -96,6 +98,12 @@ RelojSesion relojSesion(Ref ref) => RelojSesionEnMemoria();
 /// sobreescribe con el almacén seguro; por defecto (tests), en memoria.
 @Riverpod(keepAlive: true)
 UltimoCorreoRepository ultimoCorreoRepository(Ref ref) => UltimoCorreoEnMemoria();
+
+/// El motivo y la fecha del último cierre de sesión que la persona no pidió (decisión de Cristian,
+/// 07/10, #302): el aviso de «Sesión vencida» vale en cada arranque sin sesión hasta que entra. En
+/// el equipo, `main.dart` lo sobreescribe con el almacén seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+CierreForzadoRepository cierreForzadoRepository(Ref ref) => CierreForzadoEnMemoria();
 
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
