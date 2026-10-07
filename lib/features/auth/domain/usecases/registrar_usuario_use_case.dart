@@ -94,7 +94,9 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
       errores['email'] = 'El email no es válido';
     }
 
-    if (PoliticaPassword.validar(params.password) case final error?) {
+    if (PoliticaPassword.excedeLargoMaximo(params.password)) {
+      errores['password'] = PoliticaPassword.demasiadoLarga;
+    } else if (PoliticaPassword.validar(params.password) case final error?) {
       errores['password'] = error;
     }
 

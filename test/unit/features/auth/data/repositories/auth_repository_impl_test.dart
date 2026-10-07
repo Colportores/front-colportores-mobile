@@ -622,6 +622,34 @@ void main() {
       });
     });
 
+    group('dado que el servidor rechaza la contraseña por larga (72 bytes)', () {
+      test(
+        'cuando registra, devuelve FailureValidacion con el texto del tope en password',
+        () async {
+          final repositorioRoto = AuthRepositoryImpl(
+            _RemoteQueLanzaEnRegistrar(const PasswordDemasiadoLargaException()),
+            local,
+            logger: loggerMudo(),
+          );
+
+          final resultado = await repositorioRoto.registrar(
+            nombre: 'Bruno',
+            apellido: 'Díaz',
+            cedula: '12345678',
+            email: 'bruno@example.com',
+            password: 'Aa1${'x' * 80}',
+          );
+
+          expect(
+            resultado,
+            const Left<Failure, ResultadoRegistro>(
+              FailureValidacion(campos: {'password': 'Es demasiado larga. Acortala.'}),
+            ),
+          );
+        },
+      );
+    });
+
     group('dado un error inesperado del data source', () {
       test('cuando registra, devuelve FailureInesperado en vez de dejarla escapar', () async {
         final repositorioRoto = AuthRepositoryImpl(

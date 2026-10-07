@@ -451,6 +451,45 @@ void main() {
       expect(sesion?.usuarioId, usuarioId);
     });
 
+    test('dado el tope de 72 bytes del servidor (400 validation_failed), lanza '
+        'PasswordDemasiadoLargaException', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Password cannot be longer than 72 characters',
+          statusCode: '400',
+          code: 'validation_failed',
+        ),
+      );
+
+      expect(() => registrar(dataSource()), throwsA(isA<PasswordDemasiadoLargaException>()));
+    });
+
+    test('otro validation_failed sigue siendo un error del servidor, no el del largo', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Unable to validate email address',
+          statusCode: '400',
+          code: 'validation_failed',
+        ),
+      );
+
+      expect(() => registrar(dataSource()), throwsA(isA<ServidorException>()));
+    });
+
     test('dado un email ya registrado (error_code), lanza EmailYaRegistradoException', () {
       when(
         () => auth.signUp(

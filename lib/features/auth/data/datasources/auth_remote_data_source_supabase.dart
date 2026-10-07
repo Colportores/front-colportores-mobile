@@ -393,6 +393,12 @@ final class AuthRemoteDataSourceSupabase
         return ServidorException(status: status, mensaje: _mensajeDemasiadosIntentos);
     }
 
+    // El tope de bcrypt: GoTrue devuelve 400 `validation_failed` con este texto fijo (sin datos del
+    // usuario), así que se distingue del resto de los `validation_failed` por el mensaje.
+    if (mensaje.contains('password cannot be longer')) {
+      return const PasswordDemasiadoLargaException();
+    }
+
     // Versiones de GoTrue sin `error_code`: se cae al texto, que es estable desde hace años.
     if (status == 400 && mensaje.contains('invalid login credentials')) {
       return const CredencialesInvalidasException();

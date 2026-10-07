@@ -369,11 +369,10 @@ final class FailurePasswordNoAbreDatos extends Failure {
       );
 }
 
-/// La cuenta entra con contraseña pero no hay con qué armar el envoltorio de la DEK (sesión
-/// restaurada, sin el login a mano): antes de crear la DB, o de dar por lista una que no lo tiene,
-/// se pide la contraseña (revisión del PR #130, "ante la duda, bloquear"). Sin envoltorio, si el
-/// almacén seguro falla solo queda "empezar de nuevo" (ADR-006). El texto es propio: para
-/// confirmar.
+/// No hay con qué armar el envoltorio de la DEK (sesión restaurada, sin la contraseña del login a
+/// mano): antes de crear la DB, o de dar por lista una que no lo tiene, se pide la contraseña
+/// (revisión del PR #130, "ante la duda, bloquear"). Sin envoltorio, si el almacén seguro falla
+/// solo queda "empezar de nuevo" (ADR-006). El texto es propio: para confirmar.
 final class FailurePasswordParaProteger extends Failure {
   /// Con [porPreparacionInterrumpida] el texto explica por qué se pide la contraseña (la app se
   /// cerró en plena preparación y se empezó de nuevo con la sesión restaurada).

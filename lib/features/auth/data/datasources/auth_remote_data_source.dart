@@ -124,6 +124,13 @@ final class PasswordDebilException extends AuthRemoteException {
   const PasswordDebilException();
 }
 
+/// La contraseña pasa el tope del servidor, 72 bytes (bcrypt; 400 `validation_failed`). La app lo
+/// frena antes en el registro: llega acá si el servidor cuenta distinto que la app, o desde la
+/// recuperación, que todavía no frena el largo en el formulario (#296).
+final class PasswordDemasiadoLargaException extends AuthRemoteException {
+  const PasswordDemasiadoLargaException();
+}
+
 /// La contraseña nueva es igual a la anterior (Supabase `same_password`, HU-AUTH-005).
 final class PasswordIgualALaAnteriorException extends AuthRemoteException {
   const PasswordIgualALaAnteriorException();
