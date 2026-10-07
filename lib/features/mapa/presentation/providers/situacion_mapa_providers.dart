@@ -115,6 +115,18 @@ final descartesAvisoMapaProvider = NotifierProvider<DescartesAvisoMapaNotifier, 
   DescartesAvisoMapaNotifier.new,
 );
 
+/// Hay un aviso del mapa a la vista (la tarjeta o, minimizado, la píldora): la vista 06 saca de
+/// ahí lo que se le encimaría, como «Referencias» (el canvas no lo dibuja junto a los avisos).
+final avisoMapaVisibleProvider = Provider.autoDispose.family<bool, AmbitoTrabajo>((ref, ambito) {
+  final aviso = ref.watch(situacionMapaProvider(ambito).select((situacion) => situacion.aviso));
+  final descartes = ref.watch(descartesAvisoMapaProvider);
+  return switch (aviso) {
+    null => false,
+    AvisoSinConexion() || AvisoMapaNoCarga() => true,
+    AvisoDatosMoviles() => !descartes.datosMovilesOculto,
+  };
+});
+
 /// El pedido de «Descargar mapa» de un ámbito.
 final class EstadoSolicitudMapa extends Equatable {
   const EstadoSolicitudMapa({

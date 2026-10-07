@@ -24,6 +24,12 @@ abstract final class TextosAvisoMapa {
   // 06C·06 — aviso minimizado.
   static const pildoraSinConexion = 'Sin conexión · Descargar mapa';
 
+  // Vista 06 sin la ciudad: no hay descarga que ofrecer (decisión del 06/10 en el #199), así que el
+  // texto no manda a «descargá el mapa» y la píldora no es un botón.
+  static const sinConexionCuerpoSinCiudad =
+      'Tus ubicaciones se siguen viendo. Para ver las calles, activá tus datos móviles.';
+  static const pildoraSinConexionSinCiudad = 'Sin conexión';
+
   // 06C·07 — con datos móviles.
   static const datosMovilesTitulo = 'Estás viendo el mapa con datos móviles';
   static const datosMovilesCuerpo =
@@ -93,6 +99,11 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
 
   bool get _flotante => widget.modo == AvisoMapaModo.flotante;
 
+  /// «Descargar mapa» se ofrece si la app sabe de qué ciudad es el mapa. En la vista 06 (flotante)
+  /// no hay dónde elegirla: sin ciudad no se ofrece, ni en la tarjeta ni en la píldora. El alta
+  /// (en la hoja) tiene «Elegir», y ahí el pedido sin ciudad dice qué falta.
+  bool get _ofreceDescarga => !_flotante || widget.ambito.conocido;
+
   Future<void> _descargar() => ref.read(solicitudMapaProvider(widget.ambito).notifier).pedir();
 
   Future<void> _activarDatos() async {
@@ -147,13 +158,16 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
       AvisoSinConexion() =>
         _flotante && descartes.sinConexionMinimizado
             ? _ubicar(
-                _PildoraSinConexion(ambito: widget.ambito, alPresionar: _descargar),
+                _PildoraSinConexion(
+                  ambito: widget.ambito,
+                  alPresionar: _ofreceDescarga ? _descargar : null,
+                ),
                 ancho: false,
               )
             : _ubicar(
                 _TarjetaSinConexion(
                   ambito: widget.ambito,
-                  alDescargar: _descargar,
+                  alDescargar: _ofreceDescarga ? _descargar : null,
                   alActivarDatos: _activarDatos,
                   alMinimizar: _flotante ? descartador.minimizarSinConexion : null,
                   abriendoAjustes: _abriendoAjustes,
@@ -449,7 +463,9 @@ class _TarjetaSinConexion extends ConsumerWidget {
   });
 
   final AmbitoTrabajo ambito;
-  final VoidCallback alDescargar;
+
+  /// `null`: no se ofrece «Descargar mapa» (la app no sabe la ciudad y no hay dónde elegirla).
+  final VoidCallback? alDescargar;
   final VoidCallback alActivarDatos;
   final VoidCallback? alMinimizar;
   final bool abriendoAjustes;
@@ -462,7 +478,9 @@ class _TarjetaSinConexion extends ConsumerWidget {
       fondo: ColoresAlta.rojo,
       insignia: const _Insignia(fondo: Colors.white, colorGlyph: ColoresAlta.rojo, glyph: '!'),
       titulo: TextosAvisoMapa.sinConexionTitulo,
-      cuerpo: TextosAvisoMapa.sinConexionCuerpo,
+      cuerpo: alDescargar == null
+          ? TextosAvisoMapa.sinConexionCuerpoSinCiudad
+          : TextosAvisoMapa.sinConexionCuerpo,
       colorTitulo: Colors.white,
       colorCuerpo: Colors.white,
       pesoTitulo: FontWeight.w700,
@@ -471,15 +489,16 @@ class _TarjetaSinConexion extends ConsumerWidget {
       falla: _textoDeFalla(solicitud.falla),
       alMinimizar: alMinimizar,
       botones: [
-        FilledButton(
-          onPressed: solicitud.enMarcha ? null : alDescargar,
-          style: _estiloPildora(
-            fondo: Colors.white,
-            texto: ColoresAlta.rojo,
-            peso: FontWeight.w700,
+        if (alDescargar != null)
+          FilledButton(
+            onPressed: solicitud.enMarcha ? null : alDescargar,
+            style: _estiloPildora(
+              fondo: Colors.white,
+              texto: ColoresAlta.rojo,
+              peso: FontWeight.w700,
+            ),
+            child: const Text(TextosAvisoMapa.descargarMapa, textAlign: TextAlign.center),
           ),
-          child: const Text(TextosAvisoMapa.descargarMapa, textAlign: TextAlign.center),
-        ),
         OutlinedButton(
           onPressed: abriendoAjustes ? null : alActivarDatos,
           style: _estiloPildora(
@@ -501,10 +520,14 @@ class _PildoraSinConexion extends ConsumerWidget {
     : super(key: ClavesAvisoMapa.pildora);
 
   final AmbitoTrabajo ambito;
-  final VoidCallback alPresionar;
+
+  /// `null`: no se ofrece «Descargar mapa» (sin ciudad): la píldora solo avisa, no es un botón.
+  final VoidCallback? alPresionar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final alPresionar = this.alPresionar;
+    if (alPresionar == null) return const _PildoraInformativa();
     final solicitud = ref.watch(solicitudMapaProvider(ambito));
     // La píldora no tiene lugar para el motivo de una falla ni para decir en qué está el pedido: sale
     // como aviso pasajero.
@@ -534,43 +557,74 @@ class _PildoraSinConexion extends ConsumerWidget {
       excludeSemantics: true,
       label: TextosAvisoMapa.pildoraSinConexion,
       onTap: alTocar,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Center(
-          widthFactor: 1,
-          heightFactor: 1,
-          child: Material(
-            color: ColoresAlta.rojo,
-            shape: const StadiumBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: alTocar,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 44),
-                child: const Padding(
-                  padding: EdgeInsets.fromLTRB(8, 4, 14, 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _Insignia(
-                        fondo: Colors.white,
-                        colorGlyph: ColoresAlta.rojo,
-                        glyph: '!',
-                        tamano: 22,
-                      ),
-                      SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          TextosAvisoMapa.pildoraSinConexion,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
+      child: _CuerpoPildora(texto: TextosAvisoMapa.pildoraSinConexion, alTocar: alTocar),
+    );
+  }
+}
+
+/// La píldora roja de la vista 06 sin la ciudad: dice «Sin conexión» y nada más. No ofrece descargar
+/// el mapa (no hay dónde elegir la ciudad) ni es un botón. La clave [ClavesAvisoMapa.pildora] la
+/// lleva la [_PildoraSinConexion] que la contiene.
+class _PildoraInformativa extends StatelessWidget {
+  const _PildoraInformativa();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      excludeSemantics: true,
+      label: TextosAvisoMapa.pildoraSinConexionSinCiudad,
+      child: const _CuerpoPildora(texto: TextosAvisoMapa.pildoraSinConexionSinCiudad),
+    );
+  }
+}
+
+/// Lo que se ve de la píldora roja: la insignia «!» y el [texto]. Con [alTocar] responde al toque.
+class _CuerpoPildora extends StatelessWidget {
+  const _CuerpoPildora({required this.texto, this.alTocar});
+
+  final String texto;
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: Material(
+          color: ColoresAlta.rojo,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: alTocar,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 14, 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const _Insignia(
+                      fondo: Colors.white,
+                      colorGlyph: ColoresAlta.rojo,
+                      glyph: '!',
+                      tamano: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        texto,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),

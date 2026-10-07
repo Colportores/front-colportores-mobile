@@ -260,8 +260,9 @@ class _ZonaMapa extends StatefulWidget {
   final AltaUbicacionState estado;
 
   /// Con el teclado abierto el mapa queda de ~129 dp a 360×640 y la pista (dos renglones con la letra
-  /// grande) taparía la atribución o se cortaría: el colportor está escribiendo, no moviendo el mapa.
-  /// Se oculta mientras dura y vuelve al cerrarlo; el pin, «Volver a mi ubicación» y el resto siguen.
+  /// grande) taparía la atribución o se cortaría; el chip del GPS, con la barra de estado, caería sobre
+  /// la punta del pin: el colportor está escribiendo, no moviendo el mapa. Los dos se ocultan mientras
+  /// dura y vuelven al cerrarlo; el pin, «Cerrar», «Volver a mi ubicación» y el resto siguen.
   final bool tecladoAbierto;
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMover;
@@ -333,15 +334,16 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             alPresionar: estado.guardando ? null : widget.alCerrar,
           ),
         ),
-        Positioned(
-          left: 72,
-          right: 14,
-          top: arriba + 14,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: _ChipGps(estado: estado),
+        if (!widget.tecladoAbierto)
+          Positioned(
+            left: 72,
+            right: 14,
+            top: arriba + 14,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _ChipGps(estado: estado),
+            ),
           ),
-        ),
         if (!widget.tecladoAbierto)
           Positioned.fill(
             child: IgnorePointer(

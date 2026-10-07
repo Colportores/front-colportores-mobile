@@ -2000,9 +2000,9 @@ void main() {
         expect(letras[26], 'AA');
         expect(letras[27], 'AB');
         // La leyenda de debajo del mapa dice lo mismo.
-        expect(find.text('Z a 30 m'), findsOneWidget);
-        expect(find.text('AA a 31 m'), findsOneWidget);
-        expect(find.text('AB a 32 m'), findsOneWidget);
+        expect(find.text('Z a 30\u00A0m'), findsOneWidget);
+        expect(find.text('AA a 31\u00A0m'), findsOneWidget);
+        expect(find.text('AB a 32\u00A0m'), findsOneWidget);
         // Y la lista, con la etiqueta del lector de pantalla.
         await tester.ensureVisible(find.text('AB'));
         await tester.pump();
