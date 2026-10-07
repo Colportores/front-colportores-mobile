@@ -54,6 +54,7 @@ final class EspacioFalso implements MedidorEspacioDisco {
 /// - [fallaAlBorrar]: `borrar` lanza (un disco de solo lectura).
 /// - [compuerta]: si no es null, cada `agregar` espera a que se complete (un disco lento, para
 ///   probar que la descarga no pide más bytes mientras el pedazo anterior no salió).
+/// - [compuertaAlCerrar]: lo mismo para `cerrar` (el archivo que tarda en cerrarse tras un corte).
 final class ArchivosEnMemoria implements ArchivosTiles {
   final contenido = <String, List<int>>{};
   final modificados = <String, DateTime>{};
@@ -61,6 +62,7 @@ final class ArchivosEnMemoria implements ArchivosTiles {
   DateTime ahora = DateTime(2026, 10, 7, 12);
   int? discoLlenoDespuesDe;
   Future<void>? compuerta;
+  Future<void>? compuertaAlCerrar;
 
   /// Un disco de solo lectura: `borrar` lanza.
   bool fallaAlBorrar = false;
@@ -136,7 +138,10 @@ final class _EscrituraEnMemoria implements EscrituraArchivo {
   }
 
   @override
-  Future<void> cerrar() async {}
+  Future<void> cerrar() async {
+    final espera = _archivos.compuertaAlCerrar;
+    if (espera != null) await espera;
+  }
 }
 
 /// El SHA-256 real de [bytes] en hex minúscula: lo mismo que publica el catálogo.

@@ -643,6 +643,77 @@ void main() {
       expectCompleta();
     });
 
+    test('dado que en cola vuelve la conexión y el servidor tarda en contestar, ya figura «en '
+        'curso» sin esperar el primer pedazo', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+      await descargar(datosMoviles: true, esperarConexion: true);
+      expect(descargador.estadoDe(paquete.id), isA<DescargaPausada>());
+      final espera = Completer<void>();
+      addTearDown(() {
+        if (!espera.isCompleted) espera.complete();
+      });
+      servidor.esperaAntesDeContestar = espera;
+      estados.clear();
+
+      conectividad.cambiarA(TipoConexion.wifi);
+      await dejarCorrer();
+
+      expect(servidor.pedidos, [0], reason: 'pidió y todavía no le contestaron');
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaEnCurso(paquete.id, recibidos: 0, total: 5500),
+      );
+      expect(estados, [DescargaEnCurso(paquete.id, recibidos: 0, total: 5500)]);
+
+      espera.complete();
+      await esperarReanudacion();
+      expectCompleta();
+    });
+
+    test('dado que en cola vuelve la conexión con parte ya bajada, el «en curso» trae lo que había '
+        'en el .part', () async {
+      servidor.cortarDespuesDe = 2000;
+      await descargar(datosMoviles: true, esperarConexion: true);
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaPausada(paquete.id, motivo: MotivoPausa.sinConexion, recibidos: 2000, total: 5500),
+      );
+      final espera = Completer<void>();
+      addTearDown(() {
+        if (!espera.isCompleted) espera.complete();
+      });
+      servidor.esperaAntesDeContestar = espera;
+
+      conectividad.cambiarA(TipoConexion.wifi);
+      await dejarCorrer();
+
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaEnCurso(paquete.id, recibidos: 2000, total: 5500),
+      );
+      espera.complete();
+      await esperarReanudacion();
+      expect(servidor.pedidos, [0, 2000]);
+      expectCompleta();
+    });
+
+    test('dado que en cola vuelve la conexión pero se va de nuevo antes de empezar, sigue en cola '
+        'y no queda «en curso»', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+      await descargar(esperarConexion: true);
+
+      conectividad.cambiarA(TipoConexion.wifi);
+      conectividad.tipo = TipoConexion.sinConexion;
+      await esperarReanudacion();
+
+      expect(servidor.pedidos, isEmpty);
+      expect(
+        descargador.estadoDe(paquete.id),
+        DescargaPausada(paquete.id, motivo: MotivoPausa.sinConexion, recibidos: 0, total: 5500),
+      );
+      expect(descargador.estaDescargando(paquete.id), isFalse);
+    });
+
     test('dado que ya está en cola, cuando toco «Descargar mapa» otra vez, no se encola otra: ni '
         'un estado nuevo ni un segundo pedido', () async {
       conectividad.tipo = TipoConexion.sinConexion;
@@ -802,6 +873,65 @@ void main() {
         DescargaPausada(paquete.id, motivo: MotivoPausa.usuario, recibidos: 2000, total: 5500),
       );
       expect(servidor.pedidos, [0]);
+    });
+
+    // El servidor corta con el Wi-Fi arriba y, mientras el `.part` tarda en cerrarse, pasa algo más.
+    group('con el servidor cortando mientras se cierra el .part', () {
+      late Completer<void> cierre;
+
+      /// Deja la descarga cortada, esperando que el `.part` termine de cerrarse.
+      Future<void> cortadaYCerrando() async {
+        servidor.cortarDespuesDe = 1000;
+        cierre = Completer<void>();
+        archivos.compuertaAlCerrar = cierre.future;
+        addTearDown(() {
+          if (!cierre.isCompleted) cierre.complete();
+        });
+        await descargador.descargar(paquete);
+        await dejarCorrer();
+        expect(servidor.pedidos, [0]);
+        expect(estados.whereType<DescargaPausada>(), isEmpty, reason: 'todavía se está cerrando');
+      }
+
+      test(
+        'dado que pauso en ese momento, la pausa es mía y no se retoma sola con el Wi-Fi',
+        () async {
+          await cortadaYCerrando();
+
+          final pausa = descargador.pausar(paquete.id);
+          cierre.complete();
+          await pausa;
+
+          expect(
+            descargador.estadoDe(paquete.id),
+            DescargaPausada(paquete.id, motivo: MotivoPausa.usuario, recibidos: 1000, total: 5500),
+          );
+          conectividad.cambiarA(TipoConexion.sinConexion);
+          conectividad.cambiarA(TipoConexion.wifi);
+          await esperarReanudacion();
+          expect(servidor.pedidos, [0], reason: 'no volvió a pedir contra mi pausa');
+          expect(descargador.estadoDe(paquete.id), isA<DescargaPausada>());
+          expect((descargador.estadoDe(paquete.id)! as DescargaPausada).sigueSola, isFalse);
+        },
+      );
+
+      test('dado que se va el Wi-Fi en ese momento, la pausa dice «sin Wi-Fi» y sigue sola al '
+          'volver', () async {
+        await cortadaYCerrando();
+
+        conectividad.cambiarA(TipoConexion.datosMoviles);
+        cierre.complete();
+        await descargador.esperar(paquete.id);
+
+        expect(
+          descargador.estadoDe(paquete.id),
+          DescargaPausada(paquete.id, motivo: MotivoPausa.sinWifi, recibidos: 1000, total: 5500),
+        );
+        conectividad.cambiarA(TipoConexion.wifi);
+        await esperarReanudacion();
+        expect(servidor.pedidos, [0, 1000]);
+        expectCompleta();
+      });
     });
 
     test('dado que pausé una descarga que esperaba la conexión, ya no sigue sola', () async {
