@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
+import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -12,9 +13,9 @@ export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 /// Estructura de la app una vez con sesión: la marca y el engranaje de Configuración arriba, la
 /// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
 ///
-/// "Hoy" es la jornada (HU-JOR-001/002). Mapa, Lista, Agenda y Ventas todavía no tienen pantalla:
-/// quedan con [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue la HU de cada
-/// una (Mapa #199, Lista #196). El atrás del sistema desde esas pestañas vuelve a "Hoy", y desde
+/// "Hoy" es la jornada (HU-JOR-001/002) y "Lista" las ubicaciones del colportor (HU-UBI-002).
+/// Mapa, Agenda y Ventas todavía no tienen pantalla: quedan con [PestanaProvisoria] («Esta sección
+/// llega pronto.») hasta que llegue la HU de cada una (Mapa #199). El atrás del sistema desde esas pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
 class InicioPage extends StatefulWidget {
@@ -78,7 +79,15 @@ class _InicioPageState extends State<InicioPage> {
         children: [
           JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
           for (final pestana in PestanaInicio.values.skip(1))
-            PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
+            switch (pestana) {
+              // La lista de ubicaciones (HU-UBI-002, #196). El GPS se pide al abrirla, no antes.
+              PestanaInicio.lista => ListaUbicacionesPage(
+                key: Key('pestana_${pestana.name}'),
+                colportorId: widget.sesion.usuarioId,
+                activa: _actual == PestanaInicio.lista,
+              ),
+              _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
+            },
         ],
       ),
       bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
