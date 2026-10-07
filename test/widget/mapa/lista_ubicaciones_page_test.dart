@@ -54,6 +54,24 @@ List<UbicacionConResumen> _sinEstado() => [
     UbicacionConResumen(ubicacion: f.ubicacion, cantidadEspacios: f.cantidadEspacios),
 ];
 
+/// Quien dio de baja todo lo que registró: dos bajas y ninguna activa.
+List<UbicacionConResumen> _soloBajas() => [
+  filaLista(
+    'baja-1',
+    calle: 'Gral. Flores',
+    numero: '1500',
+    hace: const Duration(days: 20),
+    baja: ahoraLista.subtract(const Duration(days: 20)),
+  ),
+  filaLista(
+    'baja-2',
+    calle: 'Rivera',
+    numero: '3920',
+    hace: const Duration(days: 30),
+    baja: ahoraLista.subtract(const Duration(days: 30)),
+  ),
+];
+
 List<UbicacionConResumen> _muchas(int n) => [
   for (var i = 0; i < n; i++)
     filaLista(
@@ -123,6 +141,95 @@ void main() {
       expect(botonNueva, findsNothing);
       expect(botonOrden, findsNothing);
       expect(find.textContaining(' de '), findsNothing);
+      // Sin ninguna ubicación (ni bajas) no hay nada que mostrar: el vacío es el de siempre.
+      expect(find.text(TextosListaUbicaciones.soloBajasTitulo), findsNothing);
+      expect(find.byKey(const Key('lista_mostrar_bajas')), findsNothing);
+    });
+
+    testWidgets('dado que solo tiene ubicaciones dadas de baja y «Mostrar bajas» está apagado, '
+        'entonces dice que no tiene ubicaciones activas y ofrece registrar una o mostrar las '
+        'bajas, sin listarlas', (tester) async {
+      await montarLista(tester, repo: RepoListaFalso(_soloBajas()));
+
+      expect(find.text(TextosListaUbicaciones.soloBajasTitulo), findsOneWidget);
+      expect(find.text('No tenés ubicaciones activas'), findsOneWidget);
+      expect(find.text(TextosListaUbicaciones.soloBajasCuerpo), findsOneWidget);
+      expect(find.text('Registrar una ubicación'), findsOneWidget);
+      expect(find.byKey(const Key('lista_mostrar_bajas')), findsOneWidget);
+      expect(find.text('Mostrar bajas'), findsOneWidget);
+      // No es el vacío de quien nunca registró nada, y las bajas no se listan.
+      expect(find.text(TextosListaUbicaciones.vacioTitulo), findsNothing);
+      expect(find.text(TextosListaUbicaciones.registrarPrimera), findsNothing);
+      expect(find.text('Gral. Flores 1500'), findsNothing);
+      expect(find.text('BAJA'), findsNothing);
+      expect(botonNueva, findsNothing);
+      expect(botonOrden, findsNothing);
+      // Sin contador «N de N»: no hay filas.
+      expect(find.textContaining(RegExp(r'\d+ de \d+')), findsNothing);
+    });
+
+    testWidgets('dado el vacío de «solo bajas», cuando toca «Mostrar bajas», entonces prende el '
+        'filtro, aparecen las bajas y al quitarlo vuelve el vacío', (tester) async {
+      await montarLista(tester, repo: RepoListaFalso(_soloBajas()));
+
+      await tester.tap(find.byKey(const Key('lista_mostrar_bajas')));
+      await asentarLista(tester);
+
+      expect(find.text(TextosListaUbicaciones.soloBajasTitulo), findsNothing);
+      expect(find.text('Gral. Flores 1500'), findsOneWidget);
+      expect(find.text('Rivera 3920'), findsOneWidget);
+      expect(find.text('BAJA'), findsNWidgets(2));
+      expect(chipFiltro('Con bajas'), findsOneWidget);
+      expect(find.text('2 de 2 · 2 bajas'), findsOneWidget);
+
+      await tester.tap(chipFiltro('Con bajas'));
+      await asentarLista(tester);
+
+      expect(find.text(TextosListaUbicaciones.soloBajasTitulo), findsOneWidget);
+      expect(find.text('Gral. Flores 1500'), findsNothing);
+    });
+
+    testWidgets('dado el vacío de «solo bajas», cuando toca «Registrar una ubicación», entonces '
+        'abre el alta una sola vez aunque toque dos veces seguidas', (tester) async {
+      final abierta = Completer<void>();
+      var altas = 0;
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_soloBajas()),
+        alRegistrar: () {
+          altas++;
+          return abierta.future;
+        },
+      );
+
+      await tester.tap(find.byKey(const Key('lista_registrar_una')));
+      await tester.tap(find.byKey(const Key('lista_registrar_una')));
+      await tester.pump();
+
+      expect(altas, 1);
+
+      abierta.complete();
+      await asentarLista(tester);
+      await tester.tap(find.byKey(const Key('lista_registrar_una')));
+      await tester.pump();
+
+      expect(altas, 2);
+    });
+
+    testWidgets('dado que tiene una activa y una baja, cuando «Mostrar bajas» está apagado, '
+        'entonces ve la lista de siempre, no el vacío de «solo bajas»', (tester) async {
+      await montarLista(
+        tester,
+        repo: RepoListaFalso([
+          filaLista('viva', calle: 'Rivadavia', numero: '100'),
+          ..._soloBajas(),
+        ]),
+      );
+
+      expect(find.text('Rivadavia 100'), findsOneWidget);
+      expect(find.text(TextosListaUbicaciones.soloBajasTitulo), findsNothing);
+      expect(find.text('1 de 1'), findsOneWidget);
+      expect(botonNueva, findsOneWidget);
     });
 
     testWidgets('dado el estado vacío, cuando toca «Registrar tu primera ubicación», entonces abre '
@@ -895,12 +1002,40 @@ void main() {
         await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
         expect(find.text('◎ Sin GPS'), findsOneWidget);
 
+        // Toca «Sin GPS»: lo manda a los ajustes (el fake no cambia nada) y sigue sin GPS.
+        await tester.tap(find.text('◎ Sin GPS'));
+        await asentarLista(tester);
+        expect(gps.activaciones, hasLength(1));
+        expect(find.text('◎ Sin GPS'), findsOneWidget);
+
         gps.respuesta = Right(lecturaGps(9));
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
         await asentarLista(tester);
 
         expect(find.text('◎ GPS ±9${_nbsp}m'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que el permiso está denegado, cuando vuelve a la app desde otra (sin haber tocado '
+      '«Sin GPS»), entonces no lo vuelve a pedir ni muestra el diálogo del permiso',
+      (tester) async {
+        final gps = gpsFallido();
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+        expect(find.text('◎ Sin GPS'), findsOneWidget);
+        final lecturas = gps.lecturas;
+
+        for (var i = 0; i < 3; i++) {
+          tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+          await asentarLista(tester);
+        }
+
+        expect(gps.lecturas, lecturas);
+        expect(gps.activaciones, isEmpty);
+        expect(find.text('◎ Sin GPS'), findsOneWidget);
+        expect(find.text('Rivadavia 100'), findsOneWidget);
       },
     );
   });
@@ -1033,6 +1168,92 @@ void main() {
 
       expect(tester.state<ScrollableState>(desplazable).position.pixels, antes);
       expect(repo.suscripciones, suscripcionesAntes);
+    });
+  });
+
+  group('volver arriba', () {
+    double desplazado(WidgetTester tester) => tester
+        .state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(const Key('lista_filas')),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .position
+        .pixels;
+
+    testWidgets('dado que leyó la mitad de la lista, cuando cambia la búsqueda, entonces vuelve '
+        'al principio', (tester) async {
+      await montarLista(tester, repo: RepoListaFalso(_muchas(40)), tamano: const Size(390, 700));
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -900));
+      await asentarLista(tester);
+      expect(desplazado(tester), greaterThan(0));
+
+      // «calle» no saca ninguna fila: sin volver arriba, la lista se quedaría donde estaba.
+      await buscarEnLista(tester, 'calle');
+
+      expect(find.text('40 de 40'), findsOneWidget);
+      expect(desplazado(tester), 0);
+      expect(find.text('Calle 0 1'), findsOneWidget);
+    });
+
+    testWidgets('dado que leyó la mitad de la lista, cuando aplica otros filtros, entonces vuelve '
+        'al principio', (tester) async {
+      await montarLista(tester, repo: RepoListaFalso(_muchas(40)), tamano: const Size(390, 700));
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -900));
+      await asentarLista(tester);
+      expect(desplazado(tester), greaterThan(0));
+
+      await abrirHojaFiltros(tester);
+      await tester.tap(find.text('Casa'));
+      await asentarLista(tester);
+      await verUbicaciones(tester);
+
+      expect(chipFiltro('Casa'), findsOneWidget);
+      expect(desplazado(tester), 0);
+    });
+
+    testWidgets('dado que leyó la mitad de la lista, cuando cambia el orden, entonces se queda '
+        'donde estaba', (tester) async {
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_muchas(40)),
+        gps: GpsFalso(Right(lecturaGps(8))),
+        tamano: const Size(390, 700),
+      );
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -900));
+      await asentarLista(tester);
+      final antes = desplazado(tester);
+      expect(antes, greaterThan(0));
+
+      await tester.tap(botonOrden);
+      await asentarLista(tester);
+      await tester.tap(find.text('Por cercanía'));
+      await asentarLista(tester);
+
+      expect(find.text('Por cercanía ▾'), findsOneWidget);
+      expect(desplazado(tester), greaterThan(0));
+    });
+
+    testWidgets('dado que llega al final de las primeras 50, cuando se cargan 50 más, entonces no '
+        'vuelve al principio', (tester) async {
+      await montarLista(tester, repo: RepoListaFalso(_muchas(120)), tamano: const Size(390, 700));
+
+      // Se baja de a poco hasta que aparece la fila 56 (de la segunda página): en ningún paso la
+      // lista puede haber vuelto arriba.
+      final lista = find.byKey(const Key('lista_filas'));
+      var previo = 0.0;
+      for (var i = 0; i < 40; i++) {
+        if (find.text('Calle 55 56', skipOffstage: false).evaluate().isNotEmpty) break;
+        await tester.drag(lista, const Offset(0, -300));
+        await tester.pump(const Duration(milliseconds: 60));
+        final ahora = desplazado(tester);
+        expect(ahora, greaterThanOrEqualTo(previo), reason: 'paso $i');
+        previo = ahora;
+      }
+
+      expect(find.text('Calle 55 56', skipOffstage: false), findsOneWidget);
+      expect(previo, greaterThan(1500));
     });
   });
 

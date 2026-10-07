@@ -447,11 +447,9 @@ void main() {
     );
   });
 
-  // Hallazgos menores de la revisión visual y del §8.3: cada test dice qué debería pasar; el
-  // implementador le saca el `skip` cuando lo arregla.
-  group('QA #196 · hallazgos menores (con skip)', () {
-    // skip: QA #196 — §8.3: el cargando es un spinner sin texto visible (solo una etiqueta de
-    // Semantics); debería decir «Cargando ubicaciones» debajo.
+  // Hallazgos menores de la revisión visual y del §8.3 (QA a778846d, ronda 1), ya arreglados.
+  group('QA #196 · hallazgos menores', () {
+    // §8.3: el cargando no es solo un círculo: dice «Cargando ubicaciones» debajo.
     testWidgets('mientras carga se ve un texto que lo dice, no solo el círculo', (tester) async {
       final repo = RepoListaFalso(_hoy())..bloqueo = Completer<void>();
       await montarLista(tester, repo: repo);
@@ -461,10 +459,10 @@ void main() {
 
       repo.bloqueo!.complete();
       await asentarLista(tester);
-    }, skip: true);
+    });
 
-    // skip: QA #196 — convenciones §10: el error de lectura sin lista no se anuncia (el aviso con la
-    // lista a la vista sí es liveRegion); un lector de pantalla no se entera de que falló.
+    // Convenciones §10: el error de lectura sin lista se anuncia igual que el aviso con la lista a
+    // la vista; un lector de pantalla se entera de que falló.
     testWidgets('el error de lectura sin lista se anuncia (liveRegion)', (tester) async {
       final repo = RepoListaFalso(_hoy())..fallaAlSuscribir = true;
       await montarLista(tester, repo: repo);
@@ -478,10 +476,9 @@ void main() {
         ),
         findsWidgets,
       );
-    }, skip: true);
+    });
 
-    // skip: QA #196 — visual (canvas 05B, hoja de filtros): el texto de las casillas de TIPO queda
-    // pegado arriba; el canvas lo centra (`align-items:center`).
+    // Canvas 05B, hoja de filtros: el texto de las casillas de TIPO va centrado (`align-items:center`).
     testWidgets('las casillas de TIPO centran su texto en vertical', (tester) async {
       await montarLista(tester, repo: RepoListaFalso(_hoy()));
       await abrirHojaFiltros(tester);
@@ -491,10 +488,9 @@ void main() {
         (tester.getCenter(find.text('Casa')).dy - tester.getCenter(casilla).dy).abs(),
         lessThan(3),
       );
-    }, skip: true);
+    });
 
-    // skip: QA #196 — visual: «Limpiar filtros» no tiene margen horizontal (el tema del
-    // OutlinedButton solo fija el vertical) y el texto toca el borde de la píldora.
+    // «Limpiar filtros» tiene aire horizontal (el tema del OutlinedButton solo fija el vertical).
     testWidgets('«Limpiar filtros» deja aire entre el texto y el borde', (tester) async {
       await montarLista(tester, repo: RepoListaFalso(_hoy()));
       await buscarEnLista(tester, 'zzz');
@@ -503,6 +499,6 @@ void main() {
       final texto = tester.getRect(find.text(TextosListaUbicaciones.limpiarFiltros));
       expect(texto.left - boton.left, greaterThanOrEqualTo(12));
       expect(boton.right - texto.right, greaterThanOrEqualTo(12));
-    }, skip: true);
+    });
   });
 }

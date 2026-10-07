@@ -110,6 +110,53 @@ void main() {
       expect(encendido.total, 2);
     });
 
+    test('las bajas con "Mostrar bajas" apagado no se listan pero se cuentan en bajasOcultas', () {
+      final todas = [
+        ub('viva'),
+        ub('baja-1', baja: true),
+        ub('baja-2', baja: true),
+        ub('ajena-baja', baja: true, dueno: 'col-2'),
+      ];
+      final apagado = armar(todas, consulta);
+      expect([for (final i in apagado.items) i.ubicacion.id], ['viva']);
+      expect(apagado.bajasOcultas, 2);
+      expect(apagado.soloBajas, isFalse);
+      expect(apagado.totalBajas, 0);
+
+      final encendido = armar(
+        todas,
+        const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true),
+      );
+      expect(encendido.total, 3);
+      expect(encendido.bajasOcultas, 0);
+      expect(encendido.totalBajas, 2);
+    });
+
+    test(
+      'solo bajas con "Mostrar bajas" apagado es soloBajas; sin ninguna o con una activa, no',
+      () {
+        final soloBajas = armar([ub('a', baja: true), ub('b', baja: true)], consulta);
+        expect(soloBajas.sinUbicaciones, isTrue);
+        expect(soloBajas.bajasOcultas, 2);
+        expect(soloBajas.soloBajas, isTrue);
+        expect(soloBajas.items, isEmpty);
+
+        final ninguna = armar(const [], consulta);
+        expect(ninguna.sinUbicaciones, isTrue);
+        expect(ninguna.soloBajas, isFalse);
+
+        // Las bajas de otro colportor no cuentan: para este colportor no hay nada.
+        final ajenas = armar([ub('a', baja: true, dueno: 'col-2')], consulta);
+        expect(ajenas.soloBajas, isFalse);
+
+        // Con «Mostrar bajas» encendido hay filas: ya no es el vacío.
+        final encendido = armar([
+          ub('a', baja: true),
+        ], const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true));
+        expect(encendido.soloBajas, isFalse);
+      },
+    );
+
     test('sin posición no hay distancias', () {
       final r = armar([ub('a')], consulta);
       expect(r.items.single.distanciaMetros, isNull);

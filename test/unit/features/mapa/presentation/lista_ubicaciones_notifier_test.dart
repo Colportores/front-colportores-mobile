@@ -92,7 +92,8 @@ void main() {
         expect(b.ids, ['casa-1', 'neg-1', 'edi-1']);
         expect(b.estado.lista!.total, 3);
         expect(b.estado.lista!.totalGeneral, 3);
-        expect(b.repo.pedidos.single, (colportorId: 'col-1', incluirBajas: false));
+        // Siempre pide también las bajas (el armador las esconde y las cuenta).
+        expect(b.repo.pedidos.single, (colportorId: 'col-1', incluirBajas: true));
       },
     );
 
@@ -326,7 +327,7 @@ void main() {
       );
       await _esperar();
 
-      expect(repo.pedidos.last.incluirBajas, isTrue);
+      expect(b.estado.filtros.incluirBajas, isTrue);
       final baja = b.estado.lista!.items.singleWhere((i) => i.ubicacion.id == 'baja-1');
       expect(baja.esBaja, isTrue);
       expect(baja.esInteractiva, isFalse);
@@ -335,7 +336,61 @@ void main() {
       b.notificador.quitarBajas();
       await _esperar();
       expect(b.ids, isNot(contains('baja-1')));
-      expect(repo.pedidos.last.incluirBajas, isFalse);
+      expect(b.estado.filtros.incluirBajas, isFalse);
+      // El repositorio nunca se entera: pide siempre las bajas, prendidas o no.
+      expect(repo.pedidos.every((p) => p.incluirBajas), isTrue);
+      expect(b.estado.lista!.bajasOcultas, 1);
+    });
+
+    test('dado que solo tiene bajas, entonces la lista llega vacía y marcada «solo bajas»; '
+        '«Mostrar bajas» las lista y quitarlas vuelve al vacío', () async {
+      final repo = RepoListaFalso([
+        filaLista('baja-1', baja: ahoraLista.subtract(const Duration(days: 20))),
+        filaLista('baja-2', baja: ahoraLista.subtract(const Duration(days: 30))),
+      ]);
+      final b = _banco(repo: repo);
+      await _esperar();
+
+      expect(b.ids, isEmpty);
+      expect(b.estado.lista!.sinUbicaciones, isTrue);
+      expect(b.estado.lista!.soloBajas, isTrue);
+      expect(b.estado.lista!.bajasOcultas, 2);
+
+      b.notificador.mostrarBajas();
+      await _esperar();
+
+      expect(b.estado.filtros.incluirBajas, isTrue);
+      expect(b.ids, hasLength(2));
+      expect(b.estado.lista!.sinUbicaciones, isFalse);
+      expect(b.estado.lista!.soloBajas, isFalse);
+      expect(b.estado.lista!.bajasOcultas, 0);
+      expect(b.repo.activas, 1);
+
+      b.notificador.quitarBajas();
+      await _esperar();
+
+      expect(b.ids, isEmpty);
+      expect(b.estado.lista!.soloBajas, isTrue);
+    });
+
+    test('dado que no registró nada, entonces el vacío no es «solo bajas»; con una activa y una '
+        'baja tampoco', () async {
+      final vacio = _banco(repo: RepoListaFalso());
+      await _esperar();
+      expect(vacio.estado.lista!.sinUbicaciones, isTrue);
+      expect(vacio.estado.lista!.soloBajas, isFalse);
+      expect(vacio.estado.lista!.bajasOcultas, 0);
+
+      final mixta = _banco(
+        repo: RepoListaFalso([
+          filaLista('viva'),
+          filaLista('baja', baja: ahoraLista.subtract(const Duration(days: 20))),
+        ]),
+      );
+      await _esperar();
+      expect(mixta.estado.lista!.sinUbicaciones, isFalse);
+      expect(mixta.estado.lista!.soloBajas, isFalse);
+      expect(mixta.estado.lista!.bajasOcultas, 1);
     });
 
     test('dado cada chip, cuando se quita su ✕, entonces solo se saca ese filtro', () async {
@@ -602,6 +657,36 @@ void main() {
       expect(b.estado.lista!.items.length, lessThanOrEqualTo(50));
     });
 
+    test('dado que cargó más páginas, cuando vuelve a aplicar lo mismo que ya ve, entonces se '
+        'queda donde estaba y no vuelve a pedir nada', () async {
+      final b = _banco(repo: RepoListaFalso(muchas(120)));
+      await _esperar();
+      b.notificador.buscar('italia');
+      await _esperar();
+      b.notificador.cargarMas();
+      await _esperar();
+      expect(b.estado.filtros.limite, 2 * ConsultaListaUbicaciones.tamanoPagina);
+      final filas = b.estado.lista!.items.length;
+      expect(filas, 2 * ConsultaListaUbicaciones.tamanoPagina);
+      final suscripciones = b.repo.suscripciones;
+
+      // Enter con el mismo texto, «Ver N ubicaciones» sin tocar nada y el mismo orden.
+      b.notificador.buscar('italia');
+      b.notificador.aplicar(
+        tipos: const {},
+        estados: const {},
+        ciudadId: null,
+        proximidad: ProximidadLista.cualquiera,
+        incluirBajas: false,
+      );
+      b.notificador.ordenar(b.estado.filtros.orden);
+      await _esperar();
+
+      expect(b.estado.filtros.limite, 2 * ConsultaListaUbicaciones.tamanoPagina);
+      expect(b.estado.lista!.items, hasLength(filas));
+      expect(b.repo.suscripciones, suscripciones);
+    });
+
     test(
       'dado que la base emite mientras se está en la página 2, entonces la página se mantiene',
       () async {
@@ -703,6 +788,9 @@ void main() {
         await b.notificador.alAbrirPestana();
         expect(b.estado.gps, EstadoGpsLista.sinGps);
 
+        // Toca «Activar GPS»: lo manda a los ajustes y sigue sin GPS hasta que vuelve.
+        await b.notificador.activarGps();
+        expect(b.estado.gps, EstadoGpsLista.sinGps);
         gps.respuesta = Right(lecturaGps(12));
         await b.notificador.reintentarGpsSiHaceFalta();
 
@@ -710,6 +798,41 @@ void main() {
         expect(b.estado.motivoSinGps, isNull);
       },
     );
+
+    test('dado «sin GPS» por el permiso, cuando vuelve a la app sin haber tocado «Activar GPS» '
+        '(volvió de otra app), entonces no lo reintenta ni vuelve a pedir el permiso', () async {
+      final gps = GpsFalso(
+        const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado)),
+      );
+      final b = _banco(repo: RepoListaFalso(tres), gps: gps);
+      await b.notificador.alAbrirPestana();
+      expect(gps.lecturas, 1);
+
+      await b.notificador.reintentarGpsSiHaceFalta();
+      await b.notificador.reintentarGpsSiHaceFalta();
+
+      expect(gps.lecturas, 1);
+      expect(gps.activaciones, isEmpty);
+      expect(b.estado.gps, EstadoGpsLista.sinGps);
+    });
+
+    test('dado que volvió de los ajustes y el GPS seguía sin darse, cuando vuelve otra vez a la '
+        'app sin tocar «Activar GPS», entonces no insiste', () async {
+      final gps = GpsFalso(
+        const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado)),
+      );
+      final b = _banco(repo: RepoListaFalso(tres), gps: gps);
+      await b.notificador.alAbrirPestana();
+      await b.notificador.activarGps();
+      final lecturas = gps.lecturas;
+
+      await b.notificador.reintentarGpsSiHaceFalta();
+      expect(gps.lecturas, lecturas + 1);
+      await b.notificador.reintentarGpsSiHaceFalta();
+
+      expect(gps.lecturas, lecturas + 1);
+      expect(b.estado.gps, EstadoGpsLista.sinGps);
+    });
 
     test('dado que hay GPS, cuando se vuelve a la app, entonces no se pide de nuevo', () async {
       final b = _banco(repo: RepoListaFalso(tres), gps: GpsFalso(Right(lecturaGps(8))));

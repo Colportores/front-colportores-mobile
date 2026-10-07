@@ -59,23 +59,25 @@ final class _RepositorioReactivo
 void main() {
   final t0 = DateTime.utc(2026, 9, 29, 12);
 
-  UbicacionConResumen ub(String id, {int minutos = 0, int espacios = 1}) => UbicacionConResumen(
-    cantidadEspacios: espacios,
-    ubicacion: Ubicacion(
-      id: id,
-      tipo: TipoUbicacion.casa,
-      calle: 'Rivadavia',
-      numero: '1',
-      lat: -34.9,
-      lon: -56.15,
-      ciudadId: 'mvd',
-      auditoria: Auditoria(
-        createdAt: t0,
-        updatedAt: t0.add(Duration(minutes: minutos)),
-        createdBy: 'col-1',
-      ),
-    ),
-  );
+  UbicacionConResumen ub(String id, {int minutos = 0, int espacios = 1, bool baja = false}) =>
+      UbicacionConResumen(
+        cantidadEspacios: espacios,
+        ubicacion: Ubicacion(
+          id: id,
+          tipo: TipoUbicacion.casa,
+          calle: 'Rivadavia',
+          numero: '1',
+          lat: -34.9,
+          lon: -56.15,
+          ciudadId: 'mvd',
+          auditoria: Auditoria(
+            createdAt: t0,
+            updatedAt: t0.add(Duration(minutes: minutos)),
+            createdBy: 'col-1',
+            deletedAt: baja ? t0.add(Duration(minutes: minutos)) : null,
+          ),
+        ),
+      );
 
   test(
     'pide al repositorio lo del colportor y las bajas; la ciudad la filtra el armador',
@@ -89,6 +91,33 @@ void main() {
       await sub.cancel();
     },
   );
+
+  test('con «Mostrar bajas» apagado pide igual las bajas: no las lista pero las cuenta', () async {
+    final repo = _RepositorioReactivo();
+    final futuro = ConsultarListaUbicacionesUseCase(repo)(
+      const ConsultaListaUbicaciones(colportorId: 'col-1'),
+    ).first;
+    expect(repo.pedido, (colportorId: 'col-1', incluirBajas: true));
+
+    repo.fuente.add([ub('viva'), ub('baja', baja: true)]);
+    final lista = await futuro;
+
+    expect([for (final i in lista.items) i.ubicacion.id], ['viva']);
+    expect(lista.bajasOcultas, 1);
+  });
+
+  test('solo bajas con «Mostrar bajas» apagado llega como «solo bajas»', () async {
+    final repo = _RepositorioReactivo();
+    final futuro = ConsultarListaUbicacionesUseCase(repo)(
+      const ConsultaListaUbicaciones(colportorId: 'col-1'),
+    ).first;
+    repo.fuente.add([ub('a', baja: true), ub('b', baja: true)]);
+    final lista = await futuro;
+
+    expect(lista.sinUbicaciones, isTrue);
+    expect(lista.soloBajas, isTrue);
+    expect(lista.items, isEmpty);
+  });
 
   test('cada emisión del repositorio vuelve a emitir la lista armada (stream reactivo)', () async {
     final repo = _RepositorioReactivo();
