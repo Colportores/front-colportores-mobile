@@ -477,9 +477,8 @@ void main() {
     });
 
     testWidgets('dado A02, cuando se recorre con Tab, el foco pasa por correo, contraseña, ojo, '
-        '«Mantener sesión», «Entrar» y «Registrate» sin trampas y sin «Recuperar acceso»', (
-      tester,
-    ) async {
+        '«Entrar» y «Registrate» sin trampas, sin «Recuperar acceso» y sin casilla «Mantener '
+        'sesión» (#303)', (tester) async {
       _pantalla(tester, const Size(412, 915));
       await _vencida(tester);
 
@@ -501,22 +500,23 @@ void main() {
         if (dentroDe(find.byTooltip('Mostrar contraseña'))) return 'ojo';
         if (dentroDe(_email)) return 'correo';
         if (dentroDe(_clave)) return 'contraseña';
-        if (dentroDe(find.byType(Checkbox))) return 'mantener';
         if (dentroDe(_entrar)) return 'entrar';
         if (dentroDe(_registro)) return 'registro';
         return 'otro';
       }
 
       final visitados = <String?>[];
-      for (var i = 0; i < 7; i++) {
+      for (var i = 0; i < 6; i++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
         visitados.add(dondeEstaElFoco());
       }
 
-      expect(visitados.take(6), ['correo', 'contraseña', 'ojo', 'mantener', 'entrar', 'registro']);
-      expect(visitados[6], 'correo', reason: 'dio la vuelta: no hay trampa de foco');
+      expect(visitados.take(5), ['correo', 'contraseña', 'ojo', 'entrar', 'registro']);
+      expect(visitados[5], 'correo', reason: 'dio la vuelta: no hay trampa de foco');
       expect(_recuperar, findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.text('Mantener sesión'), findsNothing);
     });
   });
 
