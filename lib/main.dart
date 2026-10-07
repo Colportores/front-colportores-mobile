@@ -19,6 +19,7 @@ import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
+import 'features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -99,6 +100,11 @@ Future<void> main() async {
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.
         ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacenSeguro)),
+        // Al lado del correo, el motivo y la fecha del último cierre que la persona no pidió: el
+        // aviso de «Sesión vencida» vale en cada arranque sin sesión hasta que entra.
+        cierreForzadoRepositoryProvider.overrideWithValue(
+          CierreForzadoRepositoryImpl(almacenSeguro),
+        ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
         // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en

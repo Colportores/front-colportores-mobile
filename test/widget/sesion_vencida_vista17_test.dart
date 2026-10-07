@@ -9,7 +9,9 @@ import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
@@ -940,13 +942,14 @@ void main() {
   });
 
   group('Vista 17 — texto de «Entrar» sin conexión según haya o no una cuenta en el teléfono', () {
-    /// Segundo arranque sin señal: la sesión ya se descartó en el arranque anterior y el aviso de
-    /// la vista 17 no sobrevive (`reingresoSesionProvider` vive en memoria); queda el login común,
-    /// con o sin el correo de la última cuenta guardado aparte.
+    /// Segundo arranque sin señal: la sesión ya se descartó en el arranque anterior. Con [cierre]
+    /// (el motivo que quedó guardado, decisión de Cristian del 07/10, #302) el aviso de la vista 17
+    /// sigue; sin él, es el login común, con o sin el correo de la última cuenta guardado aparte.
     Future<AuthRemoteDataSourceEnMemoria> arrancarSinSesion(
       WidgetTester tester,
-      UltimoCorreoEnMemoria guardado,
-    ) async {
+      UltimoCorreoEnMemoria guardado, {
+      CierreForzado? cierre,
+    }) async {
       final remoto = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       )..simularSinConexion = true;
@@ -957,6 +960,7 @@ void main() {
             authRemoteDataSourceProvider.overrideWithValue(remoto),
             authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
             ultimoCorreoRepositoryProvider.overrideWithValue(guardado),
+            cierreForzadoRepositoryProvider.overrideWithValue(CierreForzadoEnMemoria(cierre)),
             monitorConectividadProvider.overrideWithValue(
               ConectividadFalsa()..tipo = TipoConexion.sinConexion,
             ),
@@ -974,13 +978,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('dado el segundo arranque sin señal con el correo de la cuenta guardado, cuando '
-        'toca «Entrar», no dice «por primera vez»', (tester) async {
+    testWidgets('dado el login común sin señal con el correo de la cuenta guardado (sin ningún '
+        'cierre guardado), cuando toca «Entrar», no dice «por primera vez»', (tester) async {
       final remoto = await arrancarSinSesion(
         tester,
         UltimoCorreoEnMemoria('lucia.silva@correo.com'),
       );
-      expect(_aviso, findsNothing, reason: 'el aviso de la vista 17 no sobrevive al arranque');
+      expect(_aviso, findsNothing, reason: 'no hubo un cierre que avisar');
       expect(_correo(tester), 'lucia.silva@correo.com');
 
       await tocarEntrar(tester);
@@ -989,6 +993,46 @@ void main() {
       expect(find.text(_entrarSinConexion), findsOneWidget);
       expect(find.text(_primerLoginSinConexion), findsNothing);
       expect(tester.widget<FilledButton>(_entrar).onPressed, isNotNull);
+    });
+
+    testWidgets('dado el segundo arranque sin señal con el cierre por inactividad guardado, 17-A02 '
+        'con el correo y el saludo; cuando toca «Entrar», no dice «por primera vez»', (
+      tester,
+    ) async {
+      final remoto = await arrancarSinSesion(
+        tester,
+        UltimoCorreoEnMemoria('lucia.silva@correo.com'),
+        cierre: CierreForzado(
+          motivo: MotivoExpiracion.inactividad,
+          fecha: DateTime.utc(2026, 10, 7, 8),
+        ),
+      );
+      expect(find.text(_sinConexion), findsOneWidget);
+      expect(_cerrar, findsNothing);
+      expect(find.text('Hola de nuevo'), findsOneWidget);
+      expect(_correo(tester), 'lucia.silva@correo.com');
+
+      await tocarEntrar(tester);
+
+      expect(remoto.llamadasIniciarSesion, 1);
+      expect(find.text(_primerLoginSinConexion), findsNothing);
+      expect(tester.widget<FilledButton>(_entrar).onPressed, isNotNull);
+    });
+
+    testWidgets('dado el segundo arranque sin señal con la sesión revocada guardada, 17-A03 (la '
+        'revocación no se arregla esperando la señal) con el correo', (tester) async {
+      await arrancarSinSesion(
+        tester,
+        UltimoCorreoEnMemoria('lucia.silva@correo.com'),
+        cierre: CierreForzado(
+          motivo: MotivoExpiracion.revocada,
+          fecha: DateTime.utc(2026, 10, 7, 8),
+        ),
+      );
+
+      expect(find.text(_revocada), findsOneWidget);
+      expect(find.text(_sinConexion), findsNothing);
+      expect(_correo(tester), 'lucia.silva@correo.com');
     });
 
     testWidgets('dado un teléfono sin cuenta conocida y sin señal, cuando toca «Entrar», dice el '

@@ -45,7 +45,14 @@ enum ClaveSegura {
   /// El correo de la última cuenta que estuvo adentro y nada más (decisión de Cristian, 01/10):
   /// precarga «Sesión vencida» tras un arranque en frío (HU-AUTH-007, vista 17). Se borra al
   /// cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010, vista 19).
-  ultimoCorreo('last_account_email');
+  ultimoCorreo('last_account_email'),
+
+  /// Por qué terminó la última sesión sin que la persona lo pidiera (venció por 30 días sin uso o
+  /// la cerró el servidor) y cuándo, como `<motivo>|<fecha ISO 8601 UTC>` y nada más (decisión de
+  /// Cristian, 07/10, front-colportores-mobile#302): el aviso de «Sesión vencida» vale en cada
+  /// arranque sin sesión hasta que la persona entra (HU-AUTH-007, vista 17). Se borra al entrar,
+  /// con el correo al cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010).
+  cierreForzado('last_forced_close');
 
   const ClaveSegura(this.id);
 
