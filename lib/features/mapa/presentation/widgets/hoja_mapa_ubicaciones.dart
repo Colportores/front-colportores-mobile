@@ -46,14 +46,24 @@ enum AlturaHoja {
 
   /// El alto de esta altura en una pantalla de [pantalla] dp de alto, con [disponible] dp para el
   /// mapa y la hoja (la hoja nunca tapa más del 70 % de eso: el mapa sigue a la vista).
-  double alto({required double pantalla, required double disponible, required TextScaler escala}) {
+  ///
+  /// [reserva] son los dp que tienen que quedar libres sobre la hoja para lo que flota encima (los
+  /// botones y «Referencias»): en un teléfono chico la hoja a 1/2 los pisaría, así que se achica
+  /// hasta dejarlos a la vista. Sin [reserva] solo manda el 70 %.
+  double alto({
+    required double pantalla,
+    required double disponible,
+    required TextScaler escala,
+    double reserva = 0,
+  }) {
     final minimo = altoMinimizada(escala);
     final base = switch (this) {
       AlturaHoja.minimizada => minimo,
       AlturaHoja.tercio => pantalla / 3,
       AlturaHoja.mitad => pantalla / 2,
     };
-    return math.min(math.max(base, minimo), math.max(minimo, disponible * 0.7));
+    final tope = math.max(minimo, math.min(disponible * 0.7, disponible - reserva));
+    return math.min(math.max(base, minimo), tope);
   }
 }
 
@@ -66,6 +76,7 @@ class HojaMapaUbicaciones extends StatefulWidget {
     required this.estado,
     required this.altura,
     required this.alturaDisponible,
+    this.reservaLibre = 0,
     required this.ahora,
     required this.alCambiarAltura,
     required this.alElegir,
@@ -80,6 +91,9 @@ class HojaMapaUbicaciones extends StatefulWidget {
 
   /// Lo que mide la zona del mapa (la hoja ocupa hasta el 70 % de eso).
   final double alturaDisponible;
+
+  /// Lo que tiene que quedar libre sobre la hoja ([AlturaHoja.alto]).
+  final double reservaLibre;
   final DateTime ahora;
   final ValueChanged<AlturaHoja> alCambiarAltura;
 
@@ -107,6 +121,7 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
     pantalla: MediaQuery.sizeOf(context).height,
     disponible: widget.alturaDisponible,
     escala: MediaQuery.textScalerOf(context),
+    reserva: widget.reservaLibre,
   );
 
   void _alEmpezarArrastre(DragStartDetails detalle) {

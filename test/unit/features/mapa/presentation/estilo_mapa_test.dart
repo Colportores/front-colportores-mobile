@@ -8,6 +8,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dar
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/estilo_mapa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_cercano.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -299,15 +300,23 @@ void main() {
         expect(jsonEncode(estilo), isNot(contains('REEMPLAZAR')));
       });
 
-      test('no queda ninguna capa que necesite tipografías o íconos', () {
+      test('no queda ninguna capa que necesite tipografías o íconos del estilo', () {
         for (final fuente in const [FuenteMapa.sinTiles(), conTiles]) {
           final estilo = construirSinRecursos(_config(fuente: fuente, agrupar: true));
 
           for (final c in capas(estilo)) {
-            expect(c['type'], isNot('symbol'), reason: c['id'] as String);
             final layout = (c['layout'] as Map<String, dynamic>?) ?? const {};
             expect(layout.containsKey('text-font'), isFalse, reason: c['id'] as String);
-            expect(layout.containsKey('icon-image'), isFalse, reason: c['id'] as String);
+            expect(layout.containsKey('text-field'), isFalse, reason: c['id'] as String);
+            // La etiqueta de «cerca tuyo» es la única capa de símbolos que queda: su imagen no sale
+            // del sprite del estilo sino de la que la app registra en el mapa (`addImage`).
+            if (c['id'] == ConstructorEstiloMapa.capaCercano) {
+              expect(c['type'], 'symbol');
+              expect(layout['icon-image'], ['get', 'imagen']);
+            } else {
+              expect(c['type'], isNot('symbol'), reason: c['id'] as String);
+              expect(layout.containsKey('icon-image'), isFalse, reason: c['id'] as String);
+            }
             final paint = (c['paint'] as Map<String, dynamic>?) ?? const {};
             expect(paint.keys.where((k) => k.endsWith('-pattern')), isEmpty);
           }
@@ -464,14 +473,13 @@ void main() {
         }
       });
 
-      test('el GPS, el punto nuevo, el cercano y el seleccionado leen de la fuente que nunca se '
-          'agrupa, filtrados por estilo', () {
+      test('el GPS, el punto nuevo y el seleccionado leen de la fuente que nunca se agrupa, '
+          'filtrados por estilo', () {
         final estilo = construir(_config(agrupar: true));
 
         for (final (id, nombre) in [
           (ConstructorEstiloMapa.capaNuevo, 'nuevo'),
           (ConstructorEstiloMapa.capaGps, 'gps'),
-          (ConstructorEstiloMapa.capaCercano, 'cercano'),
           (ConstructorEstiloMapa.capaSeleccionado, 'seleccionado'),
         ]) {
           final c = capa(estilo, id);
@@ -564,12 +572,50 @@ void main() {
         expect(capa(estilo, 'colportores:grupos-halo')['filter'], ['has', 'point_count']);
       });
 
-      test('el cercano es un círculo blanco con el número de la puerta adentro, que crece con '
-          'los caracteres', () {
+      test('el cercano es la etiqueta del canvas: una imagen por número, anclada por la punta y '
+          'sin esconderse', () {
         final estilo = construir(_config());
 
-        final paint =
-            capa(estilo, ConstructorEstiloMapa.capaCercano)['paint'] as Map<String, dynamic>;
+        final etiqueta = capa(estilo, ConstructorEstiloMapa.capaCercano);
+        expect(etiqueta['type'], 'symbol');
+        expect(etiqueta['source'], ConstructorEstiloMapa.fuentePuntosLibres);
+        expect(etiqueta['filter'], [
+          'all',
+          [
+            '==',
+            ['get', 'estilo'],
+            'cercano',
+          ],
+          ['has', 'imagen'],
+        ]);
+        final layout = etiqueta['layout'] as Map<String, dynamic>;
+        expect(layout['icon-image'], ['get', 'imagen']);
+        // La punta de abajo de la imagen cae sobre la ubicación.
+        expect(layout['icon-anchor'], 'bottom');
+        // Ninguna se esconde ni esconde a otra: son pocas y todas tienen que verse.
+        expect(layout['icon-allow-overlap'], isTrue);
+        expect(layout['icon-ignore-placement'], isTrue);
+        expect(layout.containsKey('text-field'), isFalse, reason: 'el número va en la imagen');
+      });
+
+      test('mientras la imagen de un número no está registrada, el cercano es un círculo blanco '
+          'con el número adentro, que crece con los caracteres', () {
+        final estilo = construir(_config());
+
+        final respaldo = capa(estilo, ConstructorEstiloMapa.capaCercanoRespaldo);
+        expect(respaldo['filter'], [
+          'all',
+          [
+            '==',
+            ['get', 'estilo'],
+            'cercano',
+          ],
+          [
+            '!',
+            ['has', 'imagen'],
+          ],
+        ]);
+        final paint = respaldo['paint'] as Map<String, dynamic>;
         expect(paint['circle-color'], '#FFFFFF');
         expect(paint['circle-stroke-color'], '#6B7688');
         expect(paint['circle-radius'], [
@@ -591,7 +637,62 @@ void main() {
         expect(numero['type'], 'symbol');
         expect((numero['layout'] as Map<String, dynamic>)['text-field'], ['get', 'etiqueta']);
         expect(numero['filter'], contains(equals(['has', 'etiqueta'])));
+        // Con la etiqueta puesta, el número del respaldo no se dibuja encima.
+        expect(
+          numero['filter'],
+          contains(
+            equals([
+              '!',
+              ['has', 'imagen'],
+            ]),
+          ),
+        );
       });
+
+      test(
+        'un punto cercano lleva la propiedad «imagen» solo si su etiqueta ya está registrada',
+        () {
+          const puntos = [
+            PuntoMapa(
+              id: 'c1',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.cercano,
+              etiqueta: '12',
+            ),
+            PuntoMapa(
+              id: 'c2',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.cercano,
+              etiqueta: '14',
+            ),
+            PuntoMapa(
+              id: 's',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.seleccionado,
+              etiqueta: '12',
+            ),
+          ];
+
+          final geojson = ConstructorEstiloMapa.coleccionPuntosLibres(
+            puntos,
+            imagenes: {MarcadorCercano.nombre('12')},
+          );
+
+          final props = [
+            for (final f in geojson['features'] as List<dynamic>)
+              (f as Map<String, dynamic>)['properties'] as Map<String, dynamic>,
+          ];
+          expect(props[0]['imagen'], MarcadorCercano.nombre('12'));
+          expect(props[1].containsKey('imagen'), isFalse, reason: 'la de «14» todavía no está');
+          expect(props[2].containsKey('imagen'), isFalse, reason: 'el seleccionado es un círculo');
+          // Sin imágenes registradas ninguno la lleva: todos se ven con el respaldo.
+          final sinImagenes = ConstructorEstiloMapa.coleccionPuntosLibres(puntos);
+          for (final f in sinImagenes['features'] as List<dynamic>) {
+            final propiedades = (f as Map<String, dynamic>)['properties'] as Map<String, dynamic>;
+            expect(propiedades.containsKey('imagen'), isFalse);
+          }
+        },
+      );
 
       test('el seleccionado lleva un aro doble, blanco y azul, debajo del marcador', () {
         final estilo = construir(_config());
@@ -618,16 +719,41 @@ void main() {
         final ids = [for (final c in capas(estilo)) c['id'] as String];
 
         expect(ids, contains(ConstructorEstiloMapa.capaCercano));
+        expect(ids, contains(ConstructorEstiloMapa.capaCercanoRespaldo));
         expect(ids, contains(ConstructorEstiloMapa.capaSeleccionado));
         expect(ids, isNot(contains('colportores:cercano-numero')));
         expect(ids, isNot(contains('colportores:seleccionado-numero')));
       });
 
-      test('el seleccionado y el cercano responden al toque', () {
+      test('el seleccionado y el cercano (la etiqueta y su respaldo) responden al toque', () {
         expect(
           ConstructorEstiloMapa.capasTocables,
-          containsAll([ConstructorEstiloMapa.capaCercano, ConstructorEstiloMapa.capaSeleccionado]),
+          containsAll([
+            ConstructorEstiloMapa.capaCercano,
+            ConstructorEstiloMapa.capaCercanoRespaldo,
+            ConstructorEstiloMapa.capaSeleccionado,
+          ]),
         );
+      });
+
+      test('el toque largo cuenta todo lo que el toque corto menos «Tu ubicación»: junto al punto '
+          'azul, donde está parado el colportor, mantener el dedo abre el alta', () {
+        expect(ConstructorEstiloMapa.capasTocables, contains(ConstructorEstiloMapa.capaGps));
+        expect(
+          ConstructorEstiloMapa.capasTocablesLargo,
+          isNot(contains(ConstructorEstiloMapa.capaGps)),
+        );
+        expect(
+          ConstructorEstiloMapa.capasTocablesLargo,
+          unorderedEquals([
+            for (final capa in ConstructorEstiloMapa.capasTocables)
+              if (capa != ConstructorEstiloMapa.capaGps) capa,
+          ]),
+        );
+        final ids = [for (final c in capas(construir(_config()))) c['id'] as String];
+        for (final capa in ConstructorEstiloMapa.capasTocablesLargo) {
+          expect(ids, contains(capa));
+        }
       });
 
       test('la letra de la candidata solo se dibuja si la tiene', () {

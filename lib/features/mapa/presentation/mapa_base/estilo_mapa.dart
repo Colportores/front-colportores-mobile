@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../domain/services/circulo_geografico.dart';
 import '../../domain/value_objects/coordenadas.dart';
+import 'marcador_cercano.dart';
 import 'modelo_mapa_base.dart';
 
 /// Arma el estilo MapLibre que dibuja `MapaBase`: el de backend (`estilo/colportores.json`, con la
@@ -26,7 +27,12 @@ abstract final class ConstructorEstiloMapa {
   static const capaGrupos = 'colportores:grupos';
   static const capaContexto = 'colportores:contexto';
   static const capaCandidata = 'colportores:candidata';
+
+  /// «Cerca tuyo»: la etiqueta con el número de puerta (capa de símbolos, una imagen por número que
+  /// la vista registra: [MarcadorCercano]) y, para el punto cuya imagen no se pudo registrar, el
+  /// círculo con el número de respaldo.
   static const capaCercano = 'colportores:cercano';
+  static const capaCercanoRespaldo = 'colportores:cercano-respaldo';
   static const capaSeleccionado = 'colportores:seleccionado';
   static const capaNuevo = 'colportores:nuevo';
   static const capaGps = 'colportores:gps';
@@ -50,10 +56,24 @@ abstract final class ConstructorEstiloMapa {
     capaGrupos,
     capaSeleccionado,
     capaCercano,
+    capaCercanoRespaldo,
     capaContexto,
     capaCandidata,
     capaNuevo,
     capaGps,
+  ];
+
+  /// Las que cuentan para un toque largo: las mismas menos «Tu ubicación», que no tiene acción. A
+  /// zoom de calle el colportor suele estar parado a pocos metros de la casa que quiere registrar:
+  /// apoyar el dedo sobre su propio punto azul tiene que abrir el alta, no quedar en silencio.
+  static const capasTocablesLargo = [
+    capaGrupos,
+    capaSeleccionado,
+    capaCercano,
+    capaCercanoRespaldo,
+    capaContexto,
+    capaCandidata,
+    capaNuevo,
   ];
 
   /// El estilo final como texto, para `MapLibreMap.styleString`.
@@ -167,10 +187,19 @@ abstract final class ConstructorEstiloMapa {
   /// Los puntos que nunca se agrupan ([EstiloPunto.sinAgrupar]), con las mismas propiedades. Van en
   /// otra fuente: en la de los grupos, un punto del GPS o uno cercano quedaría absorbido por el
   /// grupo de los que tiene al lado.
-  static Map<String, dynamic> coleccionPuntosLibres(List<PuntoMapa> puntos) =>
-      _coleccion(puntos.where((p) => p.estilo.sinAgrupar));
+  ///
+  /// [imagenes] son los nombres de las imágenes que la vista ya registró en el estilo
+  /// ([MarcadorCercano.nombre]): un punto cercano cuya etiqueta está entre ellas lleva la propiedad
+  /// `imagen` y lo dibuja la capa de símbolos; el que no, el círculo de respaldo.
+  static Map<String, dynamic> coleccionPuntosLibres(
+    List<PuntoMapa> puntos, {
+    Set<String> imagenes = const {},
+  }) => _coleccion(puntos.where((p) => p.estilo.sinAgrupar), imagenes);
 
-  static Map<String, dynamic> _coleccion(Iterable<PuntoMapa> puntos) => {
+  static Map<String, dynamic> _coleccion(
+    Iterable<PuntoMapa> puntos, [
+    Set<String> imagenes = const {},
+  ]) => {
     'type': 'FeatureCollection',
     'features': [
       for (final p in puntos)
@@ -185,6 +214,10 @@ abstract final class ConstructorEstiloMapa {
             'estilo': p.estilo.name,
             if (p.letra != null) 'letra': p.letra,
             if (p.etiqueta != null) 'etiqueta': p.etiqueta,
+            if (p.estilo == EstiloPunto.cercano &&
+                p.etiqueta != null &&
+                imagenes.contains(MarcadorCercano.nombre(p.etiqueta!)))
+              'imagen': MarcadorCercano.nombre(p.etiqueta!),
           },
         },
     ],
@@ -225,6 +258,13 @@ abstract final class ConstructorEstiloMapa {
   static const List<Object?> _noEsGrupo = [
     '!',
     ['has', 'point_count'],
+  ];
+
+  /// El punto cuya etiqueta ya está registrada como imagen en el estilo, y el que no.
+  static const List<Object?> _tieneImagen = ['has', 'imagen'];
+  static const List<Object?> _sinImagen = [
+    '!',
+    ['has', 'imagen'],
   ];
 
   static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
@@ -419,11 +459,28 @@ abstract final class ConstructorEstiloMapa {
           },
           'paint': {'text-color': _hex(ColoresMapa.tinta)},
         },
+      // «Cerca tuyo»: la etiqueta del canvas, una imagen por número de puerta que la vista registra
+      // (`MarcadorCercano`). Anclada por la punta de abajo y sin esconderse: son pocas y todas
+      // tienen que verse.
       {
         'id': capaCercano,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esEstilo(EstiloPunto.cercano), _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+      // El respaldo: mientras la imagen de un número no está registrada (o si no se pudo), el punto
+      // no queda sin dibujar.
+      {
+        'id': capaCercanoRespaldo,
         'type': 'circle',
         'source': fuentePuntosLibres,
-        'filter': _esEstilo(EstiloPunto.cercano),
+        'filter': ['all', _esEstilo(EstiloPunto.cercano), _sinImagen],
         'paint': {
           'circle-color': blanco,
           'circle-radius': _radioPorEtiqueta,
@@ -439,6 +496,7 @@ abstract final class ConstructorEstiloMapa {
           'filter': [
             'all',
             _esEstilo(EstiloPunto.cercano),
+            _sinImagen,
             ['has', 'etiqueta'],
           ],
           'layout': _estiloNumero,

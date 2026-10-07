@@ -129,4 +129,95 @@ void main() {
 
     expect(find.byKey(const Key('pestana_lista')), findsOneWidget);
   });
+  group('el atrás del teléfono con la vista previa abierta (decisión del 07/10 en el #294)', () {
+    int pestanaElegida(WidgetTester tester) =>
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
+
+    Future<FabricaMapaFalsa> abrirConVistaPrevia(WidgetTester tester) async {
+      final mapa = FabricaMapaFalsa();
+      await _montar(
+        tester,
+        repo: RepoListaFalso([
+          filaLista('a', metrosAlNorte: 30),
+          filaLista('b', metrosAlNorte: 60),
+        ]),
+        mapa: mapa,
+      );
+      await _irA(tester, 'mapa');
+      mapa.tocarPunto('a');
+      await asentarLista(tester);
+      expect(find.byKey(ClavesMapaUbicaciones.vistaPrevia), findsOneWidget);
+      return mapa;
+    }
+
+    testWidgets('dado que mira la vista previa de una ubicación, cuando toca atrás, entonces se '
+        'cierra como con la ✕: sigue en «Mapa» y la hoja queda a la misma altura', (tester) async {
+      await abrirConVistaPrevia(tester);
+      final indice = pestanaElegida(tester);
+      final alto = tester.getSize(find.byKey(ClavesMapaUbicaciones.hoja)).height;
+
+      final atendido = await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+
+      expect(atendido, isTrue);
+      expect(find.byKey(ClavesMapaUbicaciones.vistaPrevia), findsNothing);
+      expect(find.byKey(ClavesMapaUbicaciones.fila('a')), findsOneWidget);
+      expect(pestanaElegida(tester), indice, reason: 'no vuelve a «Hoy» de golpe');
+      expect(tester.getSize(find.byKey(ClavesMapaUbicaciones.hoja)).height, alto);
+    });
+
+    testWidgets('dado que ya cerró la vista previa con atrás, cuando toca atrás otra vez, entonces '
+        'vuelve a «Hoy» como siempre', (tester) async {
+      await abrirConVistaPrevia(tester);
+
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+
+      expect(pestanaElegida(tester), 0);
+    });
+
+    testWidgets('dado que eligió otra ubicación después de cerrarla con atrás, entonces el atrás '
+        'vuelve a cerrar esa', (tester) async {
+      final mapa = await abrirConVistaPrevia(tester);
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+      final indice = pestanaElegida(tester);
+
+      mapa.tocarPunto('b');
+      await asentarLista(tester);
+      expect(find.byKey(ClavesMapaUbicaciones.vistaPrevia), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+
+      expect(find.byKey(ClavesMapaUbicaciones.vistaPrevia), findsNothing);
+      expect(pestanaElegida(tester), indice);
+    });
+
+    testWidgets('dado que dejó la vista previa abierta y está en «Lista», cuando toca atrás, '
+        'entonces vuelve a «Hoy» y la vista previa sigue ahí al volver a «Mapa»', (tester) async {
+      await abrirConVistaPrevia(tester);
+      await _irA(tester, 'lista');
+
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+
+      expect(pestanaElegida(tester), 0);
+      await _irA(tester, 'mapa');
+      expect(find.byKey(ClavesMapaUbicaciones.vistaPrevia), findsOneWidget);
+    });
+
+    testWidgets('dado que no eligió nada, cuando toca atrás en «Mapa», entonces vuelve a «Hoy»', (
+      tester,
+    ) async {
+      await _montar(tester, repo: RepoListaFalso([filaLista('a')]), mapa: FabricaMapaFalsa());
+      await _irA(tester, 'mapa');
+
+      await tester.binding.handlePopRoute();
+      await asentarLista(tester);
+
+      expect(pestanaElegida(tester), 0);
+    });
+  });
 }

@@ -114,12 +114,19 @@ void main() {
       expect(mapa.config!.puntosTocables, isTrue);
     });
 
-    testWidgets('al abrir, el mapa se centra en el GPS a nivel de calle', (tester) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+    testWidgets(
+      'al abrir, el mapa se centra en el GPS a nivel de calle, con el punto azul en lo que '
+      'la hoja deja libre',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
 
-      expect(m.mapa.camara!.centro, puntoItalia);
-      expect(m.mapa.camara!.zoom, MapaAlta.zoomCalle);
-    });
+        expect(m.mapa.camara!.zoom, MapaAlta.zoomCalle);
+        expect(dpALaDerechaDelPunto(m.mapa, puntoItalia), closeTo(0, 0.01));
+        // El centro de la vista queda medio alto de hoja más abajo que el GPS: el punto se ve justo
+        // en el medio de lo que la hoja no tapa.
+        expect(dpBajoElPunto(m.mapa, puntoItalia), closeTo(altoHoja(tester) / 2, 0.01));
+      },
+    );
 
     testWidgets('un marcador sin número de puerta cerca tuyo dice «s/n»', (tester) async {
       final repo = RepoListaFalso([filaLista('x', calle: 'Rivera', numero: '', metrosAlNorte: 10)]);
@@ -140,7 +147,8 @@ void main() {
       await tester.tap(botonMiUbicacion);
       await asentarLista(tester);
 
-      expect(m.mapa.camara!.centro, puntoItalia);
+      expect(dpALaDerechaDelPunto(m.mapa, puntoItalia), closeTo(0, 0.01));
+      expect(dpBajoElPunto(m.mapa, puntoItalia), closeTo(altoHoja(tester) / 2, 0.01));
       expect(m.mapa.camara!.zoom, MapaAlta.zoomCalle);
       expect(m.gps.lecturas, 2);
     });
@@ -509,6 +517,11 @@ void main() {
       await montarMapaUbicaciones(tester, repo: repo);
 
       expect(find.text('No tenés ubicaciones activas'), findsOneWidget);
+      // Dice dónde están: en la «Lista» (decisión del 07/10 en el #294).
+      expect(
+        find.text('Las que están dadas de baja no se muestran en el mapa. Las ves en «Lista».'),
+        findsOneWidget,
+      );
       expect(find.text('Todavía no registraste ubicaciones'), findsNothing);
       expect(find.text('Registrar una ubicación'), findsOneWidget);
     });

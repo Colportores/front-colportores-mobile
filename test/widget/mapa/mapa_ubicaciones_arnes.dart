@@ -6,10 +6,13 @@ import 'dart:async';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_notifier.dart'
+    show mapaUbicacionesProvider;
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
@@ -69,7 +72,8 @@ final class MontajeMapaUbicaciones {
 /// [activa] `false` la deja montada pero fuera de vista (como las demás pestañas del
 /// `IndexedStack`). Con [arnes] el aviso sale de la conexión y del catálogo reales del arnés del
 /// aviso; sin él, el mapa no tiene tiles ni aviso ([situacion] lo cambia). [ambito] es la ciudad del
-/// mapa (por defecto ninguna, como hoy: #274).
+/// mapa, fija (por defecto ninguna, como hoy: #274); con [ciudades] la ciudad sale, como en la app,
+/// del puerto `CiudadesParaAlta` (y [ambito] no cuenta).
 Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -78,6 +82,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   SituacionMapa? situacion,
   ArnesMapa? arnes,
   AmbitoTrabajo? ambito,
+  CiudadesFalsas? ciudades,
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool activa = true,
@@ -97,7 +102,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
-        ...overridesLista(repo: montaje.repo, gps: montaje.gps),
+        ...overridesLista(repo: montaje.repo, gps: montaje.gps, ciudades: ciudades),
         montaje.mapa.override,
         if (arnes != null)
           ...arnes.overrides
@@ -105,7 +110,10 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
           situacionMapaProvider.overrideWith(
             (ref, _) => situacion ?? const SituacionMapa(fuente: FuenteMapa.sinTiles()),
           ),
-        if (ambito != null) ambitoMapaUbicacionesProvider.overrideWithValue(ambito),
+        if (ciudades == null)
+          ambitoMapaUbicacionesProvider.overrideWith2(
+            (_) => AmbitoFijo(ambito ?? const AmbitoTrabajo()),
+          ),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -160,3 +168,30 @@ PuntoMapa punto(FabricaMapaFalsa mapa, String id) =>
 
 /// ¿Está el punto [id] en el mapa?
 bool hayPunto(FabricaMapaFalsa mapa, String id) => mapa.config!.puntos.any((p) => p.id == id);
+
+/// Cuántos dp más abajo de [punto] cae el centro de la cámara de [mapa]. El mapa se centra en un
+/// punto de modo que quede a la vista, en lo que la hoja deja libre: el centro de la vista queda
+/// medio alto de hoja más abajo que el punto (0 si el mapa se centró en el punto mismo).
+double dpBajoElPunto(FabricaMapaFalsa mapa, Coordenadas punto) {
+  final camara = mapa.camara!;
+  final centro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
+  final buscado = ProyeccionMercator.aPixeles(punto, camara.zoom);
+  return centro.y - buscado.y;
+}
+
+/// Lo mismo, hacia el costado: cuántos dp a la derecha del punto cae el centro de la cámara.
+double dpALaDerechaDelPunto(FabricaMapaFalsa mapa, Coordenadas punto) {
+  final camara = mapa.camara!;
+  final centro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
+  final buscado = ProyeccionMercator.aPixeles(punto, camara.zoom);
+  return centro.x - buscado.x;
+}
+
+/// El contenedor de providers de la pestaña montada.
+ProviderContainer contenedorDeLaPestana(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byKey(const Key('pestana_mapa'))));
+
+/// La ubicación elegida del mapa (`null` si no hay ninguna), según el estado de la pestaña: es lo que
+/// pinta la vista previa y el aro del marcador.
+String? seleccionadaId(WidgetTester tester) =>
+    contenedorDeLaPestana(tester).read(mapaUbicacionesProvider('col-1')).seleccionadaId;

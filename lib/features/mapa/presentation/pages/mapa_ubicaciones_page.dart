@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/proyeccion_mercator.dart';
 import '../../domain/value_objects/camara_mapa.dart';
@@ -137,9 +138,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     if (lectura != null) {
       if (_encuadre == _Encuadre.gps) return;
       _encuadre = _Encuadre.gps;
-      unawaited(
-        mapa.moverCamara(CamaraMapa(centro: lectura.coordenadas, zoom: MapaAlta.zoomCalle)),
-      );
+      // El punto azul queda en la parte que la hoja deja libre, no detrás de ella.
+      _centrarEn(lectura.coordenadas, _altura, zoomMinimo: MapaAlta.zoomCalle);
       return;
     }
     final lista = estado.lista;
@@ -161,10 +161,21 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     unawaited(mapa.moverCamara(camara));
   }
 
+  /// Lo que ocupan los botones flotantes («Mi ubicación» y «Nueva», con 10 entre ellos y 14 de
+  /// margen abajo) sobre la hoja.
+  double _altoBotones() =>
+      52 + 10 + math.max(52.0, MediaQuery.textScalerOf(context).scale(22)) + 14;
+
+  /// Lo que tiene que quedar libre sobre la hoja: los botones, y arriba el chip «Referencias» (48 dp
+  /// de alto con 8 de margen arriba y 8 de aire hasta los botones). En un teléfono chico la hoja a 1/2
+  /// se achica antes de pisarlos.
+  double _reservaSobreLaHoja() => _altoBotones() + 8 + 48 + 8;
+
   double _altoHoja(AlturaHoja altura) => altura.alto(
     pantalla: MediaQuery.sizeOf(context).height,
     disponible: _tamano.height,
     escala: MediaQuery.textScalerOf(context),
+    reserva: _reservaSobreLaHoja(),
   );
 
   /// Centra el mapa en [punto] de modo que quede en la parte que la hoja de [altura] deja libre.
@@ -210,11 +221,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final lectura = ref.read(_proveedor).lectura;
     if (mapa == null || lectura == null) return;
     final gestos = _gestos;
-    void centrar(Coordenadas punto) => unawaited(
-      mapa.moverCamara(
-        CamaraMapa(centro: punto, zoom: math.max(mapa.camara.zoom, MapaAlta.zoomCalle)),
-      ),
-    );
+    // Con el punto en la parte que la hoja deja libre.
+    void centrar(Coordenadas punto) => _centrarEn(punto, _altura, zoomMinimo: MapaAlta.zoomCalle);
     centrar(lectura.coordenadas);
     await _notificador.refrescarGps();
     if (!mounted || gestos != _gestos) return;
@@ -244,7 +252,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           if (nueva != _altura) setState(() => _altura = nueva);
           _centrarEn(ubicacion.coordenadas, nueva, zoomMinimo: MapaAlta.zoomCalle);
         case UbicacionReutilizada(:final ubicacionId):
-          _elegir(ubicacionId, zoomMinimo: MapaAlta.zoomCalle);
+          _alReutilizar(ubicacionId);
         case null:
           return;
       }
@@ -256,6 +264,24 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     } finally {
       _abriendoAlta = false;
     }
+  }
+
+  /// El alta devolvió una ubicación que ya existía. Si es una de las del colportor se elige, como al
+  /// crearla. Si no está en su lista es de otro colportor (el duplicado se mira contra toda la base):
+  /// el mapa no la dibuja ni la centra, se lo dice y no deja ninguna selección colgada (decisión del
+  /// 07/10 en el #294).
+  void _alReutilizar(String ubicacionId) {
+    final lista = ref.read(_proveedor).lista;
+    final esDelColportor =
+        lista == null || lista.items.any((item) => item.ubicacion.id == ubicacionId);
+    if (esDelColportor) {
+      _elegir(ubicacionId, zoomMinimo: MapaAlta.zoomCalle);
+      return;
+    }
+    _notificador.cerrarSeleccion();
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(TextosMapaUbicaciones.ubicacionDeOtroColportor)));
   }
 
   Future<void> _abrirReferencias() async {
@@ -306,26 +332,57 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   Widget build(BuildContext context) {
     if (!_abierta) return const SizedBox.expand();
     final estado = ref.watch(_proveedor);
-    final ambito = ref.watch(ambitoMapaUbicacionesProvider);
+    final ambito = ref.watch(ambitoMapaUbicacionesProvider(widget.colportorId));
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
     ref.listen(_proveedor, (anterior, nuevo) {
-      _encuadrarSiHaceFalta(nuevo);
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
       // se ve la pestaña, y a un tercio, en un teléfono chico, el botón quedaría debajo del borde.
       final sinUbicaciones =
           (nuevo.lista?.sinUbicaciones ?? false) && !(anterior?.lista?.sinUbicaciones ?? false);
       final fallo = nuevo.fallaLectura && !(anterior?.fallaLectura ?? false);
-      if ((sinUbicaciones || fallo) && _altura == AlturaHoja.minimizada) {
-        setState(() => _altura = AlturaHoja.mitad);
+      final sube = (sinUbicaciones || fallo) && _altura == AlturaHoja.minimizada;
+      if (sube) setState(() => _altura = AlturaHoja.mitad);
+      final encuadradoAntes = _encuadre == _Encuadre.gps;
+      _encuadrarSiHaceFalta(nuevo);
+      // La hoja más alta tapa más del mapa: si el mapa ya estaba sobre el GPS y el colportor no lo
+      // movió, el punto azul se vuelve a poner en la parte libre.
+      final lectura = nuevo.lectura;
+      if (sube && encuadradoAntes && _gestos == 0 && lectura != null) {
+        _centrarEn(lectura.coordenadas, _altura, zoomMinimo: MapaAlta.zoomCalle);
       }
     });
 
+    // Con la vista previa abierta, el atrás del teléfono hace lo que la ✕: cierra la vista previa y
+    // deja la hoja a la altura que tenía. Solo con la pestaña a la vista: en otra, el atrás es de
+    // la pantalla principal (y esta le avisa que ya es de ella: `InicioPage`).
+    final conVistaPrevia = widget.activa && estado.seleccionada != null;
+    return PopScope(
+      canPop: !conVistaPrevia,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio && widget.activa) _notificador.cerrarSeleccion();
+      },
+      child: _contenido(context, estado, ambito, ahora, avisoVisible),
+    );
+  }
+
+  Widget _contenido(
+    BuildContext context,
+    MapaUbicacionesState estado,
+    AmbitoTrabajo ambito,
+    DateTime ahora,
+    bool avisoVisible,
+  ) {
     final lectura = estado.lectura;
     return LayoutBuilder(
       builder: (context, restricciones) {
         _tamano = restricciones.biggest;
         final hoja = _altoHoja(_altura);
+        // Lo que queda libre arriba, sobre los botones y la hoja: ahí caben el aviso de conexión y
+        // «Referencias». La tarjeta del aviso no puede pasar de ahí (con el texto grande se
+        // desliza): más abajo quedaría detrás de los botones y de la hoja, con sus acciones a las
+        // que no se llega (QA del #294).
+        final libre = math.max(0.0, _tamano.height - hoja - _altoBotones());
         return Stack(
           children: [
             Positioned.fill(
@@ -364,21 +421,31 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                 ),
               ),
             ),
-            // «Referencias» y el aviso comparten el borde de arriba: con el aviso a la vista (la
-            // tarjeta o la píldora) el chip se corre, el canvas no los dibuja juntos.
-            if (!avisoVisible)
-              Positioned(
-                top: 8,
-                right: 14,
-                child: ChipReferencias(
-                  key: ClavesMapaUbicaciones.referencias,
-                  alPresionar: () => unawaited(_abrirReferencias()),
-                ),
-              ),
             // Todo hijo del `Stack` va posicionado: uno sin posición (el aviso, que sin aviso es un
             // `SizedBox.shrink`) le da su tamaño al `Stack`, y un `Stack` de 0 x 0 no recibe toques.
-            Positioned.fill(
-              child: AvisoMapaConectado(ambito: ambito, modo: AvisoMapaModo.flotante),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: libre,
+              child: Stack(
+                children: [
+                  // «Referencias» y el aviso comparten el borde de arriba: con el aviso a la vista
+                  // (la tarjeta o la píldora) el chip se corre, el canvas no los dibuja juntos.
+                  if (!avisoVisible)
+                    Positioned(
+                      top: 8,
+                      right: 14,
+                      child: ChipReferencias(
+                        key: ClavesMapaUbicaciones.referencias,
+                        alPresionar: () => unawaited(_abrirReferencias()),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: AvisoMapaConectado(ambito: ambito, modo: AvisoMapaModo.flotante),
+                  ),
+                ],
+              ),
             ),
             Positioned(
               left: 0,
@@ -417,6 +484,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     estado: estado,
                     altura: _altura,
                     alturaDisponible: _tamano.height,
+                    reservaLibre: _reservaSobreLaHoja(),
                     ahora: ahora,
                     alCambiarAltura: _cambiarAltura,
                     alElegir: (id) => _elegir(id, zoomMinimo: MapaAlta.zoomCalle),

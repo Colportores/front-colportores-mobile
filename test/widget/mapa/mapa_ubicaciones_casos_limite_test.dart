@@ -24,7 +24,9 @@ import '../../helpers/lista_ubicaciones_falsos.dart';
 import 'mapa_ubicaciones_arnes.dart';
 import 'mapa_ubicaciones_page_test.dart' show canvas, gpsSinPermiso;
 
-const _textoSinAlta = 'No pudimos abrir el alta. Probá de nuevo.';
+const _textoSinAlta = 'No pudimos abrir «Nueva ubicación». Probá de nuevo.';
+const _textoOtroColportor =
+    'Esa ubicación ya la registró otro colportor. No hace falta registrarla de nuevo.';
 
 /// La cámara que deja un gesto del colportor: el mapa centrado en [centro] a nivel de calle.
 CamaraMapa _gesto(Coordenadas centro) => CamaraMapa(centro: centro, zoom: MapaAlta.zoomCalle);
@@ -100,17 +102,63 @@ void main() {
       expect(punto(m.mapa, 'c').estilo, EstiloPunto.seleccionado);
     });
 
-    testWidgets('reutilizar una que ya no está en la lista no deja una vista previa vacía', (
-      tester,
-    ) async {
+    testWidgets('reutilizar una que no es del colportor (la registró otro) avisa, y no deja una '
+        'vista previa vacía, el mapa quieto y nada elegido', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      m.salidaAlta = const UbicacionReutilizada('borrada');
+      m.salidaAlta = const UbicacionReutilizada('de-otro');
+      final movimientos = m.mapa.movimientos.length;
 
       await tester.tap(botonNueva);
       await asentarLista(tester);
 
+      expect(find.text(_textoOtroColportor), findsOneWidget);
       expect(vistaPrevia, findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(seleccionadaId(tester), isNull);
+      // Ni se dibuja la ajena ni se centra el mapa en ella ni se sube la hoja.
+      expect(hayPunto(m.mapa, 'de-otro'), isFalse);
+      expect(m.mapa.movimientos.length, movimientos);
+      expect(altoHoja(tester), AlturaHoja.altoMinimizada(TextScaler.noScaling));
+    });
+
+    testWidgets('reutilizar una ajena con otra elegida cierra la elegida: la selección no queda '
+        'colgada ni reaparece si esa ubicación entra después a la lista', (tester) async {
+      final repo = RepoListaFalso(canvas());
+      final m = await montarMapaUbicaciones(tester, repo: repo);
+      m.mapa.tocarPunto('a');
+      await asentarLista(tester);
+      expect(seleccionadaId(tester), 'a');
+      m.salidaAlta = const UbicacionReutilizada('de-otro');
+
+      await tester.tap(botonNueva);
+      await asentarLista(tester);
+
+      expect(find.text(_textoOtroColportor), findsOneWidget);
+      expect(seleccionadaId(tester), isNull);
+      expect(vistaPrevia, findsNothing);
+
+      // Si más adelante esa ubicación llegara a la lista (el pull de ubicaciones ajenas), no se abre
+      // sola: nadie la eligió.
+      repo.emitir([...canvas(), filaLista('de-otro', calle: 'Rivera', numero: '77')]);
+      await asentarLista(tester);
+
+      expect(vistaPrevia, findsNothing);
+      expect(seleccionadaId(tester), isNull);
+    });
+
+    testWidgets('el aviso de la ajena no se acumula: dos altas seguidas dejan un solo aviso', (
+      tester,
+    ) async {
+      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+      m.salidaAlta = const UbicacionReutilizada('de-otro');
+
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(botonNueva);
+        await asentarLista(tester);
+      }
+
+      expect(m.altas.length, 2);
+      expect(find.text(_textoOtroColportor), findsOneWidget);
     });
 
     testWidgets('si el alta falla al abrirse avisa qué hacer y «Nueva» se puede volver a tocar', (

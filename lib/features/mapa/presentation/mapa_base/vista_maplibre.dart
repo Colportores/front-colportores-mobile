@@ -10,6 +10,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import 'estilo_mapa.dart';
+import 'marcador_cercano.dart';
 import 'modelo_mapa_base.dart';
 import 'recursos_mapa_providers.dart';
 import 'seleccion_toque.dart';
@@ -40,6 +41,17 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
   String? _estilo;
   Object? _claveEstilo;
   var _avisoError = false;
+
+  /// Las etiquetas de «cerca tuyo» (`MarcadorCercano`) que ya están registradas en el estilo que se
+  /// ve, y las que no se pudieron registrar (no se vuelve a intentar hasta que el estilo se recargue:
+  /// esos puntos se dibujan con el círculo de respaldo). Recargar el estilo las pierde.
+  final _etiquetas = <String>{};
+  final _etiquetasFallidas = <String>{};
+  var _generacionEstilo = 0;
+
+  /// Cuál es el último pedido de empujar los puntos: si mientras se pintaban las etiquetas llegó
+  /// otro, el viejo se descarta (no pisa lo nuevo).
+  var _secuenciaPuntos = 0;
 
   @override
   void didUpdateWidget(VistaMapLibre anterior) {
@@ -77,21 +89,58 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
   Future<void> _empujarPuntos() async {
     final controlador = _controlador;
     if (controlador == null || !_estiloListo) return;
+    final numero = ++_secuenciaPuntos;
+    final puntos = widget.config.puntos;
     try {
+      await _registrarEtiquetas(controlador, puntos);
+      if (!mounted || numero != _secuenciaPuntos) return;
       // Los dos juntos: un punto que cambia de estilo (el que se toca, el que queda cerca del GPS)
       // pasa de una fuente a la otra, y entre un empujón y el otro se vería dos veces o ninguna.
       await Future.wait([
         controlador.setGeoJsonSource(
           ConstructorEstiloMapa.fuentePuntos,
-          ConstructorEstiloMapa.coleccionPuntos(widget.config.puntos),
+          ConstructorEstiloMapa.coleccionPuntos(puntos),
         ),
         controlador.setGeoJsonSource(
           ConstructorEstiloMapa.fuentePuntosLibres,
-          ConstructorEstiloMapa.coleccionPuntosLibres(widget.config.puntos),
+          ConstructorEstiloMapa.coleccionPuntosLibres(puntos, imagenes: {..._etiquetas}),
         ),
       ]);
     } on Object catch (e, s) {
       AppLogger.instance.error(_modulo, 'puntos', 'No se pudieron actualizar los puntos', {}, e, s);
+    }
+  }
+
+  /// Pinta y registra en el estilo la etiqueta de cada punto «cerca tuyo» que todavía no la tiene
+  /// (una por número de puerta: son pocas). Una que falla no frena a las demás ni a los puntos: ese
+  /// punto se dibuja con el círculo de respaldo.
+  Future<void> _registrarEtiquetas(
+    ml.MapLibreMapController controlador,
+    List<PuntoMapa> puntos,
+  ) async {
+    final escala = _unidadesPorDp();
+    final generacion = _generacionEstilo;
+    for (final punto in puntos) {
+      final etiqueta = punto.etiqueta;
+      if (punto.estilo != EstiloPunto.cercano || etiqueta == null) continue;
+      final nombre = MarcadorCercano.nombre(etiqueta);
+      if (_etiquetas.contains(nombre) || _etiquetasFallidas.contains(nombre)) continue;
+      try {
+        final imagen = await MarcadorCercano.dibujar(etiqueta, escala: escala);
+        await controlador.addImage(nombre, imagen);
+        // Si el estilo se recargó mientras tanto, la imagen quedó en el viejo.
+        if (generacion == _generacionEstilo) _etiquetas.add(nombre);
+      } on Object catch (e, s) {
+        if (generacion == _generacionEstilo) _etiquetasFallidas.add(nombre);
+        AppLogger.instance.error(
+          _modulo,
+          'etiqueta',
+          'No se pudo registrar la etiqueta de un punto cercano',
+          {},
+          e,
+          s,
+        );
+      }
     }
   }
 
@@ -123,6 +172,10 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
 
   void _alCargarEstilo() {
     _estiloListo = true;
+    // Un estilo nuevo arranca sin las imágenes que se habían registrado.
+    _generacionEstilo++;
+    _etiquetas.clear();
+    _etiquetasFallidas.clear();
     // Entre que se armó el estilo y se cargó pudieron cambiar los puntos.
     unawaited(_empujarPuntos());
     unawaited(_empujarPrecision());
@@ -151,10 +204,11 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     math.Point<double> punto,
     Coordenadas toque,
     double unidadesPorDp,
+    List<String> capas,
   ) async {
     final hallados = await controlador.queryRenderedFeaturesInRect(
       SeleccionToque.area(punto, unidadesPorDp: unidadesPorDp),
-      ConstructorEstiloMapa.capasTocables,
+      capas,
       null,
     );
     return SeleccionToque.masCercano(hallados, toque);
@@ -166,7 +220,13 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     final unidades = _unidadesPorDp();
     if (widget.config.puntosTocables && controlador != null) {
       try {
-        final elemento = await _elementoTocado(controlador, punto, toque, unidades);
+        final elemento = await _elementoTocado(
+          controlador,
+          punto,
+          toque,
+          unidades,
+          ConstructorEstiloMapa.capasTocables,
+        );
         if (elemento != null && await _tocarElemento(controlador, elemento)) return;
       } on Object catch (e, s) {
         AppLogger.instance.error(
@@ -183,14 +243,23 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
   }
 
   /// Un toque largo en un punto vacío. Si hay un punto o un grupo bajo el dedo (en el área de
-  /// 48 dp) no es un atajo para dar de alta: es el colportor apoyado en un marcador.
+  /// 48 dp) no es un atajo para dar de alta: es el colportor apoyado en un marcador. «Tu ubicación»
+  /// no cuenta: no tiene acción, y apoyar el dedo junto a la casa que se quiere registrar (donde el
+  /// colportor está parado) tiene que abrir el alta.
   Future<void> _alTocarLargo(math.Point<double> punto, ml.LatLng coordenadas) async {
     final controlador = _controlador;
     final toque = Coordenadas(lat: coordenadas.latitude, lon: coordenadas.longitude);
     final unidades = _unidadesPorDp();
     if (widget.config.puntosTocables && controlador != null) {
       try {
-        if (await _elementoTocado(controlador, punto, toque, unidades) != null) return;
+        final elemento = await _elementoTocado(
+          controlador,
+          punto,
+          toque,
+          unidades,
+          ConstructorEstiloMapa.capasTocablesLargo,
+        );
+        if (elemento != null) return;
       } on Object catch (e, s) {
         AppLogger.instance.error(
           _modulo,

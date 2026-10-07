@@ -96,7 +96,9 @@ Future<PantallaPrincipal> montarEnPantallaPrincipal(
           situacionMapaProvider.overrideWith(
             (ref, _) => const SituacionMapa(fuente: FuenteMapa.sinTiles()),
           ),
-        if (ambito != null) ambitoMapaUbicacionesProvider.overrideWithValue(ambito),
+        ambitoMapaUbicacionesProvider.overrideWith2(
+          (_) => AmbitoFijo(ambito ?? const AmbitoTrabajo()),
+        ),
       ],
       child: RepaintBoundary(
         key: montaje.captura,
@@ -145,19 +147,18 @@ String? motivoInaccesible(WidgetTester tester, Finder objetivo) {
 }
 
 /// Como [motivoInaccesible], pero si [objetivo] está dentro de algo que se desliza (la tarjeta del
-/// aviso, la hoja) prueba a deslizarlo hasta 8 veces: un botón fuera de la vista pero al que se
-/// llega con el dedo no es un problema; uno que ni deslizando queda a la vista, sí.
+/// aviso) lo desliza hasta ponerlo a la vista, en el sentido que haga falta: un botón fuera de la
+/// vista pero al que se llega con el dedo no es un problema; uno que ni deslizando queda a la vista
+/// y sin nada encima, sí. (Desplazar de a 120 dp hacia un solo lado no sirve de prueba: un botón
+/// que quedó arriba por haber tocado el de abajo parece inalcanzable y no lo es, y en una tira de
+/// 80 dp de alto un solo paso lo pasa de largo.)
 Future<String?> motivoSinAlcance(WidgetTester tester, Finder objetivo) async {
-  var motivo = motivoInaccesible(tester, objetivo);
+  final motivo = motivoInaccesible(tester, objetivo);
   final desplazables = find.ancestor(of: objetivo, matching: find.byType(Scrollable));
   if (motivo == null || desplazables.evaluate().isEmpty) return motivo;
-  final zona = tester.getRect(desplazables.first);
-  for (var vez = 0; vez < 8 && motivo != null; vez++) {
-    await tester.dragFrom(Offset(zona.center.dx, zona.top + 24), const Offset(0, -120));
-    await tester.pump(const Duration(milliseconds: 300));
-    motivo = motivoInaccesible(tester, objetivo);
-  }
-  return motivo;
+  await Scrollable.ensureVisible(tester.element(objetivo), alignment: .5);
+  await tester.pump(const Duration(milliseconds: 300));
+  return motivoInaccesible(tester, objetivo);
 }
 
 /// Cuáles de [objetivos] no se pueden tocar ni deslizando, con el motivo.
@@ -224,32 +225,6 @@ final _avisos = <_Escena>[
   ),
 ];
 
-/// Lo que hoy falla (hallazgos de la QA del #199, ver el comentario del PR #294). Al arreglarlo, el
-/// implementador saca la entrada y el test pasa a vigilarlo. `skip` en `testWidgets` es un `bool`:
-/// el motivo va acá.
-const _fallanHoy = <String, String>{
-  // QA #199 (BLOQUEANTE): con el texto a 2x la tarjeta del aviso mide hasta el 80 % del alto de TODA la
-  // pantalla (aviso_mapa.dart `altoMaximo`), pero la hoja y los botones flotantes se dibujan encima
-  // de ella: «Descargar mapa», «Activar datos» y «Ahora no» quedan tapados aunque se deslice la tarjeta.
-  'aviso:sin conexión, con la ciudad conocida:360x640:2.0:0': 'QA #199: botones tapados a 2x',
-  'aviso:sin conexión, sin la ciudad:360x640:2.0:0': 'QA #199: botones tapados a 2x',
-  'aviso:con datos móviles:360x640:2.0:0': 'QA #199: «Ahora no» tapado a 2x',
-  'aviso:sin conexión, con la ciudad conocida:412x915:2.0:0': 'QA #199: botones tapados a 2x',
-  'aviso:sin conexión, sin la ciudad:412x915:2.0:0': 'QA #199: botones tapados a 2x',
-  'aviso:con datos móviles:412x915:2.0:0': 'QA #199: botones tapados a 2x',
-  // QA #199 (menor): con la hoja a 1/3 o a 1/2 (a mano, o sola con el vacío o el error) tapa la
-  // parte de abajo de la tarjeta a 360x640.
-  'aviso:sin conexión, con la ciudad conocida:360x640:1.0:1': 'QA #199: «Activar datos» tapado',
-  'aviso:sin conexión, con la ciudad conocida:360x640:1.0:2': 'QA #199: botones tapados',
-  'aviso:sin conexión, sin la ciudad:360x640:1.0:2': 'QA #199: «Activar datos» tapado',
-  'aviso:con datos móviles:360x640:1.0:2': 'QA #199: botones tapados',
-  // QA #199 (menor): con la hoja a 1/2 en el teléfono real «Referencias» pisa 8 dp a «Mi ubicación».
-  'flotantes:360x640:1.0:2': 'QA #199: «Referencias» pisa «Mi ubicación»',
-  'flotantes:360x640:2.0:2': 'QA #199: «Referencias» pisa «Mi ubicación»',
-};
-
-bool _hallazgo(String caso) => _fallanHoy.containsKey(caso);
-
 void main() {
   const telefonos = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
 
@@ -267,7 +242,6 @@ void main() {
               expect(tester.takeException(), isNull);
               expect(await inaccesibles(tester, aviso.botones()), isEmpty, reason: caso);
             },
-            skip: _hallazgo(caso),
           );
         }
       }
@@ -286,7 +260,6 @@ void main() {
               expect(tester.takeException(), isNull);
               expect(await inaccesibles(tester, aviso.botones()), isEmpty, reason: caso);
             },
-            skip: _hallazgo(caso),
           );
         }
       }
@@ -312,7 +285,6 @@ void main() {
                 reason: caso,
               );
             },
-            skip: _hallazgo(caso),
           );
         }
       }
@@ -367,7 +339,6 @@ void main() {
                 reason: '$caso: «Referencias» $chip pisa a «Mi ubicación» $miUbicacion',
               );
             },
-            skip: _hallazgo(caso),
           );
         }
       }
@@ -395,7 +366,6 @@ void main() {
               reason: vacio,
             );
           },
-          skip: _hallazgo(vacio),
         );
 
         final error = 'error:$tam:$escala';
@@ -419,7 +389,6 @@ void main() {
               reason: error,
             );
           },
-          skip: _hallazgo(error),
         );
       }
     }

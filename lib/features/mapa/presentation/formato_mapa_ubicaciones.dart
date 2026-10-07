@@ -37,14 +37,20 @@ abstract final class TextosMapaUbicaciones {
       'Tocá «Nueva» o mantené el dedo sobre el mapa para registrar la primera.';
   static const registrarPrimera = 'Registrar tu primera ubicación';
   static const soloBajasTitulo = 'No tenés ubicaciones activas';
-  static const soloBajasCuerpo = 'Las que están dadas de baja no se muestran en el mapa.';
+  static const soloBajasCuerpo =
+      'Las que están dadas de baja no se muestran en el mapa. Las ves en «Lista».';
   static const registrarUna = 'Registrar una ubicación';
   static const errorLectura = 'No pudimos leer tus ubicaciones.';
   static const reintentar = 'Reintentar';
   static const sinGps = 'Sin GPS no podemos ordenarlas por cercanía.';
   static const buscandoGps = 'Buscando GPS…';
   static const activarGps = 'Activar GPS';
-  static const noPudimosAbrirAlta = 'No pudimos abrir el alta. Probá de nuevo.';
+  static const noPudimosAbrirAlta = 'No pudimos abrir «Nueva ubicación». Probá de nuevo.';
+
+  /// Al elegir «usar esa» en el alta con una ubicación que ya registró otro colportor: no es una de
+  /// las del colportor, así que el mapa no la muestra ni la elige (decisión del 07/10 en el #294).
+  static const ubicacionDeOtroColportor =
+      'Esa ubicación ya la registró otro colportor. No hace falta registrarla de nuevo.';
 }
 
 /// Lo que el mapa de ubicaciones escribe a partir de las ubicaciones.
