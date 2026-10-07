@@ -312,6 +312,9 @@ class _TarjetaAvisoMapa extends StatelessWidget {
                     // El lector de pantalla dice «Minimizar aviso», no «✕»; el tooltip es para
                     // quien mantiene el dedo apretado.
                     child: Semantics(
+                      // Su propio nodo: si no, el nombre se mezcla con el texto de la tarjeta y el
+                      // lector no llega a decir «Minimizar aviso, botón».
+                      container: true,
                       button: true,
                       label: TextosAvisoMapa.minimizarAviso,
                       onTap: alMinimizar,

@@ -33,6 +33,24 @@ Finder get _ahoraNo => find.widgetWithText(TextButton, 'Ahora no');
 Finder get _reintentar => find.widgetWithText(FilledButton, 'Reintentar');
 Finder get _minimizar => find.byTooltip('Minimizar aviso');
 
+/// Lo que dice el aviso entre tocar «Descargar mapa» y tener el mapa (decisión del 06/10, P1).
+Finder get _enCola => find.text('Se descarga sola cuando vuelva la señal.');
+Finder get _bajando => find.text('Descargando el mapa…');
+
+/// [texto] dentro de [lugar] (una tarjeta o un aviso pasajero).
+Finder _en(Finder lugar, Finder texto) => find.descendant(of: lugar, matching: texto);
+
+/// Un disco que no escribe hasta que el test lo deja: la descarga queda «bajando» el tiempo que haga
+/// falta. Si el test no la suelta, el cierre lo hace por él (el descargador no queda esperando).
+Completer<void> _retenerElDisco(ArnesMapa arnes) {
+  final compuerta = Completer<void>();
+  arnes.archivos.compuerta = compuerta.future;
+  addTearDown(() {
+    if (!compuerta.isCompleted) compuerta.complete();
+  });
+  return compuerta;
+}
+
 /// El rectángulo decorado de una tarjeta (el que tiene el fondo, el borde y las esquinas).
 Finder _fondoDe(Finder tarjeta) =>
     find.descendant(of: tarjeta, matching: find.byType(Container)).first;
@@ -222,9 +240,10 @@ void main() {
         await tocarAviso(tester, _descargar);
         expect(arnes.servidor.pedidos, isEmpty, reason: 'sin conexión no se baja nada');
         expect(arnes.montevideoDescargado, isFalse);
-        // El pedido no deja el botón trabado ni dice que falló.
-        expect(_habilitado(tester, _descargar), isTrue);
+        // El pedido no dice que falló: dice que se descarga sola, y el botón espera.
         expect(find.textContaining('Espacio'), findsNothing);
+        expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+        expect(_habilitado(tester, _descargar), isFalse);
 
         // Vuelve la señal, y es de datos móviles: la descarga que pidió el colportor arranca igual.
         arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
@@ -250,10 +269,14 @@ void main() {
       final arnes = montaje.arnes;
 
       await tester.tap(_descargar);
-      await tester.tap(_descargar);
+      await tester.tap(_descargar, warnIfMissed: false);
       await asentarAviso(tester);
       await salirYReentrarAviso(tester, montaje);
-      await tocarAviso(tester, _descargar);
+      // Al volver sigue en cola: lo dice y el botón sigue esperando.
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(_habilitado(tester, _descargar), isFalse);
+      await tester.tap(_descargar, warnIfMissed: false);
+      await asentarAviso(tester);
       expect(arnes.servidor.pedidos, isEmpty);
 
       arnes.conectividad.cambiarA(TipoConexion.wifi);
@@ -281,10 +304,13 @@ void main() {
         expect(_tarjetaSinConexion, findsOneWidget);
 
         await tocarAviso(tester, _descargar);
-        await tocarAviso(tester, _descargar);
+        await tester.tap(_descargar, warnIfMissed: false);
+        await asentarAviso(tester);
         final estado = arnes.descargador.estadoDe('ciudad-montevideo');
         expect(estado, isA<DescargaPausada>().having((e) => e.sigueSola, 'sigueSola', true));
         expect(arnes.servidor.pedidos, isEmpty);
+        expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+        expect(_habilitado(tester, _descargar), isFalse);
 
         arnes.conectividad.cambiarA(TipoConexion.wifi);
         await asentarAviso(tester);
@@ -473,6 +499,115 @@ void main() {
       expect(_pildora, findsOneWidget);
     });
 
+    testWidgets(
+      'al pedirla, un aviso pasajero dice que se descarga sola; la píldora espera y no lo repite',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        try {
+          final montaje = await montarMinimizada(tester, catalogo: [paqueteMontevideo]);
+          expect(find.byType(SnackBar), findsNothing);
+          expect(
+            tester.getSemantics(_pildora),
+            isSemantics(isButton: true, isEnabled: true, hasTapAction: true),
+          );
+
+          await tester.tap(_pildora);
+          await asentarAviso(tester);
+
+          expect(find.descendant(of: find.byType(SnackBar), matching: _enCola), findsOneWidget);
+          expect(
+            tester.getSemantics(_pildora),
+            isSemantics(isButton: true, isEnabled: false, hasTapAction: false),
+          );
+
+          // Otro toque no pide otra descarga ni repite el aviso.
+          await tester.tap(_pildora, warnIfMissed: false);
+          await asentarAviso(tester);
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(montaje.arnes.servidor.pedidos, isEmpty);
+        } finally {
+          semantica.dispose();
+        }
+      },
+    );
+
+    testWidgets('con el catálogo ya leído también dice que se descarga sola, una sola vez', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.datosMoviles,
+        catalogo: [paqueteMontevideo],
+      );
+      montaje.arnes.conectividad.cambiarA(TipoConexion.sinConexion);
+      await asentarAviso(tester);
+      await tocarAviso(tester, _minimizar);
+      expect(_pildora, findsOneWidget);
+
+      await tester.tap(_pildora);
+      await tester.tap(_pildora, warnIfMissed: false);
+      await asentarAviso(tester);
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.descendant(of: find.byType(SnackBar), matching: _enCola), findsOneWidget);
+      expect(
+        montaje.arnes.descargador.estadoDe('ciudad-montevideo'),
+        isA<DescargaPausada>().having((e) => e.sigueSola, 'sigueSola', true),
+      );
+    });
+
+    testWidgets(
+      'volver atrás y reentrar con el pedido en cola: la píldora sigue esperando y no repite el aviso',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        try {
+          final montaje = await montarMinimizada(tester, catalogo: [paqueteMontevideo]);
+          await tester.tap(_pildora);
+          await asentarAviso(tester);
+          expect(find.byType(SnackBar), findsOneWidget);
+
+          // El aviso pasajero se va solo.
+          await tester.pump(const Duration(seconds: 5));
+          await tester.pump(const Duration(seconds: 1));
+          expect(find.byType(SnackBar), findsNothing);
+
+          await salirYReentrarAviso(tester, montaje);
+
+          expect(_pildora, findsOneWidget);
+          expect(find.byType(SnackBar), findsNothing);
+          expect(
+            tester.getSemantics(_pildora),
+            isSemantics(isButton: true, isEnabled: false, hasTapAction: false),
+          );
+          expect(montaje.arnes.servidor.pedidos, isEmpty);
+        } finally {
+          semantica.dispose();
+        }
+      },
+    );
+
+    testWidgets(
+      'a 360×640 y texto al 2x, con el pedido en cola, no desborda con el aviso pasajero',
+      (tester) async {
+        await montarMinimizada(
+          tester,
+          catalogo: [paqueteMontevideo],
+          tamano: const Size(360, 640),
+          escala: 2,
+        );
+
+        await tester.tap(_pildora);
+        await asentarAviso(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(find.descendant(of: find.byType(SnackBar), matching: _enCola), findsOneWidget);
+        final aviso = tester.getRect(find.byType(SnackBar));
+        expect(aviso.left, greaterThanOrEqualTo(0));
+        expect(aviso.right, lessThanOrEqualTo(360));
+        expect(aviso.bottom, lessThanOrEqualTo(640));
+      },
+    );
+
     testWidgets('a 360×640 y texto al 2x no desborda y se puede tocar', (tester) async {
       await montarMinimizada(tester, tamano: const Size(360, 640), escala: 2);
 
@@ -638,6 +773,8 @@ void main() {
         expect(montaje.arnes.montevideoDescargado, isFalse);
         expect(_tarjetaDatos, findsOneWidget);
         expect(_habilitado(tester, _descargarConPeso), isTrue);
+        expect(_bajando, findsNothing);
+        expect(_enCola, findsNothing);
         // El motivo del fallo se ve dentro de la tarjeta (y no una tarjeta vacía).
         expect(
           find.descendant(of: _tarjetaDatos, matching: find.text(const FailureServidor().mensaje)),
@@ -716,6 +853,280 @@ void main() {
     });
   });
 
+  // Decisión del 06/10 (pendiente P1 de #190): entre el toque y el mapa, la tarjeta dice en qué está
+  // el pedido, con el botón deshabilitado; reducida a la píldora, lo dice un aviso pasajero.
+  group('Entre tocar «Descargar mapa» y tener el mapa', () {
+    testWidgets('06C·05: sin señal dice que se descarga sola; antes del toque no dice nada', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        catalogo: [paqueteMontevideo],
+      );
+      expect(_enCola, findsNothing);
+      expect(_bajando, findsNothing);
+      expect(_habilitado(tester, _descargar), isTrue);
+
+      await tocarAviso(tester, _descargar);
+
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(_bajando, findsNothing);
+      expect(_habilitado(tester, _descargar), isFalse);
+      // La otra acción de la tarjeta sigue disponible, y la tarjeta no usa un aviso pasajero.
+      expect(_habilitado(tester, _activarDatos), isTrue);
+      expect(find.byType(SnackBar), findsNothing);
+
+      // Otro toque (un botón deshabilitado no responde) ni encola otra ni cambia lo que se ve.
+      await tester.tap(_descargar, warnIfMissed: false);
+      await asentarAviso(tester);
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(montaje.arnes.servidor.pedidos, isEmpty);
+    });
+
+    testWidgets(
+      '06C·05 a 06C·07: al volver la señal con datos móviles dice «Descargando el mapa…» hasta que '
+      'termina, y la tarjeta se va',
+      (tester) async {
+        final montaje = await montarAviso(
+          tester,
+          conexion: TipoConexion.sinConexion,
+          catalogo: [paqueteMontevideo],
+        );
+        final compuerta = _retenerElDisco(montaje.arnes);
+        await tocarAviso(tester, _descargar);
+        expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+
+        montaje.arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+        await asentarAviso(tester);
+
+        // Con señal, el aviso es el de datos móviles y el pedido sigue siendo el mismo.
+        expect(_tarjetaSinConexion, findsNothing);
+        expect(_en(_tarjetaDatos, _bajando), findsOneWidget);
+        expect(_enCola, findsNothing);
+        expect(_habilitado(tester, _descargarConPeso), isFalse);
+        expect(_habilitado(tester, _ahoraNo), isTrue);
+        expect(montaje.arnes.montevideoDescargado, isFalse);
+
+        compuerta.complete();
+        await asentarAviso(tester);
+
+        expect(montaje.arnes.montevideoDescargado, isTrue);
+        expect(_bajando, findsNothing);
+        _ningunAviso();
+        expect(_fuente(tester), FuenteTiles.pmtilesOffline);
+      },
+    );
+
+    testWidgets(
+      '06C·07: «Descargar mapa · N MB» dice «Descargando el mapa…» y espera, también al volver a '
+      'entrar; al terminar se va',
+      (tester) async {
+        final montaje = await montarAviso(
+          tester,
+          conexion: TipoConexion.datosMoviles,
+          catalogo: [paqueteMontevideo],
+        );
+        final compuerta = _retenerElDisco(montaje.arnes);
+        expect(_bajando, findsNothing);
+
+        await tocarAviso(tester, _descargarConPeso);
+
+        expect(_en(_tarjetaDatos, _bajando), findsOneWidget);
+        expect(_enCola, findsNothing);
+        expect(_habilitado(tester, _descargarConPeso), isFalse);
+        expect(_habilitado(tester, _ahoraNo), isTrue);
+        expect(find.byType(SnackBar), findsNothing);
+
+        // Volver atrás y reentrar: el pedido sigue a la vista y no se pide dos veces.
+        await salirYReentrarAviso(tester, montaje);
+        expect(_en(_tarjetaDatos, _bajando), findsOneWidget);
+        expect(_habilitado(tester, _descargarConPeso), isFalse);
+        await tester.tap(_descargarConPeso, warnIfMissed: false);
+        await asentarAviso(tester);
+        expect(montaje.arnes.servidor.pedidos, hasLength(1));
+
+        compuerta.complete();
+        await asentarAviso(tester);
+
+        expect(montaje.arnes.montevideoDescargado, isTrue);
+        _ningunAviso();
+      },
+    );
+
+    testWidgets('«Ahora no» mientras baja oculta la tarjeta y la descarga termina igual', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.datosMoviles,
+        catalogo: [paqueteMontevideo],
+      );
+      final compuerta = _retenerElDisco(montaje.arnes);
+      await tocarAviso(tester, _descargarConPeso);
+      expect(_en(_tarjetaDatos, _bajando), findsOneWidget);
+
+      await tocarAviso(tester, _ahoraNo);
+      expect(_tarjetaDatos, findsNothing);
+      expect(_bajando, findsNothing);
+
+      compuerta.complete();
+      await asentarAviso(tester);
+
+      expect(montaje.arnes.montevideoDescargado, isTrue);
+      _ningunAviso();
+    });
+
+    testWidgets(
+      'se cae la señal a mitad de la descarga: la tarjeta roja dice que sigue sola, y al volver '
+      'retoma y termina',
+      (tester) async {
+        final montaje = await montarAviso(
+          tester,
+          conexion: TipoConexion.datosMoviles,
+          catalogo: [paqueteMontevideo],
+        );
+        final compuerta = _retenerElDisco(montaje.arnes);
+        await tocarAviso(tester, _descargarConPeso);
+        expect(_en(_tarjetaDatos, _bajando), findsOneWidget);
+
+        montaje.arnes.conectividad.cambiarA(TipoConexion.sinConexion);
+        await asentarAviso(tester);
+
+        expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+        expect(_bajando, findsNothing);
+        expect(_habilitado(tester, _descargar), isFalse);
+        expect(montaje.arnes.montevideoDescargado, isFalse);
+
+        compuerta.complete();
+        await asentarAviso(tester);
+        montaje.arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+        await asentarAviso(tester);
+
+        expect(montaje.arnes.montevideoDescargado, isTrue);
+        _ningunAviso();
+        expect(_fuente(tester), FuenteTiles.pmtilesOffline);
+      },
+    );
+
+    testWidgets(
+      'falla a mitad de la descarga: se va «Descargando el mapa…», dice el motivo y el botón vuelve; '
+      'al reintentar baja',
+      (tester) async {
+        final montaje = await montarAviso(
+          tester,
+          conexion: TipoConexion.datosMoviles,
+          catalogo: [paqueteMontevideo],
+        );
+        // El disco se llena en el segundo pedazo (el servidor los manda de a 1000 bytes).
+        montaje.arnes.archivos.discoLlenoDespuesDe = 1200;
+
+        await tocarAviso(tester, _descargarConPeso);
+
+        expect(montaje.arnes.montevideoDescargado, isFalse);
+        expect(_bajando, findsNothing);
+        expect(_enCola, findsNothing);
+        expect(_en(_tarjetaDatos, find.textContaining('Espacio insuficiente')), findsOneWidget);
+        expect(_habilitado(tester, _descargarConPeso), isTrue);
+
+        montaje.arnes.archivos.discoLlenoDespuesDe = null;
+        await tocarAviso(tester, _descargarConPeso);
+
+        expect(montaje.arnes.montevideoDescargado, isTrue);
+        _ningunAviso();
+      },
+    );
+
+    testWidgets('dos acciones seguidas: «Activar datos» y «Descargar mapa» no se pisan', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        catalogo: [paqueteMontevideo],
+      );
+      final espera = Completer<void>();
+      montaje.arnes.ajustes.espera = espera;
+
+      await tester.tap(_activarDatos);
+      await tester.pump();
+      await tester.tap(_descargar);
+      await tester.pump();
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(_habilitado(tester, _activarDatos), isFalse);
+      expect(_habilitado(tester, _descargar), isFalse);
+
+      espera.complete();
+      await asentarAviso(tester);
+
+      expect(_habilitado(tester, _activarDatos), isTrue);
+      expect(_habilitado(tester, _descargar), isFalse);
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(montaje.arnes.ajustes.aperturasDeRed, 1);
+    });
+
+    for (final (nombre, conexion, escala) in [
+      ('06C·05 en cola', TipoConexion.sinConexion, 1.0),
+      ('06C·05 en cola', TipoConexion.sinConexion, 2.0),
+      ('06C·07 bajando', TipoConexion.datosMoviles, 1.0),
+      ('06C·07 bajando', TipoConexion.datosMoviles, 2.0),
+    ]) {
+      testWidgets('$nombre a 360×640 con el texto al ${escala}x: no desborda y los botones se '
+          'alcanzan', (tester) async {
+        final enCola = conexion == TipoConexion.sinConexion;
+        final montaje = await montarAviso(
+          tester,
+          conexion: conexion,
+          catalogo: [paqueteMontevideo],
+          tamano: const Size(360, 640),
+          escala: escala,
+        );
+        // El disco no escribe: con señal, la descarga queda «bajando» todo el test.
+        _retenerElDisco(montaje.arnes);
+        final tarjeta = enCola ? _tarjetaSinConexion : _tarjetaDatos;
+        final boton = enCola ? _descargar : _descargarConPeso;
+        final otro = enCola ? _activarDatos : _ahoraNo;
+
+        await tocarAviso(tester, boton);
+
+        expect(tester.takeException(), isNull);
+        expect(_en(tarjeta, enCola ? _enCola : _bajando), findsOneWidget);
+        final visible = tester.getRect(
+          find.descendant(
+            of: find.byType(AvisoMapaConectado),
+            matching: find.byType(SingleChildScrollView),
+          ),
+        );
+        expect(visible.bottom, lessThanOrEqualTo(8 + 640 * .8 + 1));
+        for (final finder in [boton, otro]) {
+          await tester.ensureVisible(finder);
+          await tester.pump();
+          expect(tester.getRect(finder).bottom, lessThanOrEqualTo(640));
+          expect(tester.getSize(finder).height, greaterThanOrEqualTo(48));
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('en la hoja de la vista 03 el renglón también aparece y el botón espera', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        catalogo: [paqueteMontevideo],
+        modo: AvisoMapaModo.enHoja,
+      );
+
+      await tocarAviso(tester, _descargar);
+
+      expect(_en(_tarjetaSinConexion, _enCola), findsOneWidget);
+      expect(_habilitado(tester, _descargar), isFalse);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(montaje.arnes.servidor.pedidos, isEmpty);
+    });
+  });
+
   group('Con conexión y el mapa no carga', () {
     testWidgets(
       '«No pudimos cargar el mapa de esta ciudad»: el texto pedido, sin «Sin conexión» ni grises',
@@ -775,6 +1186,22 @@ void main() {
 
         _ningunAviso();
         expect(_fuente(tester), FuenteTiles.servidorOnline);
+      },
+    );
+
+    testWidgets(
+      'volver atrás y reentrar: el aviso sigue mientras el mapa no cargue, y «Reintentar» también',
+      (tester) async {
+        final arnes = ArnesMapa(catalogo: [paqueteMontevideo]);
+        arnes.repositorio.falloCatalogo = const FailureSinConexion();
+        final montaje = await montarAviso(tester, arnes: arnes);
+        expect(_tarjetaNoCarga, findsOneWidget);
+
+        await salirYReentrarAviso(tester, montaje);
+
+        expect(_tarjetaNoCarga, findsOneWidget);
+        expect(_habilitado(tester, _reintentar), isTrue);
+        expect(find.byType(SnackBar), findsNothing);
       },
     );
 

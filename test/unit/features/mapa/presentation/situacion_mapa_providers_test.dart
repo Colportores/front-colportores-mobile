@@ -331,4 +331,202 @@ void main() {
       expect(const EstadoSolicitudMapa(), const EstadoSolicitudMapa());
     });
   });
+
+  // Lo que el aviso le dice al colportor entre tocar «Descargar mapa» y tener el mapa (decisión del
+  // 06/10, P1): «Se descarga sola cuando vuelva la señal.» (esperaSenal), «Descargando el mapa…»
+  // (bajando), y el botón deshabilitado mientras cualquiera de las dos dure (enMarcha).
+  group('solicitudMapaProvider: en qué está el pedido', () {
+    test('enMarcha cubre ocupada, en espera, en cola y bajando; esperaSenal, solo las dos que '
+        'esperan la señal', () {
+      const casos = <(String, EstadoSolicitudMapa, bool, bool)>[
+        ('en reposo', EstadoSolicitudMapa(), false, false),
+        ('ocupada', EstadoSolicitudMapa(ocupada: true), true, false),
+        ('en espera del catálogo', EstadoSolicitudMapa(enEspera: true), true, true),
+        ('en cola', EstadoSolicitudMapa(enCola: true), true, true),
+        ('bajando', EstadoSolicitudMapa(bajando: true), true, false),
+        ('solo una falla', EstadoSolicitudMapa(falla: FailureServidor()), false, false),
+      ];
+      for (final (nombre, estado, enMarcha, esperaSenal) in casos) {
+        expect(estado.enMarcha, enMarcha, reason: nombre);
+        expect(estado.esperaSenal, esperaSenal, reason: nombre);
+      }
+    });
+
+    /// Con el catálogo leído (había conexión) y el teléfono ya sin señal: el pedido va a la cola.
+    Future<Completer<void>> montarSinSenal() async {
+      arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+      contenedor = armar(arnes);
+      observar(contenedor, paqueteDelAmbitoProvider(ambitoMontevideo));
+      observar(contenedor, solicitudMapaProvider(ambitoMontevideo));
+      await _dejarCorrer();
+      arnes.conectividad.cambiarA(TipoConexion.sinConexion);
+      await _dejarCorrer();
+      // Un disco que no escribe hasta que el test lo deja: la descarga queda «bajando».
+      final compuerta = Completer<void>();
+      arnes.archivos.compuerta = compuerta.future;
+      return compuerta;
+    }
+
+    test(
+      'sin señal queda en cola, sin falla ni «ocupada», y pedir de nuevo no encola otra',
+      () async {
+        final compuerta = await montarSinSenal();
+        final provider = solicitudMapaProvider(ambitoMontevideo);
+
+        await contenedor.read(provider.notifier).pedir();
+
+        var estado = contenedor.read(provider);
+        expect(estado.enCola, isTrue);
+        expect(estado.esperaSenal, isTrue);
+        expect(estado.enMarcha, isTrue);
+        expect(estado.ocupada, isFalse);
+        expect(estado.bajando, isFalse);
+        expect(estado.falla, isNull);
+        expect(arnes.servidor.pedidos, isEmpty);
+
+        final lecturas = arnes.conectividad.lecturas;
+        await contenedor.read(provider.notifier).pedir();
+        await contenedor.read(provider.notifier).pedir();
+        await _dejarCorrer();
+
+        estado = contenedor.read(provider);
+        expect(estado.enCola, isTrue);
+        expect(arnes.conectividad.lecturas, lecturas, reason: 'no se encoló otra descarga');
+        compuerta.complete();
+      },
+    );
+
+    test('al volver la señal pasa de «en cola» a «bajando» y, al terminar, a nada', () async {
+      final compuerta = await montarSinSenal();
+      final provider = solicitudMapaProvider(ambitoMontevideo);
+      final vistos = <EstadoSolicitudMapa>[];
+      final suscripcion = contenedor.listen(provider, (_, nuevo) => vistos.add(nuevo));
+      addTearDown(suscripcion.close);
+      await contenedor.read(provider.notifier).pedir();
+
+      arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+      await _dejarCorrer();
+
+      var estado = contenedor.read(provider);
+      expect(estado.bajando, isTrue);
+      expect(estado.enCola, isFalse);
+      expect(estado.esperaSenal, isFalse);
+      expect(estado.enMarcha, isTrue);
+
+      compuerta.complete();
+      await arnes.descargador.esperar('ciudad-montevideo');
+      await _dejarCorrer();
+
+      estado = contenedor.read(provider);
+      expect(estado, const EstadoSolicitudMapa());
+      expect(arnes.montevideoDescargado, isTrue);
+      // Nunca quedó el botón libre en el medio: de «en cola» a «bajando» sin pasar por «reposo».
+      final alMedio = vistos.skipWhile((e) => !e.enCola).takeWhile((e) => e.enMarcha);
+      expect(alMedio.any((e) => e.bajando), isTrue);
+    });
+
+    test('un pedido más mientras baja no hace otra descarga ni cambia el estado', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);
+      contenedor = armar(arnes);
+      observar(contenedor, paqueteDelAmbitoProvider(ambitoMontevideo));
+      final provider = solicitudMapaProvider(ambitoMontevideo);
+      observar(contenedor, provider);
+      await _dejarCorrer();
+      final compuerta = Completer<void>();
+      arnes.archivos.compuerta = compuerta.future;
+
+      await contenedor.read(provider.notifier).pedir();
+      await _dejarCorrer();
+      expect(contenedor.read(provider).bajando, isTrue);
+      final lecturas = arnes.conectividad.lecturas;
+
+      await contenedor.read(provider.notifier).pedir();
+
+      expect(contenedor.read(provider).bajando, isTrue);
+      expect(arnes.conectividad.lecturas, lecturas);
+      expect(arnes.servidor.pedidos, hasLength(1));
+      compuerta.complete();
+      await arnes.descargador.esperar('ciudad-montevideo');
+      await _dejarCorrer();
+      expect(contenedor.read(provider), const EstadoSolicitudMapa());
+    });
+
+    test('si se cae la señal a mitad de la descarga vuelve a «en cola» y retoma sola', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+      contenedor = armar(arnes);
+      observar(contenedor, paqueteDelAmbitoProvider(ambitoMontevideo));
+      final provider = solicitudMapaProvider(ambitoMontevideo);
+      observar(contenedor, provider);
+      await _dejarCorrer();
+      final compuerta = Completer<void>();
+      arnes.archivos.compuerta = compuerta.future;
+      await contenedor.read(provider.notifier).pedir();
+      await _dejarCorrer();
+      expect(contenedor.read(provider).bajando, isTrue);
+
+      arnes.conectividad.cambiarA(TipoConexion.sinConexion);
+      await _dejarCorrer();
+
+      var estado = contenedor.read(provider);
+      expect(estado.enCola, isTrue);
+      expect(estado.bajando, isFalse);
+      expect(estado.falla, isNull);
+
+      compuerta.complete();
+      await _dejarCorrer();
+      arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+      await _dejarCorrer();
+      await arnes.descargador.esperar('ciudad-montevideo');
+      await _dejarCorrer();
+
+      estado = contenedor.read(provider);
+      expect(estado, const EstadoSolicitudMapa());
+      expect(arnes.montevideoDescargado, isTrue);
+    });
+
+    test('una falla a mitad de la descarga deja la falla y nada «en marcha»', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);
+      contenedor = armar(arnes);
+      observar(contenedor, paqueteDelAmbitoProvider(ambitoMontevideo));
+      final provider = solicitudMapaProvider(ambitoMontevideo);
+      observar(contenedor, provider);
+      await _dejarCorrer();
+      // El disco se llena en el segundo pedazo de 1000 bytes.
+      arnes.archivos.discoLlenoDespuesDe = 1200;
+
+      await contenedor.read(provider.notifier).pedir();
+      await arnes.descargador.esperar('ciudad-montevideo');
+      await _dejarCorrer();
+
+      final estado = contenedor.read(provider);
+      expect(estado.falla, isA<FailureEspacioInsuficiente>());
+      expect(estado.enMarcha, isFalse);
+      expect(estado.esperaSenal, isFalse);
+
+      // Con lugar otra vez, el siguiente pedido arranca y borra la falla.
+      arnes.archivos.discoLlenoDespuesDe = null;
+      await contenedor.read(provider.notifier).pedir();
+      await arnes.descargador.esperar('ciudad-montevideo');
+      await _dejarCorrer();
+      expect(contenedor.read(provider), const EstadoSolicitudMapa());
+      expect(arnes.montevideoDescargado, isTrue);
+    });
+
+    test('el pedido en espera del catálogo cuenta como «esperando la señal»', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.sinConexion, catalogo: [paqueteMontevideo]);
+      contenedor = armar(arnes);
+      final provider = solicitudMapaProvider(ambitoMontevideo);
+      observar(contenedor, provider);
+      await _dejarCorrer();
+
+      await contenedor.read(provider.notifier).pedir();
+      await contenedor.read(provider.notifier).pedir();
+
+      final estado = contenedor.read(provider);
+      expect(estado.enEspera, isTrue);
+      expect(estado.esperaSenal, isTrue);
+      expect(estado.enMarcha, isTrue);
+      expect(arnes.servidor.pedidos, isEmpty);
+    });
+  });
 }

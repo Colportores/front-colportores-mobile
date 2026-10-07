@@ -3,6 +3,8 @@
 //
 // Con la fuente de prueba (Ahem) el contraste se mide bien; las medidas finas con las fuentes reales
 // están en `aviso_mapa_test.dart`.
+import 'dart:async';
+
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
@@ -139,5 +141,67 @@ void main() {
         semantica.dispose();
       }
     });
+  });
+
+  // Con el pedido en marcha (decisión del 06/10, P1 de #190): el renglón de avance y el botón
+  // deshabilitado cumplen lo mismo que el aviso en reposo, y el lector lo anuncia con la tarjeta.
+  group('con el pedido en marcha', () {
+    final casos = <String, ({TipoConexion conexion, Key clave, String boton, String renglon})>{
+      '06C·05 en cola': (
+        conexion: TipoConexion.sinConexion,
+        clave: ClavesAvisoMapa.sinConexion,
+        boton: 'Descargar mapa',
+        renglon: 'Se descarga sola cuando vuelva la señal.',
+      ),
+      '06C·07 bajando': (
+        conexion: TipoConexion.datosMoviles,
+        clave: ClavesAvisoMapa.datosMoviles,
+        boton: 'Descargar mapa · 1 MB',
+        renglon: 'Descargando el mapa…',
+      ),
+    };
+
+    for (final MapEntry(key: nombre, value: caso) in casos.entries) {
+      for (final (tamano, escala) in [(const Size(390, 844), 1.0), (const Size(360, 640), 2.0)]) {
+        testWidgets(
+          '$nombre: toques de 48, nombres y contraste a ${tamano.width.toInt()}×${tamano.height.toInt()} con texto ${escala}x',
+          (tester) async {
+            final semantica = tester.ensureSemantics();
+            try {
+              final montaje = await montarAviso(
+                tester,
+                conexion: caso.conexion,
+                catalogo: [paqueteMontevideo],
+                tamano: tamano,
+                escala: escala,
+              );
+              // El disco no escribe: con señal, la descarga queda «bajando» durante el test.
+              final compuerta = Completer<void>();
+              montaje.arnes.archivos.compuerta = compuerta.future;
+              addTearDown(() {
+                if (!compuerta.isCompleted) compuerta.complete();
+              });
+
+              await tocarAviso(tester, find.widgetWithText(FilledButton, caso.boton));
+
+              expect(find.text(caso.renglon), findsOneWidget);
+              // La tarjeta es una región viva, y el renglón también (nodo propio: dos regiones
+              // vivas no se mezclan): el lector lo anuncia al aparecer y cada vez que cambia.
+              expect(tester.getSemantics(find.byKey(caso.clave)), isSemantics(isLiveRegion: true));
+              final renglon = tester.getSemantics(find.text(caso.renglon));
+              expect(renglon, isSemantics(isLiveRegion: true));
+              expect(renglon.label, caso.renglon);
+
+              await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(textContrastGuideline));
+            } finally {
+              semantica.dispose();
+            }
+          },
+        );
+      }
+    }
   });
 }
