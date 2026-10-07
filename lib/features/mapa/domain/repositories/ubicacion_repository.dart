@@ -6,6 +6,7 @@ import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
 import '../entities/ubicacion.dart';
+import '../entities/ubicacion_con_resumen.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
 import '../value_objects/area_mapa.dart';
 import '../value_objects/punto_capturado.dart';
@@ -94,6 +95,21 @@ abstract interface class UbicacionRepository {
   Stream<List<Ubicacion>> observarDelColportor({
     required String colportorId,
     String? ciudadId,
+    bool incluirBajas = false,
+  });
+
+  /// Las ubicaciones del colportor [colportorId] (`created_by`) con su número de espacios sin baja y
+  /// su estado de casa, para la lista (HU-UBI-002): lo mismo que [observarDelColportor] más lo que
+  /// la fila muestra al lado de la dirección, en una sola lectura (no hay que combinar streams).
+  /// Reactivo: emite de nuevo ante cualquier cambio de ubicaciones o espacios. Trae las de baja solo
+  /// si [incluirBajas].
+  ///
+  /// `UbicacionConResumen.estado` es siempre `null` hasta que exista la cache local de
+  /// `house_status` (HU-VIS-005, #151).
+  ///
+  /// Si la lectura falla, el stream termina con el error.
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
     bool incluirBajas = false,
   });
 

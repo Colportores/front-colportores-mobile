@@ -3,6 +3,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:dartz/dartz.dart';
@@ -30,6 +31,11 @@ mixin UbicacionRepositorySinModificar {
     bool conMotivo = false,
     String? conservadaId,
   }) => throw UnimplementedError();
+
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) => throw UnimplementedError();
 }
 
 /// Lo mismo para los fakes de [UbicacionLocalDataSource].
@@ -50,5 +56,10 @@ mixin UbicacionLocalSinModificar {
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+  }) => throw UnimplementedError();
+
+  Stream<List<UbicacionConEspacios>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
   }) => throw UnimplementedError();
 }

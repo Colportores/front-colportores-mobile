@@ -24,6 +24,9 @@ final class ConsultarListaUbicacionesUseCase
 
   @override
   Stream<ListaUbicaciones> call(ConsultaListaUbicaciones consulta) => _repositorio
-      .observarDelColportor(colportorId: consulta.colportorId, incluirBajas: consulta.incluirBajas)
+      .observarListaDelColportor(
+        colportorId: consulta.colportorId,
+        incluirBajas: consulta.incluirBajas,
+      )
       .map((ubicaciones) => ArmadorListaUbicaciones.armar(ubicaciones, consulta));
 }

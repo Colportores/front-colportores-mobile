@@ -7,6 +7,7 @@ import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
+import '../../domain/entities/ubicacion_con_resumen.dart';
 import '../../domain/repositories/ubicacion_repository.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
@@ -232,6 +233,24 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         incluirBajas: incluirBajas,
       )
       .map((modelos) => [for (final m in modelos) m.toEntity()]);
+
+  // Sin cache local de `house_status` (HU-VIS-005, #151): el estado no se sabe y se devuelve `null`
+  // en vez de afirmar «Sin visita» para todas. Cuando exista, se lee acá junto con los espacios.
+  @override
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) => _local
+      .observarListaDelColportor(colportorId: colportorId, incluirBajas: incluirBajas)
+      .map(
+        (filas) => [
+          for (final f in filas)
+            UbicacionConResumen(
+              ubicacion: f.ubicacion.toEntity(),
+              cantidadEspacios: f.cantidadEspacios,
+            ),
+        ],
+      );
 
   @override
   Stream<List<MarcadorMapa>> observarMarcadoresEnArea({

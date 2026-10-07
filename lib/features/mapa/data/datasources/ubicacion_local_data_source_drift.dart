@@ -172,6 +172,34 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   }
 
   @override
+  Stream<List<UbicacionConEspacios>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) {
+    final cantidad = espacios.id.count();
+    final consulta =
+        select(ubicaciones).join([
+            leftOuterJoin(
+              espacios,
+              espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
+            ),
+          ])
+          ..addColumns([cantidad])
+          ..where(ubicaciones.createdBy.equals(colportorId))
+          ..groupBy([ubicaciones.id]);
+    if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
+    return consulta.watch().map(
+      (filas) => [
+        for (final fila in filas)
+          (
+            ubicacion: _aModelo(fila.readTable(ubicaciones)),
+            cantidadEspacios: fila.read(cantidad) ?? 0,
+          ),
+      ],
+    );
+  }
+
+  @override
   Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
     required String colportorId,
     required AreaMapa area,

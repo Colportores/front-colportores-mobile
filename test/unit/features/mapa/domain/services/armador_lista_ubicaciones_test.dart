@@ -1,7 +1,10 @@
 // Test de dominio: Dart puro (HU-UBI-002).
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/consulta_lista_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/armador_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:test/test.dart';
@@ -38,15 +41,19 @@ void main() {
     ),
   );
 
+  /// Las ubicaciones sin resumen (sin espacios ni estado): lo que ya cubrían los tests de la lista.
+  ListaUbicaciones armar(Iterable<Ubicacion> todas, ConsultaListaUbicaciones c) =>
+      ArmadorListaUbicaciones.armar([for (final u in todas) UbicacionConResumen(ubicacion: u)], c);
+
   List<String> ids(ConsultaListaUbicaciones c, List<Ubicacion> todas) => [
-    for (final i in ArmadorListaUbicaciones.armar(todas, c).items) i.ubicacion.id,
+    for (final i in armar(todas, c).items) i.ubicacion.id,
   ];
 
   const consulta = ConsultaListaUbicaciones(colportorId: yo);
 
   group('lista base', () {
     test('sin ubicaciones: vacía, sin más páginas y con los tres tipos en 0', () {
-      final r = ArmadorListaUbicaciones.armar(const [], consulta);
+      final r = armar(const [], consulta);
       expect(r.estaVacia, isTrue);
       expect(r.sinUbicaciones, isTrue);
       expect(r.sinResultados, isFalse);
@@ -78,24 +85,24 @@ void main() {
         ConsultaListaUbicaciones(colportorId: yo, ciudadId: 'otra'),
         ConsultaListaUbicaciones(colportorId: yo, tipos: {TipoUbicacion.edificio}),
       ]) {
-        final r = ArmadorListaUbicaciones.armar(todas, c);
+        final r = armar(todas, c);
         expect(r.estaVacia, isTrue, reason: '$c');
         expect(r.sinUbicaciones, isFalse, reason: '$c');
         expect(r.sinResultados, isTrue, reason: '$c');
       }
-      expect(ArmadorListaUbicaciones.armar(todas, consulta).sinResultados, isFalse);
+      expect(armar(todas, consulta).sinResultados, isFalse);
     });
 
     test('las ubicaciones de otro colportor no cuentan como "tengo ubicaciones"', () {
-      final r = ArmadorListaUbicaciones.armar([ub('ajena', dueno: 'col-2')], consulta);
+      final r = armar([ub('ajena', dueno: 'col-2')], consulta);
       expect(r.sinUbicaciones, isTrue);
     });
 
     test('todas de baja: con "Mostrar bajas" apagado es sinUbicaciones; encendido, no', () {
       final bajas = [ub('a', baja: true), ub('b', baja: true)];
-      final apagado = ArmadorListaUbicaciones.armar(bajas, consulta);
+      final apagado = armar(bajas, consulta);
       expect(apagado.sinUbicaciones, isTrue);
-      final encendido = ArmadorListaUbicaciones.armar(
+      final encendido = armar(
         bajas,
         const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true),
       );
@@ -104,7 +111,7 @@ void main() {
     });
 
     test('sin posición no hay distancias', () {
-      final r = ArmadorListaUbicaciones.armar([ub('a')], consulta);
+      final r = armar([ub('a')], consulta);
       expect(r.items.single.distanciaMetros, isNull);
     });
   });
@@ -154,7 +161,7 @@ void main() {
     });
 
     test('los contadores: total con todos los filtros, porTipo sin el filtro de tipo', () {
-      final r = ArmadorListaUbicaciones.armar(
+      final r = armar(
         todas,
         const ConsultaListaUbicaciones(
           colportorId: yo,
@@ -171,7 +178,7 @@ void main() {
     });
 
     test('incluir bajas: aparecen marcadas como baja y no interactivas', () {
-      final r = ArmadorListaUbicaciones.armar([
+      final r = armar([
         ub('viva'),
         ub('baja', baja: true, minutos: 3),
       ], const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true));
@@ -219,7 +226,7 @@ void main() {
     ];
 
     test('cercanía: ascendente por distancia, con la distancia en metros', () {
-      final r = ArmadorListaUbicaciones.armar(
+      final r = armar(
         todas,
         const ConsultaListaUbicaciones(
           colportorId: yo,
@@ -246,17 +253,14 @@ void main() {
     });
 
     test('orden recientes con posición: mantiene la distancia en cada ítem', () {
-      final r = ArmadorListaUbicaciones.armar(
-        todas,
-        const ConsultaListaUbicaciones(colportorId: yo, posicion: aqui),
-      );
+      final r = armar(todas, const ConsultaListaUbicaciones(colportorId: yo, posicion: aqui));
       expect([for (final i in r.items) i.ubicacion.id], ['lejos', 'medio', 'cerca']);
       expect(r.items.every((i) => i.distanciaMetros != null), isTrue);
       expect(r.ordenAplicado, OrdenListaUbicaciones.recientes);
     });
 
     test('cercanía sin GPS cae a recientes y lo dice', () {
-      final r = ArmadorListaUbicaciones.armar(
+      final r = armar(
         todas,
         const ConsultaListaUbicaciones(colportorId: yo, orden: OrdenListaUbicaciones.cercania),
       );
@@ -266,7 +270,7 @@ void main() {
 
     test('posición (0, 0) o fuera de rango cuenta como sin GPS', () {
       for (final p in const [Coordenadas(lat: 0, lon: 0), Coordenadas(lat: 91, lon: 0)]) {
-        final r = ArmadorListaUbicaciones.armar(
+        final r = armar(
           todas,
           ConsultaListaUbicaciones(
             colportorId: yo,
@@ -318,7 +322,7 @@ void main() {
     ];
 
     test('la primera página trae 50, el total 120 y hay más', () {
-      final r = ArmadorListaUbicaciones.armar(muchas, consulta);
+      final r = armar(muchas, consulta);
       expect(ConsultaListaUbicaciones.tamanoPagina, 50);
       expect(r.items, hasLength(50));
       expect(r.total, 120);
@@ -327,30 +331,198 @@ void main() {
     });
 
     test('pedir más: limite + 50 trae las 100 más recientes', () {
-      final r = ArmadorListaUbicaciones.armar(
-        muchas,
-        const ConsultaListaUbicaciones(colportorId: yo, limite: 100),
-      );
+      final r = armar(muchas, const ConsultaListaUbicaciones(colportorId: yo, limite: 100));
       expect(r.items, hasLength(100));
       expect(r.hayMas, isTrue);
     });
 
     test('la última página no tiene más', () {
-      final r = ArmadorListaUbicaciones.armar(
-        muchas,
-        const ConsultaListaUbicaciones(colportorId: yo, limite: 150),
-      );
+      final r = armar(muchas, const ConsultaListaUbicaciones(colportorId: yo, limite: 150));
       expect(r.items, hasLength(120));
       expect(r.hayMas, isFalse);
     });
 
     test('un límite negativo se trata como 0', () {
-      final r = ArmadorListaUbicaciones.armar(
-        muchas,
-        const ConsultaListaUbicaciones(colportorId: yo, limite: -5),
-      );
+      final r = armar(muchas, const ConsultaListaUbicaciones(colportorId: yo, limite: -5));
       expect(r.items, isEmpty);
       expect(r.total, 120);
+    });
+  });
+
+  group('resumen: espacios y estado de la casa', () {
+    UbicacionConResumen fila(
+      String id, {
+      EstadoCasa? estado,
+      int espacios = 1,
+      TipoUbicacion tipo = TipoUbicacion.casa,
+      bool baja = false,
+      DateTime? entrevista,
+      int minutos = 0,
+    }) => UbicacionConResumen(
+      ubicacion: ub(id, tipo: tipo, baja: baja, minutos: minutos),
+      cantidadEspacios: espacios,
+      estado: estado,
+      proximaEntrevista: entrevista,
+    );
+
+    ListaUbicaciones armarFilas(List<UbicacionConResumen> filas, ConsultaListaUbicaciones c) =>
+        ArmadorListaUbicaciones.armar(filas, c);
+
+    test('cada fila lleva sus espacios, su estado y la hora de la entrevista', () {
+      final entrevista = DateTime.utc(2026, 10, 8, 13);
+      final r = armarFilas([
+        fila('a', estado: EstadoCasa.entrevistaAgendada, espacios: 3, entrevista: entrevista),
+      ], consulta);
+      expect(r.items.single.cantidadEspacios, 3);
+      expect(r.items.single.estado, EstadoCasa.entrevistaAgendada);
+      expect(r.items.single.proximaEntrevista, entrevista);
+    });
+
+    test('filtrar por estado deja solo las que cumplen alguno de los pedidos', () {
+      final r = armarFilas(
+        [
+          fila('cobra', estado: EstadoCasa.cobranzaPendiente, minutos: 3),
+          fila('rechazo', estado: EstadoCasa.rechazo, minutos: 2),
+          fila('nada', estado: EstadoCasa.sinVisita, minutos: 1),
+        ],
+        const ConsultaListaUbicaciones(
+          colportorId: yo,
+          estados: {EstadoCasa.cobranzaPendiente, EstadoCasa.rechazo},
+        ),
+      );
+      expect([for (final i in r.items) i.ubicacion.id], ['cobra', 'rechazo']);
+      expect(r.total, 2);
+    });
+
+    test('con un estado pedido, una ubicación de estado desconocido no entra', () {
+      final r = armarFilas([
+        fila('sabida', estado: EstadoCasa.rechazo),
+        fila('desconocida'),
+      ], const ConsultaListaUbicaciones(colportorId: yo, estados: {EstadoCasa.rechazo}));
+      expect([for (final i in r.items) i.ubicacion.id], ['sabida']);
+    });
+
+    test('sin estado pedido entran todas, también las de estado desconocido', () {
+      final r = armarFilas([fila('sabida', estado: EstadoCasa.rechazo), fila('x')], consulta);
+      expect(r.total, 2);
+    });
+
+    test('tipo y estado se combinan con Y', () {
+      final r = armarFilas(
+        [
+          fila('casa-cobra', estado: EstadoCasa.cobranzaPendiente),
+          fila('neg-cobra', estado: EstadoCasa.cobranzaPendiente, tipo: TipoUbicacion.negocio),
+          fila('casa-rechazo', estado: EstadoCasa.rechazo),
+        ],
+        const ConsultaListaUbicaciones(
+          colportorId: yo,
+          tipos: {TipoUbicacion.casa},
+          estados: {EstadoCasa.cobranzaPendiente},
+        ),
+      );
+      expect([for (final i in r.items) i.ubicacion.id], ['casa-cobra']);
+    });
+
+    test(
+      'cada contador cuenta con los demás filtros aplicados («Casa 8» = casas con cobranza)',
+      () {
+        final filas = [
+          fila('c1', estado: EstadoCasa.cobranzaPendiente),
+          fila('c2', estado: EstadoCasa.cobranzaPendiente),
+          fila('c3', estado: EstadoCasa.rechazo),
+          fila('n1', estado: EstadoCasa.cobranzaPendiente, tipo: TipoUbicacion.negocio),
+          fila('n2', estado: EstadoCasa.rechazo, tipo: TipoUbicacion.negocio),
+          fila('e1', estado: EstadoCasa.sinVisita, tipo: TipoUbicacion.edificio),
+        ];
+        // Tipo = Casa y estado = cobranza pendiente.
+        final r = armarFilas(
+          filas,
+          const ConsultaListaUbicaciones(
+            colportorId: yo,
+            tipos: {TipoUbicacion.casa},
+            estados: {EstadoCasa.cobranzaPendiente},
+          ),
+        );
+        expect(r.total, 2);
+        // Por tipo: respeta el estado (cobranza), no el tipo.
+        expect(r.porTipo, {
+          TipoUbicacion.casa: 2,
+          TipoUbicacion.negocio: 1,
+          TipoUbicacion.edificio: 0,
+        });
+        // Por estado: respeta el tipo (casa), no el estado.
+        expect(r.porEstado[EstadoCasa.cobranzaPendiente], 2);
+        expect(r.porEstado[EstadoCasa.rechazo], 1);
+        expect(r.porEstado[EstadoCasa.sinVisita], 0);
+        expect(r.porEstado.keys, EstadoCasa.values);
+      },
+    );
+
+    test('los contadores por estado no cuentan las de estado desconocido', () {
+      final r = armarFilas([fila('x'), fila('y', estado: EstadoCasa.rechazo)], consulta);
+      expect(r.porEstado[EstadoCasa.rechazo], 1);
+      expect(r.porEstado.values.fold<int>(0, (a, b) => a + b), 1);
+    });
+
+    test('los contadores también respetan las bajas', () {
+      final filas = [
+        fila('viva', estado: EstadoCasa.rechazo),
+        fila('baja', estado: EstadoCasa.rechazo, baja: true),
+      ];
+      expect(armarFilas(filas, consulta).porEstado[EstadoCasa.rechazo], 1);
+      final conBajas = armarFilas(
+        filas,
+        const ConsultaListaUbicaciones(colportorId: yo, incluirBajas: true),
+      );
+      expect(conBajas.porEstado[EstadoCasa.rechazo], 2);
+    });
+
+    test('estadosConocidos es true si alguna del colportor trae estado', () {
+      expect(armarFilas([fila('x')], consulta).estadosConocidos, isFalse);
+      expect(armarFilas(const [], consulta).estadosConocidos, isFalse);
+      expect(
+        armarFilas([fila('x'), fila('y', estado: EstadoCasa.sinVisita)], consulta).estadosConocidos,
+        isTrue,
+      );
+    });
+
+    test('estadosConocidos ignora las ubicaciones de otro colportor', () {
+      final ajena = UbicacionConResumen(
+        ubicacion: ub('ajena', dueno: 'col-2'),
+        estado: EstadoCasa.rechazo,
+      );
+      expect(ArmadorListaUbicaciones.armar([ajena], consulta).estadosConocidos, isFalse);
+    });
+
+    test('totalGeneral cuenta las del colportor sin filtros y totalBajas las de baja', () {
+      final filas = [fila('a'), fila('b', tipo: TipoUbicacion.negocio), fila('c', baja: true)];
+      final sinBajas = armarFilas(
+        filas,
+        const ConsultaListaUbicaciones(colportorId: yo, tipos: {TipoUbicacion.negocio}),
+      );
+      expect(sinBajas.total, 1);
+      expect(sinBajas.totalGeneral, 2);
+      expect(sinBajas.totalBajas, 0);
+
+      final conBajas = armarFilas(
+        filas,
+        const ConsultaListaUbicaciones(
+          colportorId: yo,
+          tipos: {TipoUbicacion.negocio},
+          incluirBajas: true,
+        ),
+      );
+      expect(conBajas.total, 1);
+      expect(conBajas.totalGeneral, 3);
+      expect(conBajas.totalBajas, 1);
+    });
+
+    test('lo ajeno no entra en los totales', () {
+      final r = ArmadorListaUbicaciones.armar([
+        UbicacionConResumen(ubicacion: ub('mia')),
+        UbicacionConResumen(ubicacion: ub('ajena', dueno: 'col-2')),
+      ], consulta);
+      expect(r.totalGeneral, 1);
     });
   });
 }

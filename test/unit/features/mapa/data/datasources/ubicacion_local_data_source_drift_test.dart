@@ -537,6 +537,106 @@ void main() {
     });
   });
 
+  group('UbicacionLocalDataSourceDrift.observarListaDelColportor', () {
+    Future<Map<String, int>> espaciosPorId({bool incluirBajas = false}) async => {
+      for (final f
+          in await local
+              .observarListaDelColportor(colportorId: 'col-1', incluirBajas: incluirBajas)
+              .first)
+        f.ubicacion.id: f.cantidadEspacios,
+    };
+
+    Future<void> espacioSuelto(String id, String ubicacionId, {DateTime? baja}) => db
+        .into(db.espacios)
+        .insert(
+          EspaciosCompanion.insert(
+            id: id,
+            ubicacionId: ubicacionId,
+            createdAt: t0,
+            updatedAt: t0,
+            deletedAt: Value(baja),
+          ),
+        );
+
+    test('dado ubicaciones de dos colportores y una baja, trae las del colportor sin la baja; con '
+        'incluirBajas la suma', () async {
+      await local.insertar(ubicacion(id: 'mia'));
+      await local.insertar(ubicacion(id: 'baja', lon: -58, deletedAt: t0));
+      await local.insertar(
+        UbicacionModel(
+          id: 'ajena',
+          tipo: TipoUbicacion.casa,
+          lat: -34.891,
+          lon: -59,
+          ciudadId: 'mvd',
+          auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-2'),
+        ),
+      );
+
+      expect((await espaciosPorId()).keys, ['mia']);
+      expect((await espaciosPorId(incluirBajas: true)).keys, unorderedEquals(['mia', 'baja']));
+    });
+
+    test('cuenta los espacios sin baja de cada ubicación (0 si no tiene)', () async {
+      await local.insertar(
+        ubicacion(id: 'u1'),
+        espacio: espacio(id: 'e1', ubicacionId: 'u1'),
+      );
+      await local.insertar(ubicacion(id: 'u2', lon: -56.13));
+      await local.insertar(ubicacion(id: 'u3', lon: -56.14));
+      await espacioSuelto('e2', 'u1');
+      await espacioSuelto('e3-baja', 'u1', baja: t0);
+      await espacioSuelto('e4-baja', 'u3', baja: t0);
+
+      expect(await espaciosPorId(), {'u1': 2, 'u2': 0, 'u3': 0});
+    });
+
+    test('una ubicación de baja con espacios trae su cantidad y no duplica filas', () async {
+      await local.insertar(
+        ubicacion(id: 'u1', deletedAt: t0),
+        espacio: espacio(id: 'e1', ubicacionId: 'u1'),
+      );
+      await espacioSuelto('e2', 'u1');
+
+      final lista = await local
+          .observarListaDelColportor(colportorId: 'col-1', incluirBajas: true)
+          .first;
+      expect(lista, hasLength(1));
+      expect(lista.single.cantidadEspacios, 2);
+      expect(lista.single.ubicacion.estaBorrada, isTrue);
+    });
+
+    test('es reactivo: un espacio nuevo, una baja y una reactivación vuelven a emitir', () async {
+      await local.insertar(
+        ubicacion(id: 'u1'),
+        espacio: espacio(id: 'e1', ubicacionId: 'u1'),
+      );
+      final emisiones = <Map<String, int>>[];
+      final sub = local
+          .observarListaDelColportor(colportorId: 'col-1')
+          .listen((l) => emisiones.add({for (final f in l) f.ubicacion.id: f.cantidadEspacios}));
+      await pumpEventQueue();
+      expect(emisiones.last, {'u1': 1});
+
+      await espacioSuelto('e2', 'u1');
+      await pumpEventQueue();
+      expect(emisiones.last, {'u1': 2});
+
+      await (db.update(
+        db.ubicaciones,
+      )..where((u) => u.id.equals('u1'))).write(UbicacionesCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+      expect(emisiones.last, isEmpty);
+
+      await (db.update(
+        db.ubicaciones,
+      )..where((u) => u.id.equals('u1'))).write(const UbicacionesCompanion(deletedAt: Value(null)));
+      await pumpEventQueue();
+      expect(emisiones.last, {'u1': 2});
+      await sub.cancel();
+    });
+  });
+
   group('UbicacionLocalDataSourceDrift.observarMarcadoresEnArea', () {
     // Alrededor de (-34.891, -56.125): el helper `ubicacion` fija la latitud base y la longitud.
     const area = AreaMapa(sur: -34.9, oeste: -56.2, norte: -34.88, este: -56.1);
