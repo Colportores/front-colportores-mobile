@@ -386,47 +386,6 @@ void main() {
     });
   });
 
-  group('SesionNotifier.iniciarSesionConGoogle', () {
-    test('cuando el proveedor entra, deja la sesión iniciada', () async {
-      final container = ProviderContainer(
-        overrides: [
-          authRemoteDataSourceProvider.overrideWithValue(
-            AuthRemoteDataSourceEnMemoria(credenciales: const {}),
-          ),
-          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-        ],
-      );
-      addTearDown(container.dispose);
-      await container.read(sesionProvider.future);
-
-      final falla = await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-      expect(falla, isNull);
-      expect(
-        container.read(sesionProvider).value?.email,
-        AuthRemoteDataSourceEnMemoria.emailGoogle,
-      );
-    });
-
-    test('cuando falla (sin red), deja el Failure y sigue deslogueado', () async {
-      final container = ProviderContainer(
-        overrides: [
-          authRemoteDataSourceProvider.overrideWithValue(
-            AuthRemoteDataSourceEnMemoria(credenciales: const {}, simularSinConexion: true),
-          ),
-          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-        ],
-      );
-      addTearDown(container.dispose);
-      await container.read(sesionProvider.future);
-
-      final falla = await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-      expect(falla, isA<FailureSinConexion>());
-      expect(container.read(sesionProvider).value, isNull);
-    });
-  });
-
   group('SesionNotifier.registrar', () {
     ProviderContainer construirContainer(AuthRemoteDataSourceEnMemoria remote) => ProviderContainer(
       overrides: [
@@ -645,12 +604,9 @@ void main() {
       expect(container.read(avisoSesionProvider), isNull);
     });
 
-    test('con Google o con un registro que deja sesión, el aviso también desaparece', () async {
+    test('con un registro que deja sesión, el aviso también desaparece', () async {
       remote.vencidaPorInactividadAlArrancar = true;
       await container.read(sesionProvider.future);
-      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
-      expect(container.read(avisoSesionProvider), isNull);
-
       container.read(avisoSesionProvider.notifier).mostrar(const FailureSesionRevocada());
       await container
           .read(sesionProvider.notifier)
@@ -718,14 +674,6 @@ void main() {
       await entrar();
 
       expect(await correo.leer(), 'ana@example.com');
-    });
-
-    test('al entrar con Google guarda el correo de esa cuenta', () async {
-      await container.read(sesionProvider.future);
-      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
-      await pumpEventQueue();
-
-      expect(await correo.leer(), container.read(sesionProvider).value!.email);
     });
 
     test('al registrarse con una sesión que queda adentro guarda el correo', () async {

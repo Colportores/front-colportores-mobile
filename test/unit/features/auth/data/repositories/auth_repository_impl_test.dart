@@ -35,8 +35,8 @@ final class _RemoteQueLanzaExcepcionGenerica
     with RemotoSinSesionDeslizante
     implements AuthRemoteDataSource {
   @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) {
-    throw UnimplementedError();
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    throw Exception('boom');
   }
 
   @override
@@ -49,9 +49,6 @@ final class _RemoteQueLanzaExcepcionGenerica
   }) async {
     throw Exception('boom');
   }
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() async => throw Exception('boom');
 
   @override
   Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
@@ -92,9 +89,6 @@ final class _RemoteConSesionRecordada
 
   final SesionModel? recordada;
   final AuthRemoteException? falla;
-  final AuthRemoteDataSourceEnMemoria _interno = AuthRemoteDataSourceEnMemoria(
-    credenciales: const {},
-  );
 
   @override
   Future<SesionModel?> obtenerSesionActual() async {
@@ -106,14 +100,10 @@ final class _RemoteConSesionRecordada
   SesionModel? sesionEnElCliente() => recordada;
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() {
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
     if (falla != null) throw falla!;
-    return _interno.iniciarSesionConGoogle();
+    throw UnimplementedError();
   }
-
-  @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
-      throw UnimplementedError();
 
   @override
   Future<SesionModel?> registrar({
@@ -164,9 +154,6 @@ final class _RemoteQueLanzaEnRegistrar
     required String email,
     required String password,
   }) async => throw excepcion;
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
 
   @override
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
@@ -236,9 +223,6 @@ final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements Au
   );
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() => interno.iniciarSesionConGoogle();
-
-  @override
   Future<void> cerrarSesion(String accessToken) => interno.cerrarSesion(accessToken);
 
   @override
@@ -284,9 +268,6 @@ final class _RemoteQueFallaAlRenovar
     required String email,
     required String password,
   }) => throw UnimplementedError();
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
 
   @override
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
@@ -366,6 +347,39 @@ void main() {
         );
 
         expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
+      });
+    });
+
+    group('dado que el data source falla de otra forma', () {
+      test('cuando lanza algo no tipado, devuelve FailureInesperado y no persiste', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteQueLanzaExcepcionGenerica(),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+        expect(await local.leerSesion(), isNull);
+      });
+
+      test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
       });
     });
   });
@@ -651,52 +665,6 @@ void main() {
 
         expect(resultado, const Left<Failure, ResultadoRegistro>(FailureServidor(status: 503)));
       });
-    });
-  });
-
-  group('AuthRepositoryImpl.iniciarSesionConGoogle', () {
-    test('cuando el proveedor entra, devuelve la Sesion y la persiste localmente', () async {
-      final resultado = await repository.iniciarSesionConGoogle();
-
-      expect(resultado.isRight(), isTrue);
-      final sesion = resultado.getOrElse(() => throw StateError('Left'));
-      expect(sesion, isA<Sesion>().having((s) => s.runtimeType, 'tipo', Sesion));
-      expect(sesion.email, AuthRemoteDataSourceEnMemoria.emailGoogle);
-      expect(remote.llamadasIniciarSesionConGoogle, 1);
-      expect(await local.leerSesion(), SesionModel.fromEntity(sesion));
-    });
-
-    test('cuando no hay conexión, devuelve FailureSinConexion y no persiste nada', () async {
-      remote.simularSinConexion = true;
-
-      final resultado = await repository.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
-      expect(await local.leerSesion(), isNull);
-    });
-
-    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteQueLanzaExcepcionGenerica(),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
-    });
-
-    test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
     });
   });
 

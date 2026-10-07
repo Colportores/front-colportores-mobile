@@ -213,14 +213,6 @@ void main() {
       expect(remote.revocaciones, isEmpty);
       expect(container.read(sesionProvider).value?.email, _email, reason: 'sigue adentro');
     });
-
-    test('con Google no pide contraseña: abre sin envoltorio (ADR-006)', () async {
-      await container.read(sesionProvider.future);
-      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-      expect(await terminada(), isA<DbLocalLista>());
-      expect(db.envoltorio, isNull);
-    });
   });
 
   group('la contraseña se olvida en SesionNotifier (revisión del PR #130)', () {
@@ -233,11 +225,14 @@ void main() {
       expect(container.read(passwordParaDbLocalProvider).actual, isNull);
     });
 
-    test('empezar un login con Google olvida la de un ingreso anterior', () async {
+    test('empezar otro login, aunque falle, olvida la de un ingreso anterior', () async {
       await entrar();
 
-      await container.read(sesionProvider.notifier).iniciarSesionConGoogle();
+      final falla = await container
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: _email, password: 'otra-Clave1');
 
+      expect(falla, isNotNull);
       expect(container.read(passwordParaDbLocalProvider).actual, isNull);
     });
   });

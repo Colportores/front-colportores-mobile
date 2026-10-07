@@ -318,7 +318,7 @@ void main() {
       expect(_db.llamadas, isNot(contains('descartar')));
     });
 
-    testWidgets('quien no recuerda la contraseña (entra con Google, por ejemplo) no queda '
+    testWidgets('quien no recuerda la contraseña no queda '
         'encerrado: "¿Olvidaste tu contraseña?" lleva a restablecerla con el email de la sesión '
         '(N1)', (tester) async {
       _dbExistente(dekEnAlmacen: true, conEnvoltorio: false);

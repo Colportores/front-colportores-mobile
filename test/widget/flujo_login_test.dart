@@ -37,9 +37,6 @@ final class _RemoteQueLanzaAlIniciar
   }) => throw UnimplementedError();
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
-
-  @override
   Future<SesionModel?> obtenerSesionActual() async => null;
 
   @override

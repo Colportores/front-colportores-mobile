@@ -814,7 +814,7 @@ void main() {
             ),
             authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
           ],
-          child: MaterialApp(theme: temaClaro(), home: const LoginPage(mostrarApple: false)),
+          child: MaterialApp(theme: temaClaro(), home: const LoginPage()),
         ),
       );
       await tester.pumpAndSettle();

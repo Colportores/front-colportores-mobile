@@ -35,14 +35,12 @@ void main() {
 
   Future<Either<Failure, ResultadoInicializacionDb>> inicializar({
     String? password = 'secreto123',
-    bool requiereEnvoltorio = false,
     bool aceptaAlmacenSoftware = false,
     bool descartaInterrumpida = false,
     String? usuarioId = 'usuario-a',
   }) => useCase(
     InicializarDbLocalParams(
       password: password,
-      requiereEnvoltorio: requiereEnvoltorio,
       aceptaAlmacenSoftware: aceptaAlmacenSoftware,
       descartaInterrumpida: descartaInterrumpida,
       alAvanzar: pasos.add,
@@ -63,9 +61,9 @@ void main() {
   const creada = Right<Failure, ResultadoInicializacionDb>(ResultadoInicializacionDb.creada);
   const abierta = Right<Failure, ResultadoInicializacionDb>(ResultadoInicializacionDb.abierta);
 
-  group('cuenta con contraseña sin la contraseña (revisión del PR #130)', () {
+  group('sin la contraseña no se crea ni se da por lista la DB (revisión del PR #130)', () {
     test('dado un dispositivo nuevo, no toca nada y pide la contraseña', () async {
-      final r = await inicializar(password: null, requiereEnvoltorio: true);
+      final r = await inicializar(password: null);
 
       expect(r, const Left<Failure, ResultadoInicializacionDb>(FailurePasswordParaProteger()));
       expect(repo.llamadas, isNot(contains('crearDek')));
@@ -77,7 +75,7 @@ void main() {
         'destruye', () async {
       dispositivoInicializado(conEnvoltorio: false);
 
-      final r = await inicializar(password: null, requiereEnvoltorio: true);
+      final r = await inicializar(password: null);
 
       expect(r, const Left<Failure, ResultadoInicializacionDb>(FailurePasswordParaProteger()));
       expect(repo.abierta, isFalse);
@@ -87,12 +85,16 @@ void main() {
     test('dada una DB existente con envoltorio, abre sin pedir nada', () async {
       dispositivoInicializado();
 
-      expect(await inicializar(password: null, requiereEnvoltorio: true), abierta);
+      expect(await inicializar(password: null), abierta);
     });
 
-    test('sin la exigencia (Google), crea la DB sin envoltorio como antes', () async {
-      expect(await inicializar(password: null), creada);
+    test('dado un dispositivo nuevo sin contraseña, la UI no ve ningún paso y no queda ni marca '
+        'ni envoltorio', () async {
+      await inicializar(password: null);
+
+      expect(pasos, isEmpty);
       expect(repo.envoltorio, isNull);
+      expect(repo.marca, MarcaDbLocal.ausente);
     });
   });
 
@@ -132,18 +134,6 @@ void main() {
         PasoInicializacionDb.abriendoDb,
       ]);
     });
-
-    test(
-      'dado un login con Google (sin contraseña), crea la DB sin envoltorio por contraseña',
-      () async {
-        final r = await inicializar(password: null);
-
-        expect(r, creada);
-        expect(repo.llamadas, isNot(contains('envolver')));
-        expect(repo.envoltorio, isNull);
-        expect(pasos, [PasoInicializacionDb.generandoClave, PasoInicializacionDb.abriendoDb]);
-      },
-    );
   });
 
   group('Escenario: Error - equipo sin bloqueo de pantalla', () {
@@ -247,7 +237,7 @@ void main() {
         ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5))
         ..envoltorio = (dek: Uint8List(32), password: 'secreto123');
 
-      final r = await inicializar(requiereEnvoltorio: true);
+      final r = await inicializar();
 
       expect(
         r,
@@ -262,29 +252,26 @@ void main() {
       expect(repo.entregadas.single.destruida, isTrue, reason: 'la copia leída no queda viva');
     });
 
-    test(
-      'sin envoltorio y con contraseña requerida, se cortó protegiendo la clave (paso 2)',
-      () async {
-        repo
-          ..archivo = true
-          ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
+    test('sin envoltorio, se cortó protegiendo la clave (paso 2)', () async {
+      repo
+        ..archivo = true
+        ..dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
 
-        final r = await inicializar(requiereEnvoltorio: true);
+      final r = await inicializar();
 
-        expect(
-          r,
-          const Left<Failure, ResultadoInicializacionDb>(
-            FailurePreparacionInterrumpida(pasoCortado: 1),
-          ),
-        );
-      },
-    );
+      expect(
+        r,
+        const Left<Failure, ResultadoInicializacionDb>(
+          FailurePreparacionInterrumpida(pasoCortado: 1),
+        ),
+      );
+    });
 
     test('sin archivo pero con la DEK guardada (se cortó antes de crear la base), también avisa '
         'y no borra nada', () async {
       repo.dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
 
-      final r = await inicializar(requiereEnvoltorio: true);
+      final r = await inicializar();
 
       expect(r.isLeft(), isTrue);
       expect(
@@ -310,11 +297,7 @@ void main() {
         'el texto de la interrupción y no toca nada', () async {
       repo.dekEnAlmacen = Uint8List.fromList(List<int>.filled(32, 5));
 
-      final r = await inicializar(
-        password: null,
-        requiereEnvoltorio: true,
-        descartaInterrumpida: true,
-      );
+      final r = await inicializar(password: null, descartaInterrumpida: true);
 
       expect(
         r,
@@ -540,7 +523,7 @@ void main() {
       expect(repo.abiertaCon!.bytes, List<int>.filled(32, 77));
     });
 
-    test('dada una sesión restaurada o un login con Google (sin contraseña), abre igual', () async {
+    test('dada una sesión restaurada (sin contraseña) y con envoltorio, abre igual', () async {
       expect(await inicializar(password: null), abierta);
     });
 
@@ -691,7 +674,7 @@ void main() {
 
       test('dada una sesión restaurada (sin contraseña), abre sin tocar el envoltorio: la marca '
           'espera un login con contraseña', () async {
-        expect(await inicializar(password: null, requiereEnvoltorio: true), abierta);
+        expect(await inicializar(password: null), abierta);
         expect(repo.llamadas, ['estado', 'leerDek', 'abrir']);
         expect(repo.envoltorioDesactualizado, isTrue);
       });
@@ -744,23 +727,26 @@ void main() {
         expect(repo.archivo, isTrue);
       });
 
-      test('dado que $descripcion y no hay envoltorio (Google sin backup), devuelve el mensaje de '
-          'la HU para ofrecer "empezar de nuevo", sin borrar', () async {
-        dispositivoInicializado(conEnvoltorio: false);
-        preparar(repo);
+      test(
+        'dado que $descripcion y no hay envoltorio (se perdió o nunca se armó), devuelve el mensaje de '
+        'la HU para ofrecer "empezar de nuevo", sin borrar',
+        () async {
+          dispositivoInicializado(conEnvoltorio: false);
+          preparar(repo);
 
-        final r = await inicializar();
+          final r = await inicializar();
 
-        expect(
-          r,
-          const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroSinRecuperacion()),
-        );
-        expect(
-          const FailureAlmacenSeguroSinRecuperacion().mensaje,
-          const FailureAlmacenSeguro().mensaje,
-        );
-        expect(repo.llamadas, isNot(contains('descartar')));
-      });
+          expect(
+            r,
+            const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroSinRecuperacion()),
+          );
+          expect(
+            const FailureAlmacenSeguroSinRecuperacion().mensaje,
+            const FailureAlmacenSeguro().mensaje,
+          );
+          expect(repo.llamadas, isNot(contains('descartar')));
+        },
+      );
     }
   });
 

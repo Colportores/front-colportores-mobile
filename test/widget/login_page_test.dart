@@ -8,6 +8,7 @@ import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
+import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
@@ -26,8 +27,12 @@ class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataS
 
   final AuthRemoteDataSourceEnMemoria _interno;
 
+  /// Cuántas veces llegó un inicio de sesión al remoto: para probar el doble toque en «Entrar».
+  int llamadasIniciarSesion = 0;
+
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    llamadasIniciarSesion++;
     await Future<void>.delayed(const Duration(milliseconds: 50));
     return _interno.iniciarSesion(email: email, password: password);
   }
@@ -48,12 +53,6 @@ class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataS
       email: email,
       password: password,
     );
-  }
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() async {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    return _interno.iniciarSesionConGoogle();
   }
 
   @override
@@ -106,7 +105,7 @@ class _ReingresoFijo extends ReingresoSesion {
   DatosReingreso? build() => _datos;
 }
 
-/// [LoginPage] aislada (sin [ColportoresApp]): estas pruebas cubren diseño/tema/proveedores, no el
+/// [LoginPage] aislada (sin [ColportoresApp]): estas pruebas cubren diseño/tema/accesos, no el
 /// flujo de negocio — eso ya está en `flujo_login_test.dart`.
 ///
 /// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
@@ -115,17 +114,19 @@ class _ReingresoFijo extends ReingresoSesion {
 Future<void> _montarPagina(
   WidgetTester tester, {
   ThemeData? tema,
-  bool? mostrarApple,
+  AuthRemoteDataSource? remote,
   String? correoGuardado,
   UltimoCorreoRepository? repositorioDeCorreo,
   DatosReingreso? reingreso,
+  double escalaTexto = 1,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
       // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
       dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(
-        AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
+        remote ??
+            AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
       ),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
       ultimoCorreoRepositoryProvider.overrideWithValue(
@@ -135,7 +136,11 @@ Future<void> _montarPagina(
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
-      home: LoginPage(mostrarApple: mostrarApple),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
+        child: child!,
+      ),
+      home: const LoginPage(),
     ),
   ),
 );
@@ -153,57 +158,170 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
-      await _montarPagina(tester, mostrarApple: true);
-      await tester.pumpAndSettle();
-      expect(find.text('Continuar con Apple'), findsOneWidget);
+    // Decisión del 02/10 (#265): se entra solo con correo y contraseña. El canvas 1a (el que se
+    // implementó) trae «O CONTINUAR CON» + «Continuar con Google/Apple»; no van, y no queda nada
+    // de ellos: ni botón, ni divisor, ni la «G» / «A» del ícono, ni un texto de «próximamente».
+    void sinIngresoPorProveedor() {
+      expect(find.textContaining('Google'), findsNothing);
+      expect(find.textContaining('Apple'), findsNothing);
+      expect(find.text('O CONTINUAR CON'), findsNothing);
+      expect(find.text('G'), findsNothing);
+      expect(find.text('A'), findsNothing);
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(find.text('Disponible próximamente'), findsNothing);
+    }
 
-      await _montarPagina(tester, mostrarApple: false);
-      await tester.pumpAndSettle();
-      expect(find.text('Continuar con Apple'), findsNothing);
-    });
+    testWidgets('el formulario es solo correo, contraseña y Entrar: sin Google ni Apple', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-    testWidgets('tocar "Continuar con Google" inicia sesión con el proveedor', (tester) async {
       await _montarPagina(tester);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Continuar con Google'));
-      await tester.pumpAndSettle();
-
-      final container = ProviderScope.containerOf(tester.element(find.byType(LoginPage)));
-      expect(
-        container.read(sesionProvider).value?.email,
-        AuthRemoteDataSourceEnMemoria.emailGoogle,
-      );
-      expect(find.text('Disponible próximamente'), findsNothing);
+      sinIngresoPorProveedor();
+      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.byKey(const Key('login_email')), findsOneWidget);
+      expect(find.byKey(const Key('login_password')), findsOneWidget);
+      expect(find.byType(FilledButton), findsOneWidget);
+      expect(find.text('Entrar'), findsOneWidget);
+      expect(find.text('Podés trabajar sin conexión después de entrar'), findsOneWidget);
+      expect(find.byKey(const Key('login_ir_a_registro')), findsOneWidget);
     });
 
-    testWidgets('si Google falla, muestra el mensaje del Failure', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
-            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
-            authRemoteDataSourceProvider.overrideWithValue(
-              AuthRemoteDataSourceEnMemoria(credenciales: const {}, simularSinConexion: true),
-            ),
-            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-          ],
-          child: MaterialApp(theme: temaClaro(), home: const LoginPage(mostrarApple: false)),
+    testWidgets('con «Sesión vencida» y saludo de reingreso, tampoco hay ingreso por proveedor', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(
+        tester,
+        reingreso: const DatosReingreso(
+          motivo: MotivoExpiracion.inactividad,
+          email: 'lucia.silva@correo.com',
+          nombre: 'Lucía',
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Continuar con Google'));
+      expect(find.text('Hola de nuevo, Lucía'), findsOneWidget);
+      sinIngresoPorProveedor();
+      expect(find.byType(TextField), findsNWidgets(2));
+    });
+
+    // Convención de accesibilidad del carril: 360x740 con el texto al 200 %. Sin el bloque de
+    // proveedores el formulario es más corto, pero con un nombre y un correo largos en el saludo
+    // de reingreso sigue sin desbordar y «Entrar» se alcanza desplazando.
+    testWidgets('sin overflow con el texto al 200 % en 360x740, con nombre y correo largos', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _montarPagina(
+        tester,
+        escalaTexto: 2,
+        reingreso: const DatosReingreso(
+          motivo: MotivoExpiracion.inactividad,
+          email: 'lucia.beatriz.fernandez.de.la.pena@correo-de-la-asociacion.example.com',
+          nombre: 'Lucía Beatriz Fernández de la Peña Rodríguez',
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // Texto exacto del Failure, no solo una parte de la frase (ver HU-AUTH-003, escenario
-      // "red caída"): un `textContaining` deja pasar un mensaje truncado o con texto de más.
-      expect(
-        find.text('Necesitás conexión para iniciar sesión por primera vez en este dispositivo.'),
-        findsOneWidget,
-        reason: 'HU-AUTH-003, "Error - primer login sin conectividad" (#94)',
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('login_enviar')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('login_enviar')).hitTestable(), findsOneWidget);
+      sinIngresoPorProveedor();
+    });
+
+    testWidgets('si Entrar falla a mitad (sin conexión), el botón vuelve a habilitarse y el '
+        'reintento entra', (tester) async {
+      final interno = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'ana@example.com': 'secreto123'},
+        simularSinConexion: true,
       );
+      final remote = _RemoteConDemora(interno);
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+
+      await tester.tap(find.byKey(const Key('login_enviar')));
+      await tester.pump();
+      expect(
+        find.byType(CircularProgressIndicator),
+        findsOneWidget,
+        reason: 'a mitad de la acción',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing, reason: 'nada queda trabado');
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('login_enviar'))).onPressed,
+        isNotNull,
+      );
+      expect(find.byKey(const Key('login_error_general')), findsOneWidget);
+
+      interno.simularSinConexion = false;
+      await tester.tap(find.byKey(const Key('login_enviar')));
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(LoginPage)));
+      expect(container.read(sesionProvider).value?.email, 'ana@example.com');
+      expect(remote.llamadasIniciarSesion, 2);
+    });
+
+    testWidgets('doble toque en Entrar manda un solo inicio de sesión', (tester) async {
+      final remote = _RemoteConDemora(
+        AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
+      );
+      await _montarPagina(tester, remote: remote);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+
+      await tester.tap(find.byKey(const Key('login_enviar')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('login_enviar')), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(remote.llamadasIniciarSesion, 1);
+    });
+
+    testWidgets('ir a «Registrate», volver atrás y reentrar: el login conserva lo escrito y el '
+        'registro sigue sin proveedores', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _montarPagina(tester);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+
+      for (var vez = 0; vez < 2; vez++) {
+        await tester.ensureVisible(find.byKey(const Key('login_ir_a_registro')));
+        await tester.tap(find.byKey(const Key('login_ir_a_registro')));
+        await tester.pumpAndSettle();
+        expect(find.byType(RegistroPage), findsOneWidget);
+        expect(find.textContaining('Google'), findsNothing);
+        expect(find.textContaining('Apple'), findsNothing);
+
+        await tester.tap(find.byKey(const Key('registro_atras')));
+        await tester.pumpAndSettle();
+        expect(find.byType(RegistroPage), findsNothing);
+        expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+        expect(
+          tester.widget<TextField>(find.byKey(const Key('login_email'))).controller!.text,
+          'ana@example.com',
+        );
+      }
     });
 
     testWidgets('Entrar se deshabilita y muestra spinner mientras iniciarSesion no resolvió', (

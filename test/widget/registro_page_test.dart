@@ -10,7 +10,6 @@ import 'package:colportores_mobile/features/auth/presentation/pages/verificacion
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
@@ -52,9 +51,6 @@ final class _RemoteQueLanzaAlRegistrar
   }
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
-
-  @override
   Future<SesionModel?> obtenerSesionActual() async => null;
 
   @override
@@ -80,7 +76,7 @@ final class _RemoteQueLanzaAlRegistrar
 }
 
 /// [RegistroPage] aislada (sin [ColportoresApp]): igual criterio que `login_page_test.dart` —
-/// cubre diseño/tema/validación/proveedores. El caso feliz necesita, además, una pantalla debajo
+/// cubre diseño/tema/validación. El caso feliz necesita, además, una pantalla debajo
 /// en la pila para poder comprobar que `popUntil((r) => r.isFirst)` cierra el registro.
 ///
 /// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
@@ -89,7 +85,6 @@ final class _RemoteQueLanzaAlRegistrar
 Future<void> _montarPagina(
   WidgetTester tester, {
   ThemeData? tema,
-  bool? mostrarApple,
   AuthRemoteDataSource? remote,
   double escalaTexto = 1,
 }) => tester.pumpWidget(
@@ -109,7 +104,7 @@ Future<void> _montarPagina(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
         child: child!,
       ),
-      home: RegistroPage(mostrarApple: mostrarApple),
+      home: const RegistroPage(),
     ),
   ),
 );
@@ -190,8 +185,8 @@ void main() {
     // Convención de accesibilidad del carril (jornada_page_test.dart): 360x740 para overflow con
     // el texto al 200 %. La casilla nueva del trade-off E2E (#85) no desborda (Text en Expanded,
     // igual que la de términos); el desborde real que encontró este test era otro, preexistente y
-    // ajeno a #85 (`_DivisorTexto`, "O REGISTRATE CON") — arreglado en #108, con `Flexible` +
-    // `TextOverflow.ellipsis`.
+    // ajeno a #85 (el divisor «O REGISTRATE CON», arreglado en #108 y quitado con el ingreso por
+    // Google en #265).
     testWidgets('sin overflow con el texto al 200 % en 360x740', (tester) async {
       tester.view.physicalSize = const Size(360, 740);
       tester.view.devicePixelRatio = 1;
@@ -203,28 +198,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // Revisión de #116 (#108): el `Flexible` sin `flex` (todos a 1, igual que los dos
-    // `Expanded(Divider)`) le daba al texto solo un tercio del ancho — "O REGISTRATE CON" podía
-    // truncarse con puntos suspensivos **a escala normal** en un teléfono angosto, y ningún test
-    // lo agarraba porque el `...` no tira excepción. `didExceedMaxLines` en el `RenderParagraph`
-    // sí lo detecta.
-    testWidgets('el divisor "O REGISTRATE CON" no se trunca a escala 1.0 en 390x844', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+    // Decisión del 02/10 (#265): se entra solo con correo y contraseña. El canvas 1a trae «O
+    // REGISTRATE CON» + «Google» / «Apple»; no van, y no queda nada de ellos (ni botón, ni divisor,
+    // ni la «G» / «A» del ícono), tampoco con el texto al 200 % en un teléfono chico.
+    for (final (escala, ancho, alto) in [(1.0, 390.0, 844.0), (2.0, 360.0, 740.0)]) {
+      testWidgets('sin ingreso por proveedor: ni Google, ni Apple, ni divisor (texto ×$escala)', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(ancho, alto);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
 
-      await _montarPagina(tester);
-      await tester.pumpAndSettle();
+        await _montarPagina(tester, escalaTexto: escala);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const Key('registro_ir_a_login')));
+        await tester.pumpAndSettle();
 
-      final parrafo = tester.renderObject<RenderParagraph>(find.text('O REGISTRATE CON'));
-      expect(
-        parrafo.didExceedMaxLines,
-        isFalse,
-        reason: 'el texto del divisor no debería truncarse a escala normal',
-      );
-    });
+        expect(tester.takeException(), isNull);
+        expect(find.text('¿Ya tenés cuenta? Entrar'), findsOneWidget);
+        expect(find.textContaining('Google'), findsNothing);
+        expect(find.textContaining('Apple'), findsNothing);
+        expect(find.text('O REGISTRATE CON'), findsNothing);
+        expect(find.text('G'), findsNothing);
+        expect(find.text('A'), findsNothing);
+        expect(find.byType(OutlinedButton), findsNothing);
+        expect(find.text('Disponible próximamente'), findsNothing);
+      });
+    }
 
     // Hueco de accesibilidad preexistente, anotado en la revisión de #106/#110 (issue #108):
     // este archivo no tenía `meetsGuideline` ni contraste. Misma convención que
@@ -245,16 +245,6 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await expectLater(tester, meetsGuideline(textContrastGuideline));
       semantica.dispose();
-    });
-
-    testWidgets('el botón de Apple solo aparece cuando mostrarApple es true', (tester) async {
-      await _montarPagina(tester, mostrarApple: true);
-      await tester.pumpAndSettle();
-      expect(find.text('Apple'), findsOneWidget);
-
-      await _montarPagina(tester, mostrarApple: false);
-      await tester.pumpAndSettle();
-      expect(find.text('Apple'), findsNothing);
     });
   });
 
