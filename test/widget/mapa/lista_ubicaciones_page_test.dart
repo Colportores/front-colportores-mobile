@@ -17,7 +17,7 @@ import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import 'lista_ubicaciones_arnes.dart';
 
-const _nbsp = ' ';
+const _nbsp = '\u00A0';
 
 List<UbicacionConResumen> _muestra() => [
   filaLista(

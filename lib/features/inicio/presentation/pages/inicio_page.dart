@@ -6,6 +6,7 @@ import '../../../auth/domain/entities/sesion.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
+import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -13,9 +14,10 @@ export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 /// Estructura de la app una vez con sesión: la marca y el engranaje de Configuración arriba, la
 /// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
 ///
-/// "Hoy" es la jornada (HU-JOR-001/002) y "Lista" las ubicaciones del colportor (HU-UBI-002).
-/// Mapa, Agenda y Ventas todavía no tienen pantalla: quedan con [PestanaProvisoria] («Esta sección
-/// llega pronto.») hasta que llegue la HU de cada una (Mapa #199). El atrás del sistema desde esas pestañas vuelve a "Hoy", y desde
+/// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
+/// y en una lista (HU-UBI-003 y HU-UBI-002). Agenda y Ventas todavía no tienen pantalla: quedan con
+/// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue la HU de cada una. El atrás
+/// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
 class InicioPage extends StatefulWidget {
@@ -80,7 +82,13 @@ class _InicioPageState extends State<InicioPage> {
           JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
           for (final pestana in PestanaInicio.values.skip(1))
             switch (pestana) {
-              // La lista de ubicaciones (HU-UBI-002, #196). El GPS se pide al abrirla, no antes.
+              // El mapa de ubicaciones (HU-UBI-003, #199) y la lista (HU-UBI-002, #196). El GPS se
+              // pide al abrir la pestaña, no antes.
+              PestanaInicio.mapa => MapaUbicacionesPage(
+                key: Key('pestana_${pestana.name}'),
+                colportorId: widget.sesion.usuarioId,
+                activa: _actual == PestanaInicio.mapa,
+              ),
               PestanaInicio.lista => ListaUbicacionesPage(
                 key: Key('pestana_${pestana.name}'),
                 colportorId: widget.sesion.usuarioId,

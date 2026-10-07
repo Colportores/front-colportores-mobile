@@ -1,5 +1,5 @@
-// QA #230/#229: las pestañas sin contenido (Mapa, Lista, Agenda, Ventas) con el ícono y «Esta
-// sección llega pronto.», en los tamaños de referencia a texto 1.0 y 2.0.
+// QA #230/#229: las pestañas sin contenido (Agenda y Ventas) con el ícono y «Esta sección llega
+// pronto.», en los tamaños de referencia a texto 1.0 y 2.0.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
@@ -67,13 +67,16 @@ Future<void> _montar(
   ),
 );
 
+bool _sinPantallaTodavia(PestanaInicio p) => p != PestanaInicio.mapa && p != PestanaInicio.lista;
+
 void main() {
   const tamanios = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
 
   for (final MapEntry(key: nombre, value: tam) in tamanios.entries) {
     for (final escala in [1.0, 2.0]) {
-      // «Lista» ya tiene pantalla (#196): sus pruebas están en `lista_ubicaciones_*_test.dart`.
-      for (final pestana in PestanaInicio.values.skip(1).where((p) => p != PestanaInicio.lista)) {
+      // «Mapa» (#199) y «Lista» (#196) ya tienen pantalla: sus pruebas están en
+      // `mapa_ubicaciones_*_test.dart` y `lista_ubicaciones_*_test.dart`.
+      for (final pestana in PestanaInicio.values.skip(1).where(_sinPantallaTodavia)) {
         testWidgets('pestaña ${pestana.name} en $nombre, texto $escala: sin overflow y accesible', (
           tester,
         ) async {
