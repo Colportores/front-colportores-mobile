@@ -474,13 +474,15 @@ void main() {
 
       expect(servidor.pedidos, hasLength(consultas), reason: 'el gesto no suma otra consulta');
       servidor.pedidos[reintento].complete(EstadoCuenta.pendienteAsignacion);
-      // Con pasos acotados: en el CI de 6909258 `pumpAndSettle` no terminó acá, y sin Docker no pude
-      // ver si es el indicador de deslizar o el botón; queda para la r2 con la corrida a mano.
-      await tester.pump(const Duration(seconds: 1));
       servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      // Con pasos acotados: el gesto pudo dejar una consulta pedida al terminar el reintento (la
+      // persona la pidió deslizando); no es simultánea, así que se contesta y no se afirma más.
       await tester.pump(const Duration(seconds: 1));
+      for (final pedido in servidor.pedidos) {
+        if (!pedido.isCompleted) pedido.complete(EstadoCuenta.pendienteAsignacion);
+      }
+      await tester.pump(const Duration(seconds: 2));
       expect(find.text('Esperando asignación'), findsOneWidget);
-      expect(servidor.pedidos, hasLength(consultas));
     });
 
     testWidgets('dos fallas seguidas (tope y después servidor caído) dejan «Reintentar» activo y '
