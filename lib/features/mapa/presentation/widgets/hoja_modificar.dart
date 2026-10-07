@@ -107,6 +107,7 @@ class HojaModificarDatos extends ConsumerStatefulWidget {
     required this.alGuardar,
     required this.alElegirCiudad,
     this.alDarDeBaja,
+    this.tecladoAbierto = false,
   });
 
   final ParametrosModificar parametros;
@@ -117,6 +118,10 @@ class HojaModificarDatos extends ConsumerStatefulWidget {
 
   /// «Dar de baja». Sin esto el botón no se dibuja: el flujo de baja es de HU-UBI-005.
   final VoidCallback? alDarDeBaja;
+
+  /// Si el teclado está abierto. Lo informa quien está arriba del `Scaffold`: dentro del cuerpo el
+  /// `Scaffold` ya descontó el teclado y `viewInsets.bottom` siempre da 0.
+  final bool tecladoAbierto;
 
   @override
   ConsumerState<HojaModificarDatos> createState() => _HojaModificarDatosState();
@@ -174,7 +179,6 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     // mismo texto dos veces.
     final mostrarFalla =
         falla != null && !(falla is FailureUbicacionConEspacios && bloqueo != null);
-    final tecladoAbierto = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -279,7 +283,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
             textAlign: TextAlign.center,
           ),
         ),
-        if (widget.alDarDeBaja != null && !tecladoAbierto)
+        if (widget.alDarDeBaja != null && !widget.tecladoAbierto)
           Center(
             child: TextButton(
               onPressed: estado.guardando ? null : widget.alDarDeBaja,

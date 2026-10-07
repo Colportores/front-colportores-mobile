@@ -325,6 +325,7 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
                         alGuardar: () => unawaited(_guardar()),
                         alElegirCiudad: () => unawaited(_elegirCiudad()),
                         alDarDeBaja: widget.alDarDeBaja,
+                        tecladoAbierto: tecladoAbierto,
                       ),
                     ),
                   ],
@@ -348,6 +349,7 @@ class _Hoja extends StatelessWidget {
     required this.alGuardar,
     required this.alElegirCiudad,
     required this.alDarDeBaja,
+    required this.tecladoAbierto,
   });
 
   final ParametrosModificar parametros;
@@ -355,6 +357,7 @@ class _Hoja extends StatelessWidget {
   final VoidCallback alGuardar;
   final VoidCallback alElegirCiudad;
   final VoidCallback? alDarDeBaja;
+  final bool tecladoAbierto;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +397,7 @@ class _Hoja extends StatelessWidget {
                         alGuardar: alGuardar,
                         alElegirCiudad: alElegirCiudad,
                         alDarDeBaja: alDarDeBaja,
+                        tecladoAbierto: tecladoAbierto,
                       ),
               ),
             ],

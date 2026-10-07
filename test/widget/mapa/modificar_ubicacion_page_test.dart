@@ -145,11 +145,23 @@ Future<void> _abrir(WidgetTester tester) async {
   await _asentar(tester);
 }
 
+/// [f] se ve entero: se alcanza con un toque y, si está en un área que se desplaza, cabe en ella (un
+/// campo con solo el borde de arriba a la vista se «alcanza», pero el renglón de abajo lo corre y el
+/// toque siguiente cae en otro lado).
+bool _entero(WidgetTester tester, Finder f) {
+  if (f.hitTestable().evaluate().isEmpty) return false;
+  final area = Scrollable.maybeOf(tester.element(f))?.context.findRenderObject();
+  if (area is! RenderBox) return true;
+  final caja = area.localToGlobal(Offset.zero) & area.size;
+  final r = tester.getRect(f);
+  return r.top >= caja.top - .5 && r.bottom <= caja.bottom + .5;
+}
+
 /// Deja [f] a la vista en la hoja. Primero deja que el árbol se rearme (un `enterText` previo cambia
-/// el alto de la hoja recién en el próximo cuadro) y solo desplaza la hoja si [f] no se alcanza.
+/// el alto de la hoja recién en el próximo cuadro) y solo desplaza la hoja si [f] no se ve entero.
 Future<void> _traer(WidgetTester tester, Finder f) async {
   await tester.pump();
-  if (f.hitTestable().evaluate().isEmpty) {
+  if (!_entero(tester, f)) {
     await Scrollable.ensureVisible(tester.element(f), alignment: .5);
     await tester.pump();
   }

@@ -168,9 +168,14 @@ void main() {
             matching: find.byType(AvisoAlta),
           ),
         );
-        expect(aviso.top, greaterThanOrEqualTo(0));
-        expect(aviso.bottom, lessThanOrEqualTo(tester.getRect(_guardar).top + 1));
-        expect(tester.getRect(_guardar).bottom, lessThanOrEqualTo(640));
+        final guardar = tester.getRect(_guardar);
+        final hoja = tester.getRect(find.byType(HojaModificarDatos));
+        // El aviso empieza a la vista, arriba del botón. Con el texto normal entra entero; al 200 %
+        // es más alto que el área que se desplaza y el resto se lee desplazando.
+        expect(aviso.top, greaterThanOrEqualTo(hoja.top - .5));
+        expect(aviso.top, lessThan(guardar.top));
+        if (escala == 1) expect(aviso.bottom, lessThanOrEqualTo(guardar.top + 1));
+        expect(guardar.bottom, lessThanOrEqualTo(640));
       });
 
       testWidgets('«Editar ubicación»: el título no tapa el pin y el pin marca el centro', (
@@ -213,40 +218,31 @@ void main() {
   }
 
   group('07 · la insignia «Editado»', () {
-    testWidgets('a 2x en 360×640 no se parte: queda entera dentro de la columna del número', (
-      tester,
-    ) async {
-      await _montar(tester, escala: 2);
-      await tester.enterText(_campoNumero, '1238');
-      await _asentar(tester);
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('en 360×640 al ${(escala * 100).round()} % no se parte y entra en su columna', (
+        tester,
+      ) async {
+        await _montar(tester, escala: escala);
+        await tester.enterText(_campoNumero, '1238');
+        await _asentar(tester);
 
-      final insignia = tester.getRect(find.byType(InsigniaCampo));
-      final campo = find.ancestor(
-        of: find.byType(InsigniaCampo),
-        matching: find.byType(CampoDireccionUbicacion),
-      );
-      final columna = tester.getRect(campo);
-      expect(insignia.left, greaterThanOrEqualTo(columna.left - .5));
-      expect(insignia.right, lessThanOrEqualTo(columna.right + .5));
-      final parrafo = tester.renderObject<RenderParagraph>(find.text('Editado'));
-      final cajas = parrafo.getBoxesForSelection(
-        const TextSelection(baseOffset: 0, extentOffset: 'Editado'.length),
-      );
-      expect(cajas, hasLength(1), reason: '«Editado» no se parte en dos renglones');
-      // Va en el renglón de abajo del rótulo «NÚMERO», no pegada a él.
-      final etiqueta = tester.getRect(find.text('NÚMERO'));
-      expect(insignia.top, greaterThanOrEqualTo(etiqueta.bottom - 1));
-    });
-
-    testWidgets('con el texto normal queda al lado del rótulo, sin achicarse', (tester) async {
-      await _montar(tester);
-      await tester.enterText(_campoNumero, '1238');
-      await _asentar(tester);
-
-      final insignia = tester.getRect(find.byType(InsigniaCampo));
-      final etiqueta = tester.getRect(find.text('NÚMERO'));
-      expect(insignia.left, greaterThanOrEqualTo(etiqueta.right));
-      expect(insignia.center.dy, closeTo(etiqueta.center.dy, 8));
-    });
+        final insignia = tester.getRect(find.byType(InsigniaCampo));
+        final campo = find.ancestor(
+          of: find.byType(InsigniaCampo),
+          matching: find.byType(CampoDireccionUbicacion),
+        );
+        final columna = tester.getRect(campo);
+        expect(insignia.left, greaterThanOrEqualTo(columna.left - .5));
+        expect(insignia.right, lessThanOrEqualTo(columna.right + .5));
+        final parrafo = tester.renderObject<RenderParagraph>(find.text('Editado'));
+        final cajas = parrafo.getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: 'Editado'.length),
+        );
+        expect(cajas, hasLength(1), reason: '«Editado» no se parte en dos renglones');
+        // Va en el renglón de abajo del rótulo «NÚMERO», no pegada a él.
+        final etiqueta = tester.getRect(find.text('NÚMERO'));
+        expect(insignia.top, greaterThanOrEqualTo(etiqueta.bottom - 1));
+      });
+    }
   });
 }

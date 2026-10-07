@@ -354,7 +354,11 @@ void main() {
           await tester.enterText(_campoNumero, '1238');
           await _asentar(tester);
 
+          // Sin desbordes, y con el teclado abierto no hay «Dar de baja» (se está escribiendo): es la
+          // fila que se saca para que «Guardar cambios» siga fijo al pie.
           expect(tester.takeException(), isNull);
+          expect(find.text(TextosModificar.darDeBaja), findsNothing);
+          expect(_guardar, findsOneWidget);
           final r = tester.getRect(_campoNumero);
           expect(r.top, greaterThanOrEqualTo(0), reason: 'el campo no se sale por arriba');
           expect(
@@ -542,11 +546,12 @@ void main() {
       await _tocar(tester, _guardar);
       expect(_habilitado(tester, _guardar), isFalse);
       expect(e.repo.escrituras, isEmpty);
+      final lecturas = e.repo.lecturas;
 
       await _tocar(tester, find.text(TextosModificar.abrirDeNuevo));
 
       // Arrancó de cero: el aviso se fue, el número es el nuevo y no hay nada que guardar.
-      expect(e.repo.lecturas, 2);
+      expect(e.repo.lecturas, lecturas + 1, reason: 'volvió a leer la ubicación una vez');
       expect(find.textContaining('cambió mientras la editabas'), findsNothing);
       expect(find.text(TextosModificar.abrirDeNuevo), findsNothing);
       expect(tester.widget<TextField>(_campoNumero).controller!.text, '1300');
@@ -569,12 +574,13 @@ void main() {
       await _tocar(tester, _guardar);
       final boton = find.text(TextosModificar.abrirDeNuevo);
       await _traer(tester, boton);
+      final lecturas = e.repo.lecturas;
 
       await tester.tap(boton);
       await tester.tap(boton, warnIfMissed: false);
       await _asentar(tester);
 
-      expect(e.repo.lecturas, 2);
+      expect(e.repo.lecturas, lecturas + 1);
       expect(tester.takeException(), isNull);
     });
 
