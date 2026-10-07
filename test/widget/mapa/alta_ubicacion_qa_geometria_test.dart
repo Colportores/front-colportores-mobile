@@ -268,9 +268,8 @@ void main() {
       }
     });
 
-    // skip: #305 — en 360×640 con un campo editado «Registrar» queda cortado al pie (termina en 712 dp):
-    // la hoja del alta es un solo scroll con el botón adentro. Se arregla como la 07 (botón fijo al
-    // pie, ver #202) y entonces se le saca el `skip`.
+    // #305: «Registrar» queda fijo al pie de la hoja (como «Guardar cambios» en la 07); lo de arriba se
+    // desplaza. Las demás medidas, en `alta_ubicacion_registrar_fijo_test.dart`.
     testWidgets('con un campo editado, «Registrar» queda entero a la vista', (tester) async {
       await montarAlta(tester, tamano: const Size(360, 640));
       await tester.enterText(find.byType(TextField).at(1), '1238');
@@ -279,6 +278,6 @@ void main() {
       final r = tester.getRect(find.widgetWithText(FilledButton, TextosAlta.registrar));
       expect(r.bottom, lessThanOrEqualTo(640), reason: '«Registrar» queda cortado al pie');
       expect(r.top, greaterThanOrEqualTo(0));
-    }, skip: true);
+    });
   });
 }

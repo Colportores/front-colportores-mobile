@@ -209,10 +209,11 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                     ),
                     child: SafeArea(
                       top: false,
-                      child: SingleChildScrollView(
+                      child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Center(
                               child: Container(
@@ -225,12 +226,18 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                                 ),
                               ),
                             ),
-                            if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
-                            AvisoMapaConectado(ambito: estado.ambitoMapa),
-                            HojaAlta(
-                              parametros: widget.parametros,
-                              alRegistrar: _registrar,
-                              alElegirCiudad: _elegirCiudad,
+                            // Los avisos y los campos se desplazan; «Registrar» queda fijo al pie (#305).
+                            Flexible(
+                              child: HojaAlta(
+                                parametros: widget.parametros,
+                                alRegistrar: _registrar,
+                                alElegirCiudad: _elegirCiudad,
+                                tecladoAbierto: tecladoAbierto,
+                                avisos: [
+                                  if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
+                                  AvisoMapaConectado(ambito: estado.ambitoMapa),
+                                ],
+                              ),
                             ),
                           ],
                         ),
