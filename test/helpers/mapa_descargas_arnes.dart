@@ -171,15 +171,16 @@ final class MontajeAviso {
 }
 
 class _EscenaAviso extends StatelessWidget {
-  const _EscenaAviso(this.ambito, this.modo, this.alTocarMapa);
+  const _EscenaAviso(this.ambito, this.modo, this.alTocarMapa, this.altoLibre);
 
   final AmbitoTrabajo ambito;
   final AvisoMapaModo modo;
   final VoidCallback alTocarMapa;
+  final double? altoLibre;
 
   @override
   Widget build(BuildContext context) {
-    final aviso = AvisoMapaConectado(ambito: ambito, modo: modo);
+    final aviso = AvisoMapaConectado(ambito: ambito, modo: modo, altoLibre: altoLibre);
     if (modo == AvisoMapaModo.flotante) {
       return Stack(
         children: [
@@ -220,6 +221,9 @@ Future<MontajeAviso> montarAviso(
   Size tamano = const Size(390, 844),
   double escala = 1,
   ArnesMapa? arnes,
+
+  /// Los dp que la vista le deja al aviso flotante (la página lo calcula); `null`: sin tope.
+  double? altoLibre,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -240,7 +244,7 @@ Future<MontajeAviso> montarAviso(
           body: ValueListenableBuilder<bool>(
             valueListenable: montaje.abierto,
             builder: (_, abierto, _) => abierto
-                ? _EscenaAviso(ambito, modo, () => montaje.toquesAlMapa++)
+                ? _EscenaAviso(ambito, modo, () => montaje.toquesAlMapa++, altoLibre)
                 : const SizedBox.shrink(),
           ),
         ),

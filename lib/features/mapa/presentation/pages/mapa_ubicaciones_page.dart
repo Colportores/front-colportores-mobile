@@ -442,7 +442,11 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                       ),
                     ),
                   Positioned.fill(
-                    child: AvisoMapaConectado(ambito: ambito, modo: AvisoMapaModo.flotante),
+                    child: AvisoMapaConectado(
+                      ambito: ambito,
+                      modo: AvisoMapaModo.flotante,
+                      altoLibre: libre,
+                    ),
                   ),
                 ],
               ),

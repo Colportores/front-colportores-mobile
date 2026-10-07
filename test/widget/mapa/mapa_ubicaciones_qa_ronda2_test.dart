@@ -147,8 +147,16 @@ Future<String?> _llegarConElDedo(WidgetTester tester, Finder objetivo) async {
   return motivoInaccesible(tester, objetivo);
 }
 
-/// Cuántos dp de alto tiene lo que se ve de la tarjeta (el borde de abajo de la zona del aviso).
-double _altoVisibleDeLaTarjeta(WidgetTester tester) => tester.getRect(_desplazableDelAviso).height;
+/// Lo que se ve del aviso: la tarjeta (su zona deslizable) o, con la píldora, la píldora.
+Rect _zonaDelAviso(WidgetTester tester) {
+  final pildora = find.byKey(ClavesAvisoMapa.pildora);
+  return tester.getRect(pildora.evaluate().isNotEmpty ? pildora : _desplazableDelAviso);
+}
+
+/// ¿«Sin conexión» pasa a la píldora por falta de lugar? Con la hoja a 1/2 en 360x640 quedan menos de
+/// 100 dp libres (decisión del 07/10 sobre P2 del #294): ahí no hay tarjeta con botones que tocar.
+bool _sinConexionConPildora(_Escena escena, Size tamano, int altura) =>
+    escena.nombre.startsWith('sin conexión') && tamano == _telefono360 && altura == 2;
 
 void main() {
   group('QA #199 r2 · B1/M1: a los botones del aviso se llega con el DEDO y hacen lo suyo', () {
@@ -163,6 +171,8 @@ void main() {
     ];
     for (final caso in casos) {
       for (final escena in _escenas) {
+        // Con la píldora no hay tarjeta ni sus botones: eso lo prueba el grupo M1, de más abajo.
+        if (_sinConexionConPildora(escena, caso.tamano, caso.altura)) continue;
         for (final boton in escena.botones.keys) {
           testWidgets('«${escena.nombre}» · $boton · ${caso.nombre}', (tester) async {
             await escena.montar(tester, caso.tamano, caso.escala);
@@ -195,7 +205,7 @@ void main() {
                 await escena.montar(tester, tamano, escala);
                 if (altura > 0) await tocarAsa(tester, altura);
 
-                final tarjeta = tester.getRect(_desplazableDelAviso);
+                final tarjeta = _zonaDelAviso(tester);
                 final miUbicacion = tester.getRect(find.byKey(ClavesMapaUbicaciones.miUbicacion));
                 final hoja = tester.getRect(find.byKey(ClavesMapaUbicaciones.hoja));
                 expect(
@@ -213,29 +223,94 @@ void main() {
     }
   });
 
-  group('QA #199 r2 · M1: con la hoja a 1/2 en 360x640 la tarjeta deja ver más que el título', () {
-    // skip: QA #199 — con la hoja a 1/2 en 360x640 lo que se ve de la tarjeta mide 56 dp (no los ~80
-    // que se esperaban): ni un botón entero (48 dp) más su margen; se llega a los botones deslizando
-    // (ver el grupo B1/M1), pero a simple vista queda solo el título. Salida: bajar la hoja.
+  group('QA #199 r2 · M1: con la hoja a 1/2 en 360x640 «Sin conexión» pasa a la píldora', () {
+    // Decisión del 07/10 sobre P2 (#294): con menos de 100 dp libres la tarjeta solo deja ver el
+    // título, así que se muestra la píldora, que descarga de un toque. La hoja no se toca, y las
+    // tarjetas de datos móviles y de error siguen deslizables.
+    for (final escala in [1.0, 2.0]) {
+      testWidgets(
+        'con la ciudad: la píldora está a la vista y el toque pide la descarga · texto $escala',
+        (tester) async {
+          await escenaSinConexion(tester, _telefono360, escala: escala);
+          await tocarAsa(tester, 2);
+
+          expect(tester.takeException(), isNull);
+          final pildora = find.byKey(ClavesAvisoMapa.pildora);
+          expect(
+            find.byKey(ClavesAvisoMapa.sinConexion),
+            findsNothing,
+            reason: 'sin lugar: no hay tarjeta',
+          );
+          expect(pildora, findsOneWidget);
+          expect(motivoInaccesible(tester, pildora), isNull);
+          expect(
+            _zonaDelAviso(tester).bottom,
+            lessThanOrEqualTo(tester.getRect(find.byKey(ClavesMapaUbicaciones.hoja)).top + 0.01),
+          );
+
+          await tester.tap(pildora);
+          await asentarLista(tester);
+
+          expect(tester.takeException(), isNull);
+          expect(find.text('Se descarga sola cuando vuelva la señal.'), findsWidgets);
+          expect(find.byKey(ClavesAvisoMapa.pildora), findsOneWidget);
+        },
+      );
+
+      testWidgets('sin la ciudad: la píldora solo avisa (no ofrece descargar) · texto $escala', (
+        tester,
+      ) async {
+        await _escenas[1].montar(tester, _telefono360, escala);
+        await tocarAsa(tester, 2);
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(ClavesAvisoMapa.sinConexion), findsNothing);
+        expect(find.byKey(ClavesAvisoMapa.pildora), findsOneWidget);
+        expect(find.text('Sin conexión'), findsOneWidget);
+        expect(find.textContaining('Descargar'), findsNothing);
+      });
+
+      testWidgets(
+        'con datos móviles la tarjeta se queda (deslizable), no hay píldora · texto $escala',
+        (tester) async {
+          await _escenas[2].montar(tester, _telefono360, escala);
+          await tocarAsa(tester, 2);
+
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(ClavesAvisoMapa.datosMoviles), findsOneWidget);
+          expect(find.byKey(ClavesAvisoMapa.pildora), findsNothing);
+          expect(_desplazableDelAviso, findsOneWidget);
+        },
+      );
+    }
+
     testWidgets(
-      'la tira visible de la tarjeta mide al menos 80 dp en las tres escenas y a texto 1.0 y 2.0',
+      'la tarjeta vuelve cuando vuelve el lugar (la hoja baja), sin haber guardado nada',
       (tester) async {
-        final medidas = <String, double>{};
-        for (final escala in [1.0, 2.0]) {
-          for (final escena in _escenas) {
-            await escena.montar(tester, _telefono360, escala);
-            await tocarAsa(tester, 2);
-            medidas['${escena.nombre} · texto $escala'] = _altoVisibleDeLaTarjeta(tester);
-            await tester.pumpWidget(const SizedBox());
-            await asentarLista(tester);
-          }
-        }
-        for (final MapEntry(:key, :value) in medidas.entries) {
-          expect(value, greaterThanOrEqualTo(80), reason: '$key: se ve $value dp de la tarjeta');
-        }
+        await escenaSinConexion(tester, _telefono360);
+        await tocarAsa(tester, 2);
+        expect(find.byKey(ClavesAvisoMapa.pildora), findsOneWidget);
+
+        await tocarAsa(tester); // 1/2 → minimizada: vuelve el lugar.
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(ClavesAvisoMapa.sinConexion), findsOneWidget);
+        expect(find.byKey(ClavesAvisoMapa.pildora), findsNothing);
       },
-      skip: true,
     );
+
+    testWidgets('si se la minimizó con la ✕, la píldora sigue aunque vuelva el lugar', (
+      tester,
+    ) async {
+      await escenaSinConexion(tester, _telefono360);
+      await tester.tap(_minimizar);
+      await asentarLista(tester);
+      await tocarAsa(tester, 2);
+      await tocarAsa(tester);
+
+      expect(find.byKey(ClavesAvisoMapa.pildora), findsOneWidget);
+      expect(find.byKey(ClavesAvisoMapa.sinConexion), findsNothing);
+    });
   });
 
   group('QA #199 r2 · M2: «Referencias» y «Mi ubicación» no se pisan en teléfonos más chicos', () {
@@ -338,8 +413,9 @@ void main() {
   });
 
   group('QA #199 r2 · casos límite del aviso en horizontal (la app no fija la orientación)', () {
-    // skip: QA #199 — en horizontal (640x360) «Referencias» queda tapado: la zona del aviso mide 0
-    // dp (`libre = max(0, …)`) y el chip, que vive ahí, no se toca.
+    // skip: pregunta «Horizontal» (`mobile-294-p1-horizontal`, para Cristian: fijar la app en
+    // vertical o diseñar el horizontal) — en horizontal (640x360) «Referencias» queda tapado: la zona
+    // del aviso mide 0 dp (`libre = max(0, …)`) y el chip, que vive ahí, no se toca.
     testWidgets('en 640x360 «Referencias» y «Mi ubicación» se pueden tocar', (tester) async {
       await montarEnPantallaPrincipal(
         tester,
@@ -356,8 +432,9 @@ void main() {
       );
     }, skip: true);
 
-    // skip: QA #199 — en horizontal (640x360) la tarjeta «Sin conexión» queda en una zona de 0 dp:
-    // el colportor no ve el aviso ni puede tocar «Activar datos» / «Descargar mapa».
+    // skip: pregunta «Horizontal» (`mobile-294-p1-horizontal`) — en horizontal (640x360) la tarjeta
+    // «Sin conexión» queda en una zona de 0 dp: el colportor no ve el aviso ni puede tocar «Activar
+    // datos» / «Descargar mapa».
     testWidgets(
       'en 640x360 sin conexión el aviso sigue a la vista y «Activar datos» se puede tocar',
       (tester) async {

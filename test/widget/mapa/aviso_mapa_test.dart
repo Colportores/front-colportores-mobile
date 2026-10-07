@@ -1561,6 +1561,114 @@ void main() {
     });
   });
 
+  group('Sin lugar arriba: con menos de 100 dp libres «Sin conexión» pasa a la píldora', () {
+    // Decisión del 07/10 sobre P2 (#294): la página le pasa al aviso flotante el alto que le deja la
+    // hoja. No se guarda nada: es lo que se ve con ese alto.
+    testWidgets('con 99 dp libres y la ciudad conocida: la píldora, y su toque pide la descarga', (
+      tester,
+    ) async {
+      final montaje = await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        catalogo: [paqueteMontevideo],
+        altoLibre: 99,
+      );
+
+      expect(_tarjetaSinConexion, findsNothing);
+      expect(_pildora, findsOneWidget);
+      expect(find.text('Sin conexión · Descargar mapa'), findsOneWidget);
+
+      await tester.tap(_pildora);
+      await asentarAviso(tester);
+
+      expect(_enCola, findsOneWidget);
+      expect(montaje.arnes.montevideoDescargado, isFalse);
+    });
+
+    testWidgets('con 100 dp libres sigue la tarjeta', (tester) async {
+      await montarAviso(tester, conexion: TipoConexion.sinConexion, altoLibre: 100);
+
+      expect(_tarjetaSinConexion, findsOneWidget);
+      expect(_pildora, findsNothing);
+    });
+
+    testWidgets('sin tope (alto libre nulo) sigue la tarjeta', (tester) async {
+      await montarAviso(tester, conexion: TipoConexion.sinConexion);
+
+      expect(_tarjetaSinConexion, findsOneWidget);
+      expect(_pildora, findsNothing);
+    });
+
+    testWidgets('sin lugar del todo (0 dp) también la píldora, nunca una tarjeta cortada', (
+      tester,
+    ) async {
+      await montarAviso(tester, conexion: TipoConexion.sinConexion, altoLibre: 0);
+
+      expect(tester.takeException(), isNull);
+      expect(_tarjetaSinConexion, findsNothing);
+      expect(_pildora, findsOneWidget);
+    });
+
+    testWidgets('sin la ciudad: la píldora informativa, que no es un botón', (tester) async {
+      await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        ambito: const AmbitoTrabajo(),
+        altoLibre: 60,
+      );
+
+      expect(_tarjetaSinConexion, findsNothing);
+      expect(_pildora, findsOneWidget);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Descargar'), findsNothing);
+    });
+
+    testWidgets('con datos móviles la tarjeta se queda, deslizable', (tester) async {
+      await montarAviso(
+        tester,
+        conexion: TipoConexion.datosMoviles,
+        catalogo: [paqueteMontevideo],
+        altoLibre: 60,
+      );
+
+      expect(_tarjetaDatos, findsOneWidget);
+      expect(_pildora, findsNothing);
+      expect(find.ancestor(of: _tarjetaDatos, matching: find.byType(Scrollable)), findsOneWidget);
+    });
+
+    testWidgets('con el mapa que no carga la tarjeta se queda, deslizable', (tester) async {
+      await montarAviso(tester, catalogo: [paqueteCanelones], altoLibre: 60);
+
+      expect(_tarjetaNoCarga, findsOneWidget);
+      expect(_pildora, findsNothing);
+      expect(find.ancestor(of: _tarjetaNoCarga, matching: find.byType(Scrollable)), findsOneWidget);
+    });
+
+    testWidgets('si ya se la minimizó con la ✕, sigue la píldora aunque haya lugar', (
+      tester,
+    ) async {
+      await montarAviso(tester, conexion: TipoConexion.sinConexion, altoLibre: 400);
+      await tocarAviso(tester, _minimizar);
+
+      expect(_tarjetaSinConexion, findsNothing);
+      expect(_pildora, findsOneWidget);
+    });
+
+    testWidgets('en la hoja de la vista 03 el alto libre no cuenta: la tarjeta de siempre', (
+      tester,
+    ) async {
+      await montarAviso(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        modo: AvisoMapaModo.enHoja,
+        altoLibre: 40,
+      );
+
+      expect(_tarjetaSinConexion, findsOneWidget);
+      expect(_pildora, findsNothing);
+    });
+  });
+
   group('En la hoja de la vista 03 (modo enHoja)', () {
     testWidgets('el aviso rojo va sin ✕ ni píldora, y «Descargar mapa» sigue andando', (
       tester,

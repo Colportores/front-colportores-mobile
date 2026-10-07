@@ -84,10 +84,23 @@ const _azulBoton = Color(0xFF002856);
 /// Con [AvisoMapaModo.flotante] hay que ponerlo en un `Stack` que cubra el mapa: se acomoda arriba
 /// (top 8, a 14 de los costados) y no tapa los toques fuera de sí mismo.
 class AvisoMapaConectado extends ConsumerStatefulWidget {
-  const AvisoMapaConectado({super.key, required this.ambito, this.modo = AvisoMapaModo.enHoja});
+  const AvisoMapaConectado({
+    super.key,
+    required this.ambito,
+    this.modo = AvisoMapaModo.enHoja,
+    this.altoLibre,
+  });
+
+  /// Con menos de estos dp libres arriba, la tarjeta «Sin conexión» no se ve más que su título en una
+  /// tira: pasa a la píldora, que descarga de un toque (decisión del 07/10 en el #294).
+  static const altoMinimoDeLaTarjeta = 100.0;
 
   final AmbitoTrabajo ambito;
   final AvisoMapaModo modo;
+
+  /// Solo en [AvisoMapaModo.flotante]: los dp que la vista le deja al aviso, entre el borde de arriba
+  /// y lo que tiene debajo (los botones y la hoja). `null` si no hay tope.
+  final double? altoLibre;
 
   @override
   ConsumerState<AvisoMapaConectado> createState() => _AvisoMapaConectadoState();
@@ -98,6 +111,14 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
   bool _reintentando = false;
 
   bool get _flotante => widget.modo == AvisoMapaModo.flotante;
+
+  /// La tarjeta «Sin conexión» no tiene lugar (la hoja a 1/2 en un teléfono chico): se ofrece la
+  /// píldora. Es un estado derivado, no se guarda: con lugar vuelve la tarjeta (salvo que se haya
+  /// minimizado con la ✕). Las tarjetas de datos móviles y de error siguen deslizables.
+  bool get _sinLugarParaLaTarjeta {
+    final libre = widget.altoLibre;
+    return _flotante && libre != null && libre < AvisoMapaConectado.altoMinimoDeLaTarjeta;
+  }
 
   /// «Descargar mapa» se ofrece si la app sabe de qué ciudad es el mapa. En la vista 06 (flotante)
   /// no hay dónde elegirla: sin ciudad no se ofrece, ni en la tarjeta ni en la píldora. El alta
@@ -156,7 +177,7 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
     return switch (aviso) {
       null => const SizedBox.shrink(),
       AvisoSinConexion() =>
-        _flotante && descartes.sinConexionMinimizado
+        _flotante && (descartes.sinConexionMinimizado || _sinLugarParaLaTarjeta)
             ? _ubicar(
                 _PildoraSinConexion(
                   ambito: widget.ambito,

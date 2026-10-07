@@ -14,6 +14,7 @@ import 'marcador_cercano.dart';
 import 'modelo_mapa_base.dart';
 import 'recursos_mapa_providers.dart';
 import 'seleccion_toque.dart';
+import 'unidades_vista_nativa.dart';
 
 /// La vista nativa de `MapaBase`: MapLibre Native (Android e iOS) con el estilo de
 /// [ConstructorEstiloMapa]. Es la implementación por defecto de [ConstructorVistaMapa].
@@ -118,7 +119,9 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     ml.MapLibreMapController controlador,
     List<PuntoMapa> puntos,
   ) async {
-    final escala = _unidadesPorDp();
+    final escala = UnidadesVistaNativa.paraImagenes(
+      densidad: MediaQuery.devicePixelRatioOf(context),
+    );
     final generacion = _generacionEstilo;
     for (final punto in puntos) {
       final etiqueta = punto.etiqueta;
@@ -194,8 +197,10 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
 
   /// Cuántas unidades de la vista nativa tiene un dp: Android da los toques y consulta en píxeles
   /// nativos (la densidad del teléfono), iOS en puntos (1).
-  double _unidadesPorDp() =>
-      defaultTargetPlatform == TargetPlatform.android ? MediaQuery.devicePixelRatioOf(context) : 1;
+  double _unidadesPorDp() => UnidadesVistaNativa.paraToques(
+    plataforma: defaultTargetPlatform,
+    densidad: MediaQuery.devicePixelRatioOf(context),
+  );
 
   /// El punto o grupo más cercano al toque dentro de un área de 48 dp (el objetivo táctil mínimo),
   /// o `null` si no hay ninguno. Las coordenadas del toque son las de la vista nativa.

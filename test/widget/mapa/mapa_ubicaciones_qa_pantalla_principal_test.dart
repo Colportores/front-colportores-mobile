@@ -259,8 +259,16 @@ void main() {
               await aviso.montar(tester, tamano, 1);
               await tocarAsa(tester, altura.$1);
 
+              // Con menos de 100 dp libres (360x640, hoja a 1/2) «Sin conexión» pasa a la píldora
+              // (decisión del 07/10 sobre P2 del #294): ahí se toca la píldora, no los botones.
+              final conPildora =
+                  tam == '360x640' && altura.$1 == 2 && aviso.nombre.startsWith('sin conexión');
+              final botones = conPildora
+                  ? {'píldora': find.byKey(ClavesAvisoMapa.pildora)}
+                  : aviso.botones();
+
               expect(tester.takeException(), isNull);
-              expect(await inaccesibles(tester, aviso.botones()), isEmpty, reason: caso);
+              expect(await inaccesibles(tester, botones), isEmpty, reason: caso);
             },
           );
         }
