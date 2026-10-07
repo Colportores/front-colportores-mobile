@@ -270,7 +270,7 @@ void main() {
 
       expect(
         resultado.fold((f) => f, (_) => null),
-        const FailureEspacioInsuficiente(megabytesRequeridos: 1),
+        const FailureEspacioInsuficiente(megabytesFaltantes: 1),
       );
       expect(bucket.pedidos.where((r) => r.url.path.endsWith('.pmtiles')), isEmpty);
     });

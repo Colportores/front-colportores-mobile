@@ -35,6 +35,8 @@ final class _Ajustes implements AbridorAjustesSistema {
   Future<bool> abrirSeguridad() async => true;
   @override
   Future<bool> abrirAlmacenamiento() async => true;
+  @override
+  Future<bool> abrirRed() async => true;
 }
 
 final class _EnlaceFalso implements AbridorEnlaceExterno {

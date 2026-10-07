@@ -52,6 +52,9 @@ final class _AbridorFalso implements AbridorAjustesSistema {
 
   @override
   Future<bool> abrirAlmacenamiento() => _abrir('almacenamiento');
+
+  @override
+  Future<bool> abrirRed() => _abrir('red');
 }
 
 late _AbridorFalso _ajustes;

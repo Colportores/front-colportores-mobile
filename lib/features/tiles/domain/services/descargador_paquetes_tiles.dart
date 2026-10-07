@@ -77,6 +77,11 @@ final class DescargadorPaquetesTiles {
   /// El último estado de la descarga de [paqueteId]; `null` si no se descargó en esta sesión.
   EstadoDescarga? estadoDe(String paqueteId) => _descargas[paqueteId]?.estado;
 
+  /// Si la descarga de [paqueteId] está en marcha ahora (preparándose, bajando o validando). Entre el
+  /// pedido y el primer `DescargaEnCurso` —la espera de los encabezados HTTP— [estadoDe] todavía
+  /// dice lo de antes (o nada); esto no.
+  bool estaDescargando(String paqueteId) => _descargas[paqueteId]?.ocupada ?? false;
+
   /// Termina cuando termina el intento en curso de [paqueteId] (completo, en pausa o fallido).
   Future<void> esperar(String paqueteId) async {
     await _descargas[paqueteId]?.intento?.future;
@@ -223,9 +228,24 @@ final class DescargadorPaquetesTiles {
     final faltan = paquete.tamanoBytes - d.recibidos;
     final libres = await _espacio.bytesLibres() - _faltanDeLasOtras(paquete.id);
     if (libres < faltan) {
-      return FailureEspacioInsuficiente(megabytesRequeridos: megabytesDe(faltan));
+      return FailureEspacioInsuficiente(megabytesFaltantes: megabytesDe(faltan - libres));
     }
     return null;
+  }
+
+  /// El disco se llenó escribiendo (aunque al empezar alcanzaba): se vuelve a medir para decir
+  /// cuánto falta. Si no se puede medir, o la medición dice que alcanza, va sin número: no se
+  /// inventa un dato.
+  Future<FailureEspacioInsuficiente> _sinLugarEscribiendo(_Descarga d) async {
+    int? faltantes;
+    try {
+      final libres = await _espacio.bytesLibres() - _faltanDeLasOtras(d.paquete.id);
+      final porBajar = d.paquete.tamanoBytes - d.recibidos;
+      if (libres < porBajar) faltantes = megabytesDe(porBajar - libres);
+    } on Object {
+      faltantes = null;
+    }
+    return FailureEspacioInsuficiente(megabytesFaltantes: faltantes);
   }
 
   int _faltanDeLasOtras(String paqueteId) {
@@ -262,9 +282,7 @@ final class DescargadorPaquetesTiles {
     } on ErrorServidorTiles catch (e) {
       _emitir(d, DescargaFallida(paquete.id, FailureServidor(status: e.status)));
     } on ErrorEspacioTiles {
-      final faltan = paquete.tamanoBytes - d.recibidos;
-      final failure = FailureEspacioInsuficiente(megabytesRequeridos: megabytesDe(faltan));
-      _emitir(d, DescargaFallida(paquete.id, failure));
+      _emitir(d, DescargaFallida(paquete.id, await _sinLugarEscribiendo(d)));
     } on Object catch (e) {
       _emitir(d, DescargaFallida(paquete.id, FailureInesperado(causa: e)));
     } finally {

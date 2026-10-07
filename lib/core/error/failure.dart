@@ -539,21 +539,24 @@ final class FailureConservadaDeBaja extends Failure {
 }
 
 /// No hay lugar en el teléfono para el paquete de mapa que se quiere descargar (HU-SYNC-010).
-/// [megabytesRequeridos] es lo que falta bajar: al reanudar descuenta lo que ya está descargado.
-/// El mensaje es el literal de la HU más qué hacer (para confirmar en #189).
+/// [megabytesFaltantes] es lo que le falta al teléfono: lo que falta bajar (al reanudar descuenta
+/// lo que ya está descargado) menos el espacio libre, redondeado para arriba; `null` si no se pudo
+/// medir, y entonces el mensaje no lleva número. El literal («Espacio insuficiente - faltan X MB»)
+/// es el de la HU más qué hacer; sin «elegí una cobertura más chica» hasta «Mapas offline» (#268).
 final class FailureEspacioInsuficiente extends Failure {
-  const FailureEspacioInsuficiente({required this.megabytesRequeridos})
+  const FailureEspacioInsuficiente({this.megabytesFaltantes})
     : super(
-        mensaje:
-            'Espacio insuficiente - se requieren $megabytesRequeridos MB. Liberá espacio en el '
-            'teléfono o elegí una cobertura más chica.',
+        mensaje: megabytesFaltantes == null
+            ? 'Espacio insuficiente. Liberá espacio en el teléfono y probá de nuevo.'
+            : 'Espacio insuficiente - faltan $megabytesFaltantes MB. Liberá espacio en el '
+                  'teléfono y probá de nuevo.',
         codigo: 'TILES_SIN_ESPACIO',
       );
 
-  final int megabytesRequeridos;
+  final int? megabytesFaltantes;
 
   @override
-  List<Object?> get props => [...super.props, megabytesRequeridos];
+  List<Object?> get props => [...super.props, megabytesFaltantes];
 }
 
 /// Los mapas se descargan solo con Wi-Fi salvo que el colportor autorice datos móviles para esa

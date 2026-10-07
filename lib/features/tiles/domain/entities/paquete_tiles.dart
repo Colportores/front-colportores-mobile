@@ -28,6 +28,9 @@ final class AmbitoTrabajo extends Equatable {
   final String? ciudadId;
   final String? departamentoId;
 
+  /// Hay al menos un lugar conocido: sin ninguno no se puede elegir un paquete.
+  bool get conocido => zonaId != null || ciudadId != null || departamentoId != null;
+
   /// El id del lugar que corresponde a [nivel]; `null` para Uruguay o si falta.
   String? idPara(NivelCobertura nivel) => switch (nivel) {
     NivelCobertura.zona => zonaId,

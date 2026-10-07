@@ -29,8 +29,21 @@ final class ConectividadFalsa implements MonitorConectividad {
 final class EspacioFalso implements MedidorEspacioDisco {
   int libres = 1 << 40;
 
+  /// Qué informan las lecturas después de la primera (el disco se llenó mientras bajaba); `null`
+  /// sigue informando [libres].
+  int? libresDespuesDeLaPrimera;
+
+  /// Las lecturas después de la primera lanzan (la plataforma no contesta).
+  bool lanzaDespuesDeLaPrimera = false;
+
+  int _lecturas = 0;
+
   @override
-  Future<int> bytesLibres() async => libres;
+  Future<int> bytesLibres() async {
+    if (_lecturas++ == 0) return libres;
+    if (lanzaDespuesDeLaPrimera) throw StateError('la plataforma no contesta');
+    return libresDespuesDeLaPrimera ?? libres;
+  }
 }
 
 /// Archivos en memoria: los bytes de cada ruta. Escribe al momento, sin buffer.
@@ -167,6 +180,10 @@ final class ServidorFalso implements ClienteDescargaRango {
   int tamanoPedazo = 1000;
   Uri? soloEnOrigen;
 
+  /// Si no es null, `pedir` espera a que se complete antes de contestar: el servidor que tarda en
+  /// mandar los encabezados (la descarga ya aceptada pero todavía sin ningún byte).
+  Completer<void>? esperaAntesDeContestar;
+
   /// Bajo `fakeAsync` (o `testWidgets`), `await suscripcion.cancel()` de un `StreamController` no
   /// vuelve nunca: devuelve un `Future` de la zona raíz y su continuación queda en el reloj real.
   /// Con esto el cuerpo avisa el cancelado con un `Future` de la zona del que cancela.
@@ -183,6 +200,7 @@ final class ServidorFalso implements ClienteDescargaRango {
   Future<RespuestaDescarga> pedir(Uri origen, {required int desde}) async {
     pedidos.add(desde);
     origenes.add(origen);
+    await esperaAntesDeContestar?.future;
     if (sinRed) throw const ErrorRedTiles();
     if (statusError case final status?) throw ErrorServidorTiles(status);
     if (rechazarRango && desde > 0) throw const ErrorServidorTiles(416);
