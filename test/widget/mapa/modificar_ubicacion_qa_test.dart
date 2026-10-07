@@ -5,7 +5,8 @@
 // (cargando, no existe, error, guardando, aviso de falla) y los textos pegados con emoji.
 //
 // Los tests que documentan un hallazgo van con `skip: true` y, arriba, el comentario
-// `// skip: QA #202 — <hallazgo>` (en `testWidgets` el `skip` es un bool).
+// `// skip: QA #202 — <hallazgo>` (en `testWidgets` el `skip` es un bool). Los de la ronda 1 ya
+// están arreglados (el implementador les sacó el `skip` en la ronda final).
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -505,9 +506,10 @@ void main() {
     });
   });
 
-  group('QA #202 · hallazgos documentados', () {
-    // skip: QA #202 — si la ubicación cambió mientras se editaba, el aviso dice «Abrila de nuevo» pero no
-    // trae ninguna acción: «Guardar cambios» queda apagado y solo queda la ✕ → «¿Descartar los cambios?».
+  group('QA #202 · hallazgos de la ronda 1 (arreglados)', () {
+    // QA #202 — si la ubicación cambió mientras se editaba, el aviso dice «Abrila de nuevo»: trae el
+    // botón «Abrir de nuevo», que descarta el borrador y vuelve a leer la ubicación (decisión de la
+    // tanda 34: no se mezcla lo cargado con los datos nuevos).
     testWidgets('el aviso de «cambió mientras la editabas» trae una acción a mano', (tester) async {
       final e = await _montar(tester);
       await _escribirNumero(tester, '1238');
@@ -524,11 +526,60 @@ void main() {
         findsOneWidget,
         reason: 'un botón dentro del aviso (por ejemplo, volver a leer la ubicación)',
       );
-    }, skip: true);
+      expect(
+        find.descendant(of: aviso, matching: find.text(TextosModificar.abrirDeNuevo)),
+        findsOneWidget,
+      );
+    });
 
-    // skip: QA #202 — «Mover el punto» + «Guardar posición» sin mover (menos de 1 m) deja «Guardar cambios»
-    // habilitado y la ✕ pregunta «¿Descartar los cambios? Cambiaste la posición» sin que se vea ningún cambio
-    // (el revisor lo reportó como menor: `puntoCambiado` compara coordenadas exactas, no 1 m).
+    testWidgets('«Abrir de nuevo» descarta el borrador y muestra la ubicación como está ahora', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _escribirNumero(tester, '1238');
+      final nueva = DateTime.utc(2026, 10, 1, 9);
+      e.repo.actual = ubicacionGuardada(numero: '1300', actualizada: nueva);
+      await _tocar(tester, _guardar);
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(e.repo.escrituras, isEmpty);
+
+      await _tocar(tester, find.text(TextosModificar.abrirDeNuevo));
+
+      // Arrancó de cero: el aviso se fue, el número es el nuevo y no hay nada que guardar.
+      expect(e.repo.lecturas, 2);
+      expect(find.textContaining('cambió mientras la editabas'), findsNothing);
+      expect(find.text(TextosModificar.abrirDeNuevo), findsNothing);
+      expect(tester.widget<TextField>(_campoNumero).controller!.text, '1300');
+      expect(find.text('Editado'), findsNothing);
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(find.text('Av. Italia 1300'), findsOneWidget);
+
+      // Y se puede repetir el cambio: la base del control es la ubicación que acaba de leer.
+      await _escribirNumero(tester, '1310');
+      await _tocar(tester, _guardar);
+      expect(e.repo.escrituras.single.baseUpdatedAt, nueva);
+      expect(e.repo.escrituras.single.nueva.numero, '1310');
+      expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('«Abrir de nuevo» tocado dos veces seguidas lee una sola vez', (tester) async {
+      final e = await _montar(tester);
+      await _escribirNumero(tester, '1238');
+      e.repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
+      await _tocar(tester, _guardar);
+      final boton = find.text(TextosModificar.abrirDeNuevo);
+      await _traer(tester, boton);
+
+      await tester.tap(boton);
+      await tester.tap(boton, warnIfMissed: false);
+      await _asentar(tester);
+
+      expect(e.repo.lecturas, 2);
+      expect(tester.takeException(), isNull);
+    });
+
+    // QA #202 — «Mover el punto» + «Guardar posición» sin mover (menos de 1 m): el borrador vuelve a
+    // la coordenada guardada, «Guardar cambios» sigue apagado y la ✕ cierra sin preguntar.
     testWidgets('un ajuste de menos de 1 m no cuenta como cambio de posición', (tester) async {
       final e = await _montar(tester);
       await _tocar(tester, find.text('Mover el punto'));
@@ -537,10 +588,13 @@ void main() {
       await _tocar(tester, find.text('Guardar posición'));
 
       expect(_habilitado(tester, _guardar), isFalse);
-    }, skip: true);
+      await _tocar(tester, _cerrar);
+      expect(find.text(TextosModificar.descartarTitulo), findsNothing);
+      expect(e.salidas.single, isNull);
+    });
 
-    // skip: QA #202 — en 360×640 «Guardar cambios» no está fijo: con un campo «Editado» (o un aviso) queda
-    // cortado al pie de la hoja que se desplaza y hay que arrastrar para ver la acción principal.
+    // QA #202 — la acción principal queda fija al pie de la hoja: con un campo «Editado» en 360×640
+    // se ve entera, sin arrastrar.
     testWidgets('en 360×640 con un campo editado, «Guardar cambios» queda entero a la vista', (
       tester,
     ) async {
@@ -551,7 +605,7 @@ void main() {
       final r = tester.getRect(_guardar);
       expect(r.bottom, lessThanOrEqualTo(640), reason: 'el botón no queda cortado');
       expect(r.top, greaterThanOrEqualTo(0));
-    }, skip: true);
+    });
   });
 
   group('QA #202 · textos pegados', () {

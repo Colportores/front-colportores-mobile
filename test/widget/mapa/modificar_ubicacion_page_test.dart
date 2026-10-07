@@ -839,6 +839,7 @@ void main() {
       await _montar(tester, repo: repo);
 
       expect(find.text(TextosModificar.noPudimosAbrir), findsOneWidget);
+      expect(find.text('No pudimos abrir esta ubicación. Probá de nuevo.'), findsOneWidget);
       expect(find.text('Ocurrió un error inesperado'), findsNothing);
       expect(_guardar, findsNothing);
 
@@ -893,6 +894,14 @@ void main() {
 
       expect(_guardandoBoton, findsOneWidget);
       expect(_habilitado(tester, _guardandoBoton), isFalse);
+      // Los campos no reciben teclas: lo que se ve es lo que se guarda.
+      expect(tester.widget<TextField>(_campoCalle).readOnly, isTrue);
+      expect(tester.widget<TextField>(_campoNumero).readOnly, isTrue);
+      await tester.enterText(_campoNumero, '1238x');
+      await tester.enterText(_campoCalle, 'Otra calle');
+      await tester.pump();
+      expect(tester.widget<TextField>(_campoNumero).controller!.text, '1238');
+      expect(tester.widget<TextField>(_campoCalle).controller!.text, 'Av. Italia');
       await _tocar(tester, find.text('Negocio'));
       await tester.tap(find.text('Dar de baja'), warnIfMissed: false);
       await tester.pump();
@@ -905,7 +914,77 @@ void main() {
         TipoUbicacion.casa,
         reason: 'el cambio de tipo no entró',
       );
+      expect(repo.escrituras.single.nueva.numero, '1238', reason: 'lo tipeado después no entró');
+      expect(repo.escrituras.single.nueva.calle, 'Av. Italia');
       expect(e.salidas.single, isA<UbicacionEditada>());
+    });
+
+    testWidgets('si el guardado falla mientras se seguía tipeando, el campo y el borrador coinciden', (
+      tester,
+    ) async {
+      final repo = RepoEdicionFalso(ubicacionGuardada())..bloqueoEscritura = Completer<void>();
+      repo.comportamiento = (nueva, numero, _) async {
+        if (numero == 1) return const Left(FailureInesperado());
+        repo.actual = nueva;
+        return Right(UbicacionModificada(ubicacion: nueva));
+      };
+      await _montar(tester, repo: repo);
+      await _escribirNumero(tester, '1238');
+
+      await tester.tap(_guardar);
+      await tester.pump();
+      await tester.enterText(_campoNumero, '1238x');
+      repo.bloqueoEscritura!.complete();
+      await _asentar(tester);
+
+      expect(find.text(TextosModificar.noPudimosGuardar), findsOneWidget);
+      expect(tester.widget<TextField>(_campoNumero).controller!.text, '1238');
+      expect(tester.widget<TextField>(_campoNumero).readOnly, isFalse);
+
+      repo.bloqueoEscritura = null;
+      await _tocar(tester, _guardar);
+      expect(repo.escrituras.last.nueva.numero, '1238');
+    });
+  });
+
+  group('mover menos de 1 m no es un cambio', () {
+    testWidgets('volver a menos de 1 m de lo guardado deshace el cambio de posición', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _moverYGuardarPosicion(tester, e, _norte18m);
+      expect(_habilitado(tester, _guardar), isTrue);
+
+      await _moverYGuardarPosicion(tester, e, 0.000004);
+
+      expect(_habilitado(tester, _guardar), isFalse, reason: 'quedó a menos de 1 m de lo guardado');
+      await _tocar(tester, _cerrar);
+      expect(find.text(TextosModificar.descartarTitulo), findsNothing);
+      expect(e.salidas.single, isNull);
+      expect(e.repo.escrituras, isEmpty);
+    });
+
+    testWidgets('con otro cambio, la posición a menos de 1 m no figura entre lo que se pierde', (
+      tester,
+    ) async {
+      final e = await _montar(tester);
+      await _escribirNumero(tester, '1238');
+      await _moverYGuardarPosicion(tester, e, 0.000004);
+
+      await _tocar(tester, _cerrar);
+
+      expect(find.textContaining('Cambiaste el número.'), findsOneWidget);
+      expect(find.textContaining('la posición'), findsNothing);
+    });
+
+    testWidgets('un ajuste de más de 1 m sí cuenta y se guarda la posición nueva', (tester) async {
+      final e = await _montar(tester);
+
+      await _moverYGuardarPosicion(tester, e, _norte18m);
+
+      expect(_habilitado(tester, _guardar), isTrue);
+      await _tocar(tester, _guardar);
+      expect(e.repo.escrituras.single.nueva.lat, closeTo(puntoItalia.lat + _norte18m, 1e-7));
     });
   });
 
@@ -935,6 +1014,44 @@ void main() {
 
       await _tocar(tester, find.text('Edificio'));
       expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+    });
+
+    testWidgets('con un solo espacio el aviso va en singular', (tester) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 1,
+      );
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(
+        find.text('Esta ubicación tiene 1 espacio. Borralo o reubicalo primero.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('1 espacios'), findsNothing);
+      expect(_habilitado(tester, _guardar), isFalse);
+      expect(e.repo.escrituras, isEmpty);
+    });
+
+    testWidgets('con un solo espacio que aparece al guardar, el aviso también va en singular', (
+      tester,
+    ) async {
+      final e = await _montar(
+        tester,
+        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+        espacios: 0,
+      );
+      e.repo.espacios = 1;
+      await _tocar(tester, find.text('Casa'));
+
+      await _tocar(tester, _guardar);
+
+      expect(
+        find.text('Esta ubicación tiene 1 espacio. Borralo o reubicalo primero.'),
+        findsOneWidget,
+      );
+      expect(e.repo.escrituras, isEmpty);
     });
 
     testWidgets('de edificio sin espacios a otro tipo se guarda', (tester) async {
