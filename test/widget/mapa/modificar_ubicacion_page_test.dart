@@ -919,7 +919,7 @@ void main() {
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
-    testWidgets('si el guardado falla mientras se seguía tipeando, el campo y el borrador coinciden', (
+    testWidgets('si el guardado falla con teclas en vuelo, el campo y el borrador coinciden', (
       tester,
     ) async {
       final repo = RepoEdicionFalso(ubicacionGuardada())..bloqueoEscritura = Completer<void>();
