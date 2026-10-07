@@ -58,6 +58,7 @@ final class ListaUbicaciones extends Equatable {
     required this.hayMas,
     required this.ordenAplicado,
     required this.sinUbicaciones,
+    this.bajasOcultas = 0,
   });
 
   /// Como mucho `consulta.limite` ítems, ya ordenados.
@@ -101,6 +102,16 @@ final class ListaUbicaciones extends Equatable {
   /// baja y "Mostrar bajas" está apagado, es `true` (no hay nada que listar).
   final bool sinUbicaciones;
 
+  /// Cuántas ubicaciones del colportor están dadas de baja y **no** se listan porque «Mostrar
+  /// bajas» está apagado (0 si está prendido). Con [sinUbicaciones] distingue «todavía no
+  /// registraste ubicaciones» de «no tenés ubicaciones activas»: solo hay bajas, y la vista ofrece
+  /// mostrarlas.
+  final int bajasOcultas;
+
+  /// El colportor no tiene ninguna ubicación activa pero sí bajas que «Mostrar bajas» mostraría:
+  /// el vacío no puede decir que no registró ninguna.
+  bool get soloBajas => sinUbicaciones && bajasOcultas > 0;
+
   /// No hay filas que mostrar (`total == 0`), sea por [sinUbicaciones] o por los filtros.
   bool get estaVacia => total == 0;
 
@@ -120,5 +131,6 @@ final class ListaUbicaciones extends Equatable {
     hayMas,
     ordenAplicado,
     sinUbicaciones,
+    bajasOcultas,
   ];
 }

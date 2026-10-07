@@ -26,6 +26,10 @@ abstract final class TextosListaUbicaciones {
   static const vacioTitulo = 'Todavía no registraste ubicaciones';
   static const vacioCuerpo =
       'Las casas, los negocios y los edificios que registres aparecen acá y también en el mapa.';
+  static const registrarUna = 'Registrar una ubicación';
+  static const soloBajasTitulo = 'No tenés ubicaciones activas';
+  static const soloBajasCuerpo = 'Las que están dadas de baja se ven con «Mostrar bajas».';
+  static const mostrarBajas = 'Mostrar bajas';
   static const sinResultadosTitulo = 'Sin resultados';
   static const sinResultadosCuerpo = 'Ninguna ubicación cumple los filtros o la búsqueda.';
   static const limpiarFiltros = 'Limpiar filtros';
@@ -71,6 +75,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
 class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     with WidgetsBindingObserver {
   final _busqueda = TextEditingController();
+  final _desplazamiento = ScrollController();
   Timer? _espera;
 
   /// Una sola hoja de filtros y una sola alta a la vez: un segundo toque no abre otra encima.
@@ -102,6 +107,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     WidgetsBinding.instance.removeObserver(this);
     _espera?.cancel();
     _busqueda.dispose();
+    _desplazamiento.dispose();
     super.dispose();
   }
 
@@ -191,6 +197,14 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     ref.listen(proveedor.select((s) => s.filtros.busqueda), (_, texto) {
       if (_busqueda.text != texto) _busqueda.text = texto;
     });
+    // Otra búsqueda u otros filtros son otra lista: se vuelve arriba (la anterior se conserva hasta
+    // que llega la nueva, y su desplazamiento quedaría recortado al final de los resultados). El
+    // orden, las páginas que se cargan y las emisiones de la base no mueven la lista.
+    ref.listen(proveedor.select((s) => s.filtros), (anterior, nuevo) {
+      if (anterior == null) return;
+      if (anterior.copyWith(orden: nuevo.orden, limite: nuevo.limite) == nuevo) return;
+      if (_desplazamiento.hasClients) _desplazamiento.jumpTo(0);
+    });
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final lista = estado.lista;
     final sinUbicaciones = lista?.sinUbicaciones ?? false;
@@ -230,6 +244,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                 alAbrirUbicacion: widget.alAbrirUbicacion,
                 alRegistrar: () => unawaited(_registrar()),
                 notificador: _notificador,
+                desplazamiento: _desplazamiento,
               ),
             ),
           ],
@@ -550,6 +565,12 @@ class _FilaContador extends StatelessWidget {
   }
 }
 
+/// El botón secundario de los estados sin filas («Limpiar filtros», «Mostrar bajas»): el tema solo
+/// fija el relleno vertical, y sin el horizontal el texto toca el borde de la píldora.
+final _estiloBotonSecundario = OutlinedButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+);
+
 /// Lo que ocupa el resto de la pantalla: cargando, error, vacío, sin resultados o las filas.
 class _Cuerpo extends StatelessWidget {
   const _Cuerpo({
@@ -558,6 +579,7 @@ class _Cuerpo extends StatelessWidget {
     required this.alAbrirUbicacion,
     required this.alRegistrar,
     required this.notificador,
+    required this.desplazamiento,
   });
 
   final ListaUbicacionesState estado;
@@ -565,6 +587,7 @@ class _Cuerpo extends StatelessWidget {
   final ValueChanged<String>? alAbrirUbicacion;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
+  final ScrollController desplazamiento;
 
   @override
   Widget build(BuildContext context) {
@@ -573,7 +596,11 @@ class _Cuerpo extends StatelessWidget {
       if (estado.fallaLectura) {
         return _Centrado(
           children: [
-            const Text(TextosListaUbicaciones.errorLectura, textAlign: TextAlign.center),
+            // Se anuncia al aparecer: un lector de pantalla no tiene otra forma de enterarse.
+            Semantics(
+              liveRegion: true,
+              child: const Text(TextosListaUbicaciones.errorLectura, textAlign: TextAlign.center),
+            ),
             const SizedBox(height: 8),
             EnlaceAlta(
               texto: TextosListaUbicaciones.reintentar,
@@ -582,9 +609,59 @@ class _Cuerpo extends StatelessWidget {
           ],
         );
       }
-      return Semantics(
-        label: TextosListaUbicaciones.cargando,
-        child: const Center(child: CircularProgressIndicator()),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ExcludeSemantics(child: CircularProgressIndicator()),
+            const SizedBox(height: 12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                TextosListaUbicaciones.cargando,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  color: ColoresColportaje.unica.gris,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (lista.soloBajas) {
+      return _Centrado(
+        children: [
+          Semantics(
+            header: true,
+            child: const Text(
+              TextosListaUbicaciones.soloBajasTitulo,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'SourceSerif4',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(TextosListaUbicaciones.soloBajasCuerpo, textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          FilledButton(
+            key: const Key('lista_registrar_una'),
+            onPressed: alRegistrar,
+            child: const Text(TextosListaUbicaciones.registrarUna, textAlign: TextAlign.center),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            key: const Key('lista_mostrar_bajas'),
+            onPressed: notificador.mostrarBajas,
+            style: _estiloBotonSecundario,
+            child: const Text(TextosListaUbicaciones.mostrarBajas, textAlign: TextAlign.center),
+          ),
+        ],
       );
     }
     if (lista.sinUbicaciones) {
@@ -634,6 +711,7 @@ class _Cuerpo extends StatelessWidget {
           OutlinedButton(
             key: const Key('lista_limpiar_filtros'),
             onPressed: notificador.limpiarTodo,
+            style: _estiloBotonSecundario,
             child: const Text(TextosListaUbicaciones.limpiarFiltros),
           ),
         ],
@@ -642,6 +720,7 @@ class _Cuerpo extends StatelessWidget {
     final items = lista.items;
     return ListView.builder(
       key: const Key('lista_filas'),
+      controller: desplazamiento,
       padding: const EdgeInsets.only(bottom: 88),
       itemCount: items.length + (lista.hayMas ? 1 : 0),
       itemBuilder: (context, i) {

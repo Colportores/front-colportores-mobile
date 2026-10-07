@@ -41,6 +41,11 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
   /// Ya se pidió la página siguiente y todavía no llegó: un segundo pedido no hace nada.
   bool _cargandoMas = false;
 
+  /// El colportor tocó «Activar GPS» y se lo mandó al permiso o a los ajustes del sistema: solo
+  /// entonces tiene sentido volver a leer el GPS cuando regrese a la app. Cualquier otro regreso
+  /// (volver de WhatsApp) no puede volver a mostrarle el diálogo del permiso.
+  bool _enAjustes = false;
+
   final _log = AppLogger.instance;
 
   @override
@@ -48,6 +53,7 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
     // Si la base se abre (o se cierra) después de montar la pestaña, el estado se rearma desde cero.
     ref.watch(dbLocalProvider);
     _cargandoMas = false;
+    _enAjustes = false;
     ref.onDispose(() => unawaited(_suscripcion?.cancel()));
     // Todavía no hay `state` dentro de `build`: la primera lectura sale en el microtask que sigue.
     scheduleMicrotask(() {
@@ -111,8 +117,10 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
 
   /// Cambia los filtros y vuelve a la primera página.
   void _cambiarFiltros(FiltrosLista nuevos) {
+    // Pedir lo mismo que ya se ve (aplicar sin tocar nada, Enter con el texto ya buscado) no hace
+    // nada: la comparación no cuenta las páginas cargadas, así la lista no vuelve a las primeras 50.
+    if (nuevos.copyWith(limite: state.filtros.limite) == state.filtros) return;
     final conPaginaInicial = nuevos.copyWith(limite: ConsultaListaUbicaciones.tamanoPagina);
-    if (conPaginaInicial == state.filtros) return;
     _cargandoMas = false;
     state = state.copyWith(filtros: conPaginaInicial);
     _suscribir();
@@ -154,6 +162,9 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
 
   void quitarBajas() => _cambiarFiltros(state.filtros.copyWith(incluirBajas: false));
 
+  /// «Mostrar bajas» del vacío de quien solo tiene bajas: prende el mismo filtro que la hoja.
+  void mostrarBajas() => _cambiarFiltros(state.filtros.copyWith(incluirBajas: true));
+
   /// «Limpiar filtros» del «sin resultados»: saca los filtros **y** la búsqueda.
   void limpiarTodo() => _cambiarFiltros(FiltrosLista(orden: state.filtros.orden));
 
@@ -189,16 +200,23 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
     await _leerGps();
   }
 
-  /// Al volver a la app después de los ajustes: si seguía sin GPS, se vuelve a intentar.
+  /// Al volver a la app después de los ajustes (o del diálogo del permiso): si seguía sin GPS, se
+  /// vuelve a intentar. Solo si el colportor había tocado «Activar GPS»; el regreso de cualquier
+  /// otra app no hace nada.
   Future<void> reintentarGpsSiHaceFalta() async {
-    if (state.gps == EstadoGpsLista.sinGps) await _leerGps();
+    if (!_enAjustes || state.gps != EstadoGpsLista.sinGps) return;
+    _enAjustes = false;
+    await _leerGps();
   }
 
   /// «Activar GPS» (el chip de arriba cuando no hay): pide el permiso o abre el ajuste que
   /// corresponda y vuelve a leer.
   Future<void> activarGps() async {
     final motivo = state.motivoSinGps;
-    if (motivo != null) await ref.read(activadorGpsProvider).activar(motivo);
+    if (motivo != null) {
+      _enAjustes = true;
+      await ref.read(activadorGpsProvider).activar(motivo);
+    }
     await _leerGps();
   }
 

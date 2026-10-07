@@ -586,30 +586,34 @@ class _FichaTipo extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 48),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 6,
-                  children: [
-                    Text(
-                      elegida ? '✓ $texto' : texto,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                        fontWeight: elegida ? FontWeight.w600 : FontWeight.w400,
-                        color: elegida ? Colors.white : ColoresLista.grisTexto,
-                      ),
-                    ),
-                    if (cantidad != null)
+                // El alto mínimo de 48 le llega al relleno: sin centrar, el texto queda arriba.
+                child: Align(
+                  widthFactor: 1,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    children: [
                       Text(
-                        '$cantidad',
+                        elegida ? '✓ $texto' : texto,
                         style: TextStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 11.5,
-                          color: elegida ? const Color(0xFFC9D6EA) : colores.gris,
+                          fontFamily: 'Inter',
+                          fontSize: 14,
+                          fontWeight: elegida ? FontWeight.w600 : FontWeight.w400,
+                          color: elegida ? Colors.white : ColoresLista.grisTexto,
                         ),
                       ),
-                  ],
+                      if (cantidad != null)
+                        Text(
+                          '$cantidad',
+                          style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 11.5,
+                            color: elegida ? const Color(0xFFC9D6EA) : colores.gris,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

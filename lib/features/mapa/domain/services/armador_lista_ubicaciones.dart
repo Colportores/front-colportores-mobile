@@ -6,9 +6,11 @@ import '../entities/ubicacion_con_resumen.dart';
 import 'criterio_duplicado_ubicacion.dart';
 
 /// HU-UBI-002 — arma la lista a partir de las ubicaciones del colportor: filtra, busca, ordena,
-/// cuenta y corta la página. Función pura: el repositorio ya trajo lo del colportor, la ciudad y
-/// las bajas (lo que se puede resolver en SQL); acá queda lo que necesita Dart (distancias,
-/// búsqueda sin acentos). Vuelve a aplicar esos tres filtros, así que es correcta sola.
+/// cuenta y corta la página. Función pura: el repositorio ya trajo lo del colportor y la ciudad
+/// (lo que se puede resolver en SQL), con las bajas aunque no se pidan: acá se esconden si «Mostrar
+/// bajas» está apagado, pero se cuentan ([ListaUbicaciones.bajasOcultas]) para que el vacío sepa si
+/// el colportor solo tiene bajas. Queda lo que necesita Dart (distancias, búsqueda sin acentos).
+/// Vuelve a aplicar esos filtros, así que es correcta sola.
 abstract final class ArmadorListaUbicaciones {
   static final _espacios = RegExp(r'\s+');
 
@@ -26,11 +28,15 @@ abstract final class ArmadorListaUbicaciones {
     final candidatas = <ItemListaUbicacion>[];
     var propias = 0;
     var bajas = 0;
+    var bajasOcultas = 0;
     var estadosConocidos = false;
     for (final fila in ubicaciones) {
       final u = fila.ubicacion;
       if (u.auditoria.createdBy != c.colportorId) continue;
-      if (u.estaBorrada && !c.incluirBajas) continue;
+      if (u.estaBorrada && !c.incluirBajas) {
+        bajasOcultas++;
+        continue;
+      }
       propias++;
       if (u.estaBorrada) bajas++;
       if (fila.estado != null) estadosConocidos = true;
@@ -82,6 +88,7 @@ abstract final class ArmadorListaUbicaciones {
       hayMas: filtradas.length > limite,
       ordenAplicado: porCercania ? OrdenListaUbicaciones.cercania : OrdenListaUbicaciones.recientes,
       sinUbicaciones: propias == 0,
+      bajasOcultas: bajasOcultas,
     );
   }
 
