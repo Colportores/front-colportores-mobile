@@ -20,6 +20,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
+
 final _ahora = DateTime(2026, 9, 29, 14, 35, 20);
 
 final _sesion = Sesion(
@@ -83,6 +85,7 @@ Future<void> _montar(WidgetTester tester, _DataSource dataSource, {double escala
           jornadaLocalDataSourceProvider.overrideWithValue(dataSource),
           disparadorBackupProvider.overrideWithValue(_BackupFalso()),
           relojJornadaProvider.overrideWithValue(() => _ahora),
+          ...overridesPestanaMapa(),
         ],
         child: MaterialApp(
           theme: temaClaro(),
@@ -418,8 +421,11 @@ void main() {
       await _montar(tester, _DataSource());
       await tester.pumpAndSettle();
 
-      // «Lista» ya tiene contenido (HU-UBI-002): lo cubren sus propios tests.
-      for (final pestana in PestanaInicio.values.skip(1).where((p) => p != PestanaInicio.lista)) {
+      // «Mapa» (HU-UBI-003) y «Lista» (HU-UBI-002) ya tienen contenido: lo cubren sus propios tests.
+      for (final pestana
+          in PestanaInicio.values
+              .skip(1)
+              .where((p) => p != PestanaInicio.mapa && p != PestanaInicio.lista)) {
         await _tocar(tester, 'inicio_pestana_${pestana.name}');
         final seccion = find.byKey(Key('pestana_${pestana.name}'));
         expect(

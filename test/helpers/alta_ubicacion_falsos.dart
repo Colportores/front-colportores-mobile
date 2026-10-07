@@ -53,6 +53,9 @@ final class GpsFalso implements ProveedorGps, ActivadorGps {
   /// Qué hace «Activar GPS»: por ejemplo, cambiar [respuesta].
   void Function()? alActivar;
 
+  /// Si no es `null`, «Activar GPS» espera a que se complete (el diálogo del sistema sigue abierto).
+  Completer<void>? bloqueoActivacion;
+
   /// Si no es `null`, decide qué devuelve cada lectura según su número (la primera es la 1) en vez
   /// de [respuesta]: sirve para tener dos lecturas en vuelo y completarlas en el orden que se quiera.
   Future<Either<Failure, LecturaGps>> Function(int numero)? porLectura;
@@ -71,6 +74,8 @@ final class GpsFalso implements ProveedorGps, ActivadorGps {
   Future<void> activar(MotivoSinGps motivo) async {
     activaciones.add(motivo);
     alActivar?.call();
+    final espera = bloqueoActivacion;
+    if (espera != null) await espera.future;
   }
 }
 

@@ -475,7 +475,7 @@ void main() {
     }
 
     for (final escala in [1.0, 1.3, 2.0]) {
-      testWidgets('el título «Ya existe una ubicación a 12 m» no deja la unidad sola '
+      testWidgets('el título «Ya existe una ubicación a 12\u00A0m» no deja la unidad sola '
           '(texto ${escala}x)', (tester) async {
         await _montar(tester, repo: _repoCon(1), escala: escala);
         await _tocar(tester, find.text('Casa'));
@@ -488,7 +488,7 @@ void main() {
         // Donde empieza la última línea (el extremo izquierdo de su renglón).
         final inicio = render.getPositionForOffset(Offset(0, render.size.height - 1)).offset;
         final linea = texto.substring(inicio);
-        expect(linea, contains('12 m'), reason: 'la última línea es «$linea»');
+        expect(linea, contains('12\u00A0m'), reason: 'la última línea es «$linea»');
       });
     }
   });

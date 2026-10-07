@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/dispositivo/abridor_ajustes_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
@@ -24,6 +25,19 @@ import 'tiles_falsos.dart';
 
 /// Montevideo: la ciudad `c-1` de los paquetes de prueba (`paqueteDe` / `paqueteEnPartes`).
 const ambitoMontevideo = AmbitoTrabajo(ciudadId: 'c-1');
+
+/// La ciudad del mapa de la vista 06 fija (sin preguntarle al puerto de ciudades): los tests del
+/// aviso y de la hoja no dependen de cómo se averigua. Va como
+/// `ambitoMapaUbicacionesProvider.overrideWith2((_) => AmbitoFijo(ambito))`; sin ciudad,
+/// `AmbitoFijo(const AmbitoTrabajo())`.
+final class AmbitoFijo extends AmbitoMapaUbicacionesNotifier {
+  AmbitoFijo(this._ambito) : super('col-1');
+
+  final AmbitoTrabajo _ambito;
+
+  @override
+  AmbitoTrabajo build() => _ambito;
+}
 
 /// Los bytes del paquete de ejemplo: chico, para que la descarga entera corra en el test. Pesa 1 MB
 /// redondeado para arriba, así que el botón dice «Descargar mapa · 1 MB».
@@ -157,15 +171,16 @@ final class MontajeAviso {
 }
 
 class _EscenaAviso extends StatelessWidget {
-  const _EscenaAviso(this.ambito, this.modo, this.alTocarMapa);
+  const _EscenaAviso(this.ambito, this.modo, this.alTocarMapa, this.altoLibre);
 
   final AmbitoTrabajo ambito;
   final AvisoMapaModo modo;
   final VoidCallback alTocarMapa;
+  final double? altoLibre;
 
   @override
   Widget build(BuildContext context) {
-    final aviso = AvisoMapaConectado(ambito: ambito, modo: modo);
+    final aviso = AvisoMapaConectado(ambito: ambito, modo: modo, altoLibre: altoLibre);
     if (modo == AvisoMapaModo.flotante) {
       return Stack(
         children: [
@@ -206,6 +221,9 @@ Future<MontajeAviso> montarAviso(
   Size tamano = const Size(390, 844),
   double escala = 1,
   ArnesMapa? arnes,
+
+  /// Los dp que la vista le deja al aviso flotante (la página lo calcula); `null`: sin tope.
+  double? altoLibre,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -226,7 +244,7 @@ Future<MontajeAviso> montarAviso(
           body: ValueListenableBuilder<bool>(
             valueListenable: montaje.abierto,
             builder: (_, abierto, _) => abierto
-                ? _EscenaAviso(ambito, modo, () => montaje.toquesAlMapa++)
+                ? _EscenaAviso(ambito, modo, () => montaje.toquesAlMapa++, altoLibre)
                 : const SizedBox.shrink(),
           ),
         ),

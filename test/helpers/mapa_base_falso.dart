@@ -1,12 +1,25 @@
 import 'dart:math' as math;
 
+import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
+
+/// Los overrides con que la pestaña «Mapa» de la pantalla principal se arma sin plugins: la vista
+/// falsa de [FabricaMapaFalsa] y un mapa sin tiles ni aviso. Los tests que abren esa pestaña de
+/// pasada (sin probar el mapa) los suman a los suyos.
+List<Override> overridesPestanaMapa([FabricaMapaFalsa? mapa]) => [
+  (mapa ?? FabricaMapaFalsa()).override,
+  situacionMapaProvider.overrideWith(
+    (ref, ambito) => const SituacionMapa(fuente: FuenteMapa.sinTiles()),
+  ),
+];
 
 /// La vista nativa de `MapaBase` en los tests de widgets: MapLibre no se dibuja en `flutter test`,
 /// así que esto la reemplaza (`constructorVistaMapaProvider`) por un recuadro que se comporta como
@@ -16,6 +29,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 ///   los dedos** (el centro se corre, como en MapLibre);
 /// - un toque avisa las coordenadas tocadas (con el doble toque prendido, pasado el plazo del doble
 ///   toque, como la nativa: ahí un toque se confirma recién al no venir otro);
+/// - mantener el dedo apoyado (500 ms) avisa un toque largo en las coordenadas tocadas, y el toque
+///   corto de ese gesto no se avisa;
 /// - con `dobleToqueZoom`, un doble toque acerca un nivel **sobre el punto tocado**, animado, y el
 ///   centro se corre como en MapLibre;
 /// - un `moverCamara` deja la cámara ahí y responde como MapLibre: un movimiento de cámara y que
@@ -59,6 +74,9 @@ final class FabricaMapaFalsa {
 
   /// Un punto tocado simulado.
   void tocarPunto(String id) => _eventos!.toquePunto(id);
+
+  /// Un toque largo simulado en [coordenadas], sin gesto de por medio.
+  void tocarLargo(Coordenadas coordenadas) => _eventos!.toqueLargo(coordenadas);
 
   /// La vista avisa que se movió la cámara a [nueva] y después que quedó quieta, como si un gesto
   /// la hubiera dejado ahí.
@@ -202,13 +220,16 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
     widget.eventos.camaraQuieta(_camara);
   }
 
-  void _alTocar(TapUpDetails d) {
+  Coordenadas _coordenadasDe(Offset local) {
     final centro = ProyeccionMercator.aPixeles(_camara.centro, _camara.zoom);
-    final foco = _desdeElCentro(d.localPosition);
-    widget.eventos.toque(
-      ProyeccionMercator.aCoordenadas(centro.x + foco.dx, centro.y + foco.dy, _camara.zoom),
-    );
+    final foco = _desdeElCentro(local);
+    return ProyeccionMercator.aCoordenadas(centro.x + foco.dx, centro.y + foco.dy, _camara.zoom);
   }
+
+  void _alTocar(TapUpDetails d) => widget.eventos.toque(_coordenadasDe(d.localPosition));
+
+  void _alTocarLargo(LongPressStartDetails d) =>
+      widget.eventos.toqueLargo(_coordenadasDe(d.localPosition));
 
   @override
   Widget build(BuildContext context) {
@@ -225,6 +246,7 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
             onScaleUpdate: config.interaccion.hay ? _alActualizar : null,
             onScaleEnd: config.interaccion.hay ? _alTerminar : null,
             onTapUp: _alTocar,
+            onLongPressStart: _alTocarLargo,
             onDoubleTapDown: conDobleToque ? (d) => _puntoDelDobleToque = d.localPosition : null,
             onDoubleTap: conDobleToque ? _alDobleToque : null,
             child: SizedBox.expand(child: ColoredBox(color: config.fondo)),

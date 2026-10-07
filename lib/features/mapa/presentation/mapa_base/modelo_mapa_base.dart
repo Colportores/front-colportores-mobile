@@ -14,6 +14,12 @@ abstract final class ColoresMapa {
   static const bordeContexto = Color(0xFF6B7688);
   static const bordeCandidata = Color(0xFF4A5A72);
   static const tinta = Color(0xFF2A3A52);
+
+  /// El círculo de un grupo de ubicaciones (vista 06): el azul casi negro del canvas.
+  static const tintaOscura = Color(0xFF0E1A2B);
+
+  /// El aro exterior del marcador seleccionado (vista 06).
+  static const aroSeleccion = Color(0xFF002856);
 }
 
 /// Cómo se dibuja un [PuntoMapa].
@@ -30,6 +36,19 @@ enum EstiloPunto {
   /// Una ubicación ya registrada que se compara con la nueva (A, B…): círculo blanco con borde
   /// oscuro y, si tiene, su [PuntoMapa.letra] adentro.
   candidata,
+
+  /// Una ubicación a menos de 60 m del GPS (vista 06): el marcador crece y muestra su número de
+  /// puerta ([PuntoMapa.etiqueta]). Nunca se agrupa: quien está al lado se ve uno por uno.
+  cercano,
+
+  /// La ubicación que el colportor tocó y cuya vista previa está abierta (vista 06): el marcador
+  /// con un aro doble, blanco y azul, por encima de los demás. Nunca se agrupa.
+  seleccionado;
+
+  /// Va en la fuente de puntos que no se agrupa: el punto del GPS, el de la ubicación nueva, el que
+  /// se tocó y los que están al lado del GPS tienen que verse siempre tal cual, no absorbidos por el
+  /// grupo de las ubicaciones que tienen cerca.
+  bool get sinAgrupar => this != contexto && this != candidata;
 }
 
 /// Un marcador del mapa. Se dibuja como capa del estilo (no como widget): no hay un widget por
@@ -40,6 +59,7 @@ final class PuntoMapa extends Equatable {
     required this.coordenadas,
     this.estilo = EstiloPunto.contexto,
     this.letra,
+    this.etiqueta,
   });
 
   /// Identifica al punto cuando el colportor lo toca (`MapaBase.alTocarPunto`).
@@ -50,13 +70,27 @@ final class PuntoMapa extends Equatable {
   /// El texto de adentro del círculo, de [EstiloPunto.candidata]: «A», «B»…
   final String? letra;
 
+  /// El texto de [EstiloPunto.cercano] y [EstiloPunto.seleccionado]: el número de puerta.
+  final String? etiqueta;
+
   @override
-  List<Object?> get props => [id, coordenadas, estilo, letra];
+  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta];
 }
 
 /// El radio de precisión del GPS: un círculo en metros alrededor de [centro].
 final class CirculoPrecision extends Equatable {
   const CirculoPrecision({required this.centro, required this.radioMetros});
+
+  final Coordenadas centro;
+  final double radioMetros;
+
+  @override
+  List<Object?> get props => [centro, radioMetros];
+}
+
+/// El área de «cerca tuyo» (vista 06): un círculo punteado de [radioMetros] alrededor de [centro].
+final class CirculoCercania extends Equatable {
+  const CirculoCercania({required this.centro, required this.radioMetros});
 
   final Coordenadas centro;
   final double radioMetros;
@@ -96,6 +130,7 @@ final class ConfigVistaMapa extends Equatable {
     required this.puntos,
     required this.agruparPuntos,
     required this.precision,
+    required this.cercania,
     required this.puntosTocables,
   });
 
@@ -117,6 +152,9 @@ final class ConfigVistaMapa extends Equatable {
   final bool agruparPuntos;
   final CirculoPrecision? precision;
 
+  /// El círculo punteado de «cerca tuyo»; `null` si no se dibuja.
+  final CirculoCercania? cercania;
+
   /// Quien usa el mapa quiere saber qué punto se tocó.
   final bool puntosTocables;
 
@@ -133,6 +171,7 @@ final class ConfigVistaMapa extends Equatable {
     puntos,
     agruparPuntos,
     precision,
+    cercania,
     puntosTocables,
   ];
 }
@@ -159,6 +198,9 @@ abstract interface class EventosVistaMapa {
 
   /// Se tocó el punto [id].
   void toquePunto(String id);
+
+  /// El colportor mantuvo el dedo apoyado en [coordenadas], donde no hay ningún punto ni grupo.
+  void toqueLargo(Coordenadas coordenadas);
 }
 
 /// Construye la vista nativa de [config]. Es lo único de `MapaBase` que no se puede probar en un

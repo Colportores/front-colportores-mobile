@@ -16,7 +16,7 @@ import '../../../../helpers/lista_ubicaciones_falsos.dart';
 void main() {
   // Hora local: las reglas de «hoy» y «ayer» son de calendario local.
   final ahora = DateTime(2026, 10, 6, 15, 30);
-  const nbsp = ' ';
+  const nbsp = '\u00A0';
   // Las filas de `filaLista` se actualizaron 2 h antes de `ahoraLista`: media hora después, «hace 2 h».
   final ahoraFilas = ahoraLista.add(const Duration(minutes: 30));
 

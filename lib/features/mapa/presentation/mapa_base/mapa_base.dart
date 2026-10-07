@@ -53,10 +53,14 @@ class MapaBase extends ConsumerStatefulWidget {
     this.puntos = const [],
     this.agruparPuntos = false,
     this.precision,
+    this.cercania,
+    this.reservaInferior = 0,
+    this.reservaDerecha = _reservaDerechaPorDefecto,
     this.alCrearse,
     this.alMoverCamara,
     this.alQuedarQuieto,
     this.alTocar,
+    this.alTocarLargo,
     this.alTocarPunto,
   }) : assert(camaraInicial != null || ajuste != null, 'Falta la cámara inicial o el ajuste');
 
@@ -88,6 +92,19 @@ class MapaBase extends ConsumerStatefulWidget {
   final bool agruparPuntos;
   final CirculoPrecision? precision;
 
+  /// El área punteada de «cerca tuyo» (vista 06); sin ella no se dibuja nada.
+  final CirculoCercania? cercania;
+
+  /// Lo que tapa el borde de abajo de la vista (la hoja de la vista 06): la atribución
+  /// «© OpenStreetMap» se sube esos dp para quedar a la vista, no debajo de la hoja.
+  final double reservaInferior;
+
+  /// Lo que tapa el borde derecho de la vista, abajo (un botón flotante): la atribución deja libre
+  /// ese ancho. Por defecto, un botón de 52 dp a 14 dp del borde y un respiro.
+  final double reservaDerecha;
+
+  static const _reservaDerechaPorDefecto = 80.0;
+
   /// El mapa existe: [ControladorMapaBase] para moverlo y leer la cámara.
   final ValueChanged<ControladorMapaBase>? alCrearse;
 
@@ -100,6 +117,10 @@ class MapaBase extends ConsumerStatefulWidget {
 
   /// Se tocó el mapa en [Coordenadas] (no un punto).
   final ValueChanged<Coordenadas>? alTocar;
+
+  /// El colportor mantuvo el dedo apoyado en un lugar vacío del mapa (sin punto ni grupo en los
+  /// 48 dp alrededor del dedo): el atajo para dar de alta una ubicación ahí.
+  final ValueChanged<Coordenadas>? alTocarLargo;
 
   /// Se tocó el punto con ese [PuntoMapa.id]. Un grupo no avisa: acerca el mapa hasta separarse.
   final ValueChanged<String>? alTocarPunto;
@@ -160,6 +181,11 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   Offset? _ultimoToque;
   Timer? _timerUltimoToque;
 
+  /// El primer dedo del gesto lleva apoyado al menos [kLongPressTimeout]: es una pulsación larga,
+  /// no el primer toque de un doble toque.
+  var _pulsacionLarga = false;
+  Timer? _timerPulsacionLarga;
+
   @override
   void initState() {
     super.initState();
@@ -179,6 +205,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   void dispose() {
     _timerRestaurar?.cancel();
     _timerUltimoToque?.cancel();
+    _timerPulsacionLarga?.cancel();
     super.dispose();
   }
 
@@ -276,6 +303,11 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     if (mounted) widget.alTocarPunto?.call(id);
   }
 
+  @override
+  void toqueLargo(Coordenadas coordenadas) {
+    if (mounted) widget.alTocarLargo?.call(coordenadas);
+  }
+
   bool _esEcoDelCodigo(CamaraMapa camara) {
     final esperada = _eco;
     if (esperada == null) return false;
@@ -307,6 +339,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     _olvidarUltimoToque();
     _dedos[evento.pointer] = _Dedo(evento.position);
     if (_dedos.length >= 2) _hubo2Dedos = true;
+    if (_dedos.length == 1) _empezarPulsacion();
     if (!_zoomSobreCentro || _zoomPendiente) return;
     if (_dedos.length >= 2) {
       _iniciarZoom(dobleToque: false);
@@ -333,6 +366,9 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   }
 
   void _alSoltarDedo(PointerEvent evento) {
+    // El dedo que estaba apoyado cuando se cerró la pantalla todavía suelta su evento: no hay nada
+    // que hacer, y un temporizador armado acá quedaría colgado.
+    if (!mounted) return;
     final dedo = _dedos.remove(evento.pointer);
     if (dedo == null) return;
     if (_dedos.length == 1) {
@@ -340,7 +376,10 @@ class _MapaBaseState extends ConsumerState<MapaBase>
       _dedos.values.single.reiniciarReferencia();
     }
     if (_dedos.isNotEmpty) return;
-    final fueToque = evento is PointerUpEvent && !_hubo2Dedos && !dedo.seMovioDesdeElInicio;
+    final fueLarga = _pulsacionLarga;
+    _terminarPulsacion();
+    final fueToque =
+        evento is PointerUpEvent && !_hubo2Dedos && !dedo.seMovioDesdeElInicio && !fueLarga;
     _hubo2Dedos = false;
     if (_zoomPendiente) {
       // Lo normal es que la vista avise que dejó de moverse y ahí se restaura; esto es por si no.
@@ -353,6 +392,18 @@ class _MapaBaseState extends ConsumerState<MapaBase>
       _ultimoToque = evento.position;
       _timerUltimoToque = Timer(_ventanaDobleToque, _olvidarUltimoToque);
     }
+  }
+
+  void _empezarPulsacion() {
+    _pulsacionLarga = false;
+    _timerPulsacionLarga?.cancel();
+    _timerPulsacionLarga = Timer(kLongPressTimeout, () => _pulsacionLarga = true);
+  }
+
+  void _terminarPulsacion() {
+    _timerPulsacionLarga?.cancel();
+    _timerPulsacionLarga = null;
+    _pulsacionLarga = false;
   }
 
   bool _esSegundoToque(Offset posicion) {
@@ -451,6 +502,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
           puntos: widget.puntos,
           agruparPuntos: widget.agruparPuntos,
           precision: widget.precision,
+          cercania: widget.cercania,
           puntosTocables: widget.alTocarPunto != null,
         );
         final marcaGps = _posicionDelGps();
@@ -484,7 +536,11 @@ class _MapaBaseState extends ConsumerState<MapaBase>
                   child: const SizedBox.expand(),
                 ),
               ),
-            if (widget.fuente.hayTiles) const _AtribucionOsm(),
+            if (widget.fuente.hayTiles)
+              _AtribucionOsm(
+                reservaInferior: widget.reservaInferior,
+                reserva: widget.reservaDerecha,
+              ),
           ],
         );
       },
@@ -513,19 +569,22 @@ class _Dedo {
 /// sistema y el lector de pantalla la lee. Si no entra en una línea baja a dos renglones, sin
 /// elipsis, y a la derecha deja libre lo que ocupa un botón flotante del mapa.
 class _AtribucionOsm extends StatelessWidget {
-  const _AtribucionOsm();
+  const _AtribucionOsm({required this.reservaInferior, required this.reserva});
 
   static const texto = '© OpenStreetMap';
 
-  /// Del borde derecho: un botón de 52 dp a 14 dp del borde, y un respiro.
-  static const _reservaDerecha = 80.0;
+  /// Lo que tapa el borde de abajo (la hoja de la vista 06).
+  final double reservaInferior;
+
+  /// Del borde derecho: lo que ocupa un botón flotante.
+  final double reserva;
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       left: 6,
-      right: _reservaDerecha,
-      bottom: 4,
+      right: reserva,
+      bottom: reservaInferior + 4,
       child: Align(
         alignment: Alignment.centerLeft,
         heightFactor: 1,

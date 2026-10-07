@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
+
 /// Miércoles 23/09/2026, 14:35:20 en la zona del dispositivo.
 final _ahora = DateTime(2026, 9, 23, 14, 35, 20);
 
@@ -111,6 +113,7 @@ Future<void> _montar(
       jornadaLocalDataSourceProvider.overrideWithValue(dataSource),
       disparadorBackupProvider.overrideWithValue(backup ?? _BackupFalso()),
       relojJornadaProvider.overrideWithValue(reloj ?? () => _ahora),
+      ...overridesPestanaMapa(),
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
