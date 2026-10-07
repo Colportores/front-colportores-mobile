@@ -967,6 +967,224 @@ void main() {
     );
   });
 
+  // Seguimiento de #247 / PR #264 (#277): quien ya tiene la sesión abierta y abre un enlace que no
+  // sirve (A06) o sin red no tiene login al que volver: la salida va a su inicio y lo dice así
+  // («Ir a mi inicio»). Sin sesión sigue «Volver al login». La sesión no se toca en ningún caso.
+  group('Vista 15 — enlace que no sirve con la sesión abierta (#277)', () {
+    final inicio = find.byKey(const Key('inicio_principal'));
+    final salida = find.byKey(const Key('confirmar_recuperacion_ir_al_login'));
+
+    /// La app con la sesión abierta y la base local lista (si no, la raíz sería la preparación de
+    /// la base y no el inicio), y [enlace] llegando del correo.
+    Future<ProviderContainer> montarConSesion(
+      WidgetTester tester, {
+      EnlaceRecuperacion enlace = EnlaceRecuperacion.vencido,
+    }) async {
+      final base = dbLocalYaPreparada();
+      base.envoltorio = (dek: base.dekEnAlmacen!, password: 'Vieja1234');
+      _dbLocal = base;
+      return _montar(tester, enlace: enlace, conSesion: true);
+    }
+
+    void telefonoChicoConTextoAl200(WidgetTester tester) {
+      tester.view
+        ..physicalSize = const Size(360, 740)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+
+    testWidgets('dado que no hay sesión, cuando llega un enlace que no sirve, entonces la salida '
+        'dice «Volver al login» y lleva al login', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.vencido);
+
+      expect(find.descendant(of: salida, matching: find.text('Volver al login')), findsOneWidget);
+      expect(find.text('Ir a mi inicio'), findsNothing);
+
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+    });
+
+    testWidgets('dado que la sesión está abierta, cuando llega un enlace que no sirve, entonces '
+        'A06 dice «Ir a mi inicio», sin «Volver al login», y conserva «Solicitar un enlace '
+        'nuevo»', (tester) async {
+      await montarConSesion(tester);
+
+      expect(find.text(_textoVencido), findsOneWidget);
+      expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
+      expect(find.text('Volver al login'), findsNothing);
+      expect(find.text('Solicitar un enlace nuevo'), findsOneWidget);
+    });
+
+    testWidgets('dado que la sesión está abierta y A06 en pantalla, cuando se toca «Ir a mi '
+        'inicio», entonces termina en el inicio con la sesión intacta y sin soltar nada', (
+      tester,
+    ) async {
+      final container = await montarConSesion(tester);
+      final sesionAntes = container.read(sesionProvider).value;
+      expect(sesionAntes, isNotNull);
+
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(_login, findsNothing);
+      expect(container.read(sesionProvider).value, sesionAntes, reason: 'la sesión sigue abierta');
+      expect(_recuperacion.abandonos, 0, reason: 'el enlace no abrió ninguna sesión que soltar');
+    });
+
+    testWidgets('dado que la sesión está abierta y el enlace no tiene red, cuando se toca «Ir a mi '
+        'inicio», entonces termina en el inicio con la sesión intacta', (tester) async {
+      final container = await montarConSesion(tester, enlace: EnlaceRecuperacion.sinConexion);
+
+      expect(find.byKey(const Key('confirmar_recuperacion_sin_conexion')), findsOneWidget);
+      expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
+      expect(find.text('Volver al login'), findsNothing);
+
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(container.read(sesionProvider).value, isNotNull);
+      expect(_recuperacion.abandonos, 0);
+    });
+
+    testWidgets('dado que no hay sesión y el enlace no tiene red, cuando se mira el aviso, '
+        'entonces la salida sigue diciendo «Volver al login»', (tester) async {
+      await _montar(tester, enlace: EnlaceRecuperacion.sinConexion);
+
+      expect(find.descendant(of: salida, matching: find.text('Volver al login')), findsOneWidget);
+      expect(find.text('Ir a mi inicio'), findsNothing);
+    });
+
+    testWidgets('dado que el enlace era válido y venció a mitad del cambio, cuando la sesión sigue '
+        'abierta, entonces A06 también dice «Ir a mi inicio» y suelta solo la sesión del enlace', (
+      tester,
+    ) async {
+      final container = await montarConSesion(tester, enlace: EnlaceRecuperacion.valido);
+      _recuperacion.rechazarSesionDeRecuperacion();
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(find.text(_textoVencido), findsOneWidget);
+      expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
+
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+
+      expect(inicio, findsOneWidget);
+      expect(_recuperacion.abandonos, 1);
+      expect(container.read(sesionProvider).value, isNotNull);
+    });
+
+    testWidgets('dado un doble toque en «Ir a mi inicio», cuando A06 se cierra, entonces se sale '
+        'una sola vez y no queda nada trabado', (tester) async {
+      final container = await montarConSesion(tester);
+
+      await tester.tap(salida);
+      await tester.tap(salida, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(container.read(sesionProvider).value, isNotNull);
+    });
+
+    testWidgets('dado que se volvió al inicio, cuando llegan otros dos enlaces seguidos (uno que '
+        'no sirve y uno sin red), entonces cada pantalla dice «Ir a mi inicio» y se puede volver '
+        'a salir', (tester) async {
+      final container = await montarConSesion(tester);
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+      expect(inicio, findsOneWidget);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.vencido);
+      await tester.pumpAndSettle();
+      expect(find.text(_textoVencido), findsOneWidget);
+      expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
+
+      _recuperacion.simularEnlace(EnlaceRecuperacion.sinConexion);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsOneWidget);
+      expect(find.byKey(const Key('confirmar_recuperacion_sin_conexion')), findsOneWidget);
+      expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
+
+      await tester.tap(salida);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(container.read(sesionProvider).value, isNotNull);
+    });
+
+    testWidgets('dado el atrás del sistema en A06 con sesión, cuando se sale, entonces también '
+        'queda en el inicio con la sesión intacta', (tester) async {
+      final container = await montarConSesion(tester);
+
+      await _atrasDelSistema(tester);
+
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(container.read(sesionProvider).value, isNotNull);
+    });
+
+    for (final (nombre, enlace) in [
+      ('A06', EnlaceRecuperacion.vencido),
+      ('el aviso sin conexión', EnlaceRecuperacion.sinConexion),
+    ]) {
+      testWidgets('dado el texto al 200 % en un teléfono chico, cuando se abre $nombre con la '
+          'sesión abierta, entonces no desborda y «Ir a mi inicio» se alcanza y funciona', (
+        tester,
+      ) async {
+        telefonoChicoConTextoAl200(tester);
+        await montarConSesion(tester, enlace: enlace);
+
+        await tester.ensureVisible(salida);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Ir a mi inicio'), findsOneWidget);
+        expect(tester.getRect(salida).bottom, lessThanOrEqualTo(740));
+        expect(tester.getRect(salida).height, greaterThanOrEqualTo(48));
+
+        await tester.tap(salida);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(inicio, findsOneWidget);
+      });
+    }
+
+    testWidgets('lector de pantalla con sesión: el orden es rótulo, texto, «Solicitar un enlace '
+        'nuevo» e «Ir a mi inicio», y los botones tienen etiqueta', (tester) async {
+      final handle = tester.ensureSemantics();
+      await montarConSesion(tester);
+
+      expect(find.bySemanticsLabel('Ir a mi inicio'), findsOneWidget);
+      expect(find.bySemanticsLabel('Volver al login'), findsNothing);
+      final etiquetas = tester.semantics
+          .simulatedAccessibilityTraversal()
+          .map((n) => n.label)
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final posiciones = [
+        'ENLACE NO VÁLIDO',
+        _textoVencido,
+        'Solicitar un enlace nuevo',
+        'Ir a mi inicio',
+      ].map(etiquetas.indexOf).toList();
+      expect(posiciones, everyElement(greaterThanOrEqualTo(0)), reason: '$etiquetas');
+      expect(posiciones, orderedEquals([...posiciones]..sort()), reason: '$etiquetas');
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+  });
+
   // El correo de la última cuenta tras el cierre de sesión que hace la app al cambiar la contraseña
   // con el enlace de recuperación (revisión de #264): se conserva, y el login lo trae puesto.
   group('Vista 15 — el correo tras el cambio con el enlace de recuperación', () {
