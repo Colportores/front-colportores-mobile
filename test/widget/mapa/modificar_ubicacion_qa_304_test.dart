@@ -43,6 +43,8 @@ import '../../helpers/modificar_ubicacion_falsos.dart';
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
 
 const _aviso2 = 'Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.';
+const _lineaCasa = 'El departamento 3B queda como el espacio de la casa, sin número.';
+const _lineaNegocio = 'El departamento 3B queda como el espacio del negocio, sin número.';
 
 /// Con las fuentes reales la guía de contraste de Flutter mide el borde suavizado de las letras
 /// chicas y da falsos negativos; en el modo de capturas no corre (en el CI sí, con la fuente de prueba).
@@ -197,8 +199,11 @@ Finder get _cerrar => find.byTooltip('Cerrar');
 bool _habilitado(WidgetTester tester, Finder boton) =>
     tester.widget<FilledButton>(boton).onPressed != null;
 
-RepoEdicionFalso _edificioFalso(int espacios) =>
-    RepoEdicionFalso(ubicacionGuardada(tipo: TipoUbicacion.edificio), espacios: espacios);
+RepoEdicionFalso _edificioFalso(int espacios, {String? numeroDepto}) => RepoEdicionFalso(
+  ubicacionGuardada(tipo: TipoUbicacion.edificio),
+  espacios: espacios,
+  numeroDepto: numeroDepto,
+);
 
 const _tamanos = <(String, Size, double)>[
   ('360x640 a 100 %', Size(360, 640), 1.0),
@@ -287,6 +292,76 @@ void main() {
         lessThanOrEqualTo(tester.getRect(_guardar).top),
         reason: 'el aviso queda tapado por el botón fijo',
       );
+    });
+  });
+
+  group('QA #304 r2 · la línea «El departamento 3B queda como…» y el aviso a 200 %', () {
+    for (final (nombre, tamano, escala) in _tamanos) {
+      for (final (destino, linea) in [('Casa', _lineaCasa), ('Negocio', _lineaNegocio)]) {
+        testWidgets('un depto «3B», Edificio → $destino: la línea se ve sin scroll, no bloquea y '
+            'cumple las guías en $nombre', (tester) async {
+          final handle = tester.ensureSemantics();
+          await _montar(
+            tester,
+            _edificioFalso(1, numeroDepto: '3B'),
+            tamano: tamano,
+            escala: escala,
+          );
+          await _tocar(tester, find.text(destino));
+
+          expect(find.text(linea), findsOneWidget);
+          expect(
+            tester.getRect(find.text(linea)).bottom,
+            lessThanOrEqualTo(tester.getRect(_guardar).top),
+            reason: 'la línea queda tapada por el botón fijo',
+          );
+          expect(tester.getRect(find.text(linea)).top, greaterThanOrEqualTo(0));
+          expect(find.textContaining('Borralos'), findsNothing);
+          expect(_habilitado(tester, _guardar), isTrue);
+          await _capturar(tester, 'r2_linea_${destino}_${_nombreArchivo(nombre)}');
+          await _guias(tester);
+          handle.dispose();
+        });
+      }
+    }
+
+    testWidgets('Negocio → Casa con dos deptos, a 200 % en 360x640: el aviso se ve sin scroll', (
+      tester,
+    ) async {
+      final repo = RepoEdicionFalso(ubicacionGuardada(tipo: TipoUbicacion.negocio), espacios: 2);
+      await _montar(tester, repo, tamano: const Size(360, 640), escala: 2);
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_aviso2), findsOneWidget);
+      expect(
+        tester.getRect(find.text(_aviso2)).bottom,
+        lessThanOrEqualTo(tester.getRect(_guardar).top),
+      );
+      expect(_habilitado(tester, _guardar), isFalse);
+      await _capturar(tester, 'r2_negocio_a_casa_2_deptos_360x640_2x');
+    });
+
+    testWidgets('la línea cambia de «casa» a «negocio» y se va al volver a Edificio', (
+      tester,
+    ) async {
+      final repo = _edificioFalso(1, numeroDepto: '3B');
+      await _montar(tester, repo);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.text(_lineaCasa), findsOneWidget);
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.text(_lineaCasa), findsNothing);
+      expect(find.text(_lineaNegocio), findsOneWidget);
+      await _tocar(tester, find.text('Edificio'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+    });
+
+    testWidgets('si el depto no tiene número no hay línea y se puede guardar', (tester) async {
+      final sinNumero = _edificioFalso(1);
+      await _montar(tester, sinNumero);
+      await _tocar(tester, find.text('Casa'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
     });
   });
 
@@ -568,6 +643,177 @@ void main() {
         expect((await ubicacion(tester)).tipo, TipoUbicacion.edificio);
         expect((await espacio(tester, 'e1')).numeroDepto, '1A');
         expect(encolador.encolados, isEmpty);
+        await tester.runAsync(db.close);
+      },
+    );
+
+    testWidgets(
+      'Negocio → Casa con dos deptos activos: el aviso con la cuenta, sin poder guardar y '
+      'sin tocar nada; a Edificio no se bloquea',
+      (tester) async {
+        await preparar(
+          tester,
+          tipo: TipoUbicacion.negocio,
+          deptos: [
+            (id: 'e1', numero: null, piso: null, baja: false),
+            (id: 'e2', numero: '2B', piso: null, baja: false),
+          ],
+        );
+        await _montar(tester, repositorio);
+
+        await _tocar(tester, find.text('Casa'));
+        expect(find.text(_aviso2), findsOneWidget);
+        expect(_habilitado(tester, _guardar), isFalse);
+        expect((await ubicacion(tester)).tipo, TipoUbicacion.negocio);
+        expect((await espacio(tester, 'e2')).numeroDepto, '2B');
+        expect(encolador.encolados, isEmpty);
+
+        await _tocar(tester, find.text('Edificio'));
+        expect(find.textContaining('Borralos'), findsNothing);
+        expect(_habilitado(tester, _guardar), isTrue);
+        await tester.runAsync(db.close);
+      },
+    );
+
+    testWidgets('Negocio → Casa con un depto «3B»: la línea dice «de la casa», pasa y el depto '
+        'queda sin número', (tester) async {
+      await preparar(
+        tester,
+        tipo: TipoUbicacion.negocio,
+        deptos: [(id: 'e1', numero: '3B', piso: '3', baja: false)],
+      );
+      final e = await _montar(tester, repositorio);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.text(_lineaCasa), findsOneWidget);
+      await _tocar(tester, _guardar);
+
+      expect(e.salidas.single, isA<UbicacionEditada>());
+      expect((await ubicacion(tester)).tipo, TipoUbicacion.casa);
+      final fila = await espacio(tester, 'e1');
+      expect(fila.numeroDepto, isNull);
+      expect(fila.piso, '3');
+      expect(fila.deletedAt, isNull);
+      expect(entidades(), ['ubicacion', 'espacio']);
+      await tester.runAsync(db.close);
+    });
+
+    testWidgets('la línea toma el número del depto activo, no el del dado de baja', (tester) async {
+      await preparar(
+        tester,
+        deptos: [
+          (id: 'e1', numero: '1A', piso: null, baja: true),
+          (id: 'e2', numero: '3B', piso: null, baja: false),
+        ],
+      );
+      await _montar(tester, repositorio);
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_lineaCasa), findsOneWidget);
+      expect(find.textContaining('1A'), findsNothing);
+      await tester.runAsync(db.close);
+    });
+
+    testWidgets('un depto sin número: pasa a Casa sin línea', (tester) async {
+      await preparar(tester, deptos: [(id: 'e1', numero: null, piso: null, baja: false)]);
+      await _montar(tester, repositorio);
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
+      await tester.runAsync(db.close);
+    });
+
+    testWidgets('sin deptos: pasa a Casa sin línea ni bloqueo y no encola ningún espacio', (
+      tester,
+    ) async {
+      await preparar(tester, deptos: const []);
+      final e = await _montar(tester, repositorio);
+      expect(find.textContaining('Edificio · Sin espacios'), findsOneWidget);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      expect(find.textContaining('Borralos'), findsNothing);
+      await _tocar(tester, _guardar);
+
+      expect(e.salidas.single, isA<UbicacionEditada>());
+      expect(entidades(), ['ubicacion']);
+      await tester.runAsync(db.close);
+    });
+
+    testWidgets('dos deptos: el bloqueo y ninguna línea «queda como el espacio»', (tester) async {
+      await preparar(
+        tester,
+        deptos: [
+          (id: 'e1', numero: '3B', piso: null, baja: false),
+          (id: 'e2', numero: '4C', piso: null, baja: false),
+        ],
+      );
+      await _montar(tester, repositorio);
+
+      await _tocar(tester, find.text('Casa'));
+
+      expect(find.text(_aviso2), findsOneWidget);
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+      await tester.runAsync(db.close);
+    });
+
+    testWidgets(
+      'rechazo tardío con la base real: la hoja pasa a «2 espacios» y «Guardar» queda sin '
+      'efecto; hoy la cuenta no se refresca en la hoja: si el 2.º depto se va hay que cerrar y '
+      'abrir de nuevo, y entonces guarda',
+      (tester) async {
+        await preparar(tester, deptos: [(id: 'e1', numero: '3B', piso: null, baja: false)]);
+        final e = await _montar(tester, repositorio);
+        await _tocar(tester, find.text('Casa'));
+        await tester.runAsync(
+          () => db
+              .into(db.espacios)
+              .insert(
+                EspaciosCompanion.insert(
+                  id: 'e2',
+                  ubicacionId: 'ubi-1',
+                  numeroDepto: const Value('4C'),
+                  createdAt: t0,
+                  updatedAt: t0,
+                  syncVersion: const Value(1),
+                ),
+              ),
+        );
+
+        await _tocar(tester, _guardar);
+
+        expect(find.text(_aviso2), findsOneWidget);
+        expect(find.textContaining('Edificio · 2 espacios'), findsOneWidget);
+        expect(find.textContaining('queda como el espacio'), findsNothing);
+        expect(_habilitado(tester, _guardar), isFalse);
+        expect(encolador.encolados, isEmpty);
+
+        // El 2.º depto se da de baja (sync entrante): la hoja abierta no lo sabe.
+        await tester.runAsync(
+          () => (db.update(
+            db.espacios,
+          )..where((x) => x.id.equals('e2'))).write(EspaciosCompanion(deletedAt: Value(t0))),
+        );
+        await _tocar(tester, find.text('Edificio'));
+        await _tocar(tester, find.text('Casa'));
+        expect(_habilitado(tester, _guardar), isFalse, reason: 'hoy no recuenta en la hoja');
+
+        await _tocar(tester, find.text('Edificio'));
+        await _tocar(tester, _cerrar);
+        expect(find.text('¿Descartar los cambios?'), findsNothing);
+        expect(e.salidas.single, isNull);
+
+        await _abrir(tester);
+        expect(find.textContaining('Edificio · 1 espacio'), findsOneWidget);
+        await _tocar(tester, find.text('Casa'));
+        await _tocar(tester, _guardar);
+
+        expect((await ubicacion(tester)).tipo, TipoUbicacion.casa);
+        expect((await espacio(tester, 'e1')).numeroDepto, isNull);
+        expect((await espacio(tester, 'e2')).deletedAt, isNotNull);
         await tester.runAsync(db.close);
       },
     );
