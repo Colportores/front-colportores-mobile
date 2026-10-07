@@ -37,6 +37,14 @@ const _sinConexion = 'Tu sesión expiró. Necesitás conexión para renovarla.';
 /// Propuesta del canvas 17-A02 (no está en la HU: queda «para confirmar» en el PR).
 const _ayudaSinConexion = 'Vas a poder entrar cuando vuelva la señal.';
 
+/// Error de «Entrar» sin conexión cuando ya hubo una cuenta en el teléfono (decisión de las tandas
+/// 31 y 32): un texto que miente en un caso se ajusta solo en ese caso.
+const _entrarSinConexion = 'Necesitás conexión para iniciar sesión.';
+
+/// HU-AUTH-003, «Error - primer login sin conectividad»: vale con el teléfono sin cuenta conocida.
+const _primerLoginSinConexion =
+    'Necesitás conexión para iniciar sesión por primera vez en este dispositivo.';
+
 final _aviso = find.byKey(const Key('login_aviso_sesion'));
 final _cerrar = find.byKey(const Key('login_aviso_sesion_cerrar'));
 final _borde = find.byKey(const Key('login_aviso_sesion_borde_discontinuo'));
@@ -653,6 +661,81 @@ void main() {
       expect(find.text(_inactividad), findsNothing);
     });
 
+    testWidgets('dado A02 ya a la vista, cuando repite «Entrar» sin conexión, cada intento anuncia '
+        'el aviso una vez', (tester) async {
+      final v = await vencida(tester);
+      v.entorno.remoto.simularSinConexion = true;
+      tester.takeAnnouncements();
+
+      for (var intento = 1; intento <= 3; intento++) {
+        await tocarEntrar(tester);
+
+        expect(tester.takeAnnouncements().map((a) => a.message), [
+          _sinConexion,
+        ], reason: 'intento $intento');
+      }
+      expect(v.entorno.remoto.llamadasIniciarSesion, 3);
+      expect(find.text(_sinConexion), findsOneWidget);
+    });
+
+    testWidgets('dado A01 con señal, cuando el primer intento sin conexión hace aparecer A02, lo '
+        'anuncia la región viva, y el segundo intento lo anuncia a mano', (tester) async {
+      final v = await vencida(tester, tipo: TipoConexion.wifi);
+      v.entorno.remoto.simularSinConexion = true;
+      tester.takeAnnouncements();
+
+      await tocarEntrar(tester);
+      expect(find.text(_sinConexion), findsOneWidget);
+      expect(tester.takeAnnouncements(), isEmpty, reason: 'ya lo anuncia el `liveRegion`');
+
+      await tester.tap(_entrar);
+      await tester.pumpAndSettle();
+      expect(tester.takeAnnouncements().map((a) => a.message), [_sinConexion]);
+    });
+
+    testWidgets('dado A02, cuando la validación falla sin salir a la red, no se anuncia el aviso '
+        'otra vez', (tester) async {
+      final v = await vencida(tester);
+      tester.takeAnnouncements();
+
+      await tester.tap(_entrar); // contraseña vacía: no sale a la red
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ingresá tu contraseña'), findsOneWidget);
+      expect(v.entorno.remoto.llamadasIniciarSesion, 0);
+      expect(tester.takeAnnouncements(), isEmpty);
+    });
+
+    testWidgets('360x640 al 200 %: dado A02 tras un intento fallido, cuando la validación falla '
+        'con la pantalla bajada, el aviso no se sube a la vista', (tester) async {
+      _pantalla(tester, const Size(360, 640), texto: 2);
+      final v = await vencida(tester, tipo: TipoConexion.wifi);
+      v.entorno.remoto.simularSinConexion = true;
+      await tester.enterText(_clave, 'Secreto123');
+      await tester.ensureVisible(_entrar);
+      await tester.pumpAndSettle();
+      await tester.tap(_entrar);
+      await tester.pumpAndSettle();
+      expect(find.text(_sinConexion), findsOneWidget);
+      expect(v.entorno.remoto.llamadasIniciarSesion, 1);
+
+      await tester.enterText(_clave, '');
+      await tester.ensureVisible(_entrar);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(_aviso).top,
+        lessThan(0),
+        reason: 'precondición: el aviso quedó arriba',
+      );
+
+      await tester.tap(_entrar);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ingresá tu contraseña'), findsOneWidget);
+      expect(tester.getRect(_aviso).top, lessThan(0));
+      expect(find.text(_sinConexion), findsOneWidget);
+    });
+
     testWidgets('dado A02, cuando falta la contraseña, el campo lo dice y el aviso sigue', (
       tester,
     ) async {
@@ -714,6 +797,8 @@ void main() {
       await tocarEntrar(tester);
 
       expect(_errorGeneral, findsOneWidget);
+      expect(find.text(_entrarSinConexion), findsOneWidget);
+      expect(find.text(_primerLoginSinConexion), findsNothing);
       expect(find.text(_sinConexion), findsNothing);
       expect(find.text(_revocada), findsOneWidget);
     });
@@ -851,6 +936,70 @@ void main() {
 
       expect(_correo(tester), 'lucia.silva.con.un.correo.largo@correo.com');
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Vista 17 — texto de «Entrar» sin conexión según haya o no una cuenta en el teléfono', () {
+    /// Segundo arranque sin señal: la sesión ya se descartó en el arranque anterior y el aviso de
+    /// la vista 17 no sobrevive (`reingresoSesionProvider` vive en memoria); queda el login común,
+    /// con o sin el correo de la última cuenta guardado aparte.
+    Future<AuthRemoteDataSourceEnMemoria> arrancarSinSesion(
+      WidgetTester tester,
+      UltimoCorreoEnMemoria guardado,
+    ) async {
+      final remoto = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
+      )..simularSinConexion = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remoto),
+            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+            ultimoCorreoRepositoryProvider.overrideWithValue(guardado),
+            monitorConectividadProvider.overrideWithValue(
+              ConectividadFalsa()..tipo = TipoConexion.sinConexion,
+            ),
+          ],
+          child: const ColportoresApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return remoto;
+    }
+
+    Future<void> tocarEntrar(WidgetTester tester) async {
+      await tester.enterText(_clave, 'Secreto123');
+      await tester.tap(_entrar);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('dado el segundo arranque sin señal con el correo de la cuenta guardado, cuando '
+        'toca «Entrar», no dice «por primera vez»', (tester) async {
+      final remoto = await arrancarSinSesion(
+        tester,
+        UltimoCorreoEnMemoria('lucia.silva@correo.com'),
+      );
+      expect(_aviso, findsNothing, reason: 'el aviso de la vista 17 no sobrevive al arranque');
+      expect(_correo(tester), 'lucia.silva@correo.com');
+
+      await tocarEntrar(tester);
+
+      expect(remoto.llamadasIniciarSesion, 1);
+      expect(find.text(_entrarSinConexion), findsOneWidget);
+      expect(find.text(_primerLoginSinConexion), findsNothing);
+      expect(tester.widget<FilledButton>(_entrar).onPressed, isNotNull);
+    });
+
+    testWidgets('dado un teléfono sin cuenta conocida y sin señal, cuando toca «Entrar», dice el '
+        'literal de la HU «por primera vez en este dispositivo»', (tester) async {
+      await arrancarSinSesion(tester, UltimoCorreoEnMemoria());
+      await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
+
+      await tocarEntrar(tester);
+
+      expect(find.text(_primerLoginSinConexion), findsOneWidget);
+      expect(find.text(_entrarSinConexion), findsNothing);
     });
   });
 }

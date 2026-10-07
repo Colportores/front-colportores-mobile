@@ -33,10 +33,6 @@ const _guardado = 'Tus visitas y cobranzas siguen guardadas en el teléfono.';
 const _sinConexion = 'Tu sesión expiró. Necesitás conexión para renovarla.';
 const _ayudaSinConexion = 'Vas a poder entrar cuando vuelva la señal.';
 
-/// Los hallazgos de la QA de #248 que todavía no están arreglados quedan con `skip` (convención de
-/// los issues `[QA-*]`): el implementador lo saca cuando los arregla.
-const _saltarHallazgos = true;
-
 final _aviso = find.byKey(const Key('login_aviso_sesion'));
 final _cerrar = find.byKey(const Key('login_aviso_sesion_cerrar'));
 final _ayuda = find.byKey(const Key('login_vencida_sin_conexion_ayuda'));
@@ -211,11 +207,11 @@ EditableText _editable(WidgetTester tester, Finder campo) =>
 
 void main() {
   group('QA #248 — la señal cambia mientras se escribe (señal que cambia en vuelo)', () {
-    // Hallazgo B1 (menor): pasar de 17-A01/A04 a 17-A02 (o al revés) cambia la lista de hijos
-    // de la `Column` del login por arriba (aviso) y por el medio («guardadas», ayuda). Los
-    // `_CampoLogin` no tienen `key`: Flutter no puede emparejarlos y los vuelve a crear, con lo que
-    // el campo que se está escribiendo pierde el foco (se cierra el teclado) y «Mostrar contraseña»
-    // vuelve a ocultar.
+    // Hallazgo B1 (menor, arreglado): pasar de 17-A01/A04 a 17-A02 (o al revés) cambia la lista de
+    // hijos de la `Column` del login por arriba (aviso) y por el medio («guardadas», ayuda). Sin
+    // `key` en los `_CampoLogin`, Flutter no podía emparejarlos y los volvía a crear, con lo que el
+    // campo que se está escribiendo perdía el foco (se cerraba el teclado) y «Mostrar contraseña»
+    // volvía a ocultar.
     for (final (nombre, desde, hasta, descartarAntes) in [
       ('17-A01 → 17-A02 (se corta la señal)', TipoConexion.wifi, TipoConexion.sinConexion, false),
       (
@@ -226,8 +222,6 @@ void main() {
       ),
       ('17-A02 → 17-A01 (vuelve la señal)', TipoConexion.sinConexion, TipoConexion.wifi, false),
     ]) {
-      // skip: QA #248 — B1: los campos del login se vuelven a crear al pasar entre A01/A04 y A02
-      // (foco perdido y «Mostrar contraseña» vuelve a ocultar); darle `key` a cada `_CampoLogin`.
       testWidgets(
         'dado $nombre, cuando la señal cambia con la contraseña en edición, el campo sigue con '
         'el foco, lo escrito y «Mostrar contraseña»',
@@ -265,7 +259,6 @@ void main() {
             reason: 'tras el cambio de señal',
           );
         },
-        skip: _saltarHallazgos,
       );
     }
 
@@ -299,10 +292,10 @@ void main() {
   });
 
   group('QA #248 — la conexión se lee tarde en un arranque en frío', () {
-    // Hallazgo B2 (menor): `conexionProvider` es perezoso y recién lo lee el login, ya dibujado:
-    // mientras la plataforma contesta, el login afirma 17-A01 («Recuperar acceso» y «guardadas») con
-    // el teléfono sin señal, y el lector de pantalla anuncia dos avisos seguidos.
-    // skip: QA #248 — B2: leer la conexión al arrancar la app (antes de que el login se dibuje).
+    // Hallazgo B2 (menor, arreglado): `conexionProvider` es perezoso y lo leía recién el login, ya
+    // dibujado: mientras la plataforma contestaba, el login afirmaba 17-A01 («Recuperar acceso» y
+    // «guardadas») con el teléfono sin señal, y el lector de pantalla anunciaba dos avisos seguidos.
+    // Ahora la raíz de la app la lee desde el arranque, en paralelo a la sesión.
     testWidgets(
       'dado el arranque en frío sin señal y la lectura de la sesión más lenta que la de la '
       'conexión, cuando aparece el login, nunca afirma 17-A01',
@@ -324,7 +317,6 @@ void main() {
 
         expect(vistos, [_sinConexion], reason: 'el login pasó por $vistos');
       },
-      skip: _saltarHallazgos,
     );
 
     testWidgets('dado el arranque en frío sin señal, cuando se asienta, queda 17-A02 con el correo '
@@ -571,16 +563,15 @@ void main() {
   });
 
   group('QA #248 — tras «Entrar» sin conexión el aviso de 17-A02 queda a la vista', () {
-    // Hallazgo B3 (bloqueante): el login promete llevar el aviso arriba de la vista tras un «Entrar» sin
-    // conexión (`_llevarAVista(_claveAvisoSesion, alineacion: 0)`), pero el campo de contraseña
-    // sigue con el foco y su cursor pide ser visible: gana el cursor y el aviso queda cortado o
-    // fuera de la pantalla, justo el «el toque parecía no hacer nada» que el PR dice evitar.
+    // Hallazgo B3 (bloqueante, arreglado): el login lleva el aviso arriba de la vista tras un
+    // «Entrar» sin conexión (`_llevarAVista(_claveAvisoSesion, alineacion: 0)`), pero el campo de
+    // contraseña seguía con el foco y su cursor pedía ser visible: ganaba el cursor y el aviso
+    // quedaba cortado o fuera de la pantalla, justo el «el toque parecía no hacer nada» que el PR
+    // dice evitar. Ahora el campo suelta el foco al fallar sin conexión en 17-A02.
     for (final (nombre, texto, teclado) in [
       ('360x640 al 200 %, sin teclado', 2.0, 0.0),
       ('360x640 al 200 %, teclado abierto', 2.0, 280.0),
     ]) {
-      // skip: QA #248 — B3: el cursor del campo con foco le gana al scroll del aviso (texto grande y
-      // teclado abierto): llevar el aviso a la vista después, o soltar el foco al fallar.
       testWidgets('$nombre: el aviso entero se ve después de «Entrar» sin conexión', (
         tester,
       ) async {
@@ -591,8 +582,21 @@ void main() {
         final e = await _vencida(tester);
         e.remoto.simularSinConexion = true;
 
-        await _tocarEntrar(tester);
+        // A 200 % «Entrar» queda debajo del borde: se baja hasta él, como lo hace quien usa la app
+        // (sin esto el toque cae fuera del botón y el intento no sale).
+        await tester.enterText(_clave, 'Secreto123');
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(_entrar);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(_aviso).top,
+          lessThan(0),
+          reason: 'precondición: aviso fuera de vista',
+        );
+        await tester.tap(_entrar);
+        await tester.pumpAndSettle();
 
+        expect(e.remoto.llamadasIniciarSesion, 1, reason: 'el toque llegó al botón');
         final r = tester.getRect(_aviso);
         final visibles = alto - teclado;
         expect(
@@ -600,7 +604,12 @@ void main() {
           {'arriba': true, 'abajo': true},
           reason: 'el aviso quedó en y=${r.top}..${r.bottom} con ${visibles}dp de pantalla útil',
         );
-      }, skip: _saltarHallazgos);
+        expect(
+          _editable(tester, _clave).focusNode.hasFocus,
+          isFalse,
+          reason: 'el campo suelta el foco: su cursor no le gana al desplazamiento hacia el aviso',
+        );
+      });
     }
   });
 

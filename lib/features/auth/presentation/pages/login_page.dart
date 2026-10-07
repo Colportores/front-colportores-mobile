@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
@@ -35,6 +36,13 @@ class LoginPage extends ConsumerStatefulWidget {
 /// cuenta ya existe y el servidor la compara tal cual.
 const _largoMaximoCorreo = 254;
 
+/// El teléfono dice que no hay señal. Mientras la plataforma no contesta (o si falla) no se sabe:
+/// no se afirma nada.
+bool _sinSenal(AsyncValue<TipoConexion> conexion) => switch (conexion) {
+  AsyncData(:final value) => value == TipoConexion.sinConexion,
+  _ => false,
+};
+
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -59,6 +67,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// conexión; la validación de los campos no lo toca porque no sale a la red.
   bool _ultimoIntentoSinConexion = false;
 
+  /// `true` si en este teléfono ya hubo una cuenta (había un correo guardado): entonces no es el
+  /// «primer login en este dispositivo» y el aviso sin conexión de «Entrar» no debe decirlo.
+  bool _habiaCorreoGuardado = false;
+
   // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
   // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
   bool _mantenerSesion = true;
@@ -77,11 +89,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   /// Sin «Sesión vencida» de por medio, el correo de la última cuenta puede seguir guardado: la app
   /// cerró la sesión por su cuenta (el cambio de contraseña con el enlace de recuperación) y no se
-  /// borra a propósito. Si la colportora ya empezó a escribir otro, no se lo pisa.
+  /// borra a propósito. Si la colportora ya empezó a escribir otro, no se lo pisa (pero se recuerda
+  /// que había uno, para el texto sin conexión de «Entrar»).
   Future<void> _precargarUltimoCorreo() async {
     final guardado = await ref.read(ultimoCorreoRepositoryProvider).leer();
-    if (!mounted || guardado == null || _email.text.isNotEmpty) return;
-    _email.text = guardado;
+    if (!mounted || guardado == null) return;
+    _habiaCorreoGuardado = true;
+    if (_email.text.isEmpty) _email.text = guardado;
   }
 
   @override
@@ -111,9 +125,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     if (!mounted) return;
     final vencida = _vencidaPorInactividad;
+    // El aviso de 17-A02 ya estaba a la vista antes de este intento: el `liveRegion` no lo vuelve a
+    // anunciar si no cambia, así que se anuncia a mano (un anuncio por intento, WCAG 4.1.3).
+    final avisoYaVisible =
+        vencida && (_sinSenal(ref.read(conexionProvider)) || _ultimoIntentoSinConexion);
     setState(() {
       _enviando = false;
-      if (failure is! FailureValidacion) _ultimoIntentoSinConexion = failure is FailureSinConexion;
+      if (failure is! FailureValidacion) {
+        _ultimoIntentoSinConexion = failure is FailureSinConexion && vencida;
+      }
       switch (failure) {
         case null:
           break;
@@ -136,12 +156,23 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _llevarAVista(_claveErrorGeneral);
       });
-    } else if (_ultimoIntentoSinConexion && vencida) {
+    } else if (failure is FailureSinConexion && vencida) {
       // El aviso de 17-A02 está arriba de todo: con el botón al borde de la pantalla (texto
-      // grande) quedaba fuera de la vista y el toque parecía no hacer nada.
+      // grande) o el teclado abierto quedaba fuera de la vista y el toque parecía no hacer nada.
+      // El campo con foco le gana al desplazamiento con su cursor: se suelta antes.
+      FocusScope.of(context).unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _llevarAVista(_claveAvisoSesion, alineacion: 0);
       });
+      if (avisoYaVisible) {
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            const FailureSesionVencidaSinConexion().mensaje,
+            Directionality.of(context),
+          ),
+        );
+      }
     }
   }
 
@@ -158,8 +189,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
-  /// HU-AUTH-003, "Error - primer login sin conectividad" (#94).
-  static const _accionSinConexion = 'iniciar sesión por primera vez en este dispositivo.';
+  /// HU-AUTH-003, "Error - primer login sin conectividad" (#94). Solo dice «primera vez» si de verdad
+  /// lo es: con una cuenta ya conocida en el teléfono (sesión cerrada, vencida o revocada, o un
+  /// correo guardado) un texto que miente se ajusta solo en ese caso.
+  String get _accionSinConexion => ref.read(reingresoSesionProvider) != null || _habiaCorreoGuardado
+      ? 'iniciar sesión.'
+      : 'iniciar sesión por primera vez en este dispositivo.';
 
   /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
   /// pantalla de recuperación lo trae cargado.
@@ -182,14 +217,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final reingreso = ref.watch(reingresoSesionProvider);
     // 17-A02: la sesión venció por inactividad y no hay con qué renovarla. Es un estado, no un
     // aviso que se pueda cerrar: dura mientras no haya señal.
-    final sinSenal = ref.watch(
-      conexionProvider.select(
-        (conexion) => switch (conexion) {
-          AsyncData(:final value) => value == TipoConexion.sinConexion,
-          _ => false,
-        },
-      ),
-    );
+    final sinSenal = ref.watch(conexionProvider.select(_sinSenal));
     final vencidaSinConexion =
         reingreso?.motivo == MotivoExpiracion.inactividad &&
         (sinSenal || _ultimoIntentoSinConexion);
@@ -261,7 +289,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ],
                       ],
                       const SizedBox(height: 34),
+                      // Con `key`: el aviso, «guardadas» y la ayuda de 17-A02 entran y salen de esta
+                      // `Column`; sin ella los campos se recrean y se pierde foco y «Mostrar».
                       _CampoLogin(
+                        key: const ValueKey('login_campo_email'),
                         fieldKey: const Key('login_email'),
                         etiqueta: 'CORREO',
                         textoAyuda: 'lucia.silva@correo.com',
@@ -274,6 +305,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       const SizedBox(height: 12),
                       _CampoLogin(
+                        key: const ValueKey('login_campo_password'),
                         fieldKey: const Key('login_password'),
                         etiqueta: 'CONTRASEÑA',
                         textoAyuda: '••••••••',
@@ -513,6 +545,7 @@ class _MarcaColportaje extends StatelessWidget {
 /// Campo de formulario: label fijo arriba (no el label flotante de Material) + input del tema.
 class _CampoLogin extends StatefulWidget {
   const _CampoLogin({
+    super.key,
     required this.etiqueta,
     required this.textoAyuda,
     required this.controller,
