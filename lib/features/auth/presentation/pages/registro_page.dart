@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../domain/entities/politica_password.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
+import '../widgets/texto_error_anunciado.dart';
 import 'recuperacion_password_page.dart';
 import 'verificacion_email_page.dart';
 
@@ -24,14 +25,17 @@ import 'verificacion_email_page.dart';
 /// [VerificacionEmailPage] (con el email y la contraseña recién tipeados) en vez de volver al
 /// login — esa pantalla es la que ahora ofrece esperar, reenviar o revisar el enlace.
 class RegistroPage extends ConsumerStatefulWidget {
-  const RegistroPage({super.key, this.mostrarApple});
-
-  /// Fuerza mostrar/ocultar "Apple" — mismo mecanismo que [LoginPage.mostrarApple].
-  final bool? mostrarApple;
+  const RegistroPage({super.key});
 
   @override
   ConsumerState<RegistroPage> createState() => _RegistroPageState();
 }
+
+/// Topes de largo de los campos (decisión del 02/10, #265), sin contador a la vista. Nombre y
+/// apellido: 60. Correo: 254 (RFC 5321). La contraseña se cuenta en bytes, no en caracteres, y no
+/// se recorta: ver [PoliticaPassword.largoMaximoBytes]. La cédula no lleva tope.
+const _largoMaximoNombre = 60;
+const _largoMaximoCorreo = 254;
 
 class _RegistroPageState extends ConsumerState<RegistroPage> {
   final _nombre = TextEditingController();
@@ -40,6 +44,17 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
 
+  // Un foco por campo con error posible: al enviar con errores la pantalla baja hasta el primero y
+  // lo enfoca (en 360x640 los de abajo quedan fuera de la vista).
+  final _focoNombre = FocusNode();
+  final _focoApellido = FocusNode();
+  final _focoCedula = FocusNode();
+  final _focoEmail = FocusNode();
+  final _focoPassword = FocusNode();
+  final _focoTerminos = FocusNode();
+  final _focoTradeOff = FocusNode();
+  final _claveErrorGeneral = GlobalKey();
+
   late final TapGestureRecognizer _terminosRecognizer;
 
   Map<String, String> _erroresCampo = const {};
@@ -47,6 +62,10 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   bool _enviando = false;
   bool _aceptaTerminos = false;
   bool _aceptaTradeOffE2E = false;
+
+  /// `true` mientras la contraseña tipeada pasa los 72 bytes que acepta Supabase Auth: el campo lo
+  /// dice y «Continuar» queda deshabilitado (nunca se recorta lo que escribió).
+  bool _passwordDemasiadoLarga = false;
 
   /// `true` cuando el error general es "email ya registrado" (HU-AUTH-001): habilita los accesos
   /// directos a login y a recuperar contraseña que exige el criterio de aceptación.
@@ -61,6 +80,12 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   void initState() {
     super.initState();
     _terminosRecognizer = TapGestureRecognizer()..onTap = _proximamente;
+    _password.addListener(_alCambiarPassword);
+  }
+
+  void _alCambiarPassword() {
+    final excede = PoliticaPassword.excedeLargoMaximo(_password.text);
+    if (excede != _passwordDemasiadoLarga) setState(() => _passwordDemasiadoLarga = excede);
   }
 
   @override
@@ -70,12 +95,24 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     _cedula.dispose();
     _email.dispose();
     _password.dispose();
+    for (final foco in [
+      _focoNombre,
+      _focoApellido,
+      _focoCedula,
+      _focoEmail,
+      _focoPassword,
+      _focoTerminos,
+      _focoTradeOff,
+    ]) {
+      foco.dispose();
+    }
     _terminosRecognizer.dispose();
     super.dispose();
   }
 
   Future<void> _enviar() async {
-    if (_enviando) return; // Doble tap: "Crear cuenta" y "Reintentar" comparten este guardián.
+    // Doble tap: "Continuar" y "Reintentar" comparten este guardián.
+    if (_enviando || _passwordDemasiadoLarga) return;
     setState(() {
       _enviando = true;
       _erroresCampo = const {};
@@ -122,11 +159,15 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
               // Mensaje propio del registro (HU-AUTH-001, "Edge - fallo intermitente del
               // backend"): no el genérico de FailureServidor. El registro del NetworkFailure
               // (status, sin PII) lo hace el repositorio (issue #90).
-              _errorGeneral = 'Servicio temporalmente no disponible, reintentá en unos minutos';
+              _errorGeneral = BannerErrorConAccion.servicioNoDisponible;
               _errorEsReintentable = true;
             case Failure(:final mensaje):
               _errorGeneral = mensaje;
           }
+        });
+        // Con el error ya dibujado: baja hasta el primer campo que falló y lo enfoca.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _irAlPrimerError();
         });
       },
       (r) {
@@ -148,27 +189,37 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     );
   }
 
-  /// Con Supabase, OAuth registra e inicia sesión en un solo paso: mismo flujo que en login.
-  Future<void> _registrarConGoogle() async {
-    setState(() {
-      _enviando = true;
-      _erroresCampo = const {};
-      _errorGeneral = null;
-    });
-
-    final failure = await ref.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-    if (!mounted) return;
-
-    if (failure == null) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+  /// Lleva la pantalla al primer campo con error, en el orden en que se ven, y lo enfoca. Sin
+  /// errores por campo, baja al aviso general.
+  void _irAlPrimerError() {
+    final focos = <String, FocusNode>{
+      'nombre': _focoNombre,
+      'apellido': _focoApellido,
+      'cedula': _focoCedula,
+      'email': _focoEmail,
+      'password': _focoPassword,
+      'aceptaTerminos': _focoTerminos,
+      'aceptaTradeOffE2E': _focoTradeOff,
+    };
+    for (final MapEntry(key: campo, value: foco) in focos.entries) {
+      if (!_erroresCampo.containsKey(campo)) continue;
+      _bajarHasta(foco.context);
+      foco.requestFocus();
       return;
     }
+    _bajarHasta(_claveErrorGeneral.currentContext);
+  }
 
-    setState(() {
-      _enviando = false;
-      _errorGeneral = failure.mensaje;
-    });
+  void _bajarHasta(BuildContext? contexto) {
+    if (contexto == null || !contexto.mounted) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   void _proximamente() {
@@ -180,8 +231,6 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
     const paddingHorizontal = 30.0;
     final errorTerminos = _erroresCampo['aceptaTerminos'];
     final errorTradeOffE2E = _erroresCampo['aceptaTradeOffE2E'];
@@ -202,15 +251,19 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                         children: [
                           IconButton(
                             key: const Key('registro_atras'),
+                            tooltip: 'Volver',
                             onPressed: () => Navigator.of(context).pop(),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                             alignment: Alignment.centerLeft,
-                            icon: Text(
-                              '‹',
-                              style: theme.textTheme.headlineMedium?.copyWith(
-                                fontSize: 26,
-                                height: 1,
+                            // El glifo es decoración: el nombre del botón es el tooltip.
+                            icon: ExcludeSemantics(
+                              child: Text(
+                                '‹',
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  fontSize: 26,
+                                  height: 1,
+                                ),
                               ),
                             ),
                           ),
@@ -235,6 +288,8 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           Expanded(
                             child: _CampoRegistro(
                               fieldKey: const Key('registro_nombre'),
+                              focusNode: _focoNombre,
+                              maxLength: _largoMaximoNombre,
                               etiqueta: 'NOMBRE',
                               textoAyuda: 'Lucía',
                               controller: _nombre,
@@ -247,6 +302,8 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           Expanded(
                             child: _CampoRegistro(
                               fieldKey: const Key('registro_apellido'),
+                              focusNode: _focoApellido,
+                              maxLength: _largoMaximoNombre,
                               etiqueta: 'APELLIDO',
                               textoAyuda: 'Silva',
                               controller: _apellido,
@@ -260,6 +317,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       const SizedBox(height: 14),
                       _CampoRegistro(
                         fieldKey: const Key('registro_cedula'),
+                        focusNode: _focoCedula,
                         etiqueta: 'CÉDULA',
                         textoAyuda: '4.812.309-2',
                         controller: _cedula,
@@ -270,6 +328,8 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       const SizedBox(height: 14),
                       _CampoRegistro(
                         fieldKey: const Key('registro_email'),
+                        focusNode: _focoEmail,
+                        maxLength: _largoMaximoCorreo,
                         etiqueta: 'CORREO',
                         textoAyuda: 'lucia.silva@correo.com',
                         controller: _email,
@@ -281,6 +341,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       const SizedBox(height: 14),
                       _CampoRegistro(
                         fieldKey: const Key('registro_password'),
+                        focusNode: _focoPassword,
                         etiqueta: 'CONTRASEÑA',
                         textoAyuda: 'Mínimo 8 caracteres',
                         controller: _password,
@@ -288,7 +349,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                         autofillHints: const [AutofillHints.newPassword],
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _enviando ? null : _enviar(),
-                        errorText: _erroresCampo['password'],
+                        errorText: _passwordDemasiadoLarga
+                            ? PoliticaPassword.demasiadoLarga
+                            : _erroresCampo['password'],
                         textoAyudaInferior: 'Usá al menos una mayúscula y un número.',
                       ),
                       const SizedBox(height: 16),
@@ -301,6 +364,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           // uso", que se perdería si se lo excluyera de la semántica).
                           Checkbox(
                             key: const Key('registro_terminos'),
+                            focusNode: _focoTerminos,
                             value: _aceptaTerminos,
                             semanticLabel:
                                 'Acepto los términos de uso y el tratamiento de los datos de '
@@ -342,9 +406,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       if (errorTerminos != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4, left: 32),
-                          child: Text(
+                          child: TextoErrorAnunciado(
                             errorTerminos,
-                            key: const Key('registro_terminos_error'),
+                            textoKey: const Key('registro_terminos_error'),
                             style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
                           ),
                         ),
@@ -358,6 +422,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                           // Sin achicar: el área de toque tiene que ser de 48x48 (#115).
                           Checkbox(
                             key: const Key('registro_trade_off'),
+                            focusNode: _focoTradeOff,
                             value: _aceptaTradeOffE2E,
                             semanticLabel:
                                 'Entiendo que mi contraseña protege la copia de seguridad de mis '
@@ -388,26 +453,27 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       if (errorTradeOffE2E != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4, left: 32),
-                          child: Text(
+                          child: TextoErrorAnunciado(
                             errorTradeOffE2E,
-                            key: const Key('registro_trade_off_error'),
+                            textoKey: const Key('registro_trade_off_error'),
                             style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
                           ),
                         ),
                       if (_errorGeneral != null) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(key: _claveErrorGeneral, height: 12),
                         if (_errorEsReintentable)
                           BannerErrorConAccion(
                             mensaje: _errorGeneral!,
                             mensajeKey: const Key('registro_error_general'),
                             textoAccion: 'Reintentar',
-                            onAccion: _enviando ? null : _enviar,
+                            // Con la contraseña pasada de los 72 bytes `_enviar` no hace nada: el botón
+                            // se apaga igual que «Continuar».
+                            onAccion: _enviando || _passwordDemasiadoLarga ? null : _enviar,
                           )
                         else ...[
-                          Text(
+                          TextoErrorAnunciado(
                             _errorGeneral!,
-                            key: const Key('registro_error_general'),
-                            style: TextStyle(color: theme.colorScheme.error),
+                            textoKey: const Key('registro_error_general'),
                           ),
                           if (_emailYaRegistrado)
                             Wrap(
@@ -434,53 +500,20 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                       const SizedBox(height: 4),
                       FilledButton(
                         key: const Key('registro_continuar'),
-                        onPressed: _enviando ? null : _enviar,
+                        onPressed: _enviando || _passwordDemasiadoLarga ? null : _enviar,
                         child: _enviando
-                            ? SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.onPrimary,
+                            // El spinner reemplaza al texto: sin esto el botón queda sin nombre.
+                            ? Semantics(
+                                label: 'Creando tu cuenta…',
+                                child: SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.onPrimary,
+                                  ),
                                 ),
                               )
                             : const Text('Continuar'),
-                      ),
-                      const SizedBox(height: 28),
-                      // El ancho disponible viene del `LayoutBuilder` de acá arriba, no de uno
-                      // propio en `_DivisorTexto`: ese widget vive dentro del `IntrinsicHeight`
-                      // de más abajo, y `LayoutBuilder` no soporta que le pidan dimensiones
-                      // intrínsecas ("LayoutBuilder does not support returning intrinsic
-                      // dimensions") — reventaba en cascada en cualquier test que montara la
-                      // página (revisión de #116).
-                      _DivisorTexto(
-                        texto: 'O REGISTRATE CON',
-                        anchoDisponible: constraints.maxWidth - paddingHorizontal * 2,
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _BotonProveedor(
-                              etiqueta: 'Google',
-                              glifo: 'G',
-                              colorGlifo: colores.googleAzul,
-                              onPressed: _enviando ? null : _registrarConGoogle,
-                            ),
-                          ),
-                          if (mostrarApple) ...[
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _BotonProveedor(
-                                etiqueta: 'Apple',
-                                glifo: 'A',
-                                onPressed: () {
-                                  // TODO: alta de OAuth con Apple — todavía sin HU asignada.
-                                  _proximamente();
-                                },
-                              ),
-                            ),
-                          ],
-                        ],
                       ),
                       const Spacer(),
                       const SizedBox(height: 24),
@@ -523,6 +556,8 @@ class _CampoRegistro extends StatefulWidget {
     this.textInputAction,
     this.onSubmitted,
     this.textoAyudaInferior,
+    this.focusNode,
+    this.maxLength,
   });
 
   final String etiqueta;
@@ -539,6 +574,11 @@ class _CampoRegistro extends StatefulWidget {
   /// Hint debajo del input (p.ej. la regla de contraseña). Se oculta si hay [errorText]: el
   /// propio `InputDecoration` prioriza el error sobre el helper.
   final String? textoAyudaInferior;
+
+  final FocusNode? focusNode;
+
+  /// Tope de caracteres visibles, sin contador a la vista; `null` es sin tope.
+  final int? maxLength;
 
   @override
   State<_CampoRegistro> createState() => _CampoRegistroState();
@@ -560,6 +600,8 @@ class _CampoRegistroState extends State<_CampoRegistro> {
         TextField(
           key: widget.fieldKey,
           controller: widget.controller,
+          focusNode: widget.focusNode,
+          maxLength: widget.maxLength,
           obscureText: widget.esContrasena && !_mostrarTexto,
           keyboardType: widget.keyboardType,
           autofillHints: widget.autofillHints,
@@ -569,6 +611,9 @@ class _CampoRegistroState extends State<_CampoRegistro> {
           decoration: InputDecoration(
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
+            counterText: '',
+            // Con el texto grande el aviso del campo no se corta con puntos suspensivos.
+            errorMaxLines: 3,
             helperText: widget.textoAyudaInferior,
             helperStyle: TextStyle(color: colores.gris, fontSize: 11),
             helperMaxLines: 2,
@@ -589,101 +634,6 @@ class _CampoRegistroState extends State<_CampoRegistro> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Línea divisoria con texto centrado, p.ej. "O REGISTRATE CON". Igual que en `login_page.dart`.
-///
-/// [anchoDisponible] viene del `LayoutBuilder` del padre (no uno propio acá): este widget vive
-/// dentro del `IntrinsicHeight` de la página, y `LayoutBuilder` no soporta que le pidan
-/// dimensiones intrínsecas — revienta en cascada apenas algo (un test, `IntrinsicHeight` mismo)
-/// pide el alto intrínseco del árbol (revisión de #116).
-class _DivisorTexto extends StatelessWidget {
-  const _DivisorTexto({required this.texto, required this.anchoDisponible});
-
-  final String texto;
-
-  /// Ancho de la fila completa (los dos `Divider` + el texto), ya sin el padding horizontal de
-  /// la página.
-  final double anchoDisponible;
-
-  /// Padding horizontal del texto (12 a cada lado) — también entra en la cuenta de ancho.
-  static const _paddingHorizontal = 24.0;
-
-  /// Línea visible mínima de cada `Divider`, aun con el texto más largo posible.
-  static const _anchoMinimoDivisor = 16.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final estilo = theme.textTheme.bodySmall?.copyWith(letterSpacing: 1.1, color: colores.gris);
-
-    // Mide el ancho real que pide el texto (con el tema y el `textScaler` actuales) en vez de
-    // adivinar una proporción de `flex` fija: un `flex` chico lo truncaba a escala normal
-    // (revisión de #116) y sin ningún límite desbordaba con `textScaler` alto (issue #108).
-    // Midiendo, el texto ocupa exactamente lo que necesita —y los `Divider` el resto— hasta el
-    // mínimo de `_anchoMinimoDivisor`; `TextOverflow.ellipsis` es el resguardo final si ni así
-    // entra.
-    final medidor = TextPainter(
-      text: TextSpan(text: texto, style: estilo),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      maxLines: 1,
-    )..layout();
-
-    final espacioParaTexto = anchoDisponible - _paddingHorizontal - _anchoMinimoDivisor * 2;
-    final anchoMaximoTexto = espacioParaTexto > 0 ? espacioParaTexto : 0.0;
-    final anchoTexto = medidor.width > anchoMaximoTexto ? anchoMaximoTexto : medidor.width;
-
-    return Row(
-      children: [
-        Expanded(child: Divider(color: colores.borde)),
-        SizedBox(
-          width: anchoTexto + _paddingHorizontal,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(texto, maxLines: 1, overflow: TextOverflow.ellipsis, style: estilo),
-          ),
-        ),
-        Expanded(child: Divider(color: colores.borde)),
-      ],
-    );
-  }
-}
-
-/// Botón "con" un proveedor (Google/Apple). Igual que en `login_page.dart`.
-class _BotonProveedor extends StatelessWidget {
-  const _BotonProveedor({
-    required this.etiqueta,
-    required this.glifo,
-    required this.onPressed,
-    this.colorGlifo,
-  });
-
-  final String etiqueta;
-  final String glifo;
-  final Color? colorGlifo;
-
-  /// `null` deshabilita el botón (mientras hay un ingreso en curso).
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            glifo,
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: colorGlifo),
-          ),
-          const SizedBox(width: 10),
-          Text(etiqueta),
-        ],
-      ),
     );
   }
 }

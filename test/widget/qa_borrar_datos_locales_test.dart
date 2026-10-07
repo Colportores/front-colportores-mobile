@@ -572,8 +572,6 @@ void main() {
   });
 
   group('Visual: casillas', () {
-    // skip: QA #228 — `checkboxTheme.fillColor` no distingue el estado: la casilla sin marcar se
-    // ve rellena de azul (canvas A04: caja blanca con borde gris, y azul solo la marcada).
     testWidgets('la casilla sin marcar no se ve rellena como la marcada', (tester) async {
       _pantalla(tester, const Size(390, 844));
       await _montar(tester);
@@ -587,6 +585,6 @@ void main() {
         isNot(relleno.resolve(<WidgetState>{WidgetState.selected})),
         reason: 'sin marcar y marcada no pueden tener el mismo relleno',
       );
-    }, skip: true);
+    });
   });
 }

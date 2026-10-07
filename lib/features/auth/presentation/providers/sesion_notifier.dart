@@ -137,29 +137,6 @@ class SesionNotifier extends _$SesionNotifier {
     );
   }
 
-  /// Ingreso con Google (HU-AUTH-003): abre el navegador y espera el deep link de vuelta.
-  /// Mismo contrato que [iniciarSesion]: el [Failure] si falló o `null` si entró.
-  Future<Failure?> iniciarSesionConGoogle() async {
-    // Sin esto, la contraseña de una sesión anterior armaría el envoltorio de esta (#130).
-    _olvidarPassword();
-    state = const AsyncLoading();
-    final resultado = await ref.read(iniciarSesionConGoogleUseCaseProvider)(const NoParams());
-
-    return resultado.fold(
-      (failure) {
-        state = const AsyncData(null);
-        return failure;
-      },
-      (sesion) {
-        state = AsyncData(sesion);
-        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
-        ref.read(avisoSesionProvider.notifier).descartar();
-        ref.read(reingresoSesionProvider.notifier).limpiar();
-        return null;
-      },
-    );
-  }
-
   /// Registra una cuenta nueva (HU-AUTH-001/002, ver dartdoc de [RegistrarUsuarioUseCase]).
   ///
   /// A diferencia de [iniciarSesion], devuelve el `Either` completo en vez de solo el [Failure]:

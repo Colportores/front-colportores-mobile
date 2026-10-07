@@ -109,6 +109,10 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': PoliticaPassword.requisitos},
     ),
+    // Solo traduce el rechazo del servidor; el tope en el formulario de la vista 15 es #296.
+    PasswordDemasiadoLargaException() => const FailureValidacion(
+      campos: {'password': PoliticaPassword.demasiadoLarga},
+    ),
     ServidorException(:final status, :final mensaje) =>
       mensaje == null
           ? FailureServidor(status: status)

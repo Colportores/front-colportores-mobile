@@ -30,12 +30,6 @@ abstract interface class AuthRemoteDataSource {
     required String password,
   });
 
-  /// Ingreso con Google vía OAuth por navegador + deep link (HU-AUTH-003). Con Supabase, el
-  /// primer ingreso registra la cuenta en el mismo paso. Resuelve cuando la sesión ya está
-  /// iniciada; si el usuario no vuelve de la pantalla de Google, lanza [ServidorException]
-  /// con mensaje para el usuario.
-  Future<SesionModel> iniciarSesionConGoogle();
-
   /// Sesión que el proveedor tiene persistida en el dispositivo (o `null`). Con Supabase la
   /// persiste `supabase_flutter` en el almacén seguro (`AlmacenSesionSupabase`). No toca la red:
   /// con el JWT de acceso vencido la devuelve igual (sin red la app sigue trabajando, y el
@@ -128,6 +122,13 @@ final class SesionRevocadaException extends AuthRemoteException {
 /// La contraseña no cumple la política de Supabase Auth (`weak_password`).
 final class PasswordDebilException extends AuthRemoteException {
   const PasswordDebilException();
+}
+
+/// La contraseña pasa el tope del servidor, 72 bytes (bcrypt; 400 `validation_failed`). La app lo
+/// frena antes en el registro: llega acá si el servidor cuenta distinto que la app, o desde la
+/// recuperación, que todavía no frena el largo en el formulario (#296).
+final class PasswordDemasiadoLargaException extends AuthRemoteException {
+  const PasswordDemasiadoLargaException();
 }
 
 /// La contraseña nueva es igual a la anterior (Supabase `same_password`, HU-AUTH-005).

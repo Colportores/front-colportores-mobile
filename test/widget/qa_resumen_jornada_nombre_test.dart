@@ -1,5 +1,5 @@
 // QA #243 — Vista 21 (resumen del día) — saludo «Buen trabajo, <nombre>» (#243): con nombre, sin nombre
-// (ingreso con Google o cuenta sin nombre), nombre largo y texto grande.
+// (cuenta sin nombre), nombre largo y texto grande.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';

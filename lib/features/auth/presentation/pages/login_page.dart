@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +11,8 @@ import '../providers/auth_providers.dart';
 import '../providers/aviso_sesion_notifier.dart';
 import '../providers/reingreso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
+import '../widgets/banner_error_con_accion.dart';
+import '../widgets/texto_error_anunciado.dart';
 import 'recuperacion_password_page.dart';
 import 'registro_page.dart';
 
@@ -21,16 +22,15 @@ import 'registro_page.dart';
 /// por campo o un banner general. Todo lo visual sale de `Theme.of(context)` — el tema
 /// (`temaClaro`, ver `core/theme/`) decide colores, tipografía y forma.
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key, this.mostrarApple});
-
-  /// Fuerza mostrar/ocultar "Continuar con Apple". `null` (el default en producción) lo infiere
-  /// de la plataforma (`Platform.isIOS`, Apple solo lo exige ahí); en tests se fuerza por acá en
-  /// vez de depender de `Platform`.
-  final bool? mostrarApple;
+  const LoginPage({super.key});
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
+
+/// Tope del correo (RFC 5321). Sin contador a la vista. La contraseña del login no lleva tope: la
+/// cuenta ya existe y el servidor la compara tal cual.
+const _largoMaximoCorreo = 254;
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _email = TextEditingController();
@@ -38,6 +38,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
   bool _enviando = false;
+
+  /// `true` cuando el error general es el fallo intermitente del backend (5xx): el banner lleva
+  /// «Reintentar», como el del registro (HU-AUTH-001, «Edge - fallo intermitente del backend»).
+  bool _errorEsReintentable = false;
+
+  /// Marca el aviso general para llevarlo a la vista cuando aparece.
+  final _claveErrorGeneral = GlobalKey();
 
   // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
   // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
@@ -72,10 +79,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _enviar() async {
+    if (_enviando) return; // Doble toque: «Entrar» y «Reintentar» comparten este guardián.
     setState(() {
       _enviando = true;
       _erroresCampo = const {};
       _errorGeneral = null;
+      _errorEsReintentable = false;
     });
 
     final failure = await ref
@@ -90,36 +99,37 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           break;
         case FailureValidacion(:final campos):
           _erroresCampo = campos;
+        case FailureServidor(:final status) when status != null && status >= 500:
+          _errorGeneral = BannerErrorConAccion.servicioNoDisponible;
+          _errorEsReintentable = true;
         case Failure():
           _errorGeneral = mensajePara(failure, accion: _accionSinConexion);
       }
     });
+    // Con el texto grande y «Entrar» al borde de la pantalla el aviso (y «Reintentar») nacía
+    // debajo del borde: como en el registro, baja hasta él una vez dibujado.
+    if (_errorGeneral != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _bajarHastaElAviso();
+      });
+    }
+  }
+
+  void _bajarHastaElAviso() {
+    final contexto = _claveErrorGeneral.currentContext;
+    if (contexto == null || !contexto.mounted) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   /// HU-AUTH-003, "Error - primer login sin conectividad" (#94).
   static const _accionSinConexion = 'iniciar sesión por primera vez en este dispositivo.';
-
-  Future<void> _entrarConGoogle() async {
-    setState(() {
-      _enviando = true;
-      _erroresCampo = const {};
-      _errorGeneral = null;
-    });
-
-    final failure = await ref.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-    if (!mounted) return;
-    setState(() {
-      _enviando = false;
-      _errorGeneral = failure == null ? null : mensajePara(failure, accion: _accionSinConexion);
-    });
-  }
-
-  void _proximamente() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Disponible próximamente')));
-  }
 
   /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
   /// pantalla de recuperación lo trae cargado.
@@ -138,7 +148,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
     const paddingHorizontal = 30.0;
     final aviso = ref.watch(avisoSesionProvider);
     final reingreso = ref.watch(reingresoSesionProvider);
@@ -196,12 +205,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 34),
                       _CampoLogin(
                         fieldKey: const Key('login_email'),
-                        etiqueta: 'CORREO O CÉDULA',
+                        etiqueta: 'CORREO',
                         textoAyuda: 'lucia.silva@correo.com',
                         controller: _email,
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.email],
                         textInputAction: TextInputAction.next,
+                        maxLength: _largoMaximoCorreo,
                         errorText: _erroresCampo['email'],
                       ),
                       const SizedBox(height: 12),
@@ -217,12 +227,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         errorText: _erroresCampo['password'],
                       ),
                       if (_errorGeneral != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          _errorGeneral!,
-                          key: const Key('login_error_general'),
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
+                        SizedBox(key: _claveErrorGeneral, height: 12),
+                        if (_errorEsReintentable)
+                          BannerErrorConAccion(
+                            mensaje: _errorGeneral!,
+                            mensajeKey: const Key('login_error_general'),
+                            textoAccion: 'Reintentar',
+                            onAccion: _enviando ? null : _enviar,
+                          )
+                        else
+                          TextoErrorAnunciado(
+                            _errorGeneral!,
+                            textoKey: const Key('login_error_general'),
+                          ),
                       ],
                       const SizedBox(height: 16),
                       _FilaMantenerSesion(
@@ -238,35 +255,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         key: const Key('login_enviar'),
                         onPressed: _enviando ? null : _enviar,
                         child: _enviando
-                            ? SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.onPrimary,
+                            // El spinner reemplaza al texto: sin esto el botón queda sin nombre.
+                            ? Semantics(
+                                label: 'Entrando…',
+                                child: SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.onPrimary,
+                                  ),
                                 ),
                               )
                             : const Text('Entrar'),
                       ),
-                      const SizedBox(height: 28),
-                      const _DivisorTexto(texto: 'O CONTINUAR CON'),
-                      const SizedBox(height: 18),
-                      _BotonProveedor(
-                        etiqueta: 'Continuar con Google',
-                        glifo: 'G',
-                        colorGlifo: colores.googleAzul,
-                        onPressed: _enviando ? null : _entrarConGoogle,
-                      ),
-                      if (mostrarApple) ...[
-                        const SizedBox(height: 12),
-                        _BotonProveedor(
-                          etiqueta: 'Continuar con Apple',
-                          glifo: 'A',
-                          onPressed: () {
-                            // TODO: alta de OAuth con Apple — todavía sin HU asignada.
-                            _proximamente();
-                          },
-                        ),
-                      ],
                       const Spacer(),
                       const SizedBox(height: 24),
                       Row(
@@ -299,9 +300,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           onPressed: () {
                             unawaited(
                               Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => RegistroPage(mostrarApple: widget.mostrarApple),
-                                ),
+                                MaterialPageRoute<void>(builder: (_) => const RegistroPage()),
                               ),
                             );
                           },
@@ -434,6 +433,7 @@ class _CampoLogin extends StatefulWidget {
     this.autofillHints,
     this.textInputAction,
     this.onSubmitted,
+    this.maxLength,
   });
 
   final String etiqueta;
@@ -446,6 +446,9 @@ class _CampoLogin extends StatefulWidget {
   final Iterable<String>? autofillHints;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onSubmitted;
+
+  /// Tope de caracteres visibles, sin contador a la vista; `null` es sin tope.
+  final int? maxLength;
 
   @override
   State<_CampoLogin> createState() => _CampoLoginState();
@@ -472,10 +475,12 @@ class _CampoLoginState extends State<_CampoLogin> {
           autofillHints: widget.autofillHints,
           textInputAction: widget.textInputAction,
           onSubmitted: widget.onSubmitted,
+          maxLength: widget.maxLength,
           style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
+            counterText: '',
             // Área de toque mínima de 48 (accesibilidad): en el tema claro el campo queda en 41.
             constraints: const BoxConstraints(minHeight: 48),
             suffixIcon: widget.esContrasena
@@ -496,76 +501,9 @@ class _CampoLoginState extends State<_CampoLogin> {
   }
 }
 
-/// Línea divisoria con texto centrado, p.ej. "O CONTINUAR CON".
-class _DivisorTexto extends StatelessWidget {
-  const _DivisorTexto({required this.texto});
-
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-
-    return Row(
-      children: [
-        Expanded(child: Divider(color: colores.borde)),
-        // Flexible: con el texto grande (200 %) no entra en una línea y tiene que poder partirse.
-        Flexible(
-          flex: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              texto,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(letterSpacing: 1.1, color: colores.gris),
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: colores.borde)),
-      ],
-    );
-  }
-}
-
-/// Botón "Continuar con" un proveedor (Google/Apple).
-class _BotonProveedor extends StatelessWidget {
-  const _BotonProveedor({
-    required this.etiqueta,
-    required this.glifo,
-    required this.onPressed,
-    this.colorGlifo,
-  });
-
-  final String etiqueta;
-  final String glifo;
-  final Color? colorGlifo;
-
-  /// `null` deshabilita el botón (mientras hay un ingreso en curso).
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            glifo,
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: colorGlifo),
-          ),
-          const SizedBox(width: 10),
-          Flexible(child: Text(etiqueta, textAlign: TextAlign.center)),
-        ],
-      ),
-    );
-  }
-}
-
-/// «Mantener sesión» y el enlace de recuperación. A texto grande el enlace va en una línea propia
-/// (en la misma fila se cortaba con puntos suspensivos) y la etiqueta del checkbox se parte en
-/// líneas en vez de recortarse.
+/// «Mantener sesión» y el enlace de recuperación. En la misma línea si entran; si no (360 y 390 de
+/// ancho con las fuentes reales, o texto grande), el enlace pasa a la línea de abajo en vez de
+/// cortarse con «…», y la etiqueta del checkbox se parte en líneas en vez de recortarse.
 class _FilaMantenerSesion extends StatelessWidget {
   const _FilaMantenerSesion({
     required this.mantener,
@@ -582,7 +520,6 @@ class _FilaMantenerSesion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final textoGrande = MediaQuery.textScalerOf(context).scale(14) > 20;
     final casilla = Checkbox(
       value: mantener,
       semanticLabel: 'Mantener sesión',
@@ -590,15 +527,9 @@ class _FilaMantenerSesion extends StatelessWidget {
       materialTapTargetSize: MaterialTapTargetSize.padded,
       onChanged: (valor) => alCambiar(valor ?? true),
     );
-    final etiqueta = Expanded(
+    final etiqueta = Flexible(
       // La etiqueta ya la lleva el checkbox para el lector de pantalla.
-      child: ExcludeSemantics(
-        child: Text(
-          'Mantener sesión',
-          style: theme.textTheme.bodyMedium,
-          overflow: textoGrande ? null : TextOverflow.ellipsis,
-        ),
-      ),
+      child: ExcludeSemantics(child: Text('Mantener sesión', style: theme.textTheme.bodyMedium)),
     );
     final enlace = TextButton(
       key: const Key('login_olvidaste_clave'),
@@ -609,28 +540,18 @@ class _FilaMantenerSesion extends StatelessWidget {
       onPressed: alRecuperar,
       child: Text(
         textoEnlace,
-        overflow: textoGrande ? null : TextOverflow.ellipsis,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.secondary,
           fontWeight: FontWeight.w600,
         ),
       ),
     );
-    if (textoGrande) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [casilla, etiqueta]),
-          enlace,
-        ],
-      );
-    }
-    return Row(
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        casilla,
-        etiqueta,
-        const SizedBox(width: 8),
-        Flexible(child: enlace),
+        Row(mainAxisSize: MainAxisSize.min, children: [casilla, etiqueta]),
+        enlace,
       ],
     );
   }

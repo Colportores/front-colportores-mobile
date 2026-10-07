@@ -130,9 +130,9 @@ abstract final class TextosPreparacionDbLocal {
 /// - el progreso, con el paso de 3 de la HU (nunca un spinner mudo);
 /// - la advertencia del Keystore por software (S10), con el consentimiento explícito;
 /// - la recuperación con la contraseña (ADR-006);
-/// - la contraseña de la cuenta, cuando entra con contraseña y la DB quedaría sin envoltorio (una
-///   sesión restaurada): se confirma contra el servidor antes de seguir (revisión del PR #130),
-///   con "¿Olvidaste tu contraseña?" para quien no la recuerda;
+/// - la contraseña de la cuenta, cuando la DB quedaría sin envoltorio (una sesión restaurada): se
+///   confirma contra el servidor antes de seguir (revisión del PR #130), con "¿Olvidaste tu
+///   contraseña?" para quien no la recuerda;
 /// - "Reintentar" ante una falla, y "empezar de nuevo" —que borra, con confirmación— recién
 ///   después de un reintento que volvió a fallar;
 /// - la pantalla bloqueante de una DB de una versión más nueva de la app, sin ofrecer borrar.
@@ -252,10 +252,9 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     );
   }
 
-  /// Una cuenta con contraseña que no la recuerda —p. ej. entra siempre con Google— no queda
-  /// encerrada acá (revisión del PR #130, N1): la restablece (HU-AUTH-004) con el email de la
-  /// sesión. Al guardar la nueva, esa pantalla cierra la sesión, y el login con la nueva protege
-  /// la DB.
+  /// Una cuenta que no recuerda su contraseña no queda encerrada acá (revisión del PR #130, N1):
+  /// la restablece (HU-AUTH-004) con el email de la sesión. Al guardar la nueva, esa pantalla
+  /// cierra la sesión, y el login con la nueva protege la DB.
   void _olvidePassword() {
     final email = ref.read(sesionProvider).value?.email;
     unawaited(
@@ -525,8 +524,8 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     );
   }
 
-  /// Cuenta con contraseña y DB sin envoltorio (revisión del PR #130): se pide la contraseña antes
-  /// de seguir. Sin "reintentar": sin la contraseña, el resultado sería el mismo.
+  /// Sesión restaurada y DB sin envoltorio (revisión del PR #130): se pide la contraseña antes de
+  /// seguir. Sin "reintentar": sin la contraseña, el resultado sería el mismo.
   _VistaPreparacion _confirmacionPassword(ThemeData theme, Failure falla, Failure? error) {
     void confirmar() => unawaited(_notifier.confirmarPassword(_password.text));
     return _VistaPreparacion(

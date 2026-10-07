@@ -155,6 +155,18 @@ void main() {
       });
     });
 
+    test('dada una contraseña que Supabase rechaza por larga (72 bytes), lo dice (#265; el tope '
+        'en el formulario es #296)', () async {
+      remoto.fallaAlActualizar = const PasswordDemasiadoLargaException();
+
+      expect(
+        await repo.actualizarPassword('NuevaClave1'),
+        const Left<Failure, Unit>(
+          FailureValidacion(campos: {'password': PoliticaPassword.demasiadoLarga}),
+        ),
+      );
+    });
+
     test('dada una contraseña que Supabase considera débil, muestra la política', () async {
       remoto.fallaAlActualizar = const PasswordDebilException();
 

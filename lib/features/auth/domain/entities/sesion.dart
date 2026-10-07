@@ -12,7 +12,6 @@ class Sesion extends Equatable {
     required this.email,
     required this.accessToken,
     required DateTime expiraEn,
-    this.entraConPassword = true,
     this.nombre,
   }) : expiraEn = expiraEn.toUtc();
 
@@ -34,14 +33,8 @@ class Sesion extends Equatable {
   /// desigual con el mismo `hashCode`.
   final DateTime expiraEn;
 
-  /// Si la cuenta puede entrar con email y contraseña (y no solo con Google). Con contraseña, la
-  /// DB local se protege además con un envoltorio por contraseña (ADR-006): sin él, si el almacén
-  /// seguro falla solo queda "empezar de nuevo". Ante la duda, `true`: se pide la contraseña
-  /// (revisión del PR #130).
-  final bool entraConPassword;
-
   /// Nombre de pila del usuario (`usuario.nombre`), para el saludo «Buen trabajo, NOMBRE»
-  /// (#243). `null` si la cuenta no lo trae (ingreso con Google: el proveedor no lo manda en el
+  /// (#243). `null` si la cuenta no lo trae (una cuenta vieja, que no lo mandó en el
   /// signup). Es dato personal: va en [props] pero nunca en `toString` ([stringify] es `false`).
   final String? nombre;
 
@@ -56,5 +49,5 @@ class Sesion extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [usuarioId, email, accessToken, expiraEn, entraConPassword, nombre];
+  List<Object?> get props => [usuarioId, email, accessToken, expiraEn, nombre];
 }

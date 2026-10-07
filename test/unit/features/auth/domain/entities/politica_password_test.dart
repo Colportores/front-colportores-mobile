@@ -60,6 +60,39 @@ void main() {
     });
   });
 
+  group('excedeLargoMaximo (tope de 72 bytes de Supabase Auth, #265)', () {
+    test('72 caracteres ASCII entran; 73 no', () {
+      expect(PoliticaPassword.excedeLargoMaximo('a' * 72), isFalse);
+      expect(PoliticaPassword.excedeLargoMaximo('a' * 73), isTrue);
+    });
+
+    test('se cuenta en bytes UTF-8, no en caracteres: la ñ ocupa 2', () {
+      expect(PoliticaPassword.excedeLargoMaximo('ñ' * 36), isFalse, reason: '72 bytes');
+      expect(PoliticaPassword.excedeLargoMaximo('a${'ñ' * 36}'), isTrue, reason: '73 bytes');
+      expect(PoliticaPassword.largo('ñ' * 37), 37, reason: 'pasa por bytes, no por largo');
+      expect(PoliticaPassword.excedeLargoMaximo('ñ' * 37), isTrue);
+    });
+
+    test('un emoji ocupa 4 bytes', () {
+      expect(PoliticaPassword.excedeLargoMaximo('😀' * 18), isFalse, reason: '72 bytes');
+      expect(PoliticaPassword.excedeLargoMaximo('😀' * 19), isTrue, reason: '76 bytes');
+    });
+
+    test('la vacía y la de 8 no lo exceden', () {
+      expect(PoliticaPassword.excedeLargoMaximo(''), isFalse);
+      expect(PoliticaPassword.excedeLargoMaximo('Ab1defgh'), isFalse);
+    });
+
+    test('validar no mira el tope: la contraseña nueva de la vista 15 es #296', () {
+      expect(PoliticaPassword.validar('Ab1${'x' * 100}'), isNull);
+    });
+
+    test('el texto del tope es el de la decisión del 02/10', () {
+      expect(PoliticaPassword.demasiadoLarga, 'Es demasiado larga. Acortala.');
+      expect(PoliticaPassword.largoMaximoBytes, 72);
+    });
+  });
+
   group('validar', () {
     test('sin número no cumple, aunque tenga mayúscula y largo', () {
       expect(PoliticaPassword.validar('Ñandúñandú'), requisitos);

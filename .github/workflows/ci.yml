@@ -49,7 +49,7 @@ jobs:
         run: bash scripts/coverage_check.sh
 
       # Variables de repo (no secrets: la anon key es pública). Sin ellas el paso se omite.
-      - name: Proveedores de Supabase Auth (email + google, sin apple)
+      - name: Proveedores de Supabase Auth (solo email, sin apple)
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}

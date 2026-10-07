@@ -169,11 +169,7 @@ void main() {
     Future<Either<Failure, ResultadoInicializacionDb>> entrarCon(String password, {String? de}) {
       dbLocal.abierta = false;
       final inicializar = InicializarDbLocalUseCase(dbLocal, vigencia, turno);
-      final params = InicializarDbLocalParams(
-        password: password,
-        requiereEnvoltorio: true,
-        usuarioId: de ?? 'usuario-a',
-      );
+      final params = InicializarDbLocalParams(password: password, usuarioId: de ?? 'usuario-a');
       return inicializar(params);
     }
 
@@ -185,7 +181,7 @@ void main() {
         ..fallas['leerDek'] = const FailureAlmacenSeguro();
       final inicializar = InicializarDbLocalUseCase(dbLocal, vigencia, turno);
       expect(
-        await inicializar(const InicializarDbLocalParams(requiereEnvoltorio: true)),
+        await inicializar(const InicializarDbLocalParams()),
         const Left<Failure, ResultadoInicializacionDb>(FailureAlmacenSeguroRecuperable()),
       );
       final recuperar = RecuperarDbLocalConPasswordUseCase(dbLocal, vigencia, turno);

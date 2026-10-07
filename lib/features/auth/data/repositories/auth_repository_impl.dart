@@ -5,6 +5,7 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/motivo_expiracion.dart';
+import '../../domain/entities/politica_password.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
@@ -136,34 +137,6 @@ final class AuthRepositoryImpl implements AuthRepository {
       return Left(failure);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'REGISTRO_FAIL', 'error inesperado en registro', const {}, e, st);
-      return Left(FailureInesperado(causa: e));
-    }
-  }
-
-  @override
-  Future<Either<Failure, Sesion>> iniciarSesionConGoogle() async {
-    try {
-      final sesion = await _remote.iniciarSesionConGoogle();
-      await _local.guardarSesion(sesion);
-      _log.info(LogModulo.auth, 'LOGIN_GOOGLE_OK', 'login con Google exitoso', {
-        'user_id': sesion.usuarioId,
-      });
-      return Right(sesion.toEntity());
-    } on AuthRemoteException catch (e) {
-      final failure = _traducir(e);
-      _log.warn(LogModulo.auth, 'LOGIN_GOOGLE_FAIL', 'login con Google rechazado', {
-        'codigo': failure.codigo,
-      });
-      return Left(failure);
-    } on Object catch (e, st) {
-      _log.error(
-        LogModulo.auth,
-        'LOGIN_GOOGLE_FAIL',
-        'error inesperado en Google',
-        const {},
-        e,
-        st,
-      );
       return Left(FailureInesperado(causa: e));
     }
   }
@@ -476,6 +449,9 @@ final class AuthRepositoryImpl implements AuthRepository {
     SesionRevocadaException() => const FailureSesionRevocada(),
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
+    ),
+    PasswordDemasiadoLargaException() => const FailureValidacion(
+      campos: {'password': PoliticaPassword.demasiadoLarga},
     ),
     // Solo los lanza la recuperación de contraseña (HU-AUTH-005), que tiene su propio repositorio:
     // acá no llegan, pero el switch es exhaustivo.

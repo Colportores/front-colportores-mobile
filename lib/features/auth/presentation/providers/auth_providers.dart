@@ -23,7 +23,6 @@ import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
-import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
 import '../../domain/usecases/observar_verificaciones_exitosas_use_case.dart';
@@ -78,10 +77,6 @@ AuthRepository authRepository(Ref ref) => AuthRepositoryImpl(
 @Riverpod(keepAlive: true)
 IniciarSesionUseCase iniciarSesionUseCase(Ref ref) =>
     IniciarSesionUseCase(ref.watch(authRepositoryProvider));
-
-@Riverpod(keepAlive: true)
-IniciarSesionConGoogleUseCase iniciarSesionConGoogleUseCase(Ref ref) =>
-    IniciarSesionConGoogleUseCase(ref.watch(authRepositoryProvider));
 
 @Riverpod(keepAlive: true)
 RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>

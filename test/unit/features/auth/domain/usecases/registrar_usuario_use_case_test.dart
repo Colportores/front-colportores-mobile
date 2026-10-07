@@ -308,6 +308,66 @@ void main() {
         expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
       });
 
+      test('con 73 bytes (72 + 1) marca el campo password y no llama al repositorio', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Aa1${'x' * 70}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Es demasiado larga. Acortala.'});
+        verifyNever(
+          () => repository.registrar(
+            nombre: any(named: 'nombre'),
+            apellido: any(named: 'apellido'),
+            cedula: any(named: 'cedula'),
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      });
+
+      test('con 38 caracteres de 2 bytes (75 bytes) también es demasiado larga', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ñ1${'ñ' * 36}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Es demasiado larga. Acortala.'});
+      });
+
+      test('con exactamente 72 bytes registra', () async {
+        final resultadoRegistro = ResultadoRegistro(sesion: sesion, email: sesion.email);
+        stubRepositorio(Right(resultadoRegistro));
+
+        final resultado = await useCase(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Aa1${'x' * 69}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(resultado.isRight(), isTrue);
+      });
+
       test('cuando no acepta los términos, marca el campo aceptaTerminos', () async {
         final campos = await camposInvalidos(
           RegistrarUsuarioParams(

@@ -391,8 +391,8 @@ final class MarcaInicializacionCorruptaException implements Exception {
   String toString() => 'MarcaInicializacionCorruptaException($motivo)';
 }
 
-/// Se pidió desenvolver la DEK con la contraseña y este equipo no tiene envoltorio: el login fue
-/// con Google sin backup, o se borró.
+/// Se pidió desenvolver la DEK con la contraseña y este equipo no tiene envoltorio: se borró, o
+/// nunca se llegó a armar.
 final class SinEnvoltorioException implements Exception {
   const SinEnvoltorioException();
 

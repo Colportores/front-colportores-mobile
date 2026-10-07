@@ -13,7 +13,6 @@ final class SesionModel extends Sesion {
     required super.email,
     required super.accessToken,
     required super.expiraEn,
-    super.entraConPassword,
     super.nombre,
   });
 
@@ -22,7 +21,6 @@ final class SesionModel extends Sesion {
     email: sesion.email,
     accessToken: sesion.accessToken,
     expiraEn: sesion.expiraEn,
-    entraConPassword: sesion.entraConPassword,
     nombre: sesion.nombre,
   );
 
@@ -31,8 +29,6 @@ final class SesionModel extends Sesion {
     email: json['email']! as String,
     accessToken: json['access_token']! as String,
     expiraEn: DateTime.parse(json['expira_en']! as String).toUtc(),
-    // Una sesión guardada antes de #130 no lo trae: ante la duda, con contraseña.
-    entraConPassword: json['entra_con_password'] as bool? ?? true,
     nombre: json['nombre'] as String?,
   );
 
@@ -41,7 +37,6 @@ final class SesionModel extends Sesion {
     email: email,
     accessToken: accessToken,
     expiraEn: expiraEn,
-    entraConPassword: entraConPassword,
     nombre: nombre,
   );
 
@@ -50,7 +45,6 @@ final class SesionModel extends Sesion {
     'email': email,
     'access_token': accessToken,
     'expira_en': expiraEn.toUtc().toIso8601String(),
-    'entra_con_password': entraConPassword,
     'nombre': nombre,
   };
 }
