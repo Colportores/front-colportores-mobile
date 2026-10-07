@@ -121,6 +121,16 @@ void main() {
     await archivos.primerPedazoEnVuelo.future;
   }
 
+  /// Espera a que el intento en curso termine de verdad: ahí la pausa ya está emitida. Una pérdida de
+  /// conexión corta la bajada, pero la pausa se emite recién cuando el `.part` termina de cerrarse,
+  /// y eso es I/O real: lo que tarda depende del disco, así que no se espera por un número fijo de
+  /// vueltas del bucle de eventos (con un disco lento el estado seguía en curso: intermitente en CI).
+  Future<void> enPausa() async {
+    await descargador.esperar(paquete.id);
+    // Los eventos de `cambios` ya salieron: la lista `estados` los recibe en la vuelta siguiente.
+    await pumpEventQueue();
+  }
+
   void sinFallas() {
     expect(estados.whereType<DescargaFallida>(), isEmpty, reason: '$estados');
   }
@@ -164,7 +174,7 @@ void main() {
       await bajarHastaEscribirElPrimerPedazo();
 
       conectividad.cambiarA(TipoConexion.sinConexion);
-      await pumpEventQueue();
+      await enPausa();
 
       final estado = descargador.estadoDe(paquete.id);
       expect(estado, isA<DescargaPausada>());
@@ -185,7 +195,7 @@ void main() {
     await bajarHastaEscribirElPrimerPedazo();
 
     conectividad.cambiarA(TipoConexion.datosMoviles);
-    await pumpEventQueue();
+    await enPausa();
 
     final estado = descargador.estadoDe(paquete.id);
     expect(estado, isA<DescargaPausada>());

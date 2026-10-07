@@ -161,7 +161,13 @@ void main() {
       expect(resolver(conexion: TipoConexion.wifi), const SituacionMapa.sinDatos());
     });
 
-    for (final consulta in [const PaqueteSinAmbito(), const PaqueteSinRed()]) {
+    // «Ya descargado» sin descargas es una lectura vieja (se acaba de borrar el mapa): no es «no
+    // disponible», no se afirma nada hasta que se vuelva a preguntar.
+    for (final consulta in <PaqueteDelAmbito>[
+      const PaqueteSinAmbito(),
+      const PaqueteSinRed(),
+      const PaqueteYaDescargado(),
+    ]) {
       test('con conexión y ${consulta.runtimeType}: ningún aviso', () {
         for (final conexion in [TipoConexion.wifi, TipoConexion.datosMoviles]) {
           expect(
@@ -182,6 +188,8 @@ void main() {
     expect(PaqueteHallado(paquete), PaqueteHallado(paquete));
     expect(const PaqueteSinRed(), const PaqueteSinRed());
     expect(const PaqueteNoDisponible(), isNot(const PaqueteSinAmbito()));
+    expect(const PaqueteYaDescargado(), const PaqueteYaDescargado());
+    expect(const PaqueteYaDescargado(), isNot(const PaqueteNoDisponible()));
     expect(const SituacionMapa.sinDatos(), const SituacionMapa(fuente: FuenteMapa.sinTiles()));
   });
 }

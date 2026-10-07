@@ -159,6 +159,62 @@ void main() {
       },
     );
 
+    test(
+      'con el paquete ya descargado, la consulta dice «ya descargado» y no «no disponible»',
+      () async {
+        arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);
+        await arnes.repositorio.registrar(descargadoDe(paqueteMontevideo));
+        contenedor = armar(arnes);
+        final consulta = paqueteDelAmbitoProvider(ambitoMontevideo);
+        observar(contenedor, consulta);
+        observar(contenedor, situacionMapaProvider(ambitoMontevideo));
+        await _dejarCorrer();
+
+        expect(contenedor.read(consulta).value, const PaqueteYaDescargado());
+        final situacion = contenedor.read(situacionMapaProvider(ambitoMontevideo));
+        expect(situacion.fuente.tipo, FuenteTiles.pmtilesOffline);
+        expect(situacion.aviso, isNull);
+      },
+    );
+
+    test('un catálogo que no cubre la ciudad sigue siendo «no disponible» aunque haya otro mapa '
+        'descargado', () async {
+      // El mapa descargado es de otra ciudad: no cubre este ámbito.
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteCanelones]);
+      await arnes.repositorio.registrar(descargadoDe(paqueteCanelones));
+      contenedor = armar(arnes);
+      observar(contenedor, situacionMapaProvider(ambitoMontevideo));
+      await _dejarCorrer();
+
+      expect(
+        contenedor.read(paqueteDelAmbitoProvider(ambitoMontevideo)).value,
+        const PaqueteNoDisponible(),
+      );
+      expect(
+        contenedor.read(situacionMapaProvider(ambitoMontevideo)).aviso,
+        const AvisoMapaNoCarga(),
+      );
+    });
+
+    test('si se borra el mapa descargado con la conexión igual, vuelve a preguntar y ofrece el del '
+        'catálogo, sin «No pudimos cargar el mapa»', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+      await arnes.repositorio.registrar(descargadoDe(paqueteMontevideo));
+      contenedor = armar(arnes);
+      final provider = situacionMapaProvider(ambitoMontevideo);
+      observar(contenedor, provider);
+      await _dejarCorrer();
+      expect(contenedor.read(provider).fuente.tipo, FuenteTiles.pmtilesOffline);
+      expect(contenedor.read(provider).aviso, isNull);
+
+      await arnes.repositorio.quitar(paqueteMontevideo.id);
+      await _dejarCorrer();
+
+      final situacion = contenedor.read(provider);
+      expect(situacion.aviso, AvisoDatosMoviles(paqueteMontevideo));
+      expect(situacion.fuente.tipo, FuenteTiles.servidorOnline);
+    });
+
     test('un ámbito desconocido no consulta el catálogo ni afirma nada con conexión', () async {
       arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);
       contenedor = armar(arnes);
@@ -425,6 +481,40 @@ void main() {
       final alMedio = vistos.skipWhile((e) => !e.enCola).takeWhile((e) => e.enMarcha);
       expect(alMedio.any((e) => e.bajando), isTrue);
     });
+
+    test(
+      'al volver la señal con el pedido en cola, pasa a «bajando» sin esperar al servidor',
+      () async {
+        final compuerta = await montarSinSenal();
+        final provider = solicitudMapaProvider(ambitoMontevideo);
+        await contenedor.read(provider.notifier).pedir();
+        expect(contenedor.read(provider).enCola, isTrue);
+        // El servidor tarda en mandar los encabezados: hasta el primer pedazo el descargador no dice más.
+        final espera = Completer<void>();
+        arnes.servidor.esperaAntesDeContestar = espera;
+        addTearDown(() {
+          if (!espera.isCompleted) espera.complete();
+        });
+
+        arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+        await _dejarCorrer();
+
+        expect(arnes.servidor.pedidos, hasLength(1), reason: 'pidió y no le contestaron todavía');
+        final estado = contenedor.read(provider);
+        expect(estado.bajando, isTrue);
+        expect(estado.enCola, isFalse);
+        expect(estado.esperaSenal, isFalse);
+        expect(estado.enMarcha, isTrue);
+        expect(estado.falla, isNull);
+
+        espera.complete();
+        compuerta.complete();
+        await arnes.descargador.esperar('ciudad-montevideo');
+        await _dejarCorrer();
+        expect(contenedor.read(provider), const EstadoSolicitudMapa());
+        expect(arnes.montevideoDescargado, isTrue);
+      },
+    );
 
     test('un pedido más mientras baja no hace otra descarga ni cambia el estado', () async {
       arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);

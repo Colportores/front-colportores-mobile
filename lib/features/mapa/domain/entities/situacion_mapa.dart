@@ -74,6 +74,13 @@ final class PaqueteNoDisponible extends PaqueteDelAmbito {
   const PaqueteNoDisponible();
 }
 
+/// El paquete que cubre el lugar ya está descargado: no hay nada que sugerir. El mapa sale del
+/// teléfono (lo decide `rutasDescargadas`); si esta consulta llega sin descargas es una lectura
+/// vieja (se acaba de borrar el paquete), así que no se afirma nada hasta que se vuelva a preguntar.
+final class PaqueteYaDescargado extends PaqueteDelAmbito {
+  const PaqueteYaDescargado();
+}
+
 /// El mapa que se dibuja y el aviso que lo acompaña, según la conexión, el paquete descargado y el
 /// catálogo.
 final class SituacionMapa extends Equatable {
@@ -128,7 +135,10 @@ abstract final class ResolutorSituacionMapa {
         fuente: FuenteMapa.sinTiles(),
         aviso: AvisoMapaNoCarga(),
       ),
-      PaqueteSinAmbito() || PaqueteSinRed() || null => const SituacionMapa.sinDatos(),
+      PaqueteSinAmbito() ||
+      PaqueteSinRed() ||
+      PaqueteYaDescargado() ||
+      null => const SituacionMapa.sinDatos(),
     };
   }
 }

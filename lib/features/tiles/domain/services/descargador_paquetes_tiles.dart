@@ -119,6 +119,7 @@ final class DescargadorPaquetesTiles {
     PaqueteTiles paquete, {
     required bool permitirDatosMoviles,
     required bool esperarConexion,
+    bool avisarEnCurso = false,
   }) async {
     final previa = _descargas[paquete.id];
     if (previa != null && previa.ocupada) {
@@ -158,6 +159,14 @@ final class DescargadorPaquetesTiles {
       return Left(bloqueo);
     }
     _escucharConectividad();
+    if (avisarEnCurso) {
+      // La espera en cola terminó con la conexión que volvió: se dice ya, sin esperar los
+      // encabezados del servidor (hasta 30 s con señal débil), para que nadie siga leyendo «en cola».
+      _emitir(
+        descarga,
+        DescargaEnCurso(paquete.id, recibidos: descarga.recibidos, total: paquete.tamanoBytes),
+      );
+    }
     unawaited(_transferir(descarga, intento));
     return const Right(unit);
   }
@@ -360,7 +369,9 @@ final class DescargadorPaquetesTiles {
       case _Fin.completo:
         return true;
       case _Fin.cortado:
-        _emitirPausa(d, MotivoPausa.sinConexion);
+        // Una pausa pedida mientras se cerraba el `.part` (la del colportor, o la pérdida de la
+        // conexión permitida) no se pisa: sin esto, el próximo cambio de conectividad la retomaba.
+        _emitirPausa(d, d.pausaPedida ?? MotivoPausa.sinConexion);
         _reintentarMasTarde(d);
       case _Fin.pausado:
         _emitirPausa(d, d.pausaPedida ?? MotivoPausa.usuario);
@@ -464,16 +475,19 @@ final class DescargadorPaquetesTiles {
         // Una conexión permitida reintenta ya, y la espera de los reintentos vuelve a ser la corta.
         d.cancelarReintento();
         d.reintentosSeguidos = 0;
-        unawaited(_reanudarSola(d));
+        unawaited(_reanudarSola(d, avisarEnCurso: true));
       }
     }
   }
 
-  Future<void> _reanudarSola(_Descarga d) async {
+  /// Retoma una descarga en cola. Con [avisarEnCurso] (la conexión volvió) emite `DescargaEnCurso`
+  /// al arrancar; el reintento de un corte no lo hace: durante la espera sigue contando como en cola.
+  Future<void> _reanudarSola(_Descarga d, {bool avisarEnCurso = false}) async {
     final resultado = await _descargar(
       d.paquete,
       permitirDatosMoviles: d.permitirDatosMoviles,
       esperarConexion: d.esperarConexion,
+      avisarEnCurso: avisarEnCurso,
     );
     final failure = resultado.fold<Failure?>((f) => f, (_) => null);
     // Si la conexión se volvió a ir, sigue en pausa esperando la próxima.
