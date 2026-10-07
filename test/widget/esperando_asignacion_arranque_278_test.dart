@@ -119,7 +119,13 @@ Future<void> _vencerElTope(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Toca «Reintentar». Si hay un aviso de módulo bloqueado a la vista, espera a que se vaya solo (4 s):
+/// en pantalla chica tapa el botón y quien lo quiere tocar tiene que esperar o cerrarlo.
 Future<void> _reintentar(WidgetTester tester) async {
+  if (find.byType(SnackBar).evaluate().isNotEmpty) {
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(_actualizar);
   await tester.tap(_actualizar);
   await tester.pumpAndSettle();
@@ -654,17 +660,19 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('con el aviso a la vista, «Reintentar» sigue funcionando', (tester) async {
+    testWidgets('después del aviso, «Reintentar» sigue funcionando: el aviso no deja la pantalla '
+        'trabada', (tester) async {
       await _montar(tester);
       _backend.simularSinConexion = true;
       await _entrar(tester);
       await tester.pumpAndSettle();
       await _tocarModulo(tester, 'mapa');
+      expect(find.byType(SnackBar), findsOneWidget);
       _backend.simularSinConexion = false;
 
-      await tester.tap(_actualizar, warnIfMissed: false);
-      await tester.pumpAndSettle();
+      await _reintentar(tester);
 
+      expect(find.byType(SnackBar), findsNothing);
       expect(find.text('Esperando asignación'), findsOneWidget);
     });
   });
