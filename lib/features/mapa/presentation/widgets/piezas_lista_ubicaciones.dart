@@ -193,11 +193,16 @@ class FilaUbicacionLista extends StatelessWidget {
     required this.lista,
     required this.ahora,
     this.alTocar,
+    this.conFlecha = true,
   });
 
   final ItemListaUbicacion item;
   final ListaUbicaciones lista;
   final DateTime ahora;
+
+  /// La «›» de «se abre». El mapa (vista 06) usa la fila para elegir la ubicación, no para ir a otra
+  /// pantalla: se toca igual, sin flecha.
+  final bool conFlecha;
 
   /// `null`: la fila no se puede tocar (todavía no hay a dónde ir, o es una baja).
   final VoidCallback? alTocar;
@@ -261,7 +266,7 @@ class FilaUbicacionLista extends StatelessWidget {
         ),
         if (!apilada) ...[const SizedBox(width: 12), textoDerecha],
         // En el canvas la «›» quiere decir «se abre»: sin destino (o en una baja) no se muestra.
-        if (tocable) ...[
+        if (tocable && conFlecha) ...[
           const SizedBox(width: 12),
           const ExcludeSemantics(
             child: Text('›', style: TextStyle(color: ColoresLista.chevron, fontSize: 18)),

@@ -127,7 +127,7 @@ void main() {
           await asentarLista(tester);
 
           // Con letra grande entran pocas filas: alcanza con que se vea una distancia.
-          expect(find.textContaining(' m'), findsWidgets);
+          expect(find.textContaining('\u00A0m'), findsWidgets);
           await comprobar(tester, tam);
           semantica.dispose();
         });

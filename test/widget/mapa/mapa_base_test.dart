@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_map
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +29,7 @@ class _Avisos {
   final movidas = <CamaraMapa>[];
   final quietas = <(CamaraMapa, AreaMapa)>[];
   final toques = <Coordenadas>[];
+  final toquesLargos = <Coordenadas>[];
   final toquesPunto = <String>[];
 }
 
@@ -43,7 +45,11 @@ Widget _app(
   List<PuntoMapa> puntos = const [],
   bool agrupar = false,
   CirculoPrecision? precision,
+  CirculoCercania? cercania,
+  double reservaInferior = 0,
+  double? reservaDerecha,
   bool conToquePunto = false,
+  bool conToqueLargo = false,
   double ancho = 300,
   double alto = 400,
   double textScale = 1,
@@ -69,6 +75,9 @@ Widget _app(
               puntos: puntos,
               agruparPuntos: agrupar,
               precision: precision,
+              cercania: cercania,
+              reservaInferior: reservaInferior,
+              reservaDerecha: reservaDerecha ?? 80,
               alCrearse: (c) {
                 avisos.controlador = c;
                 avisos.creado++;
@@ -76,6 +85,7 @@ Widget _app(
               alMoverCamara: avisos.movidas.add,
               alQuedarQuieto: (c, a) => avisos.quietas.add((c, a)),
               alTocar: avisos.toques.add,
+              alTocarLargo: conToqueLargo ? avisos.toquesLargos.add : null,
               alTocarPunto: conToquePunto ? avisos.toquesPunto.add : null,
             ),
           ),
@@ -835,6 +845,114 @@ void main() {
     });
   });
 
+  group('toque largo y doble toque (N2 del #288)', () {
+    testWidgets('mantener el dedo apoyado avisa un toque largo, y no un toque', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, conToqueLargo: true));
+      await _asentar(tester);
+
+      final dedo = await tester.startGesture(tester.getCenter(find.byType(MapaBase)));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await dedo.up();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(avisos.toquesLargos, hasLength(1));
+      expect(avisos.toques, isEmpty);
+    });
+
+    testWidgets('quien no pide el toque largo no lo recibe, y no pasa nada', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      fabrica.tocarLargo(_otro);
+
+      expect(avisos.toquesLargos, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el toque largo de la vista llega con las coordenadas que la vista dio', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, conToqueLargo: true));
+      await _asentar(tester);
+
+      fabrica.tocarLargo(_otro);
+
+      expect(avisos.toquesLargos, [_otro]);
+    });
+
+    testWidgets('con una pulsación larga como primer toque, el siguiente no es un doble toque', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase));
+
+      final primero = await tester.startGesture(donde);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await primero.up();
+      final segundo = await tester.startGesture(donde);
+      // Si hubiera armado un doble toque, este movimiento se descartaría como parte del zoom.
+      fabrica.moverSinTerminar(const CamaraMapa(centro: _otro, zoom: 17));
+      await segundo.up();
+      await _asentar(tester, 20);
+
+      expect(avisos.movidas, hasLength(1), reason: 'es un gesto del colportor, no un doble toque');
+    });
+
+    testWidgets('con un primer toque corto, el siguiente sí es un doble toque (control)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase));
+
+      final primero = await tester.startGesture(donde);
+      await tester.pump(kLongPressTimeout - const Duration(milliseconds: 100));
+      await primero.up();
+      final segundo = await tester.startGesture(donde);
+      fabrica.moverSinTerminar(const CamaraMapa(centro: _otro, zoom: 17));
+      await segundo.up();
+
+      expect(avisos.movidas, isEmpty, reason: 'el zoom del doble toque no es un gesto');
+      await _asentar(tester, 20);
+    });
+
+    testWidgets('dos pulsaciones largas seguidas: cada una arma su propio plazo', (tester) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true, conToqueLargo: true));
+      await _asentar(tester);
+      final donde = tester.getCenter(find.byType(MapaBase));
+
+      for (var i = 0; i < 2; i++) {
+        final dedo = await tester.startGesture(donde);
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+        await dedo.up();
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final tercero = await tester.startGesture(donde);
+      fabrica.moverSinTerminar(const CamaraMapa(centro: _otro, zoom: 17));
+      await tercero.up();
+      await _asentar(tester, 20);
+
+      expect(avisos.toquesLargos, hasLength(2));
+      expect(avisos.movidas, hasLength(1));
+    });
+
+    testWidgets('salir de la pantalla en plena pulsación no deja un temporizador colgado', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(fabrica, avisos, zoomSobreCentro: true));
+      await _asentar(tester);
+
+      final dedo = await tester.startGesture(tester.getCenter(find.byType(MapaBase)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
+      await dedo.up();
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('«Tu ubicación»: el punto azul para el lector de pantalla', () {
     const gps = PuntoMapa(id: 'gps', coordenadas: _italia, estilo: EstiloPunto.gps);
 
@@ -996,6 +1114,19 @@ void main() {
       expect(fabrica.config!.precision, precision);
     });
 
+    testWidgets('el área de «cerca tuyo» viaja a la vista', (tester) async {
+      const area = CirculoCercania(centro: _italia, radioMetros: 60);
+      await tester.pumpWidget(_app(fabrica, avisos, cercania: area));
+      await _asentar(tester);
+
+      expect(fabrica.config!.cercania, area);
+
+      await tester.pumpWidget(_app(fabrica, avisos));
+      await _asentar(tester);
+
+      expect(fabrica.config!.cercania, isNull);
+    });
+
     testWidgets('si cambian los puntos, la vista recibe los nuevos', (tester) async {
       await tester.pumpWidget(_app(fabrica, avisos));
       await _asentar(tester);
@@ -1094,6 +1225,35 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(avisos.toques, hasLength(1));
+    });
+
+    testWidgets('sube lo que tapa la hoja de abajo, para quedar a la vista', (tester) async {
+      const fuente = FuenteMapa.offline('/data/uy.pmtiles');
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente));
+      await _asentar(tester);
+      final mapa = tester.getRect(find.byType(MapaBase));
+      final sinReserva = tester.getRect(find.text('© OpenStreetMap'));
+
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, reservaInferior: 120));
+      await _asentar(tester);
+
+      final conReserva = tester.getRect(find.text('© OpenStreetMap'));
+      expect(conReserva.bottom, closeTo(sinReserva.bottom - 120, 0.5));
+      expect(conReserva.bottom, lessThanOrEqualTo(mapa.bottom - 120 - 4));
+    });
+
+    testWidgets('el ancho que deja libre a la derecha se elige', (tester) async {
+      const fuente = FuenteMapa.offline('/data/uy.pmtiles');
+      Positioned posicion() => tester.widget<Positioned>(
+        find.ancestor(of: find.text('© OpenStreetMap'), matching: find.byType(Positioned)).first,
+      );
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente));
+      await _asentar(tester);
+      expect(posicion().right, 80, reason: 'por defecto, un botón de 52 dp');
+
+      await tester.pumpWidget(_app(fabrica, avisos, fuente: fuente, reservaDerecha: 20));
+      await _asentar(tester);
+      expect(posicion().right, 20);
     });
 
     testWidgets('si no entra en una línea baja a dos renglones, sin elipsis, y deja libre el botón', (

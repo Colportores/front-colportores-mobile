@@ -19,6 +19,7 @@ ConfigVistaMapa _config({
   List<PuntoMapa> puntos = const [],
   bool agrupar = false,
   CirculoPrecision? precision,
+  CirculoCercania? cercania,
   Color fondo = ColoresMapa.fondo,
   Color colorNuevo = const Color(0xFF0B6E4F),
 }) => ConfigVistaMapa(
@@ -33,6 +34,7 @@ ConfigVistaMapa _config({
   puntos: puntos,
   agruparPuntos: agrupar,
   precision: precision,
+  cercania: cercania,
   puntosTocables: false,
 );
 
@@ -336,10 +338,12 @@ void main() {
         }
         expect(ids, contains('colportores:precision-relleno'));
         expect(ids, contains('colportores:gps-halo'));
-        final fuentePuntos =
-            (estilo['sources'] as Map<String, dynamic>)[ConstructorEstiloMapa.fuentePuntos]
-                as Map<String, dynamic>;
-        expect((fuentePuntos['data'] as Map<String, dynamic>)['features'], hasLength(3));
+        final fuentes = estilo['sources'] as Map<String, dynamic>;
+        List<dynamic> features(String fuente) =>
+            ((fuentes[fuente] as Map<String, dynamic>)['data'] as Map<String, dynamic>)['features']
+                as List<dynamic>;
+        expect(features(ConstructorEstiloMapa.fuentePuntos), hasLength(2));
+        expect(features(ConstructorEstiloMapa.fuentePuntosLibres), hasLength(1));
       });
 
       test('es consistente: ids únicos y cada capa lee de una fuente que existe', () {
@@ -443,8 +447,6 @@ void main() {
         for (final (id, nombre) in [
           (ConstructorEstiloMapa.capaContexto, 'contexto'),
           (ConstructorEstiloMapa.capaCandidata, 'candidata'),
-          (ConstructorEstiloMapa.capaNuevo, 'nuevo'),
-          (ConstructorEstiloMapa.capaGps, 'gps'),
         ]) {
           final filtro = capa(estilo, id)['filter'];
           expect(filtro, [
@@ -462,6 +464,73 @@ void main() {
         }
       });
 
+      test('el GPS, el punto nuevo, el cercano y el seleccionado leen de la fuente que nunca se '
+          'agrupa, filtrados por estilo', () {
+        final estilo = construir(_config(agrupar: true));
+
+        for (final (id, nombre) in [
+          (ConstructorEstiloMapa.capaNuevo, 'nuevo'),
+          (ConstructorEstiloMapa.capaGps, 'gps'),
+          (ConstructorEstiloMapa.capaCercano, 'cercano'),
+          (ConstructorEstiloMapa.capaSeleccionado, 'seleccionado'),
+        ]) {
+          final c = capa(estilo, id);
+          expect(c['source'], ConstructorEstiloMapa.fuentePuntosLibres, reason: id);
+          expect(c['filter'], [
+            '==',
+            ['get', 'estilo'],
+            nombre,
+          ], reason: id);
+        }
+        final libres =
+            (estilo['sources'] as Map<String, dynamic>)[ConstructorEstiloMapa.fuentePuntosLibres]
+                as Map<String, dynamic>;
+        expect(libres.containsKey('cluster'), isFalse, reason: 'con agrupar: true también');
+      });
+
+      test('los puntos se reparten entre las dos fuentes según EstiloPunto.sinAgrupar', () {
+        const puntos = [
+          PuntoMapa(id: 'a', coordenadas: _montevideo),
+          PuntoMapa(id: 'b', coordenadas: _montevideo, estilo: EstiloPunto.candidata, letra: 'A'),
+          PuntoMapa(id: 'c', coordenadas: _montevideo, estilo: EstiloPunto.cercano, etiqueta: '12'),
+          PuntoMapa(id: 'd', coordenadas: _montevideo, estilo: EstiloPunto.seleccionado),
+          PuntoMapa(id: 'e', coordenadas: _montevideo, estilo: EstiloPunto.nuevo),
+          PuntoMapa(id: 'f', coordenadas: _montevideo, estilo: EstiloPunto.gps),
+        ];
+        List<String> ids(Map<String, dynamic> geojson) => [
+          for (final f in geojson['features'] as List<dynamic>)
+            ((f as Map<String, dynamic>)['properties'] as Map<String, dynamic>)['id'] as String,
+        ];
+
+        expect(ids(ConstructorEstiloMapa.coleccionPuntos(puntos)), ['a', 'b']);
+        expect(ids(ConstructorEstiloMapa.coleccionPuntosLibres(puntos)), ['c', 'd', 'e', 'f']);
+        expect(
+          {for (final e in EstiloPunto.values) e.name: e.sinAgrupar},
+          {
+            'contexto': false,
+            'candidata': false,
+            'cercano': true,
+            'seleccionado': true,
+            'nuevo': true,
+            'gps': true,
+          },
+        );
+      });
+
+      test('el número de puerta viaja como propiedad «etiqueta»', () {
+        final geojson = ConstructorEstiloMapa.coleccionPuntosLibres(const [
+          PuntoMapa(
+            id: 'c',
+            coordenadas: _montevideo,
+            estilo: EstiloPunto.cercano,
+            etiqueta: '1250',
+          ),
+        ]);
+
+        final f = (geojson['features'] as List<dynamic>).single as Map<String, dynamic>;
+        expect(f['properties'], {'id': 'c', 'estilo': 'cercano', 'etiqueta': '1250'});
+      });
+
       test('los grupos se dibujan con su cantidad', () {
         final estilo = construir(_config(agrupar: true));
 
@@ -471,6 +540,94 @@ void main() {
           'get',
           'point_count_abbreviated',
         ]);
+      });
+
+      test('el grupo es el círculo oscuro del canvas: borde blanco, cuenta en blanco, y más '
+          'grande desde 100', () {
+        final estilo = construir(_config(agrupar: true));
+
+        final paint =
+            capa(estilo, ConstructorEstiloMapa.capaGrupos)['paint'] as Map<String, dynamic>;
+        expect(paint['circle-color'], '#0E1A2B');
+        expect(paint['circle-stroke-color'], '#FFFFFF');
+        expect(paint['circle-stroke-width'], 2);
+        expect(paint['circle-radius'], [
+          'step',
+          ['get', 'point_count'],
+          ConstructorEstiloMapa.radioGrupo,
+          100,
+          ConstructorEstiloMapa.radioGrupoGrande,
+        ]);
+        expect(ConstructorEstiloMapa.radioGrupo * 2, 34, reason: 'los 34 px del canvas');
+        final cuenta = capa(estilo, 'colportores:grupos-cuenta')['paint'] as Map<String, dynamic>;
+        expect(cuenta['text-color'], '#FFFFFF');
+        expect(capa(estilo, 'colportores:grupos-halo')['filter'], ['has', 'point_count']);
+      });
+
+      test('el cercano es un círculo blanco con el número de la puerta adentro, que crece con '
+          'los caracteres', () {
+        final estilo = construir(_config());
+
+        final paint =
+            capa(estilo, ConstructorEstiloMapa.capaCercano)['paint'] as Map<String, dynamic>;
+        expect(paint['circle-color'], '#FFFFFF');
+        expect(paint['circle-stroke-color'], '#6B7688');
+        expect(paint['circle-radius'], [
+          'step',
+          [
+            'length',
+            [
+              'to-string',
+              ['get', 'etiqueta'],
+            ],
+          ],
+          ConstructorEstiloMapa.radioEtiqueta,
+          5,
+          ConstructorEstiloMapa.radioEtiquetaLarga,
+          6,
+          ConstructorEstiloMapa.radioEtiquetaMuyLarga,
+        ]);
+        final numero = capa(estilo, 'colportores:cercano-numero');
+        expect(numero['type'], 'symbol');
+        expect((numero['layout'] as Map<String, dynamic>)['text-field'], ['get', 'etiqueta']);
+        expect(numero['filter'], contains(equals(['has', 'etiqueta'])));
+      });
+
+      test('el seleccionado lleva un aro doble, blanco y azul, debajo del marcador', () {
+        final estilo = construir(_config());
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        final aro = capa(estilo, 'colportores:seleccionado-aro')['paint'] as Map<String, dynamic>;
+        expect(aro['circle-color'], '#002856');
+        final blanco =
+            capa(estilo, 'colportores:seleccionado-aro-blanco')['paint'] as Map<String, dynamic>;
+        expect(blanco['circle-color'], '#FFFFFF');
+        expect(
+          ids.indexOf('colportores:seleccionado-aro'),
+          lessThan(ids.indexOf('colportores:seleccionado-aro-blanco')),
+        );
+        expect(
+          ids.indexOf('colportores:seleccionado-aro-blanco'),
+          lessThan(ids.indexOf(ConstructorEstiloMapa.capaSeleccionado)),
+        );
+        expect(capa(estilo, 'colportores:seleccionado-numero')['type'], 'symbol');
+      });
+
+      test('sin los recursos el cercano y el seleccionado siguen, sin el número', () {
+        final estilo = construirSinRecursos(_config());
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        expect(ids, contains(ConstructorEstiloMapa.capaCercano));
+        expect(ids, contains(ConstructorEstiloMapa.capaSeleccionado));
+        expect(ids, isNot(contains('colportores:cercano-numero')));
+        expect(ids, isNot(contains('colportores:seleccionado-numero')));
+      });
+
+      test('el seleccionado y el cercano responden al toque', () {
+        expect(
+          ConstructorEstiloMapa.capasTocables,
+          containsAll([ConstructorEstiloMapa.capaCercano, ConstructorEstiloMapa.capaSeleccionado]),
+        );
       });
 
       test('la letra de la candidata solo se dibuja si la tiene', () {
@@ -514,6 +671,60 @@ void main() {
         final paint =
             capa(estilo, ConstructorEstiloMapa.capaNuevo)['paint'] as Map<String, dynamic>;
         expect(paint['circle-color'], '#123456');
+      });
+    });
+
+    group('área de «cerca tuyo»', () {
+      test('sin área la fuente no tiene geometrías', () {
+        expect(ConstructorEstiloMapa.poligonoCercania(null)['features'], isEmpty);
+      });
+
+      test('un área válida es un polígono de ese radio en metros', () {
+        final poligono = ConstructorEstiloMapa.poligonoCercania(
+          const CirculoCercania(centro: _montevideo, radioMetros: 60),
+        );
+
+        final features = poligono['features'] as List<dynamic>;
+        expect(features, hasLength(1));
+        final geometria =
+            (features.single as Map<String, dynamic>)['geometry'] as Map<String, dynamic>;
+        final anillo = ((geometria['coordinates'] as List<dynamic>).single as List<dynamic>)
+            .cast<List<dynamic>>();
+        for (final v in anillo) {
+          final punto = Coordenadas(lat: v[1] as double, lon: v[0] as double);
+          expect(_montevideo.distanciaMetrosA(punto), closeTo(60, 0.2));
+        }
+      });
+
+      test('se dibuja punteada y suave, debajo de los puntos', () {
+        final estilo = construir(
+          _config(cercania: const CirculoCercania(centro: _montevideo, radioMetros: 60)),
+        );
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        final borde = capa(estilo, 'colportores:cercania-borde')['paint'] as Map<String, dynamic>;
+        expect(borde['line-dasharray'], isNotEmpty);
+        expect(capa(estilo, 'colportores:cercania-relleno')['type'], 'fill');
+        expect(
+          ids.indexOf('colportores:cercania-borde'),
+          lessThan(ids.indexOf(ConstructorEstiloMapa.capaContexto)),
+        );
+        final fuentes = estilo['sources'] as Map<String, dynamic>;
+        final fuente = fuentes[ConstructorEstiloMapa.fuenteCercania] as Map<String, dynamic>;
+        expect(
+          ((fuente['data'] as Map<String, dynamic>)['features'] as List<dynamic>),
+          hasLength(1),
+        );
+      });
+
+      test('se arma también sin los recursos (es una línea y un relleno, sin patrón)', () {
+        final estilo = construirSinRecursos(
+          _config(cercania: const CirculoCercania(centro: _montevideo, radioMetros: 60)),
+        );
+        final ids = [for (final c in capas(estilo)) c['id'] as String];
+
+        expect(ids, contains('colportores:cercania-borde'));
+        expect(ids, contains('colportores:cercania-relleno'));
       });
     });
 

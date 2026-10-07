@@ -8,20 +8,26 @@ import 'modelo_mapa_base.dart';
 
 /// Arma el estilo MapLibre que dibuja `MapaBase`: el de backend (`estilo/colportores.json`, con la
 /// paleta del canvas) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
-/// las capas propias de la app (puntos, grupos y radio de precisión).
+/// las capas propias de la app (puntos, grupos, radio de precisión y área de «cerca tuyo»).
 ///
 /// Es todo JSON puro: se prueba sin la vista nativa.
 abstract final class ConstructorEstiloMapa {
   /// La fuente de tiles del estilo de backend, con `url: "pmtiles://REEMPLAZAR"`.
   static const fuenteTiles = 'protomaps';
 
-  /// Los puntos (con grupos si se pidieron) y el radio de precisión del GPS.
+  /// Los puntos (con grupos si se pidieron), los que nunca se agrupan (el GPS, el punto nuevo, el
+  /// seleccionado y los cercanos: [EstiloPunto.sinAgrupar]), el radio de precisión del GPS y el
+  /// área de «cerca tuyo».
   static const fuentePuntos = 'colportores-puntos';
+  static const fuentePuntosLibres = 'colportores-puntos-libres';
   static const fuentePrecision = 'colportores-precision';
+  static const fuenteCercania = 'colportores-cercania';
 
   static const capaGrupos = 'colportores:grupos';
   static const capaContexto = 'colportores:contexto';
   static const capaCandidata = 'colportores:candidata';
+  static const capaCercano = 'colportores:cercano';
+  static const capaSeleccionado = 'colportores:seleccionado';
   static const capaNuevo = 'colportores:nuevo';
   static const capaGps = 'colportores:gps';
 
@@ -29,8 +35,26 @@ abstract final class ConstructorEstiloMapa {
   static const radioCandidata = 11.5;
   static const radioCandidataDosLetras = 14.5;
 
+  /// El radio del grupo de ubicaciones (en px): hasta 99 y de 100 en adelante.
+  static const radioGrupo = 17.0;
+  static const radioGrupoGrande = 21.0;
+
+  /// El radio del círculo de un punto con número de puerta (en px): hasta 4 caracteres («1250»),
+  /// con 5 («1250A») y con 6 o más.
+  static const radioEtiqueta = 16.0;
+  static const radioEtiquetaLarga = 19.0;
+  static const radioEtiquetaMuyLarga = 22.0;
+
   /// Las capas que responden al toque de un punto o un grupo.
-  static const capasTocables = [capaGrupos, capaContexto, capaCandidata, capaNuevo, capaGps];
+  static const capasTocables = [
+    capaGrupos,
+    capaSeleccionado,
+    capaCercano,
+    capaContexto,
+    capaCandidata,
+    capaNuevo,
+    capaGps,
+  ];
 
   /// El estilo final como texto, para `MapLibreMap.styleString`.
   ///
@@ -109,7 +133,9 @@ abstract final class ConstructorEstiloMapa {
       'data': coleccionPuntos(config.puntos),
       if (config.agruparPuntos) ...{'cluster': true, 'clusterRadius': 44, 'clusterMaxZoom': 17},
     };
+    fuentes[fuentePuntosLibres] = {'type': 'geojson', 'data': coleccionPuntosLibres(config.puntos)};
     fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
+    fuentes[fuenteCercania] = {'type': 'geojson', 'data': poligonoCercania(config.cercania)};
 
     estilo['sources'] = fuentes;
     estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
@@ -133,8 +159,18 @@ abstract final class ConstructorEstiloMapa {
     return paint is Map<String, dynamic> && paint.keys.any((k) => k.endsWith('-pattern'));
   }
 
-  /// Los puntos como `FeatureCollection` de GeoJSON, con `id`, `estilo` y `letra` como propiedades.
-  static Map<String, dynamic> coleccionPuntos(List<PuntoMapa> puntos) => {
+  /// Los puntos que se pueden agrupar, como `FeatureCollection` de GeoJSON, con `id`, `estilo`,
+  /// `letra` y `etiqueta` como propiedades.
+  static Map<String, dynamic> coleccionPuntos(List<PuntoMapa> puntos) =>
+      _coleccion(puntos.where((p) => !p.estilo.sinAgrupar));
+
+  /// Los puntos que nunca se agrupan ([EstiloPunto.sinAgrupar]), con las mismas propiedades. Van en
+  /// otra fuente: en la de los grupos, un punto del GPS o uno cercano quedaría absorbido por el
+  /// grupo de los que tiene al lado.
+  static Map<String, dynamic> coleccionPuntosLibres(List<PuntoMapa> puntos) =>
+      _coleccion(puntos.where((p) => p.estilo.sinAgrupar));
+
+  static Map<String, dynamic> _coleccion(Iterable<PuntoMapa> puntos) => {
     'type': 'FeatureCollection',
     'features': [
       for (final p in puntos)
@@ -148,16 +184,24 @@ abstract final class ConstructorEstiloMapa {
             'id': p.id,
             'estilo': p.estilo.name,
             if (p.letra != null) 'letra': p.letra,
+            if (p.etiqueta != null) 'etiqueta': p.etiqueta,
           },
         },
     ],
   };
 
   /// El radio de precisión como `FeatureCollection` con un polígono, o vacía si no hay.
-  static Map<String, dynamic> poligonoPrecision(CirculoPrecision? precision) {
-    final anillo = precision == null
+  static Map<String, dynamic> poligonoPrecision(CirculoPrecision? precision) =>
+      _poligono(precision?.centro, precision?.radioMetros);
+
+  /// El área de «cerca tuyo» como `FeatureCollection` con un polígono, o vacía si no hay.
+  static Map<String, dynamic> poligonoCercania(CirculoCercania? cercania) =>
+      _poligono(cercania?.centro, cercania?.radioMetros);
+
+  static Map<String, dynamic> _poligono(Coordenadas? centro, double? radioMetros) {
+    final anillo = centro == null || radioMetros == null
         ? const <Coordenadas>[]
-        : CirculoGeografico.anillo(precision.centro, precision.radioMetros);
+        : CirculoGeografico.anillo(centro, radioMetros);
     return {
       'type': 'FeatureCollection',
       'features': [
@@ -183,15 +227,39 @@ abstract final class ConstructorEstiloMapa {
     ['has', 'point_count'],
   ];
 
-  static List<Object?> _filtroEstilo(EstiloPunto estilo) => [
-    'all',
-    _noEsGrupo,
-    [
-      '==',
-      ['get', 'estilo'],
-      estilo.name,
-    ],
+  static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
+
+  static List<Object?> _esEstilo(EstiloPunto estilo) => [
+    '==',
+    ['get', 'estilo'],
+    estilo.name,
   ];
+
+  /// El radio de un círculo con número de puerta: crece con la cantidad de caracteres para que
+  /// entre. `to-string` deja a los puntos sin número en «» (largo 0).
+  static const List<Object?> _radioPorEtiqueta = [
+    'step',
+    [
+      'length',
+      [
+        'to-string',
+        ['get', 'etiqueta'],
+      ],
+    ],
+    radioEtiqueta,
+    5,
+    radioEtiquetaLarga,
+    6,
+    radioEtiquetaMuyLarga,
+  ];
+
+  static const _estiloNumero = {
+    'text-field': ['get', 'etiqueta'],
+    'text-font': ['NotoSans-Medium'],
+    'text-size': 12,
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+  };
 
   static List<Map<String, dynamic>> _capasPropias(
     ConfigVistaMapa config, {
@@ -210,6 +278,23 @@ abstract final class ConstructorEstiloMapa {
         'type': 'line',
         'source': fuentePrecision,
         'paint': {'line-color': _hex(ColoresMapa.puntoGps), 'line-opacity': .45, 'line-width': 1.5},
+      },
+      {
+        'id': 'colportores:cercania-relleno',
+        'type': 'fill',
+        'source': fuenteCercania,
+        'paint': {'fill-color': _hex(ColoresMapa.puntoGps), 'fill-opacity': .06},
+      },
+      {
+        'id': 'colportores:cercania-borde',
+        'type': 'line',
+        'source': fuenteCercania,
+        'paint': {
+          'line-color': _hex(ColoresMapa.puntoGps),
+          'line-opacity': .55,
+          'line-width': 1.5,
+          'line-dasharray': [4, 3],
+        },
       },
       {
         'id': 'colportores:contexto-sombra',
@@ -237,23 +322,38 @@ abstract final class ConstructorEstiloMapa {
         },
       },
       {
+        'id': 'colportores:grupos-halo',
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': ['has', 'point_count'],
+        'paint': {
+          'circle-color': _hex(ColoresMapa.tintaOscura),
+          'circle-opacity': .18,
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            radioGrupo + 5,
+            100,
+            radioGrupoGrande + 5,
+          ],
+        },
+      },
+      {
         'id': capaGrupos,
         'type': 'circle',
         'source': fuentePuntos,
         'filter': ['has', 'point_count'],
         'paint': {
-          'circle-color': blanco,
+          'circle-color': _hex(ColoresMapa.tintaOscura),
           'circle-radius': [
             'step',
             ['get', 'point_count'],
-            14,
-            10,
-            18,
-            50,
-            24,
+            radioGrupo,
+            100,
+            radioGrupoGrande,
           ],
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+          'circle-stroke-width': 2,
+          'circle-stroke-color': blanco,
         },
       },
       if (conRecursos)
@@ -265,11 +365,11 @@ abstract final class ConstructorEstiloMapa {
           'layout': {
             'text-field': ['get', 'point_count_abbreviated'],
             'text-font': ['NotoSans-Medium'],
-            'text-size': 12,
+            'text-size': 13,
             'text-allow-overlap': true,
             'text-ignore-placement': true,
           },
-          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+          'paint': {'text-color': blanco},
         },
       {
         'id': capaCandidata,
@@ -320,10 +420,81 @@ abstract final class ConstructorEstiloMapa {
           'paint': {'text-color': _hex(ColoresMapa.tinta)},
         },
       {
+        'id': capaCercano,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.cercano),
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': _radioPorEtiqueta,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:cercano-numero',
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esEstilo(EstiloPunto.cercano),
+            ['has', 'etiqueta'],
+          ],
+          'layout': _estiloNumero,
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+        },
+      // El seleccionado: el marcador con un aro doble, blanco y azul, encima de los demás.
+      {
+        'id': 'colportores:seleccionado-aro',
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          'circle-color': _hex(ColoresMapa.aroSeleccion),
+          'circle-radius': ['+', _radioPorEtiqueta, 6],
+        },
+      },
+      {
+        'id': 'colportores:seleccionado-aro-blanco',
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': ['+', _radioPorEtiqueta, 3],
+        },
+      },
+      {
+        'id': capaSeleccionado,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': _radioPorEtiqueta,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:seleccionado-numero',
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esEstilo(EstiloPunto.seleccionado),
+            ['has', 'etiqueta'],
+          ],
+          'layout': _estiloNumero,
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+        },
+      {
         'id': capaNuevo,
         'type': 'circle',
-        'source': fuentePuntos,
-        'filter': _filtroEstilo(EstiloPunto.nuevo),
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.nuevo),
         'paint': {
           'circle-color': _hex(config.colorNuevo),
           'circle-radius': 11,
@@ -334,8 +505,8 @@ abstract final class ConstructorEstiloMapa {
       {
         'id': 'colportores:gps-halo',
         'type': 'circle',
-        'source': fuentePuntos,
-        'filter': _filtroEstilo(EstiloPunto.gps),
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.gps),
         'paint': {
           'circle-color': _hex(ColoresMapa.puntoGps),
           'circle-opacity': .16,
@@ -345,8 +516,8 @@ abstract final class ConstructorEstiloMapa {
       {
         'id': capaGps,
         'type': 'circle',
-        'source': fuentePuntos,
-        'filter': _filtroEstilo(EstiloPunto.gps),
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.gps),
         'paint': {
           'circle-color': _hex(ColoresMapa.puntoGps),
           'circle-radius': 6,
