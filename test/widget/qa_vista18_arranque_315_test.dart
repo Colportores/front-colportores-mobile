@@ -472,10 +472,13 @@ void main() {
 
       expect(servidor.pedidos, hasLength(consultas), reason: 'el gesto no suma otra consulta');
       servidor.pedidos[reintento].complete(EstadoCuenta.pendienteAsignacion);
-      await tester.pumpAndSettle();
+      // Con pasos acotados: en el CI de 6909258 `pumpAndSettle` no terminó acá, y sin Docker no pude
+      // ver si es el indicador de deslizar o el botón; queda para la r2 con la corrida a mano.
+      await tester.pump(const Duration(seconds: 1));
       servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Esperando asignación'), findsOneWidget);
+      expect(servidor.pedidos, hasLength(consultas));
     });
 
     testWidgets('dos fallas seguidas (tope y después servidor caído) dejan «Reintentar» activo y '
@@ -592,32 +595,32 @@ void main() {
   });
 
   group('Configuración con el estado sin conocer', () {
-    testWidgets(
-      'la barra bloqueada avisa lo de la pantalla y «Volver» deja a «Reintentar» a mano',
-      (tester) async {
-        await _montar(tester);
-        _enMemoria.simularSinConexion = true;
-        await _entrar(tester);
-        await tester.pumpAndSettle();
-        await tester.tap(_configuracion);
-        await tester.pumpAndSettle();
+    testWidgets('la barra bloqueada avisa lo de la pantalla y «Volver» deja a «Reintentar» a mano', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _enMemoria.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
 
-        await _tocarModulo(tester, 'agenda');
-        expect(
-          find.descendant(
-            of: _aviso,
-            matching: find.text(TextosEsperaAsignacion.sinConexionSinEstado),
-          ),
-          findsOneWidget,
-        );
-        // El aviso nombra «Reintentar»: desde acá no hay botón, así que la salida es la flecha.
-        expect(find.text('Reintentar'), findsNothing);
-        await tester.tap(find.byKey(const Key('configuracion_atras')));
-        await tester.pumpAndSettle();
-        expect(_actualizar, findsOneWidget);
-        expect(find.text('Reintentar'), findsOneWidget);
-      },
-    );
+      await _tocarModulo(tester, 'agenda');
+      expect(
+        find.descendant(
+          of: _aviso,
+          matching: find.text(TextosEsperaAsignacion.sinConexionSinEstado),
+        ),
+        findsOneWidget,
+      );
+      // El aviso nombra «Reintentar» y, desde la ronda del 07/10, trae la acción: desde acá no hay
+      // otro botón, así que la acción es la salida, y la flecha lleva de vuelta al botón.
+      expect(find.descendant(of: _aviso, matching: find.text('Reintentar')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('configuracion_atras')));
+      await tester.pumpAndSettle();
+      expect(_actualizar, findsOneWidget);
+      expect(find.descendant(of: _actualizar, matching: find.text('Reintentar')), findsOneWidget);
+    });
 
     testWidgets('si el estado se conoce con Configuración abierta, la barra se desbloquea', (
       tester,
