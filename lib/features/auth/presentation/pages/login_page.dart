@@ -3,15 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/motivo_expiracion.dart';
 import '../providers/auth_providers.dart';
 import '../providers/aviso_sesion_notifier.dart';
 import '../providers/reingreso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
+import '../widgets/borde_discontinuo.dart';
 import '../widgets/texto_error_anunciado.dart';
 import 'recuperacion_password_page.dart';
 import 'registro_page.dart';
@@ -46,6 +49,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// Marca el aviso general para llevarlo a la vista cuando aparece.
   final _claveErrorGeneral = GlobalKey();
 
+  /// Marca el aviso de sesión de arriba, para volver a mostrarlo cuando el intento de entrar lo
+  /// cambia (17-A02) y la pantalla estaba bajada.
+  final _claveAvisoSesion = GlobalKey();
+
+  /// `true` si el último intento de entrar no llegó al servidor por falta de conexión. Con la
+  /// sesión vencida eso es 17-A02, aunque el teléfono diga que hay señal (un Wi-Fi sin salida): lo
+  /// que decide es la respuesta real. Lo baja cualquier otra respuesta del servidor y un cambio de
+  /// conexión; la validación de los campos no lo toca porque no sale a la red.
+  bool _ultimoIntentoSinConexion = false;
+
   // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
   // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
   bool _mantenerSesion = true;
@@ -78,6 +91,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
+  /// La sesión terminó por 30 días sin uso (no porque el servidor la revocó): es el caso en que
+  /// «Necesitás conexión para renovarla» dice la verdad (HU-AUTH-003, «JWT expirado y sin conexión»).
+  bool get _vencidaPorInactividad =>
+      ref.read(reingresoSesionProvider)?.motivo == MotivoExpiracion.inactividad;
+
   Future<void> _enviar() async {
     if (_enviando) return; // Doble toque: «Entrar» y «Reintentar» comparten este guardián.
     setState(() {
@@ -92,13 +110,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         .iniciarSesion(email: _email.text, password: _password.text);
 
     if (!mounted) return;
+    final vencida = _vencidaPorInactividad;
     setState(() {
       _enviando = false;
+      if (failure is! FailureValidacion) _ultimoIntentoSinConexion = failure is FailureSinConexion;
       switch (failure) {
         case null:
           break;
         case FailureValidacion(:final campos):
           _erroresCampo = campos;
+        case FailureSinConexion() when vencida:
+          // 17-A02: lo dice el aviso de arriba («Tu sesión expiró. Necesitás conexión para
+          // renovarla.»); repetirlo debajo del formulario sería decir lo mismo dos veces.
+          break;
         case FailureServidor(:final status) when status != null && status >= 500:
           _errorGeneral = BannerErrorConAccion.servicioNoDisponible;
           _errorEsReintentable = true;
@@ -110,18 +134,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     // debajo del borde: como en el registro, baja hasta él una vez dibujado.
     if (_errorGeneral != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _bajarHastaElAviso();
+        if (mounted) _llevarAVista(_claveErrorGeneral);
+      });
+    } else if (_ultimoIntentoSinConexion && vencida) {
+      // El aviso de 17-A02 está arriba de todo: con el botón al borde de la pantalla (texto
+      // grande) quedaba fuera de la vista y el toque parecía no hacer nada.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _llevarAVista(_claveAvisoSesion, alineacion: 0);
       });
     }
   }
 
-  void _bajarHastaElAviso() {
-    final contexto = _claveErrorGeneral.currentContext;
+  void _llevarAVista(GlobalKey clave, {double alineacion = 0.2}) {
+    final contexto = clave.currentContext;
     if (contexto == null || !contexto.mounted) return;
     unawaited(
       Scrollable.ensureVisible(
         contexto,
-        alignment: 0.2,
+        alignment: alineacion,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       ),
@@ -149,8 +179,30 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     const paddingHorizontal = 30.0;
-    final aviso = ref.watch(avisoSesionProvider);
     final reingreso = ref.watch(reingresoSesionProvider);
+    // 17-A02: la sesión venció por inactividad y no hay con qué renovarla. Es un estado, no un
+    // aviso que se pueda cerrar: dura mientras no haya señal.
+    final sinSenal = ref.watch(
+      conexionProvider.select(
+        (conexion) => switch (conexion) {
+          AsyncData(:final value) => value == TipoConexion.sinConexion,
+          _ => false,
+        },
+      ),
+    );
+    final vencidaSinConexion =
+        reingreso?.motivo == MotivoExpiracion.inactividad &&
+        (sinSenal || _ultimoIntentoSinConexion);
+    final Failure? aviso = vencidaSinConexion
+        ? const FailureSesionVencidaSinConexion()
+        : ref.watch(avisoSesionProvider);
+    // Volvió la señal: lo que dijo un intento anterior ya no vale.
+    ref.listen(conexionProvider, (anterior, actual) {
+      if (!_ultimoIntentoSinConexion) return;
+      if (actual case AsyncData(:final value) when value != TipoConexion.sinConexion) {
+        setState(() => _ultimoIntentoSinConexion = false);
+      }
+    });
 
     return Scaffold(
       body: SafeArea(
@@ -164,11 +216,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 17-A01/A03: el aviso va arriba de todo y se puede cerrar (17-A04).
+                      // 17-A01/A03: el aviso va arriba de todo y se puede cerrar (17-A04). El de
+                      // 17-A02 no: dura mientras no haya señal.
                       if (aviso != null) ...[
                         _AvisoSesion(
+                          key: _claveAvisoSesion,
                           aviso: aviso,
-                          alCerrar: ref.read(avisoSesionProvider.notifier).descartar,
+                          alCerrar: vencidaSinConexion
+                              ? null
+                              : ref.read(avisoSesionProvider.notifier).descartar,
                         ),
                         const SizedBox(height: 20),
                       ],
@@ -192,8 +248,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           style: theme.textTheme.headlineMedium,
                         ),
                         // Solo cuando se cerró por inactividad: lo que dice es cierto porque la
-                        // sesión vencida nunca toca la base local (HU-AUTH-007).
-                        if (reingreso.motivo == MotivoExpiracion.inactividad) ...[
+                        // sesión vencida nunca toca la base local (HU-AUTH-007). 17-A02 no lo
+                        // dibuja: el aviso de arriba ya ocupa ese lugar con lo que hay que hacer.
+                        if (reingreso.motivo == MotivoExpiracion.inactividad &&
+                            !vencidaSinConexion) ...[
                           const SizedBox(height: 8),
                           Text(
                             'Tus visitas y cobranzas siguen guardadas en el teléfono.',
@@ -245,7 +303,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       _FilaMantenerSesion(
                         mantener: _mantenerSesion,
                         alCambiar: (valor) => setState(() => _mantenerSesion = valor),
-                        textoEnlace: reingreso == null
+                        // 17-A02 no dibuja el enlace: recuperar la contraseña también pide red.
+                        textoEnlace: vencidaSinConexion
+                            ? null
+                            : reingreso == null
                             ? '¿Olvidaste tu clave?'
                             : 'Recuperar acceso',
                         alRecuperar: _abrirRecuperacion,
@@ -268,6 +329,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               )
                             : const Text('Entrar'),
                       ),
+                      if (vencidaSinConexion) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Vas a poder entrar cuando vuelva la señal.',
+                          key: const Key('login_vencida_sin_conexion_ayuda'),
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
+                        ),
+                      ],
                       const Spacer(),
                       const SizedBox(height: 24),
                       Row(
@@ -324,54 +394,63 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
-/// Por qué la app volvió al login sin que el usuario cerrara sesión (HU-AUTH-007, 17-A01 y A03).
-/// No es un error del formulario: se anuncia al lector de pantalla al aparecer, se puede cerrar
-/// con la ✕ y, de todos modos, el login sigue mostrando el saludo.
+/// Por qué la app volvió al login sin que el usuario cerrara sesión (HU-AUTH-007, 17-A01 y A03). No
+/// es un error del formulario: se anuncia al lector de pantalla al aparecer, se puede cerrar con la
+/// ✕ y, de todos modos, el login sigue mostrando el saludo.
 ///
-/// 17-A02 (vencida y sin conexión, #248) entra acá como otro caso de [aviso] y sin ✕: el diseño lo
-/// dibuja con borde punteado y el texto «Tu sesión expiró. Necesitás conexión para renovarla.».
+/// 17-A02 (vencida y sin conexión, #248) es otro caso de [aviso] ([FailureSesionVencidaSinConexion]):
+/// sin ✕ ([alCerrar] `null`, porque dura mientras no haya señal), con borde de trazos y el círculo
+/// lleno con una ✕.
 class _AvisoSesion extends StatelessWidget {
-  const _AvisoSesion({required this.aviso, required this.alCerrar});
+  const _AvisoSesion({super.key, required this.aviso, required this.alCerrar});
 
   final Failure aviso;
-  final VoidCallback alCerrar;
+  final VoidCallback? alCerrar;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final tinta = theme.colorScheme.secondary;
+    final sinConexion = aviso is FailureSesionVencidaSinConexion;
+    // El canvas pinta el aviso de 17-A02 en el gris de texto (#2A3A52), no en el azul de enlaces.
+    final tinta = sinConexion ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.secondary;
     final icono = switch (aviso) {
       FailureSesionRevocada() => Icons.priority_high,
+      FailureSesionVencidaSinConexion() => Icons.close,
       _ => Icons.timer_outlined,
     };
-    return Semantics(
-      liveRegion: true,
-      container: true,
-      child: Container(
-        key: const Key('login_aviso_sesion'),
-        padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 6, 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          border: Border.all(color: colores.bordeInput, width: 1.5),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            ExcludeSemantics(
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: tinta, width: 1.5),
-                ),
-                child: Icon(icono, size: 13, color: tinta),
+    final caja = Container(
+      key: const Key('login_aviso_sesion'),
+      padding: sinConexion
+          ? const EdgeInsets.all(14)
+          : const EdgeInsetsDirectional.fromSTEB(14, 12, 6, 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        border: sinConexion ? null : Border.all(color: colores.bordeInput, width: 1.5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: sinConexion ? tinta : null,
+                border: sinConexion ? null : Border.all(color: tinta, width: 1.5),
+              ),
+              child: Icon(
+                icono,
+                size: 13,
+                color: sinConexion ? theme.colorScheme.onPrimary : tinta,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(aviso.mensaje, style: theme.textTheme.bodyMedium)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(aviso.mensaje, style: theme.textTheme.bodyMedium)),
+          if (alCerrar != null)
             IconButton(
               key: const Key('login_aviso_sesion_cerrar'),
               tooltip: 'Cerrar aviso',
@@ -379,9 +458,20 @@ class _AvisoSesion extends StatelessWidget {
               onPressed: alCerrar,
               icon: Icon(Icons.close, size: 18, color: tinta),
             ),
-          ],
-        ),
+        ],
       ),
+    );
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: sinConexion
+          ? BordeDiscontinuo(
+              key: const Key('login_aviso_sesion_borde_discontinuo'),
+              color: colores.gris,
+              radio: 14,
+              child: caja,
+            )
+          : caja,
     );
   }
 }
@@ -514,7 +604,9 @@ class _FilaMantenerSesion extends StatelessWidget {
 
   final bool mantener;
   final ValueChanged<bool> alCambiar;
-  final String textoEnlace;
+
+  /// `null` no dibuja el enlace (17-A02: recuperar la contraseña también pide red).
+  final String? textoEnlace;
   final VoidCallback alRecuperar;
 
   @override
@@ -531,27 +623,28 @@ class _FilaMantenerSesion extends StatelessWidget {
       // La etiqueta ya la lleva el checkbox para el lector de pantalla.
       child: ExcludeSemantics(child: Text('Mantener sesión', style: theme.textTheme.bodyMedium)),
     );
-    final enlace = TextButton(
-      key: const Key('login_olvidaste_clave'),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        minimumSize: const Size(48, 48),
-      ),
-      onPressed: alRecuperar,
-      child: Text(
-        textoEnlace,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.secondary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+    final enlace = textoEnlace;
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Row(mainAxisSize: MainAxisSize.min, children: [casilla, etiqueta]),
-        enlace,
+        if (enlace != null)
+          TextButton(
+            key: const Key('login_olvidaste_clave'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              minimumSize: const Size(48, 48),
+            ),
+            onPressed: alRecuperar,
+            child: Text(
+              enlace,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.secondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
       ],
     );
   }

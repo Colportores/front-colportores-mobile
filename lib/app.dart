@@ -83,7 +83,13 @@ class ColportoresApp extends ConsumerWidget {
         navigatorKey: navigatorKeyColportores,
         title: 'Colportores',
         theme: temaClaro(),
+        // Solo la primera lectura de la sesión (arranque) pasa por la pantalla de carga. Un
+        // «Entrar» en vuelo vuelve a poner `AsyncLoading`, pero con la sesión (nula) de antes: si
+        // eso cambiara la pantalla, el login se desmontaba con la respuesta en camino y el aviso del
+        // intento (contraseña incorrecta, sin conexión, 17-A02) se perdía; el botón ya muestra el
+        // «Entrando…».
         home: sesion.when(
+          skipLoadingOnReload: true,
           loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
           error: (_, _) => const LoginPage(),
           data: (s) => s == null ? const LoginPage() : _Principal(sesion: s),
