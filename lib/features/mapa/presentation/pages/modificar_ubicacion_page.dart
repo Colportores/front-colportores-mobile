@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,6 @@ import '../providers/alta_ubicacion_notifier.dart'
     show AltaConCandidatas, AltaCreada, AltaFallida, AltaIgnorada;
 import '../providers/alta_ubicacion_providers.dart';
 import '../providers/modificar_ubicacion_notifier.dart';
-import '../widgets/aviso_mapa.dart';
 import '../widgets/dialogos_modificar.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
@@ -368,10 +368,11 @@ class _Hoja extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Center(
                 child: Container(
@@ -384,16 +385,17 @@ class _Hoja extends StatelessWidget {
                   ),
                 ),
               ),
-              if (mover) ...[
-                AvisoMapaConectado(ambito: estado.ambitoMapa),
-                HojaMoverPunto(parametros: parametros),
-              ] else
-                HojaModificarDatos(
-                  parametros: parametros,
-                  alGuardar: alGuardar,
-                  alElegirCiudad: alElegirCiudad,
-                  alDarDeBaja: alDarDeBaja,
-                ),
+              // Cada hoja desplaza lo suyo y deja sus botones fijos al pie.
+              Flexible(
+                child: mover
+                    ? HojaMoverPunto(parametros: parametros)
+                    : HojaModificarDatos(
+                        parametros: parametros,
+                        alGuardar: alGuardar,
+                        alElegirCiudad: alElegirCiudad,
+                        alDarDeBaja: alDarDeBaja,
+                      ),
+              ),
             ],
           ),
         ),
@@ -437,16 +439,30 @@ class _ZonaMapa extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Mientras se guarda el punto no se toca: si el guardado falla o devuelve candidatas, el pin
-        // tiene que seguir donde estaba.
-        IgnorePointer(
-          ignoring: estado.guardando,
-          child: MapaModificar(
-            colportorId: parametros.colportorId,
-            estado: estado,
-            alMoverCentro: alMoverCentro,
-            alTocar: alTocar,
-          ),
+        // El fondo del mapa: si el mapa baja para no quedar bajo los rótulos, arriba queda esto.
+        const ColoredBox(color: ColoresAlta.fondoMapa),
+        CustomMultiChildLayout(
+          delegate: _DisposicionZona(),
+          children: [
+            LayoutId(
+              id: _Parte.mapa,
+              // Mientras se guarda el punto no se toca: si el guardado falla o devuelve candidatas,
+              // el pin tiene que seguir donde estaba.
+              child: IgnorePointer(
+                ignoring: estado.guardando,
+                child: MapaModificar(
+                  colportorId: parametros.colportorId,
+                  estado: estado,
+                  alMoverCentro: alMoverCentro,
+                  alTocar: alTocar,
+                ),
+              ),
+            ),
+            LayoutId(
+              id: _Parte.rotulos,
+              child: _Rotulos(arriba: arriba, mover: mover, metros: metros),
+            ),
+          ],
         ),
         Positioned(
           left: 14,
@@ -458,28 +474,6 @@ class _ZonaMapa extends StatelessWidget {
             alPresionar: estado.guardando ? null : alCerrar,
           ),
         ),
-        Positioned(
-          left: 72,
-          right: 14,
-          top: arriba + 14,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: _Pildora(
-              texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
-              encabezado: true,
-            ),
-          ),
-        ),
-        if (mover && metros >= MapaModificar.metrosParaFantasma)
-          Positioned(
-            left: 14,
-            right: 14,
-            top: arriba + 8 + 48 + 10,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: _Pildora(texto: TextosModificar.moviste(metros), aviso: true),
-            ),
-          ),
         if (mover)
           Positioned(
             right: 14,
@@ -500,6 +494,89 @@ class _ZonaMapa extends StatelessWidget {
       ],
     );
   }
+}
+
+enum _Parte { mapa, rotulos }
+
+/// Los rótulos de arriba («EDITAR UBICACIÓN» o «MOVER EL PUNTO» y, ya moviendo, «Moviste el punto N
+/// m»): uno bajo el otro, a la altura del canvas. Escalan con el texto; si no entran en una línea
+/// pasan a dos.
+class _Rotulos extends StatelessWidget {
+  const _Rotulos({required this.arriba, required this.mover, required this.metros});
+
+  final double arriba;
+  final bool mover;
+  final double metros;
+
+  @override
+  Widget build(BuildContext context) {
+    final movido = metros >= MapaModificar.metrosParaFantasma;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // «Moviste…» arranca 10 dp debajo de «Cerrar» (48 dp de alto, a 8 dp del borde de arriba) o,
+        // si el título ocupa dos renglones, debajo del título.
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: mover ? arriba + 8 + 48 + 10 : 0),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _Pildora(
+                texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
+                encabezado: true,
+              ),
+            ),
+          ),
+        ),
+        if (mover)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Align(
+              alignment: Alignment.topCenter,
+              // Sin movimiento, el lugar queda reservado (un renglón en blanco del mismo tamaño):
+              // el mapa no se corre cuando el rótulo aparece.
+              child: movido
+                  ? _Pildora(texto: TextosModificar.moviste(metros), aviso: true)
+                  : const Opacity(
+                      opacity: 0,
+                      child: ExcludeSemantics(child: _Pildora(texto: '\u00A0')),
+                    ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// La disposición de la zona del mapa: los rótulos arriba y el mapa debajo, que llega hasta arriba
+/// salvo que los rótulos lleguen al pin.
+///
+/// El pin está fijo en el centro del mapa (su punta marca el punto) y mide 44 dp de alto. Si con el
+/// texto grande los rótulos bajan hasta el pin, el mapa entero baja lo justo para que el pin quede
+/// debajo de ellos: el punto que se guarda sigue siendo el centro del mapa, el que el pin marca.
+class _DisposicionZona extends MultiChildLayoutDelegate {
+  _DisposicionZona();
+
+  static const _altoPin = 44.0;
+  static const _holgura = 8.0;
+
+  /// Lo mínimo que queda de mapa, por grandes que sean los rótulos.
+  static const _mapaMinimo = 96.0;
+
+  @override
+  void performLayout(Size size) {
+    final rotulos = layoutChild(_Parte.rotulos, BoxConstraints.loose(size));
+    positionChild(_Parte.rotulos, Offset.zero);
+    final hacerBajar = 2 * (rotulos.height + _holgura + _altoPin) - size.height;
+    final baja = hacerBajar.clamp(0.0, math.max(0.0, size.height - _mapaMinimo)).toDouble();
+    layoutChild(_Parte.mapa, BoxConstraints.tight(Size(size.width, size.height - baja)));
+    positionChild(_Parte.mapa, Offset(0, baja));
+  }
+
+  @override
+  bool shouldRelayout(_DisposicionZona anterior) => false;
 }
 
 /// «⤢ Mover el punto»: pasa a ajustar la posición (07·02).

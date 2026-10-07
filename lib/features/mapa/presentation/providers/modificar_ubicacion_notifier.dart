@@ -134,6 +134,10 @@ final class ModificarUbicacionState extends Equatable {
   /// El punto que se ve en el mapa: el del ajuste, o el del borrador.
   Coordenadas? get puntoVisible => modo == ModoEdicion.moverPunto ? puntoMover : punto;
 
+  /// Lo que se mueve el punto para que cuente como movido: menos de un metro es el mismo punto (la
+  /// pantalla no dibuja ningún movimiento y «Guardar posición» no lo pasa al borrador).
+  static const metrosParaMovido = 1.0;
+
   String _t(String? s) => (s ?? '').trim();
 
   bool get tipoCambiado => original != null && tipo != original!.tipo;
@@ -349,6 +353,16 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
     await _cargar();
   }
 
+  /// «Abrir de nuevo» del aviso «Esta ubicación cambió mientras la editabas»: descarta el borrador y
+  /// vuelve a leer la ubicación como está ahora, y la pantalla arranca de cero. No se mezcla lo
+  /// cargado con los datos nuevos: podría pisar el cambio de otro.
+  Future<void> abrirDeNuevo() async {
+    if (!state.desactualizada || state.guardando || state.carga != CargaEdicion.lista) return;
+    _cerrarAjuste();
+    state = ModificarUbicacionState(movimientosCamara: state.movimientosCamara);
+    await _cargar();
+  }
+
   Future<void> _cargar() async {
     final numero = ++_secuenciaCarga;
     final repo = ref.read(ubicacionRepositoryProvider);
@@ -510,9 +524,18 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   }
 
   /// «Guardar posición»: el pin pasa al borrador (todavía no se escribe nada en el teléfono).
+  ///
+  /// Un pin a menos de un metro de lo guardado es el mismo punto: el borrador vuelve a la coordenada
+  /// guardada y no cuenta como cambio de posición.
   void guardarPosicion() {
     if (state.modo != ModoEdicion.moverPunto || state.guardando) return;
-    final pin = state.puntoMover;
+    final original = state.original?.coordenadas;
+    var pin = state.puntoMover;
+    if (pin != null &&
+        original != null &&
+        pin.distanciaMetrosA(original) < ModificarUbicacionState.metrosParaMovido) {
+      pin = original;
+    }
     _cerrarAjuste();
     state = state.copyWith(
       modo: ModoEdicion.datos,

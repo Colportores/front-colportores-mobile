@@ -220,6 +220,9 @@ class EtiquetaCampoUbicacion extends StatelessWidget {
   }
 }
 
+/// La insignia de un campo («Editado», «Del mapa»). Entera: va en su propio renglón (pasa de línea
+/// como un todo, ver [EtiquetaCampoUbicacion]) y, si ni así entra en el ancho del campo (texto
+/// grande en una columna angosta), se achica en lugar de partir una palabra a mitad.
 class InsigniaCampo extends StatelessWidget {
   const InsigniaCampo({
     super.key,
@@ -236,21 +239,24 @@ class InsigniaCampo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(color: fondo, borderRadius: BorderRadius.circular(99)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icono, size: 11, color: color),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(color: fondo, borderRadius: BorderRadius.circular(99)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 11, color: color),
+            const SizedBox(width: 3),
+            Text(
               texto,
+              softWrap: false,
               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: color),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -266,6 +272,7 @@ class CampoDireccionUbicacion extends StatelessWidget {
     required this.alCambiar,
     required this.limite,
     required this.accion,
+    this.bloqueado = false,
   });
 
   final String etiqueta;
@@ -275,6 +282,9 @@ class CampoDireccionUbicacion extends StatelessWidget {
   final ValueChanged<String> alCambiar;
   final int limite;
   final TextInputAction accion;
+
+  /// El campo no recibe teclas (por ejemplo, mientras se guarda): lo que se ve es lo que se guarda.
+  final bool bloqueado;
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +315,7 @@ class CampoDireccionUbicacion extends StatelessWidget {
         const SizedBox(height: 6),
         TextField(
           controller: controlador,
+          readOnly: bloqueado,
           onChanged: alCambiar,
           textInputAction: accion,
           textCapitalization: TextCapitalization.sentences,

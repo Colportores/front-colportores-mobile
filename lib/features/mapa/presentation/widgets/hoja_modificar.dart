@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../formato_ubicaciones.dart';
 import '../providers/alta_ubicacion_notifier.dart' show CampoDireccion, FuenteCampo;
 import '../providers/alta_ubicacion_providers.dart';
 import '../providers/modificar_ubicacion_notifier.dart';
+import 'aviso_mapa.dart';
 import 'campos_ubicacion.dart';
 import 'hoja_alta.dart' show TextosAlta;
 import 'piezas_alta.dart';
@@ -61,7 +64,8 @@ abstract final class TextosModificar {
   static const sinGps = 'No pudimos tomar tu ubicación. Mové el mapa hasta el lugar.';
   static const noPudimosGuardar =
       'No pudimos guardar los cambios. Lo que cargaste sigue acá: probá de nuevo.';
-  static const noPudimosAbrir = 'No pudimos abrir esta ubicación.';
+  static const noPudimosAbrir = 'No pudimos abrir esta ubicación. Probá de nuevo.';
+  static const abrirDeNuevo = 'Abrir de nuevo';
 
   /// «2 espacios», «1 espacio», «Sin espacios».
   static String espacios(int n) => switch (n) {
@@ -93,6 +97,9 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// - «Guardar cambios» se habilita recién cuando hay un cambio; los campos cambiados dicen «Editado».
 /// - De edificio a otro tipo con espacios no se puede (S17): el aviso lo dice y el botón queda sin
 ///   efecto.
+/// - «Guardar cambios» y «Dar de baja» quedan fijos al pie de la hoja y se desplaza el resto: con un
+///   teléfono chico o el texto grande la acción principal se ve siempre. Con el teclado abierto «Dar
+///   de baja» no se dibuja (se está escribiendo).
 class HojaModificarDatos extends ConsumerStatefulWidget {
   const HojaModificarDatos({
     super.key,
@@ -118,6 +125,9 @@ class HojaModificarDatos extends ConsumerStatefulWidget {
 class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
   late final TextEditingController _calle;
   late final TextEditingController _numero;
+
+  /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
+  final _claveFalla = GlobalKey();
 
   ModificarUbicacionNotifier get _notificador =>
       ref.read(modificarUbicacionProvider(widget.parametros).notifier);
@@ -147,6 +157,15 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     ref.listen(proveedor.select((s) => s.numero), (_, n) {
       if (n != _numero.text) _numero.text = n;
     });
+    ref.listen(proveedor.select((s) => s.falla), (anterior, nueva) {
+      if (nueva == null || nueva == anterior) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final contexto = _claveFalla.currentContext;
+        if (mounted && contexto != null) {
+          unawaited(Scrollable.ensureVisible(contexto, duration: Duration.zero));
+        }
+      });
+    });
     final original = estado.original!;
     final theme = Theme.of(context);
     final bloqueo = estado.bloqueoPorEspacios;
@@ -155,70 +174,97 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     // mismo texto dos veces.
     final mostrarFalla =
         falla != null && !(falla is FailureUbicacionConEspacios && bloqueo != null);
+    final tecladoAbierto = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Encabezado(original: original, espacios: estado.espacios),
-        const SizedBox(height: 14),
-        SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
-        if (bloqueo != null) ...[
-          const SizedBox(height: 10),
-          AvisoAlta(
-            color: ColoresAlta.rojo,
-            glyph: '!',
-            texto: FailureUbicacionConEspacios(cantidadEspacios: bloqueo).mensaje,
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Encabezado(original: original, espacios: estado.espacios),
+                const SizedBox(height: 14),
+                SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
+                if (bloqueo != null) ...[
+                  const SizedBox(height: 10),
+                  AvisoAlta(
+                    color: ColoresAlta.rojo,
+                    glyph: '!',
+                    texto: FailureUbicacionConEspacios(cantidadEspacios: bloqueo).mensaje,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                CampoCiudadUbicacion(
+                  nombre: estado.ciudadNombre ?? TextosModificar.ciudadSinNombre,
+                  sinValor: estado.ciudadNombre == null,
+                  editada: estado.ciudadCambiada,
+                  enlace: TextosCampos.cambiar,
+                  alTocar: estado.guardando ? null : widget.alElegirCiudad,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: CampoDireccionUbicacion(
+                        etiqueta: TextosCampos.calle,
+                        sugerencia: 'Calle',
+                        campo: CampoDireccion(
+                          estado.calle,
+                          estado.calleCambiada ? FuenteCampo.editado : FuenteCampo.vacio,
+                        ),
+                        controlador: _calle,
+                        alCambiar: _notificador.editarCalle,
+                        limite: 120,
+                        accion: TextInputAction.next,
+                        bloqueado: estado.guardando,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: CampoDireccionUbicacion(
+                        etiqueta: TextosCampos.numero,
+                        sugerencia: 'Nº',
+                        campo: CampoDireccion(
+                          estado.numero,
+                          estado.numeroCambiado ? FuenteCampo.editado : FuenteCampo.vacio,
+                        ),
+                        controlador: _numero,
+                        alCambiar: _notificador.editarNumero,
+                        limite: 20,
+                        accion: TextInputAction.done,
+                        bloqueado: estado.guardando,
+                      ),
+                    ),
+                  ],
+                ),
+                if (mostrarFalla) ...[
+                  const SizedBox(height: 14),
+                  AvisoAlta(
+                    key: _claveFalla,
+                    color: ColoresAlta.rojo,
+                    glyph: '!',
+                    texto: mensajeFallaEdicion(falla),
+                    // La ubicación cambió por debajo: con este borrador no hay nada que reintentar.
+                    acciones: estado.desactualizada
+                        ? Align(
+                            alignment: Alignment.centerLeft,
+                            child: EnlaceAlta(
+                              texto: TextosModificar.abrirDeNuevo,
+                              alPresionar: () => unawaited(_notificador.abrirDeNuevo()),
+                            ),
+                          )
+                        : null,
+                  ),
+                ],
+              ],
+            ),
           ),
-        ],
-        const SizedBox(height: 14),
-        CampoCiudadUbicacion(
-          nombre: estado.ciudadNombre ?? TextosModificar.ciudadSinNombre,
-          sinValor: estado.ciudadNombre == null,
-          editada: estado.ciudadCambiada,
-          enlace: TextosCampos.cambiar,
-          alTocar: estado.guardando ? null : widget.alElegirCiudad,
         ),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: CampoDireccionUbicacion(
-                etiqueta: TextosCampos.calle,
-                sugerencia: 'Calle',
-                campo: CampoDireccion(
-                  estado.calle,
-                  estado.calleCambiada ? FuenteCampo.editado : FuenteCampo.vacio,
-                ),
-                controlador: _calle,
-                alCambiar: _notificador.editarCalle,
-                limite: 120,
-                accion: TextInputAction.next,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: CampoDireccionUbicacion(
-                etiqueta: TextosCampos.numero,
-                sugerencia: 'Nº',
-                campo: CampoDireccion(
-                  estado.numero,
-                  estado.numeroCambiado ? FuenteCampo.editado : FuenteCampo.vacio,
-                ),
-                controlador: _numero,
-                alCambiar: _notificador.editarNumero,
-                limite: 20,
-                accion: TextInputAction.done,
-              ),
-            ),
-          ],
-        ),
-        if (mostrarFalla) ...[
-          const SizedBox(height: 14),
-          AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: mensajeFallaEdicion(falla)),
-        ],
         const SizedBox(height: 14),
         FilledButton(
           onPressed: estado.puedeGuardar ? widget.alGuardar : null,
@@ -233,7 +279,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
             textAlign: TextAlign.center,
           ),
         ),
-        if (widget.alDarDeBaja != null)
+        if (widget.alDarDeBaja != null && !tecladoAbierto)
           Center(
             child: TextButton(
               onPressed: estado.guardando ? null : widget.alDarDeBaja,
@@ -317,39 +363,50 @@ class HojaMoverPunto extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          spacing: 10,
-          runSpacing: 2,
-          children: [
-            Semantics(
-              header: true,
-              child: const Text(
-                TextosModificar.nuevaPosicion,
-                style: TextStyle(
-                  fontFamily: 'SourceSerif4',
-                  fontSize: 21,
-                  fontWeight: FontWeight.w600,
+        // «Guardar posición» y «Cancelar» quedan fijos al pie; se desplaza lo de arriba.
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AvisoMapaConectado(ambito: estado.ambitoMapa),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 10,
+                  runSpacing: 2,
+                  children: [
+                    Semantics(
+                      header: true,
+                      child: const Text(
+                        TextosModificar.nuevaPosicion,
+                        style: TextStyle(
+                          fontFamily: 'SourceSerif4',
+                          fontSize: 21,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (punto != null)
+                      Text(
+                        FormatoUbicaciones.coordenadas(punto),
+                        style: const TextStyle(
+                          fontFamily: 'JetBrainsMono',
+                          fontSize: 12,
+                          color: ColoresAlta.tinta,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 14),
+                _EstadoDireccion(
+                  estado: estado,
+                  alUsarCalle: notificador.usarCalleDelMapa,
+                  alUsarNumero: notificador.usarNumeroDelMapa,
+                ),
+              ],
             ),
-            if (punto != null)
-              Text(
-                FormatoUbicaciones.coordenadas(punto),
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 12,
-                  color: ColoresAlta.tinta,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        _EstadoDireccion(
-          estado: estado,
-          alUsarCalle: notificador.usarCalleDelMapa,
-          alUsarNumero: notificador.usarNumeroDelMapa,
+          ),
         ),
         const SizedBox(height: 14),
         Row(

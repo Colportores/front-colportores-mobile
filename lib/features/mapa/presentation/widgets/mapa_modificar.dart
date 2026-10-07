@@ -47,7 +47,7 @@ class MapaModificar extends ConsumerStatefulWidget {
 
   /// Lo que se mueve el punto para que cuente como movido y se dibuje «Antes»: menos de un metro es
   /// el mismo punto.
-  static const metrosParaFantasma = 1.0;
+  static const metrosParaFantasma = ModificarUbicacionState.metrosParaMovido;
 
   @override
   ConsumerState<MapaModificar> createState() => _MapaModificarState();
