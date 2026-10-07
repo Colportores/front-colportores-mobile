@@ -3,6 +3,7 @@
 // pestaña en un `Scaffold` sin esas barras (el mapa mide el alto entero de la pantalla): en el
 // teléfono el mapa mide ~140 dp menos y es ahí donde el aviso de conexión, los botones flotantes,
 // «Referencias» y la hoja se pisan.
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -81,7 +82,8 @@ Future<PantallaPrincipal> montarEnPantallaPrincipal(
     repo: repo ?? RepoListaFalso(),
     captura: GlobalKey(),
   );
-  if (arnes != null) addTearDown(() => arnes.cerrar());
+  // Sin esperar: con una descarga hecha, `cerrar()` no termina bajo el reloj falso del test.
+  if (arnes != null) addTearDown(() => unawaited(arnes.cerrar()));
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
