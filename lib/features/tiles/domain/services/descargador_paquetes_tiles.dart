@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:dartz/dartz.dart';
 
@@ -29,8 +30,12 @@ import 'puertos_descarga.dart';
 ///   mapa lo usa. Un corte nunca deja un archivo que se tome por válido ni un paquete a medias.
 /// - Si se va el Wi-Fi (sin datos móviles autorizados) o se corta la red, queda en pausa y sigue
 ///   sola cuando vuelve una conexión permitida. La pausa del colportor ([pausar]) la levanta él
-///   llamando otra vez a [descargar]. Un corte sin cambio de conectividad (el servidor cerró la
-///   conexión) también queda en pausa: sigue con el próximo cambio o con [descargar].
+///   llamando otra vez a [descargar].
+/// - Un corte sin cambio de conectividad (el servidor cerró la conexión con el Wi-Fi arriba) queda
+///   en la misma pausa (`sinConexion`, `sigueSola`) y reintenta solo mientras la conexión siga
+///   permitida: espera 30 s, 1 min, 2 min y 5 min, y de ahí cada 5 min, sin tope de intentos con
+///   la app abierta. Un cambio de conectividad permitido reintenta ya y vuelve a empezar en 30 s;
+///   pausar, eliminar, cerrar o perder la conexión permitida cancelan la espera.
 ///
 /// Guarda el estado de las descargas en memoria: va una sola instancia por app (el provider la
 /// mantiene viva) y escucha la conectividad desde la primera descarga hasta [cerrar].
@@ -42,7 +47,17 @@ final class DescargadorPaquetesTiles {
     required this._archivos,
     required this._checksum,
     required this._repository,
-  });
+    List<Duration> esperasDeReintento = esperasDeReintentoPorDefecto,
+  }) : assert(esperasDeReintento.isNotEmpty, 'hace falta al menos una espera'),
+       _esperasDeReintento = esperasDeReintento;
+
+  /// Cuánto espera antes de cada reintento de una descarga cortada; la última se repite.
+  static const esperasDeReintentoPorDefecto = [
+    Duration(seconds: 30),
+    Duration(minutes: 1),
+    Duration(minutes: 2),
+    Duration(minutes: 5),
+  ];
 
   final MonitorConectividad _conectividad;
   final MedidorEspacioDisco _espacio;
@@ -50,6 +65,7 @@ final class DescargadorPaquetesTiles {
   final ArchivosTiles _archivos;
   final CalculadorChecksum _checksum;
   final PaquetesTilesRepository _repository;
+  final List<Duration> _esperasDeReintento;
 
   final _descargas = <String, _Descarga>{};
   final _cambios = StreamController<EstadoDescarga>.broadcast();
@@ -84,6 +100,20 @@ final class DescargadorPaquetesTiles {
     PaqueteTiles paquete, {
     bool permitirDatosMoviles = false,
     bool esperarConexion = false,
+  }) {
+    // Un pedido del colportor (o de la app) empieza de nuevo la cuenta de los reintentos.
+    _descargas[paquete.id]?.reintentosSeguidos = 0;
+    return _descargar(
+      paquete,
+      permitirDatosMoviles: permitirDatosMoviles,
+      esperarConexion: esperarConexion,
+    );
+  }
+
+  Future<Either<Failure, Unit>> _descargar(
+    PaqueteTiles paquete, {
+    required bool permitirDatosMoviles,
+    required bool esperarConexion,
   }) async {
     final previa = _descargas[paquete.id];
     if (previa != null && previa.ocupada) {
@@ -91,6 +121,7 @@ final class DescargadorPaquetesTiles {
       return const Right(unit);
     }
     final descarga = previa ?? _Descarga(paquete);
+    descarga.cancelarReintento();
     final enCola = switch (previa?.estado) {
       DescargaPausada(sigueSola: true) => true,
       _ => false,
@@ -135,6 +166,7 @@ final class DescargadorPaquetesTiles {
     if (descarga == null) return;
     if (descarga.ocupada) return _detener(descarga, MotivoPausa.usuario);
     if (descarga.estado is DescargaPausada) _emitirPausa(descarga, MotivoPausa.usuario);
+    descarga.cancelarReintento();
   }
 
   /// Elimina el paquete [paqueteId] (HU-SYNC-010: de a uno, para liberar espacio). Corta la
@@ -162,6 +194,10 @@ final class DescargadorPaquetesTiles {
   /// Corta las descargas en curso (los `.part` quedan para la próxima) y deja de escuchar la
   /// conectividad.
   Future<void> cerrar() async {
+    // Antes de cualquier espera: un reintento que vence mientras se cierra no arranca otro intento.
+    for (final descarga in _descargas.values) {
+      descarga.cancelarReintento();
+    }
     await _escuchaConectividad?.cancel();
     _escuchaConectividad = null;
     for (final descarga in _descargas.values.toList()) {
@@ -270,6 +306,7 @@ final class DescargadorPaquetesTiles {
       respuesta = await _pedir(d, indice, parcial);
     } on ErrorRedTiles {
       _emitirPausa(d, d.pausaPedida ?? MotivoPausa.sinConexion);
+      _reintentarMasTarde(d);
       return false;
     }
     if (d.pausaPedida case final motivo?) {
@@ -306,6 +343,7 @@ final class DescargadorPaquetesTiles {
         return true;
       case _Fin.cortado:
         _emitirPausa(d, MotivoPausa.sinConexion);
+        _reintentarMasTarde(d);
       case _Fin.pausado:
         _emitirPausa(d, d.pausaPedida ?? MotivoPausa.usuario);
       case _Fin.excedido:
@@ -387,6 +425,7 @@ final class DescargadorPaquetesTiles {
   /// no se retoma sola.
   Future<void> _detener(_Descarga d, MotivoPausa motivo) async {
     if (d.pausaPedida != MotivoPausa.usuario) d.pausaPedida = motivo;
+    d.cancelarReintento();
     d.cortar?.call(_Fin.pausado);
     await d.intento?.future;
   }
@@ -400,14 +439,20 @@ final class DescargadorPaquetesTiles {
       final permitida = _bloqueoPor(conexion, datosMoviles: d.permitirDatosMoviles) == null;
       if (d.ocupada) {
         if (!permitida) unawaited(_detener(d, _motivoPorPerder(conexion)));
-      } else if (d.estado case DescargaPausada(sigueSola: true) when permitida) {
+      } else if (!permitida) {
+        // Sin una conexión permitida no hay a qué reintentar: vuelve con el próximo cambio.
+        d.cancelarReintento();
+      } else if (d.estado case DescargaPausada(sigueSola: true)) {
+        // Una conexión permitida reintenta ya, y la espera de los reintentos vuelve a ser la corta.
+        d.cancelarReintento();
+        d.reintentosSeguidos = 0;
         unawaited(_reanudarSola(d));
       }
     }
   }
 
   Future<void> _reanudarSola(_Descarga d) async {
-    final resultado = await descargar(
+    final resultado = await _descargar(
       d.paquete,
       permitirDatosMoviles: d.permitirDatosMoviles,
       esperarConexion: d.esperarConexion,
@@ -416,6 +461,28 @@ final class DescargadorPaquetesTiles {
     // Si la conexión se volvió a ir, sigue en pausa esperando la próxima.
     final sigueEnPausa = failure is FailureSinConexion || failure is FailureDescargaRequiereWifi;
     if (failure != null && !sigueEnPausa) _emitir(d, DescargaFallida(d.paquete.id, failure));
+  }
+
+  /// Una descarga que se cortó sin que cambiara la conectividad (el servidor cerró la conexión con
+  /// el Wi-Fi arriba) no tiene qué la despierte: reintenta sola con una espera creciente (30 s,
+  /// 1 min, 2 min, 5 min y de ahí cada 5 min). Si la pausa la pidió alguien (el colportor o la
+  /// pérdida de la conexión) no se reintenta: la levanta él o el próximo cambio de conectividad.
+  void _reintentarMasTarde(_Descarga d) {
+    if (d.pausaPedida != null) return;
+    d.cancelarReintento();
+    final indice = min(d.reintentosSeguidos, _esperasDeReintento.length - 1);
+    d.reintentosSeguidos++;
+    d.reintento = Timer(_esperasDeReintento[indice], () {
+      d.reintento = null;
+      unawaited(_reintentarSola(d));
+    });
+  }
+
+  /// Vence la espera: si sigue en la pausa del corte, vuelve a pedir lo que falta. Si en el medio
+  /// se fue la conexión permitida, no pide nada: el próximo cambio de conectividad la retoma.
+  Future<void> _reintentarSola(_Descarga d) async {
+    if (d.ocupada || _cambios.isClosed) return;
+    if (d.estado case DescargaPausada(motivo: MotivoPausa.sinConexion)) await _reanudarSola(d);
   }
 
   /// Anota la descarga como en cola, en pausa por [motivo]. Si ya estaba así no emite otra vez: un
@@ -438,6 +505,10 @@ final class DescargadorPaquetesTiles {
 
   void _emitir(_Descarga d, EstadoDescarga estado) {
     d.estado = estado;
+    // La espera de un reintento solo tiene sentido mientras siga la pausa por corte.
+    final pausaPorCorte = estado is DescargaPausada && estado.motivo == MotivoPausa.sinConexion;
+    if (!pausaPorCorte) d.cancelarReintento();
+    if (estado is DescargaCompletada) d.reintentosSeguidos = 0;
     if (!_cambios.isClosed) _cambios.add(estado);
   }
 
@@ -487,6 +558,18 @@ final class _Descarga {
 
   /// La pausa pedida mientras el intento seguía en curso.
   MotivoPausa? pausaPedida;
+
+  /// La espera del próximo reintento de una descarga cortada; `null` si no hay ninguna.
+  Timer? reintento;
+
+  /// Cuántos reintentos seguidos se programaron desde el último pedido o cambio de conectividad:
+  /// elige la espera del próximo.
+  int reintentosSeguidos = 0;
+
+  void cancelarReintento() {
+    reintento?.cancel();
+    reintento = null;
+  }
 
   bool get ocupada {
     final actual = intento;

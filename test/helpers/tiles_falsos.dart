@@ -148,6 +148,7 @@ final class ChecksumFalso implements CalculadorChecksum {
 /// - [corrimiento]: el 206 dice empezar en `desde + corrimiento` (otro rango que el pedido).
 /// - [soloEnOrigen]: [cortarDespuesDe] y [retenerDespuesDe] valen solo para ese archivo (la
 ///   segunda parte de un paquete); los pedidos de otro no los consumen.
+/// - [cancelaEnLaZonaActual]: para los tests bajo `fakeAsync`; ver [_CuerpoQueCancelaEnLaZona].
 final class ServidorFalso implements ClienteDescargaRango {
   final archivos = <Uri, List<int>>{};
 
@@ -165,6 +166,11 @@ final class ServidorFalso implements ClienteDescargaRango {
   int corrimiento = 0;
   int tamanoPedazo = 1000;
   Uri? soloEnOrigen;
+
+  /// Bajo `fakeAsync` (o `testWidgets`), `await suscripcion.cancel()` de un `StreamController` no
+  /// vuelve nunca: devuelve un `Future` de la zona raíz y su continuación queda en el reloj real.
+  /// Con esto el cuerpo avisa el cancelado con un `Future` de la zona del que cancela.
+  bool cancelaEnLaZonaActual = false;
 
   /// Cuerpos cuya suscripción se canceló (el test que lo mira no deja llegar ninguno al final).
   int cancelados = 0;
@@ -211,8 +217,65 @@ final class ServidorFalso implements ClienteDescargaRango {
       if (corte != null) cuerpo.addError(const ErrorRedTiles());
       unawaited(cuerpo.close());
     }
-    return cuerpo.stream;
+    return cancelaEnLaZonaActual ? _CuerpoQueCancelaEnLaZona(cuerpo.stream) : cuerpo.stream;
   }
+}
+
+/// Un cuerpo cuya suscripción se cancela con un `Future` de la zona actual (ver
+/// [ServidorFalso.cancelaEnLaZonaActual]); ignora lo que tarde el cancelado del cuerpo de origen.
+final class _CuerpoQueCancelaEnLaZona extends Stream<List<int>> {
+  _CuerpoQueCancelaEnLaZona(this._origen);
+
+  final Stream<List<int>> _origen;
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    final real = _origen.listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+    return _SuscripcionQueCancelaEnLaZona(real);
+  }
+}
+
+final class _SuscripcionQueCancelaEnLaZona implements StreamSubscription<List<int>> {
+  _SuscripcionQueCancelaEnLaZona(this._real);
+
+  final StreamSubscription<List<int>> _real;
+
+  @override
+  Future<void> cancel() {
+    unawaited(_real.cancel());
+    return Future<void>.value();
+  }
+
+  @override
+  void onData(void Function(List<int> data)? handleData) => _real.onData(handleData);
+
+  @override
+  void onError(Function? handleError) => _real.onError(handleError);
+
+  @override
+  void onDone(void Function()? handleDone) => _real.onDone(handleDone);
+
+  @override
+  void pause([Future<void>? resumeSignal]) => _real.pause(resumeSignal);
+
+  @override
+  void resume() => _real.resume();
+
+  @override
+  bool get isPaused => _real.isPaused;
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => _real.asFuture(futureValue);
 }
 
 /// Repositorio en memoria para los tests de dominio.
