@@ -40,7 +40,7 @@ verificar() { # $1 = proveedor, $2 = valor esperado
 avisar_apagado() { # $1 = proveedor: la app no lo usa; si sigue activo, aviso sin romper
   local real; real="$(leer "$1")"
   if [ "$real" = "true" ]; then
-    echo "⚠ external.$1 = true: la app ya no lo usa — apagalo en Supabase → Authentication → Providers"
+    echo "⚠ external.$1 = true: la app ya no lo usa — apagalo en Supabase → Authentication → Providers (sin sacar io.supabase.colportores://login-callback/ de Redirect URLs: la usan los enlaces del correo)"
   else
     echo "✓ external.$1 = ${real:-false}"
   fi
