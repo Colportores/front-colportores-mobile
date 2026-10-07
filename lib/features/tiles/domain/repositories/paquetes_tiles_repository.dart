@@ -18,9 +18,17 @@ abstract interface class PaquetesTilesRepository {
   /// [descargados] como flujo: emite al suscribirse y cada vez que se registra o se quita uno.
   Stream<List<PaqueteDescargado>> observarDescargados();
 
-  /// Anota un paquete ya descargado y validado; reemplaza al anterior con el mismo id.
+  /// Anota un paquete ya descargado y validado; reemplaza al anterior con el mismo id (y borra los
+  /// archivos de la versión anterior, que ya no se usan).
   Future<Either<Failure, Unit>> registrar(PaqueteDescargado descargado);
 
   /// Deja de anotar el paquete [paqueteId]; si no estaba, no hace nada.
   Future<Either<Failure, Unit>> quitar(String paqueteId);
+
+  /// Pone en orden lo que hay en el teléfono con lo que está anotado (se llama una vez al arrancar
+  /// la app): un paquete anotado al que le falta un archivo, o cuyo archivo no pesa lo que
+  /// tiene que pesar o no pasa el checksum, se trata como no descargado y se saca del registro;
+  /// y los archivos que no son de ningún paquete anotado se borran (un `.pmtiles` huérfano, un
+  /// `.part` abandonado).
+  Future<Either<Failure, Unit>> reconciliar();
 }

@@ -95,39 +95,81 @@ void main() {
       expect(fuente.hayTiles, isTrue);
     });
 
+    test('un paquete en partes se abre con una URL por parte, en el orden del catálogo', () {
+      const offline = FuenteMapa.offlineEnPartes(['/data/mvd-p1.pmtiles', '/data/mvd-p2.pmtiles']);
+      const online = FuenteMapa.onlineEnPartes([
+        'https://s/mvd-p1.pmtiles',
+        'https://s/mvd-p2.pmtiles',
+      ]);
+
+      expect(offline.tipo, FuenteTiles.pmtilesOffline);
+      expect(offline.origenes, ['/data/mvd-p1.pmtiles', '/data/mvd-p2.pmtiles']);
+      expect(offline.urlsPmtiles, [
+        'pmtiles://file:///data/mvd-p1.pmtiles',
+        'pmtiles://file:///data/mvd-p2.pmtiles',
+      ]);
+      expect(offline.urlPmtiles, 'pmtiles://file:///data/mvd-p1.pmtiles');
+      expect(online.tipo, FuenteTiles.servidorOnline);
+      expect(online.urlsPmtiles, [
+        'pmtiles://https://s/mvd-p1.pmtiles',
+        'pmtiles://https://s/mvd-p2.pmtiles',
+      ]);
+      expect(const FuenteMapa.sinTiles().urlsPmtiles, isEmpty);
+      expect(const FuenteMapa.sinTiles().origenes, isEmpty);
+    });
+
     test('es un valor: igual por tipo y origen', () {
       expect(const FuenteMapa.offline('/a'), const FuenteMapa.offline('/a'));
+      expect(const FuenteMapa.offline('/a'), const FuenteMapa.offlineEnPartes(['/a']));
       expect(const FuenteMapa.offline('/a'), isNot(const FuenteMapa.offline('/b')));
       expect(const FuenteMapa.offline('/a'), isNot(const FuenteMapa.online('/a')));
+      expect(
+        const FuenteMapa.offlineEnPartes(['/a', '/b']),
+        isNot(const FuenteMapa.offlineEnPartes(['/b', '/a'])),
+      );
       expect(const FuenteMapa.sinTiles(), const FuenteMapa.sinTiles());
     });
 
     group('resolver', () {
-      const ruta = '/data/paquete.pmtiles';
-      const url = 'https://servidor/uy.pmtiles';
+      const rutas = ['/data/paquete.pmtiles'];
+      const urls = ['https://servidor/uy.pmtiles'];
 
       test('con el paquete descargado manda el paquete, haya red o no', () {
         for (final hayRed in [true, false]) {
           expect(
-            FuenteMapa.resolver(rutaOffline: ruta, urlOnline: url, hayRed: hayRed),
-            const FuenteMapa.offline(ruta),
+            FuenteMapa.resolver(rutasOffline: rutas, urlsOnline: urls, hayRed: hayRed),
+            const FuenteMapa.offline('/data/paquete.pmtiles'),
           );
         }
       });
 
+      test('con el paquete descargado en partes manda las partes, en orden', () {
+        expect(
+          FuenteMapa.resolver(rutasOffline: const ['/a', '/b'], hayRed: false),
+          const FuenteMapa.offlineEnPartes(['/a', '/b']),
+        );
+      });
+
       test('sin paquete y con red va al servidor', () {
-        expect(FuenteMapa.resolver(urlOnline: url, hayRed: true), const FuenteMapa.online(url));
+        expect(
+          FuenteMapa.resolver(urlsOnline: urls, hayRed: true),
+          const FuenteMapa.online('https://servidor/uy.pmtiles'),
+        );
+        expect(
+          FuenteMapa.resolver(urlsOnline: const ['https://s/a', 'https://s/b'], hayRed: true),
+          const FuenteMapa.onlineEnPartes(['https://s/a', 'https://s/b']),
+        );
       });
 
       test('sin paquete, con red pero con el servidor caído no hay tiles', () {
         expect(
-          FuenteMapa.resolver(urlOnline: url, hayRed: true, servidorOnlineDisponible: false),
+          FuenteMapa.resolver(urlsOnline: urls, hayRed: true, servidorOnlineDisponible: false),
           const FuenteMapa.sinTiles(),
         );
       });
 
       test('sin paquete y sin red no hay tiles', () {
-        expect(FuenteMapa.resolver(urlOnline: url, hayRed: false), const FuenteMapa.sinTiles());
+        expect(FuenteMapa.resolver(urlsOnline: urls, hayRed: false), const FuenteMapa.sinTiles());
       });
 
       test('sin URL no hay a dónde ir, aunque haya red', () {

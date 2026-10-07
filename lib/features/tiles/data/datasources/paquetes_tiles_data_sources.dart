@@ -1,20 +1,16 @@
 import '../../domain/entities/paquete_tiles.dart';
 
-/// De dónde sale el catálogo de paquetes PMTiles (HU-SYNC-010).
-///
-/// Sin implementación real: la documentación no fija dónde se publica el catálogo ni su formato
-/// (una tabla o vista en `backend-supabase`, un JSON en el bucket junto a los `.pmtiles`, ...).
-/// Queda anotado en el issue #189. `CatalogoPaquetesTilesEnMemoria` sirve para los tests y para
-/// el modo demo.
+/// De dónde sale el catálogo de paquetes PMTiles (HU-SYNC-010): el `catalogo.json` del bucket
+/// público `mapas` de Supabase Storage (`CatalogoPaquetesTilesHttp`).
+/// `CatalogoPaquetesTilesEnMemoria` sirve para los tests y para el modo demo sin Supabase.
 abstract interface class CatalogoPaquetesTilesRemoteDataSource {
-  /// Lanza `ErrorRedTiles` sin red y `ErrorServidorTiles` si el servidor responde con error.
+  /// Lanza `ErrorRedTiles` sin red, `ErrorServidorTiles` si el servidor responde con error y
+  /// `FormatException` si lo que devuelve no es un catálogo que la app entienda.
   Future<List<PaqueteTiles>> listar();
 }
 
-/// Dónde queda anotado qué paquetes están descargados y validados (HU-SYNC-010).
-///
-/// Sin implementación persistente: elegir dónde (una tabla de Drift en la DB local, con su
-/// migración, o un manifiesto JSON junto a los `.pmtiles`) es decisión de Cristian (issue #189).
+/// Dónde queda anotado qué paquetes están descargados y validados (HU-SYNC-010): un manifiesto
+/// JSON junto a los `.pmtiles` (`RegistroPaquetesDescargadosJson`, decisión d7 de #189).
 /// `RegistroPaquetesDescargadosEnMemoria` sirve para los tests y para el modo demo.
 abstract interface class RegistroPaquetesDescargadosLocalDataSource {
   Future<List<PaqueteDescargado>> leer();

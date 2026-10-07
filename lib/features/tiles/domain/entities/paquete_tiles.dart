@@ -40,38 +40,75 @@ final class AmbitoTrabajo extends Equatable {
   List<Object?> get props => [zonaId, ciudadId, departamentoId];
 }
 
+/// Un archivo `.pmtiles` de un paquete: lo que se baja, con lo que hace falta para validarlo.
+///
+/// Una ciudad que no entra en un solo archivo (plan Free de Storage: menos de 50 MB cada uno) se
+/// parte en varios; cada parte se baja y se valida sola.
+final class ParteTiles extends Equatable {
+  const ParteTiles({required this.origen, required this.tamanoBytes, required this.sha256});
+
+  /// De dónde se baja: la ruta del catálogo resuelta contra la URL del catálogo (ADR-011: directo
+  /// de Storage, sin pasar por el BFF).
+  final Uri origen;
+
+  /// Lo que pesa el archivo; la descarga lo comprueba contra lo que baja y contra el `.part`.
+  final int tamanoBytes;
+
+  /// SHA-256 del archivo en hex minúscula (el del catálogo; el mismo de `sha256sum`).
+  final String sha256;
+
+  /// Los primeros 12 caracteres del SHA-256, como en el nombre del archivo del bucket: el archivo
+  /// local los lleva, así un `.part` de una versión vieja nunca se reanuda con bytes de otra.
+  String get huella => sha256.length <= _largoHuella ? sha256 : sha256.substring(0, _largoHuella);
+
+  @override
+  List<Object?> get props => [origen, tamanoBytes, sha256];
+}
+
+const _largoHuella = 12;
+
 /// Un paquete PMTiles del catálogo: lo que se puede descargar (HU-SYNC-010, ADR-011).
 ///
-/// La documentación no fija el formato del catálogo, dónde se publica ni el algoritmo de
-/// [checksum] (ver el issue #189). Para el dominio [checksum] es un texto opaco que se compara tal
-/// cual con el que calcula `CalculadorChecksum`, y [origen] es de dónde se baja el archivo
-/// (ADR-011: directo de Storage, sin pasar por el BFF).
+/// Sale de `catalogo.json` del bucket público `mapas` (backend-supabase, `docs/mapas-tiles.md`).
+/// [version] es lo que cambia cuando hay un mapa nuevo: el SHA-256 de la parte, o el de los
+/// SHA-256 de las partes unidos con un salto de línea. El paquete está disponible recién cuando
+/// **todas** sus [partes] se bajaron y se validaron.
 final class PaqueteTiles extends Equatable {
   const PaqueteTiles({
     required this.id,
     required this.nivel,
     required this.ambitoId,
-    required this.nombre,
-    required this.tamanoBytes,
-    required this.checksum,
-    required this.origen,
+    this.nombre,
+    required this.version,
+    required this.partes,
   });
 
-  /// Identifica al paquete y nombra su archivo en el dispositivo.
+  /// Identifica al paquete dentro del catálogo (`ciudad-montevideo`) y nombra sus archivos en el
+  /// dispositivo. Solo letras, números, `-` y `_`.
   final String id;
   final NivelCobertura nivel;
 
-  /// El id de la zona, la ciudad o el departamento que cubre; `null` para Uruguay completo.
+  /// El id de la zona, la ciudad o el departamento que cubre; `null` para Uruguay completo. La app
+  /// elige el paquete por este id, nunca por el nombre.
   final String? ambitoId;
 
-  /// Lo que ve el colportor: "Montevideo" en "Descargar Montevideo (87 MB)".
-  final String nombre;
-  final int tamanoBytes;
-  final String checksum;
-  final Uri origen;
+  /// Lo que ve el colportor: "Montevideo" en "Descargar Montevideo (87 MB)". Los paquetes de zona
+  /// no lo traen (el catálogo es público): la app ya conoce sus zonas por la réplica local.
+  final String? nombre;
+
+  /// Qué mapa es: cambia cuando se publica uno nuevo (`hayActualizacion`).
+  final String version;
+  final List<ParteTiles> partes;
+
+  /// Lo que pesa el paquete entero: la suma de sus partes.
+  int get tamanoBytes => partes.fold(0, (suma, parte) => suma + parte.tamanoBytes);
 
   /// El tamaño en MB para mostrar, redondeado para arriba ([megabytesDe]).
   int get megabytes => megabytesDe(tamanoBytes);
+
+  /// El nombre de los archivos locales de la parte [indice]: `<id>-p<n>-<huella>`. Con la huella
+  /// en el nombre, el `.part` de una versión no se mezcla con el de otra.
+  String claveDeParte(int indice) => '$id-p${indice + 1}-${partes[indice].huella}';
 
   /// `true` si el paquete tiene los tiles del lugar de [ambito]. Uruguay cubre cualquier lugar.
   bool cubre(AmbitoTrabajo ambito) {
@@ -81,21 +118,21 @@ final class PaqueteTiles extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, nivel, ambitoId, nombre, tamanoBytes, checksum, origen];
+  List<Object?> get props => [id, nivel, ambitoId, nombre, version, partes];
 }
 
-/// Un paquete ya descargado y con el checksum validado. [ruta] es el `.pmtiles` en el directorio
-/// de la app, listo para que el mapa lo use sin red.
+/// Un paquete ya descargado, con todas sus partes validadas. [rutas] son los `.pmtiles` en el
+/// directorio de la app, en el orden de las partes, listos para que el mapa los use sin red.
 final class PaqueteDescargado extends Equatable {
-  const PaqueteDescargado({required this.paquete, required this.ruta});
+  const PaqueteDescargado({required this.paquete, required this.rutas});
 
   final PaqueteTiles paquete;
-  final String ruta;
+  final List<String> rutas;
 
   String get id => paquete.id;
 
   @override
-  List<Object?> get props => [paquete, ruta];
+  List<Object?> get props => [paquete, rutas];
 }
 
 /// El paquete descargado que usa el mapa para [ambito] (HU-UBI-003 lo prioriza sobre el online):
