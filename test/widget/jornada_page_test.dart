@@ -650,7 +650,8 @@ void main() {
       expect(find.byKey(const Key('jornada_iniciar')), findsNothing);
 
       dataSource.errorAlLeer = null;
-      await tester.tap(find.text('Reintentar'));
+      // La pestaña «Lista» también vive en el `IndexedStack` y tiene su propio «Reintentar».
+      await tester.tap(find.text('Reintentar').hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('Sin jornada en curso'), findsOneWidget);
     });
