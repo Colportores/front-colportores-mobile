@@ -132,6 +132,77 @@ void main() {
       },
     );
 
+    test('la respuesta buena que llega después del tope se le pasa a quien la espera', () async {
+      final tarde = <EstadoCuenta>[];
+      final resultado = await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      expect(tarde, isEmpty);
+      cuenta.respuesta = const Right(EstadoCuenta.pendienteAsignacion);
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, [EstadoCuenta.pendienteAsignacion]);
+      expect(cuenta.consultas, 1);
+    });
+
+    test('la falla que llega después del tope no se le pasa a nadie', () async {
+      final tarde = <EstadoCuenta>[];
+      await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      cuenta.respuesta = const Left(FailureSinConexion());
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, isEmpty);
+    });
+
+    test('una respuesta dentro del tope no pasa por quien espera la tardía', () async {
+      final tarde = <EstadoCuenta>[];
+      cuenta.respuesta = const Right(EstadoCuenta.suspendida);
+      final pendiente = consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      sinRespuesta.complete();
+
+      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.suspendida));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(tarde, isEmpty);
+    });
+
+    test('refrescar a mano no tiene respuesta tardía: no llama a quien la espera', () async {
+      final tarde = <EstadoCuenta>[];
+      cuenta.respuesta = const Right(EstadoCuenta.activa);
+      final pendiente = consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: false,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      await Future<void>.delayed(tope * 3);
+      sinRespuesta.complete();
+
+      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      expect(tarde, isEmpty);
+    });
+
     test('una respuesta dentro del tope se devuelve tal cual', () async {
       cuenta.respuesta = const Right(EstadoCuenta.suspendida);
       final pendiente = consultar(params(admite: true));
