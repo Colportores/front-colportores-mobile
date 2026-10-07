@@ -64,6 +64,18 @@ final class FailureSesionExpiradaPorInactividad extends Failure {
       );
 }
 
+/// La sesión venció por inactividad y no hay conexión para renovarla (HU-AUTH-003, «Edge - JWT
+/// expirado y sin conexión»; artboard 17-A02 de la vista 17). [mensaje] es el literal de la HU. No
+/// es un error de un campo: es lo que le pasa a la sesión mientras no haya señal, así que el login
+/// lo muestra arriba, como aviso, y no debajo del formulario. Los datos locales siguen intactos.
+final class FailureSesionVencidaSinConexion extends Failure {
+  const FailureSesionVencidaSinConexion()
+    : super(
+        mensaje: 'Tu sesión expiró. Necesitás conexión para renovarla.',
+        codigo: 'AUTH_SESION_VENCIDA_SIN_CONEXION',
+      );
+}
+
 /// El servidor ya no acepta la sesión: se revocó (cambio de contraseña, cierre en todos los
 /// equipos) o venció de su lado (HU-AUTH-007, "Edge - backend revocó la sesión"). La HU no fija el
 /// texto: es la propuesta de la vista 17 (17-A03); los datos locales siguen intactos.

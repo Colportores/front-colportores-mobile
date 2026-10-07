@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/conectividad/conectividad_providers.dart';
 import 'core/error/failure.dart';
 import 'core/theme/tema_colportaje.dart';
 import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
@@ -38,6 +39,10 @@ class ColportoresApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sesion = ref.watch(sesionProvider);
+
+    // HU-AUTH-007 (17-A02): la conexión se lee desde el arranque, en paralelo a la sesión. Si la
+    // leyera recién el login, ya dibujado, el primer cuadro sería 17-A01 con el teléfono sin señal.
+    ref.listen(conexionProvider, (previous, next) {});
 
     // HU-AUTH-002: si el deep link de verificación vuelve con un error (enlace vencido o ya
     // usado) mientras la app no está mostrando la pantalla de verificación — o ni siquiera
@@ -83,7 +88,13 @@ class ColportoresApp extends ConsumerWidget {
         navigatorKey: navigatorKeyColportores,
         title: 'Colportores',
         theme: temaClaro(),
+        // Solo la primera lectura de la sesión (arranque) pasa por la pantalla de carga. Un
+        // «Entrar» en vuelo vuelve a poner `AsyncLoading`, pero con la sesión (nula) de antes: si
+        // eso cambiara la pantalla, el login se desmontaba con la respuesta en camino y el aviso del
+        // intento (contraseña incorrecta, sin conexión, 17-A02) se perdía; el botón ya muestra el
+        // «Entrando…».
         home: sesion.when(
+          skipLoadingOnReload: true,
           loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
           error: (_, _) => const LoginPage(),
           data: (s) => s == null ? const LoginPage() : _Principal(sesion: s),
