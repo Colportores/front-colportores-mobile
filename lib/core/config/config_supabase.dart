@@ -12,13 +12,14 @@ abstract final class ConfigSupabase {
 
   static bool get configurada => url.isNotEmpty && anonKey.isNotEmpty;
 
-  /// Deep link al que Supabase redirige al terminar el OAuth por navegador (Google). Tiene que
-  /// estar (a) en `AndroidManifest.xml` como intent-filter de `MainActivity` y (b) en el
-  /// dashboard: Authentication → URL Configuration → Redirect URLs.
-  static const String redirectOAuth = 'io.supabase.colportores://login-callback/';
+  /// Deep link base de la app: de él cuelgan los enlaces del correo (verificación y recuperación,
+  /// más abajo) y es el destino del reenvío de la verificación. Tiene que estar (a) en
+  /// `AndroidManifest.xml` como intent-filter de `MainActivity` y (b) en el dashboard:
+  /// Authentication → URL Configuration → Redirect URLs.
+  static const String redirectBase = 'io.supabase.colportores://login-callback/';
 
   /// Deep link propio para la verificación de email (HU-AUTH-002, decisión de Cristian del
-  /// 23/09, issue #84). Mismo scheme y host que [redirectOAuth] — el intent-filter de
+  /// 23/09, issue #84). Mismo scheme y host que [redirectBase] — el intent-filter de
   /// `AndroidManifest.xml` no filtra por path, así que lo captura igual — pero un path propio
   /// (`/verificado`) para que la app pueda distinguir, del lado del cliente, un `signedIn` que
   /// vino de confirmar el correo de uno de un login/registro normal (Supabase no los separa por
@@ -32,7 +33,7 @@ abstract final class ConfigSupabase {
       'io.supabase.colportores://login-callback/verificado';
 
   /// Deep link del enlace de recuperación de contraseña (HU-AUTH-004 lo pide, HU-AUTH-005 lo
-  /// recibe). Mismo scheme y host que [redirectOAuth] (el mismo intent-filter lo captura), con una
+  /// recibe). Mismo scheme y host que [redirectBase] (el mismo intent-filter lo captura), con una
   /// ruta propia para distinguirlo de la verificación de email: Supabase manda el mismo error para
   /// los dos cuando el enlace venció (`RegistroEnlacesAuth`). **También tiene que estar** en el
   /// dashboard: Authentication → URL Configuration → Redirect URLs.

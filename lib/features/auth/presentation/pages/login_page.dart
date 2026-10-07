@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,12 +20,7 @@ import 'registro_page.dart';
 /// por campo o un banner general. Todo lo visual sale de `Theme.of(context)` — el tema
 /// (`temaClaro`, ver `core/theme/`) decide colores, tipografía y forma.
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key, this.mostrarApple});
-
-  /// Fuerza mostrar/ocultar "Continuar con Apple". `null` (el default en producción) lo infiere
-  /// de la plataforma (`Platform.isIOS`, Apple solo lo exige ahí); en tests se fuerza por acá en
-  /// vez de depender de `Platform`.
-  final bool? mostrarApple;
+  const LoginPage({super.key});
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
@@ -99,28 +93,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// HU-AUTH-003, "Error - primer login sin conectividad" (#94).
   static const _accionSinConexion = 'iniciar sesión por primera vez en este dispositivo.';
 
-  Future<void> _entrarConGoogle() async {
-    setState(() {
-      _enviando = true;
-      _erroresCampo = const {};
-      _errorGeneral = null;
-    });
-
-    final failure = await ref.read(sesionProvider.notifier).iniciarSesionConGoogle();
-
-    if (!mounted) return;
-    setState(() {
-      _enviando = false;
-      _errorGeneral = failure == null ? null : mensajePara(failure, accion: _accionSinConexion);
-    });
-  }
-
-  void _proximamente() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Disponible próximamente')));
-  }
-
   /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
   /// pantalla de recuperación lo trae cargado.
   void _abrirRecuperacion() {
@@ -138,7 +110,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final mostrarApple = widget.mostrarApple ?? Platform.isIOS;
     const paddingHorizontal = 30.0;
     final aviso = ref.watch(avisoSesionProvider);
     final reingreso = ref.watch(reingresoSesionProvider);
@@ -247,26 +218,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               )
                             : const Text('Entrar'),
                       ),
-                      const SizedBox(height: 28),
-                      const _DivisorTexto(texto: 'O CONTINUAR CON'),
-                      const SizedBox(height: 18),
-                      _BotonProveedor(
-                        etiqueta: 'Continuar con Google',
-                        glifo: 'G',
-                        colorGlifo: colores.googleAzul,
-                        onPressed: _enviando ? null : _entrarConGoogle,
-                      ),
-                      if (mostrarApple) ...[
-                        const SizedBox(height: 12),
-                        _BotonProveedor(
-                          etiqueta: 'Continuar con Apple',
-                          glifo: 'A',
-                          onPressed: () {
-                            // TODO: alta de OAuth con Apple — todavía sin HU asignada.
-                            _proximamente();
-                          },
-                        ),
-                      ],
                       const Spacer(),
                       const SizedBox(height: 24),
                       Row(
@@ -299,9 +250,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           onPressed: () {
                             unawaited(
                               Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => RegistroPage(mostrarApple: widget.mostrarApple),
-                                ),
+                                MaterialPageRoute<void>(builder: (_) => const RegistroPage()),
                               ),
                             );
                           },
@@ -492,73 +441,6 @@ class _CampoLoginState extends State<_CampoLogin> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Línea divisoria con texto centrado, p.ej. "O CONTINUAR CON".
-class _DivisorTexto extends StatelessWidget {
-  const _DivisorTexto({required this.texto});
-
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-
-    return Row(
-      children: [
-        Expanded(child: Divider(color: colores.borde)),
-        // Flexible: con el texto grande (200 %) no entra en una línea y tiene que poder partirse.
-        Flexible(
-          flex: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              texto,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(letterSpacing: 1.1, color: colores.gris),
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: colores.borde)),
-      ],
-    );
-  }
-}
-
-/// Botón "Continuar con" un proveedor (Google/Apple).
-class _BotonProveedor extends StatelessWidget {
-  const _BotonProveedor({
-    required this.etiqueta,
-    required this.glifo,
-    required this.onPressed,
-    this.colorGlifo,
-  });
-
-  final String etiqueta;
-  final String glifo;
-  final Color? colorGlifo;
-
-  /// `null` deshabilita el botón (mientras hay un ingreso en curso).
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            glifo,
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: colorGlifo),
-          ),
-          const SizedBox(width: 10),
-          Flexible(child: Text(etiqueta, textAlign: TextAlign.center)),
-        ],
-      ),
     );
   }
 }

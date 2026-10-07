@@ -252,10 +252,9 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     );
   }
 
-  /// Una cuenta con contraseña que no la recuerda —p. ej. entra siempre con Google— no queda
-  /// encerrada acá (revisión del PR #130, N1): la restablece (HU-AUTH-004) con el email de la
-  /// sesión. Al guardar la nueva, esa pantalla cierra la sesión, y el login con la nueva protege
-  /// la DB.
+  /// Una cuenta que no recuerda su contraseña no queda encerrada acá (revisión del PR #130, N1):
+  /// la restablece (HU-AUTH-004) con el email de la sesión. Al guardar la nueva, esa pantalla
+  /// cierra la sesión, y el login con la nueva protege la DB.
   void _olvidePassword() {
     final email = ref.read(sesionProvider).value?.email;
     unawaited(

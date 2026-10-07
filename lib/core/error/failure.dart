@@ -344,7 +344,7 @@ final class FailureAlmacenSeguroRecuperable extends Failure {
 }
 
 /// El almacén seguro falló (o perdió la DEK) con la DB en el teléfono, y **no** hay envoltorio por
-/// contraseña (usuario de Google sin backup): ADR-006 muestra el mensaje de [FailureAlmacenSeguro]
+/// contraseña (se perdió, o nunca se llegó a armar): ADR-006 muestra el mensaje de [FailureAlmacenSeguro]
 /// y ofrece "empezar de nuevo", que avisa qué se pierde. **Nunca se borra sin ese sí.**
 final class FailureAlmacenSeguroSinRecuperacion extends Failure {
   const FailureAlmacenSeguroSinRecuperacion()

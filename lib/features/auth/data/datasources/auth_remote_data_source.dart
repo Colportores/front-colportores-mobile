@@ -30,12 +30,6 @@ abstract interface class AuthRemoteDataSource {
     required String password,
   });
 
-  /// Ingreso con Google vía OAuth por navegador + deep link (HU-AUTH-003). Con Supabase, el
-  /// primer ingreso registra la cuenta en el mismo paso. Resuelve cuando la sesión ya está
-  /// iniciada; si el usuario no vuelve de la pantalla de Google, lanza [ServidorException]
-  /// con mensaje para el usuario.
-  Future<SesionModel> iniciarSesionConGoogle();
-
   /// Sesión que el proveedor tiene persistida en el dispositivo (o `null`). Con Supabase la
   /// persiste `supabase_flutter` en el almacén seguro (`AlmacenSesionSupabase`). No toca la red:
   /// con el JWT de acceso vencido la devuelve igual (sin red la app sigue trabajando, y el

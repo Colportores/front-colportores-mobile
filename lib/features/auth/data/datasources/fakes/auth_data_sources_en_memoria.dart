@@ -142,24 +142,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     );
   }
 
-  /// Cuenta fija con la que "entra" Google en la demo (no hay navegador ni deep link acá).
-  static const String emailGoogle = 'google@colportores.app';
-
-  int llamadasIniciarSesionConGoogle = 0;
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() async {
-    if (simularSinConexion) throw const SinConexionException();
-    llamadasIniciarSesionConGoogle++;
-    return SesionModel(
-      usuarioId: _uuidDesde(emailGoogle),
-      email: emailGoogle,
-      accessToken: 'token-google-en-memoria',
-      expiraEn: PoliticaSesion.expiraEn(_ahora()),
-      entraConPassword: false,
-    );
-  }
-
   /// Si es `true`, [renovarSesion] lanza [SesionRevocadaException] (el servidor ya no acepta la
   /// sesión, HU-AUTH-007).
   bool sesionRevocadaEnElServidor = false;

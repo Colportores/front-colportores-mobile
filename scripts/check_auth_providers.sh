@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Smoke test de la configuración de Supabase Auth (HU-AUTH-003, #22): consulta el endpoint
 # público /auth/v1/settings y verifica que los proveedores estén como los espera la app:
-#   email = true · google = true · apple = false (iOS desactivado en esta etapa)
+#   email = true · apple = false (iOS desactivado en esta etapa)
+# La app entra solo con correo y contraseña (decisión del 02/10): google ya no se exige. Si el
+# proyecto todavía lo tiene activo, avisa (no falla) para que se apague en el dashboard.
 # Sin SUPABASE_URL / SUPABASE_ANON_KEY sale 0 con aviso: no bloquea a quien no tiene proyecto.
 #
 # Uso: SUPABASE_URL=https://xxx.supabase.co SUPABASE_ANON_KEY=... bash scripts/check_auth_providers.sh
@@ -35,7 +37,16 @@ verificar() { # $1 = proveedor, $2 = valor esperado
   fi
 }
 
+avisar_apagado() { # $1 = proveedor: la app no lo usa; si sigue activo, aviso sin romper
+  local real; real="$(leer "$1")"
+  if [ "$real" = "true" ]; then
+    echo "⚠ external.$1 = true: la app ya no lo usa — apagalo en Supabase → Authentication → Providers"
+  else
+    echo "✓ external.$1 = ${real:-false}"
+  fi
+}
+
 verificar email true
-verificar google true
+avisar_apagado google
 verificar apple false
 exit "$estado"

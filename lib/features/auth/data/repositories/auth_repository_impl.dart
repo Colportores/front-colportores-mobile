@@ -141,34 +141,6 @@ final class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Either<Failure, Sesion>> iniciarSesionConGoogle() async {
-    try {
-      final sesion = await _remote.iniciarSesionConGoogle();
-      await _local.guardarSesion(sesion);
-      _log.info(LogModulo.auth, 'LOGIN_GOOGLE_OK', 'login con Google exitoso', {
-        'user_id': sesion.usuarioId,
-      });
-      return Right(sesion.toEntity());
-    } on AuthRemoteException catch (e) {
-      final failure = _traducir(e);
-      _log.warn(LogModulo.auth, 'LOGIN_GOOGLE_FAIL', 'login con Google rechazado', {
-        'codigo': failure.codigo,
-      });
-      return Left(failure);
-    } on Object catch (e, st) {
-      _log.error(
-        LogModulo.auth,
-        'LOGIN_GOOGLE_FAIL',
-        'error inesperado en Google',
-        const {},
-        e,
-        st,
-      );
-      return Left(FailureInesperado(causa: e));
-    }
-  }
-
-  @override
   Future<Either<Failure, Sesion?>> sesionActual() async {
     try {
       final local = await _local.leerSesion();

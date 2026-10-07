@@ -73,11 +73,11 @@ final class AlmacenSoftwareRechazado extends EstadoPreparacionDbLocal {
 /// Prepara la DB local cada vez que alguien entra o se restaura la sesión (HU-AUTH-009, #27), y
 /// lleva los caminos de la recuperación guiada de ADR-006.
 ///
-/// Se dispara solo: observa el usuario de `sesionProvider`, así que cubre el login con contraseña,
-/// el de Google, el registro con sesión y la sesión restaurada al abrir la app. Con la contraseña
-/// del login ([PasswordParaDbLocal]) arma el envoltorio. Si la cuenta entra con contraseña y no
-/// está (sesión restaurada), la pide antes de crear la DB o de dar por lista una sin envoltorio
-/// ([FailurePasswordParaProteger], revisión del PR #130); con Google, abre sin él (ADR-006).
+/// Se dispara solo: observa el usuario de `sesionProvider`, así que cubre el login, el registro
+/// con sesión y la sesión restaurada al abrir la app. Con la contraseña del login
+/// ([PasswordParaDbLocal]) arma el envoltorio. Si no está (sesión restaurada), la pide antes de
+/// crear la DB o de dar por lista una sin envoltorio ([FailurePasswordParaProteger], revisión del
+/// PR #130): toda cuenta tiene contraseña (ADR-006).
 ///
 /// Cada método guarda `ref` antes de esperar y mira `mounted` en esa copia: si la sesión cambió
 /// en el medio, el provider se reconstruyó y lo que termina tarde no pisa el estado nuevo.
@@ -204,7 +204,6 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     final resultado = await r.read(inicializarDbLocalUseCaseProvider)(
       InicializarDbLocalParams(
         password: r.read(passwordParaDbLocalProvider).actual,
-        requiereEnvoltorio: r.read(sesionProvider).value?.entraConPassword ?? true,
         aceptaAlmacenSoftware: aceptaAlmacenSoftware,
         alAvanzar: (paso) {
           if (r.mounted) state = PreparandoDbLocal(paso: paso);
