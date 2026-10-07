@@ -7,6 +7,7 @@
 //
 // Los hallazgos de QA ya arreglados quedan como tests normales (el implementador les sacó el `skip`).
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
@@ -16,10 +17,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_qa_arnes.dart';
 
-/// El recuadro blanco de «Sin tiles para esta zona…», arriba de la hoja de abajo (no sobre el mapa).
-Finder get _avisoSinTiles => find.byWidgetPredicate(
-  (w) => w is Container && w.child is Text && (w.child as Text).data == TextosAlta.sinTiles,
-);
+/// La tarjeta roja de «Sin conexión a internet» (06C·05), arriba de la hoja de abajo (no sobre el
+/// mapa): antes era un recuadro de «Sin tiles para esta zona…», reemplazado por #190.
+Finder get _avisoSinTiles => find.byType(AvisoMapaConectado);
 
 /// El botón «Activar GPS» entero (con su área de toque), no solo su texto.
 Finder get _botonActivarGps =>
@@ -36,21 +36,31 @@ void main() {
   setUpAll(cargarFuentesReales);
 
   group('QA #193 · vista 03 · avisos sobre el mapa en el tamaño chico (360×640)', () {
-    // El aviso «Sin tiles…» (siempre activo hasta que haya adaptador de tiles) va en la hoja de abajo,
-    // no flotando sobre el mapa: antes tapaba el botón «Activar GPS» del aviso de sin GPS.
-    testWidgets('sin GPS, el aviso «Sin tiles…» no tapa el botón «Activar GPS»', (tester) async {
-      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640));
+    // El aviso del mapa («Sin conexión a internet», 06C·05) va en la hoja de abajo, no flotando sobre
+    // el mapa: antes tapaba el botón «Activar GPS» del aviso de sin GPS.
+    testWidgets('sin GPS, el aviso «Sin conexión…» no tapa el botón «Activar GPS»', (tester) async {
+      await montarAlta(
+        tester,
+        gps: gpsSinPermiso,
+        tamano: const Size(360, 640),
+        situacion: situacionSinConexion,
+      );
 
       _sinSolape(tester, _avisoSinTiles, _botonActivarGps, 'sin tiles vs «Activar GPS»');
       _sinSolape(tester, _avisoSinTiles, find.text(TextosAlta.tocar), 'sin tiles vs pista');
     });
 
-    // A texto 2x el aviso «Sin tiles…» (4 renglones) tampoco se monta sobre la pista del pin, el pin
+    // A texto 2x el aviso «Sin conexión…» (4 renglones) tampoco se monta sobre la pista del pin, el pin
     // ni «Volver a mi ubicación».
     testWidgets(
-      'con GPS y texto 2x, el aviso «Sin tiles…» no tapa el pin, la pista ni «Volver a mi ubicación»',
+      'con GPS y texto 2x, el aviso «Sin conexión…» no tapa el pin, la pista ni «Volver a mi ubicación»',
       (tester) async {
-        await montarAlta(tester, tamano: const Size(360, 640), escala: 2);
+        await montarAlta(
+          tester,
+          tamano: const Size(360, 640),
+          escala: 2,
+          situacion: situacionSinConexion,
+        );
 
         _sinSolape(tester, _avisoSinTiles, find.byType(PinAlta), 'sin tiles vs pin');
         _sinSolape(tester, _avisoSinTiles, find.text(TextosAlta.mover), 'sin tiles vs pista');
@@ -63,8 +73,13 @@ void main() {
       },
     );
 
-    testWidgets('a 412×915 el aviso «Sin tiles…» no se pisa con nada', (tester) async {
-      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(412, 915));
+    testWidgets('a 412×915 el aviso «Sin conexión…» no se pisa con nada', (tester) async {
+      await montarAlta(
+        tester,
+        gps: gpsSinPermiso,
+        tamano: const Size(412, 915),
+        situacion: situacionSinConexion,
+      );
 
       _sinSolape(tester, _avisoSinTiles, _botonActivarGps, 'sin tiles vs «Activar GPS»');
       _sinSolape(tester, _avisoSinTiles, find.text(TextosAlta.tocar), 'sin tiles vs pista');
@@ -123,7 +138,12 @@ void main() {
     // de abajo, que se desplaza, y no flotando sobre el mapa: «Activar GPS» siempre se ve y se toca, y
     // el pin, el chip del GPS y la pista quedan libres.
     testWidgets('a texto 1x la pista del pin no se pisa con el aviso de sin GPS', (tester) async {
-      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640));
+      await montarAlta(
+        tester,
+        gps: gpsSinPermiso,
+        tamano: const Size(360, 640),
+        situacion: situacionSinConexion,
+      );
 
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
     });
@@ -138,7 +158,12 @@ void main() {
     });
 
     testWidgets('a 412×915 y texto 1x el aviso de sin GPS no se pisa con la pista', (tester) async {
-      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(412, 915));
+      await montarAlta(
+        tester,
+        gps: gpsSinPermiso,
+        tamano: const Size(412, 915),
+        situacion: situacionSinConexion,
+      );
 
       expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');

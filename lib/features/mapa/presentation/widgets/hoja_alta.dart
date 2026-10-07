@@ -36,7 +36,6 @@ abstract final class TextosAlta {
   static const delMapa = 'Del mapa';
   static const editado = 'Editado';
   static const cambiar = 'Cambiar';
-  static const sinTiles = 'Sin tiles para esta zona. Descargá tu ciudad en Configuración.';
 
   // Provisorios: la HU y el canvas no los traen (se confirman con Cristian, ver el issue #193).
   static const elegiElTipo = 'Elegí el tipo de ubicación para registrar.';

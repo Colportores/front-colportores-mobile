@@ -60,8 +60,8 @@ class MainActivity : FlutterActivity() {
      *
      * - `bloqueoPantalla` → si hay PIN, patrón, contraseña o biometría (`isDeviceSecure`).
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
-     * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` → abre esa pantalla de los ajustes
-     *   (vista 13, #222) y devuelve si pudo.
+     * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` / `abrirAjustesRed` → abre esa pantalla
+     *   de los ajustes (vista 13, #222; «Activar datos» del mapa, #190) y devuelve si pudo.
      *
      * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
      *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
@@ -77,6 +77,7 @@ class MainActivity : FlutterActivity() {
                     "abrirAjustesSeguridad" -> result.success(abrirAjustes(Settings.ACTION_SECURITY_SETTINGS))
                     "abrirAjustesAlmacenamiento" ->
                         result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    "abrirAjustesRed" -> result.success(abrirAjustes(Settings.ACTION_WIRELESS_SETTINGS))
                     "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }

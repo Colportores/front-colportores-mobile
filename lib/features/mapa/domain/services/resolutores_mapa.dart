@@ -10,8 +10,8 @@ enum FuenteTiles {
   /// Servidor de tiles online: fallback si la zona no está descargada.
   servidorOnline,
 
-  /// Ni paquete ni servidor: la vista muestra el mapa en escala de grises con la advertencia
-  /// "Sin tiles para esta zona. Descargá tu ciudad en Configuración."
+  /// Ni paquete ni servidor: la vista queda con el color liso del diseño, sin calles; el aviso que
+  /// explica por qué (sin conexión, o que el mapa no cargó) lo decide `ResolutorSituacionMapa`.
   sinTiles,
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
@@ -86,6 +87,7 @@ Future<DecisionDuplicado?> mostrarHojaDuplicado(
   required List<CandidataDuplicado> candidatas,
   required Coordenadas puntoNuevo,
   required Map<String, String> nombresCiudad,
+  AmbitoTrabajo ambito = const AmbitoTrabajo(),
   required Future<ResultadoRegistroAlta> Function(String justificacion) crearIgual,
   required DateTime Function() ahora,
 }) => showModalBottomSheet<DecisionDuplicado>(
@@ -103,6 +105,7 @@ Future<DecisionDuplicado?> mostrarHojaDuplicado(
     candidatas: candidatas,
     puntoNuevo: puntoNuevo,
     nombresCiudad: nombresCiudad,
+    ambito: ambito,
     crearIgual: crearIgual,
     ahora: ahora,
   ),
@@ -117,6 +120,7 @@ class HojaDuplicadoAlta extends StatefulWidget {
     required this.candidatas,
     required this.puntoNuevo,
     required this.nombresCiudad,
+    this.ambito = const AmbitoTrabajo(),
     required this.crearIgual,
     required this.ahora,
   });
@@ -124,6 +128,9 @@ class HojaDuplicadoAlta extends StatefulWidget {
   final List<CandidataDuplicado> candidatas;
   final Coordenadas puntoNuevo;
   final Map<String, String> nombresCiudad;
+
+  /// El lugar del mapa de la vista previa (el de la ciudad del alta): de él salen los tiles.
+  final AmbitoTrabajo ambito;
   final Future<ResultadoRegistroAlta> Function(String justificacion) crearIgual;
   final DateTime Function() ahora;
 
@@ -270,7 +277,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           ],
         ),
         const SizedBox(height: 14),
-        _VistaPreviaMapa(nueva: widget.puntoNuevo, candidatas: _candidatas),
+        _VistaPreviaMapa(ambito: widget.ambito, nueva: widget.puntoNuevo, candidatas: _candidatas),
         const SizedBox(height: 14),
         for (var i = 0; i < _candidatas.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
@@ -617,7 +624,9 @@ class _TarjetaCandidata extends StatelessWidget {
 /// Vista previa de la vista 04: la ubicación nueva y las candidatas (A, B…) en un mapa chico, sin
 /// moverlo.
 class _VistaPreviaMapa extends ConsumerWidget {
-  const _VistaPreviaMapa({required this.nueva, required this.candidatas});
+  const _VistaPreviaMapa({required this.ambito, required this.nueva, required this.candidatas});
+
+  final AmbitoTrabajo ambito;
 
   final Coordenadas nueva;
   final List<CandidataDuplicado> candidatas;
@@ -639,7 +648,7 @@ class _VistaPreviaMapa extends ConsumerWidget {
               height: 150,
               // Una imagen del mapa, sin gestos: los toques siguen de largo hacia el scroll de la hoja.
               child: MapaBase(
-                fuente: ref.watch(fuenteMapaProvider),
+                fuente: ref.watch(fuenteMapaProvider(ambito)),
                 ajuste: AjusteMapa(
                   puntos: [nueva, for (final c in candidatas) c.ubicacion.coordenadas],
                   margen: 40,

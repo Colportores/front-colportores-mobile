@@ -20,7 +20,6 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/estilo_m
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
-import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
@@ -82,9 +81,9 @@ Future<_Mundo> _montar(
           ),
           repo: repo,
           ahora: DateTime.utc(2026, 10, 2, 12),
+          fuente: fuente,
           mapa: m.fabrica,
         ),
-        if (fuente != null) fuenteMapaProvider.overrideWithValue(fuente),
       ],
       child: MaterialApp(
         theme: temaClaro(),

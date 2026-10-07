@@ -153,7 +153,7 @@ class _MapaAltaState extends ConsumerState<MapaAlta> {
       label: 'Mapa. Mové el mapa para ajustar el punto de la nueva ubicación.',
       container: true,
       child: MapaBase(
-        fuente: ref.watch(fuenteMapaProvider),
+        fuente: ref.watch(fuenteMapaProvider(estado.ambitoMapa)),
         camaraInicial: CamaraMapa(
           centro: centro,
           zoom: punto == null ? MapaAlta.zoomPais : MapaAlta.zoomCalle,

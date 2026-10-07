@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/entities/estado_descarga.dart';
 import '../../domain/repositories/paquetes_tiles_repository.dart';
 import '../../domain/services/descargador_paquetes_tiles.dart';
 import '../../domain/usecases/descarga_paquete_tiles_use_cases.dart';
@@ -23,6 +24,12 @@ final paquetesTilesRepositoryProvider = Provider<PaquetesTilesRepository>((ref) 
 final descargadorPaquetesTilesProvider = Provider<DescargadorPaquetesTiles>((ref) {
   throw UnimplementedError('descargadorPaquetesTilesProvider se sobreescribe en main.dart');
 });
+
+/// Cada cambio de estado de las descargas (progreso, pausa, fin, falla), para quien tiene que
+/// reaccionar a una falla. Sin el descargador cableado emite un error: quien lo lee no afirma nada.
+final estadosDescargaTilesProvider = StreamProvider<EstadoDescarga>(
+  (ref) => ref.watch(descargadorPaquetesTilesProvider).cambios,
+);
 
 final listarCoberturaTilesUseCaseProvider = Provider<ListarCoberturaTilesUseCase>(
   (ref) => ListarCoberturaTilesUseCase(ref.watch(paquetesTilesRepositoryProvider)),

@@ -6,11 +6,13 @@ import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubica
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/activador_gps.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proveedor_gps.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
@@ -18,6 +20,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
@@ -244,6 +247,9 @@ List<Override> overridesAlta({
   DateTime? ahora,
   List<MarcadorMapa> marcadores = const [],
   FabricaMapaFalsa? mapa,
+  FuenteMapa? fuente,
+  SituacionMapa? situacion,
+  bool situacionReal = false,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
@@ -260,6 +266,14 @@ List<Override> overridesAlta({
     marcadoresCercanosProvider.overrideWith((ref, consulta) => Stream.value(marcadores)),
     // MapLibre no se dibuja en `flutter test`: el mapa es la vista falsa.
     (mapa ?? FabricaMapaFalsa()).override,
+    // El mapa y su aviso: por defecto sin tiles y sin aviso (la conexión, lo descargado y el catálogo
+    // son de los tests de `aviso_mapa`). Con [fuente] el mapa tiene tiles (se dibuja la atribución
+    // «© OpenStreetMap»); con [situacionReal] la situación sale de los puertos de tiles, que el test
+    // sobreescribe.
+    if (!situacionReal)
+      situacionMapaProvider.overrideWith(
+        (ref, ambito) => situacion ?? SituacionMapa(fuente: fuente ?? const FuenteMapa.sinTiles()),
+      ),
   ];
 }
 

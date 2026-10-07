@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -132,6 +133,11 @@ final class AltaUbicacionState extends Equatable {
 
   final CiudadCatalogo? ciudad;
   final OrigenCiudad origenCiudad;
+
+  /// El lugar que cubre el mapa de esta vista (HU-SYNC-010: el paquete de tiles se elige por el id
+  /// de la ciudad). Sin ciudad todavía no hay paquete que elegir: el mapa solo avisa que no hay
+  /// conexión.
+  AmbitoTrabajo get ambitoMapa => AmbitoTrabajo(ciudadId: ciudad?.id);
 
   final CampoDireccion calle;
   final CampoDireccion numero;

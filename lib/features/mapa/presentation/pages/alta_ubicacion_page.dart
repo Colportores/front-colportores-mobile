@@ -9,7 +9,7 @@ import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
-import '../providers/mapa_base_providers.dart';
+import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
@@ -136,6 +136,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
         candidatas: candidatas,
         puntoNuevo: punto,
         nombresCiudad: nombres,
+        ambito: ref.read(altaUbicacionProvider(widget.parametros)).ambitoMapa,
         crearIgual: (justificacion) => _notificador.registrar(justificacion: justificacion),
         ahora: ref.read(relojAltaUbicacionProvider),
       );
@@ -167,7 +168,6 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
   Widget build(BuildContext context) {
     final proveedor = altaUbicacionProvider(widget.parametros);
     final estado = ref.watch(proveedor);
-    final sinTiles = !ref.watch(fuenteMapaProvider).hayTiles;
     final sinGps = estado.gps == EstadoGps.sinGps;
     final cierre = Navigator.of(context);
     // Se lee acá y no dentro del `Scaffold`: este le quita el inset del teclado al `MediaQuery` de su
@@ -221,7 +221,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                               ),
                             ),
                             if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
-                            if (sinTiles) const _AvisoSinTiles(),
+                            AvisoMapaConectado(ambito: estado.ambitoMapa),
                             HojaAlta(
                               parametros: widget.parametros,
                               alRegistrar: _registrar,
@@ -244,7 +244,7 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
 
 /// La parte de arriba: el mapa con el pin fijo y todo lo que flota encima (cerrar, chip del GPS,
 /// pista, «Volver a mi ubicación»). Los avisos largos no flotan acá: van arriba de la hoja de abajo
-/// ([_AvisoSinGps], [_AvisoSinTiles]), que se desplaza y no pisa el pin.
+/// ([_AvisoSinGps], `AvisoMapaConectado`), que se desplaza y no pisa el pin.
 class _ZonaMapa extends StatefulWidget {
   const _ZonaMapa({
     required this.parametros,
@@ -451,30 +451,6 @@ class _AvisoSinGps extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: EnlaceAlta(texto: TextosAlta.activarGps, alPresionar: alActivarGps),
         ),
-      ),
-    );
-  }
-}
-
-/// «Sin tiles para esta zona. Descargá tu ciudad en Configuración.» (HU-UBI-003). Va en la hoja de
-/// abajo y no flotando sobre el mapa: en el mapa chico (360×640, o con el texto al 200 %) el recuadro
-/// tapaba «Activar GPS», la pista del pin, el pin y «Volver a mi ubicación».
-class _AvisoSinTiles extends StatelessWidget {
-  const _AvisoSinTiles();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ColoresAlta.grisBorde),
-      ),
-      child: const Text(
-        TextosAlta.sinTiles,
-        style: TextStyle(fontSize: 12, color: ColoresAlta.tinta),
       ),
     );
   }

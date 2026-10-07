@@ -17,6 +17,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
@@ -1051,7 +1052,7 @@ void main() {
       },
     );
 
-    testWidgets('sin tiles: color liso del diseño y el aviso de la HU-UBI-003, sin capa de tiles', (
+    testWidgets('sin saber nada del mapa: color liso del diseño, sin capa de tiles y sin avisos', (
       tester,
     ) async {
       final e = await _montar(tester);
@@ -1059,10 +1060,15 @@ void main() {
       expect(e.mapa.config!.fuente.tipo, FuenteTiles.sinTiles);
       expect(e.mapa.config!.fuente.hayTiles, isFalse);
       expect(e.mapa.config!.fondo, ColoresAlta.fondoMapa);
-      expect(
-        find.text('Sin tiles para esta zona. Descargá tu ciudad en Configuración.'),
-        findsOneWidget,
-      );
+      for (final texto in [
+        TextosAvisoMapa.sinConexionTitulo,
+        TextosAvisoMapa.datosMovilesTitulo,
+        TextosAvisoMapa.noCargaTitulo,
+      ]) {
+        expect(find.text(texto), findsNothing);
+      }
+      // El aviso viejo de «Sin tiles» ya no existe: nunca se dice sin saber.
+      expect(find.textContaining('Sin tiles'), findsNothing);
     });
   });
 

@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'seguridad_dispositivo_canal.dart';
 
 /// Abre pantallas de los ajustes del sistema desde la app: «Abrir Ajustes» (bloqueo de pantalla) y
-/// «Abrir almacenamiento» de la vista 13 (#222).
+/// «Abrir almacenamiento» de la vista 13 (#222) y «Activar datos» del mapa (#190).
 ///
 /// Puerto en Dart puro: la implementación de producción es [AbridorAjustesCanal]; los tests usan un
 /// fake. Nunca lanza: devuelve `false` si la plataforma no pudo abrir la pantalla (iOS no tiene
@@ -17,11 +17,14 @@ abstract interface class AbridorAjustesSistema {
 
   /// Ajustes de almacenamiento, para liberar espacio.
   Future<bool> abrirAlmacenamiento();
+
+  /// Ajustes de redes (Wi-Fi y datos móviles): «Activar datos» del mapa sin conexión (vista 06).
+  Future<bool> abrirRed();
 }
 
 /// [AbridorAjustesSistema] sobre el canal nativo `colportores/seguridad_dispositivo` (el mismo de
-/// [SeguridadDispositivoCanal]), con los métodos `abrirAjustesSeguridad` y
-/// `abrirAjustesAlmacenamiento`. Del otro lado: `MainActivity.kt`.
+/// [SeguridadDispositivoCanal]), con los métodos `abrirAjustesSeguridad`,
+/// `abrirAjustesAlmacenamiento` y `abrirAjustesRed`. Del otro lado: `MainActivity.kt`.
 final class AbridorAjustesCanal implements AbridorAjustesSistema {
   AbridorAjustesCanal({MethodChannel? canal, this.tiempoMaximo = const Duration(seconds: 5)})
     : _canal = canal ?? const MethodChannel(SeguridadDispositivoCanal.nombre);
@@ -36,6 +39,9 @@ final class AbridorAjustesCanal implements AbridorAjustesSistema {
 
   @override
   Future<bool> abrirAlmacenamiento() => _abrir('abrirAjustesAlmacenamiento');
+
+  @override
+  Future<bool> abrirRed() => _abrir('abrirAjustesRed');
 
   Future<bool> _abrir(String metodo) async {
     try {

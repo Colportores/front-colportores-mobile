@@ -5,10 +5,10 @@ import 'dart:io';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
-import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
@@ -28,6 +28,12 @@ Future<void> cargarFuentesReales() async {
     await cargador.load();
   }
 }
+
+/// El mapa sin tiles y el aviso rojo de «Sin conexión a internet» (06C·05) dentro de la hoja.
+const situacionSinConexion = SituacionMapa(
+  fuente: FuenteMapa.sinTiles(),
+  aviso: AvisoSinConexion(),
+);
 
 /// El GPS que no da ubicación por permiso denegado.
 GpsFalso get gpsSinPermiso =>
@@ -65,6 +71,7 @@ Future<List<SalidaAltaUbicacion?>> montarAlta(
   double escala = 1,
   Size tamano = const Size(390, 844),
   FuenteMapa? fuente,
+  SituacionMapa? situacion,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -82,9 +89,9 @@ Future<List<SalidaAltaUbicacion?>> montarAlta(
               ),
           repo: repo,
           ahora: DateTime.utc(2026, 10, 2, 12),
+          fuente: fuente,
+          situacion: situacion,
         ),
-        // Con tiles (falsos: la vista de mapa es la falsa) se dibuja la atribución «© OpenStreetMap».
-        if (fuente != null) fuenteMapaProvider.overrideWithValue(fuente),
       ],
       child: MaterialApp(
         theme: temaClaro(),
