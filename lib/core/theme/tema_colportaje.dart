@@ -95,7 +95,15 @@ ThemeData temaClaro() {
             estados.contains(WidgetState.selected) ? colorScheme.primary : Colors.transparent,
       ),
       checkColor: WidgetStatePropertyAll(colorScheme.onPrimary),
-      side: BorderSide(color: colores.bordeInput, width: 1.5),
+      // Sin marcar el borde es lo único que se ve de la casilla: `gris` (5,19:1 contra el crema; el
+      // `bordeInput` daba 1,4:1) para cumplir WCAG 1.4.11. Marcada, el borde sigue del color del
+      // relleno (lo mismo que dibuja Flutter si `side` no depende del estado).
+      side: WidgetStateBorderSide.resolveWith(
+        (estados) => BorderSide(
+          color: estados.contains(WidgetState.selected) ? colorScheme.primary : colores.gris,
+          width: 1.5,
+        ),
+      ),
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     extensions: const [colores],

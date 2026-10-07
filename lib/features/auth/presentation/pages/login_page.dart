@@ -43,6 +43,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// «Reintentar», como el del registro (HU-AUTH-001, «Edge - fallo intermitente del backend»).
   bool _errorEsReintentable = false;
 
+  /// Marca el aviso general para llevarlo a la vista cuando aparece.
+  final _claveErrorGeneral = GlobalKey();
+
   // Solo estado local: ninguna HU dice qué hace este checkbox (la sesión deslizante de 30 días de
   // HU-AUTH-007 corre siempre). Queda sin efecto hasta que se decida.
   bool _mantenerSesion = true;
@@ -103,6 +106,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           _errorGeneral = mensajePara(failure, accion: _accionSinConexion);
       }
     });
+    // Con el texto grande y «Entrar» al borde de la pantalla el aviso (y «Reintentar») nacía
+    // debajo del borde: como en el registro, baja hasta él una vez dibujado.
+    if (_errorGeneral != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _bajarHastaElAviso();
+      });
+    }
+  }
+
+  void _bajarHastaElAviso() {
+    final contexto = _claveErrorGeneral.currentContext;
+    if (contexto == null || !contexto.mounted) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   /// HU-AUTH-003, "Error - primer login sin conectividad" (#94).
@@ -204,7 +227,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         errorText: _erroresCampo['password'],
                       ),
                       if (_errorGeneral != null) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(key: _claveErrorGeneral, height: 12),
                         if (_errorEsReintentable)
                           BannerErrorConAccion(
                             mensaje: _errorGeneral!,

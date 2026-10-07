@@ -466,7 +466,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
                             mensaje: _errorGeneral!,
                             mensajeKey: const Key('registro_error_general'),
                             textoAccion: 'Reintentar',
-                            onAccion: _enviando ? null : _enviar,
+                            // Con la contraseña pasada de los 72 bytes `_enviar` no hace nada: el botón
+                            // se apaga igual que «Continuar».
+                            onAccion: _enviando || _passwordDemasiadoLarga ? null : _enviar,
                           )
                         else ...[
                           TextoErrorAnunciado(
@@ -610,6 +612,8 @@ class _CampoRegistroState extends State<_CampoRegistro> {
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
             counterText: '',
+            // Con el texto grande el aviso del campo no se corta con puntos suspensivos.
+            errorMaxLines: 3,
             helperText: widget.textoAyudaInferior,
             helperStyle: TextStyle(color: colores.gris, fontSize: 11),
             helperMaxLines: 2,
