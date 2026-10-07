@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/dispositivo/abridor_ajustes_sistema.dart';
+import '../../../../core/error/failure.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/situacion_mapa.dart';
 import '../providers/situacion_mapa_providers.dart';
@@ -39,6 +40,9 @@ abstract final class TextosAvisoMapa {
   // Entre tocar «Descargar mapa» y tener el mapa (decisión del 06/10 sobre el pendiente P1).
   static const seDescargaSola = 'Se descarga sola cuando vuelva la señal.';
   static const descargandoMapa = 'Descargando el mapa…';
+
+  /// Se suma a una falla del servidor, que dice qué pasó pero no qué hacer.
+  static const probarDeNuevoEnUnosMinutos = 'Probá de nuevo en unos minutos.';
 
   /// «Activar datos» no pudo abrir los ajustes de red del teléfono. Propuesta: el mismo texto de la
   /// pantalla de preparación (`TextosPreparacionDbLocal.noPudimosAbrirAjustes`).
@@ -127,6 +131,17 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
     final aviso = ref.watch(situacionMapaProvider(widget.ambito).select((s) => s.aviso));
     final descartes = ref.watch(descartesAvisoMapaProvider);
     final descartador = ref.read(descartesAvisoMapaProvider.notifier);
+    // «Ahora no» oculta la tarjeta de datos móviles toda la sesión pero la descarga pedida sigue: si
+    // falla, no puede quedar sin decirlo. (Con la tarjeta a la vista la falla va en la tarjeta, y en
+    // la píldora, en su propio aviso pasajero.)
+    ref.listen(solicitudMapaProvider(widget.ambito).select((s) => s.falla), (_, falla) {
+      if (falla == null) return;
+      final oculta =
+          ref.read(descartesAvisoMapaProvider).datosMovilesOculto &&
+          ref.read(situacionMapaProvider(widget.ambito)).aviso is AvisoDatosMoviles;
+      final texto = _textoDeFalla(falla);
+      if (oculta && texto != null) _avisarPasajero(context, texto);
+    });
     return switch (aviso) {
       null => const SizedBox.shrink(),
       AvisoSinConexion() =>
@@ -190,6 +205,24 @@ String? _textoDelPedido(EstadoSolicitudMapa solicitud) {
   if (solicitud.esperaSenal) return TextosAvisoMapa.seDescargaSola;
   if (solicitud.bajando) return TextosAvisoMapa.descargandoMapa;
   return null;
+}
+
+/// Por qué falló el pedido, siempre con qué hacer: el mensaje del servidor dice qué pasó y no qué
+/// hacer, así que se le suma. `null` si no falló.
+String? _textoDeFalla(Failure? falla) {
+  if (falla == null) return null;
+  if (falla is! FailureServidor) return falla.mensaje;
+  final mensaje = falla.mensaje;
+  return '${mensaje.endsWith('.') ? mensaje : '$mensaje.'} '
+      '${TextosAvisoMapa.probarDeNuevoEnUnosMinutos}';
+}
+
+/// Un aviso pasajero del pedido (la píldora y la tarjeta oculta no tienen lugar para decirlo): si
+/// había otro en pantalla se lo reemplaza, para que no se junten.
+void _avisarPasajero(BuildContext context, String texto) {
+  ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(texto)));
 }
 
 /// Lo que cambia entre las tarjetas: colores, insignia, textos y botones.
@@ -435,7 +468,7 @@ class _TarjetaSinConexion extends ConsumerWidget {
       pesoTitulo: FontWeight.w700,
       tamanoTitulo: 15.5,
       avance: _textoDelPedido(solicitud),
-      falla: solicitud.falla?.mensaje,
+      falla: _textoDeFalla(solicitud.falla),
       alMinimizar: alMinimizar,
       botones: [
         FilledButton(
@@ -476,22 +509,31 @@ class _PildoraSinConexion extends ConsumerWidget {
     // La píldora no tiene lugar para el motivo de una falla ni para decir en qué está el pedido: sale
     // como aviso pasajero.
     ref.listen(solicitudMapaProvider(ambito).select((s) => s.falla), (_, falla) {
-      if (falla == null) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(falla.mensaje)));
+      final texto = _textoDeFalla(falla);
+      if (texto != null) _avisarPasajero(context, texto);
     });
     ref.listen(solicitudMapaProvider(ambito).select(_textoDelPedido), (anterior, texto) {
       if (texto == null || texto == anterior) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(texto)));
+      _avisarPasajero(context, texto);
     });
+    // Con el pedido en marcha la píldora no pide otra descarga: el toque repite en qué está, así el
+    // colportor que volvió a mirarla no se queda sin respuesta.
+    final alTocar = solicitud.enMarcha
+        ? () {
+            final texto = _textoDelPedido(solicitud);
+            if (texto != null) _avisarPasajero(context, texto);
+          }
+        : alPresionar;
     // El área de toque es de 48 y la píldora dibujada de 44, como en el canvas.
     return Semantics(
       liveRegion: true,
       container: true,
       button: true,
-      enabled: !solicitud.enMarcha,
+      // Siempre se puede tocar: sin pedido pide la descarga, con pedido repite en qué está.
+      enabled: true,
       excludeSemantics: true,
       label: TextosAvisoMapa.pildoraSinConexion,
-      onTap: solicitud.enMarcha ? null : alPresionar,
+      onTap: alTocar,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Center(
@@ -502,7 +544,7 @@ class _PildoraSinConexion extends ConsumerWidget {
             shape: const StadiumBorder(),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: solicitud.enMarcha ? null : alPresionar,
+              onTap: alTocar,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 44),
                 child: const Padding(
@@ -568,7 +610,7 @@ class _TarjetaDatosMoviles extends ConsumerWidget {
       pesoTitulo: FontWeight.w600,
       tamanoTitulo: 15,
       avance: _textoDelPedido(solicitud),
-      falla: solicitud.falla?.mensaje,
+      falla: _textoDeFalla(solicitud.falla),
       colorFalla: ColoresAlta.rojo,
       botones: [
         FilledButton(

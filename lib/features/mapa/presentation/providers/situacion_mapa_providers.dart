@@ -264,13 +264,28 @@ final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
       state = state.copiar(ocupada: false, falla: falla);
       return;
     }
-    // El descargador aceptó el pedido: o quedó en cola (sin conexión) o ya está bajando. Se lee su
-    // estado ahora, sin esperar el próximo cambio, para que el botón no se habilite en el medio. Una
-    // falla vieja no cuenta: si esta vez falla, llega como cambio de estado.
-    var siguiente = state.copiar(ocupada: false, sinFalla: true);
+    // El descargador aceptó el pedido: o quedó en cola (sin conexión) o ya está bajando. Se le
+    // pregunta ahora, sin esperar el próximo cambio, para que el botón no se habilite en el medio:
+    // hasta el primer `DescargaEnCurso` (la espera de los encabezados, hasta 30 s) su último estado
+    // es el de antes o ninguno, así que no se lo lee de ahí. Una falla que llegó mientras tanto se
+    // conserva; una vieja ya se limpió al empezar.
+    final siguiente = state.copiar(ocupada: false);
+    if (_estaDescargando(paquete)) {
+      state = siguiente.copiar(enCola: false, bajando: true);
+      return;
+    }
     final actual = _estadoDelDescargador(paquete);
-    if (actual != null && actual is! DescargaFallida) siguiente = _segunEstado(siguiente, actual);
-    state = siguiente;
+    state = actual == null || actual is DescargaFallida
+        ? siguiente
+        : _segunEstado(siguiente, actual);
+  }
+
+  bool _estaDescargando(PaqueteTiles paquete) {
+    try {
+      return ref.read(descargadorPaquetesTilesProvider).estaDescargando(paquete.id);
+    } on Object {
+      return false;
+    }
   }
 
   EstadoDescarga? _estadoDelDescargador(PaqueteTiles paquete) {
