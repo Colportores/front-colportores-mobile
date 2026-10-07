@@ -613,6 +613,114 @@ void main() {
     }
   });
 
+  group(
+    'QA #248 ronda 2 — «Entrar» por el teclado: el aviso a la vista y un anuncio por intento',
+    () {
+      // El teclado del teléfono («Listo») envía sin pasar por el botón, así que no depende de que
+      // «Entrar» esté a la vista: es el camino de quien tiene el texto grande y el teclado abierto.
+      for (final (nombre, texto, teclado) in [
+        ('360x640 al 200 %, sin teclado', 2.0, 0.0),
+        ('360x640 al 200 %, teclado abierto', 2.0, 280.0),
+        ('412x915 al 100 %, teclado abierto', 1.0, 300.0),
+      ]) {
+        testWidgets(
+          '$nombre: con «Listo» del teclado sin conexión, el aviso entero se ve, el campo suelta el '
+          'foco, conserva lo escrito y se anuncia una vez',
+          (tester) async {
+            final tam = texto == 1.0 ? const Size(412, 915) : const Size(360, 640);
+            _pantalla(tester, tam, texto: texto);
+            tester.view.viewInsets = FakeViewPadding(bottom: teclado);
+            addTearDown(tester.view.resetViewInsets);
+            final e = await _vencida(tester);
+            e.remoto.simularSinConexion = true;
+            await tester.enterText(_clave, 'Secreto123');
+            await tester.pumpAndSettle();
+            tester.takeAnnouncements();
+
+            await tester.testTextInput.receiveAction(TextInputAction.done);
+            await tester.pumpAndSettle();
+
+            final r = tester.getRect(_aviso);
+            expect(e.remoto.llamadasIniciarSesion, 1);
+            expect(
+              {
+                'arriba': r.top >= 0,
+                'abajo': r.bottom <= tam.height - teclado,
+                'sin foco': !_editable(tester, _clave).focusNode.hasFocus,
+                'conserva lo escrito': _editable(tester, _clave).controller.text == 'Secreto123',
+                'botón habilitado': tester.widget<FilledButton>(_entrar).onPressed != null,
+                'un anuncio': tester.takeAnnouncements().map((a) => a.message).toList().length == 1,
+              },
+              {
+                'arriba': true,
+                'abajo': true,
+                'sin foco': true,
+                'conserva lo escrito': true,
+                'botón habilitado': true,
+                'un anuncio': true,
+              },
+              reason: 'el aviso quedó en y=${r.top}..${r.bottom}',
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+
+      testWidgets(
+        'dado A02, cuando se envía dos veces por el teclado con la respuesta tardando, se '
+        'anuncia el aviso una sola vez',
+        (tester) async {
+          final e = await _vencida(tester);
+          e.remoto
+            ..simularSinConexion = true
+            ..demoraIniciarSesion = Completer<void>();
+          await tester.enterText(_clave, 'Secreto123');
+          tester.takeAnnouncements();
+
+          await tester.testTextInput.receiveAction(TextInputAction.done);
+          await tester.pump();
+          await tester.testTextInput.receiveAction(TextInputAction.done);
+          await tester.pump();
+          e.remoto.demoraIniciarSesion!.complete();
+          await tester.pumpAndSettle();
+
+          expect(e.remoto.llamadasIniciarSesion, 1);
+          expect(tester.takeAnnouncements().map((a) => a.message), [_sinConexion]);
+        },
+      );
+
+      testWidgets('dado 17-A03 (revocada) sin señal, cuando toca «Entrar», no anuncia el texto de '
+          '17-A02 ni se lo promete: el error es el de iniciar sesión', (tester) async {
+        final e = await _vencida(tester, motivo: MotivoExpiracion.revocada);
+        e.remoto.simularSinConexion = true;
+        tester.takeAnnouncements();
+
+        await _tocarEntrar(tester);
+
+        expect(tester.takeAnnouncements().map((a) => a.message), isNot(contains(_sinConexion)));
+        expect(find.text('Necesitás conexión para iniciar sesión.'), findsOneWidget);
+        expect(_textoDelAviso(tester), _revocada);
+      });
+
+      testWidgets('dado A02, cuando falla a mitad y después vuelve la señal, el siguiente «Entrar» '
+          'entra sin anuncios de más', (tester) async {
+        final e = await _vencida(tester);
+        e.remoto.simularSinConexion = true;
+        await _tocarEntrar(tester);
+        expect(_textoDelAviso(tester), _sinConexion);
+
+        e.remoto.simularSinConexion = false;
+        e.conexion.cambiarA(TipoConexion.wifi);
+        await tester.pumpAndSettle();
+        tester.takeAnnouncements();
+        await _tocarEntrar(tester);
+
+        expect(_principal, findsOneWidget);
+        expect(tester.takeAnnouncements().map((a) => a.message), isNot(contains(_sinConexion)));
+      });
+    },
+  );
+
   group('QA #248 — privacidad', () {
     test('ni el motivo de reingreso ni el aviso de 17-A02 sueltan el correo o el nombre en un '
         'toString', () {
