@@ -89,7 +89,11 @@ ThemeData temaClaro() {
       ),
     ),
     checkboxTheme: CheckboxThemeData(
-      fillColor: WidgetStatePropertyAll(colorScheme.primary),
+      // Relleno solo con la casilla marcada: sin marcar es caja vacía con borde (canvas A04).
+      fillColor: WidgetStateProperty.resolveWith(
+        (estados) =>
+            estados.contains(WidgetState.selected) ? colorScheme.primary : Colors.transparent,
+      ),
       checkColor: WidgetStatePropertyAll(colorScheme.onPrimary),
       side: BorderSide(color: colores.bordeInput, width: 1.5),
     ),
@@ -116,7 +120,7 @@ TextTheme _textTheme(Color colorTexto) {
       height: 1.15,
       color: colorTexto,
     ),
-    // Label de campo en mayúsculas: "CORREO O CÉDULA".
+    // Label de campo en mayúsculas: "CORREO".
     labelMedium: TextStyle(
       fontFamily: 'JetBrainsMono',
       fontSize: 10.5,
