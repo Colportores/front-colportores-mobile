@@ -2,7 +2,7 @@
 // con tope de 15 s y el aviso de los módulos bloqueados sin estado conocido. Complementa
 // `esperando_asignacion_arranque_278_test.dart` con lo que ese archivo no cubre: respuestas que se
 // cruzan con un reintento, salida mientras un reintento cuelga, y tamaños con las fuentes reales
-// (Inter) en vez de Ahem. Un test con `skip` documenta un hallazgo del QA.
+// (Inter) en vez de Ahem.
 import 'dart:async';
 import 'dart:io';
 
@@ -376,70 +376,74 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // skip: QA #278 — una respuesta vieja que llega tarde pisa en el teléfono el estado más nuevo.
-    testWidgets(
-      'el reintento sale bien y después llega la respuesta vieja: lo que queda recordado para el '
-      'próximo arranque sin red es lo más nuevo',
-      (tester) async {
-        final servidor = await _entrarConServidorManual(tester);
-        await _vencerElTope(tester);
-        final reintento = await _tocarReintentar(tester, servidor);
-        servidor.pedidos[reintento].complete(EstadoCuenta.activa);
-        await tester.pumpAndSettle();
-        final usuarioId = _container.read(sesionProvider).value!.usuarioId;
-        expect(await _recordado.leer(usuarioId), EstadoCuenta.activa);
+    // Una respuesta vieja que llega tarde no pisa en el teléfono el estado más nuevo (P2 del QA).
+    testWidgets('el reintento sale bien y después llega la respuesta vieja: lo que queda recordado '
+        'para el próximo arranque sin red es lo más nuevo', (tester) async {
+      final servidor = await _entrarConServidorManual(tester);
+      await _vencerElTope(tester);
+      final reintento = await _tocarReintentar(tester, servidor);
+      servidor.pedidos[reintento].complete(EstadoCuenta.activa);
+      await tester.pumpAndSettle();
+      final usuarioId = _container.read(sesionProvider).value!.usuarioId;
+      expect(await _recordado.leer(usuarioId), EstadoCuenta.activa);
 
-        servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
-        await tester.pumpAndSettle();
+      servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await tester.pumpAndSettle();
 
-        expect(await _recordado.leer(usuarioId), EstadoCuenta.activa);
-      },
-      skip: true,
-    );
+      expect(await _recordado.leer(usuarioId), EstadoCuenta.activa);
+    });
 
-    // skip: QA #278 — decisión del 07/10 (pendientes/…-278-qa-261007-1835.md, P1): el reintento a mano
-    // tiene el mismo tope de 15 s; hoy «Consultando…» queda colgado mientras el servidor no conteste.
-    testWidgets(
-      'el reintento a mano también vence a los 15 s: vuelve el aviso de la causa con «Reintentar» '
-      'a mano',
-      (tester) async {
-        final servidor = await _entrarConServidorManual(tester);
-        await _vencerElTope(tester);
-        await _tocarReintentar(tester, servidor);
-        expect(find.text('Consultando…'), findsOneWidget);
+    // El reintento a mano espera lo mismo que el arranque, 15 s (P1 del QA).
+    testWidgets('el reintento a mano también vence a los 15 s: vuelve el aviso de la causa con '
+        '«Reintentar» a mano', (tester) async {
+      final servidor = await _entrarConServidorManual(tester);
+      await _vencerElTope(tester);
+      await _tocarReintentar(tester, servidor);
+      expect(find.text('Consultando…'), findsOneWidget);
 
-        await tester.pump(_tope + const Duration(seconds: 1));
-        await tester.pump();
+      await tester.pump(_tope + const Duration(seconds: 1));
+      await tester.pump();
 
-        expect(find.text('Consultando…'), findsNothing);
-        expect(_sinConexion, findsOneWidget);
-        expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
-      },
-      skip: true,
-    );
+      expect(find.text('Consultando…'), findsNothing);
+      expect(_sinConexion, findsOneWidget);
+      expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+    });
 
-    // skip: QA #278 — decisión del 07/10 (pendientes/…-278-qa-261007-1835.md, P2): una respuesta se
-    // aplica solo si ninguna consulta pedida después ya contestó. Hoy la vieja «activa» pisa a la
-    // «suspendida» más nueva y la persona entra con la cuenta suspendida.
-    testWidgets(
-      'el reintento dice suspendida y después llega la vieja con activa: la pantalla sigue '
-      'bloqueada',
-      (tester) async {
-        final servidor = await _entrarConServidorManual(tester);
-        await _vencerElTope(tester);
-        final reintento = await _tocarReintentar(tester, servidor);
-        servidor.pedidos[reintento].complete(EstadoCuenta.suspendida);
-        await tester.pumpAndSettle();
-        expect(find.text(TextosEsperaAsignacion.tituloSuspendida), findsOneWidget);
+    // Una respuesta se aplica solo si ninguna consulta pedida después ya contestó (P2 del QA): la
+    // vieja «activa» no pisa a la «suspendida» más nueva.
+    testWidgets('el reintento dice suspendida y después llega la vieja con activa: la pantalla '
+        'sigue bloqueada', (tester) async {
+      final servidor = await _entrarConServidorManual(tester);
+      await _vencerElTope(tester);
+      final reintento = await _tocarReintentar(tester, servidor);
+      servidor.pedidos[reintento].complete(EstadoCuenta.suspendida);
+      await tester.pumpAndSettle();
+      expect(find.text(TextosEsperaAsignacion.tituloSuspendida), findsOneWidget);
 
-        servidor.pedidos[0].complete(EstadoCuenta.activa);
-        await tester.pumpAndSettle();
+      servidor.pedidos[0].complete(EstadoCuenta.activa);
+      await tester.pumpAndSettle();
 
-        expect(_principal, findsNothing);
-        expect(find.text(TextosEsperaAsignacion.tituloSuspendida), findsOneWidget);
-      },
-      skip: true,
-    );
+      expect(_principal, findsNothing);
+      expect(find.text(TextosEsperaAsignacion.tituloSuspendida), findsOneWidget);
+    });
+
+    testWidgets('el reintento falla y después llega la vieja con una respuesta: la vieja se '
+        'aplica, porque ninguna consulta más nueva contestó', (tester) async {
+      final servidor = await _entrarConServidorManual(tester);
+      await _vencerElTope(tester);
+      final reintento = await _tocarReintentar(tester, servidor);
+      servidor.pedidos[reintento].completeError(const SinConexionException());
+      await tester.pumpAndSettle();
+      expect(_sinConexion, findsOneWidget);
+
+      servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await tester.pumpAndSettle();
+
+      expect(_container.read(estadoCuentaProvider).value, EstadoCuenta.pendienteAsignacion);
+      expect(find.text('Esperando asignación'), findsOneWidget);
+      final usuarioId = _container.read(sesionProvider).value!.usuarioId;
+      expect(await _recordado.leer(usuarioId), EstadoCuenta.pendienteAsignacion);
+    });
 
     testWidgets('el reintento cuelga: la persona se va por Configuración y cierra sesión sin '
         'esperarlo', (tester) async {

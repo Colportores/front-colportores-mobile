@@ -84,7 +84,7 @@ void main() {
     );
   });
 
-  group('tope al entrar (#278)', () {
+  group('tope de espera (#278)', () {
     const tope = Duration(milliseconds: 40);
     late Completer<void> sinRespuesta;
 
@@ -186,7 +186,38 @@ void main() {
       expect(tarde, isEmpty);
     });
 
-    test('refrescar a mano no tiene respuesta tardía: no llama a quien la espera', () async {
+    test('refrescar a mano también vence: devuelve sin conexión, aunque haya un estado '
+        'recordado', () async {
+      cuenta.ultimo = EstadoCuenta.activa;
+
+      // El backend sigue sin contestar: si no hubiera tope, esto no volvería nunca.
+      final resultado = await consultar(params(admite: false));
+
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      expect(sinRespuesta.isCompleted, isFalse);
+      expect(cuenta.consultas, 1);
+    });
+
+    test('refrescar a mano: la respuesta que llega después del tope se le pasa a quien la '
+        'pida', () async {
+      final tarde = <EstadoCuenta>[];
+      final resultado = await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: false,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      cuenta.respuesta = const Right(EstadoCuenta.suspendida);
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, [EstadoCuenta.suspendida]);
+    });
+
+    test('refrescar a mano dentro del tope devuelve la respuesta y no usa la tardía', () async {
       final tarde = <EstadoCuenta>[];
       cuenta.respuesta = const Right(EstadoCuenta.activa);
       final pendiente = consultar(
@@ -196,10 +227,10 @@ void main() {
           alLlegarTarde: tarde.add,
         ),
       );
-      await Future<void>.delayed(tope * 3);
       sinRespuesta.complete();
 
       expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(tarde, isEmpty);
     });
 
@@ -209,15 +240,6 @@ void main() {
       sinRespuesta.complete();
 
       expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.suspendida));
-    });
-
-    test('refrescar a mano no tiene tope: espera la respuesta aunque tarde más', () async {
-      cuenta.respuesta = const Right(EstadoCuenta.activa);
-      final pendiente = consultar(params(admite: false));
-      await Future<void>.delayed(tope * 3);
-      sinRespuesta.complete();
-
-      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
     });
   });
 

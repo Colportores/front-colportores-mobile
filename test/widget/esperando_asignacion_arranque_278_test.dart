@@ -163,6 +163,13 @@ Future<void> _tocarModulo(WidgetTester tester, String modulo, {bool esperar = tr
   }
 }
 
+/// Activa el botón «Actualizar» / «Reintentar» de la pantalla con el aviso del módulo a la vista.
+/// El aviso (al pie) tapa el botón, que también está al pie: no se lo puede tocar, pero sí
+/// activarlo (teclado, TalkBack) sin cerrar el aviso antes.
+void _tocarActualizarBajoElAviso(WidgetTester tester) {
+  tester.widget<FilledButton>(_actualizar).onPressed!();
+}
+
 Future<void> _cerrarSesionDesdeConfiguracion(WidgetTester tester) async {
   await tester.tap(_configuracion);
   await tester.pumpAndSettle();
@@ -434,8 +441,8 @@ void main() {
       expect(await _recordado.leer(usuarioId), EstadoCuenta.pendienteAsignacion);
     });
 
-    testWidgets('con un «Reintentar» consultando, la respuesta tardía no se aplica: manda la del '
-        'botón', (tester) async {
+    testWidgets('con un «Reintentar» consultando, la respuesta tardía se aplica, pero manda la del '
+        'botón, que se pidió más tarde', (tester) async {
       final colgada = await _entrarSinRespuesta(tester);
       await _vencerElTope(tester);
       final lenta = _backend.demora = Completer<void>();
@@ -446,9 +453,10 @@ void main() {
       await tester.pump();
       expect(find.text('Consultando…'), findsOneWidget);
 
+      // Ninguna consulta pedida después contestó todavía: la tardía cambia lo que se ve.
       colgada.complete();
       await tester.pump();
-      expect(_container.read(estadoCuentaProvider).hasError, isTrue);
+      expect(_container.read(estadoCuentaProvider).value, EstadoCuenta.pendienteAsignacion);
       expect(find.text('Consultando…'), findsOneWidget);
 
       _backend.estado = EstadoCuenta.suspendida;
@@ -1063,6 +1071,292 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Esperando asignación'), findsOneWidget);
       expect(_avisoRevisando, findsNothing);
+    });
+  });
+
+  group('el aviso del módulo no sobrevive a su pantalla ni a lo que dejó de ser cierto', () {
+    /// Sin conexión al abrir: la pantalla de espera con el aviso del módulo a la vista.
+    Future<void> conAvisoDelMapa(WidgetTester tester) async {
+      // Alto de sobra: el aviso no tapa el botón «Reintentar» de la pantalla (ni Configuración).
+      _tamano(tester, const Size(700, 1000));
+      await _montar(tester);
+      _backend.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'mapa');
+      expect(_aviso, findsOneWidget);
+      expect(_avisoReintentar, findsOneWidget);
+    }
+
+    /// «Cerrar sesión» de Configuración con el aviso a la vista. El aviso (sobre la barra de
+    /// pestañas) puede tapar el botón, que está al pie: se lo activa sin pasar por el toque.
+    Future<void> cerrarSesionConAviso(WidgetTester tester) async {
+      final boton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('configuracion_cerrar_sesion')),
+      );
+      boton.onPressed!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
+      await tester.pumpAndSettle();
+    }
+
+    /// El tope vencido (sin respuesta del servidor) y el aviso del módulo a la vista.
+    Future<Completer<void>> colgadaConAvisoDelMapa(
+      WidgetTester tester, {
+      required EstadoCuenta contestara,
+    }) async {
+      _tamano(tester, const Size(700, 1000));
+      final colgada = await _entrarSinRespuesta(tester, estado: contestara);
+      await _vencerElTope(tester);
+      await _tocarModulo(tester, 'mapa');
+      expect(_aviso, findsOneWidget);
+      return colgada;
+    }
+
+    testWidgets('el botón «Reintentar» de la pantalla encuentra la cuenta activa: el inicio queda '
+        'sin el aviso', (tester) async {
+      await conAvisoDelMapa(tester);
+      _backend
+        ..simularSinConexion = false
+        ..estado = EstadoCuenta.activa;
+
+      _tocarActualizarBajoElAviso(tester);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(_avisoReintentar, findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el botón «Reintentar» de la pantalla encuentra la cuenta pendiente: ya no '
+        'queda un aviso que habla de la conexión', (tester) async {
+      await conAvisoDelMapa(tester);
+      _backend.simularSinConexion = false;
+
+      _tocarActualizarBajoElAviso(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Esperando asignación'), findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('si el botón «Reintentar» falla de nuevo, el aviso tampoco queda: la pantalla '
+        'dice la causa', (tester) async {
+      await conAvisoDelMapa(tester);
+      final lenta = _backend.demora = Completer<void>();
+
+      _tocarActualizarBajoElAviso(tester);
+      await tester.pump();
+      expect(_aviso, findsOneWidget, reason: 'mientras consulta sigue siendo cierto');
+      lenta.complete();
+      await tester.pumpAndSettle();
+
+      expect(_sinConexion, findsOneWidget);
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('deslizar para refrescar con la cuenta activa también saca el aviso', (
+      tester,
+    ) async {
+      await conAvisoDelMapa(tester);
+      _backend
+        ..simularSinConexion = false
+        ..estado = EstadoCuenta.activa;
+
+      await tester.fling(find.byType(Scrollable).first, const Offset(0, 400), 1500);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el aviso a la vista, Configuración y «Cerrar sesión»: el login no hereda el '
+        'aviso ni su «Reintentar»', (tester) async {
+      await conAvisoDelMapa(tester);
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
+      expect(_aviso, findsOneWidget, reason: 'el aviso sigue a la vista sobre Configuración');
+
+      await cerrarSesionConAviso(tester);
+
+      expect(_login, findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(_avisoReintentar, findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el aviso que se tocó desde Configuración, «Cerrar sesión» tampoco deja '
+        'nada sobre el login', (tester) async {
+      _tamano(tester, const Size(700, 1000));
+      await _montar(tester);
+      _backend.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'agenda');
+      expect(_avisoReintentar, findsOneWidget);
+
+      await cerrarSesionConAviso(tester);
+
+      expect(_login, findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«Volver» desde Configuración se lleva el aviso que se tocó ahí: su «Reintentar» '
+        'es de esa pantalla', (tester) async {
+      _tamano(tester, const Size(700, 1000));
+      await _montar(tester);
+      _backend.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'ventas');
+      expect(_avisoReintentar, findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('configuracion_atras')));
+      await tester.pumpAndSettle();
+
+      expect(_actualizar, findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('la respuesta tardía que dice «activa» con el aviso a la vista: el inicio queda '
+        'sin el aviso', (tester) async {
+      final colgada = await colgadaConAvisoDelMapa(tester, contestara: EstadoCuenta.activa);
+
+      colgada.complete();
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(_avisoReintentar, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('la respuesta tardía que dice «pendiente» con el aviso a la vista: ya no queda '
+        'un aviso que dice sin conexión', (tester) async {
+      final colgada = await colgadaConAvisoDelMapa(
+        tester,
+        contestara: EstadoCuenta.pendienteAsignacion,
+      );
+
+      colgada.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Esperando asignación'), findsOneWidget);
+      expect(_aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+      // Y ahora el módulo dice lo de la cuenta pendiente, sin «Reintentar».
+      await _tocarModulo(tester, 'mapa');
+      expect(_textoDelAviso(TextosModuloBloqueado.pendiente), findsOneWidget);
+      expect(_avisoReintentar, findsNothing);
+    });
+
+    testWidgets('la respuesta tardía con el aviso tocado desde Configuración: el aviso no queda '
+        'diciendo lo viejo', (tester) async {
+      _tamano(tester, const Size(700, 1000));
+      final colgada = await _entrarSinRespuesta(tester, estado: EstadoCuenta.activa);
+      await _vencerElTope(tester);
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'mapa');
+      expect(_avisoReintentar, findsOneWidget);
+
+      colgada.complete();
+      await tester.pumpAndSettle();
+
+      expect(_aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«Reintentar» del aviso que encuentra la cuenta activa: no queda ningún aviso '
+        'sobre el inicio', (tester) async {
+      await conAvisoDelMapa(tester);
+      _backend
+        ..simularSinConexion = false
+        ..estado = EstadoCuenta.activa;
+
+      await tester.tap(_avisoReintentar);
+      await tester.pumpAndSettle();
+
+      expect(_principal, findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el aviso que se muestra después de cerrar uno viejo sigue a la vista: cerrar es '
+        'solo por lo que dejó de ser cierto', (tester) async {
+      await conAvisoDelMapa(tester);
+      _backend.simularSinConexion = true;
+
+      _tocarActualizarBajoElAviso(tester);
+      await tester.pumpAndSettle();
+      expect(_aviso, findsNothing);
+
+      await _tocarModulo(tester, 'lista');
+      expect(_aviso, findsOneWidget);
+      expect(_avisoReintentar, findsOneWidget);
+    });
+  });
+
+  group('módulo bloqueado — «Reintentar» a mano con tope de 15 s (QA #278)', () {
+    testWidgets('desde Configuración: si el servidor no contesta, a los 15 s vuelve el aviso de '
+        'la causa con «Reintentar»', (tester) async {
+      await _montar(tester);
+      _backend.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(_configuracion);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'mapa');
+      _backend.demora = Completer<void>();
+      _backend.simularSinConexion = false;
+
+      await tester.tap(_avisoReintentar);
+      await tester.pumpAndSettle();
+      expect(_avisoRevisando, findsOneWidget);
+      await tester.pump(const Duration(seconds: 13));
+      expect(_avisoRevisando, findsOneWidget, reason: 'a los 14 s todavía espera');
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      expect(_avisoRevisando, findsNothing);
+      expect(_textoDelAviso(TextosEsperaAsignacion.sinConexionSinEstado), findsOneWidget);
+      expect(_avisoReintentar, findsOneWidget);
+      _backend.demora!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('desde la pantalla de espera: «Reintentar» del aviso tampoco queda colgado', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _backend.simularSinConexion = true;
+      await _entrar(tester);
+      await tester.pumpAndSettle();
+      await _tocarModulo(tester, 'mapa');
+      _backend.demora = Completer<void>();
+      _backend.simularSinConexion = false;
+
+      await tester.tap(_avisoReintentar);
+      await tester.pump();
+      expect(find.text('Consultando…'), findsOneWidget);
+      await tester.pump(_tope + const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(find.text('Consultando…'), findsNothing);
+      expect(_sinConexion, findsOneWidget);
+      _backend.demora!.complete();
+      await tester.pumpAndSettle();
     });
   });
 
