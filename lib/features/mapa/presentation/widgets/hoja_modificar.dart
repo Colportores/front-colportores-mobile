@@ -185,6 +185,11 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
       // alineado por el tope, la acción quedaba bajo el botón fijo. Los demás avisos se leen desde
       // arriba.
       final conAccion = nueva is FailureUbicacionCambio;
+      // Y se cierra el teclado: lo que se escribía ya no se puede guardar (hay que abrir de nuevo), así
+      // que seguir tipeando no tiene sentido, y con el teclado arriba la hoja se queda sin lugar para
+      // la acción. Sin esto, al terminar de guardar los campos dejan de ser de solo lectura con el foco
+      // puesto y el teclado vuelve a subir después de llevar el aviso a la vista. Lo escrito no se toca.
+      if (conAccion) FocusManager.instance.primaryFocus?.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final contexto = _claveFalla.currentContext;
         if (mounted && contexto != null) {

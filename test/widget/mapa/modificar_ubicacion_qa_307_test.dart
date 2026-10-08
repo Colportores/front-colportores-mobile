@@ -31,9 +31,9 @@ Finder get _objetivo => find.ancestor(of: _accion, matching: find.byType(TextBut
 double _visible(Rect r, Rect zona) =>
     (r.bottom.clamp(zona.top, zona.bottom) - r.top.clamp(zona.top, zona.bottom)).toDouble();
 
-/// Lo que se ve de la hoja sin teclado ni barra: el borde de abajo de lo que no tapa nada.
-double _bordeLibre(Size tamano, double barra, bool teclado) =>
-    teclado ? tamano.height - tecladoAbierto : tamano.height - barra;
+/// Lo que se ve de la hoja: el borde de abajo de lo que no tapa la barra del sistema. El teclado ya no
+/// cuenta: al salir el aviso la hoja lo cierra.
+double _bordeLibre(Size tamano, double barra) => tamano.height - barra;
 
 void main() {
   setUpAll(cargarFuentesReales);
@@ -41,13 +41,10 @@ void main() {
   final telefonos = <(String, Size)>[('360×640', telefono360x640), ('320×568', telefono320x568)];
   final sistemas = <(String, double)>[('sin barra de abajo', 0), ('con barra de 3 botones', 48)];
 
-  // skip: QA #321 — en 320×568 con el texto al 200 % y el teclado de 300 dp la hoja (tope de 62 % del
-  // cuerpo) no tiene lugar ni para sus botones fijos: la zona que se desplaza mide 0 dp, hay un
-  // `RenderFlex overflowed` y ni el aviso ni «Abrir de nuevo» se ven hasta cerrar el teclado.
-  // Preexistente (la geometría de la hoja no cambió con #321), pero el arreglo no llega ahí.
-  bool saltar(String telefono, double escala, bool teclado) =>
-      telefono == '320×568' && escala == 2.0 && teclado;
-
+  // Con teclado, el teclado es el de verdad (`fallarPorCambio(conTeclado: true)`): sube al escribir el
+  // número, baja mientras guarda y, al salir el aviso, la hoja lo cierra (ronda 1 de #321). Antes el
+  // caso 320×568 · 2× · con teclado iba con `skip`: con el teclado de 300 dp fijo la hoja no tiene
+  // lugar ni para sus botones fijos.
   group('QA #321 · «Abrir de nuevo» a la vista apenas sale el aviso (texto hasta 200 %)', () {
     for (final (nombreTel, tamano) in telefonos) {
       for (final escala in [1.0, 1.3, 2.0]) {
@@ -66,13 +63,16 @@ void main() {
                 await fallarPorCambio(tester, m, conTeclado: teclado);
 
                 expect(tester.takeException(), isNull, reason: 'sin overflow');
+                // El teclado se cerró con el aviso y no vuelve a subir.
+                expect(tester.testTextInput.isVisible, isFalse, reason: 'el teclado no vuelve');
+                expect(tester.view.viewInsets.bottom, 0);
                 final zona = rectZona(tester);
                 final fijo = tester.getRect(botonGuardar);
                 final texto = tester.getRect(_accion);
                 final objetivo = tester.getRect(_objetivo);
-                // El botón fijo se ve entero, por encima de la barra del sistema o del teclado.
+                // El botón fijo se ve entero, por encima de la barra del sistema.
                 expect(fijo.top, greaterThanOrEqualTo(0));
-                expect(fijo.bottom, lessThanOrEqualTo(_bordeLibre(tamano, barra, teclado) + .5));
+                expect(fijo.bottom, lessThanOrEqualTo(_bordeLibre(tamano, barra) + .5));
                 // La acción cae dentro de lo que se desplaza (4 dp de holgura: el interlineado de
                 // arriba del renglón) y sobre el botón fijo.
                 expect(texto.top, greaterThanOrEqualTo(zona.top - 4), reason: 'sin cortar arriba');
@@ -98,7 +98,6 @@ void main() {
                 expect(m.repo.escrituras, isEmpty, reason: 'nunca se pisó lo que cambió');
                 expect(tester.takeException(), isNull);
               },
-              skip: saltar(nombreTel, escala, teclado),
             );
           }
         }

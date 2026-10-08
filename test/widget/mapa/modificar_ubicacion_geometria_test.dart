@@ -8,6 +8,8 @@
 //   del mapa (el punto que se guarda).
 // - La insignia «Editado» no se parte a mitad de palabra.
 // - El aviso «cambió mientras la editabas» lleva a la vista su pie, con «Abrir de nuevo» (#307).
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
@@ -25,6 +27,8 @@ import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/alta_ubicacion_qa_arnes.dart' show cargarFuentesReales;
 import '../../helpers/mapa_base_falso.dart';
 import '../../helpers/modificar_ubicacion_falsos.dart';
+import '../../helpers/modificar_ubicacion_qa_307_arnes.dart'
+    show asentarConTeclado, sinContarElDesborde, tecladoAbierto;
 
 /// Unos 18 m al norte del punto guardado.
 const _norte18m = 0.00016;
@@ -338,6 +342,59 @@ void main() {
 
         accionALaVista(tester);
         expect(tester.takeException(), isNull);
+      });
+    }
+
+    // El teclado de verdad (revisión de #321, ronda 1): sube al escribir, baja cuando se guarda (los
+    // campos pasan a solo lectura) y, si el guardado es lento, el aviso llega con el teclado ya abajo.
+    // Los campos vuelven a ser editables con el foco puesto: sin soltarlo, el teclado volvía a subir
+    // después de llevar el aviso a la vista y la acción quedaba bajo el borde.
+    for (final (nombre, tamano, escala) in <(String, Size, double)>[
+      ('360×640', const Size(360, 640), 1.0),
+      ('360×640', const Size(360, 640), 2.0),
+      ('320×568', const Size(320, 568), 1.0),
+      ('320×568', const Size(320, 568), 2.0),
+    ]) {
+      testWidgets('guardado lento con el teclado de verdad en $nombre al ${(escala * 100).round()} '
+          '%: el teclado baja al guardar, no vuelve con el aviso y la acción queda a la vista', (
+        tester,
+      ) async {
+        final (repo, _) = await _montar(tester, escala: escala, tamano: tamano);
+
+        // Escribir el número, con el teclado arriba, y guardar con la lectura lenta. Mientras el
+        // teclado está arriba en 320×568 al 200 % la hoja desborda (anterior a #307, issue aparte).
+        late Completer<void> lectura;
+        await sinContarElDesborde(() async {
+          await tester.enterText(_campoNumero, '1238');
+          await asentarConTeclado(tester);
+          expect(tester.view.viewInsets.bottom, tecladoAbierto, reason: 'escribe con el teclado');
+          repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
+          lectura = repo.bloqueoLectura = Completer<void>();
+          await tester.tap(_guardar);
+          await asentarConTeclado(tester);
+        });
+        expect(tester.view.viewInsets.bottom, 0, reason: 'guardando, los campos son de lectura');
+        expect(find.textContaining('cambió mientras la editabas'), findsNothing);
+
+        // Llega la falla: el teclado no vuelve y la acción está a la vista.
+        lectura.complete();
+        await sinContarElDesborde(() => asentarConTeclado(tester));
+        expect(find.textContaining('cambió mientras la editabas'), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isFalse, reason: 'el teclado no vuelve a subir');
+        expect(tester.view.viewInsets.bottom, 0);
+        accionALaVista(tester);
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.widget<TextField>(_campoNumero).controller!.text,
+          '1238',
+          reason: 'lo escrito no se pierde',
+        );
+        final lecturas = repo.lecturas;
+        repo.bloqueoLectura = null;
+        await tester.tap(find.text(TextosModificar.abrirDeNuevo));
+        await _asentar(tester);
+        expect(find.text(TextosModificar.abrirDeNuevo), findsNothing, reason: 'el toque llegó');
+        expect(repo.lecturas, lecturas + 1);
       });
     }
 
