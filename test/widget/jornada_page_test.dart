@@ -905,6 +905,37 @@ void main() {
       expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
+
+    testWidgets(
+      'cruzando la medianoche (#250): con la jornada iniciada a las 23:50, a las 00:10 el '
+      'selector ofrece hasta las 00:10 y la jornada termina a las 00:05 del día siguiente',
+      (tester) async {
+        _pantalla(tester, const Size(390, 844));
+        final dataSource = _DataSource(
+          iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 23, 23, 50))],
+        );
+        await _montar(tester, dataSource, reloj: () => DateTime(2026, 9, 24, 0, 10, 20));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+        await tester.pumpAndSettle();
+        expect(find.text('Entre las 23:50 y las 00:10.'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '00:05');
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Usar esta hora'));
+        await tester.pumpAndSettle();
+        expect(find.text('00:05 · hace 5 min'), findsOneWidget);
+
+        await _tocarFinalizar(tester);
+
+        expect(find.byType(CorregirJornadaPage), findsNothing);
+        expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 24, 0, 5).toUtc());
+        expect(find.text('De las 23:50 a las 00:05'), findsOneWidget);
+        expect(find.text('15 min'), findsOneWidget);
+      },
+    );
   });
 
   group('Estados al finalizar', () {
@@ -1126,6 +1157,43 @@ void main() {
       expect(dataSource.jornadas.single.estaAbierta, isFalse);
       expect(find.text('JORNADA FINALIZADA'), findsOneWidget);
       expect(find.text('De las 18:00 a las 20:30'), findsOneWidget);
+      await _volverAlInicio(tester);
+      expect(find.text('Sin jornada en curso'), findsOneWidget);
+    });
+
+    testWidgets('jornada iniciada a las 23:59 de ayer (#250): "Finalizar" lleva a la corrección, '
+        'una hora de la madrugada la cierra y el resumen la cuenta de punta a punta', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(DateTime(2026, 9, 22, 23, 59))],
+      );
+      await _montar(tester, dataSource);
+      await tester.pumpAndSettle();
+
+      await _tocarFinalizar(tester);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      // Antes de #250 no había ninguna hora posible y la única salida era volver.
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
+      await tester.pumpAndSettle();
+      expect(find.text('Entre las 00:00 y las 11:59.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '00:30');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 23, 0, 30).toUtc());
+      expect(find.text('JORNADA FINALIZADA'), findsOneWidget);
+      expect(find.text('De las 23:59 a las 00:30'), findsOneWidget);
+      expect(find.text('31 min'), findsOneWidget);
       await _volverAlInicio(tester);
       expect(find.text('Sin jornada en curso'), findsOneWidget);
     });
