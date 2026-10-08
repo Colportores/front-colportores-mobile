@@ -52,7 +52,15 @@ enum ClaveSegura {
   /// Cristian, 07/10, front-colportores-mobile#302): el aviso de «Sesión vencida» vale en cada
   /// arranque sin sesión hasta que la persona entra (HU-AUTH-007, vista 17). Se borra al entrar,
   /// con el correo al cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010).
-  cierreForzado('last_forced_close');
+  cierreForzado('last_forced_close'),
+
+  /// Cuándo salió el último enlace de recuperación de contraseña pedido desde este teléfono (ISO
+  /// 8601, UTC) y nada más (decisión de Cristian, 02/10, front-colportores-mobile#223; seguimiento
+  /// #281): la espera de 60 s de «Olvidé mi contraseña» no se reinicia al salir y volver a entrar.
+  /// Es por teléfono, no por correo (no revela si un correo existe) y no es secreto: vive acá para
+  /// no sumar otro almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo
+  /// borra.
+  ultimoEnvioRecuperacion('last_recovery_request');
 
   const ClaveSegura(this.id);
 

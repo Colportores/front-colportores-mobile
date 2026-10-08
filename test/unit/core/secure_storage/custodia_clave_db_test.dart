@@ -415,6 +415,16 @@ void main() {
       expect(almacen.contenido[ClaveSegura.cierreForzado], 'inactividad|2026-10-07T08:02:30.000Z');
     });
 
+    test('conserva la hora del último enlace de recuperación pedido (#281): recuperar los datos '
+        'no reinicia la espera de 60 s', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.ultimoEnvioRecuperacion], '2026-10-08T10:30:15.000Z');
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {
@@ -563,6 +573,26 @@ void main() {
 
       expect(almacen.contenido.containsKey(ClaveSegura.cierreForzado), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también la hora del último enlace de recuperación pedido (#281): es de la '
+        'persona que se va', () async {
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimoEnvioRecuperacion), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca la hora del último enlace de recuperación '
+        'pedido', () async {
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.ultimoEnvioRecuperacion], '2026-10-08T10:30:15.000Z');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca el motivo del último cierre forzado', () async {

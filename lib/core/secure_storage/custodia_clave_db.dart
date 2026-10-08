@@ -268,6 +268,7 @@ final class CustodiaClaveDb {
     ClaveSegura.intentosBorrado,
     ClaveSegura.ultimoCorreo,
     ClaveSegura.cierreForzado,
+    ClaveSegura.ultimoEnvioRecuperacion,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -345,13 +346,15 @@ final class CustodiaClaveDb {
 
   /// Lo que [olvidarDatosDelUsuario] borra además de lo de [olvidar]: el último estado de cuenta
   /// (lleva el id del usuario), el reloj de la sesión (el último momento en que se usó la app), los
-  /// intentos del borrado, el correo de la última cuenta y el motivo del último cierre forzado.
+  /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado y la
+  /// hora del último enlace de recuperación pedido.
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
     ClaveSegura.intentosBorrado,
     ClaveSegura.ultimoCorreo,
     ClaveSegura.cierreForzado,
+    ClaveSegura.ultimoEnvioRecuperacion,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].
