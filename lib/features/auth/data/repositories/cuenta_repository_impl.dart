@@ -21,8 +21,15 @@ final class CuentaRepositoryImpl implements CuentaRepository {
   final DateTime Function() _ahora;
   final _ultimaConsulta = <String, DateTime>{};
 
+  /// Cuántas consultas se pidieron: cada una lleva su número, por el orden en que se pidió.
+  int _pedidos = 0;
+
+  /// El número de la consulta más nueva que ya contestó bien, por colportor.
+  final _ultimaContestada = <String, int>{};
+
   @override
   Future<Either<Failure, EstadoCuenta>> consultar(String usuarioId) async {
+    final pedido = ++_pedidos;
     final EstadoCuenta estado;
     try {
       estado = await _remote.consultar();
@@ -50,6 +57,16 @@ final class CuentaRepositoryImpl implements CuentaRepository {
       return Left(FailureInesperado(causa: e));
     }
 
+    // Gana la consulta pedida más tarde: la respuesta de una más vieja que llega después (pasó el
+    // tope y la persona reintentó) trae lo que el backend sabía antes. Recordarla pisaría el estado
+    // más nuevo en el próximo arranque sin red (QA #278). Se decide antes de cualquier `await`.
+    if ((_ultimaContestada[usuarioId] ?? 0) > pedido) {
+      _log.info(LogModulo.auth, 'ESTADO_CUENTA_VIEJO', 'respuesta de una consulta más vieja', {
+        'user_id': usuarioId,
+      });
+      return Right(estado);
+    }
+    _ultimaContestada[usuarioId] = pedido;
     try {
       await _local.guardar(usuarioId, estado);
     } on Object catch (e, st) {

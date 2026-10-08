@@ -35,7 +35,8 @@ class ConfiguracionPage extends ConsumerStatefulWidget {
   ConsumerState<ConfiguracionPage> createState() => _ConfiguracionPageState();
 }
 
-class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
+class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
+    with CierraSusAvisos<ConfiguracionPage> {
   /// Mientras se cuentan las operaciones pendientes antes de abrir la hoja.
   bool _revisando = false;
 
@@ -50,25 +51,28 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
       _mostrarRevisando();
       return;
     }
-    avisarModuloBloqueado(
-      context,
-      estado,
-      sinConexion: error is FailureSinConexion,
-      alReintentar: () => unawaited(_reintentarCuenta()),
+    recordarAviso(
+      avisarModuloBloqueado(
+        context,
+        estado,
+        sinConexion: error is FailureSinConexion,
+        alReintentar: () => unawaited(_reintentarCuenta()),
+      ),
     );
   }
 
   void _mostrarRevisando() {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
+    final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+    recordarAviso(
+      mensajero.showSnackBar(
         const SnackBar(
           key: Key('modulo_bloqueado_revisando'),
-          // Dura lo que tarde la consulta: se saca al terminar.
+          // Dura lo que tarde la consulta: se saca al terminar (o si esta pantalla se va).
           duration: Duration(days: 1),
           content: Text(TextosModuloBloqueado.revisando),
         ),
-      );
+      ),
+    );
   }
 
   /// «Reintentar» del aviso: consulta la cuenta con «Revisando con el servidor…» y después avisa
@@ -77,7 +81,6 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
   Future<void> _reintentarCuenta() async {
     if (_reintentandoCuenta) return;
     _reintentandoCuenta = true;
-    final messenger = ScaffoldMessenger.of(context);
     _mostrarRevisando();
     Failure? falla;
     try {
@@ -86,18 +89,22 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
       falla = FailureInesperado(causa: e);
     }
     _reintentandoCuenta = false;
-    messenger.clearSnackBars();
+    cerrarAviso(); // Saca el «Revisando» (si la pantalla se fue, ya lo sacó al irse).
     if (!mounted) return;
     final estado = ref.read(estadoCuentaProvider).value;
     if (falla == null) {
-      if (estado != null && !estado.accedeAModulosDeCampo) avisarModuloBloqueado(context, estado);
+      if (estado != null && !estado.accedeAModulosDeCampo) {
+        recordarAviso(avisarModuloBloqueado(context, estado));
+      }
       return;
     }
-    avisarModuloBloqueado(
-      context,
-      estado,
-      sinConexion: falla is FailureSinConexion,
-      alReintentar: () => unawaited(_reintentarCuenta()),
+    recordarAviso(
+      avisarModuloBloqueado(
+        context,
+        estado,
+        sinConexion: falla is FailureSinConexion,
+        alReintentar: () => unawaited(_reintentarCuenta()),
+      ),
     );
   }
 
@@ -152,6 +159,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage> {
     // Con la cuenta pendiente (o sin estado conocido) la barra se ve con los módulos bloqueados
     // (vista 16, nota; vista 18). Mientras se consulta el estado no hay barra.
     final estadoCuenta = ref.watch(estadoCuentaProvider);
+    // Si la cuenta cambia por otro lado (una respuesta tardía, la consulta de la pantalla de
+    // espera), un aviso del módulo sobre la cuenta anterior ya no es cierto.
+    ref.listen(estadoCuentaProvider, (anterior, actual) {
+      if (anterior?.value != actual.value || anterior?.error != actual.error) {
+        cerrarAvisoAlTerminarElCuadro();
+      }
+    });
     final conBarra = estadoCuenta is! AsyncLoading;
     final estado = estadoCuenta.value;
     final accede = estadoCuenta is AsyncData && (estado == null || estado.accedeAModulosDeCampo);

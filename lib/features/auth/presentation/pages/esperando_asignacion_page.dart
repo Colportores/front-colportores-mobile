@@ -103,7 +103,8 @@ class EsperandoAsignacionPage extends ConsumerStatefulWidget {
   ConsumerState<EsperandoAsignacionPage> createState() => _EsperandoAsignacionPageState();
 }
 
-class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPage> {
+class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPage>
+    with CierraSusAvisos<EsperandoAsignacionPage> {
   bool _consultando = false;
   _Resultado? _resultado;
 
@@ -122,6 +123,16 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     return ref.read(cuentaRepositoryProvider).ultimaConsultaExitosa(usuarioId);
   }
 
+  @override
+  void didUpdateWidget(EsperandoAsignacionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Un aviso del módulo que habla de otra situación (sin conexión, y ahora la cuenta está
+    // pendiente) ya no es cierto.
+    if (oldWidget.estado != widget.estado || oldWidget.falla != widget.falla) {
+      cerrarAvisoAlTerminarElCuadro();
+    }
+  }
+
   Future<void> _actualizar() async {
     if (_consultando) return; // Doble tap o deslizar con el botón ya apretado: una sola consulta.
     setState(() => _consultando = true);
@@ -131,6 +142,8 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     } on Object catch (e) {
       falla = FailureInesperado(causa: e);
     }
+    // La consulta contestó: el aviso del módulo (con su «Reintentar») ya no dice lo que pasa.
+    cerrarAviso();
     if (!mounted) return; // Pasó a activa: la raíz ya cambió de pantalla.
 
     final estado = ref.read(estadoCuentaProvider).value;
@@ -158,11 +171,13 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     if (pestana == PestanaInicio.hoy) return; // «Hoy» es esta pantalla.
     // Sin estado conocido, el aviso es el de esta pantalla para la misma causa y trae «Reintentar»
     // (#278): consulta igual que el botón de la pantalla.
-    avisarModuloBloqueado(
-      context,
-      widget.estado,
-      sinConexion: _resultadoVisible == _Resultado.sinConexion,
-      alReintentar: () => unawaited(_actualizar()),
+    recordarAviso(
+      avisarModuloBloqueado(
+        context,
+        widget.estado,
+        sinConexion: _resultadoVisible == _Resultado.sinConexion,
+        alReintentar: () => unawaited(_actualizar()),
+      ),
     );
   }
 

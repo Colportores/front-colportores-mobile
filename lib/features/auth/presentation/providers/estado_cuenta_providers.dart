@@ -53,19 +53,26 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
   /// Número de la consulta de arranque en curso: la respuesta tardía de una anterior no cuenta.
   int _arranque = 0;
 
-  /// Cuántos «Reintentar» a mano están consultando ahora.
-  int _refrescos = 0;
+  /// Cuántas consultas se pidieron: cada una lleva su número, por el orden en que se pidió. Es el
+  /// mismo orden con el que el repositorio decide qué respuesta recordar.
+  int _pedidos = 0;
+
+  /// El número de la consulta más nueva que ya contestó bien. Una respuesta de una consulta pedida
+  /// antes que esa no se aplica: gana la consulta pedida más tarde (QA #278).
+  int _ultimaContestada = 0;
 
   @override
   Future<EstadoCuenta?> build() async {
     final arranque = ++_arranque;
     final sesion = await ref.watch(sesionProvider.future);
     if (sesion == null) return null;
+    final pedido = ++_pedidos;
     final resultado = await ref.read(consultarEstadoCuentaUseCaseProvider)(
       ConsultarEstadoCuentaParams(
         usuarioId: sesion.usuarioId,
         admiteUltimoConocido: true,
-        alLlegarTarde: (estado) => _aplicarRespuestaTardia(arranque, sesion.usuarioId, estado),
+        alLlegarTarde: (estado) =>
+            _aplicarRespuestaTardia(arranque, pedido, sesion.usuarioId, estado),
       ),
     );
     return resultado.fold((falla) => throw falla, (estado) => estado);
@@ -73,11 +80,13 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
 
   /// La respuesta que llegó después del tope de 15 s del arranque (decisión del agente de
   /// decisiones, #278). Se aplica solo si la persona sigue en la vista 18 (sin estado conocido,
-  /// pendiente o suspendida), no hay un «Reintentar» consultando y la sesión es la misma: ahí
-  /// la pantalla cambia sola. Si ya entró a su inicio con el último estado conocido, no la saca de
-  /// ahí: queda guardada para el próximo arranque (la guarda el repositorio).
-  void _aplicarRespuestaTardia(int arranque, String usuarioId, EstadoCuenta estado) {
-    if (!ref.mounted || arranque != _arranque || _refrescos > 0) return;
+  /// pendiente o suspendida), la sesión es la misma y ninguna consulta pedida después (un
+  /// «Reintentar») ya contestó: ahí la pantalla cambia sola. Si ya entró a su inicio con el último
+  /// estado conocido, no la saca de ahí: queda guardada para el próximo arranque (la guarda el
+  /// repositorio, con el mismo criterio).
+  void _aplicarRespuestaTardia(int arranque, int pedido, String usuarioId, EstadoCuenta estado) {
+    if (!ref.mounted || arranque != _arranque || pedido < _ultimaContestada) return;
+    _ultimaContestada = pedido;
     if (ref.read(sesionProvider).value?.usuarioId != usuarioId) return;
     final enLaVista18 = switch (state) {
       AsyncError() => true,
@@ -94,23 +103,23 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
   Future<Failure?> refrescar() async {
     final sesion = ref.read(sesionProvider).value;
     if (sesion == null) return null;
-    _refrescos++;
-    try {
-      final resultado = await ref.read(consultarEstadoCuentaUseCaseProvider)(
-        ConsultarEstadoCuentaParams(usuarioId: sesion.usuarioId, admiteUltimoConocido: false),
-      );
-      return resultado.fold(
-        (falla) {
-          if (state.hasError) state = AsyncError<EstadoCuenta?>(falla, StackTrace.current);
-          return falla;
-        },
-        (estado) {
+    final pedido = ++_pedidos;
+    final resultado = await ref.read(consultarEstadoCuentaUseCaseProvider)(
+      ConsultarEstadoCuentaParams(usuarioId: sesion.usuarioId, admiteUltimoConocido: false),
+    );
+    return resultado.fold(
+      (falla) {
+        if (state.hasError) state = AsyncError<EstadoCuenta?>(falla, StackTrace.current);
+        return falla;
+      },
+      (estado) {
+        // Si una consulta pedida después ya contestó, esta trae lo que el backend sabía antes.
+        if (ref.mounted && pedido >= _ultimaContestada) {
+          _ultimaContestada = pedido;
           state = AsyncData(estado);
-          return null;
-        },
-      );
-    } finally {
-      _refrescos--;
-    }
+        }
+        return null;
+      },
+    );
   }
 }
