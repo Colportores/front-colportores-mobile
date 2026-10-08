@@ -273,6 +273,7 @@ class CampoDireccionUbicacion extends StatelessWidget {
     required this.limite,
     required this.accion,
     this.bloqueado = false,
+    this.claveCampo,
   });
 
   final String etiqueta;
@@ -285,6 +286,9 @@ class CampoDireccionUbicacion extends StatelessWidget {
 
   /// El campo no recibe teclas (por ejemplo, mientras se guarda): lo que se ve es lo que se guarda.
   final bool bloqueado;
+
+  /// La clave del `TextField` (sin la etiqueta de arriba), para medir cuánto alto ocupa.
+  final Key? claveCampo;
 
   @override
   Widget build(BuildContext context) {
@@ -314,6 +318,7 @@ class CampoDireccionUbicacion extends StatelessWidget {
         EtiquetaCampoUbicacion(etiqueta, insignia: insignia),
         const SizedBox(height: 6),
         TextField(
+          key: claveCampo,
           controller: controlador,
           readOnly: bloqueado,
           onChanged: alCambiar,
