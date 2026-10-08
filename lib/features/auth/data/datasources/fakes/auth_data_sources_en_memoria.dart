@@ -237,8 +237,13 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// simular el rate limit de Supabase (~2 emails/hora sin SMTP propio).
   AuthRemoteException? fallaAlReenviar;
 
+  /// Si no es `null`, [reenviarVerificacion] no sigue hasta que el test lo complete — para probar
+  /// qué pasa con el reenvío en vuelo (doble toque, cambiar la dirección, salir de la pantalla).
+  Completer<void>? demoraReenvio;
+
   @override
   Future<void> reenviarVerificacion(String email) async {
+    await demoraReenvio?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlReenviar != null) throw fallaAlReenviar!;
     reenviosPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);

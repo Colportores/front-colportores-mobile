@@ -19,6 +19,7 @@ import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
+import 'features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
 import 'features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
@@ -110,6 +111,11 @@ Future<void> main() async {
         // «Olvidé mi contraseña» no se reinicia al salir y volver a entrar.
         ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(
           UltimoEnvioRecuperacionRepositoryImpl(almacenSeguro),
+        ),
+        // Los correos con el reenvío de la verificación bloqueado: el candado de 60 minutos es por
+        // dirección y sobrevive a reiniciar la app.
+        bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(
+          BloqueoReenvioVerificacionRepositoryImpl(almacenSeguro),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),

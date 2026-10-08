@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
-import '../providers/bloqueo_reenvio_verificacion.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
+import '../providers/auth_providers.dart';
 import '../providers/enlace_verificacion_usado_providers.dart';
 import '../providers/sesion_notifier.dart';
 
@@ -70,8 +71,10 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     with WidgetsBindingObserver {
   /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope por hora lo hace
-  /// cumplir Supabase; cuando rechaza por límite, el botón queda bloqueado una hora fija
-  /// ([bloqueoReenvioVerificacion], decisión de Cristian 29/09).
+  /// cumplir Supabase; cuando rechaza por límite, el botón de **esa dirección** queda bloqueado una
+  /// hora fija ([bloqueoReenvioVerificacion], decisión de Cristian 29/09) y el candado se guarda en
+  /// el teléfono: sobrevive a salir de la pantalla y a reiniciar la app (decisión de Cristian,
+  /// 30/09, #249).
   static const Duration _cooldown = Duration(seconds: 60);
 
   static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
@@ -85,13 +88,25 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   DatosDeEsperaVerificacion? _datosEnEspera;
   int _segundosRestantes = 0;
 
-  /// Instante en que termina el bloqueo por límite de reenvíos (`null` si no hay).
-  DateTime? _bloqueadoHasta;
+  /// Los candados por límite de reenvíos que siguen vigentes: correo normalizado
+  /// ([correoParaBloqueo]) → instante en que vencen. Salen del teléfono al abrir la pantalla.
+  Map<String, DateTime> _bloqueos = const {};
 
-  bool get _bloqueado {
-    final hasta = _bloqueadoHasta;
+  /// `true` mientras se leen del teléfono los candados guardados: un reenvío pedido en ese instante
+  /// espera a [_lecturaBloqueos] para no saltearse un candado vigente.
+  bool _leyendoBloqueos = true;
+  late final Future<void> _lecturaBloqueos;
+
+  /// La dirección que ve la persona: la conocida o, si hay que escribirla, la que va en el campo.
+  String get _correoVisible => _emailConocido ? widget.email : _emailController.text;
+
+  bool _estaBloqueado(String correo) {
+    final hasta = _bloqueos[correoParaBloqueo(correo)];
     return hasta != null && widget.ahora().isBefore(hasta);
   }
+
+  /// El reenvío a la dirección que se ve está bloqueado. Otra dirección no lo está.
+  bool get _bloqueado => _estaBloqueado(_correoVisible);
 
   /// Instante en que vence la espera del reenvío: con la app en segundo plano el `Timer` se
   /// pausa, así que al volver se recalcula desde la hora real.
@@ -111,8 +126,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     WidgetsBinding.instance.addObserver(this);
     _estado = widget.estadoInicial;
     _emailController = TextEditingController(text: widget.email);
-    _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
-    _programarDesbloqueo();
+    _lecturaBloqueos = _leerBloqueosGuardados();
     _enEspera = ref.read(verificacionEnEsperaProvider.notifier);
     final password = widget.password;
     if (_estado == EstadoVerificacionEmail.pendiente && _emailConocido && password != null) {
@@ -137,9 +151,30 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     super.dispose();
   }
 
+  /// Lee del teléfono los candados vigentes (los de cualquier dirección) y los retoma.
+  Future<void> _leerBloqueosGuardados() async {
+    final consultar = ref.read(consultarBloqueosReenvioVerificacionUseCaseProvider);
+    var vigentes = const <String, DateTime>{};
+    try {
+      vigentes = (await consultar(
+        ConsultarBloqueosReenvioVerificacionParams(ahora: widget.ahora()),
+      )).fold((_) => const <String, DateTime>{}, (vigentes) => vigentes);
+    } on Object {
+      // El candado es una comodidad de la pantalla: sin poder leerlo, sigue sin candados (el
+      // servidor tiene la última palabra).
+    } finally {
+      _leyendoBloqueos = false;
+    }
+    if (!mounted || vigentes.isEmpty) return;
+    setState(() {
+      _bloqueos = {...vigentes, ..._bloqueos};
+      _programarDesbloqueo();
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _bloqueadoHasta != null) {
+    if (state == AppLifecycleState.resumed && _bloqueos.isNotEmpty) {
       setState(_programarDesbloqueo);
     }
     final vence = _venceCooldown;
@@ -151,19 +186,20 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     });
   }
 
-  /// Agenda el fin del bloqueo por límite; si ya venció, lo limpia.
+  /// Descarta los candados que ya vencieron y agenda el repintado para cuando venza el próximo
+  /// (de cualquier dirección: la persona puede cambiar la que escribió).
   void _programarDesbloqueo() {
     _timerBloqueo?.cancel();
-    final hasta = _bloqueadoHasta;
-    if (hasta == null) return;
-    final falta = hasta.difference(widget.ahora());
-    if (falta <= Duration.zero) {
-      _bloqueadoHasta = null;
-      return;
-    }
-    _timerBloqueo = Timer(falta, () {
+    final ahora = widget.ahora();
+    _bloqueos = {
+      for (final MapEntry(key: correo, value: vence) in _bloqueos.entries)
+        if (vence.isAfter(ahora)) correo: vence,
+    };
+    if (_bloqueos.isEmpty) return;
+    final proximo = _bloqueos.values.reduce((a, b) => a.isBefore(b) ? a : b);
+    _timerBloqueo = Timer(proximo.difference(ahora), () {
       if (!mounted) return;
-      setState(() => _bloqueadoHasta = null);
+      setState(_programarDesbloqueo);
     });
   }
 
@@ -191,6 +227,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   Future<void> _reenviar() async {
     if (_reenviando || _verificando || _segundosRestantes > 0 || _bloqueado) return;
     final email = _emailConocido ? widget.email : _emailController.text.trim();
+    final sesion = ref.read(sesionProvider.notifier);
+    final registrarBloqueo = ref.read(registrarBloqueoReenvioVerificacionUseCaseProvider);
     setState(() {
       _reenviando = true;
       _errorEmail = null;
@@ -198,7 +236,28 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _mensajeReenvio = null;
     });
 
-    final failure = await ref.read(sesionProvider.notifier).reenviarVerificacion(email);
+    // Un reenvío pedido mientras se leen los candados guardados espera a saber si esta dirección
+    // está bloqueada.
+    if (_leyendoBloqueos) {
+      await _lecturaBloqueos;
+      if (!mounted) return;
+      if (_estaBloqueado(email)) {
+        setState(() => _reenviando = false);
+        return;
+      }
+    }
+
+    final failure = await sesion.reenviarVerificacion(email);
+
+    // El candado se guarda aunque la pantalla ya no esté (el servidor ya rechazó a esta dirección)
+    // y antes de soltar el «ocupado»: al volver a entrar, ya está guardado.
+    DateTime? venceBloqueo;
+    if (failure case FailureServidor(status: 429)) {
+      final cuando = widget.ahora();
+      venceBloqueo = (await registrarBloqueo(
+        RegistrarBloqueoReenvioVerificacionParams(correo: email, ahora: cuando),
+      )).fold((_) => cuando.add(bloqueoReenvioVerificacion), (vence) => vence);
+    }
 
     if (!mounted) return;
     setState(() {
@@ -210,8 +269,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         case FailureValidacion(:final campos):
           _errorEmail = campos['email'];
         case FailureServidor(status: 429):
-          ref.read(bloqueoReenvioVerificacionProvider.notifier).bloquearDesde(widget.ahora());
-          _bloqueadoHasta = ref.read(bloqueoReenvioVerificacionProvider);
+          // Bloquea la dirección a la que se pidió el reenvío, no la que se vea cuando conteste.
+          _bloqueos = {..._bloqueos, correoParaBloqueo(email): venceBloqueo!};
           _programarDesbloqueo();
         case final Failure f:
           _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
@@ -391,9 +450,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                           _CampoEmail(
                             controller: _emailController,
                             errorText: _errorEmail,
-                            onChanged: (_) {
-                              if (_errorEmail != null) setState(() => _errorEmail = null);
-                            },
+                            // Repinta siempre: el candado depende de la dirección que se escribe.
+                            onChanged: (_) => setState(() => _errorEmail = null),
                           ),
                       ],
                     ),

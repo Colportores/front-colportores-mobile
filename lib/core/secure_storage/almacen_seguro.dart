@@ -60,7 +60,16 @@ enum ClaveSegura {
   /// Es por teléfono, no por correo (no revela si un correo existe) y no es secreto: vive acá para
   /// no sumar otro almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo
   /// borra.
-  ultimoEnvioRecuperacion('last_recovery_request');
+  ultimoEnvioRecuperacion('last_recovery_request'),
+
+  /// Los correos a los que el servidor rechazó el reenvío del email de verificación por límite de
+  /// intentos y hasta cuándo no se les vuelve a ofrecer (HU-AUTH-002, vista 12-A06; decisión de
+  /// Cristian, 30/09, front-colportores-mobile#221 y #239; seguimiento #249): un JSON
+  /// `{"<correo en minúsculas>": "<vencimiento ISO 8601 UTC>"}`, solo con los bloqueos vigentes.
+  /// El candado es por dirección (otra dirección no queda bloqueada) y sobrevive a reiniciar la
+  /// app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`, para no sumar otro
+  /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
+  bloqueoReenvioVerificacion('verification_resend_locks');
 
   const ClaveSegura(this.id);
 

@@ -100,6 +100,7 @@ void main() {
       expect(ClaveSegura.ultimoCorreo.id, 'last_account_email');
       expect(ClaveSegura.cierreForzado.id, 'last_forced_close');
       expect(ClaveSegura.ultimoEnvioRecuperacion.id, 'last_recovery_request');
+      expect(ClaveSegura.bloqueoReenvioVerificacion.id, 'verification_resend_locks');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });
