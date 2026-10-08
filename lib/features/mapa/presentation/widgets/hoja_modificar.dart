@@ -162,10 +162,43 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
   }
 
   @override
+  void didUpdateWidget(HojaModificarDatos oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Con el guardado rápido la falla llega mientras el teclado todavía baja, y el aviso se lleva a la
+    // vista con la hoja de teclado abierto (cabeza compacta). Cuando el teclado termina de bajar la
+    // cabeza vuelve a ser la completa, el área que se desplaza se achica y el scroll no acompaña: la
+    // acción quedaba más abajo de lo medido (hasta bajo el botón fijo). Se lleva de nuevo.
+    if (oldWidget.tecladoAbierto &&
+        !widget.tecladoAbierto &&
+        ref.read(modificarUbicacionProvider(widget.parametros)).falla is FailureUbicacionCambio) {
+      _llevarLaFallaALaVista(conAccion: true);
+    }
+  }
+
+  @override
   void dispose() {
     _calle.dispose();
     _numero.dispose();
     super.dispose();
+  }
+
+  /// Lleva el aviso de la falla a la vista apenas se dibuja. Con acción («Abrir de nuevo» al pie del
+  /// aviso) se alinea el pie del aviso con el borde de abajo del área; el resto se lee desde arriba.
+  void _llevarLaFallaALaVista({required bool conAccion}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveFalla.currentContext;
+      if (mounted && contexto != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            contexto,
+            duration: Duration.zero,
+            alignmentPolicy: conAccion
+                ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+                : ScrollPositionAlignmentPolicy.explicit,
+          ),
+        );
+      }
+    });
   }
 
   @override
@@ -190,20 +223,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
       // la acción. Sin esto, al terminar de guardar los campos dejan de ser de solo lectura con el foco
       // puesto y el teclado vuelve a subir después de llevar el aviso a la vista. Lo escrito no se toca.
       if (conAccion) FocusManager.instance.primaryFocus?.unfocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final contexto = _claveFalla.currentContext;
-        if (mounted && contexto != null) {
-          unawaited(
-            Scrollable.ensureVisible(
-              contexto,
-              duration: Duration.zero,
-              alignmentPolicy: conAccion
-                  ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
-                  : ScrollPositionAlignmentPolicy.explicit,
-            ),
-          );
-        }
-      });
+      _llevarLaFallaALaVista(conAccion: conAccion);
     });
     ref.listen(proveedor.select((s) => (s.bloqueoPorEspacios, s.deptoQueQuedaSinNumero)), (
       anterior,

@@ -2,7 +2,9 @@
 // HU-UBI-004): monta la edición con lo que los arneses de la vista no dejan mover juntos: la barra de
 // estado, la barra de abajo del sistema (navegación por 3 botones), el teclado abierto y la escala del
 // texto, y llega al aviso «cambió mientras la editabas».
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -75,18 +77,41 @@ Future<void> asentarConTeclado(WidgetTester tester, [int veces = 10]) async {
     await tester.pump(const Duration(milliseconds: 60));
     final pedido = tester.testTextInput.isVisible;
     if (pedido == tester.view.viewInsets.bottom > 0) continue;
-    if (pedido) {
-      tester.view.viewInsets = const FakeViewPadding(bottom: tecladoAbierto);
-      tester.view.padding = FakeViewPadding(top: tester.view.padding.top);
-    } else {
-      tester.view.resetViewInsets();
-      tester.view.padding = FakeViewPadding(
-        top: tester.view.viewPadding.top,
-        bottom: tester.view.viewPadding.bottom,
-      );
-    }
+    ponerTeclado(tester, pedido ? tecladoAbierto : 0);
   }
   await tester.pump(const Duration(milliseconds: 60));
+}
+
+/// Pone el teclado en [alto] dp (0 = cerrado) como lo entrega el sistema: la barra de abajo se
+/// descuenta de `padding` lo que el teclado ya cubre, y `viewPadding` queda como estaba.
+void ponerTeclado(WidgetTester tester, double alto) {
+  if (alto > 0) {
+    tester.view.viewInsets = FakeViewPadding(bottom: alto);
+  } else {
+    tester.view.resetViewInsets();
+  }
+  tester.view.padding = FakeViewPadding(
+    top: tester.view.viewPadding.top,
+    bottom: math.max(0, tester.view.viewPadding.bottom - alto),
+  );
+}
+
+/// El teclado que baja de a poco, [paso] dp por cuadro de 16 ms (a 20 dp son 15 cuadros para los 300
+/// dp), como lo entrega Android al animarlo: `viewInsets` pasa por todos los valores hasta llegar a 0.
+/// [alCuadro] corre antes de cada cuadro, con su número (0, 1, …): ahí un test hace llegar la falla a
+/// mitad de camino. [asentarConTeclado] lo baja de golpe y no ve lo que pasa en el medio.
+Future<void> bajarTecladoDeAPoco(
+  WidgetTester tester, {
+  double paso = 20,
+  FutureOr<void> Function(int cuadro)? alCuadro,
+}) async {
+  var cuadro = 0;
+  while (tester.view.viewInsets.bottom > 0) {
+    await alCuadro?.call(cuadro);
+    ponerTeclado(tester, math.max(0, tester.view.viewInsets.bottom - paso));
+    await tester.pump(const Duration(milliseconds: 16));
+    cuadro++;
+  }
 }
 
 /// Abre la edición de «Av. Italia 1234» con el sistema de un Android: [barraDeEstado] arriba y
