@@ -773,9 +773,9 @@ void main() {
       expect(e.repo.escrituras.single.nueva.lat, closeTo(puntoItalia.lat + 0.00002, 1e-6));
     });
 
-    // skip: QA #202 — en 360×640 con el texto al 200 %, al fallar «cambió mientras la editabas» la hoja
-    // lleva a la vista el tope del aviso, no su acción: «Abrir de nuevo» queda ~70 dp más abajo,
-    // cortado por el botón fijo, hasta que se desplaza (alinear el pie del aviso lo arregla).
+    // Hallazgo del QA de #202, arreglado en #307: la hoja lleva a la vista el pie del aviso (antes, su
+    // tope) y «Abrir de nuevo» ya no queda bajo el botón fijo. La geometría con las fuentes reales y
+    // el teclado abierto está en `modificar_ubicacion_geometria_test.dart`.
     testWidgets('en 360×640 a 200 % «Abrir de nuevo» queda a la vista apenas aparece el aviso', (
       tester,
     ) async {
@@ -792,7 +792,7 @@ void main() {
         lessThanOrEqualTo(fijo.top),
         reason: 'la acción no queda bajo el botón fijo',
       );
-    }, skip: true);
+    });
 
     for (final (nombre, tamano, escala) in <(String, Size, double)>[
       ('360×640', const Size(360, 640), 1.0),
