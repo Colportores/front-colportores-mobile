@@ -7,6 +7,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../domain/entities/jornada.dart';
+import '../../domain/jornada_sin_cerrar.dart';
 import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
@@ -143,27 +144,23 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   }
 
   /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio. 0 si la
-  /// jornada es de un día anterior (HU-JOR-002, bug #118): ahí cualquier hora que ofreciera este
-  /// selector caería en el día de HOY, no en el del inicio — el margen normal no corresponde. Con
+  /// jornada quedó abierta de un día anterior (HU-JOR-002, bug #118): el margen normal no
+  /// corresponde, hay que preguntar a qué hora terminó (el mismo criterio que usa el caso de uso,
+  /// [JornadaSinCerrar]). Cerca de la medianoche, con el margen todavía en el día del inicio, sí se
+  /// ofrece, y la hora elegida puede caer pasadas las 00:00 (#250). Con
   /// 0 el selector no se muestra (la fila de fin queda sin toque con `maximo == 0`) y el botón
   /// "Cambiar" queda deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
   /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
   static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
-    final margen = FinalizarJornadaUseCase.margenHaciaAtras.inMinutes;
-    final hace30 = _menosMinutos(ahora, margen);
-    final desde = jornada.inicio.isAfter(hace30) ? jornada.inicio : hace30;
-    if (_caeEnOtroDia(jornada.inicio, desde)) return 0;
+    const margen = FinalizarJornadaUseCase.margenHaciaAtras;
+    final quedoAbierta = JornadaSinCerrar.quedoAbierta(
+      inicio: jornada.inicio,
+      ahora: ahora,
+      margen: margen,
+    );
+    if (quedoAbierta) return 0;
     final desdeInicio = _menosMinutos(ahora, 0).difference(jornada.inicio).inMinutes;
-    return desdeInicio.clamp(0, margen);
-  }
-
-  /// Si [instante] cae en un día calendario posterior al de [inicio], en la zona del dispositivo.
-  /// Espejo de `FinalizarJornadaUseCase._caeEnOtroDia` (privado ahí): decide acá si ofrecer el
-  /// selector de "Hora de fin" (#118) con la misma regla que usa el caso de uso para lo mismo.
-  static bool _caeEnOtroDia(DateTime inicio, DateTime instante) {
-    final i = inicio.toLocal();
-    final x = instante.toLocal();
-    return DateTime(i.year, i.month, i.day).isBefore(DateTime(x.year, x.month, x.day));
+    return desdeInicio.clamp(0, margen.inMinutes);
   }
 
   /// La hora de fin elegida a mano (el instante que el colportor vio y confirmó), o `null` si es

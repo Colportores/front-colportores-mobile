@@ -185,9 +185,9 @@ final class FailureHoraFueraDeRango extends Failure {
 
 /// La jornada en curso empezó un día anterior (HU-JOR-002, "Jornada que quedó abierta"): no se
 /// cierra con la hora de hoy, porque eso inventaría un `fin` y sumaría horas que no se trabajaron.
-/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", entre el inicio y las 23:59 de
-/// ese día—, que es otra pantalla. [mensaje] nombra el día en la zona del dispositivo ("Tenés una
-/// jornada del lunes 21 sin cerrar.", como la HU).
+/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", hasta 12 h después del inicio,
+/// aunque el fin caiga al día siguiente—, que es otra pantalla. [mensaje] nombra el día en la zona
+/// del dispositivo ("Tenés una jornada del lunes 21 sin cerrar.", como la HU).
 final class FailureJornadaDeDiaAnterior extends Failure {
   FailureJornadaDeDiaAnterior({required this.inicio})
     : super(
