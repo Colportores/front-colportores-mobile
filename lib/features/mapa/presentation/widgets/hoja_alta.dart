@@ -75,13 +75,15 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 /// - «Registrar» queda fijo al pie de la hoja y se desplaza todo lo de arriba (#305, como la 07): con
 ///   un teléfono chico, el texto grande o el teclado abierto la acción principal se ve siempre. El
 ///   aviso de falla queda en la parte que se desplaza, justo arriba del botón, y cuando aparece se
-///   lleva a la vista. Con el teclado abierto no se dibuja el motivo de abajo (se está escribiendo):
-///   a 200 % no entraría junto al botón; vuelve al cerrarlo.
+///   lleva a la vista.
 /// - El motivo («Elegí el tipo de ubicación para registrar.») va debajo del botón, como en el canvas,
 ///   mientras lo fijo (botón y motivo) no pase de dos tercios de la hoja: con las fuentes reales eso
-///   alcanza hasta 200 %. Con un texto más grande, que le dejaría poco a los campos, el motivo pasa al
-///   final de lo que se desplaza, justo arriba del botón: así no desborda ni deja inalcanzable lo de
-///   arriba.
+///   alcanza hasta 200 % con el teclado cerrado. Con un texto más grande, que le dejaría poco a los
+///   campos, el motivo pasa al final de lo que se desplaza, justo arriba del botón: así no desborda ni
+///   deja inalcanzable lo de arriba. La misma regla vale con el teclado abierto (#320): el motivo es lo
+///   único que dice por qué «Registrar» está apagado, así que no se oculta. Y si debajo del botón le
+///   dejara a lo que se desplaza menos que el alto de un campo, pasa a lo que se desplaza: gana ver
+///   entero lo que se escribe.
 class HojaAlta extends ConsumerStatefulWidget {
   const HojaAlta({
     super.key,
@@ -89,7 +91,6 @@ class HojaAlta extends ConsumerStatefulWidget {
     required this.alRegistrar,
     required this.alElegirCiudad,
     this.avisos = const [],
-    this.tecladoAbierto = false,
   });
 
   final ParametrosAlta parametros;
@@ -101,10 +102,6 @@ class HojaAlta extends ConsumerStatefulWidget {
   /// Los avisos de arriba de la hoja (sin GPS, mapa sin conexión): se desplazan con el resto.
   final List<Widget> avisos;
 
-  /// Si el teclado está abierto. Lo informa quien está arriba del `Scaffold`: dentro del cuerpo el
-  /// `Scaffold` ya descontó el teclado y `viewInsets.bottom` siempre da 0.
-  final bool tecladoAbierto;
-
   @override
   ConsumerState<HojaAlta> createState() => _HojaAltaState();
 }
@@ -115,6 +112,13 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
 
   /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
   final _claveFalla = GlobalKey();
+
+  /// El campo «Número», para medir cuánto alto ocupa un campo entero (el de «Calle» mide lo mismo).
+  final _claveCampo = GlobalKey();
+
+  /// El alto de un campo, medido en el cuadro anterior: no depende de dónde esté el motivo, solo del
+  /// texto. `null` hasta el primer cuadro.
+  double? _altoCampo;
 
   AltaUbicacionNotifier get _notificador =>
       ref.read(altaUbicacionProvider(widget.parametros).notifier);
@@ -146,7 +150,8 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
       });
     });
     final theme = Theme.of(context);
-    final motivo = widget.tecladoAbierto ? null : _porQueNo(estado);
+    final motivo = _porQueNo(estado);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _medirCampo());
     final estiloMotivo = theme.textTheme.bodyMedium?.copyWith(
       color: ColoresAlta.gris,
       fontSize: 12.5,
@@ -161,8 +166,19 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     );
   }
 
-  /// Si el motivo entra debajo de «Registrar» sin sacarle a lo que se desplaza más de lo razonable.
-  static bool _cabeAbajoDelBoton(
+  /// Mide un campo y, si el alto cambió (la primera vez, o con otro tamaño de texto), vuelve a armar
+  /// la hoja: el lugar del motivo depende de ese alto.
+  void _medirCampo() {
+    if (!mounted) return;
+    final alto = _claveCampo.currentContext?.size?.height;
+    if (alto == null || (_altoCampo != null && (alto - _altoCampo!).abs() < .5)) return;
+    setState(() => _altoCampo = alto);
+  }
+
+  /// Si el motivo entra debajo de «Registrar» sin sacarle a lo que se desplaza más de lo razonable:
+  /// lo fijo no pasa de dos tercios de la hoja y a lo que se desplaza le queda al menos el alto de un
+  /// campo (el que se escribe se ve entero).
+  bool _cabeAbajoDelBoton(
     BuildContext context,
     String motivo,
     TextStyle? estilo,
@@ -178,7 +194,9 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     final alto = medida.height;
     medida.dispose();
     final fijo = _separacionBoton + _alturaBoton + _separacionMotivo + alto;
-    return fijo <= caja.maxHeight * _fraccionFija;
+    if (fijo > caja.maxHeight * _fraccionFija) return false;
+    final campo = _altoCampo;
+    return campo == null || caja.maxHeight - fijo >= campo;
   }
 
   Widget _hoja(
@@ -270,6 +288,7 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                         alCambiar: _notificador.editarNumero,
                         limite: 20,
                         accion: TextInputAction.done,
+                        claveCampo: _claveCampo,
                       ),
                     ),
                   ],

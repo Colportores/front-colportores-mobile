@@ -1,7 +1,8 @@
 // «Registrar» fijo al pie de la hoja del alta (vista 03, HU-UBI-001, #305): lo de arriba se desplaza
 // y el botón queda entero a la vista en cada artboard (03A · 01 a 04), en 360×640, con el texto al
 // 200 % y con el teclado abierto. Más los rótulos de la 03 sobre el mapa (chip del GPS y pista), que
-// escalan con el texto sin tapar el pin, como en la 07.
+// escalan con el texto sin tapar el pin, como en la 07. Y, desde #320, el motivo de «Registrar»
+// apagado también con el teclado abierto.
 //
 // Medidas con las fuentes reales del proyecto (con Ahem el texto se infla).
 import 'dart:async';
@@ -218,7 +219,7 @@ void main() {
 
   group('#305 · el motivo de abajo de «Registrar»', () {
     testWidgets(
-      'se ve debajo del botón y, con el teclado abierto, no se dibuja (vuelve al cerrarlo)',
+      'se ve debajo del botón, como en el canvas, y con el teclado abierto no se pierde',
       (tester) async {
         await _montar(tester, _Artboard.gpsPreciso, escala: 2);
         expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
@@ -229,11 +230,15 @@ void main() {
         );
 
         await _abrirTeclado(tester);
-        expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'también con el teclado');
         _registrarEntero(tester, alto: 640 - _teclado, donde: 'con el teclado');
 
         await _cerrarTeclado(tester);
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        expect(
+          tester.getRect(find.text(TextosAlta.elegiElTipo)).top,
+          greaterThanOrEqualTo(tester.getRect(_registrar).bottom),
+          reason: 'al cerrar el teclado el motivo vuelve a su lugar, debajo del botón',
+        );
         _registrarEntero(tester, alto: 640, donde: 'sin el teclado');
       },
     );
@@ -290,6 +295,255 @@ void main() {
       expect(motivo.bottom, lessThanOrEqualTo(640), reason: 'el motivo no se corta');
       expect(find.text(TextosAlta.marcaElPunto).hitTestable(), findsOneWidget);
     });
+  });
+
+  group('#320 · el motivo de «Registrar» apagado también se ve con el teclado abierto', () {
+    // Los tres motivos que el canvas dibuja bajo el botón apagado, con el estado que los provoca.
+    final motivos = <(_Artboard, String)>[
+      (_Artboard.gpsPreciso, TextosAlta.elegiElTipo),
+      (_Artboard.gpsImpreciso, TextosAlta.elegiPrecision),
+      (_Artboard.sinGps, TextosAlta.marcaElPunto),
+    ];
+
+    /// El área de la hoja que se desplaza, la que queda entre el asa de la hoja y el botón fijo.
+    Rect areaQueSeDesplaza(WidgetTester tester) => tester.getRect(_desplazable);
+
+    /// El campo entero dentro del área que se desplaza y sobre el botón fijo.
+    void campoEntero(WidgetTester tester, Finder campo, {required String donde}) {
+      final c = tester.getRect(campo);
+      final area = areaQueSeDesplaza(tester);
+      expect(c.top, greaterThanOrEqualTo(area.top - .5), reason: '$donde: el campo se corta ($c)');
+      expect(
+        c.bottom,
+        lessThanOrEqualTo(area.bottom + .5),
+        reason: '$donde: el campo se corta abajo ($c en $area)',
+      );
+      expect(c.bottom, lessThanOrEqualTo(tester.getRect(_registrar).top + .5), reason: donde);
+    }
+
+    /// El motivo a la vista: debajo del botón y por encima del teclado, o en lo que se desplaza
+    /// (arriba del botón) si se lleva con el dedo.
+    Future<void> motivoALaVista(
+      WidgetTester tester,
+      String texto, {
+      required double alto,
+      required String donde,
+    }) async {
+      final motivo = find.text(texto);
+      expect(motivo, findsOneWidget, reason: '$donde: el motivo está');
+      final enLoQueSeDesplaza = find
+          .descendant(of: _desplazable, matching: motivo)
+          .evaluate()
+          .isNotEmpty;
+      if (enLoQueSeDesplaza) {
+        await tester.ensureVisible(motivo);
+        await tester.pump();
+        final r = tester.getRect(motivo);
+        final area = areaQueSeDesplaza(tester);
+        expect(r.top, greaterThanOrEqualTo(area.top - .5), reason: '$donde: empieza a la vista');
+        if (r.height <= area.height) {
+          expect(motivo.hitTestable(), findsOneWidget, reason: '$donde: el motivo se alcanza');
+          expect(
+            r.bottom,
+            lessThanOrEqualTo(tester.getRect(_registrar).top + .5),
+            reason: '$donde: el motivo queda justo arriba del botón',
+          );
+        } else {
+          // Más alto que el área (a 3x con el teclado): se ve desde su primer renglón y el resto se
+          // lee desplazando.
+          expect(r.top, lessThan(area.bottom - 8), reason: '$donde: su primer renglón se ve');
+        }
+      } else {
+        final r = tester.getRect(motivo);
+        expect(
+          r.top,
+          greaterThanOrEqualTo(tester.getRect(_registrar).bottom - .5),
+          reason: '$donde: el motivo va debajo del botón',
+        );
+        expect(r.bottom, lessThanOrEqualTo(alto + .5), reason: '$donde: el motivo se corta ($r)');
+        expect(motivo.hitTestable(), findsOneWidget, reason: '$donde: el motivo se ve');
+      }
+    }
+
+    for (final (artboard, texto) in motivos) {
+      for (final escala in [1.0, 2.0]) {
+        testWidgets(
+          '${artboard.rotulo} a 360×640 y texto ${escala}x con el teclado abierto: el motivo está, '
+          '«Registrar» entero sobre el teclado y el número que se escribe se ve entero',
+          (tester) async {
+            await _montar(tester, artboard, escala: escala, teclado: true);
+            const alto = 640 - _teclado;
+
+            _registrarEntero(tester, alto: alto, donde: 'teclado abierto');
+            expect(_habilitado(tester), isFalse, reason: 'sin tipo elegido no se registra');
+            expect(find.text(texto), findsOneWidget, reason: 'el motivo está');
+
+            // Se escribe el número (como lo haría el colportor): la hoja lleva el campo a la vista,
+            // entero, y el motivo sigue ahí.
+            await tester.enterText(_campoNumero, '1240');
+            await asentar(tester);
+            campoEntero(tester, _campoNumero, donde: 'escribiendo el número');
+            _registrarEntero(tester, alto: alto, donde: 'escribiendo el número');
+            expect(find.text(texto), findsOneWidget, reason: 'el motivo no se va al escribir');
+            expect(find.widgetWithText(TextField, '1240'), findsOneWidget);
+
+            // Y el motivo se alcanza: debajo del botón, por encima del teclado, o desplazando.
+            await motivoALaVista(tester, texto, alto: alto, donde: 'teclado abierto');
+          },
+        );
+      }
+    }
+
+    testWidgets('a 360×640 y texto 1x el motivo queda debajo del botón también con el teclado', (
+      tester,
+    ) async {
+      await _montar(tester, _Artboard.gpsPreciso, teclado: true);
+
+      final motivo = find.text(TextosAlta.elegiElTipo);
+      expect(find.descendant(of: _desplazable, matching: motivo), findsNothing);
+      expect(
+        tester.getRect(motivo).top,
+        greaterThanOrEqualTo(tester.getRect(_registrar).bottom),
+        reason: 'como en el canvas: debajo de «Registrar»',
+      );
+      expect(tester.getRect(motivo).bottom, lessThanOrEqualTo(640 - _teclado));
+    });
+
+    testWidgets(
+      'si debajo del botón el motivo le dejara al campo menos que su alto, pasa a lo que se '
+      'desplaza (gana ver lo que se escribe)',
+      (tester) async {
+        // Un teclado cada vez más alto achica la hoja: el motivo está siempre y, mientras va debajo
+        // del botón, lo que se desplaza todavía deja ver un campo entero.
+        await _montar(tester, _Artboard.gpsPreciso);
+        final campo = tester.getRect(_campoNumero).height;
+        var debajo = 0;
+        var enLoQueSeDesplaza = 0;
+        for (var teclado = 280.0; teclado <= 400; teclado += 4) {
+          tester.view.viewInsets = FakeViewPadding(bottom: teclado);
+          await tester.pumpAndSettle();
+          final donde = 'teclado de ${teclado.toInt()} dp';
+
+          final motivo = find.text(TextosAlta.elegiElTipo);
+          expect(motivo, findsOneWidget, reason: '$donde: el motivo está');
+          final seDesplaza = find
+              .descendant(of: _desplazable, matching: motivo)
+              .evaluate()
+              .isNotEmpty;
+          if (seDesplaza) {
+            enLoQueSeDesplaza++;
+          } else {
+            debajo++;
+            expect(
+              areaQueSeDesplaza(tester).height,
+              greaterThanOrEqualTo(campo),
+              reason: '$donde: con el motivo debajo del botón, el campo ya no entra entero',
+            );
+          }
+          _registrarEntero(tester, alto: 640 - teclado, donde: donde);
+        }
+        expect(debajo, greaterThan(0), reason: 'con los teclados bajos el motivo va debajo');
+        expect(
+          enLoQueSeDesplaza,
+          greaterThan(0),
+          reason: 'con los altos pasa a lo que se desplaza',
+        );
+      },
+    );
+
+    testWidgets('a texto 3x con el teclado abierto el motivo también está y se alcanza', (
+      tester,
+    ) async {
+      await _montar(tester, _Artboard.gpsImpreciso, escala: 3, teclado: true);
+
+      _registrarEntero(tester, alto: 640 - _teclado, donde: 'a 3x con el teclado');
+      await motivoALaVista(
+        tester,
+        TextosAlta.elegiPrecision,
+        alto: 640 - _teclado,
+        donde: 'a 3x con el teclado',
+      );
+    });
+
+    testWidgets(
+      'elegido el tipo con el teclado abierto, el motivo se va y «Registrar» se habilita',
+      (tester) async {
+        final repo = await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
+        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+
+        await tocar(tester, find.text('Casa'));
+
+        expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+        expect(_habilitado(tester), isTrue);
+        _registrarEntero(tester, alto: 640 - _teclado, donde: 'con «Casa» y el teclado');
+
+        await tester.tap(_registrar);
+        await asentar(tester);
+        expect(repo.llamadas, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'abrir y cerrar el teclado dos veces seguidas: el motivo no se duplica ni se pierde y '
+      '«Registrar» no se mueve del pie',
+      (tester) async {
+        await _montar(tester, _Artboard.gpsPreciso, escala: 2);
+        final sinTeclado = tester.getRect(_registrar);
+
+        for (var vez = 0; vez < 2; vez++) {
+          await _abrirTeclado(tester);
+          expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'abierto, vuelta $vez');
+          _registrarEntero(tester, alto: 640 - _teclado, donde: 'abierto, vuelta $vez');
+
+          await _cerrarTeclado(tester);
+          expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'cerrado, vuelta $vez');
+          expect(tester.getRect(_registrar), sinTeclado, reason: 'cerrado, vuelta $vez');
+        }
+      },
+    );
+
+    testWidgets('volver atrás y reentrar con el teclado abierto: el motivo está de nuevo', (
+      tester,
+    ) async {
+      await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
+      await tester.enterText(_campoNumero, '1240');
+      await asentar(tester);
+
+      await tester.tap(find.byTooltip(TextosAlta.cerrar));
+      await tester.pumpAndSettle();
+      expect(find.text(TextosAlta.titulo), findsNothing);
+
+      await tester.tap(find.text('abrir'));
+      await asentar(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text(TextosAlta.titulo), findsOneWidget);
+      expect(find.widgetWithText(TextField, '1240'), findsNothing, reason: 'arranca de cero');
+      expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+      _registrarEntero(tester, alto: 640 - _teclado, donde: 'al reentrar con el teclado');
+    });
+
+    testWidgets(
+      'datos límite: calle de 120 caracteres y número de 20 a texto 2x con el teclado abierto',
+      (tester) async {
+        await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
+        await tester.enterText(
+          _campoCalle,
+          List.filled(12, 'Avenida Ñandú').join(' ').substring(0, 120),
+        );
+        await tester.enterText(_campoNumero, '12345678901234567890');
+        await asentar(tester);
+
+        _registrarEntero(tester, alto: 640 - _teclado, donde: 'con textos largos y teclado');
+        campoEntero(tester, _campoNumero, donde: 'con textos largos y teclado');
+        await motivoALaVista(
+          tester,
+          TextosAlta.elegiElTipo,
+          alto: 640 - _teclado,
+          donde: 'con textos largos y teclado',
+        );
+      },
+    );
   });
 
   group('#305 · «Activar GPS» y los avisos de arriba siguen a mano', () {

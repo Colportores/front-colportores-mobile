@@ -232,7 +232,6 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                                 parametros: widget.parametros,
                                 alRegistrar: _registrar,
                                 alElegirCiudad: _elegirCiudad,
-                                tecladoAbierto: tecladoAbierto,
                                 avisos: [
                                   if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
                                   AvisoMapaConectado(ambito: estado.ambitoMapa),
