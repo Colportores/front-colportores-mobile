@@ -180,10 +180,23 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     });
     ref.listen(proveedor.select((s) => s.falla), (anterior, nueva) {
       if (nueva == null || nueva == anterior) return;
+      // El aviso de «cambió mientras la editabas» trae «Abrir de nuevo» al pie: se lleva a la vista
+      // el pie del aviso. Con el texto grande el aviso es más alto que el área que se desplaza y,
+      // alineado por el tope, la acción quedaba bajo el botón fijo. Los demás avisos se leen desde
+      // arriba.
+      final conAccion = nueva is FailureUbicacionCambio;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final contexto = _claveFalla.currentContext;
         if (mounted && contexto != null) {
-          unawaited(Scrollable.ensureVisible(contexto, duration: Duration.zero));
+          unawaited(
+            Scrollable.ensureVisible(
+              contexto,
+              duration: Duration.zero,
+              alignmentPolicy: conAccion
+                  ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+                  : ScrollPositionAlignmentPolicy.explicit,
+            ),
+          );
         }
       });
     });

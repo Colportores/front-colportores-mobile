@@ -7,6 +7,7 @@
 // - Los rótulos del mapa escalan con el texto y nunca tapan el pin; el pin sigue marcando el centro
 //   del mapa (el punto que se guarda).
 // - La insignia «Editado» no se parte a mitad de palabra.
+// - El aviso «cambió mientras la editabas» lleva a la vista su pie, con «Abrir de nuevo» (#307).
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
@@ -244,5 +245,136 @@ void main() {
         expect(insignia.top, greaterThanOrEqualTo(etiqueta.bottom - 1));
       });
     }
+  });
+
+  group('07 · el aviso «cambió mientras la editabas» y su acción «Abrir de nuevo» (#307)', () {
+    /// Lo que se desplaza de la hoja: el aviso aparece al final y se lleva a la vista.
+    Rect areaQueSeDesplaza(WidgetTester tester) => tester.getRect(
+      find
+          .descendant(
+            of: find.byType(HojaModificarDatos),
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first,
+    );
+
+    /// Escribe el número y guarda con la ubicación cambiada por debajo: sale el aviso.
+    Future<void> fallarPorCambio(
+      WidgetTester tester,
+      RepoEdicionFalso repo, {
+      String numero = '1238',
+      int hora = 9,
+    }) async {
+      await tester.enterText(_campoNumero, numero);
+      await _asentar(tester);
+      repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, hora));
+      await tester.tap(_guardar);
+      await _asentar(tester);
+      expect(find.textContaining('cambió mientras la editabas'), findsOneWidget);
+    }
+
+    /// «Abrir de nuevo» está dentro del área que se desplaza y no bajo el botón fijo.
+    void accionALaVista(WidgetTester tester) {
+      final accion = tester.getRect(find.text(TextosModificar.abrirDeNuevo));
+      final area = areaQueSeDesplaza(tester);
+      final fijo = tester.getRect(_guardar);
+      expect(accion.top, greaterThanOrEqualTo(area.top - .5), reason: 'no queda cortada arriba');
+      expect(accion.bottom, lessThanOrEqualTo(area.bottom + .5), reason: 'no queda cortada abajo');
+      expect(
+        accion.bottom,
+        lessThanOrEqualTo(fijo.top + .5),
+        reason: 'no queda bajo el botón fijo',
+      );
+      expect(fijo.bottom, lessThanOrEqualTo(tester.view.physicalSize.height));
+    }
+
+    for (final (nombre, tamano, escala) in <(String, Size, double)>[
+      ('360×640', const Size(360, 640), 1.0),
+      ('360×640', const Size(360, 640), 2.0),
+      ('320×568', const Size(320, 568), 2.0),
+      ('412×915', const Size(412, 915), 2.0),
+    ]) {
+      testWidgets('en $nombre con el texto al ${(escala * 100).round()} % la acción queda a la '
+          'vista apenas sale el aviso y se toca sin desplazar', (tester) async {
+        final (repo, _) = await _montar(tester, escala: escala, tamano: tamano);
+
+        await fallarPorCambio(tester, repo);
+
+        accionALaVista(tester);
+        expect(tester.takeException(), isNull);
+        if (escala == 1) {
+          final aviso = tester.getRect(
+            find.ancestor(
+              of: find.textContaining('cambió mientras la editabas'),
+              matching: find.byType(AvisoAlta),
+            ),
+          );
+          final area = areaQueSeDesplaza(tester);
+          expect(
+            aviso.top,
+            greaterThanOrEqualTo(area.top - .5),
+            reason: 'con texto normal entra entero',
+          );
+          expect(aviso.bottom, lessThanOrEqualTo(area.bottom + .5));
+        }
+        final lecturas = repo.lecturas;
+        await tester.tap(find.text(TextosModificar.abrirDeNuevo));
+        await _asentar(tester);
+        expect(find.text(TextosModificar.abrirDeNuevo), findsNothing, reason: 'el toque llegó');
+        expect(repo.lecturas, lecturas + 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('con el teclado abierto en 360×640 al ${(escala * 100).round()} % la acción '
+          'sigue a la vista', (tester) async {
+        final (repo, _) = await _montar(tester, escala: escala);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+        addTearDown(tester.view.resetViewInsets);
+        await _asentar(tester);
+
+        await fallarPorCambio(tester, repo);
+
+        accionALaVista(tester);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('si la ubicación vuelve a cambiar después de «Abrir de nuevo», el aviso vuelve a '
+        'llevarse a la vista', (tester) async {
+      final (repo, _) = await _montar(tester, escala: 2);
+      await fallarPorCambio(tester, repo);
+      await tester.tap(find.text(TextosModificar.abrirDeNuevo));
+      await _asentar(tester);
+      expect(find.text(TextosModificar.abrirDeNuevo), findsNothing);
+
+      await fallarPorCambio(tester, repo, numero: '1310', hora: 10);
+
+      accionALaVista(tester);
+      expect(repo.escrituras, isEmpty, reason: 'nunca se pisó lo que cambió por debajo');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('otra falla (no la de «cambió») sigue llevando a la vista el tope del aviso', (
+      tester,
+    ) async {
+      final (repo, _) = await _montar(tester, escala: 2);
+      repo.comportamiento = (_, _, _) async => throw StateError('disco');
+      await tester.enterText(_campoNumero, '1238');
+      await _asentar(tester);
+
+      await tester.tap(_guardar);
+      await _asentar(tester);
+
+      final aviso = tester.getRect(
+        find.ancestor(
+          of: find.text(TextosModificar.noPudimosGuardar),
+          matching: find.byType(AvisoAlta),
+        ),
+      );
+      expect(aviso.top, greaterThanOrEqualTo(areaQueSeDesplaza(tester).top - .5));
+      expect(find.text(TextosModificar.abrirDeNuevo), findsNothing);
+    });
   });
 }
