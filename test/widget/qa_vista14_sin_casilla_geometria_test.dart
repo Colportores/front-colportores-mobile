@@ -1,9 +1,11 @@
 // QA de la vista 14 sin casilla (#272): geometría con las fuentes reales (con Ahem el texto mide
 // otra cosa). Texto cortado y etiquetas que se salen de la píldora del botón con el texto al 200 %.
+// QA #281: lo mismo con la espera de 60 s a la vista («Podés pedir otro enlace en Ns.»).
 import 'dart:io';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -28,7 +30,12 @@ Future<void> _cargarFuentesReales() async {
   }
 }
 
-Future<void> _montar(WidgetTester tester, {required Size tamano, required double escala}) async {
+Future<void> _montar(
+  WidgetTester tester, {
+  required Size tamano,
+  required double escala,
+  DateTime? ultimoEnvio,
+}) async {
   tester.view
     ..physicalSize = tamano
     ..devicePixelRatio = 1;
@@ -45,8 +52,20 @@ Future<void> _montar(WidgetTester tester, {required Size tamano, required double
           AuthRemoteDataSourceEnMemoria(credenciales: const {}),
         ),
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        if (ultimoEnvio != null)
+          ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(
+            UltimoEnvioRecuperacionEnMemoria(ultimoEnvio),
+          ),
       ],
-      child: MaterialApp(theme: temaClaro(), home: const RecuperacionPasswordPage()),
+      child: MaterialApp(
+        theme: temaClaro(),
+        home: RecuperacionPasswordPage(
+          // El reloj de la pantalla: 20 s después del último envío, quedan 40 s.
+          ahora: ultimoEnvio == null
+              ? DateTime.now
+              : () => ultimoEnvio.add(const Duration(seconds: 20)),
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -140,5 +159,39 @@ void main() {
 
       expect(_esquinasFuera(tester), isEmpty, reason: 'la etiqueta se sale de la píldora');
     });
+  });
+
+  // QA #281: «Podés pedir otro enlace en 40s.» va debajo del botón deshabilitado. A texto 2x no se
+  // corta, se puede llegar con el scroll y el botón conserva su etiqueta dentro de la píldora.
+  group('QA #281 · vista 14 · la espera a la vista', () {
+    final ultimoEnvio = DateTime.utc(2026, 10, 8, 10);
+    const espera = 'Podés pedir otro enlace en 40s.';
+
+    for (final (tamano, escala) in [
+      (const Size(360, 640), 1.0),
+      (const Size(360, 640), 2.0),
+      (const Size(412, 915), 2.0),
+    ]) {
+      testWidgets(
+        'a ${tamano.width.toInt()}×${tamano.height.toInt()} y texto $escala la espera no se corta, '
+        'se alcanza con el scroll y la etiqueta del botón entra en la píldora',
+        (tester) async {
+          await _montar(tester, tamano: tamano, escala: escala, ultimoEnvio: ultimoEnvio);
+
+          expect(find.text(espera), findsOneWidget);
+          final p = tester.renderObject<RenderParagraph>(find.text(espera));
+          expect(p.didExceedMaxLines, isFalse, reason: 'la espera quedó cortada');
+          await tester.ensureVisible(find.text(espera));
+          await tester.pump();
+          final rect = tester.getRect(find.text(espera));
+          expect(rect.bottom, lessThanOrEqualTo(tamano.height));
+          expect(rect.top, greaterThanOrEqualTo(0));
+          expect(rect.left, greaterThanOrEqualTo(0));
+          expect(rect.right, lessThanOrEqualTo(tamano.width));
+          expect(_esquinasFuera(tester), isEmpty, reason: 'la etiqueta se sale de la píldora');
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   });
 }

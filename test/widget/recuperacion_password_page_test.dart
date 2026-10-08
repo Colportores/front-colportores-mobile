@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_envio_recuperacion_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -12,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/db_local_repository_en_memoria.dart';
+import '../helpers/logger_mudo.dart';
 
 /// [RecuperacionPasswordPage] aislada (sin [ColportoresApp]) — mismo criterio que
 /// `login_page_test.dart`.
@@ -23,6 +27,8 @@ Future<void> _montarPagina(
   WidgetTester tester, {
   ThemeData? tema,
   required AuthRemoteDataSourceEnMemoria remote,
+  UltimoEnvioRecuperacionRepository? ultimoEnvio,
+  DateTime Function()? ahora,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -30,10 +36,46 @@ Future<void> _montarPagina(
       dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      if (ultimoEnvio != null)
+        ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(ultimoEnvio),
     ],
-    child: MaterialApp(theme: tema ?? temaClaro(), home: const RecuperacionPasswordPage()),
+    child: MaterialApp(
+      theme: tema ?? temaClaro(),
+      home: RecuperacionPasswordPage(ahora: ahora ?? DateTime.now),
+    ),
   ),
 );
+
+/// El reloj de la pantalla en los tests: la hora de ahora, que el test adelanta a mano.
+final class _Reloj {
+  _Reloj(this.ahora);
+
+  DateTime ahora;
+
+  DateTime call() => ahora;
+
+  void avanzar(Duration cuanto) => ahora = ahora.add(cuanto);
+}
+
+/// Pasa [cuanto] tiempo: el reloj de la pantalla y el del test (donde corre su timer).
+Future<void> _pasar(WidgetTester tester, _Reloj reloj, Duration cuanto) async {
+  reloj.avanzar(cuanto);
+  await tester.pump(cuanto);
+}
+
+/// Lee la hora guardada cuando el test lo dice: para tocar «Enviar» mientras todavía se lee.
+final class _UltimoEnvioDemorado implements UltimoEnvioRecuperacionRepository {
+  _UltimoEnvioDemorado(this._lectura);
+
+  final Completer<DateTime?> _lectura;
+  DateTime? guardado;
+
+  @override
+  Future<DateTime?> leer() => _lectura.future;
+
+  @override
+  Future<void> guardar(DateTime cuando) async => guardado = cuando;
+}
 
 const _mensajeNeutro = 'Si el email está registrado, te enviamos un enlace de recuperación';
 const _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
@@ -74,6 +116,8 @@ FilledButton _enviar(WidgetTester tester) =>
 Future<void> _montarSobreLogin(
   WidgetTester tester, {
   required AuthRemoteDataSourceEnMemoria remote,
+  UltimoEnvioRecuperacionRepository? ultimoEnvio,
+  DateTime Function()? ahora,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -81,6 +125,8 @@ Future<void> _montarSobreLogin(
         dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
         authRemoteDataSourceProvider.overrideWithValue(remote),
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        if (ultimoEnvio != null)
+          ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(ultimoEnvio),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -90,7 +136,9 @@ Future<void> _montarSobreLogin(
               child: TextButton(
                 key: const Key('abrir_recuperacion'),
                 onPressed: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(builder: (_) => const RecuperacionPasswordPage()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => RecuperacionPasswordPage(ahora: ahora ?? DateTime.now),
+                  ),
                 ),
                 child: const Text('pantalla de abajo'),
               ),
@@ -300,7 +348,8 @@ void main() {
 
     testWidgets('A05 «Volver al login» y el atrás de A01 cierran la pantalla', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
-      await _montarSobreLogin(tester, remote: remote);
+      final ahora = DateTime(2026, 10, 8, 10);
+      await _montarSobreLogin(tester, remote: remote, ahora: () => ahora);
       await _completar(tester);
       await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
       await tester.pumpAndSettle();
@@ -316,9 +365,14 @@ void main() {
       expect(
         _textoDelCampo(tester),
         isEmpty,
-        reason: 'al volver a entrar, el formulario queda limpio',
+        reason: 'al volver a entrar el correo no se guarda: solo la hora del envío (#281)',
       );
-      expect(_enviar(tester).onPressed, isNotNull);
+      expect(
+        _enviar(tester).onPressed,
+        isNull,
+        reason: 'los 60 s del envío siguen corriendo aunque se haya salido de la pantalla (#281)',
+      );
+      expect(find.text('Podés pedir otro enlace en 60s.'), findsOneWidget);
       await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
       await tester.pumpAndSettle();
       expect(find.byType(RecuperacionPasswordPage), findsNothing);
@@ -459,6 +513,21 @@ void main() {
         await _completar(tester);
         await _tocar(tester, 'recuperacion_password_enviar');
         await tester.pumpAndSettle();
+      },
+      // Estado del escenario «Edge – volver a “Olvidé mi contraseña” con la espera vigente» (#281):
+      // el canvas no lo dibuja, lo pide la HU.
+      'A01 con la espera vigente (#281)': (tester) async {
+        final ahora = DateTime.utc(2026, 10, 8, 10);
+        await _montarPagina(
+          tester,
+          remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+          ultimoEnvio: UltimoEnvioRecuperacionEnMemoria(
+            ahora.subtract(const Duration(seconds: 20)),
+          ),
+          ahora: () => ahora,
+        );
+        await tester.pumpAndSettle();
+        await _completar(tester);
       },
     };
 
@@ -669,6 +738,517 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
+    });
+  });
+
+  group('RecuperacionPasswordPage — la espera sobrevive a salir y volver a entrar (#281)', () {
+    const textoEspera = 'Podés pedir otro enlace en';
+
+    late _Reloj reloj;
+    late AuthRemoteDataSourceEnMemoria remote;
+
+    setUp(() {
+      reloj = _Reloj(DateTime.utc(2026, 10, 8, 10));
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+    });
+
+    /// El teléfono con un enlace pedido hace [hace].
+    UltimoEnvioRecuperacionEnMemoria envioHace(Duration hace) =>
+        UltimoEnvioRecuperacionEnMemoria(reloj.ahora.subtract(hace));
+
+    Future<void> reentrar(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('abrir_recuperacion')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('al volver a entrar a los 20 s: el formulario de siempre con el correo editable, '
+        '«Enviar» deshabilitado, «Podés pedir otro enlace en 40s.» y ninguna llamada al servidor', (
+      tester,
+    ) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 20)),
+        ahora: reloj.call,
+      );
+
+      expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
+      expect(find.text(_textoAviso), findsOneWidget);
+      expect(find.text('$textoEspera 40s.'), findsOneWidget);
+      expect(_enviar(tester).onPressed, isNull);
+      expect(find.text('Enviar enlace de recuperación'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('recuperacion_password_email'))).enabled,
+        isTrue,
+        reason: 'el correo se puede editar mientras se espera',
+      );
+      await _completar(tester);
+      expect(_textoDelCampo(tester), 'lucia.silva@correo.com');
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+      expect(find.byKey(const Key('recuperacion_password_reenviar')), findsNothing);
+      expect(find.text(_mensajeNeutro), findsNothing);
+      expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+    });
+
+    testWidgets('dentro de la espera, tocar el botón o el «Listo» del teclado no llama al '
+        'servidor', (tester) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 20)),
+        ahora: reloj.call,
+      );
+      await _completar(tester);
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')), warnIfMissed: false);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+      expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+      expect(find.text('$textoEspera 40s.'), findsOneWidget);
+    });
+
+    testWidgets('el aviso baja cada segundo; al llegar a 0 desaparece, el botón se habilita y '
+        'envía lo que se escribió mientras tanto', (tester) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 56)),
+        ahora: reloj.call,
+      );
+      await _completar(tester, email: 'ana@correo.com');
+      expect(find.text('$textoEspera 4s.'), findsOneWidget);
+
+      for (final restante in [3, 2, 1]) {
+        await _pasar(tester, reloj, const Duration(seconds: 1));
+        expect(find.text('$textoEspera ${restante}s.'), findsOneWidget);
+        expect(_enviar(tester).onPressed, isNull);
+      }
+
+      await _pasar(tester, reloj, const Duration(seconds: 1));
+      expect(find.textContaining(textoEspera), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+      expect(_textoDelCampo(tester), 'ana@correo.com', reason: 'lo escrito no se pierde');
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+      expect(find.text(_mensajeNeutro), findsOneWidget);
+      expect(remote.solicitudesRecuperacionPorEmail, {'ana@correo.com': 1});
+    });
+
+    for (final (nombre, hace) in [
+      ('justo 60 s', const Duration(seconds: 60)),
+      ('61 s', const Duration(seconds: 61)),
+      ('una hora', const Duration(hours: 1)),
+    ]) {
+      testWidgets('con el último enlace hace $nombre ya no hay espera: formulario normal', (
+        tester,
+      ) async {
+        await _montarSobreLogin(
+          tester,
+          remote: remote,
+          ultimoEnvio: envioHace(hace),
+          ahora: reloj.call,
+        );
+
+        expect(find.textContaining(textoEspera), findsNothing);
+        expect(_enviar(tester).onPressed, isNotNull);
+      });
+    }
+
+    testWidgets('sin ningún enlace pedido antes, no hay espera', (tester) async {
+      await _montarSobreLogin(tester, remote: remote, ahora: reloj.call);
+
+      expect(find.textContaining(textoEspera), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('faltando 500 ms se muestra «1s» (se redondea para arriba) y a la vuelta se '
+        'habilita', (tester) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(milliseconds: 59500)),
+        ahora: reloj.call,
+      );
+
+      expect(find.text('$textoEspera 1s.'), findsOneWidget);
+      await _pasar(tester, reloj, const Duration(seconds: 1));
+      expect(find.textContaining(textoEspera), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    for (final (nombre, adelantado) in [
+      ('20 s', const Duration(seconds: 20)),
+      ('3 horas', const Duration(hours: 3)),
+    ]) {
+      testWidgets('si la hora guardada quedó $nombre en el futuro (se atrasó el reloj), la espera '
+          'es de 60 s, no más', (tester) async {
+        await _montarSobreLogin(
+          tester,
+          remote: remote,
+          ultimoEnvio: UltimoEnvioRecuperacionEnMemoria(reloj.ahora.add(adelantado)),
+          ahora: reloj.call,
+        );
+
+        expect(find.text('$textoEspera 60s.'), findsOneWidget);
+        await _pasar(tester, reloj, const Duration(seconds: 60));
+        expect(find.textContaining(textoEspera), findsNothing);
+        expect(_enviar(tester).onPressed, isNotNull);
+      });
+    }
+
+    testWidgets('volver a entrar varias veces sigue contando desde el mismo envío, no desde la '
+        'entrada', (tester) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 10)),
+        ahora: reloj.call,
+      );
+      expect(find.text('$textoEspera 50s.'), findsOneWidget);
+
+      for (final (paso, restante) in [(15, 35), (20, 15)]) {
+        await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
+        await tester.pumpAndSettle();
+        reloj.avanzar(Duration(seconds: paso));
+        await reentrar(tester);
+        expect(find.text('$textoEspera ${restante}s.'), findsOneWidget);
+      }
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
+      await tester.pumpAndSettle();
+      reloj.avanzar(const Duration(seconds: 15));
+      await reentrar(tester);
+      expect(find.textContaining(textoEspera), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('el atrás del sistema sale de la pantalla también durante la espera', (
+      tester,
+    ) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 20)),
+        ahora: reloj.call,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+    });
+
+    testWidgets('de segundo plano, la espera se recalcula con la hora real y no con el timer', (
+      tester,
+    ) async {
+      await _montarSobreLogin(
+        tester,
+        remote: remote,
+        ultimoEnvio: envioHace(const Duration(seconds: 20)),
+        ahora: reloj.call,
+      );
+      expect(find.text('$textoEspera 40s.'), findsOneWidget);
+
+      reloj.avanzar(const Duration(seconds: 30));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('$textoEspera 10s.'), findsOneWidget);
+
+      reloj.avanzar(const Duration(seconds: 30));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.textContaining(textoEspera), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    group('qué guarda el teléfono', () {
+      testWidgets('un envío que sale guarda su hora, y salir y volver a entrar la respeta', (
+        tester,
+      ) async {
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+        expect(await memoria.leer(), reloj.ahora);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_volver_login')));
+        await tester.pumpAndSettle();
+        reloj.avanzar(const Duration(seconds: 25));
+        await reentrar(tester);
+
+        expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+        expect(find.text('$textoEspera 35s.'), findsOneWidget);
+        expect(_enviar(tester).onPressed, isNull);
+      });
+
+      testWidgets('«Reenviar» guarda la hora nueva y la espera corre desde ahí', (tester) async {
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+        await _pasar(tester, reloj, const Duration(seconds: 60));
+        expect(_reenviar(tester).onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_reenviar')));
+        await tester.pumpAndSettle();
+        expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 2);
+        expect(await memoria.leer(), reloj.ahora);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_volver_login')));
+        await tester.pumpAndSettle();
+        reloj.avanzar(const Duration(seconds: 10));
+        await reentrar(tester);
+        expect(find.text('$textoEspera 50s.'), findsOneWidget);
+      });
+
+      testWidgets('A05 y la reentrada cuentan desde el mismo envío guardado', (tester) async {
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester);
+        final salio = reloj.ahora;
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+        await _pasar(tester, reloj, const Duration(seconds: 45));
+        expect(find.text('Reenviar en 15s'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_volver_login')));
+        await tester.pumpAndSettle();
+        await reentrar(tester);
+
+        expect(find.text('$textoEspera 15s.'), findsOneWidget);
+        expect(await memoria.leer(), salio, reason: 'ver la espera no mueve la hora del envío');
+      });
+
+      testWidgets('un envío sin conexión (A06) no guarda la hora: se puede reintentar al instante '
+          'y al volver a entrar no hay espera', (tester) async {
+        remote.simularSinConexion = true;
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Necesitás conexión para solicitar la recuperación'), findsOneWidget);
+        expect(await memoria.leer(), isNull);
+        expect(find.textContaining(textoEspera), findsNothing);
+        expect(_enviar(tester).onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_atras')));
+        await tester.pumpAndSettle();
+        await reentrar(tester);
+        expect(find.textContaining(textoEspera), findsNothing);
+        expect(_enviar(tester).onPressed, isNotNull);
+      });
+
+      testWidgets('un email inválido (A03) no guarda la hora', (tester) async {
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester, email: 'lucia@');
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Revisá el email: parece incompleto.'), findsOneWidget);
+        expect(await memoria.leer(), isNull);
+        expect(find.textContaining(textoEspera), findsNothing);
+      });
+
+      testWidgets('si el envío falla con un error del servidor, la hora no se guarda', (
+        tester,
+      ) async {
+        remote.fallaAlSolicitarRecuperacion = const ServidorException(status: 500);
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: memoria, ahora: reloj.call);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('recuperacion_password_error_general')), findsOneWidget);
+        expect(await memoria.leer(), isNull);
+        expect(_enviar(tester).onPressed, isNotNull);
+      });
+
+      testWidgets('si el enlace sale pero la pantalla ya no está, la hora igual queda guardada', (
+        tester,
+      ) async {
+        remote.demoraRecuperacion = Completer<void>();
+        final memoria = UltimoEnvioRecuperacionEnMemoria();
+        final visible = ValueNotifier<bool>(true);
+        addTearDown(visible.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+              authRemoteDataSourceProvider.overrideWithValue(remote),
+              authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+              ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(memoria),
+            ],
+            child: MaterialApp(
+              theme: temaClaro(),
+              home: ValueListenableBuilder<bool>(
+                valueListenable: visible,
+                builder: (_, mostrar, _) =>
+                    mostrar ? RecuperacionPasswordPage(ahora: reloj.call) : const SizedBox(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pump();
+        expect(find.text('Enviando…'), findsOneWidget);
+
+        visible.value = false;
+        await tester.pump();
+        reloj.avanzar(const Duration(seconds: 2));
+        remote.demoraRecuperacion!.complete();
+        await tester.pumpAndSettle();
+
+        expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
+        expect(await memoria.leer(), reloj.ahora, reason: 'la hora del fin de la llamada');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('con el almacén roto al guardar, el envío igual termina en A05 con su cuenta '
+          'regresiva', (tester) async {
+        final almacen = AlmacenSeguroEnMemoria();
+        final repo = UltimoEnvioRecuperacionRepositoryImpl(almacen, logger: loggerMudo());
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: repo, ahora: reloj.call);
+        await _completar(tester);
+        almacen.simularFalla = true;
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.text(_mensajeNeutro), findsOneWidget);
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(find.byKey(const Key('recuperacion_password_error_general')), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('con el almacén roto al leer, la pantalla abre normal (sin espera) y envía', (
+        tester,
+      ) async {
+        final almacen = AlmacenSeguroEnMemoria()..simularFalla = true;
+        final repo = UltimoEnvioRecuperacionRepositoryImpl(almacen, logger: loggerMudo());
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: repo, ahora: reloj.call);
+
+        expect(find.textContaining(textoEspera), findsNothing);
+        expect(_enviar(tester).onPressed, isNotNull);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+        expect(find.text(_mensajeNeutro), findsOneWidget);
+      });
+
+      testWidgets('con el almacén seguro real, la espera sobrevive a cerrar y abrir la app', (
+        tester,
+      ) async {
+        final almacen = AlmacenSeguroEnMemoria();
+        UltimoEnvioRecuperacionRepositoryImpl repo() =>
+            UltimoEnvioRecuperacionRepositoryImpl(almacen, logger: loggerMudo());
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: repo(), ahora: reloj.call);
+        await _completar(tester);
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pumpAndSettle();
+
+        // Se cierra la app: se descarta todo el árbol, el almacén seguro queda.
+        await tester.pumpWidget(const SizedBox());
+        reloj.avanzar(const Duration(seconds: 20));
+        await _montarSobreLogin(tester, remote: remote, ultimoEnvio: repo(), ahora: reloj.call);
+
+        expect(find.text('$textoEspera 40s.'), findsOneWidget);
+        expect(_enviar(tester).onPressed, isNull);
+      });
+    });
+
+    group('un toque mientras todavía se lee la hora guardada', () {
+      testWidgets('con una espera vigente no envía: al terminar la lectura muestra la espera', (
+        tester,
+      ) async {
+        final lectura = Completer<DateTime?>();
+        final demorado = _UltimoEnvioDemorado(lectura);
+        await _montarPagina(tester, remote: remote, ultimoEnvio: demorado, ahora: reloj.call);
+        await tester.pump();
+        await _completar(tester);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pump();
+        lectura.complete(reloj.ahora.subtract(const Duration(seconds: 20)));
+        await tester.pumpAndSettle();
+
+        expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+        expect(demorado.guardado, isNull);
+        expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+        expect(find.text('$textoEspera 40s.'), findsOneWidget);
+        expect(
+          find.text('Enviar enlace de recuperación'),
+          findsOneWidget,
+          reason: 'no queda trabado en «Enviando…»',
+        );
+        expect(_enviar(tester).onPressed, isNull);
+      });
+
+      testWidgets('sin espera vigente envía recién cuando la lectura terminó, una sola vez', (
+        tester,
+      ) async {
+        final lectura = Completer<DateTime?>();
+        final demorado = _UltimoEnvioDemorado(lectura);
+        await _montarPagina(tester, remote: remote, ultimoEnvio: demorado, ahora: reloj.call);
+        await tester.pump();
+        await _completar(tester);
+
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+        await tester.pump();
+        expect(remote.solicitudesRecuperacionPorEmail, isEmpty, reason: 'todavía no se sabe');
+        lectura.complete(null);
+        await tester.pumpAndSettle();
+
+        expect(remote.solicitudesRecuperacionPorEmail['lucia.silva@correo.com'], 1);
+        expect(find.text(_mensajeNeutro), findsOneWidget);
+        expect(demorado.guardado, reloj.ahora);
+      });
+    });
+
+    group('tamaños grandes con la espera a la vista', () {
+      for (final (tam, escala) in [
+        (const Size(360, 640), 1.0),
+        (const Size(360, 640), 2.0),
+        (const Size(412, 915), 2.0),
+      ]) {
+        testWidgets('${tam.width.toInt()}x${tam.height.toInt()} con texto $escala: la espera y '
+            'un email de 300 caracteres no desbordan y el aviso se alcanza', (tester) async {
+          tester.view.physicalSize = tam;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          tester.platformDispatcher.textScaleFactorTestValue = escala;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await _montarPagina(
+            tester,
+            remote: remote,
+            ultimoEnvio: envioHace(const Duration(seconds: 20)),
+            ahora: reloj.call,
+          );
+          await tester.pumpAndSettle();
+
+          await tester.enterText(
+            find.byKey(const Key('recuperacion_password_email')),
+            '${'a' * 300}@correo.com',
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('$textoEspera 40s.'), findsOneWidget);
+          await tester.ensureVisible(find.byKey(const Key('recuperacion_password_espera')));
+          expect(tester.takeException(), isNull);
+        });
+      }
     });
   });
 

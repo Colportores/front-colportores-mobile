@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../domain/usecases/espera_recuperacion_use_cases.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import '../providers/auth_providers.dart';
 
@@ -22,6 +23,14 @@ import '../providers/auth_providers.dart';
 /// `SesionNotifier`: la solicitud no toca el estado de sesión (igual que
 /// `SesionNotifier.reenviarVerificacion` en HU-AUTH-002), así que ni siquiera hace falta pasar por
 /// el notifier.
+///
+/// La espera de 60 s entre envíos **sobrevive a salir y volver a entrar** (decisión de Cristian,
+/// 02/10, #223; seguimiento #281): el teléfono guarda la hora del último envío (por teléfono, no por
+/// correo). Al abrir la pantalla con la espera vigente, el formulario es el de siempre, con el
+/// correo editable, pero «Enviar enlace de recuperación» queda deshabilitado y debajo dice «Podés
+/// pedir otro enlace en Ns.», que baja cada segundo; al llegar a 0 el aviso desaparece y el botón
+/// se habilita. Dentro de la espera no se llama al servidor, y nunca se muestra la pantalla de
+/// éxito sin que haya habido un envío. La pantalla de éxito toma la misma hora guardada.
 ///
 /// El mensaje de éxito es **siempre el mismo** exista o no el email (anti-enumeración, OWASP): el
 /// back (`AuthRepositoryImpl.solicitarRecuperacionPassword`) ya enmascara como éxito tanto "no
@@ -53,7 +62,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// "5 por hora" no se replica acá: ver dartdoc de [SolicitarRecuperacionPasswordUseCase] y el
   /// comentario en el issue #46 — no hay infraestructura que lo aplique tal cual lo pide la HU
   /// todavía, y dónde resolverlo es una decisión pendiente de Cristian.
-  static const Duration _cooldown = Duration(seconds: 60);
+  static const Duration _cooldown = ConsultarEsperaRecuperacionUseCase.espera;
 
   /// Texto fijo por la HU (líneas 809/816): igual exista o no el email. El diseño lo abrevia
   /// («Te enviamos un enlace de recuperación»), pero eso afirma que el email existe: manda la HU.
@@ -76,10 +85,33 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// segundos se recalculan desde acá, porque el timer se atrasa con la app pausada.
   DateTime? _venceCooldown;
 
+  /// `true` mientras se lee del teléfono la hora del último envío: un envío pedido en ese instante
+  /// espera a [_lecturaEspera] para no saltearse una espera vigente.
+  bool _leyendoEspera = true;
+  late final Future<void> _lecturaEspera;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lecturaEspera = _leerEsperaGuardada();
+  }
+
+  /// Lee la hora del último envío que guarda el teléfono y, si la espera sigue vigente, la retoma:
+  /// botón deshabilitado y la cuenta regresiva (sin llamar al servidor).
+  Future<void> _leerEsperaGuardada() async {
+    final consultar = ref.read(consultarEsperaRecuperacionUseCaseProvider);
+    final ahora = widget.ahora();
+    var restante = Duration.zero;
+    try {
+      restante = (await consultar(
+        ConsultarEsperaRecuperacionParams(ahora: ahora),
+      )).fold((_) => Duration.zero, (restante) => restante);
+    } finally {
+      _leyendoEspera = false;
+    }
+    if (!mounted || restante <= Duration.zero) return;
+    _comenzarEspera(desde: ahora, restante: restante);
   }
 
   @override
@@ -106,10 +138,12 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     super.dispose();
   }
 
-  void _iniciarCooldown() {
+  /// Arranca la cuenta regresiva de [restante], contada desde la hora [desde] del reloj de la
+  /// página (la del envío, o la de la lectura de la hora guardada).
+  void _comenzarEspera({required DateTime desde, required Duration restante}) {
     _timer?.cancel();
-    _venceCooldown = widget.ahora().add(_cooldown);
-    setState(() => _segundosRestantes = _cooldown.inSeconds);
+    _venceCooldown = desde.add(restante);
+    setState(() => _segundosRestantes = (restante.inMilliseconds / 1000).ceil());
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -130,15 +164,30 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   Future<void> _enviar() async {
     if (!_puedeEnviar) return;
 
+    final solicitar = ref.read(solicitarRecuperacionPasswordUseCaseProvider);
+    final registrar = ref.read(registrarEnvioRecuperacionUseCaseProvider);
     setState(() {
       _enviando = true;
       _erroresCampo = const {};
       _errorGeneral = null;
     });
 
-    final resultado = await ref.read(solicitarRecuperacionPasswordUseCaseProvider)(
-      SolicitarRecuperacionPasswordParams(email: _email.text),
-    );
+    // Un envío pedido mientras se lee la hora guardada espera a saber si la espera sigue vigente.
+    if (_leyendoEspera) {
+      await _lecturaEspera;
+      if (!mounted) return;
+      if (_segundosRestantes > 0) {
+        setState(() => _enviando = false);
+        return;
+      }
+    }
+
+    final resultado = await solicitar(SolicitarRecuperacionPasswordParams(email: _email.text));
+
+    // La hora se guarda aunque la pantalla ya no esté (el enlace salió) y antes de soltar el
+    // «Enviando…» (que bloquea el atrás): al volver a entrar, la espera ya está guardada.
+    final cuando = widget.ahora();
+    if (resultado.isRight()) await registrar(RegistrarEnvioRecuperacionParams(cuando: cuando));
 
     if (!mounted) return;
 
@@ -160,7 +209,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
           _enviando = false;
           _enviado = true;
         });
-        _iniciarCooldown();
+        _comenzarEspera(desde: cuando, restante: _cooldown);
       },
     );
   }
@@ -240,6 +289,16 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
               onPressed: _puedeEnviar ? _enviar : null,
               child: _enviando ? const _Enviando() : const Text('Enviar enlace de recuperación'),
             ),
+            // La espera vigente (la de un envío anterior, aunque se haya salido de la pantalla).
+            if (_segundosRestantes > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Podés pedir otro enlace en ${_segundosRestantes}s.',
+                key: const Key('recuperacion_password_espera'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+              ),
+            ],
           ],
         ),
       ],
