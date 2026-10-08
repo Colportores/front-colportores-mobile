@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -70,12 +72,24 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 ///   dice otra cosa, se ofrece «Usar …» sin pisarlo.
 /// - Con el GPS impreciso (más de 50 m), «Registrar» espera a «Ajustar manualmente» o «Continuar».
 /// - Mientras guarda, «Registrando…» y el botón deshabilitado.
+/// - «Registrar» queda fijo al pie de la hoja y se desplaza todo lo de arriba (#305, como la 07): con
+///   un teléfono chico, el texto grande o el teclado abierto la acción principal se ve siempre. El
+///   aviso de falla queda en la parte que se desplaza, justo arriba del botón, y cuando aparece se
+///   lleva a la vista. Con el teclado abierto no se dibuja el motivo de abajo (se está escribiendo):
+///   a 200 % no entraría junto al botón; vuelve al cerrarlo.
+/// - El motivo («Elegí el tipo de ubicación para registrar.») va debajo del botón, como en el canvas,
+///   mientras lo fijo (botón y motivo) no pase de dos tercios de la hoja: con las fuentes reales eso
+///   alcanza hasta 200 %. Con un texto más grande, que le dejaría poco a los campos, el motivo pasa al
+///   final de lo que se desplaza, justo arriba del botón: así no desborda ni deja inalcanzable lo de
+///   arriba.
 class HojaAlta extends ConsumerStatefulWidget {
   const HojaAlta({
     super.key,
     required this.parametros,
     required this.alRegistrar,
     required this.alElegirCiudad,
+    this.avisos = const [],
+    this.tecladoAbierto = false,
   });
 
   final ParametrosAlta parametros;
@@ -84,6 +98,13 @@ class HojaAlta extends ConsumerStatefulWidget {
   /// Abre la lista de ciudades de la campaña («Cambiar»).
   final VoidCallback alElegirCiudad;
 
+  /// Los avisos de arriba de la hoja (sin GPS, mapa sin conexión): se desplazan con el resto.
+  final List<Widget> avisos;
+
+  /// Si el teclado está abierto. Lo informa quien está arriba del `Scaffold`: dentro del cuerpo el
+  /// `Scaffold` ya descontó el teclado y `viewInsets.bottom` siempre da 0.
+  final bool tecladoAbierto;
+
   @override
   ConsumerState<HojaAlta> createState() => _HojaAltaState();
 }
@@ -91,6 +112,9 @@ class HojaAlta extends ConsumerStatefulWidget {
 class _HojaAltaState extends ConsumerState<HojaAlta> {
   final _calle = TextEditingController();
   final _numero = TextEditingController();
+
+  /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
+  final _claveFalla = GlobalKey();
 
   AltaUbicacionNotifier get _notificador =>
       ref.read(altaUbicacionProvider(widget.parametros).notifier);
@@ -112,118 +136,201 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     ref.listen(proveedor.select((s) => s.numero), (_, n) {
       if (n.texto != _numero.text) _numero.text = n.texto;
     });
+    ref.listen(proveedor.select((s) => s.falla), (anterior, nueva) {
+      if (nueva == null || nueva == anterior) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final contexto = _claveFalla.currentContext;
+        if (mounted && contexto != null) {
+          unawaited(Scrollable.ensureVisible(contexto, duration: Duration.zero));
+        }
+      });
+    });
     final theme = Theme.of(context);
+    final motivo = widget.tecladoAbierto ? null : _porQueNo(estado);
+    final estiloMotivo = theme.textTheme.bodyMedium?.copyWith(
+      color: ColoresAlta.gris,
+      fontSize: 12.5,
+    );
 
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final motivoAbajo =
+            motivo != null && _cabeAbajoDelBoton(context, motivo, estiloMotivo, caja);
+        return _hoja(context, estado, motivo, estiloMotivo, motivoAbajo);
+      },
+    );
+  }
+
+  /// Si el motivo entra debajo de «Registrar» sin sacarle a lo que se desplaza más de lo razonable.
+  static bool _cabeAbajoDelBoton(
+    BuildContext context,
+    String motivo,
+    TextStyle? estilo,
+    BoxConstraints caja,
+  ) {
+    if (!caja.hasBoundedHeight) return true;
+    final medida = TextPainter(
+      text: TextSpan(text: motivo, style: estilo),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: caja.maxWidth);
+    final alto = medida.height;
+    medida.dispose();
+    final fijo = _separacionBoton + _alturaBoton + _separacionMotivo + alto;
+    return fijo <= caja.maxHeight * _fraccionFija;
+  }
+
+  Widget _hoja(
+    BuildContext context,
+    AltaUbicacionState estado,
+    String? motivo,
+    TextStyle? estiloMotivo,
+    bool motivoAbajo,
+  ) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Encabezado(estado: estado),
-        if (estado.necesitaDecisionPrecision) ...[
-          const SizedBox(height: 14),
-          AvisoAlta(
-            color: ColoresAlta.ambarBorde,
-            colorInsignia: ColoresAlta.ambar,
-            glyph: '!',
-            texto: AltaConBajaPrecision.aviso,
-            acciones: Row(
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _notificador.decidirPrecision,
-                    style: _estiloAviso,
-                    child: const Text(TextosAlta.ajustarManualmente, textAlign: TextAlign.center),
+                ...widget.avisos,
+                _Encabezado(estado: estado),
+                if (estado.necesitaDecisionPrecision) ...[
+                  const SizedBox(height: 14),
+                  AvisoAlta(
+                    color: ColoresAlta.ambarBorde,
+                    colorInsignia: ColoresAlta.ambar,
+                    glyph: '!',
+                    texto: AltaConBajaPrecision.aviso,
+                    acciones: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _notificador.decidirPrecision,
+                            style: _estiloAviso,
+                            child: const Text(
+                              TextosAlta.ajustarManualmente,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _notificador.decidirPrecision,
+                            style: _estiloAviso,
+                            child: const Text(TextosAlta.continuar, textAlign: TextAlign.center),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _notificador.decidirPrecision,
-                    style: _estiloAviso,
-                    child: const Text(TextosAlta.continuar, textAlign: TextAlign.center),
+                ],
+                const SizedBox(height: 14),
+                SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
+                const SizedBox(height: 14),
+                _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
+                if (estado.ciudad == null &&
+                    (estado.origenCiudad == OrigenCiudad.sinCiudades ||
+                        estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
+                  const SizedBox(height: 10),
+                  _AvisoCiudad(
+                    sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
+                    alReintentar: _notificador.reintentarCiudad,
                   ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: CampoDireccionUbicacion(
+                        etiqueta: TextosAlta.calle,
+                        sugerencia: 'Calle',
+                        campo: estado.calle,
+                        controlador: _calle,
+                        alCambiar: _notificador.editarCalle,
+                        limite: 120,
+                        accion: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: CampoDireccionUbicacion(
+                        etiqueta: TextosAlta.numero,
+                        sugerencia: 'Nº',
+                        campo: estado.numero,
+                        controlador: _numero,
+                        alCambiar: _notificador.editarNumero,
+                        limite: 20,
+                        accion: TextInputAction.done,
+                      ),
+                    ),
+                  ],
                 ),
+                if (_diferencias(estado).isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _PuntoEstaEn(
+                    estado: estado,
+                    alUsarCalle: _notificador.usarCalleDelMapa,
+                    alUsarNumero: _notificador.usarNumeroDelMapa,
+                  ),
+                ],
+                if (estado.falla != null) ...[
+                  const SizedBox(height: 14),
+                  AvisoAlta(
+                    key: _claveFalla,
+                    color: ColoresAlta.rojo,
+                    glyph: '!',
+                    texto: mensajeFallaAlta(estado.falla!),
+                  ),
+                ],
+                if (motivo != null && !motivoAbajo) ...[
+                  const SizedBox(height: 14),
+                  Text(motivo, textAlign: TextAlign.center, style: estiloMotivo),
+                ],
               ],
             ),
           ),
-        ],
-        const SizedBox(height: 14),
-        SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
-        const SizedBox(height: 14),
-        _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
-        if (estado.ciudad == null &&
-            (estado.origenCiudad == OrigenCiudad.sinCiudades ||
-                estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
-          const SizedBox(height: 10),
-          _AvisoCiudad(
-            sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
-            alReintentar: _notificador.reintentarCiudad,
-          ),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: CampoDireccionUbicacion(
-                etiqueta: TextosAlta.calle,
-                sugerencia: 'Calle',
-                campo: estado.calle,
-                controlador: _calle,
-                alCambiar: _notificador.editarCalle,
-                limite: 120,
-                accion: TextInputAction.next,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: CampoDireccionUbicacion(
-                etiqueta: TextosAlta.numero,
-                sugerencia: 'Nº',
-                campo: estado.numero,
-                controlador: _numero,
-                alCambiar: _notificador.editarNumero,
-                limite: 20,
-                accion: TextInputAction.done,
-              ),
-            ),
-          ],
         ),
-        if (_diferencias(estado).isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _PuntoEstaEn(
-            estado: estado,
-            alUsarCalle: _notificador.usarCalleDelMapa,
-            alUsarNumero: _notificador.usarNumeroDelMapa,
-          ),
-        ],
-        if (estado.falla != null) ...[
-          const SizedBox(height: 14),
-          AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: mensajeFallaAlta(estado.falla!)),
-        ],
-        const SizedBox(height: 14),
+        const SizedBox(height: _separacionBoton),
         FilledButton(
           onPressed: estado.puedeRegistrar ? widget.alRegistrar : null,
           style: FilledButton.styleFrom(
             backgroundColor: theme.colorScheme.primary,
             disabledBackgroundColor: ColoresAlta.grisFondo,
             disabledForegroundColor: ColoresAlta.gris,
-            minimumSize: const Size.fromHeight(52),
+            minimumSize: const Size.fromHeight(_alturaBoton),
           ),
-          child: Text(estado.guardando ? TextosAlta.registrando : TextosAlta.registrar),
-        ),
-        if (_porQueNo(estado) case final motivo?) ...[
-          const SizedBox(height: 8),
-          Text(
-            motivo,
+          child: Text(
+            estado.guardando ? TextosAlta.registrando : TextosAlta.registrar,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: ColoresAlta.gris, fontSize: 12.5),
           ),
+        ),
+        if (motivo != null && motivoAbajo) ...[
+          const SizedBox(height: _separacionMotivo),
+          Text(motivo, textAlign: TextAlign.center, style: estiloMotivo),
         ],
       ],
     );
   }
+
+  /// Lo más que puede ocupar lo fijo (el botón y el motivo), de lo alto de la hoja: al resto, lo que se
+  /// desplaza, le queda al menos un tercio.
+  static const _fraccionFija = 2 / 3;
+
+  /// El alto mínimo de «Registrar» y el aire que lo separa de lo de arriba.
+  static const _alturaBoton = 52.0;
+  static const _separacionBoton = 14.0;
+
+  /// El aire entre «Registrar» y el motivo.
+  static const _separacionMotivo = 8.0;
 
   static const _estiloAviso = ButtonStyle(
     minimumSize: WidgetStatePropertyAll(Size(0, 48)),

@@ -209,10 +209,11 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                     ),
                     child: SafeArea(
                       top: false,
-                      child: SingleChildScrollView(
+                      child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Center(
                               child: Container(
@@ -225,12 +226,18 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                                 ),
                               ),
                             ),
-                            if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
-                            AvisoMapaConectado(ambito: estado.ambitoMapa),
-                            HojaAlta(
-                              parametros: widget.parametros,
-                              alRegistrar: _registrar,
-                              alElegirCiudad: _elegirCiudad,
+                            // Los avisos y los campos se desplazan; «Registrar» queda fijo al pie (#305).
+                            Flexible(
+                              child: HojaAlta(
+                                parametros: widget.parametros,
+                                alRegistrar: _registrar,
+                                alElegirCiudad: _elegirCiudad,
+                                tecladoAbierto: tecladoAbierto,
+                                avisos: [
+                                  if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
+                                  AvisoMapaConectado(ambito: estado.ambitoMapa),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -308,26 +315,90 @@ class _ZonaMapaState extends State<_ZonaMapa> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Mientras se guarda el punto no se toca (el notifier ya ignora el movimiento): sin esto el
-        // mapa se podría arrastrar y, si el alta falla o devuelve candidatas, el pin quedaría lejos del
-        // punto que se registra.
-        IgnorePointer(
-          ignoring: estado.guardando,
-          child: MapaAlta(
-            parametros: widget.parametros,
-            estado: estado,
-            alMoverCentro: widget.alMover,
-            alTocar: widget.alTocar,
-          ),
-        ),
-        // El pin fijo en el centro: la punta queda justo en el centro del mapa.
-        IgnorePointer(
-          child: Center(
-            child: Transform.translate(
-              offset: const Offset(0, -22),
-              child: PinAlta(colocado: estado.punto != null),
+        // El fondo del mapa: si el mapa baja para no quedar bajo el chip, arriba queda esto.
+        const ColoredBox(color: ColoresAlta.fondoMapa),
+        CustomMultiChildLayout(
+          delegate: _DisposicionZona(),
+          children: [
+            // El mapa y lo que va anclado a él (pin, pista, «Volver a mi ubicación») bajan juntos: el
+            // pin sigue en el centro del mapa, que es el punto que se registra.
+            LayoutId(
+              id: _Parte.mapa,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Mientras se guarda el punto no se toca (el notifier ya ignora el movimiento): sin
+                  // esto el mapa se podría arrastrar y, si el alta falla o devuelve candidatas, el pin
+                  // quedaría lejos del punto que se registra.
+                  IgnorePointer(
+                    ignoring: estado.guardando,
+                    child: MapaAlta(
+                      parametros: widget.parametros,
+                      estado: estado,
+                      alMoverCentro: widget.alMover,
+                      alTocar: widget.alTocar,
+                    ),
+                  ),
+                  // El pin fijo en el centro: la punta queda justo en el centro del mapa.
+                  IgnorePointer(
+                    child: Center(
+                      child: Transform.translate(
+                        offset: const Offset(0, -22),
+                        child: PinAlta(colocado: estado.punto != null),
+                      ),
+                    ),
+                  ),
+                  if (!widget.tecladoAbierto)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomSingleChildLayout(
+                          delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
+                          child: Semantics(
+                            liveRegion: true,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xD10E1A2B),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                pista,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (estado.lectura != null)
+                    Positioned(
+                      right: _derechaBotonVolver,
+                      bottom: 36,
+                      child: BotonRedondoMapa(
+                        tamano: _ladoBotonVolver,
+                        icono: Icons.my_location,
+                        etiqueta: TextosAlta.volverAMiUbicacion,
+                        alPresionar: widget.alVolverAMiUbicacion,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
+            LayoutId(
+              id: _Parte.rotulos,
+              child: widget.tecladoAbierto
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        heightFactor: 1,
+                        child: _ChipGps(estado: estado),
+                      ),
+                    ),
+            ),
+          ],
         ),
         Positioned(
           left: 14,
@@ -339,53 +410,44 @@ class _ZonaMapaState extends State<_ZonaMapa> {
             alPresionar: estado.guardando ? null : widget.alCerrar,
           ),
         ),
-        if (!widget.tecladoAbierto)
-          Positioned(
-            left: 72,
-            right: 14,
-            top: arriba + 14,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _ChipGps(estado: estado),
-            ),
-          ),
-        if (!widget.tecladoAbierto)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomSingleChildLayout(
-                delegate: _PosicionPista(conBotonVolver: estado.lectura != null),
-                child: Semantics(
-                  liveRegion: true,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xD10E1A2B),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      pista,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 12.5),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        if (estado.lectura != null)
-          Positioned(
-            right: _derechaBotonVolver,
-            bottom: 36,
-            child: BotonRedondoMapa(
-              tamano: _ladoBotonVolver,
-              icono: Icons.my_location,
-              etiqueta: TextosAlta.volverAMiUbicacion,
-              alPresionar: widget.alVolverAMiUbicacion,
-            ),
-          ),
       ],
     );
   }
+}
+
+enum _Parte { mapa, rotulos }
+
+/// La disposición de la zona del mapa (la misma regla que en la vista 07): el chip del GPS arriba y el
+/// mapa debajo, que llega hasta arriba salvo que el chip llegue al pin.
+///
+/// El pin está fijo en el centro del mapa (su punta marca el punto) y mide 44 dp de alto. Si con el
+/// texto grande, o con una barra de estado alta, el chip baja hasta el pin, el mapa entero baja lo
+/// justo para que el pin quede debajo del chip: el punto que se registra sigue siendo el centro del
+/// mapa, el que el pin marca.
+class _DisposicionZona extends MultiChildLayoutDelegate {
+  _DisposicionZona();
+
+  static const _altoPin = 44.0;
+  static const _holgura = 8.0;
+
+  /// Lo mínimo que queda de mapa, por grande que sea el chip.
+  static const _mapaMinimo = 96.0;
+
+  @override
+  void performLayout(Size size) {
+    final rotulos = layoutChild(_Parte.rotulos, BoxConstraints.loose(size));
+    positionChild(_Parte.rotulos, Offset.zero);
+    // Sin chip (teclado abierto) no hay nada que esquivar.
+    final hacerBajar = rotulos.height == 0
+        ? 0.0
+        : 2 * (rotulos.height + _holgura + _altoPin) - size.height;
+    final baja = hacerBajar.clamp(0.0, math.max(0.0, size.height - _mapaMinimo)).toDouble();
+    layoutChild(_Parte.mapa, BoxConstraints.tight(Size(size.width, size.height - baja)));
+    positionChild(_Parte.mapa, Offset(0, baja));
+  }
+
+  @override
+  bool shouldRelayout(_DisposicionZona anterior) => false;
 }
 
 /// «Volver a mi ubicación» flota abajo a la derecha del mapa: a [_derechaBotonVolver] del borde y de

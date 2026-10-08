@@ -75,13 +75,15 @@ void main() {
           expect(_chipGps, findsOneWidget);
           expect(_textoPista, findsOneWidget);
           expect(tester.getTopLeft(_chipGps).dy, greaterThanOrEqualTo(_barraDeEstado + 14));
-          final altoSinTeclado = tester.getSize(find.byType(MapaAlta)).height;
+          // La zona del mapa llega hasta el borde de arriba de la hoja; el mapa baja un poco si el chip
+          // llegaría al pin (#305), así que se mide la zona por donde termina el mapa.
+          final altoSinTeclado = tester.getRect(find.byType(MapaAlta)).bottom;
 
           await _abrirTeclado(tester);
 
           expect(tester.takeException(), isNull);
           expect(
-            tester.getSize(find.byType(MapaAlta)).height,
+            tester.getRect(find.byType(MapaAlta)).bottom,
             lessThan(altoSinTeclado - 100),
             reason: 'el teclado achica el mapa',
           );
