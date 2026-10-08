@@ -1,4 +1,6 @@
 // HU-AUTH-008 — repositorio del estado de cuenta, con el remoto y el almacén en memoria.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
@@ -16,6 +18,18 @@ import '../../../../../helpers/logger_mudo.dart';
 final class _RemotoRoto implements EstadoCuentaRemoteDataSource {
   @override
   Future<EstadoCuenta> consultar() async => throw StateError('boom');
+}
+
+/// Un backend que contesta cuando el test lo decide, pedido por pedido.
+final class _RemotoManual implements EstadoCuentaRemoteDataSource {
+  final pedidos = <Completer<EstadoCuenta>>[];
+
+  @override
+  Future<EstadoCuenta> consultar() {
+    final pedido = Completer<EstadoCuenta>();
+    pedidos.add(pedido);
+    return pedido.future;
+  }
 }
 
 void main() {
@@ -115,6 +129,85 @@ void main() {
     repo = CuentaRepositoryImpl(remoto, EstadoCuentaEnAlmacen(almacen), logger: loggerMudo());
 
     expect(await repo.ultimoConocido('ana'), isNull);
+  });
+
+  group('dos consultas que se cruzan: gana la pedida más tarde (QA #278)', () {
+    late _RemotoManual manual;
+
+    setUp(() {
+      manual = _RemotoManual();
+      repo = CuentaRepositoryImpl(manual, EstadoCuentaEnAlmacen(almacen), logger: loggerMudo());
+    });
+
+    test('la respuesta vieja que llega después de la nueva no pisa lo recordado', () async {
+      final vieja = repo.consultar('ana');
+      final nueva = repo.consultar('ana');
+
+      manual.pedidos[1].complete(EstadoCuenta.activa);
+      await nueva;
+      manual.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+
+      // A quien la pidió le llega lo suyo; lo que se recuerda para el próximo arranque, no.
+      expect(await vieja, const Right<Failure, EstadoCuenta>(EstadoCuenta.pendienteAsignacion));
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.activa);
+    });
+
+    test('si la vieja contesta primero y la nueva después, queda recordada la nueva', () async {
+      final vieja = repo.consultar('ana');
+      final nueva = repo.consultar('ana');
+
+      manual.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await vieja;
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.pendienteAsignacion);
+      manual.pedidos[1].complete(EstadoCuenta.suspendida);
+      await nueva;
+
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.suspendida);
+    });
+
+    test('una consulta nueva que falló no impide recordar la respuesta de la vieja', () async {
+      final vieja = repo.consultar('ana');
+      final nueva = repo.consultar('ana');
+
+      manual.pedidos[1].completeError(const SinConexionException());
+      expect(await nueva, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      manual.pedidos[0].complete(EstadoCuenta.suspendida);
+      await vieja;
+
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.suspendida);
+    });
+
+    test('lo que se pidió después para otra cuenta no cuenta', () async {
+      final deAna = repo.consultar('ana');
+      final deBeto = repo.consultar('beto');
+
+      manual.pedidos[1].complete(EstadoCuenta.activa);
+      await deBeto;
+      manual.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await deAna;
+
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.pendienteAsignacion);
+    });
+
+    test('la respuesta vieja tampoco cambia cuándo fue la última revisión', () async {
+      var reloj = DateTime(2026, 10, 7, 14, 30);
+      repo = CuentaRepositoryImpl(
+        manual,
+        EstadoCuentaEnAlmacen(almacen),
+        logger: loggerMudo(),
+        ahora: () => reloj,
+      );
+      final vieja = repo.consultar('ana');
+      final nueva = repo.consultar('ana');
+      manual.pedidos[1].complete(EstadoCuenta.activa);
+      await nueva;
+
+      reloj = DateTime(2026, 10, 7, 14, 45);
+      manual.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await vieja;
+
+      expect(repo.ultimaConsultaExitosa('ana'), DateTime(2026, 10, 7, 14, 30));
+    });
   });
 
   test('sin fuente (Supabase sin el endpoint del BFF), sigue como hasta ahora: activa', () async {

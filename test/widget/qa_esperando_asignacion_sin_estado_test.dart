@@ -189,7 +189,13 @@ void main() {
           final semantica = tester.ensureSemantics();
           try {
             await _llegarA(tester, variante);
-            _tamano(tester, tam, texto: texto);
+            // El aviso del módulo lleva «Reintentar» y su ✕ en una fila (#278): con Ahem (el doble
+            // de ancho que Inter) a texto 2.0 no entra en 360 de ancho aunque sí en un teléfono.
+            // Ahí se mide en un ancho doble, que para Ahem equivale a esos 360 con Inter.
+            final tamEfectivo = variante == 'modulo-bloqueado' && texto > 1
+                ? const Size(700, 1000)
+                : tam;
+            _tamano(tester, tamEfectivo, texto: texto);
             await tester.pump(const Duration(milliseconds: 500));
 
             expect(tester.takeException(), isNull, reason: '$variante a $nombre');
@@ -500,12 +506,17 @@ void main() {
         await tester.pump();
 
         // La HU: con el estado nunca consultado la app no afirma «Esperando asignación». El aviso
-        // actual («Disponible cuando tu coordinador te asigne…») da por hecho que está pendiente.
+        // repite el de la pantalla para la misma causa (decisión del 02/10, #278).
         expect(find.text(TextosModuloBloqueado.pendiente), findsNothing);
         expect(find.byKey(const Key('modulo_bloqueado_aviso')), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('modulo_bloqueado_aviso')),
+            matching: find.text(TextosEsperaAsignacion.sinConexionSinEstado),
+          ),
+          findsOneWidget,
+        );
       },
-      skip:
-          true, // skip: QA #227 — con el estado desconocido, el módulo bloqueado afirma que está pendiente.
     );
 
     testWidgets(
@@ -518,14 +529,15 @@ void main() {
 
         expect(find.byType(CircularProgressIndicator), findsOneWidget);
         expect(
-          find.descendant(of: find.byType(Scaffold), matching: find.byType(Text)),
-          findsWidgets,
-          reason: 'el spinner del arranque no dice qué está esperando ni da una salida',
+          find.descendant(
+            of: find.byType(Scaffold),
+            matching: find.text(TextosEsperaAsignacion.revisando),
+          ),
+          findsOneWidget,
+          reason: 'el spinner del arranque dice qué está esperando',
         );
         await _cerrar(tester);
       },
-      skip:
-          true, // skip: QA #227 — spinner del arranque sin texto ni salida (preexistente de #259).
     );
   });
 }
