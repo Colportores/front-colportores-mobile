@@ -1,15 +1,21 @@
+import 'dart:async';
+
+import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
+import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
-import 'package:colportores_mobile/features/auth/presentation/providers/bloqueo_reenvio_verificacion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/db_local_repository_en_memoria.dart';
+import '../helpers/logger_mudo.dart';
 
 /// [VerificacionEmailPage] aislada (sin [ColportoresApp]) — mismo criterio que
 /// `login_page_test.dart`/`registro_page_test.dart`.
@@ -26,6 +32,7 @@ Future<void> _montarPagina(
   required AuthRemoteDataSourceEnMemoria remote,
   double escalaTexto = 1,
   DateTime Function()? ahora,
+  BloqueoReenvioVerificacionRepository? bloqueos,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -33,6 +40,8 @@ Future<void> _montarPagina(
       dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      if (bloqueos != null)
+        bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(bloqueos),
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
@@ -377,38 +386,6 @@ void main() {
       expect(libre.onPressed, isNotNull);
     });
 
-    testWidgets('el bloqueo por límite sobrevive a salir y volver a la pantalla', (tester) async {
-      final ahora = DateTime(2026, 9, 29, 10);
-      final remote = AuthRemoteDataSourceEnMemoria(
-        credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
-            authRemoteDataSourceProvider.overrideWithValue(remote),
-            authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
-            bloqueoReenvioVerificacionProvider.overrideWith(_BloqueadoALas10.new),
-          ],
-          child: MaterialApp(
-            theme: temaClaro(),
-            home: VerificacionEmailPage(
-              email: 'lucia.silva@correo.com',
-              password: 'Secreto123',
-              ahora: () => ahora.add(const Duration(minutes: 30)),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('verificacion_email_limite')), findsOneWidget);
-      final boton = tester.widget<OutlinedButton>(
-        find.byKey(const Key('verificacion_email_reenviar')),
-      );
-      expect(boton.onPressed, isNull);
-    });
-
     testWidgets('un servidor caído (sin 429) no bloquea el reenvío', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
@@ -421,6 +398,634 @@ void main() {
 
       expect(find.byKey(const Key('verificacion_email_limite')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
+    });
+  });
+
+  // HU-AUTH-002, vista 12-A06 (#249): el candado de una hora tras el rechazo por límite es por
+  // dirección de correo y se guarda en el teléfono, no en la memoria de la pantalla.
+  group('VerificacionEmailPage — candado por correo y persistente (#249)', () {
+    final base = DateTime(2026, 10, 8, 10);
+    const lucia = 'lucia.silva@correo.com';
+    const textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
+    const unaHora = Duration(minutes: 60);
+
+    final aviso = find.byKey(const Key('verificacion_email_limite'));
+    final botonReenviar = find.byKey(const Key('verificacion_email_reenviar'));
+    final campo = find.byKey(const Key('verificacion_email_campo'));
+
+    AuthRemoteDataSourceEnMemoria remotoSano() =>
+        AuthRemoteDataSourceEnMemoria(credenciales: const {lucia: 'Secreto123'});
+
+    AuthRemoteDataSourceEnMemoria remotoConLimite() => remotoSano()
+      ..fallaAlReenviar = const ServidorException(
+        status: 429,
+        mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+      );
+
+    bool habilitado(WidgetTester tester) =>
+        tester.widget<ButtonStyleButton>(botonReenviar).onPressed != null;
+
+    /// La pantalla sobre una inicial: se abre, se vuelve atrás y se reentra con el mismo teléfono.
+    Future<void> montarPila(
+      WidgetTester tester, {
+      required AuthRemoteDataSourceEnMemoria remote,
+      required BloqueoReenvioVerificacionRepository bloqueos,
+      DateTime Function()? ahora,
+    }) => tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+          bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(bloqueos),
+        ],
+        child: MaterialApp(
+          theme: temaClaro(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  key: const Key('abrir_verificacion'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => VerificacionEmailPage(
+                        email: lucia,
+                        password: 'Secreto123',
+                        ahora: ahora ?? DateTime.now,
+                      ),
+                    ),
+                  ),
+                  child: const Text('abrir verificación'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    group('lo que se ve al abrir', () {
+      testWidgets('dado un candado guardado de este correo, cuando se abre la pantalla, el '
+          'reenvío sale bloqueado con el texto de la vista (A06)', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 30)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(find.text(textoLimite), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline), findsWidgets);
+        expect(habilitado(tester), isFalse);
+        expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
+      });
+
+      testWidgets('el correo se compara sin mayúsculas ni espacios', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          email: ' Lucia.Silva@Correo.COM ',
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 5)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+      });
+
+      testWidgets('dado el candado de OTRA dirección, cuando se abre, este correo sigue libre', (
+        tester,
+      ) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({'ana@correo.com': base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 5)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('a los 59 min 59 s el candado sigue; a los 60 min exactos ya no', (tester) async {
+        var ahora = base.add(const Duration(minutes: 59, seconds: 59));
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        ahora = base.add(unaHora);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('un candado ya vencido en el teléfono no bloquea', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(hours: 3)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('con muchos candados guardados de otras direcciones, solo se bloquea la '
+          'propia', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({
+          for (var i = 0; i < 300; i++) 'persona$i@correo.com': base.add(unaHora),
+        });
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 1)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+
+        await bloqueos.guardar(lucia, base.add(unaHora), ahora: base);
+        await _desmontar(tester);
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 1)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+      });
+
+      testWidgets('el candado vence con la pantalla abierta, el de otra dirección no la '
+          'desbloquea antes', (tester) async {
+        var ahora = base.add(const Duration(minutes: 1));
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({
+          'ana@correo.com': base.add(const Duration(minutes: 20)),
+          lucia: base.add(const Duration(minutes: 50)),
+        });
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        // Vence el de Ana (el primero): el de Lucia sigue.
+        ahora = base.add(const Duration(minutes: 20));
+        await tester.pump(const Duration(minutes: 19));
+        expect(aviso, findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 50));
+        await tester.pump(const Duration(minutes: 30));
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('al volver a primer plano con el reloj adelantado, el candado vencido se '
+          'libera', (tester) async {
+        var ahora = base.add(const Duration(minutes: 10));
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 61));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+    });
+
+    group('el rechazo por límite (429) se guarda', () {
+      testWidgets('dado un 429, cuando se reenvía, el candado queda guardado con el correo '
+          'normalizado y vence a la hora', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        await _montarPagina(
+          tester,
+          remote: remotoConLimite(),
+          email: 'Lucia.Silva@Correo.com',
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(await bloqueos.leer(), {lucia: base.add(unaHora).toUtc()});
+      });
+
+      testWidgets('dado un 429, cuando se sale de la pantalla y se vuelve a entrar, sigue '
+          'bloqueado', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        var ahora = base;
+        await montarPila(tester, remote: remotoConLimite(), bloqueos: bloqueos, ahora: () => ahora);
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('abrir_verificacion')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 10));
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+      });
+
+      testWidgets('dado un 429, cuando se reinicia la app (almacén seguro), el candado sigue '
+          'vigente y "borrar datos" lo limpia', (tester) async {
+        final almacen = AlmacenSeguroEnMemoria();
+        var ahora = base;
+        await _montarPagina(
+          tester,
+          remote: remotoConLimite(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: BloqueoReenvioVerificacionRepositoryImpl(almacen, logger: loggerMudo()),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+        expect(almacen.contenido.keys, [ClaveSegura.bloqueoReenvioVerificacion]);
+
+        // La app se cierra y se abre media hora después, con otra instancia sobre el mismo almacén.
+        await _desmontar(tester);
+        ahora = base.add(const Duration(minutes: 30));
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: BloqueoReenvioVerificacionRepositoryImpl(almacen, logger: loggerMudo()),
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+
+        // Pasada la hora, libre.
+        ahora = base.add(const Duration(minutes: 61));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+
+        // «Borrar datos»: sin el valor del almacén, no hay candado.
+        await almacen.borrar(ClaveSegura.bloqueoReenvioVerificacion);
+        await _desmontar(tester);
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 30)),
+          bloqueos: BloqueoReenvioVerificacionRepositoryImpl(almacen, logger: loggerMudo()),
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsNothing);
+      });
+
+      testWidgets('con el almacén roto, el 429 igual bloquea mientras la pantalla está abierta', (
+        tester,
+      ) async {
+        final almacen = AlmacenSeguroEnMemoria()..simularFalla = true;
+        await _montarPagina(
+          tester,
+          remote: remotoConLimite(),
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: BloqueoReenvioVerificacionRepositoryImpl(almacen, logger: loggerMudo()),
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    group('casos límite', () {
+      testWidgets('doble toque con el 429 en vuelo: se guarda un solo candado', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        final remote = remotoConLimite()..demoraReenvio = Completer<void>();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        await tester.tap(botonReenviar, warnIfMissed: false);
+        await tester.pump();
+        remote.demoraReenvio!.complete();
+        await tester.pumpAndSettle();
+
+        expect(bloqueos.guardados, [lucia]);
+        expect(aviso, findsOneWidget);
+      });
+
+      testWidgets('falla a mitad (500): sin candado, el botón vuelve a habilitarse y se puede '
+          'reintentar', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        final remote = remotoSano()..fallaAlReenviar = const ServidorException(status: 500);
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
+        expect(aviso, findsNothing);
+        expect(bloqueos.guardados, isEmpty);
+        expect(habilitado(tester), isTrue);
+
+        remote.fallaAlReenviar = null;
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(remote.reenviosPorEmail[lucia], 1);
+        expect(bloqueos.guardados, isEmpty);
+      });
+
+      testWidgets('sin conexión (A08): sin candado y el botón sigue habilitado', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        final remote = remotoSano()..simularSinConexion = true;
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsNothing);
+        expect(bloqueos.guardados, isEmpty);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('el 429 llega con la pantalla ya cerrada: el candado se guarda igual y al '
+          'reentrar está', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        final remote = remotoConLimite()..demoraReenvio = Completer<void>();
+        await montarPila(tester, remote: remote, bloqueos: bloqueos, ahora: () => base);
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('abrir_verificacion')), findsOneWidget);
+
+        remote.demoraReenvio!.complete();
+        await tester.pumpAndSettle();
+        expect(bloqueos.guardados, [lucia]);
+
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('un reenvío pedido mientras se leen los candados espera: con la dirección '
+          'bloqueada no se manda ningún correo', (tester) async {
+        final bloqueos = _BloqueosEspiados({lucia: base.add(unaHora)})
+          ..demoraLectura = Completer<void>();
+        final remote = remotoSano();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(minutes: 5)),
+          bloqueos: bloqueos,
+        );
+        await tester.pump();
+        expect(aviso, findsNothing, reason: 'todavía no se sabe');
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        bloqueos.demoraLectura!.complete();
+        await tester.pumpAndSettle();
+
+        expect(remote.reenviosPorEmail, isEmpty);
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+      });
+
+      testWidgets('un reenvío pedido mientras se leen los candados, con la dirección libre, '
+          'sale cuando termina la lectura', (tester) async {
+        final bloqueos = _BloqueosEspiados()..demoraLectura = Completer<void>();
+        final remote = remotoSano();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pump();
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        bloqueos.demoraLectura!.complete();
+        await tester.pumpAndSettle();
+
+        expect(remote.reenviosPorEmail[lucia], 1);
+        expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsOneWidget);
+      });
+
+      testWidgets('textScaler 2.0 y un correo larguísimo con el candado: sin overflow', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        const largo =
+            'nombre.muy.largo.de.un.colportor.con.apellido.compuesto@organizacion-con-dominio-'
+            'largo.com.uy';
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({largo: base.add(unaHora)});
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          email: largo,
+          password: 'Secreto123',
+          escalaTexto: 2,
+          ahora: () => base.add(const Duration(minutes: 1)),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    group('sin correo conocido (el enlace expiró y se escribe a mano)', () {
+      Future<void> montarSinCorreo(
+        WidgetTester tester, {
+        required AuthRemoteDataSourceEnMemoria remote,
+        required BloqueoReenvioVerificacionRepository bloqueos,
+        DateTime Function()? ahora,
+      }) => _montarPagina(
+        tester,
+        remote: remote,
+        email: '',
+        estadoInicial: EstadoVerificacionEmail.expirado,
+        ahora: ahora ?? () => base,
+        bloqueos: bloqueos,
+      );
+
+      testWidgets('el candado sigue a la dirección que se escribe: la bloqueada, bloqueada; otra, '
+          'libre', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({'ana@correo.com': base.add(unaHora)});
+        await montarSinCorreo(
+          tester,
+          remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+        expect(aviso, findsNothing, reason: 'sin dirección escrita no hay candado');
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.pump();
+        expect(aviso, findsOneWidget);
+        expect(habilitado(tester), isFalse);
+
+        await tester.enterText(campo, '  ANA@Correo.com ');
+        await tester.pump();
+        expect(aviso, findsOneWidget);
+
+        await tester.enterText(campo, 'luis@correo.com');
+        await tester.pump();
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.pump();
+        expect(aviso, findsOneWidget);
+      });
+
+      testWidgets('dos reenvíos seguidos a direcciones distintas: cada 429 bloquea la suya', (
+        tester,
+      ) async {
+        final bloqueos = _BloqueosEspiados();
+        await montarSinCorreo(
+          tester,
+          remote: AuthRemoteDataSourceEnMemoria(credenciales: const {})
+            ..fallaAlReenviar = const ServidorException(status: 429),
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        await tester.enterText(campo, 'luis@correo.com');
+        await tester.pump();
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(aviso, findsOneWidget);
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.pump();
+        expect(aviso, findsOneWidget);
+        expect(bloqueos.guardados, ['ana@correo.com', 'luis@correo.com']);
+      });
+
+      testWidgets('cambiar la dirección con el reenvío en vuelo: el 429 bloquea la que se envió, '
+          'no la que se ve', (tester) async {
+        final bloqueos = _BloqueosEspiados();
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+          ..fallaAlReenviar = const ServidorException(status: 429)
+          ..demoraReenvio = Completer<void>();
+        await montarSinCorreo(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        await tester.enterText(campo, 'luis@correo.com');
+        await tester.pump();
+        remote.demoraReenvio!.complete();
+        await tester.pumpAndSettle();
+
+        expect(bloqueos.guardados, ['ana@correo.com']);
+        expect(aviso, findsNothing, reason: 'la que se ve (Luis) está libre');
+        expect(habilitado(tester), isTrue);
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.pump();
+        expect(aviso, findsOneWidget);
+      });
     });
   });
 
@@ -605,9 +1210,32 @@ void main() {
   });
 }
 
-/// Bloqueo por límite ya registrado a las 10:00 (una hora), como si el colportor hubiera salido de
-/// la pantalla y vuelto.
-class _BloqueadoALas10 extends BloqueoReenvioVerificacionNotifier {
+/// Saca la pantalla del árbol (como cerrar la app) para volver a montarla desde cero.
+Future<void> _desmontar(WidgetTester tester) => tester.pumpWidget(const SizedBox());
+
+/// Candados en memoria que anotan qué se guardó y que pueden demorar la lectura, para probar el
+/// reenvío mientras la pantalla todavía está leyendo lo que guardó el teléfono.
+final class _BloqueosEspiados implements BloqueoReenvioVerificacionRepository {
+  _BloqueosEspiados([Map<String, DateTime> inicial = const {}])
+    : _real = BloqueoReenvioVerificacionEnMemoria(inicial);
+
+  final BloqueoReenvioVerificacionEnMemoria _real;
+
+  /// Los correos que se guardaron, en orden.
+  final List<String> guardados = [];
+
+  /// Si no es `null`, [leer] no sigue hasta que el test lo complete.
+  Completer<void>? demoraLectura;
+
   @override
-  DateTime? build() => DateTime(2026, 9, 29, 10).add(bloqueoReenvioVerificacion);
+  Future<Map<String, DateTime>> leer() async {
+    await demoraLectura?.future;
+    return _real.leer();
+  }
+
+  @override
+  Future<void> guardar(String correo, DateTime vence, {required DateTime ahora}) {
+    guardados.add(correo);
+    return _real.guardar(correo, vence, ahora: ahora);
+  }
 }

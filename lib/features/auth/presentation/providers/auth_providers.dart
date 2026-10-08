@@ -13,16 +13,19 @@ import '../../data/datasources/backup_drive_data_source.dart';
 import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import '../../data/datasources/reloj_sesion_en_almacen.dart';
 import '../../data/repositories/auth_repository_impl.dart';
+import '../../data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
 import '../../data/repositories/cierre_forzado_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
 import '../../data/repositories/ultimo_correo_repository_impl.dart';
 import '../../data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import '../../domain/repositories/cierre_forzado_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/repositories/ultimo_correo_repository.dart';
 import '../../domain/repositories/ultimo_envio_recuperacion_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
@@ -116,6 +119,14 @@ CierreForzadoRepository cierreForzadoRepository(Ref ref) => CierreForzadoEnMemor
 UltimoEnvioRecuperacionRepository ultimoEnvioRecuperacionRepository(Ref ref) =>
     UltimoEnvioRecuperacionEnMemoria();
 
+/// Los correos con el reenvío del email de verificación bloqueado y hasta cuándo (decisión de
+/// Cristian, 30/09, #221 y #239; seguimiento #249): el candado de 60 minutos es por dirección y
+/// sobrevive a reiniciar la app. En el equipo, `main.dart` lo sobreescribe con el almacén seguro;
+/// por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+BloqueoReenvioVerificacionRepository bloqueoReenvioVerificacionRepository(Ref ref) =>
+    BloqueoReenvioVerificacionEnMemoria();
+
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
     CerrarSesionUseCase(ref.watch(authRepositoryProvider));
@@ -185,6 +196,20 @@ ConsultarEsperaRecuperacionUseCase consultarEsperaRecuperacionUseCase(Ref ref) =
 @riverpod
 RegistrarEnvioRecuperacionUseCase registrarEnvioRecuperacionUseCase(Ref ref) =>
     RegistrarEnvioRecuperacionUseCase(ref.watch(ultimoEnvioRecuperacionRepositoryProvider));
+
+// autoDispose: lo usa solo `VerificacionEmailPage`.
+@riverpod
+ConsultarBloqueosReenvioVerificacionUseCase consultarBloqueosReenvioVerificacionUseCase(Ref ref) =>
+    ConsultarBloqueosReenvioVerificacionUseCase(
+      ref.watch(bloqueoReenvioVerificacionRepositoryProvider),
+    );
+
+// autoDispose: lo usa solo `VerificacionEmailPage`.
+@riverpod
+RegistrarBloqueoReenvioVerificacionUseCase registrarBloqueoReenvioVerificacionUseCase(Ref ref) =>
+    RegistrarBloqueoReenvioVerificacionUseCase(
+      ref.watch(bloqueoReenvioVerificacionRepositoryProvider),
+    );
 
 /// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
 /// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este

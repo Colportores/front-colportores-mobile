@@ -425,6 +425,22 @@ void main() {
       expect(almacen.contenido[ClaveSegura.ultimoEnvioRecuperacion], '2026-10-08T10:30:15.000Z');
     });
 
+    test('conserva los candados del reenvío de verificación (#249): recuperar los datos no '
+        'libera una dirección que Supabase todavía bloquea', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(
+        almacen.contenido[ClaveSegura.bloqueoReenvioVerificacion],
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {
@@ -584,6 +600,34 @@ void main() {
 
       expect(almacen.contenido.containsKey(ClaveSegura.ultimoEnvioRecuperacion), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también los candados del reenvío de verificación (#249): son de la persona que '
+        'se va', () async {
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.bloqueoReenvioVerificacion), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca los candados del reenvío de verificación', () async {
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+
+      await custodia.olvidar();
+
+      expect(
+        almacen.contenido[ClaveSegura.bloqueoReenvioVerificacion],
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
     });
 
     test('«Empezar de nuevo» (olvidar) no toca la hora del último enlace de recuperación '
