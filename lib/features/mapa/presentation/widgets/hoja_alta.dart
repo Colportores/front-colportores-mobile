@@ -77,6 +77,11 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 ///   aviso de falla queda en la parte que se desplaza, justo arriba del botón, y cuando aparece se
 ///   lleva a la vista. Con el teclado abierto no se dibuja el motivo de abajo (se está escribiendo):
 ///   a 200 % no entraría junto al botón; vuelve al cerrarlo.
+/// - El motivo («Elegí el tipo de ubicación para registrar.») va debajo del botón, como en el canvas,
+///   mientras lo fijo (botón y motivo) no pase de dos tercios de la hoja: con las fuentes reales eso
+///   alcanza hasta 200 %. Con un texto más grande, que le dejaría poco a los campos, el motivo pasa al
+///   final de lo que se desplaza, justo arriba del botón: así no desborda ni deja inalcanzable lo de
+///   arriba.
 class HojaAlta extends ConsumerStatefulWidget {
   const HojaAlta({
     super.key,
@@ -142,7 +147,48 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     });
     final theme = Theme.of(context);
     final motivo = widget.tecladoAbierto ? null : _porQueNo(estado);
+    final estiloMotivo = theme.textTheme.bodyMedium?.copyWith(
+      color: ColoresAlta.gris,
+      fontSize: 12.5,
+    );
 
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final motivoAbajo =
+            motivo != null && _cabeAbajoDelBoton(context, motivo, estiloMotivo, caja);
+        return _hoja(context, estado, motivo, estiloMotivo, motivoAbajo);
+      },
+    );
+  }
+
+  /// Si el motivo entra debajo de «Registrar» sin sacarle a lo que se desplaza más de lo razonable.
+  static bool _cabeAbajoDelBoton(
+    BuildContext context,
+    String motivo,
+    TextStyle? estilo,
+    BoxConstraints caja,
+  ) {
+    if (!caja.hasBoundedHeight) return true;
+    final medida = TextPainter(
+      text: TextSpan(text: motivo, style: estilo),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: caja.maxWidth);
+    final alto = medida.height;
+    medida.dispose();
+    final fijo = _separacionBoton + _alturaBoton + _separacionMotivo + alto;
+    return fijo <= caja.maxHeight * _fraccionFija;
+  }
+
+  Widget _hoja(
+    BuildContext context,
+    AltaUbicacionState estado,
+    String? motivo,
+    TextStyle? estiloMotivo,
+    bool motivoAbajo,
+  ) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -245,35 +291,46 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                     texto: mensajeFallaAlta(estado.falla!),
                   ),
                 ],
+                if (motivo != null && !motivoAbajo) ...[
+                  const SizedBox(height: 14),
+                  Text(motivo, textAlign: TextAlign.center, style: estiloMotivo),
+                ],
               ],
             ),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: _separacionBoton),
         FilledButton(
           onPressed: estado.puedeRegistrar ? widget.alRegistrar : null,
           style: FilledButton.styleFrom(
             backgroundColor: theme.colorScheme.primary,
             disabledBackgroundColor: ColoresAlta.grisFondo,
             disabledForegroundColor: ColoresAlta.gris,
-            minimumSize: const Size.fromHeight(52),
+            minimumSize: const Size.fromHeight(_alturaBoton),
           ),
           child: Text(
             estado.guardando ? TextosAlta.registrando : TextosAlta.registrar,
             textAlign: TextAlign.center,
           ),
         ),
-        if (motivo != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            motivo,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: ColoresAlta.gris, fontSize: 12.5),
-          ),
+        if (motivo != null && motivoAbajo) ...[
+          const SizedBox(height: _separacionMotivo),
+          Text(motivo, textAlign: TextAlign.center, style: estiloMotivo),
         ],
       ],
     );
   }
+
+  /// Lo más que puede ocupar lo fijo (el botón y el motivo), de lo alto de la hoja: al resto, lo que se
+  /// desplaza, le queda al menos un tercio.
+  static const _fraccionFija = 2 / 3;
+
+  /// El alto mínimo de «Registrar» y el aire que lo separa de lo de arriba.
+  static const _alturaBoton = 52.0;
+  static const _separacionBoton = 14.0;
+
+  /// El aire entre «Registrar» y el motivo.
+  static const _separacionMotivo = 8.0;
 
   static const _estiloAviso = ButtonStyle(
     minimumSize: WidgetStatePropertyAll(Size(0, 48)),

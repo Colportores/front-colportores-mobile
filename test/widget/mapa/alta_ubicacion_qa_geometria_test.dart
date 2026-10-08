@@ -149,14 +149,20 @@ void main() {
       _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
     });
 
-    testWidgets('a texto 2x «Activar GPS» se ve y se puede tocar, y la pista no pisa el aviso', (
-      tester,
-    ) async {
-      await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640), escala: 2);
+    // #305: «Registrar» y su motivo quedan fijos al pie, como en el canvas, y el aviso se desplaza en lo
+    // que sobra de la hoja: a 360×640 y texto 2x «Activar GPS» se alcanza desplazando, no de entrada
+    // (decisión del agente de decisiones, mapa §2: gana el canvas).
+    testWidgets(
+      'a texto 2x «Activar GPS» se alcanza y se puede tocar, y la pista no pisa el aviso',
+      (tester) async {
+        await montarAlta(tester, gps: gpsSinPermiso, tamano: const Size(360, 640), escala: 2);
 
-      expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
-      _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
-    });
+        _sinSolape(tester, avisoSinGps, find.text(TextosAlta.tocar), 'aviso sin GPS vs pista');
+        await tester.ensureVisible(find.text('Activar GPS'));
+        await tester.pump();
+        expect(find.text('Activar GPS').hitTestable(), findsOneWidget);
+      },
+    );
 
     testWidgets('a 412×915 y texto 1x el aviso de sin GPS no se pisa con la pista', (tester) async {
       await montarAlta(
@@ -202,8 +208,7 @@ void main() {
       final gps = gpsSinPermiso;
       await montarAlta(tester, gps: gps, tamano: const Size(360, 640), escala: 2);
 
-      await tester.tap(find.text('Activar GPS'));
-      await asentar(tester);
+      await tocar(tester, find.text('Activar GPS'));
 
       expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
     });
