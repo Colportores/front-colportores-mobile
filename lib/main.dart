@@ -21,6 +21,7 @@ import 'features/auth/data/datasources/registro_enlaces_auth.dart';
 import 'features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
+import 'features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -104,6 +105,11 @@ Future<void> main() async {
         // aviso de «Sesión vencida» vale en cada arranque sin sesión hasta que entra.
         cierreForzadoRepositoryProvider.overrideWithValue(
           CierreForzadoRepositoryImpl(almacenSeguro),
+        ),
+        // La hora del último enlace de recuperación pedido, por teléfono: la espera de 60 s de
+        // «Olvidé mi contraseña» no se reinicia al salir y volver a entrar.
+        ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(
+          UltimoEnvioRecuperacionRepositoryImpl(almacenSeguro),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),

@@ -141,7 +141,8 @@ void main() {
     });
 
     testWidgets(
-      'salir y volver a entrar: formulario limpio, sin casilla y con el botón habilitado',
+      'salir y volver a entrar dentro de los 60 s: formulario sin el correo ni casilla, con el '
+      'botón deshabilitado y la espera a la vista (#281)',
       (tester) async {
         await _montar(tester, remote);
         await _enviarCon(tester, 'lucia@correo.com');
@@ -152,10 +153,8 @@ void main() {
         expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
         expect(find.text('lucia@correo.com'), findsNothing);
         expect(find.byType(Checkbox), findsNothing);
-        expect(
-          tester.widget<FilledButton>(_k('recuperacion_password_enviar')).onPressed,
-          isNotNull,
-        );
+        expect(tester.widget<FilledButton>(_k('recuperacion_password_enviar')).onPressed, isNull);
+        expect(_k('recuperacion_password_espera'), findsOneWidget);
       },
     );
   });

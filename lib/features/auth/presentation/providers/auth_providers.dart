@@ -16,14 +16,17 @@ import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/cierre_forzado_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
 import '../../data/repositories/ultimo_correo_repository_impl.dart';
+import '../../data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/cierre_forzado_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
 import '../../domain/repositories/ultimo_correo_repository.dart';
+import '../../domain/repositories/ultimo_envio_recuperacion_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
+import '../../domain/usecases/espera_recuperacion_use_cases.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
@@ -105,6 +108,14 @@ UltimoCorreoRepository ultimoCorreoRepository(Ref ref) => UltimoCorreoEnMemoria(
 @Riverpod(keepAlive: true)
 CierreForzadoRepository cierreForzadoRepository(Ref ref) => CierreForzadoEnMemoria();
 
+/// Cuándo salió el último enlace de recuperación de contraseña pedido desde este teléfono (decisión
+/// de Cristian, 02/10, #223; seguimiento #281): la espera de 60 s de «Olvidé mi contraseña» no se
+/// reinicia al salir y volver a entrar. En el equipo, `main.dart` lo sobreescribe con el almacén
+/// seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+UltimoEnvioRecuperacionRepository ultimoEnvioRecuperacionRepository(Ref ref) =>
+    UltimoEnvioRecuperacionEnMemoria();
+
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
     CerrarSesionUseCase(ref.watch(authRepositoryProvider));
@@ -164,6 +175,16 @@ ObtenerResumenDatosLocalesUseCase obtenerResumenDatosLocalesUseCase(Ref ref) =>
 @riverpod
 SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref ref) =>
     SolicitarRecuperacionPasswordUseCase(ref.watch(authRepositoryProvider));
+
+// autoDispose: lo usa solo `RecuperacionPasswordPage`.
+@riverpod
+ConsultarEsperaRecuperacionUseCase consultarEsperaRecuperacionUseCase(Ref ref) =>
+    ConsultarEsperaRecuperacionUseCase(ref.watch(ultimoEnvioRecuperacionRepositoryProvider));
+
+// autoDispose: lo usa solo `RecuperacionPasswordPage`.
+@riverpod
+RegistrarEnvioRecuperacionUseCase registrarEnvioRecuperacionUseCase(Ref ref) =>
+    RegistrarEnvioRecuperacionUseCase(ref.watch(ultimoEnvioRecuperacionRepositoryProvider));
 
 /// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
 /// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este
