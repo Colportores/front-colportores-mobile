@@ -69,7 +69,14 @@ enum ClaveSegura {
   /// El candado es por dirección (otra dirección no queda bloqueada) y sobrevive a reiniciar la
   /// app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`, para no sumar otro
   /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
-  bloqueoReenvioVerificacion('verification_resend_locks');
+  bloqueoReenvioVerificacion('verification_resend_locks'),
+
+  /// La zona de cada inscripción del colportor la última vez que se le avisó de su zona (HU-CAM-006,
+  /// #251): un JSON `{"<id de la inscripción>": "<id de la zona>" | null}`, solo ids (UUID), sin
+  /// nombres. Hace que «Te asignaron la zona…» y «Ya no tenés zona…» se avisen una sola vez. No es
+  /// secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro almacenamiento, y así el borrado
+  /// de datos locales (HU-AUTH-010) también lo borra.
+  zonasAvisadas('zones_notified');
 
   const ClaveSegura(this.id);
 

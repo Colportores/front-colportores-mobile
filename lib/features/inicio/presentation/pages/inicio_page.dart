@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/domain/entities/sesion.dart';
+import '../../../auth/presentation/providers/avisos_zona_notifier.dart';
+import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
@@ -61,7 +63,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !mapaConVistaPrevia) _ir(PestanaInicio.hoy);
       },
-      child: _scaffold(context),
+      child: _LectorTeclado(child: _scaffold(context)),
     );
   }
 
@@ -89,31 +91,88 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: IndexedStack(
-        index: _actual.index,
+      body: Column(
         children: [
-          JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
-          for (final pestana in PestanaInicio.values.skip(1))
-            switch (pestana) {
-              // El mapa de ubicaciones (HU-UBI-003, #199) y la lista (HU-UBI-002, #196). El GPS se
-              // pide al abrir la pestaña, no antes.
-              PestanaInicio.mapa => MapaUbicacionesPage(
-                key: Key('pestana_${pestana.name}'),
-                colportorId: widget.sesion.usuarioId,
-                activa: _actual == PestanaInicio.mapa,
-              ),
-              PestanaInicio.lista => ListaUbicacionesPage(
-                key: Key('pestana_${pestana.name}'),
-                colportorId: widget.sesion.usuarioId,
-                activa: _actual == PestanaInicio.lista,
-              ),
-              _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
-            },
+          // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
+          _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          Expanded(
+            child: IndexedStack(
+              index: _actual.index,
+              children: [
+                JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
+                for (final pestana in PestanaInicio.values.skip(1))
+                  switch (pestana) {
+                    // El mapa de ubicaciones (HU-UBI-003, #199) y la lista (HU-UBI-002, #196). El GPS se
+                    // pide al abrir la pestaña, no antes.
+                    PestanaInicio.mapa => MapaUbicacionesPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.mapa,
+                    ),
+                    PestanaInicio.lista => ListaUbicacionesPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.lista,
+                    ),
+                    _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
+                  },
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
     );
   }
+}
+
+/// Los avisos de zona pendientes (HU-CAM-006, #251). Es un widget aparte para que un aviso nuevo, o
+/// uno cerrado, reconstruya solo esta franja y no la pestaña de abajo.
+class _AvisosDeZona extends ConsumerWidget {
+  const _AvisosDeZona({required this.colportorId});
+
+  final String colportorId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final provider = avisosZonaProvider(colportorId);
+    // Se mira siempre, aunque la franja se oculte: así el estado de los avisos (y lo cerrado en la
+    // sesión) no se pierde mientras el teclado está abierto.
+    final avisos = ref.watch(provider);
+    // Con el teclado abierto gana el campo que se escribe (precedente: #322): la franja se oculta y
+    // vuelve sola al cerrarlo. El aviso sigue pendiente; solo «Entendido» lo anota como avisado.
+    if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
+    return AvisosZonaPendientes(
+      avisos: avisos,
+      onCerrar: (aviso) => unawaited(ref.read(provider.notifier).cerrar(aviso)),
+    );
+  }
+}
+
+/// Le dice a la franja de avisos si el teclado está abierto. Se lee arriba del `Scaffold` porque el
+/// `MediaQuery` de su cuerpo ya viene sin el alto del teclado (el `Scaffold` lo descuenta al
+/// redimensionarse). [child] llega armado de afuera: mientras el teclado se anima no se reconstruye
+/// nada más que lo que depende de «abierto o cerrado».
+class _LectorTeclado extends StatelessWidget {
+  const _LectorTeclado({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      _EstadoTeclado(abierto: MediaQuery.viewInsetsOf(context).bottom > 0, child: child);
+}
+
+class _EstadoTeclado extends InheritedWidget {
+  const _EstadoTeclado({required this.abierto, required super.child});
+
+  final bool abierto;
+
+  static bool abiertoEn(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_EstadoTeclado>()?.abierto ?? false;
+
+  @override
+  bool updateShouldNotify(_EstadoTeclado oldWidget) => abierto != oldWidget.abierto;
 }
 
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega

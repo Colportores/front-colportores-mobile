@@ -441,6 +441,16 @@ void main() {
       );
     });
 
+    test('conserva las zonas ya avisadas (#251): recuperar los datos no repite «Te asignaron la '
+        'zona…»', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1","insc-2":null}');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1","insc-2":null}');
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {
@@ -614,6 +624,24 @@ void main() {
 
       expect(almacen.contenido.containsKey(ClaveSegura.bloqueoReenvioVerificacion), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también las zonas ya avisadas (#251): son de la persona que se va', () async {
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.zonasAvisadas), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca las zonas ya avisadas', () async {
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1"}');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca los candados del reenvío de verificación', () async {
