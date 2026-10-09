@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/domain/entities/sesion.dart';
+import '../../../auth/presentation/providers/avisos_zona_notifier.dart';
+import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
@@ -89,29 +91,54 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: IndexedStack(
-        index: _actual.index,
+      body: Column(
         children: [
-          JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
-          for (final pestana in PestanaInicio.values.skip(1))
-            switch (pestana) {
-              // El mapa de ubicaciones (HU-UBI-003, #199) y la lista (HU-UBI-002, #196). El GPS se
-              // pide al abrir la pestaña, no antes.
-              PestanaInicio.mapa => MapaUbicacionesPage(
-                key: Key('pestana_${pestana.name}'),
-                colportorId: widget.sesion.usuarioId,
-                activa: _actual == PestanaInicio.mapa,
-              ),
-              PestanaInicio.lista => ListaUbicacionesPage(
-                key: Key('pestana_${pestana.name}'),
-                colportorId: widget.sesion.usuarioId,
-                activa: _actual == PestanaInicio.lista,
-              ),
-              _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
-            },
+          // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
+          _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          Expanded(
+            child: IndexedStack(
+              index: _actual.index,
+              children: [
+                JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
+                for (final pestana in PestanaInicio.values.skip(1))
+                  switch (pestana) {
+                    // El mapa de ubicaciones (HU-UBI-003, #199) y la lista (HU-UBI-002, #196). El GPS se
+                    // pide al abrir la pestaña, no antes.
+                    PestanaInicio.mapa => MapaUbicacionesPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.mapa,
+                    ),
+                    PestanaInicio.lista => ListaUbicacionesPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.lista,
+                    ),
+                    _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
+                  },
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
+    );
+  }
+}
+
+/// Los avisos de zona pendientes (HU-CAM-006, #251). Es un widget aparte para que un aviso nuevo, o
+/// uno cerrado, reconstruya solo esta franja y no la pestaña de abajo.
+class _AvisosDeZona extends ConsumerWidget {
+  const _AvisosDeZona({required this.colportorId});
+
+  final String colportorId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final provider = avisosZonaProvider(colportorId);
+    return AvisosZonaPendientes(
+      avisos: ref.watch(provider),
+      onCerrar: (aviso) => unawaited(ref.read(provider.notifier).cerrar(aviso)),
     );
   }
 }

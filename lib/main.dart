@@ -23,7 +23,9 @@ import 'features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_
 import 'features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
+import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
 
@@ -116,6 +118,11 @@ Future<void> main() async {
         // dirección y sobrevive a reiniciar la app.
         bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(
           BloqueoReenvioVerificacionRepositoryImpl(almacenSeguro),
+        ),
+        // La zona de cada inscripción la última vez que se le avisó al colportor (HU-CAM-006,
+        // #251): un cambio de zona se avisa una sola vez, aunque se cierre la app.
+        zonasAvisadasRepositoryProvider.overrideWithValue(
+          ZonasAvisadasRepositoryImpl(almacenSeguro),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
