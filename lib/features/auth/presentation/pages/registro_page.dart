@@ -8,6 +8,8 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/politica_password.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
+import '../providers/auth_providers.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
 import '../widgets/texto_error_anunciado.dart';
@@ -25,7 +27,11 @@ import 'verificacion_email_page.dart';
 /// [VerificacionEmailPage] (con el email y la contraseña recién tipeados) en vez de volver al
 /// login — esa pantalla es la que ahora ofrece esperar, reenviar o revisar el enlace.
 class RegistroPage extends ConsumerStatefulWidget {
-  const RegistroPage({super.key});
+  const RegistroPage({super.key, @visibleForTesting this.ahora = DateTime.now});
+
+  /// Reloj del envío del correo del alta (la espera de 60 s para reenviar cuenta desde ahí); se
+  /// inyecta solo en tests.
+  final DateTime Function() ahora;
 
   @override
   ConsumerState<RegistroPage> createState() => _RegistroPageState();
@@ -172,12 +178,24 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
       },
       (r) {
         if (r.requiereVerificacion) {
+          // El correo del alta es el primer envío: de acá cuentan los 60 s para reenviar (HU-AUTH-002,
+          // #325). Se guarda en el teléfono y se le pasa a la pantalla, que arranca como en 12-A02.
+          final envioDelAlta = widget.ahora();
+          unawaited(
+            ref.read(registrarEnvioVerificacionUseCaseProvider)(
+              RegistrarEnvioVerificacionParams(correo: r.email, ahora: envioDelAlta),
+            ),
+          );
           // r.email es el normalizado por el use case (trim + minúsculas), no lo que haya
           // tecleado el usuario.
           unawaited(
             Navigator.of(context).pushReplacement(
               MaterialPageRoute<void>(
-                builder: (_) => VerificacionEmailPage(email: r.email, password: password),
+                builder: (_) => VerificacionEmailPage(
+                  email: r.email,
+                  password: password,
+                  envioDelAlta: envioDelAlta,
+                ),
               ),
             ),
           );

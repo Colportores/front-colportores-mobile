@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
@@ -33,6 +34,7 @@ Future<void> _montarPagina(
   double escalaTexto = 1,
   DateTime Function()? ahora,
   BloqueoReenvioVerificacionRepository? bloqueos,
+  DateTime? envioDelAlta,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -53,6 +55,7 @@ Future<void> _montarPagina(
         email: email,
         password: password,
         estadoInicial: estadoInicial,
+        envioDelAlta: envioDelAlta,
         ahora: ahora ?? DateTime.now,
       ),
     ),
@@ -406,7 +409,7 @@ void main() {
   group('VerificacionEmailPage — candado por correo y persistente (#249)', () {
     final base = DateTime(2026, 10, 8, 10);
     const lucia = 'lucia.silva@correo.com';
-    const textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
+    String textoLimite(String cuanto) => 'Demasiados intentos. Probá nuevamente en $cuanto.';
     const unaHora = Duration(minutes: 60);
 
     final aviso = find.byKey(const Key('verificacion_email_limite'));
@@ -478,7 +481,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(aviso, findsOneWidget);
-        expect(find.text(textoLimite), findsOneWidget);
+        expect(find.text(textoLimite('30 minutos')), findsOneWidget);
         expect(find.byIcon(Icons.lock_outline), findsWidgets);
         expect(habilitado(tester), isFalse);
         expect(find.byKey(const Key('verificacion_email_progreso')), findsNothing);
@@ -652,7 +655,7 @@ void main() {
 
         expect(aviso, findsOneWidget);
         expect(habilitado(tester), isFalse);
-        expect(await bloqueos.leer(), {lucia: base.add(unaHora).toUtc()});
+        expect((await bloqueos.leer(ahora: base)).bloqueos, {lucia: base.add(unaHora).toUtc()});
       });
 
       testWidgets('dado un 429, cuando se sale de la pantalla y se vuelve a entrar, sigue '
@@ -837,7 +840,8 @@ void main() {
 
         await tester.tap(botonReenviar);
         await tester.pump();
-        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        // «Volver al login» no se toca con el pedido en vuelo (#325): se sale por el gesto atrás.
+        tester.state<NavigatorState>(find.byType(Navigator)).pop();
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('abrir_verificacion')), findsOneWidget);
 
@@ -1027,6 +1031,565 @@ void main() {
         expect(aviso, findsOneWidget);
       });
     });
+
+    // Seguimiento #325 (HU-AUTH-002, 12-A06): el aviso del límite cuenta en minutos.
+    group('el texto del límite cuenta en minutos (#325)', () {
+      Future<void> abrirConCandado(
+        WidgetTester tester,
+        Duration falta, {
+        DateTime Function()? ahora,
+      }) async {
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: ahora ?? () => base,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria({lucia: base.add(falta)}),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      const casos = <(Duration, String)>[
+        (Duration(minutes: 60), 'una hora'),
+        (Duration(minutes: 59, seconds: 1), 'una hora'),
+        (Duration(minutes: 59), '59 minutos'),
+        (Duration(minutes: 10), '10 minutos'),
+        (Duration(minutes: 2), '2 minutos'),
+        (Duration(minutes: 1, seconds: 1), '2 minutos'),
+        (Duration(minutes: 1), '1 minuto'),
+        (Duration(seconds: 1), '1 minuto'),
+      ];
+      for (final (falta, cuanto) in casos) {
+        testWidgets('dado un candado al que le faltan $falta, el aviso dice «$cuanto» (se '
+            'redondea hacia arriba)', (tester) async {
+          await abrirConCandado(tester, falta);
+
+          expect(find.text(textoLimite(cuanto)), findsOneWidget);
+          expect(habilitado(tester), isFalse);
+          await _desmontar(tester);
+        });
+      }
+
+      testWidgets('dado un 429 en pantalla, el aviso dice «una hora» y un minuto después '
+          '«59 minutos»', (tester) async {
+        var ahora = base;
+        await _montarPagina(
+          tester,
+          remote: remotoConLimite(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(find.text(textoLimite('una hora')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 1));
+        await tester.pump(const Duration(minutes: 1));
+
+        expect(find.text(textoLimite('59 minutos')), findsOneWidget);
+        await _desmontar(tester);
+      });
+
+      testWidgets('con la pantalla abierta el aviso se actualiza cada minuto hasta liberar', (
+        tester,
+      ) async {
+        var ahora = base;
+        await abrirConCandado(tester, const Duration(minutes: 3), ahora: () => ahora);
+        expect(find.text(textoLimite('3 minutos')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 1));
+        await tester.pump(const Duration(minutes: 1));
+        expect(find.text(textoLimite('2 minutos')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 2));
+        await tester.pump(const Duration(minutes: 1));
+        expect(find.text(textoLimite('1 minuto')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 3));
+        await tester.pump(const Duration(minutes: 1));
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('al volver a primer plano el aviso se recalcula con la hora de ahora', (
+        tester,
+      ) async {
+        var ahora = base;
+        await abrirConCandado(tester, const Duration(minutes: 10), ahora: () => ahora);
+        expect(find.text(textoLimite('10 minutos')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 4));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+
+        expect(find.text(textoLimite('6 minutos')), findsOneWidget);
+        await _desmontar(tester);
+      });
+
+      testWidgets('el lector de pantalla oye el aviso una sola vez, no cada minuto', (
+        tester,
+      ) async {
+        var ahora = base;
+        await abrirConCandado(tester, const Duration(minutes: 5), ahora: () => ahora);
+        expect(tester.takeAnnouncements().map((a) => a.message), [textoLimite('5 minutos')]);
+
+        for (var minuto = 1; minuto <= 3; minuto++) {
+          ahora = base.add(Duration(minutes: minuto));
+          await tester.pump(const Duration(minutes: 1));
+        }
+
+        expect(find.text(textoLimite('2 minutos')), findsOneWidget);
+        expect(tester.takeAnnouncements(), isEmpty);
+        await _desmontar(tester);
+      });
+
+      testWidgets('dado un 429 en pantalla, el aviso se anuncia una vez', (tester) async {
+        await _montarPagina(
+          tester,
+          remote: remotoConLimite(),
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        );
+        await tester.pumpAndSettle();
+        tester.takeAnnouncements();
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeAnnouncements().map((a) => a.message), [textoLimite('una hora')]);
+        await _desmontar(tester);
+      });
+
+      testWidgets('el aviso del límite lleva el «!» del canvas; el candado va solo en el botón', (
+        tester,
+      ) async {
+        await abrirConCandado(tester, const Duration(minutes: 30));
+
+        expect(
+          find.descendant(of: aviso, matching: find.byIcon(Icons.error_outline)),
+          findsOneWidget,
+        );
+        expect(find.descendant(of: aviso, matching: find.byIcon(Icons.lock_outline)), findsNothing);
+        expect(
+          find.descendant(of: botonReenviar, matching: find.byIcon(Icons.lock_outline)),
+          findsOneWidget,
+        );
+        await _desmontar(tester);
+      });
+
+      testWidgets('un candado guardado con más de una hora de vida se recorta a una hora al '
+          'abrir, y queda recortado en el teléfono', (tester) async {
+        var ahora = base;
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria({
+          lucia: base.add(const Duration(hours: 4)),
+        });
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => ahora,
+          bloqueos: bloqueos,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(textoLimite('una hora')), findsOneWidget);
+        expect((await bloqueos.leer(ahora: base)).bloqueos[lucia], base.add(unaHora).toUtc());
+
+        ahora = base.add(const Duration(minutes: 61));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('al abrir se podan los candados vencidos del teléfono: sin nada vigente no '
+          'queda la clave', (tester) async {
+        final almacen = AlmacenSeguroEnMemoria();
+        await BloqueoReenvioVerificacionRepositoryImpl(
+          almacen,
+          logger: loggerMudo(),
+        ).guardar('ana@correo.com', base.add(unaHora), ahora: base);
+        expect(almacen.contenido.keys, [ClaveSegura.bloqueoReenvioVerificacion]);
+
+        await _montarPagina(
+          tester,
+          remote: remotoSano(),
+          password: 'Secreto123',
+          ahora: () => base.add(const Duration(hours: 2)),
+          bloqueos: BloqueoReenvioVerificacionRepositoryImpl(almacen, logger: loggerMudo()),
+        );
+        await tester.pumpAndSettle();
+
+        expect(aviso, findsNothing);
+        expect(almacen.contenido, isEmpty);
+      });
+    });
+
+    // Seguimiento #325 (HU-AUTH-002, 12-A01/A02): la espera de 60 s cuenta desde el correo del alta
+    // y se recuerda por dirección.
+    group('la espera de 60 s cuenta desde el correo del alta (#325)', () {
+      final progreso = find.byKey(const Key('verificacion_email_progreso'));
+      final mensajeReenvio = find.byKey(const Key('verificacion_email_mensaje_reenvio'));
+
+      Future<void> abrirDesdeElAlta(
+        WidgetTester tester, {
+        required DateTime Function() ahora,
+        required Duration hace,
+        AuthRemoteDataSourceEnMemoria? remote,
+        BloqueoReenvioVerificacionRepository? bloqueos,
+      }) async {
+        await _montarPagina(
+          tester,
+          remote: remote ?? remotoSano(),
+          password: 'Secreto123',
+          ahora: ahora,
+          bloqueos: bloqueos ?? BloqueoReenvioVerificacionEnMemoria(),
+          envioDelAlta: ahora().subtract(hace),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('dado el alta recién hecha (12-A01 tras el alta), el botón dice «Reenviar en '
+          '60s» sin el aviso «Te reenviamos el correo»', (tester) async {
+        await abrirDesdeElAlta(tester, ahora: () => base, hace: Duration.zero);
+
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(progreso, findsOneWidget);
+        expect(mensajeReenvio, findsNothing, reason: 'no hubo reenvío: el correo salió del alta');
+        expect(find.text('Te enviamos un correo a'), findsOneWidget);
+        expect(aviso, findsNothing);
+        await _desmontar(tester);
+      });
+
+      testWidgets('dado el alta de hace 20 s, faltan 40 s; a los 40 s el botón queda como en '
+          '12-A01 y sigue sin aviso', (tester) async {
+        var ahora = base;
+        await abrirDesdeElAlta(tester, ahora: () => ahora, hace: const Duration(seconds: 20));
+        expect(find.text('Reenviar en 40s'), findsOneWidget);
+        expect(tester.widget<LinearProgressIndicator>(progreso).value, closeTo(40 / 60, 0.0001));
+
+        ahora = ahora.add(const Duration(seconds: 40));
+        await tester.pump(const Duration(seconds: 40));
+
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+        expect(progreso, findsNothing);
+        expect(mensajeReenvio, findsNothing);
+      });
+
+      testWidgets('dado el alta de hace más de 60 s, el reenvío está habilitado al abrir', (
+        tester,
+      ) async {
+        await abrirDesdeElAlta(tester, ahora: () => base, hace: const Duration(seconds: 61));
+
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+        expect(progreso, findsNothing);
+      });
+
+      testWidgets('dado el alta, cuando pasan los 60 s y se reenvía, sale el correo, aparece el '
+          'aviso y la cuenta regresiva arranca de nuevo', (tester) async {
+        var ahora = base;
+        final remote = remotoSano();
+        final bloqueos = _BloqueosEspiados();
+        await abrirDesdeElAlta(
+          tester,
+          ahora: () => ahora,
+          hace: Duration.zero,
+          remote: remote,
+          bloqueos: bloqueos,
+        );
+        ahora = ahora.add(const Duration(seconds: 60));
+        await tester.pump(const Duration(seconds: 60));
+        expect(habilitado(tester), isTrue);
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(remote.reenviosPorEmail[lucia], 1);
+        expect(mensajeReenvio, findsOneWidget);
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(bloqueos.esperas, [lucia]);
+        expect(bloqueos.guardados, isEmpty);
+        await _desmontar(tester);
+      });
+
+      testWidgets('dado el alta, cuando la app vuelve a primer plano, la cuenta sigue la hora '
+          'real', (tester) async {
+        var ahora = base;
+        await abrirDesdeElAlta(tester, ahora: () => ahora, hace: Duration.zero);
+
+        ahora = ahora.add(const Duration(seconds: 45));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar en 15s'), findsOneWidget);
+
+        ahora = ahora.add(const Duration(seconds: 30));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('dado el alta y el reloj atrasado 10 min, la espera no pasa de 60 s', (
+        tester,
+      ) async {
+        var ahora = base;
+        await abrirDesdeElAlta(tester, ahora: () => ahora, hace: Duration.zero);
+
+        ahora = ahora.subtract(const Duration(minutes: 10));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        await _desmontar(tester);
+      });
+
+      testWidgets('dado un 429 después de la espera del alta, el reenvío sigue bloqueado una '
+          'hora', (tester) async {
+        var ahora = base;
+        final bloqueos = _BloqueosEspiados();
+        await abrirDesdeElAlta(
+          tester,
+          ahora: () => ahora,
+          hace: const Duration(seconds: 61),
+          remote: remotoConLimite(),
+          bloqueos: bloqueos,
+        );
+
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+
+        expect(find.text(textoLimite('una hora')), findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(bloqueos.guardados, [lucia]);
+        expect(bloqueos.esperas, isEmpty, reason: 'un rechazo no es un correo enviado');
+
+        ahora = base.add(const Duration(minutes: 59));
+        await tester.pump(const Duration(minutes: 59));
+        expect(find.text(textoLimite('1 minuto')), findsOneWidget);
+
+        ahora = base.add(const Duration(minutes: 60));
+        await tester.pump(const Duration(minutes: 1));
+        expect(aviso, findsNothing);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('dado el alta de una dirección con el candado puesto, se ve 12-A06 (sin cuenta '
+          'regresiva)', (tester) async {
+        await abrirDesdeElAlta(
+          tester,
+          ahora: () => base.add(const Duration(minutes: 5)),
+          hace: Duration.zero,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria({lucia: base.add(unaHora)}),
+        );
+
+        expect(aviso, findsOneWidget);
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(progreso, findsNothing);
+        expect(habilitado(tester), isFalse);
+        await _desmontar(tester);
+      });
+
+      testWidgets('dado la espera guardada del alta, cuando se sale y se vuelve, la cuenta sigue '
+          'donde iba y pasados los 60 s está libre', (tester) async {
+        var ahora = base.add(const Duration(seconds: 20));
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria.con(
+          esperas: {lucia: base.add(const Duration(seconds: 60))},
+        );
+        await montarPila(tester, remote: remotoSano(), bloqueos: bloqueos, ahora: () => ahora);
+
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar en 40s'), findsOneWidget);
+        expect(mensajeReenvio, findsNothing);
+
+        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        await tester.pumpAndSettle();
+        ahora = base.add(const Duration(seconds: 45));
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar en 15s'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        await tester.pumpAndSettle();
+        ahora = base.add(const Duration(seconds: 61));
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+      });
+
+      testWidgets('dado un reenvío, cuando se sale y se vuelve a entrar, la espera sigue (sin el '
+          'aviso de éxito)', (tester) async {
+        var ahora = base;
+        final remote = remotoSano();
+        await montarPila(
+          tester,
+          remote: remote,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+          ahora: () => ahora,
+        );
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+        await tester.tap(botonReenviar);
+        await tester.pumpAndSettle();
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('verificacion_email_volver_login')));
+        await tester.pumpAndSettle();
+        ahora = base.add(const Duration(seconds: 10));
+        await tester.tap(find.byKey(const Key('abrir_verificacion')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Reenviar en 50s'), findsOneWidget);
+        expect(habilitado(tester), isFalse);
+        expect(remote.reenviosPorEmail[lucia], 1);
+      });
+
+      testWidgets('dado el correo de OTRA dirección guardado, esta sigue libre', (tester) async {
+        await abrirDesdeElAlta(
+          tester,
+          ahora: () => base,
+          hace: const Duration(seconds: 90),
+          bloqueos: BloqueoReenvioVerificacionEnMemoria.con(
+            esperas: {'ana@correo.com': base.add(const Duration(seconds: 60))},
+          ),
+        );
+
+        expect(find.text('Reenviar email'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+        expect(progreso, findsNothing);
+      });
+
+      testWidgets('sin correo conocido: la espera es de cada dirección al escribirla', (
+        tester,
+      ) async {
+        var ahora = base;
+        await _montarPagina(
+          tester,
+          remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}),
+          email: '',
+          estadoInicial: EstadoVerificacionEmail.expirado,
+          ahora: () => ahora,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria.con(
+            esperas: {'ana@correo.com': base.add(const Duration(seconds: 60))},
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(habilitado(tester), isTrue, reason: 'sin dirección escrita no hay espera');
+
+        await tester.enterText(campo, 'ana@correo.com');
+        await tester.pump();
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(habilitado(tester), isFalse);
+
+        await tester.enterText(campo, 'luis@correo.com');
+        await tester.pump();
+        expect(find.text('Reenviar email de verificación'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+        expect(progreso, findsNothing);
+
+        await tester.enterText(campo, '  Ana@Correo.COM ');
+        await tester.pump();
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+
+        ahora = base.add(const Duration(seconds: 60));
+        await tester.pump(const Duration(seconds: 60));
+        expect(find.text('Reenviar email de verificación'), findsOneWidget);
+        expect(habilitado(tester), isTrue);
+      });
+    });
+
+    // Seguimiento #325: lo que dejó la revisión y el QA del PR #323.
+    group('pulidos de la revisión y del QA del PR #323 (#325)', () {
+      final volverLogin = find.byKey(const Key('verificacion_email_volver_login'));
+      bool volverHabilitado(WidgetTester tester) =>
+          tester.widget<TextButton>(volverLogin).onPressed != null;
+
+      testWidgets('con un reenvío en vuelo «Volver al login» no se toca, y vuelve a estar '
+          'disponible al terminar', (tester) async {
+        final remote = remotoSano()..demoraReenvio = Completer<void>();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        );
+        await tester.pumpAndSettle();
+        expect(volverHabilitado(tester), isTrue);
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        expect(volverHabilitado(tester), isFalse);
+
+        remote.demoraReenvio!.complete();
+        await tester.pumpAndSettle();
+        expect(volverHabilitado(tester), isTrue);
+        await _desmontar(tester);
+      });
+
+      testWidgets('si el reenvío en vuelo falla, «Volver al login» y «Reenviar» se habilitan', (
+        tester,
+      ) async {
+        final remote = remotoSano()
+          ..fallaAlReenviar = const ServidorException(status: 500)
+          ..demoraReenvio = Completer<void>();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        expect(volverHabilitado(tester), isFalse);
+
+        remote.demoraReenvio!.complete();
+        await tester.pumpAndSettle();
+
+        expect(volverHabilitado(tester), isTrue);
+        expect(habilitado(tester), isTrue);
+        expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
+      });
+
+      testWidgets('una lectura de los reenvíos que no termina no deja «Reenviar» ocupado: a los '
+          '3 s el pedido sale igual', (tester) async {
+        final bloqueos = _BloqueosEspiados()..demoraLectura = Completer<void>();
+        final remote = remotoSano();
+        await _montarPagina(
+          tester,
+          remote: remote,
+          password: 'Secreto123',
+          ahora: () => base,
+          bloqueos: bloqueos,
+        );
+        await tester.pump();
+
+        await tester.tap(botonReenviar);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
+        expect(remote.reenviosPorEmail, isEmpty);
+        expect(habilitado(tester), isFalse, reason: 'ocupado mientras espera la lectura');
+
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+
+        expect(remote.reenviosPorEmail[lucia], 1);
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(volverHabilitado(tester), isTrue);
+        await _desmontar(tester);
+      });
+    });
   });
 
   group('VerificacionEmailPage — estado expirado', () {
@@ -1213,7 +1776,7 @@ void main() {
 /// Saca la pantalla del árbol (como cerrar la app) para volver a montarla desde cero.
 Future<void> _desmontar(WidgetTester tester) => tester.pumpWidget(const SizedBox());
 
-/// Candados en memoria que anotan qué se guardó y que pueden demorar la lectura, para probar el
+/// Reenvíos en memoria que anotan qué se guardó y que pueden demorar la lectura, para probar el
 /// reenvío mientras la pantalla todavía está leyendo lo que guardó el teléfono.
 final class _BloqueosEspiados implements BloqueoReenvioVerificacionRepository {
   _BloqueosEspiados([Map<String, DateTime> inicial = const {}])
@@ -1221,16 +1784,19 @@ final class _BloqueosEspiados implements BloqueoReenvioVerificacionRepository {
 
   final BloqueoReenvioVerificacionEnMemoria _real;
 
-  /// Los correos que se guardaron, en orden.
+  /// Los correos a los que se les guardó un candado, en orden.
   final List<String> guardados = [];
+
+  /// Los correos a los que se les guardó una espera (salió un correo), en orden.
+  final List<String> esperas = [];
 
   /// Si no es `null`, [leer] no sigue hasta que el test lo complete.
   Completer<void>? demoraLectura;
 
   @override
-  Future<Map<String, DateTime>> leer() async {
+  Future<ReenviosGuardados> leer({required DateTime ahora}) async {
     await demoraLectura?.future;
-    return _real.leer();
+    return _real.leer(ahora: ahora);
   }
 
   @override
@@ -1238,4 +1804,16 @@ final class _BloqueosEspiados implements BloqueoReenvioVerificacionRepository {
     guardados.add(correo);
     return _real.guardar(correo, vence, ahora: ahora);
   }
+
+  @override
+  Future<void> guardarEspera(String correo, DateTime vence, {required DateTime ahora}) {
+    esperas.add(correo);
+    return _real.guardarEspera(correo, vence, ahora: ahora);
+  }
+
+  @override
+  Future<void> olvidar(String correo) => _real.olvidar(correo);
+
+  @override
+  Future<void> olvidarTodo() => _real.olvidarTodo();
 }
