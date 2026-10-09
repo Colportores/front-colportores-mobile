@@ -59,7 +59,15 @@ class AvisosZona extends _$AvisosZona {
       final avisadas = {...await repositorio.leer(), ..._cerradas};
       final resultado = DetectorAvisosZona.detectar(avisadas: avisadas, actuales: inscripciones);
       await repositorio.anotar(resultado.silenciosas);
-      if (ref.mounted && !listEquals(state, resultado.avisos)) state = resultado.avisos;
+      // Lo anotado en silencio también cuenta como «ya avisado» en esta sesión: si no, lo cerrado
+      // antes (por ejemplo, la zona vieja de una inscripción dada de baja) ganaría sobre lo nuevo.
+      _cerradas.addAll(resultado.silenciosas);
+      // Mientras se escribía, la persona pudo cerrar un aviso de esta misma lista: no reaparece.
+      final vigentes = [
+        for (final aviso in resultado.avisos)
+          if (!_estaCerrado(aviso)) aviso,
+      ];
+      if (ref.mounted && !listEquals(state, vigentes)) state = vigentes;
     } on Object catch (e) {
       AppLogger.instance.warn(
         LogModulo.auth,
@@ -69,6 +77,9 @@ class AvisosZona extends _$AvisosZona {
       );
     }
   }
+
+  bool _estaCerrado(AvisoZona aviso) =>
+      _cerradas.containsKey(aviso.inscripcionId) && _cerradas[aviso.inscripcionId] == aviso.zonaId;
 
   /// La persona cerró [aviso]: desaparece enseguida y se anota como avisado. Si entre tanto la zona
   /// volvió a cambiar y [aviso] ya no es el vigente, no se hace nada (el nuevo sigue visible).

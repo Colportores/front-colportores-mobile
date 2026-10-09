@@ -297,6 +297,43 @@ void main() {
       expect(await lento.leer(), {'insc-1': 'z-centro'});
     });
 
+    test('dado un aviso cerrado y una baja, cuando la inscripción vuelve sin zona, no hay «Ya no '
+        'tenés zona» falso, y la primera zona nueva sí se avisa', () async {
+      fuente.publicar([_centro]);
+      final c = await abrir();
+      await notifier(c).cerrar(_asignadaCentro);
+
+      fuente.publicar([_inscripcion(zonaId: 'z-centro', zonaNombre: 'Centro', dadaDeBaja: true)]);
+      await pumpEventQueue();
+      fuente.publicar([_inscripcion()]);
+      await pumpEventQueue();
+
+      expect(avisos(c), isEmpty);
+
+      fuente.publicar([_centro]);
+      await pumpEventQueue();
+
+      expect(avisos(c), [_asignadaCentro]);
+    });
+
+    test('dado que se cierra un aviso mientras otro pull anota en silencio, el aviso cerrado no '
+        'reaparece', () async {
+      final lento = _RepositorioLento();
+      fuente.publicar([_centro]);
+      final c = await abrir(repositorio: lento);
+      lento.compuertaAnotar = Completer<void>();
+
+      fuente.publicar([_centro, _inscripcion(id: 'insc-2')]);
+      await pumpEventQueue();
+      final cierre = notifier(c).cerrar(_asignadaCentro);
+      lento.compuertaAnotar!.complete();
+      await cierre;
+      await pumpEventQueue();
+
+      expect(avisos(c), isEmpty);
+      expect(await lento.leer(), {'insc-1': 'z-centro', 'insc-2': null});
+    });
+
     test('dado que hay avisos de varias campañas, cerrar uno deja los demás', () async {
       fuente.publicar([_centro, _inscripcion(id: 'insc-2', zonaId: 'z-sur', zonaNombre: 'Sur')]);
       final c = await abrir();

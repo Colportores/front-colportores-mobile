@@ -425,10 +425,9 @@ void main() {
   });
 
   group('QA #329 · aviso con el teclado de la pestaña «Lista»', () {
-    // Sin el aviso la pestaña no desborda con el teclado (control): el desborde es de la franja.
-    // skip: QA #329 — con texto 2.0, teclado de 300 dp y un aviso sin cerrar, la franja (hasta el 40 %
-    // de la pantalla entera, no del área libre) deja ~4 dp a la pestaña «Lista»: desborda 161 px y el
-    // campo de búsqueda queda fuera de la vista. Al arreglarlo, sacar el skip.
+    // Sin el aviso la pestaña no desborda con el teclado (control). Con aviso, la franja se oculta
+    // mientras el teclado está abierto (decisión del orquestador, 09/10: gana el campo que se
+    // escribe; precedente #322), así que el campo queda a la vista aun con texto 2.0.
     for (final conAviso in [false, true]) {
       for (final escala in [1.0, 2.0]) {
         testWidgets('360×640 con teclado de 300 dp, texto ${escala}x, '
@@ -453,16 +452,55 @@ void main() {
           await _capturar(tester, 'lista_teclado_${conAviso ? 'con' : 'sin'}_aviso_${escala}x');
 
           expect(tester.takeException(), isNull);
+          expect(_avisos, findsNothing, reason: 'con el teclado abierto la franja se oculta');
           final rect = tester.getRect(campo);
-          final franja = conAviso ? tester.getRect(_avisos) : Rect.zero;
           expect(
-            rect.height >= 48 && rect.top >= franja.bottom && rect.bottom <= 640 - 300,
+            rect.height >= 48 && rect.bottom <= 640 - 300,
             isTrue,
-            reason: 'campo $rect, franja $franja, teclado desde y=340',
+            reason: 'campo $rect, teclado desde y=340',
           );
-        }, skip: conAviso && escala == 2.0);
+        });
       }
     }
+
+    testWidgets('el aviso vuelve al cerrar el teclado y no se anota mientras estuvo oculto', (
+      tester,
+    ) async {
+      telefono.fuente.publicar([_centro]);
+      await _montar(tester, telefono, escala: 2);
+      expect(find.text(_textoCentro), findsOneWidget);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      expect(_avisos, findsNothing);
+      expect(find.text(_textoCentro), findsNothing);
+      expect(telefono.guardado, isNull, reason: 'oculto no es lo mismo que avisado');
+
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpAndSettle();
+      expect(find.text(_textoCentro), findsOneWidget);
+      expect(telefono.guardado, isNull);
+
+      await _tocarCerrar(tester);
+      expect(_avisos, findsNothing);
+      expect(telefono.guardado, '{"insc-1":"z-centro"}');
+    });
+
+    testWidgets('con el teclado abierto llega un pull con otra zona: al cerrarlo sale el último '
+        'aviso, uno solo', (tester) async {
+      telefono.fuente.publicar([_centro]);
+      await _montar(tester, telefono);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      telefono.fuente.publicar([_norte]);
+      await tester.pumpAndSettle();
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpAndSettle();
+
+      expect(find.text(_textoCentro), findsNothing);
+      expect(find.text(_textoNorte), findsOneWidget);
+    });
   });
 
   group('QA #329 · capturas de cada estado (solo con QA_CAPTURAS=true)', () {

@@ -63,7 +63,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !mapaConVistaPrevia) _ir(PestanaInicio.hoy);
       },
-      child: _scaffold(context),
+      child: _LectorTeclado(child: _scaffold(context)),
     );
   }
 
@@ -136,11 +136,43 @@ class _AvisosDeZona extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final provider = avisosZonaProvider(colportorId);
+    // Se mira siempre, aunque la franja se oculte: así el estado de los avisos (y lo cerrado en la
+    // sesión) no se pierde mientras el teclado está abierto.
+    final avisos = ref.watch(provider);
+    // Con el teclado abierto gana el campo que se escribe (precedente: #322): la franja se oculta y
+    // vuelve sola al cerrarlo. El aviso sigue pendiente; solo «Entendido» lo anota como avisado.
+    if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
     return AvisosZonaPendientes(
-      avisos: ref.watch(provider),
+      avisos: avisos,
       onCerrar: (aviso) => unawaited(ref.read(provider.notifier).cerrar(aviso)),
     );
   }
+}
+
+/// Le dice a la franja de avisos si el teclado está abierto. Se lee arriba del `Scaffold` porque el
+/// `MediaQuery` de su cuerpo ya viene sin el alto del teclado (el `Scaffold` lo descuenta al
+/// redimensionarse). [child] llega armado de afuera: mientras el teclado se anima no se reconstruye
+/// nada más que lo que depende de «abierto o cerrado».
+class _LectorTeclado extends StatelessWidget {
+  const _LectorTeclado({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      _EstadoTeclado(abierto: MediaQuery.viewInsetsOf(context).bottom > 0, child: child);
+}
+
+class _EstadoTeclado extends InheritedWidget {
+  const _EstadoTeclado({required this.abierto, required super.child});
+
+  final bool abierto;
+
+  static bool abiertoEn(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_EstadoTeclado>()?.abierto ?? false;
+
+  @override
+  bool updateShouldNotify(_EstadoTeclado oldWidget) => abierto != oldWidget.abierto;
 }
 
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
