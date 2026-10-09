@@ -15,6 +15,7 @@ import '../providers/alta_ubicacion_notifier.dart'
 import '../providers/alta_ubicacion_providers.dart';
 import '../providers/modificar_ubicacion_notifier.dart';
 import '../widgets/dialogos_modificar.dart';
+import '../widgets/hoja_baja.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
 import '../widgets/hoja_modificar.dart';
@@ -44,6 +45,22 @@ final class UbicacionExistenteElegida extends SalidaModificarUbicacion {
   final String ubicacionId;
 }
 
+/// El colportor dio de baja la ubicación desde el pie de la edición (vista 09·01, HU-UBI-005): ya
+/// está de baja en el teléfono y el mapa tiene que dejar de mostrarla.
+final class UbicacionBajaRealizada extends SalidaModificarUbicacion {
+  const UbicacionBajaRealizada(this.ubicacion);
+
+  final Ubicacion ubicacion;
+}
+
+/// La baja estaba bloqueada por una cobranza pendiente y el colportor eligió «Ir a la cobranza»
+/// (vista 09·02): la edición no cambió nada y la pantalla que la abrió lleva a la cobranza.
+final class IrALaCobranzaElegida extends SalidaModificarUbicacion {
+  const IrALaCobranzaElegida(this.ubicacionId);
+
+  final String ubicacionId;
+}
+
 /// Vista 07 (HU-UBI-004, #202): modificar una ubicación que ya está en el teléfono.
 ///
 /// Pantalla completa, como el alta: el mapa arriba (quieto hasta tocar «Mover el punto») y abajo la
@@ -51,13 +68,22 @@ final class UbicacionExistenteElegida extends SalidaModificarUbicacion {
 /// «Guardar cambios» escribe en el teléfono y, si hay algo para confirmar (reactivar, cambiar la
 /// ciudad, mover el punto más de 100 m) o la ubicación quedaría como otra, lo pregunta antes. Sale con
 /// un [SalidaModificarUbicacion], o con `null` si el colportor cierra sin guardar.
+///
+/// Al pie, «Dar de baja» (vista 09, HU-UBI-005) abre la hoja del motivo sobre la ubicación **como se
+/// guardó**: lo que se haya cambiado y no guardado no entra en la baja y se descarta al cerrar. No se
+/// ofrece en una ubicación que ya está de baja (esa se reactiva desde la Lista).
 class ModificarUbicacionPage extends ConsumerStatefulWidget {
-  const ModificarUbicacionPage({super.key, required this.parametros, this.alDarDeBaja});
+  const ModificarUbicacionPage({
+    super.key,
+    required this.parametros,
+    this.ofreceIrALaCobranza = false,
+  });
 
   final ParametrosModificar parametros;
 
-  /// «Dar de baja». Sin esto el botón no se dibuja: ese flujo es el de HU-UBI-005.
-  final VoidCallback? alDarDeBaja;
+  /// La hoja de la baja bloqueada por una cobranza ofrece «Ir a la cobranza» (la pantalla que abrió la
+  /// edición recibe [IrALaCobranzaElegida]). Sin esto, solo el aviso y «Entendido».
+  final bool ofreceIrALaCobranza;
 
   static var _aperturas = 0;
 
@@ -66,7 +92,7 @@ class ModificarUbicacionPage extends ConsumerStatefulWidget {
     BuildContext context, {
     required String colportorId,
     required String ubicacionId,
-    VoidCallback? alDarDeBaja,
+    bool ofreceIrALaCobranza = false,
   }) => Navigator.of(context).push<SalidaModificarUbicacion>(
     MaterialPageRoute(
       builder: (_) => ModificarUbicacionPage(
@@ -75,7 +101,7 @@ class ModificarUbicacionPage extends ConsumerStatefulWidget {
           ubicacionId: ubicacionId,
           apertura: ++_aperturas,
         ),
-        alDarDeBaja: alDarDeBaja,
+        ofreceIrALaCobranza: ofreceIrALaCobranza,
       ),
     ),
   );
@@ -94,6 +120,7 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
   var _guardandoPagina = false;
   var _eligiendoCiudad = false;
   var _confirmandoSalida = false;
+  var _abriendoBaja = false;
 
   ModificarUbicacionNotifier get _notificador =>
       ref.read(modificarUbicacionProvider(widget.parametros).notifier);
@@ -244,9 +271,39 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
     }
   }
 
+  // ---------------------------------------------------------------- dar de baja
+
+  /// «Dar de baja» (vista 09): la hoja del motivo; con la baja hecha la pantalla se cierra (sin
+  /// conexión, avisando que se sincroniza después), y con «Ir a la cobranza» vuelve a quien la abrió.
+  /// Una sola hoja a la vez, y nunca mientras se guarda.
+  Future<void> _darDeBaja() async {
+    final original = _estado.original;
+    if (original == null || _abriendoBaja || _guardandoPagina || _estado.guardando) return;
+    _abriendoBaja = true;
+    SalidaHojaBaja? salida;
+    try {
+      salida = await mostrarHojaBaja(
+        context,
+        ubicacion: original,
+        ofreceIrALaCobranza: widget.ofreceIrALaCobranza,
+      );
+    } finally {
+      _abriendoBaja = false;
+    }
+    if (!mounted) return;
+    switch (salida) {
+      case BajaRealizada(:final ubicacion):
+        _terminar(UbicacionBajaRealizada(ubicacion));
+      case IrALaCobranzaElegido(:final ubicacionId):
+        Navigator.of(context).pop(IrALaCobranzaElegida(ubicacionId));
+      case null:
+        break;
+    }
+  }
+
   /// Los cambios quedaron en el teléfono: sin conexión se avisa que el estado se sincroniza después y
   /// la pantalla vuelve al mapa.
-  void _terminar(UbicacionEditada salida) {
+  void _terminar(SalidaModificarUbicacion salida) {
     final conexion = ref.read(conexionProvider).value;
     if (conexion == TipoConexion.sinConexion) {
       ScaffoldMessenger.of(
@@ -324,7 +381,9 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
                         estado: estado,
                         alGuardar: () => unawaited(_guardar()),
                         alElegirCiudad: () => unawaited(_elegirCiudad()),
-                        alDarDeBaja: widget.alDarDeBaja,
+                        alDarDeBaja: estado.original?.estaBorrada == false
+                            ? () => unawaited(_darDeBaja())
+                            : null,
                         tecladoAbierto: tecladoAbierto,
                       ),
                     ),

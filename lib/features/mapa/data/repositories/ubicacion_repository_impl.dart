@@ -1,10 +1,12 @@
 import 'package:dartz/dartz.dart';
+import 'package:sqlite3/common.dart' show SqliteException;
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -176,15 +178,18 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
   }) async {
+    // El motivo es texto del colportor: a la DB (auditoría local) sí, al log solo que hubo.
+    final conMotivo = baja && MotivosBaja.paraGuardar(motivo) != null;
     try {
       final (:ubicacion, :escribio) = await _local.cambiarBaja(
         id,
         baseUpdatedAt: baseUpdatedAt,
         updatedAt: ahora,
         deletedAt: baja ? ahora : null,
+        motivo: baja ? MotivosBaja.paraGuardar(motivo) : null,
         conservadaId: conservadaId,
       );
       // Un solo evento de auditoría por baja (R-UB09): el segundo de dos toques no escribió.
@@ -225,12 +230,19 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         baja ? const FailureBajaCambioReciente() : const FailureReactivacionCambioReciente(),
       );
     } on Object catch (e, st) {
+      // Nunca el objeto de la excepción al log: una `SqliteException` imprime la sentencia con los
+      // parámetros enlazados y, si falla el INSERT en `audit_log`, entre ellos va el motivo (texto
+      // libre, R-UB09). Solo el tipo y, de SQLite, el código (como `DatabaseHelper.sinClave`).
       _log.error(
         LogModulo.db,
         'UBICACION_BAJA_FAIL',
         'no se pudo cambiar la baja',
-        {'ubicacion_id': id},
-        e,
+        {
+          'ubicacion_id': id,
+          'tipo': e.runtimeType.toString(),
+          if (e is SqliteException) 'result_code': e.resultCode,
+        },
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
@@ -264,6 +276,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
             UbicacionConResumen(
               ubicacion: f.ubicacion.toEntity(),
               cantidadEspacios: f.cantidadEspacios,
+              motivoBaja: f.motivoBaja,
             ),
         ],
       );

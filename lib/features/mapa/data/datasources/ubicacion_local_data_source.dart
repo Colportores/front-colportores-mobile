@@ -9,8 +9,13 @@ import '../models/ubicacion_model.dart';
 /// Resultado de [UbicacionLocalDataSource.insertar]: la ubicación guardada y si ya estaba.
 typedef InsercionUbicacion = ({UbicacionModel ubicacion, bool yaEstaba});
 
-/// Una ubicación con la cantidad de espacios sin baja que tiene (para la lista, HU-UBI-002).
-typedef UbicacionConEspacios = ({UbicacionModel ubicacion, int cantidadEspacios});
+/// Una ubicación con la cantidad de espacios sin baja que tiene y, si está de baja, el motivo con que
+/// se dio de baja (`audit_log` local), para la lista (HU-UBI-002, HU-UBI-005).
+typedef UbicacionConEspacios = ({
+  UbicacionModel ubicacion,
+  int cantidadEspacios,
+  String? motivoBaja,
+});
 
 /// Persistencia local de las ubicaciones y sus espacios.
 ///
@@ -75,6 +80,11 @@ abstract interface class UbicacionLocalDataSource {
   /// (tombstone) si [deletedAt] no es `null` o el `update` si reactiva, con la fila entera. No
   /// toca los espacios ni el resto de la fila (incluida `sync_version`).
   ///
+  /// Con [motivo] (no vacío, solo al dar de baja), escribe también —**en la misma transacción**— una
+  /// fila `ubicacion_baja` en el `audit_log` local (R-UB09), con el `id` de la ubicación, el motivo y
+  /// la misma marca que `deleted_at`: así la lista encuentra el motivo de la baja vigente. El motivo
+  /// no sale de la DB.
+  ///
   /// Devuelve la fila como quedó y si se escribió.
   ///
   /// - Sin fila con ese `id`: [UbicacionInexistenteException].
@@ -92,6 +102,7 @@ abstract interface class UbicacionLocalDataSource {
     required DateTime baseUpdatedAt,
     required DateTime updatedAt,
     required DateTime? deletedAt,
+    String? motivo,
     String? conservadaId,
   });
 
@@ -104,7 +115,8 @@ abstract interface class UbicacionLocalDataSource {
   });
 
   /// Lo mismo que [observarDelColportor] (sin filtro de ciudad), cada ubicación con la cantidad de
-  /// espacios sin baja que tiene: un solo `JOIN` con `COUNT`, para la lista (HU-UBI-002).
+  /// espacios sin baja que tiene y el motivo de su baja vigente: un solo `JOIN` con `COUNT` (HU-UBI-002,
+  /// HU-UBI-005).
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({
     required String colportorId,
     bool incluirBajas = false,

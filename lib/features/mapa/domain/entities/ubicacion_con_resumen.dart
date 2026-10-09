@@ -11,6 +11,7 @@ final class UbicacionConResumen extends Equatable {
     this.cantidadEspacios = 0,
     this.estado,
     this.proximaEntrevista,
+    this.motivoBaja,
   });
 
   final Ubicacion ubicacion;
@@ -27,6 +28,15 @@ final class UbicacionConResumen extends Equatable {
   /// todavía, siempre `null`.
   final DateTime? proximaEntrevista;
 
+  /// El motivo con que se dio de baja (`audit_log` local), si la ubicación está de baja y el
+  /// teléfono lo guardó: una baja que vino del sync, o anterior a la versión 7 de la DB, no lo tiene.
+  final String? motivoBaja;
+
   @override
-  List<Object?> get props => [ubicacion, cantidadEspacios, estado, proximaEntrevista];
+  List<Object?> get props => [ubicacion, cantidadEspacios, estado, proximaEntrevista, motivoBaja];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
 }

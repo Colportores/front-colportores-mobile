@@ -41,7 +41,7 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
   final porId = <String, Ubicacion>{};
   Failure? fallaAlObtener;
   final pedidos = <({String colportorId, bool incluirBajas})>[];
-  final bajas = <({String id, DateTime baseUpdatedAt, bool conMotivo, String? conservadaId})>[];
+  final bajas = <({String id, DateTime baseUpdatedAt, String? motivo, String? conservadaId})>[];
 
   @override
   Stream<List<Ubicacion>> observarDelColportor({
@@ -64,15 +64,10 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
   }) async {
-    bajas.add((
-      id: id,
-      baseUpdatedAt: baseUpdatedAt,
-      conMotivo: conMotivo,
-      conservadaId: conservadaId,
-    ));
+    bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo, conservadaId: conservadaId));
     final actual = porId[id]!;
     return Right((
       ubicacion: Ubicacion(
@@ -287,7 +282,7 @@ void main() {
       expect(r, isA<UbicacionDadaDeBaja>());
       expect((r as UbicacionDadaDeBaja).ubicacion.id, 'ub-b');
       expect(ubicaciones.bajas, [
-        (id: 'ub-b', baseUpdatedAt: _t0, conMotivo: true, conservadaId: 'ub-a'),
+        (id: 'ub-b', baseUpdatedAt: _t0, motivo: 'duplicado_de_ub-a', conservadaId: 'ub-a'),
       ]);
     });
 

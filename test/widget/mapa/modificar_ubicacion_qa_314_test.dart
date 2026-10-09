@@ -54,12 +54,7 @@ class _Anfitrion extends StatelessWidget {
     body: Center(
       child: ElevatedButton(
         onPressed: () async => salidas.add(
-          await ModificarUbicacionPage.abrir(
-            context,
-            colportorId: 'col-1',
-            ubicacionId: 'ubi-1',
-            alDarDeBaja: () {},
-          ),
+          await ModificarUbicacionPage.abrir(context, colportorId: 'col-1', ubicacionId: 'ubi-1'),
         ),
         child: const Text('abrir'),
       ),

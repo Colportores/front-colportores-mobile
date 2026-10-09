@@ -12,6 +12,7 @@ final class ItemListaUbicacion extends Equatable {
     this.cantidadEspacios = 0,
     this.estado,
     this.proximaEntrevista,
+    this.motivoBaja,
   });
 
   final Ubicacion ubicacion;
@@ -29,6 +30,9 @@ final class ItemListaUbicacion extends Equatable {
   /// Hora de la entrevista agendada, si el estado es [EstadoCasa.entrevistaAgendada] y se conoce.
   final DateTime? proximaEntrevista;
 
+  /// El motivo de la baja (`UbicacionConResumen.motivoBaja`), si la fila es una baja y se conoce.
+  final String? motivoBaja;
+
   /// Está dada de baja (soft delete): la vista la etiqueta "Baja".
   bool get esBaja => ubicacion.estaBorrada;
 
@@ -42,7 +46,13 @@ final class ItemListaUbicacion extends Equatable {
     cantidadEspacios,
     estado,
     proximaEntrevista,
+    motivoBaja,
   ];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
 }
 
 /// Resultado de [ConsultaListaUbicaciones]: la página pedida y los contadores.

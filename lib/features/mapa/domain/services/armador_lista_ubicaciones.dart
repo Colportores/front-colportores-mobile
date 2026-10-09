@@ -51,6 +51,7 @@ abstract final class ArmadorListaUbicaciones {
           cantidadEspacios: fila.cantidadEspacios,
           estado: fila.estado,
           proximaEntrevista: fila.proximaEntrevista,
+          motivoBaja: fila.motivoBaja,
         ),
       );
     }

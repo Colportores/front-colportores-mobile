@@ -184,8 +184,8 @@ class _CirculoPunteado extends CustomPainter {
 }
 
 /// Una fila de la lista (canvas, 05B): la insignia del estado, la dirección, la segunda línea y a
-/// la derecha la distancia o la última actualización. Una baja lleva «BAJA», el círculo punteado,
-/// fondo tostado y ni flecha ni toque.
+/// la derecha la distancia o la última actualización. Una baja lleva «BAJA», el círculo punteado y
+/// fondo tostado, sin flecha; solo se toca si la pantalla ofrece [alReactivar] (vista 09·03).
 class FilaUbicacionLista extends StatelessWidget {
   const FilaUbicacionLista({
     super.key,
@@ -193,6 +193,7 @@ class FilaUbicacionLista extends StatelessWidget {
     required this.lista,
     required this.ahora,
     this.alTocar,
+    this.alReactivar,
     this.conFlecha = true,
   });
 
@@ -207,12 +208,18 @@ class FilaUbicacionLista extends StatelessWidget {
   /// `null`: la fila no se puede tocar (todavía no hay a dónde ir, o es una baja).
   final VoidCallback? alTocar;
 
+  /// Qué pasa al tocar una **baja**: abre «Reactivar» (vista 09·03), su única acción. `null`: la baja
+  /// no se puede tocar (el mapa, vista 06, la lista sin elegirla).
+  final VoidCallback? alReactivar;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const colores = ColoresColportaje.unica;
     final esBaja = item.esBaja;
-    final tocable = item.esInteractiva && alTocar != null;
+    final reactivable = esBaja && alReactivar != null;
+    final alPresionar = reactivable ? alReactivar : alTocar;
+    final tocable = reactivable || (item.esInteractiva && alTocar != null);
     final apilada = textoGrande(context);
     final derecha = FormatoListaUbicaciones.derecha(item, lista, ahora);
 
@@ -258,6 +265,10 @@ class FilaUbicacionLista extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 FormatoListaUbicaciones.meta(item, ahora),
+                // El motivo de una baja es texto libre (hasta 4 renglones pegados): la fila no crece
+                // con él. Entero se lee en la hoja de reactivar.
+                maxLines: esBaja ? 2 : null,
+                overflow: esBaja ? TextOverflow.ellipsis : null,
                 style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: colores.gris),
               ),
               if (apilada) ...[const SizedBox(height: 3), textoDerecha],
@@ -266,7 +277,7 @@ class FilaUbicacionLista extends StatelessWidget {
         ),
         if (!apilada) ...[const SizedBox(width: 12), textoDerecha],
         // En el canvas la «›» quiere decir «se abre»: sin destino (o en una baja) no se muestra.
-        if (tocable && conFlecha) ...[
+        if (tocable && !esBaja && conFlecha) ...[
           const SizedBox(width: 12),
           const ExcludeSemantics(
             child: Text('›', style: TextStyle(color: ColoresLista.chevron, fontSize: 18)),
@@ -288,11 +299,12 @@ class FilaUbicacionLista extends StatelessWidget {
     return Semantics(
       container: true,
       button: tocable,
-      enabled: !esBaja,
+      enabled: !esBaja || reactivable,
       label: FormatoListaUbicaciones.etiquetaFila(item, lista, ahora),
-      onTap: tocable ? alTocar : null,
+      hint: reactivable ? 'Tocá para reactivar' : null,
+      onTap: tocable ? alPresionar : null,
       child: ExcludeSemantics(
-        child: tocable ? InkWell(onTap: alTocar, child: fila) : fila,
+        child: tocable ? InkWell(onTap: alPresionar, child: fila) : fila,
       ),
     );
   }

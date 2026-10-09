@@ -10,15 +10,18 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/consultor_pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/baja_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/lista_ubicaciones_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'alta_ubicacion_falsos.dart';
+import 'baja_ubicacion_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 
 /// Hoy para los tests de la lista: las filas dicen «hace 2 h», «ayer»… respecto de este momento.
@@ -37,6 +40,7 @@ UbicacionConResumen filaLista(
   EstadoCasa? estado,
   DateTime? entrevista,
   DateTime? baja,
+  String? motivoBaja,
   String dueno = 'col-1',
 }) {
   final actualizada = ahoraLista.subtract(hace);
@@ -59,6 +63,7 @@ UbicacionConResumen filaLista(
     cantidadEspacios: espacios,
     estado: estado,
     proximaEntrevista: entrevista,
+    motivoBaja: motivoBaja,
   );
 }
 
@@ -97,6 +102,21 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     }
   }
 
+  /// Cada baja o reactivación que llegó al repositorio, en orden.
+  final cambiosDeBaja = <({String id, bool baja, DateTime baseUpdatedAt, String? motivo})>[];
+
+  /// Si no es `null`, la baja o reactivación espera a que se complete antes de escribir.
+  Completer<void>? bloqueoCambioDeBaja;
+
+  /// Si no es `null`, la baja o reactivación devuelve esta falla sin escribir (la cuenta igual).
+  Failure? fallaAlCambiarBaja;
+
+  /// Si no es `null`, la baja o reactivación lanza esto (un puerto roto).
+  Object? lanzaAlCambiarBaja;
+
+  /// Si es `true`, la baja o reactivación encuentra la fila cambiada (el sync llegó primero).
+  bool filaCambiada = false;
+
   /// Hace que el stream emita un error a quien esté suscripto.
   void fallar(Object error) {
     for (final c in [..._activos]) {
@@ -132,6 +152,61 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
   }
 
   @override
+  Future<Either<Failure, Ubicacion?>> obtener(String id) async {
+    for (final f in _filas) {
+      if (f.ubicacion.id == id) return Right(f.ubicacion);
+    }
+    return const Right(null);
+  }
+
+  @override
+  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
+    String id, {
+    required bool baja,
+    required DateTime baseUpdatedAt,
+    required DateTime ahora,
+    String? motivo,
+    String? conservadaId,
+  }) async {
+    cambiosDeBaja.add((id: id, baja: baja, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
+    final espera = bloqueoCambioDeBaja;
+    if (espera != null) await espera.future;
+    final lanza = lanzaAlCambiarBaja;
+    if (lanza != null) throw lanza;
+    final falla = fallaAlCambiarBaja;
+    if (falla != null) return Left(falla);
+    if (filaCambiada) {
+      return Left(
+        baja ? const FailureBajaCambioReciente() : const FailureReactivacionCambioReciente(),
+      );
+    }
+    final i = _filas.indexWhere((f) => f.ubicacion.id == id);
+    if (i < 0) return const Left(FailureUbicacionInexistente());
+    final actual = _filas[i];
+    final u = actual.ubicacion;
+    final nueva = Ubicacion(
+      id: u.id,
+      tipo: u.tipo,
+      calle: u.calle,
+      numero: u.numero,
+      lat: u.lat,
+      lon: u.lon,
+      ciudadId: u.ciudadId,
+      zonaId: u.zonaId,
+      auditoria: u.auditoria.copyWith(updatedAt: ahora, deletedAt: baja ? ahora : null),
+    );
+    final fila = UbicacionConResumen(
+      ubicacion: nueva,
+      cantidadEspacios: actual.cantidadEspacios,
+      estado: actual.estado,
+      proximaEntrevista: actual.proximaEntrevista,
+      motivoBaja: baja ? motivo : null,
+    );
+    emitir([..._filas.sublist(0, i), fila, ..._filas.sublist(i + 1)]);
+    return Right((ubicacion: nueva, escribio: true));
+  }
+
+  @override
   Future<Either<Failure, ResultadoAltaUbicacion>> registrar(
     Ubicacion ubicacion, {
     Espacio? espacio,
@@ -159,6 +234,7 @@ List<Override> overridesLista({
   GpsFalso? gps,
   CiudadesParaAlta? ciudades,
   DateTime? ahora,
+  ConsultorPendientesUbicacion? pendientes,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   return [
@@ -167,5 +243,7 @@ List<Override> overridesLista({
     activadorGpsProvider.overrideWithValue(gpsFalso),
     ciudadesParaAltaProvider.overrideWithValue(ciudades ?? CiudadesFalsas()),
     relojListaUbicacionesProvider.overrideWithValue(() => ahora ?? ahoraLista),
+    relojAltaUbicacionProvider.overrideWithValue(() => ahora ?? ahoraLista),
+    consultorPendientesUbicacionProvider.overrideWithValue(pendientes ?? PendientesFalso()),
   ];
 }

@@ -4,6 +4,8 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/motivo_baja.dart';
+import '../entities/pendientes_ubicacion.dart';
 import '../entities/resultado_baja_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
@@ -25,7 +27,8 @@ final class DarDeBajaUbicacionParams extends Equatable {
   /// concurrente (igual que `ModificarUbicacionParams.baseUpdatedAt`).
   final DateTime baseUpdatedAt;
 
-  /// Opcional (R-UB09, "`reason` si el usuario aporta"). Texto libre: no se imprime nunca.
+  /// Uno de [MotivosBaja] o, con «Otro», el texto del colportor (R-UB09). Va al `audit_log` local;
+  /// texto libre: no se imprime nunca. Sin motivo (o en blanco) no se guarda nada.
   final String? motivo;
 
   /// La segunda confirmación, tras ver el resumen de [BajaRequiereConfirmacion].
@@ -47,11 +50,15 @@ final class DarDeBajaUbicacionParams extends Equatable {
 /// 1. Sin `id`: `Left(FailureValidacion)`. La ubicación no está: `Left(FailureUbicacionInexistente)`.
 /// 2. Ya estaba de baja (doble toque): `Right(BajaSinCambios)`, sin escribir ni encolar.
 /// 3. La fila cambió desde que se cargó la pantalla: `Left(FailureBajaCambioReciente)`.
-/// 4. Con visitas pendientes, ventas con saldo o cobros sin cerrar y sin `confirmaPendientes`:
-///    `Right(BajaRequiereConfirmacion)` con el resumen; no escribe.
-/// 5. Escribe `deleted_at` = ahora y `updated_at` = ahora y encola el tombstone, en una
-///    transacción. **No** da de baja los espacios ni las personas (HU: "no se borran en cascada").
-///    Si otro toque la dio de baja mientras tanto, `Right(BajaSinCambios)`. Con
+/// 4. Con una cobranza pendiente, alguna venta o una visita de otro colportor:
+///    `Right(BajaBloqueada)` con el motivo; no escribe. **No** vale para la baja por unión de
+///    duplicados (con [DarDeBajaUbicacionParams.conservadaId]): todo lo que colgaba de la duplicada
+///    pasa a la que se conserva (HU-UBI-005, «Baja por unión de duplicados»).
+/// 5. Con visitas pendientes propias y sin `confirmaPendientes`: `Right(BajaRequiereConfirmacion)`
+///    con el resumen; no escribe.
+/// 6. Escribe `deleted_at` = ahora y `updated_at` = ahora, el motivo en la auditoría local y encola
+///    el tombstone, en una transacción. **No** da de baja los espacios ni las personas (HU: "no se
+///    borran en cascada"). Si otro toque la dio de baja mientras tanto, `Right(BajaSinCambios)`. Con
 ///    [DarDeBajaUbicacionParams.conservadaId], la transacción exige que esa otra siga activa.
 ///
 /// Como `ModificarUbicacionUseCase`, no toca `sync_version`: el servidor la incrementa (0002).
@@ -83,17 +90,20 @@ final class DarDeBajaUbicacionUseCase
         final falla = pendientes.fold<Failure?>((f) => f, (_) => null);
         if (falla != null) return Left(falla);
         final resumen = pendientes.getOrElse(() => throw StateError('era un Left'));
+        final bloqueo = resumen.bloqueo;
+        if (bloqueo != null && params.conservadaId == null) {
+          return Right(BajaBloqueada(bloqueo: bloqueo));
+        }
         if (resumen.hayPendientes && !params.confirmaPendientes) {
           return Right(BajaRequiereConfirmacion(pendientes: resumen));
         }
 
-        final motivo = params.motivo?.trim();
         final baja = await _repository.cambiarBaja(
           id,
           baja: true,
           baseUpdatedAt: params.baseUpdatedAt,
           ahora: _ahora(),
-          conMotivo: motivo != null && motivo.isNotEmpty,
+          motivo: MotivosBaja.paraGuardar(params.motivo),
           conservadaId: params.conservadaId,
         );
         return baja.map<ResultadoBajaUbicacion>(
@@ -103,6 +113,25 @@ final class DarDeBajaUbicacionUseCase
         );
       },
     );
+  }
+}
+
+/// HU-UBI-005 — Lo que el teléfono sabe de la ubicación antes de ofrecer «Dar de baja»: si la baja
+/// está bloqueada (cobranza pendiente, ventas o visitas de otro colportor) y si pide la segunda
+/// confirmación (visitas pendientes propias). No escribe nada. Sin `id`: `Left(FailureValidacion)`.
+///
+/// La baja vuelve a mirar todo esto al escribirse ([DarDeBajaUbicacionUseCase]): entre una cosa y la
+/// otra pudo llegar una venta por el sync.
+final class ConsultarPendientesBajaUseCase implements UseCase<PendientesUbicacion, String> {
+  ConsultarPendientesBajaUseCase(this._pendientes);
+
+  final ConsultorPendientesUbicacion _pendientes;
+
+  @override
+  Future<Either<Failure, PendientesUbicacion>> call(String ubicacionId) async {
+    final id = ubicacionId.trim();
+    if (id.isEmpty) return const Left(_sinId);
+    return _pendientes.de(id);
   }
 }
 

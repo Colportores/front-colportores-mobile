@@ -4,37 +4,73 @@ import 'package:test/test.dart';
 
 void main() {
   group('PendientesUbicacion', () {
-    test('dado ningún pendiente, cuando se pregunta, no hay pendientes ni resumen', () {
+    test('dado ningún pendiente, cuando se pregunta, no hay bloqueo, ni pendientes ni resumen', () {
+      expect(PendientesUbicacion.ninguno.bloqueo, isNull);
       expect(PendientesUbicacion.ninguno.hayPendientes, isFalse);
       expect(PendientesUbicacion.ninguno.resumen, isEmpty);
     });
 
-    test(
-      'dado uno de cada tipo, cuando arma el resumen, una frase por pendiente y en singular',
-      () {
-        const p = PendientesUbicacion(visitasPendientes: 1, ventasConSaldo: 1, cobranzasActivas: 1);
+    test('dado una visita pendiente propia, cuando arma el resumen, va en singular y es el literal '
+        'de la HU', () {
+      const p = PendientesUbicacion(visitasPropiasPendientes: 1);
 
-        expect(p.hayPendientes, isTrue);
-        expect(p.resumen, hasLength(3));
-        expect(p.resumen[0], startsWith('Esta ubicación tiene 1 cobranza activa. '));
-        expect(p.resumen[1], startsWith('Esta ubicación tiene 1 venta con saldo pendiente. '));
-        expect(p.resumen[2], startsWith('Esta ubicación tiene 1 visita pendiente. '));
+      expect(p.hayPendientes, isTrue);
+      expect(p.bloqueo, isNull);
+      expect(p.resumen, [
+        'Esta ubicación tiene 1 visita pendiente. Si la das de baja, no podrás registrar nuevas '
+            'visitas, pero el historial se conserva.',
+      ]);
+    });
+
+    test('dado varias visitas pendientes propias, cuando arma el resumen, va en plural', () {
+      const p = PendientesUbicacion(visitasPropiasPendientes: 2);
+
+      expect(p.resumen, hasLength(1));
+      expect(
+        p.resumen.single,
+        'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar nuevas '
+        'visitas, pero el historial se conserva.',
+      );
+    });
+
+    test('dado una cobranza pendiente, cuando se pregunta el bloqueo, es el de la cobranza con su '
+        'monto y su cuota', () {
+      const cobranza = CobranzaPendiente(montoCentavos: 145000, numeroCuota: 2);
+      const p = PendientesUbicacion(cobranzaPendiente: cobranza, tieneVentas: true);
+
+      expect(p.bloqueo, const BloqueoPorCobranza(cobranza));
+    });
+
+    test(
+      'dado cualquier venta, cuando se pregunta el bloqueo, es el de ventas o visitas de otro',
+      () {
+        const p = PendientesUbicacion(tieneVentas: true);
+
+        expect(p.bloqueo, const BloqueoPorVentasOVisitasAjenas());
       },
     );
 
-    test('dado varios de cada tipo, cuando arma el resumen, va en plural', () {
-      const p = PendientesUbicacion(visitasPendientes: 3, ventasConSaldo: 2, cobranzasActivas: 2);
+    test('dado una visita de otro colportor, cuando se pregunta el bloqueo, es el de ventas o '
+        'visitas de otro', () {
+      const p = PendientesUbicacion(tieneVisitasDeOtros: true);
 
-      expect(p.resumen[0], contains('2 cobranzas activas'));
-      expect(p.resumen[1], contains('2 ventas con saldo pendiente'));
-      expect(p.resumen[2], contains('3 visitas pendientes'));
+      expect(p.bloqueo, const BloqueoPorVentasOVisitasAjenas());
     });
 
-    test('dado solo visitas pendientes, cuando arma el resumen, solo habla de visitas', () {
-      const p = PendientesUbicacion(visitasPendientes: 2);
+    test('dado una cobranza pendiente y una visita de otro, cuando se pregunta el bloqueo, gana la '
+        'cobranza (tiene su salida «Ir a la cobranza»)', () {
+      const cobranza = CobranzaPendiente(montoCentavos: 50000, numeroCuota: 1);
+      const p = PendientesUbicacion(cobranzaPendiente: cobranza, tieneVisitasDeOtros: true);
 
-      expect(p.resumen, hasLength(1));
-      expect(p.resumen.single, contains('nuevas visitas'));
+      expect(p.bloqueo, isA<BloqueoPorCobranza>());
+    });
+
+    test('dado visitas propias pendientes y un bloqueo, cuando se pregunta, ambos conviven (el '
+        'caso de uso decide el orden)', () {
+      const p = PendientesUbicacion(visitasPropiasPendientes: 1, tieneVentas: true);
+
+      expect(p.hayPendientes, isTrue);
+      expect(p.bloqueo, isNotNull);
     });
   });
 }
