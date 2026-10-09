@@ -370,8 +370,8 @@ void main() {
       ),
     ];
 
-    testWidgets('dado «Mostrar bajas» activo, entonces la baja se ve con su etiqueta, sin flecha y '
-        'sin poder abrirse; el contador suma las bajas', (tester) async {
+    testWidgets('dado «Mostrar bajas» activo, entonces la baja se ve con su etiqueta y sin flecha, '
+        'no abre la ubicación (se reactiva); el contador suma las bajas', (tester) async {
       final abiertas = <String>[];
       await montarLista(tester, repo: RepoListaFalso(conBaja), alAbrir: abiertas.add);
       expect(find.text('Gral. Flores 1500'), findsNothing);
@@ -384,7 +384,7 @@ void main() {
 
       expect(find.text('Gral. Flores 1500'), findsOneWidget);
       expect(find.text('BAJA'), findsOneWidget);
-      expect(find.textContaining('dada de baja el'), findsOneWidget);
+      expect(find.textContaining('baja el'), findsOneWidget);
       expect(find.byType(InsigniaBaja), findsOneWidget);
       expect(find.text('4 de 4 · 1 baja'), findsOneWidget);
       expect(chipFiltro('Con bajas'), findsOneWidget);
@@ -392,8 +392,12 @@ void main() {
       expect(find.text('›'), findsNWidgets(3));
 
       await tester.tap(find.text('Gral. Flores 1500'));
-      await tester.pump();
+      await asentarLista(tester);
       expect(abiertas, isEmpty);
+      // En su lugar se ofrece reactivarla (vista 09·03).
+      expect(find.text('Reactivar'), findsOneWidget);
+      await tester.tap(find.text('Cancelar'));
+      await asentarLista(tester);
 
       await tester.tap(find.text('Rivadavia 100'));
       await tester.pump();

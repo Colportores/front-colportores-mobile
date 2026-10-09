@@ -110,6 +110,18 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
   var lecturas = 0;
   final escrituras = <EscrituraEdicion>[];
 
+  /// Cada baja que llegó al repositorio, en orden.
+  final bajas = <({String id, DateTime baseUpdatedAt, String? motivo})>[];
+
+  /// Si no es `null`, `cambiarBaja` espera a que se complete antes de escribir.
+  Completer<void>? bloqueoBaja;
+
+  /// Si no es `null`, `cambiarBaja` devuelve esta falla sin escribir.
+  Failure? fallaAlDarDeBaja;
+
+  /// Si no es `null`, `cambiarBaja` lanza esto (un puerto roto).
+  Object? lanzaAlDarDeBaja;
+
   @override
   Future<Either<Failure, Ubicacion?>> obtener(String id) async {
     lecturas++;
@@ -187,6 +199,38 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     if (f != null) return f(nueva, escrituras.length, duplicados);
     actual = nueva;
     return Right(UbicacionModificada(ubicacion: nueva));
+  }
+
+  @override
+  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
+    String id, {
+    required bool baja,
+    required DateTime baseUpdatedAt,
+    required DateTime ahora,
+    String? motivo,
+    String? conservadaId,
+  }) async {
+    bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
+    final espera = bloqueoBaja;
+    if (espera != null) await espera.future;
+    final lanza = lanzaAlDarDeBaja;
+    if (lanza != null) throw lanza;
+    final falla = fallaAlDarDeBaja;
+    if (falla != null) return Left(falla);
+    final u = actual!;
+    final nueva = Ubicacion(
+      id: u.id,
+      tipo: u.tipo,
+      calle: u.calle,
+      numero: u.numero,
+      lat: u.lat,
+      lon: u.lon,
+      ciudadId: u.ciudadId,
+      zonaId: u.zonaId,
+      auditoria: u.auditoria.copyWith(updatedAt: ahora, deletedAt: baja ? ahora : null),
+    );
+    actual = nueva;
+    return Right((ubicacion: nueva, escribio: true));
   }
 
   @override

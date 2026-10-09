@@ -41,12 +41,8 @@ class _Anfitrion extends StatelessWidget {
     return Scaffold(
       body: Center(
         child: ElevatedButton(
-          onPressed: () => ModificarUbicacionPage.abrir(
-            context,
-            colportorId: 'col-1',
-            ubicacionId: 'ubi-1',
-            alDarDeBaja: () {},
-          ),
+          onPressed: () =>
+              ModificarUbicacionPage.abrir(context, colportorId: 'col-1', ubicacionId: 'ubi-1'),
           child: const Text('abrir'),
         ),
       ),

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
@@ -13,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/baja_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_modificar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart'
@@ -23,6 +25,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
+import '../../helpers/baja_ubicacion_falsos.dart';
 import '../../helpers/mapa_base_falso.dart';
 import '../../helpers/modificar_ubicacion_falsos.dart';
 
@@ -37,10 +40,10 @@ Coordenadas _alNorte(double grados) =>
 
 /// La pantalla que abre la edición y guarda cómo se cerró.
 class _Anfitrion extends StatelessWidget {
-  const _Anfitrion({required this.salidas, this.alDarDeBaja});
+  const _Anfitrion({required this.salidas, this.ofreceIrALaCobranza = false});
 
   final List<SalidaModificarUbicacion?> salidas;
-  final VoidCallback? alDarDeBaja;
+  final bool ofreceIrALaCobranza;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +55,7 @@ class _Anfitrion extends StatelessWidget {
               context,
               colportorId: 'col-1',
               ubicacionId: 'ubi-1',
-              alDarDeBaja: alDarDeBaja,
+              ofreceIrALaCobranza: ofreceIrALaCobranza,
             ),
           ),
           child: const Text('abrir'),
@@ -79,7 +82,6 @@ final class _Escenario {
   /// La vista del mapa (MapLibre no se dibuja en `flutter test`): su cámara y lo que se le pidió dibujar.
   final FabricaMapaFalsa mapa;
   final salidas = <SalidaModificarUbicacion?>[];
-  var dadasDeBaja = 0;
 }
 
 Future<void> _asentar(WidgetTester tester, [int veces = 10]) async {
@@ -99,8 +101,9 @@ Future<_Escenario> _montar(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
-  bool conBaja = false,
   TipoConexion? conexion,
+  PendientesFalso? pendientes,
+  bool ofreceIrALaCobranza = false,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -126,6 +129,7 @@ Future<_Escenario> _montar(
           mapa: e.mapa,
         ),
         if (conexion != null) conexionProvider.overrideWith((ref) => Stream.value(conexion)),
+        consultorPendientesUbicacionProvider.overrideWithValue(pendientes ?? PendientesFalso()),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -133,7 +137,7 @@ Future<_Escenario> _montar(
           data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
           child: child!,
         ),
-        home: _Anfitrion(salidas: e.salidas, alDarDeBaja: conBaja ? () => e.dadasDeBaja++ : null),
+        home: _Anfitrion(salidas: e.salidas, ofreceIrALaCobranza: ofreceIrALaCobranza),
       ),
     ),
   );
@@ -299,18 +303,24 @@ void main() {
       expect(_habilitado(tester, _guardar), isFalse);
     });
 
-    testWidgets('«Dar de baja» solo se dibuja si quien abre la pantalla lo ofrece', (tester) async {
+    testWidgets('«Dar de baja» se dibuja para una ubicación activa', (tester) async {
       await _montar(tester);
+      expect(find.text('Dar de baja'), findsOneWidget);
+    });
+
+    testWidgets('«Dar de baja» no se dibuja si la ubicación ya está de baja', (tester) async {
+      await _montar(tester, ubicacion: ubicacionGuardada(deBajaDesde: DateTime.utc(2026, 9, 12)));
       expect(find.text('Dar de baja'), findsNothing);
     });
 
-    testWidgets('«Dar de baja» avisa a quien abrió la pantalla y no escribe nada', (tester) async {
-      final e = await _montar(tester, conBaja: true);
+    testWidgets('«Dar de baja» abre la hoja del motivo y no escribe nada', (tester) async {
+      final e = await _montar(tester);
 
       await _tocar(tester, find.text('Dar de baja'));
 
-      expect(e.dadasDeBaja, 1);
+      expect(find.text('¿Dar de baja Av. Italia 1234?'), findsOneWidget);
       expect(e.repo.escrituras, isEmpty);
+      expect(e.repo.bajas, isEmpty);
     });
 
     testWidgets('el resumen cuenta bien los espacios: ninguno, uno y varios', (tester) async {
@@ -907,7 +917,7 @@ void main() {
       tester,
     ) async {
       final repo = RepoEdicionFalso(ubicacionGuardada())..bloqueoEscritura = Completer<void>();
-      final e = await _montar(tester, repo: repo, conBaja: true);
+      final e = await _montar(tester, repo: repo);
       await _escribirNumero(tester, '1238');
 
       await tester.tap(_guardar);
@@ -926,7 +936,8 @@ void main() {
       await _tocar(tester, find.text('Negocio'));
       await tester.tap(find.text('Dar de baja'), warnIfMissed: false);
       await tester.pump();
-      expect(e.dadasDeBaja, 0);
+      expect(find.text('¿Dar de baja Av. Italia 1234?'), findsNothing, reason: 'mientras guarda');
+      expect(repo.bajas, isEmpty);
 
       repo.bloqueoEscritura!.complete();
       await _asentar(tester);
@@ -2618,7 +2629,7 @@ void main() {
     ]) {
       testWidgets('«Editar datos» cumple las guías de accesibilidad en $nombre', (tester) async {
         final handle = tester.ensureSemantics();
-        await _montar(tester, tamano: tamano, escala: escala, conBaja: true);
+        await _montar(tester, tamano: tamano, escala: escala);
         // Sin desplazar la hoja: un campo a medio ver tendría un blanco de toque recortado.
         await tester.enterText(_campoNumero, '1238');
         await _asentar(tester);
@@ -2687,5 +2698,198 @@ void main() {
       expect(find.text(TextosModificar.noPudimosAbrir), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('dar de baja desde la edición (vista 09, HU-UBI-005)', () {
+    Finder motivo(String m) => find.text(m);
+    Finder botonBaja() => find.widgetWithText(FilledButton, 'Dar de baja');
+
+    Future<void> elegirYDarDeBaja(WidgetTester tester, [String m = 'Ya no existe']) async {
+      await tester.ensureVisible(motivo(m));
+      await tester.tap(motivo(m));
+      await _asentar(tester);
+      await tester.ensureVisible(botonBaja());
+      await tester.tap(botonBaja());
+      await _asentar(tester);
+    }
+
+    testWidgets(
+      'dado un motivo, cuando da de baja, entonces la pantalla se cierra con la baja hecha '
+      'y la ubicación quedó de baja en el teléfono',
+      (tester) async {
+        final e = await _montar(tester);
+
+        await _tocar(tester, find.text('Dar de baja'));
+        await elegirYDarDeBaja(tester);
+
+        final salida = e.salidas.single;
+        expect(salida, isA<UbicacionBajaRealizada>());
+        expect((salida! as UbicacionBajaRealizada).ubicacion.estaBorrada, isTrue);
+        expect(e.repo.bajas.single.motivo, 'Ya no existe');
+        expect(e.repo.escrituras, isEmpty, reason: 'la baja no pasa por «Guardar cambios»');
+        expect(find.text('abrir'), findsOneWidget, reason: 'volvió a la pantalla anterior');
+      },
+    );
+
+    testWidgets('dado un celular sin conexión, cuando da de baja, entonces avisa que se sincroniza '
+        'después, igual que al guardar', (tester) async {
+      await _montar(tester, conexion: TipoConexion.sinConexion);
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await elegirYDarDeBaja(tester);
+
+      expect(find.text(TextosModificar.guardadoSinConexion), findsOneWidget);
+    });
+
+    testWidgets('dado un celular con conexión, cuando da de baja, entonces no muestra el aviso de '
+        'sincronizar después', (tester) async {
+      await _montar(tester, conexion: TipoConexion.wifi);
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await elegirYDarDeBaja(tester);
+
+      expect(find.text(TextosModificar.guardadoSinConexion), findsNothing);
+    });
+
+    testWidgets('dado «Cancelar» en la hoja del motivo, entonces vuelve a la edición con lo que '
+        'había escrito', (tester) async {
+      final e = await _montar(tester);
+      await _escribirNumero(tester, '1238');
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await _tocar(tester, find.text('Cancelar'));
+
+      expect(e.salidas, isEmpty);
+      expect(tester.widget<TextField>(_campoNumero).controller!.text, '1238');
+      expect(e.repo.bajas, isEmpty);
+    });
+
+    testWidgets('dado dos toques seguidos en «Dar de baja», entonces se abre una sola hoja', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _traer(tester, find.text('Dar de baja'));
+
+      await tester.tap(find.text('Dar de baja'));
+      await tester.tap(find.text('Dar de baja'), warnIfMissed: false);
+      await _asentar(tester);
+      expect(find.text('¿Dar de baja Av. Italia 1234?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancelar'));
+      await _asentar(tester);
+      expect(
+        find.text('¿Dar de baja Av. Italia 1234?'),
+        findsNothing,
+        reason: 'no había una segunda',
+      );
+    });
+
+    testWidgets(
+      'dado una falla al dar de baja, entonces la hoja avisa, la edición sigue abierta y se '
+      'puede reintentar',
+      (tester) async {
+        final e = await _montar(tester);
+        e.repo.fallaAlDarDeBaja = const FailureInesperado();
+        await _tocar(tester, find.text('Dar de baja'));
+
+        await elegirYDarDeBaja(tester);
+
+        expect(find.text('No pudimos dar de baja la ubicación. Probá de nuevo.'), findsOneWidget);
+        expect(e.salidas, isEmpty);
+        e.repo.fallaAlDarDeBaja = null;
+        await tester.tap(botonBaja());
+        await _asentar(tester);
+        expect(e.salidas.single, isA<UbicacionBajaRealizada>());
+      },
+    );
+
+    testWidgets('dado una cobranza pendiente en una pantalla que sabe ir a las cobranzas, cuando '
+        'elige «Ir a la cobranza», entonces la edición se cierra para llevar ahí', (tester) async {
+      final e = await _montar(
+        tester,
+        ofreceIrALaCobranza: true,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(
+            cobranzaPendiente: CobranzaPendiente(montoCentavos: 145000, numeroCuota: 2),
+          ),
+        ),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await _tocar(tester, find.text('Ir a la cobranza'));
+
+      final salida = e.salidas.single;
+      expect(salida, isA<IrALaCobranzaElegida>());
+      expect((salida! as IrALaCobranzaElegida).ubicacionId, 'ubi-1');
+      expect(e.repo.bajas, isEmpty);
+    });
+
+    testWidgets('dado una cobranza pendiente en una pantalla sin cobranzas, entonces solo ofrece '
+        '«Entendido» y la edición sigue abierta', (tester) async {
+      final e = await _montar(
+        tester,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(
+            cobranzaPendiente: CobranzaPendiente(montoCentavos: 145000, numeroCuota: 2),
+          ),
+        ),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+      expect(find.text('Ir a la cobranza'), findsNothing);
+      await _tocar(tester, find.text('Entendido'));
+
+      expect(e.salidas, isEmpty);
+      expect(find.text(TextosModificar.guardarCambios), findsOneWidget);
+    });
+
+    testWidgets('dado ventas o visitas de otro colportor, entonces el aviso es el de la HU y no se '
+        'escribe nada', (tester) async {
+      final e = await _montar(
+        tester,
+        pendientes: PendientesFalso(const PendientesUbicacion(tieneVentas: true)),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+
+      expect(
+        find.text(
+          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+          'Si ya no existe, avisale a tu coordinador.',
+        ),
+        findsOneWidget,
+      );
+      expect(e.repo.bajas, isEmpty);
+    });
+
+    testWidgets('dado que se cierra la hoja y se vuelve a abrir la edición, entonces «Dar de baja» '
+        'sigue funcionando', (tester) async {
+      final e = await _montar(tester);
+      await _tocar(tester, find.text('Dar de baja'));
+      await _tocar(tester, find.text('Cancelar'));
+      await _tocar(tester, _cerrar);
+      expect(find.text('abrir'), findsOneWidget);
+
+      await _abrir(tester);
+      await _tocar(tester, find.text('Dar de baja'));
+      await elegirYDarDeBaja(tester, 'No quiere visitas');
+
+      expect(e.repo.bajas.single.motivo, 'No quiere visitas');
+      expect(e.salidas.last, isA<UbicacionBajaRealizada>());
+    });
+
+    testWidgets(
+      'dado texto a 200 % en 360×640, entonces el botón «Dar de baja» y la hoja se pueden '
+      'usar',
+      (tester) async {
+        final e = await _montar(tester, escala: 2, tamano: const Size(360, 640));
+
+        await _tocar(tester, find.text('Dar de baja'));
+        await elegirYDarDeBaja(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(e.salidas.single, isA<UbicacionBajaRealizada>());
+      },
+    );
   });
 }

@@ -26,6 +26,7 @@ void main() {
     int espacios = 2,
     DateTime? entrevista,
     DateTime? baja,
+    String? motivo,
     TipoUbicacion tipo = TipoUbicacion.casa,
     double? distancia,
   }) {
@@ -43,6 +44,7 @@ void main() {
       estado: estado,
       proximaEntrevista: entrevista,
       distanciaMetros: distancia,
+      motivoBaja: motivo,
     );
   }
 
@@ -201,9 +203,26 @@ void main() {
       );
     });
 
-    test('dado una baja, entonces dice la fecha de la baja', () {
+    test('dado una baja sin motivo, entonces dice la fecha de la baja', () {
       final i = item('a', baja: DateTime.utc(2026, 9, 12, 15));
-      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · dada de baja el 12/09');
+      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09');
+    });
+
+    test('dado una baja con motivo, entonces dice la fecha y el motivo (canvas 09, «baja el '
+        '12/09 · Ya no existe»)', () {
+      final i = item('a', baja: DateTime.utc(2026, 9, 12, 15), motivo: 'Ya no existe');
+      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09 · Ya no existe');
+    });
+
+    test('dado una baja con el motivo de una unión de duplicados, entonces no lo muestra '
+        '(es un código interno)', () {
+      final i = item('a', baja: DateTime.utc(2026, 9, 12, 15), motivo: 'duplicado_de_ub-9');
+      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09');
+    });
+
+    test('dado una baja con un motivo en blanco, entonces no deja un punto suelto', () {
+      final i = item('a', baja: DateTime.utc(2026, 9, 12, 15), motivo: '   ');
+      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09');
     });
   });
 
@@ -242,10 +261,10 @@ void main() {
     });
 
     test('dado una baja, entonces lo dice antes de la meta', () {
-      final i = item('a', baja: DateTime.utc(2026, 9, 12, 15));
+      final i = item('a', baja: DateTime.utc(2026, 9, 12, 15), motivo: 'Ya no existe');
       expect(
         FormatoListaUbicaciones.etiquetaFila(i, lista(), ahoraFilas),
-        startsWith('Av. Italia 1234. Baja. Casa · dada de baja el 12/09'),
+        startsWith('Av. Italia 1234. Baja. Casa · baja el 12/09 · Ya no existe'),
       );
     });
   });

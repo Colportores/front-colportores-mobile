@@ -7,12 +7,16 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../../domain/entities/resultado_baja_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
+import '../../domain/usecases/baja_ubicacion_use_cases.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
+import '../providers/baja_ubicacion_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../widgets/hoja_filtros_lista.dart';
+import '../widgets/hoja_reactivar.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import '../widgets/piezas_lista_ubicaciones.dart';
 import 'alta_ubicacion_page.dart';
@@ -174,6 +178,83 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
+  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04).
+  Future<void> _reactivar(ItemListaUbicacion item) async {
+    if (_abriendoHoja) return;
+    _abriendoHoja = true;
+    Ubicacion? reactivada;
+    try {
+      reactivada = await mostrarHojaReactivar(context, colportorId: widget.colportorId, item: item);
+    } finally {
+      _abriendoHoja = false;
+    }
+    if (reactivada == null || !mounted) return;
+    _avisarReactivada(reactivada, item.motivoBaja);
+  }
+
+  /// El aviso de la vista 09·04: «Av. Italia 1240 reactivada. Vuelve a aparecer en el mapa.» con
+  /// «Deshacer», que dura 8 s. «Deshacer» vuelve a dar de baja con el mismo motivo; si no se puede,
+  /// lo dice (y la baja se hace desde Editar).
+  ///
+  /// El aviso de una reactivación nueva reemplaza al anterior (cada «Deshacer» es de su ubicación). El
+  /// caso de uso y el mensajero se toman acá, no al tocar «Deshacer»: la pestaña puede haberse ido.
+  void _avisarReactivada(Ubicacion reactivada, String? motivo) {
+    final mensajero = ScaffoldMessenger.maybeOf(context);
+    if (mensajero == null) return;
+    final darDeBaja = ref.read(darDeBajaUbicacionUseCaseProvider);
+    final direccion = FormatoUbicaciones.direccion(reactivada);
+    mensajero
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: TextosReactivar.duracionDeshacer,
+          persist: false,
+          backgroundColor: ColoresLista.tinta,
+          content: Text(
+            TextosReactivar.reactivada(direccion),
+            style: const TextStyle(fontSize: 13.5, color: Colors.white),
+          ),
+          action: SnackBarAction(
+            label: TextosReactivar.deshacer,
+            textColor: const Color(0xFFC9D6EA),
+            onPressed: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _deshacer(
+    ScaffoldMessengerState mensajero,
+    DarDeBajaUbicacionUseCase darDeBaja,
+    Ubicacion reactivada,
+    String? motivo,
+  ) async {
+    var deshecha = false;
+    try {
+      final r = await darDeBaja(
+        DarDeBajaUbicacionParams(
+          id: reactivada.id,
+          baseUpdatedAt: reactivada.auditoria.updatedAt,
+          motivo: motivo,
+          // Ya estuvo de baja: no se vuelve a preguntar por las visitas pendientes.
+          confirmaPendientes: true,
+        ),
+      );
+      deshecha = r.fold(
+        (_) => false,
+        (resultado) => resultado is UbicacionDadaDeBaja || resultado is BajaSinCambios,
+      );
+    } on Object {
+      // Cualquier falla se dice igual: no se pudo deshacer.
+      deshecha = false;
+    }
+    mensajero.showSnackBar(
+      SnackBar(
+        content: Text(deshecha ? TextosReactivar.deshecha : TextosReactivar.noPudimosDeshacer),
+      ),
+    );
+  }
+
   Future<void> _registrar() async {
     if (_abriendoAlta) return;
     _abriendoAlta = true;
@@ -242,6 +323,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                 estado: estado,
                 ahora: ahora,
                 alAbrirUbicacion: widget.alAbrirUbicacion,
+                alReactivar: (item) => unawaited(_reactivar(item)),
                 alRegistrar: () => unawaited(_registrar()),
                 notificador: _notificador,
                 desplazamiento: _desplazamiento,
@@ -577,6 +659,7 @@ class _Cuerpo extends StatelessWidget {
     required this.estado,
     required this.ahora,
     required this.alAbrirUbicacion,
+    required this.alReactivar,
     required this.alRegistrar,
     required this.notificador,
     required this.desplazamiento,
@@ -585,6 +668,7 @@ class _Cuerpo extends StatelessWidget {
   final ListaUbicacionesState estado;
   final DateTime ahora;
   final ValueChanged<String>? alAbrirUbicacion;
+  final ValueChanged<ItemListaUbicacion> alReactivar;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
   final ScrollController desplazamiento;
@@ -735,6 +819,7 @@ class _Cuerpo extends StatelessWidget {
           lista: lista,
           ahora: ahora,
           alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
+          alReactivar: item.esBaja ? () => alReactivar(item) : null,
         );
       },
     );

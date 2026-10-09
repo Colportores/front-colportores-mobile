@@ -32,7 +32,7 @@ mixin UbicacionRepositorySinModificar {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
   }) => throw UnimplementedError();
 
@@ -55,6 +55,7 @@ mixin UbicacionLocalSinModificar {
     required DateTime baseUpdatedAt,
     required DateTime updatedAt,
     required DateTime? deletedAt,
+    String? motivo,
     String? conservadaId,
   }) => throw UnimplementedError();
 

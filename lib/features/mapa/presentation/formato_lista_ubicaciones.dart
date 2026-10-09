@@ -4,6 +4,7 @@ import '../../../core/error/failure.dart';
 import '../domain/entities/consulta_lista_ubicaciones.dart';
 import '../domain/entities/estado_casa.dart';
 import '../domain/entities/lista_ubicaciones.dart';
+import '../domain/entities/motivo_baja.dart';
 import '../domain/services/ciudades_para_alta.dart';
 import 'formato_ubicaciones.dart';
 import 'providers/lista_ubicaciones_state.dart';
@@ -94,12 +95,16 @@ abstract final class FormatoListaUbicaciones {
   }
 
   /// La segunda línea de una fila (canvas): «Cobranza pendiente · 2 espacios», «Entrevista
-  /// agendada · jue 10:00», «Casa · dada de baja el 12/09». Sin estado conocido (todavía no hay
+  /// agendada · jue 10:00», «Casa · baja el 12/09 · Ya no existe». Sin estado conocido (todavía no hay
   /// `house_status` local), el tipo ocupa el lugar del estado.
   static String meta(ItemListaUbicacion item, DateTime ahora) {
     final u = item.ubicacion;
     final tipo = FormatoUbicaciones.tipo(u.tipo);
-    if (item.esBaja) return '$tipo · dada de baja el ${diaMes(u.auditoria.deletedAt!)}';
+    if (item.esBaja) {
+      // Canvas 09·03: «Casa · baja el 12/09 · Ya no existe». El motivo, si se conoce.
+      final motivo = MotivosBaja.paraMostrar(item.motivoBaja);
+      return '$tipo · baja el ${diaMes(u.auditoria.deletedAt!)}${motivo == null ? '' : ' · $motivo'}';
+    }
     final estado = item.estado;
     if (estado == null) return '$tipo · ${espacios(item.cantidadEspacios)}';
     final cuando = item.proximaEntrevista;
