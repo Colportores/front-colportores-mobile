@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
@@ -80,10 +81,19 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
   /// Si no es `null`, `obtener` espera a que se complete.
   Completer<void>? bloqueoLectura;
 
+  /// Si no es `null`, `contarEspaciosActivos` devuelve esta falla y `observarEspaciosActivos` emite
+  /// el error.
   Failure? fallaAlContar;
 
-  /// Si no es `null`, `numeroDelUnicoDepto` devuelve esta falla.
-  Failure? fallaAlLeerDepto;
+  /// Si no es `null`, `observarEspaciosActivos` emite este error (el caso de uso igual cuenta bien).
+  Failure? fallaAlObservar;
+
+  /// Quienes están mirando la cuenta de espacios (la hoja abierta), para avisarles de un cambio.
+  final _oyentes = <MultiStreamController<EspaciosActivos>>[];
+
+  /// Cuántas veces se empezó a mirar la cuenta de espacios y cuántas se dejó de mirar.
+  var suscripciones = 0;
+  var cancelaciones = 0;
 
   /// Si no es `null`, `modificar` espera a que se complete.
   Completer<void>? bloqueoEscritura;
@@ -119,10 +129,43 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     return falla != null ? Left(falla) : Right(espacios);
   }
 
+  EspaciosActivos get _cuenta =>
+      (cantidad: espacios, numeroDeptoUnico: espacios == 1 ? numeroDepto : null);
+
+  /// Emite la cuenta de [espacios] al suscribirse y la de cada [cambiarEspacios]. Cambiar el campo
+  /// [espacios] a secas NO avisa a nadie (es la base que cambia sin que la hoja se entere: lo que
+  /// cuenta el caso de uso al guardar).
   @override
-  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) async {
-    final falla = fallaAlLeerDepto;
-    return falla != null ? Left(falla) : Right(espacios == 1 ? numeroDepto : null);
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) => Stream.multi((c) {
+    suscripciones++;
+    final falla = fallaAlContar ?? fallaAlObservar;
+    if (falla != null) {
+      c.addError(falla);
+    } else {
+      c.add(_cuenta);
+    }
+    _oyentes.add(c);
+    c.onCancel = () {
+      cancelaciones++;
+      _oyentes.remove(c);
+    };
+  });
+
+  /// Cambian los espacios activos con la hoja abierta (el sync trae uno, otro teléfono da uno de
+  /// baja): la base y todos los que miran la cuenta se enteran.
+  void cambiarEspacios(int cantidad, {String? numeroDepto}) {
+    espacios = cantidad;
+    this.numeroDepto = numeroDepto;
+    for (final c in [..._oyentes]) {
+      c.add(_cuenta);
+    }
+  }
+
+  /// Quien mira la cuenta falla (la lectura de la base se rompe) con la hoja abierta.
+  void fallarObservacion(Object error) {
+    for (final c in [..._oyentes]) {
+      c.addError(error);
+    }
   }
 
   @override

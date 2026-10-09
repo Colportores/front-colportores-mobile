@@ -8,6 +8,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/ciudades_para_alta.dart';
@@ -93,8 +94,9 @@ final class ModificarUbicacionState extends Equatable {
   /// control de edición concurrente (`updated_at`).
   final Ubicacion? original;
 
-  /// Cuántos espacios sin baja tiene; `null` si no se pudo contar (el caso de uso igual bloquea el
-  /// cambio de edificio a otro tipo).
+  /// Cuántos espacios sin baja tiene ahora, mientras la hoja está abierta (la hoja sigue la cuenta:
+  /// si llega o se va un espacio, esto cambia solo); `null` si no se pudo contar (el caso de uso igual
+  /// bloquea el cambio de edificio a otro tipo).
   final int? espacios;
 
   /// El `numero_depto` del único espacio activo, cuando [espacios] es 1 y ese tiene número; `null`
@@ -222,6 +224,7 @@ final class ModificarUbicacionState extends Equatable {
     int? espacios,
     bool borrarEspacios = false,
     String? numeroDeptoUnico,
+    bool borrarNumeroDeptoUnico = false,
     TipoUbicacion? tipo,
     String? ciudadId,
     String? ciudadNombre,
@@ -243,7 +246,9 @@ final class ModificarUbicacionState extends Equatable {
     fallaCarga: borrarFallaCarga ? null : (fallaCarga ?? this.fallaCarga),
     original: original ?? this.original,
     espacios: borrarEspacios ? null : (espacios ?? this.espacios),
-    numeroDeptoUnico: borrarEspacios ? null : (numeroDeptoUnico ?? this.numeroDeptoUnico),
+    numeroDeptoUnico: borrarEspacios || borrarNumeroDeptoUnico
+        ? null
+        : (numeroDeptoUnico ?? this.numeroDeptoUnico),
     tipo: tipo ?? this.tipo,
     ciudadId: ciudadId ?? this.ciudadId,
     ciudadNombre: borrarCiudadNombre ? null : (ciudadNombre ?? this.ciudadNombre),
@@ -354,12 +359,24 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   int _secuenciaGps = 0;
   final _log = AppLogger.instance;
 
+  /// La suscripción a la cuenta de espacios activos: vive mientras la hoja está abierta.
+  StreamSubscription<EspaciosActivos>? _espacios;
+
+  /// La última cuenta de espacios que llegó (aunque la ubicación todavía se esté leyendo).
+  EspaciosActivos? _espaciosVistos;
+
+  /// Se completa con la primera cuenta (o el primer error) de [_espacios]: lo que espera la lectura.
+  Completer<void>? _primeraCuenta;
+
   /// El borrador al entrar a «Mover el punto», para «Cancelar».
   ({Coordenadas? punto, String calle, String numero})? _alEntrar;
 
   @override
   ModificarUbicacionState build() {
-    ref.onDispose(() => _espera?.cancel());
+    ref.onDispose(() {
+      _espera?.cancel();
+      _dejarDeSeguirEspacios();
+    });
     unawaited(Future<void>(() => ref.mounted ? _cargar() : null));
     return const ModificarUbicacionState();
   }
@@ -399,23 +416,19 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
         state = state.copyWith(carga: CargaEdicion.noExiste);
         return;
       }
-      final cuenta = await repo.contarEspaciosActivos(ubicacion.id);
+      // La cuenta se sigue desde acá hasta que la hoja se cierra. Si no se pudo contar, queda sin
+      // cuenta (la línea es informativa y el caso de uso igual bloquea al guardar).
+      await _seguirEspacios();
       if (!ref.mounted || numero != _secuenciaCarga) return;
-      // Solo con un depto, y solo si algún cambio de tipo lo va a dejar sin número: la línea es
-      // informativa, así que si no se puede leer simplemente no se muestra.
-      String? numeroDepto;
-      if (cuenta.getOrElse(() => 0) == 1 && ubicacion.tipo != TipoUbicacion.casa) {
-        final leido = await repo.numeroDelUnicoDepto(ubicacion.id);
-        if (!ref.mounted || numero != _secuenciaCarga) return;
-        numeroDepto = leido.getOrElse(() => null);
-      }
       final nombre = await _nombreDeCiudad(ubicacion.ciudadId);
       if (!ref.mounted || numero != _secuenciaCarga) return;
+      // La cuenta de ahora, no la de cuando llegó la primera: pudo cambiar mientras se leía lo demás.
+      final cuenta = _espaciosVistos;
       state = ModificarUbicacionState(
         carga: CargaEdicion.lista,
         original: ubicacion,
-        espacios: cuenta.fold<int?>((_) => null, (n) => n),
-        numeroDeptoUnico: numeroDepto,
+        espacios: cuenta?.cantidad,
+        numeroDeptoUnico: cuenta?.numeroDeptoUnico,
         tipo: ubicacion.tipo,
         ciudadId: ubicacion.ciudadId,
         ciudadNombre: nombre,
@@ -455,6 +468,68 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
     } on Object {
       return null;
     }
+  }
+
+  // ---------------------------------------------------------------- la cuenta de espacios
+
+  /// Empieza a seguir los espacios activos de la ubicación (siempre desde cero: cancela la
+  /// suscripción anterior) y espera la primera cuenta o el primer error. Después, cada cambio llega a
+  /// [_alCambiarEspacios] mientras la hoja está abierta.
+  Future<void> _seguirEspacios() async {
+    _dejarDeSeguirEspacios();
+    final primera = _primeraCuenta = Completer<void>();
+    void completar() {
+      if (!primera.isCompleted) primera.complete();
+    }
+
+    _espacios = ref
+        .read(ubicacionRepositoryProvider)
+        .observarEspaciosActivos(parametros.ubicacionId)
+        .listen(
+          (cuenta) {
+            _espaciosVistos = cuenta;
+            completar();
+            _alCambiarEspacios(cuenta);
+          },
+          // La hoja se queda con la última cuenta que leyó y el caso de uso sigue bloqueando al
+          // guardar. Sin datos de la ubicación en el log.
+          onError: (Object e, StackTrace st) {
+            _log.error(
+              LogModulo.map,
+              'EDICION_ESPACIOS_FAIL',
+              'no se pudo seguir la cuenta de espacios',
+              const {},
+              e,
+              st,
+            );
+            completar();
+          },
+          onDone: completar,
+        );
+    await primera.future;
+  }
+
+  void _dejarDeSeguirEspacios() {
+    final primera = _primeraCuenta;
+    if (primera != null && !primera.isCompleted) primera.complete();
+    unawaited(_espacios?.cancel());
+    _espacios = null;
+    _espaciosVistos = null;
+  }
+
+  /// La cuenta de espacios cambió con la hoja abierta: el encabezado, el aviso de bloqueo, la línea del
+  /// depto sin número y «Guardar cambios» salen de la cuenta de ahora, y el borrador (tipo, ciudad,
+  /// calle, número y punto) no se toca. Si había un rechazo por espacios, ya no vale: sería su aviso
+  /// con la cuenta vieja.
+  void _alCambiarEspacios(EspaciosActivos cuenta) {
+    if (!ref.mounted || state.carga != CargaEdicion.lista) return;
+    final cambio = state.espacios != cuenta.cantidad;
+    state = state.copyWith(
+      espacios: cuenta.cantidad,
+      numeroDeptoUnico: cuenta.numeroDeptoUnico,
+      borrarNumeroDeptoUnico: cuenta.numeroDeptoUnico == null,
+      borrarFalla: cambio && state.falla is FailureUbicacionConEspacios,
+    );
   }
 
   // ---------------------------------------------------------------- el formulario
@@ -697,11 +772,16 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   /// hoja pasa a ser la que contó el guardado: el resumen no se contradice con el aviso y
   /// «Guardar cambios» queda sin efecto ([ModificarUbicacionState.bloqueoPorEspacios]).
   ResultadoGuardadoEdicion _alFallar(Failure falla) {
+    final conEspacios = falla is FailureUbicacionConEspacios;
     state = state.copyWith(
       guardando: false,
       falla: falla,
-      espacios: falla is FailureUbicacionConEspacios ? falla.cantidadEspacios : null,
+      espacios: conEspacios ? falla.cantidadEspacios : null,
+      borrarNumeroDeptoUnico: conEspacios,
     );
+    // El rechazo vale para la cuenta del momento en que se guardó; la hoja la vuelve a leer para
+    // quedarse con la de ahora (el espacio que apareció pudo irse antes de que la hoja se enterara).
+    if (conEspacios && ref.mounted) unawaited(_seguirEspacios());
     return EdicionFallida(falla);
   }
 }

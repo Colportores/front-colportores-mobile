@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../entities/espacio.dart';
+import '../entities/espacios_activos.dart';
 import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
@@ -47,10 +48,15 @@ abstract interface class UbicacionRepository {
   /// HU-UBI-004).
   Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId);
 
-  /// El `numero_depto` del espacio de [ubicacionId] cuando tiene **exactamente uno** sin baja y
-  /// ese tiene número; `null` en cualquier otro caso. Es para avisar antes de guardar que el cambio
-  /// de tipo le quita el número (S17); el que decide al guardar es [modificar].
-  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId);
+  /// Los espacios sin baja de [ubicacionId] —cuántos son y, si es uno solo, su `numero_depto`—,
+  /// como stream: emite la cuenta de ahora al suscribirse y de nuevo cada vez que cambia (un espacio
+  /// que llega del sync, que se da de baja o al que se le cambia el número), sin repetir un valor
+  /// igual al anterior. Es lo que la hoja de edición mira mientras está abierta para avisar antes
+  /// de guardar que el cambio de tipo está bloqueado (dos o más) o que le quita el número al único
+  /// depto (S17); el que decide al guardar es [modificar].
+  ///
+  /// Si la lectura falla, el stream emite el error.
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId);
 
   /// Guarda [nueva] —la ubicación ya modificada: mismo `id`, `updated_at` nuevo— y encola el
   /// `update` para el sync, en **una sola transacción** (HU-UBI-004; contrato-sync-engine §3).

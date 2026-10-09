@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/data/models/zona_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/zona_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ubicador_zona.dart';
@@ -137,6 +138,16 @@ void main() {
 
   Future<EspacioFila> espacio(String id) =>
       (db.select(db.espacios)..where((e) => e.id.equals(id))).getSingle();
+
+  /// La primera cuenta de espacios que emite el stream de [local] para `ub-1`.
+  Future<EspaciosActivos> primera() => local.observarEspaciosActivos('ub-1').first;
+
+  /// Espera (hasta 2 s) a que [cuentas] tenga al menos [n] emisiones.
+  Future<void> esperar(List<EspaciosActivos> cuentas, int n) async {
+    for (var i = 0; i < 200 && cuentas.length < n; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
 
   /// El `update` que el sync tiene que subir para [id] cuando se le quitó el número.
   Map<String, Object?> payloadEspacioSinNumero(String id, {String? piso, String? descripcion}) => {
@@ -411,27 +422,78 @@ void main() {
   });
 
   group('Un solo departamento: Edificio ↔ Casa/Negocio (decisión de Cristian, 07/10)', () {
-    test('dado un único espacio activo con número, cuando se pide el número del único depto, lo '
-        'devuelve; con dos activos, sin número o sin espacios, null', () async {
-      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
-      expect(await local.numeroDelUnicoDepto('ub-1'), isNull, reason: 'sin espacios');
+    test(
+      'dado un único espacio activo con número, cuando se observan los espacios, emite la cuenta '
+      'y el número; con dos activos, sin número o sin espacios, la cuenta sin número',
+      () async {
+        await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+        expect(await primera(), (cantidad: 0, numeroDeptoUnico: null), reason: 'sin espacios');
 
-      await espacioEn('ub-1', 'baja', numeroDepto: '9Z', deletedAt: t0);
-      expect(await local.numeroDelUnicoDepto('ub-1'), isNull, reason: 'el de baja no cuenta');
+        await espacioEn('ub-1', 'baja', numeroDepto: '9Z', deletedAt: t0);
+        expect(await primera(), (
+          cantidad: 0,
+          numeroDeptoUnico: null,
+        ), reason: 'el de baja no cuenta');
 
-      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
-      expect(await local.numeroDelUnicoDepto('ub-1'), '3B');
+        await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+        expect(await primera(), (cantidad: 1, numeroDeptoUnico: '3B'));
 
-      await espacioEn('ub-1', 'e2', numeroDepto: '4C');
-      expect(await local.numeroDelUnicoDepto('ub-1'), isNull, reason: 'dos activos');
-    });
+        await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+        expect(await primera(), (cantidad: 2, numeroDeptoUnico: null), reason: 'dos activos');
+      },
+    );
 
-    test('dado el único espacio activo sin número, cuando se pide el número del único depto, '
-        'devuelve null', () async {
+    test('dado el único espacio activo sin número, cuando se observan los espacios, emite la '
+        'cuenta 1 sin número', () async {
       await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
       await espacioEn('ub-1', 'e1');
 
-      expect(await local.numeroDelUnicoDepto('ub-1'), isNull);
+      expect(await primera(), (cantidad: 1, numeroDeptoUnico: null));
+    });
+
+    test(
+      'dado que los espacios son de otra ubicación, cuando se observan, no los cuenta',
+      () async {
+        await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+        await local.insertar(ubicacion(id: 'ub-2', tipo: TipoUbicacion.edificio));
+        await espacioEn('ub-2', 'otro', numeroDepto: '1A');
+
+        expect(await primera(), (cantidad: 0, numeroDeptoUnico: null));
+      },
+    );
+
+    test('dado el stream abierto, cuando llega un espacio, se da de baja o cambia de número, '
+        'emite la cuenta de ahora, y no repite una escritura que no cambia nada', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      final cuentas = <EspaciosActivos>[];
+      final sub = local.observarEspaciosActivos('ub-1').listen(cuentas.add);
+      addTearDown(sub.cancel);
+      await esperar(cuentas, 1);
+      expect(cuentas, [(cantidad: 1, numeroDeptoUnico: '3B')]);
+
+      await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+      await esperar(cuentas, 2);
+      expect(cuentas.last, (cantidad: 2, numeroDeptoUnico: null));
+
+      // Un cambio que no mueve ni la cuenta ni el número (la descripción del espacio): sin emisión.
+      await (db.update(db.espacios)..where((e) => e.id.equals('e2'))).write(
+        const EspaciosCompanion(descripcion: Value('al fondo')),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(cuentas, hasLength(2), reason: 'distinct: igual a la anterior');
+
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('e2'))).write(EspaciosCompanion(deletedAt: Value(t1)));
+      await esperar(cuentas, 3);
+      expect(cuentas.last, (cantidad: 1, numeroDeptoUnico: '3B'));
+
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('e1'))).write(const EspaciosCompanion(numeroDepto: Value(null)));
+      await esperar(cuentas, 4);
+      expect(cuentas.last, (cantidad: 1, numeroDeptoUnico: null));
     });
 
     test('dado un EDIFICIO con un solo depto "3B", cuando pasa a CASA, el depto queda como el '

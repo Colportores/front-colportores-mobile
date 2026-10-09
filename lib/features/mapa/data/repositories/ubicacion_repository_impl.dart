@@ -3,6 +3,7 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
+import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
@@ -111,21 +112,8 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
   }
 
   @override
-  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) async {
-    try {
-      return Right(await _local.numeroDelUnicoDepto(ubicacionId));
-    } on Object catch (e, st) {
-      _log.error(
-        LogModulo.db,
-        'UBICACION_ESPACIOS_FAIL',
-        'no se pudo leer el depto',
-        {'ubicacion_id': ubicacionId},
-        e,
-        st,
-      );
-      return Left(FailureInesperado(causa: e));
-    }
-  }
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) =>
+      _local.observarEspaciosActivos(ubicacionId);
 
   @override
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(

@@ -1,6 +1,7 @@
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
@@ -9,16 +10,15 @@ import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplic
 import 'package:dartz/dartz.dart';
 
 /// Para los fakes de [UbicacionRepository] de los tests que no modifican ubicaciones: completa
-/// los métodos de HU-UBI-004 (`obtener`, `contarEspaciosActivos`, `numeroDelUnicoDepto`, `modificar`) sin usarlos, así
-/// agregar uno a la interfaz no obliga a tocar cada fake.
+/// los métodos de HU-UBI-004 (`obtener`, `contarEspaciosActivos`, `observarEspaciosActivos`,
+/// `modificar`) sin usarlos, así agregar uno a la interfaz no obliga a tocar cada fake.
 mixin UbicacionRepositorySinModificar {
   Future<Either<Failure, Ubicacion?>> obtener(String id) => throw UnimplementedError();
 
   Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId) =>
       throw UnimplementedError();
 
-  Future<Either<Failure, String?>> numeroDelUnicoDepto(String ubicacionId) =>
-      throw UnimplementedError();
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) => throw UnimplementedError();
 
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
@@ -48,7 +48,7 @@ mixin UbicacionLocalSinModificar {
 
   Future<int> contarEspaciosActivos(String ubicacionId) => throw UnimplementedError();
 
-  Future<String?> numeroDelUnicoDepto(String ubicacionId) => throw UnimplementedError();
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) => throw UnimplementedError();
 
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
     String id, {

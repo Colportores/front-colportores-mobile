@@ -7,6 +7,7 @@ import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -85,13 +86,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   }
 
   @override
-  Future<String?> numeroDelUnicoDepto(String ubicacionId) async {
-    final activos =
-        await (select(espacios)
-              ..where((e) => e.ubicacionId.equals(ubicacionId) & e.deletedAt.isNull())
-              ..limit(2))
-            .get();
-    return activos.length == 1 ? activos.single.numeroDepto : null;
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) {
+    // Con un solo espacio activo, el mínimo de `numero_depto` es el de ese espacio (y `null` si no
+    // tiene): una fila agregada alcanza para las dos cosas, sin traer los espacios.
+    final cantidad = espacios.id.count();
+    final primero = espacios.numeroDepto.min();
+    final consulta = selectOnly(espacios)
+      ..addColumns([cantidad, primero])
+      ..where(espacios.ubicacionId.equals(ubicacionId) & espacios.deletedAt.isNull());
+    return consulta.watchSingle().map((fila) {
+      final n = fila.read(cantidad) ?? 0;
+      return (cantidad: n, numeroDeptoUnico: n == 1 ? fila.read(primero) : null);
+    }).distinct();
   }
 
   /// Leer, comparar, contar espacios, buscar duplicados, escribir y encolar van en una sola

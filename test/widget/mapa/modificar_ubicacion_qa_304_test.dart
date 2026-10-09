@@ -511,6 +511,31 @@ void main() {
 
     List<String> entidades() => [for (final c in encolador.encolados) c.entidad];
 
+    /// Llega un departamento (el sync entrante, por ejemplo) a `ubi-1`.
+    Future<void> insertarDepto(WidgetTester tester, String id, String numero) async {
+      await tester.runAsync(
+        () => db
+            .into(db.espacios)
+            .insert(
+              EspaciosCompanion.insert(
+                id: id,
+                ubicacionId: 'ubi-1',
+                numeroDepto: Value(numero),
+                createdAt: t0,
+                updatedAt: t0,
+                syncVersion: const Value(1),
+              ),
+            ),
+      );
+    }
+
+    /// El departamento [id] se da de baja (otro teléfono, por el sync).
+    Future<void> darDeBajaDepto(WidgetTester tester, String id) => tester.runAsync(
+      () => (db.update(
+        db.espacios,
+      )..where((x) => x.id.equals(id))).write(EspaciosCompanion(deletedAt: Value(t0))),
+    );
+
     testWidgets(
       'un depto «3B»: Edificio → Casa deja el depto sin número, encola ubicación y espacio '
       'en orden, y la hoja reabierta dice «Casa · 1 espacio»',
@@ -761,59 +786,86 @@ void main() {
     });
 
     testWidgets(
-      'rechazo tardío con la base real: la hoja pasa a «2 espacios» y «Guardar» queda sin '
-      'efecto; hoy la cuenta no se refresca en la hoja: si el 2.º depto se va hay que cerrar y '
-      'abrir de nuevo, y entonces guarda',
+      'el 2.º depto llega del sync con la hoja abierta: la hoja avisa sola, antes de guardar, y '
+      'cuando se da de baja se recupera sola, sin cerrar ni abrir de nuevo (#314)',
       (tester) async {
         await preparar(tester, deptos: [(id: 'e1', numero: '3B', piso: null, baja: false)]);
         final e = await _montar(tester, repositorio);
         await _tocar(tester, find.text('Casa'));
-        await tester.runAsync(
-          () => db
-              .into(db.espacios)
-              .insert(
-                EspaciosCompanion.insert(
-                  id: 'e2',
-                  ubicacionId: 'ubi-1',
-                  numeroDepto: const Value('4C'),
-                  createdAt: t0,
-                  updatedAt: t0,
-                  syncVersion: const Value(1),
-                ),
-              ),
-        );
+        expect(find.text(_lineaCasa), findsOneWidget);
 
-        await _tocar(tester, _guardar);
+        await insertarDepto(tester, 'e2', '4C');
+        await _asentar(tester);
 
         expect(find.text(_aviso2), findsOneWidget);
         expect(find.textContaining('Edificio · 2 espacios'), findsOneWidget);
         expect(find.textContaining('queda como el espacio'), findsNothing);
         expect(_habilitado(tester, _guardar), isFalse);
-        expect(encolador.encolados, isEmpty);
+        expect(encolador.encolados, isEmpty, reason: 'no se tocó «Guardar cambios»');
 
-        // El 2.º depto se da de baja (sync entrante): la hoja abierta no lo sabe.
-        await tester.runAsync(
-          () => (db.update(
-            db.espacios,
-          )..where((x) => x.id.equals('e2'))).write(EspaciosCompanion(deletedAt: Value(t0))),
-        );
-        await _tocar(tester, find.text('Edificio'));
-        await _tocar(tester, find.text('Casa'));
-        expect(_habilitado(tester, _guardar), isFalse, reason: 'hoy no recuenta en la hoja');
+        await darDeBajaDepto(tester, 'e2');
+        await _asentar(tester);
 
-        await _tocar(tester, find.text('Edificio'));
-        await _tocar(tester, _cerrar);
-        expect(find.text('¿Descartar los cambios?'), findsNothing);
-        expect(e.salidas.single, isNull);
-
-        await _abrir(tester);
+        expect(find.textContaining('Borralos'), findsNothing);
         expect(find.textContaining('Edificio · 1 espacio'), findsOneWidget);
-        await _tocar(tester, find.text('Casa'));
+        expect(find.text(_lineaCasa), findsOneWidget);
+        expect(_habilitado(tester, _guardar), isTrue);
+
         await _tocar(tester, _guardar);
 
+        expect(e.salidas.single, isA<UbicacionEditada>());
         expect((await ubicacion(tester)).tipo, TipoUbicacion.casa);
         expect((await espacio(tester, 'e1')).numeroDepto, isNull);
         expect((await espacio(tester, 'e2')).deletedAt, isNotNull);
+        expect(entidades(), ['ubicacion', 'espacio']);
+        await tester.runAsync(db.close);
+      },
+    );
+
+    testWidgets(
+      'el número del único depto cambia con la hoja abierta (sync entrante): la línea dice el '
+      'número de ahora (#314)',
+      (tester) async {
+        await preparar(tester, deptos: [(id: 'e1', numero: '3B', piso: null, baja: false)]);
+        await _montar(tester, repositorio);
+        await _tocar(tester, find.text('Casa'));
+        expect(find.text(_lineaCasa), findsOneWidget);
+
+        await tester.runAsync(
+          () => (db.update(db.espacios)..where((x) => x.id.equals('e1'))).write(
+            const EspaciosCompanion(numeroDepto: Value('5D')),
+          ),
+        );
+        await _asentar(tester);
+
+        expect(find.text(_lineaCasa), findsNothing);
+        expect(
+          find.text('El departamento 5D queda como el espacio de la casa, sin número.'),
+          findsOneWidget,
+        );
+        await tester.runAsync(db.close);
+      },
+    );
+
+    testWidgets(
+      'el único depto pierde su número con la hoja abierta: la línea se va y se guarda igual (#314)',
+      (tester) async {
+        await preparar(tester, deptos: [(id: 'e1', numero: '3B', piso: null, baja: false)]);
+        final e = await _montar(tester, repositorio);
+        await _tocar(tester, find.text('Casa'));
+        expect(find.text(_lineaCasa), findsOneWidget);
+
+        await tester.runAsync(
+          () => (db.update(db.espacios)..where((x) => x.id.equals('e1'))).write(
+            const EspaciosCompanion(numeroDepto: Value(null)),
+          ),
+        );
+        await _asentar(tester);
+
+        expect(find.textContaining('queda como el espacio'), findsNothing);
+        expect(_habilitado(tester, _guardar), isTrue);
+        await _tocar(tester, _guardar);
+        expect(e.salidas.single, isA<UbicacionEditada>());
         await tester.runAsync(db.close);
       },
     );
