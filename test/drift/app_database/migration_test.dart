@@ -18,6 +18,7 @@ import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
+import 'generated/schema_v7.dart' as v7;
 
 class _SinSalida extends LogOutput {
   @override
@@ -387,4 +388,104 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado jornadas, ubicaciones, espacios, pares y la copia del nombre guardados en la versión 6, '
+    'cuando migra a la 7, se conservan todos con los mismos datos y la auditoría queda vacía',
+    () async {
+      // #205: solo se suma `audit_log`. Las bajas que ya había quedan sin motivo (la Lista no muestra
+      // ninguno) y nada de lo guardado puede moverse (convenciones §9).
+      const jornada = v6.JornadaData(
+        id: 'jor-1',
+        colportorId: 'col-1',
+        inicio: 1758700000000,
+        fin: 1758720000000,
+        totalVisitas: 7,
+        totalVentas: 2,
+        createdAt: 1758700000000,
+        updatedAt: 1758720000000,
+        createdBy: 'col-1',
+        syncVersion: 3,
+      );
+      const ubicacion = v6.UbicacionData(
+        id: 'ub-1',
+        tipo: 'CASA',
+        calle: 'Av. Ñandú',
+        numero: '1234 bis',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        zonaId: 'zon-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758710000000,
+        createdBy: 'col-1',
+        syncVersion: 5,
+      );
+      const deBaja = v6.UbicacionData(
+        id: 'ub-2',
+        tipo: 'NEGOCIO',
+        lat: -34.91,
+        lon: -56.17,
+        ciudadId: 'ciu-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758715000000,
+        deletedAt: 1758715000000,
+        createdBy: 'col-1',
+        syncVersion: 2,
+      );
+      const espacio = v6.EspacioData(
+        id: 'esp-1',
+        ubicacionId: 'ub-1',
+        numeroDepto: '3B',
+        piso: '3',
+        descripcion: 'Fondo',
+        createdAt: 1758600000000,
+        updatedAt: 1758600000000,
+        createdBy: 'col-1',
+        syncVersion: 1,
+      );
+      const par = v6.UbicacionParDecididoData(
+        ubicacionAId: 'ub-1',
+        ubicacionBId: 'ub-2',
+        decision: 'CONSERVAR_AMBOS',
+        decididoEn: 1758660000000,
+      );
+      const sesion = v6.SesionUsuarioData(usuarioId: 'col-1', nombre: 'Cristian');
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 6,
+        newVersion: 7,
+        createOld: v6.DatabaseAtV6.new,
+        createNew: v7.DatabaseAtV7.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.jornada, jornada)
+            ..insert(viejo.ubicacion, ubicacion)
+            ..insert(viejo.ubicacion, deBaja)
+            ..insert(viejo.espacio, espacio)
+            ..insert(viejo.ubicacionParDecidido, par)
+            ..insert(viejo.sesionUsuario, sesion);
+        },
+        validateItems: (nuevo) async {
+          final jornadas = await nuevo.select(nuevo.jornada).get();
+          expect(jornadas.map((f) => f.toJson()).toList(), [jornada.toJson()]);
+          final ubicaciones = await (nuevo.select(
+            nuevo.ubicacion,
+          )..orderBy([(u) => OrderingTerm.asc(u.id)])).get();
+          expect(ubicaciones.map((f) => f.toJson()).toList(), [
+            ubicacion.toJson(),
+            deBaja.toJson(),
+          ]);
+          final espacios = await nuevo.select(nuevo.espacio).get();
+          expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
+          final pares = await nuevo.select(nuevo.ubicacionParDecidido).get();
+          expect(pares.map((f) => f.toJson()).toList(), [par.toJson()]);
+          final sesiones = await nuevo.select(nuevo.sesionUsuario).get();
+          expect(sesiones.map((f) => f.toJson()).toList(), [sesion.toJson()]);
+          expect(await nuevo.select(nuevo.auditLog).get(), isEmpty);
+        },
+      );
+    },
+  );
 }
