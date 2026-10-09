@@ -8,7 +8,8 @@
 //  - los casos límite de los campos y de los avisos (solo espacios, emoji, pegado largo, saltos de línea,
 //    lo tipeado tras un error, «Deshacer» en vuelo con otra reactivación, lector de pantalla).
 //
-// Los tests que documentan un hallazgo llevan `skip` y el comentario `// skip: QA #205 — …`.
+// Los hallazgos de la ronda 1 (aviso con lector de pantalla, acción bajo el texto a 200 %, motivo en el
+// `toString`, fila de baja sin tope) se arreglaron en el mismo PR: sus tests ya no llevan `skip`.
 import 'dart:async';
 import 'dart:convert';
 
@@ -678,19 +679,18 @@ void main() {
       await asentarLista(tester);
 
       expect(_deshacer, findsOneWidget);
-      // skip: QA #205 — el SnackBar de «Deshacer» va con `persist: false`: con TalkBack/VoiceOver se cierra a
-      // los 8 s, sin dar tiempo a llegar al botón (el valor por defecto de Flutter lo deja abierto).
-    }, skip: true);
+    });
 
-    testWidgets('dado el texto ×2 en 360×640, cuando reactiva, entonces el aviso 09·04 no ocupa más de '
-        'un tercio de la pantalla (ni parte «reactivada» a mitad de palabra)', (tester) async {
-      await cargarFuentes205(tester);
-      await _listaEn(tester, _Lista.avisoReactivada, escala: 2);
+    testWidgets(
+      'dado el texto ×2 en 360×640, cuando reactiva, entonces el aviso 09·04 no ocupa más de '
+      'un tercio de la pantalla (ni parte «reactivada» a mitad de palabra)',
+      (tester) async {
+        await cargarFuentes205(tester);
+        await _listaEn(tester, _Lista.avisoReactivada, escala: 2);
 
-      expect(tester.getSize(find.byType(SnackBar)).height, lessThanOrEqualTo(640 / 3));
-      // skip: QA #205 — con el texto al doble en 360×640 el aviso mide ~310 px de 640 y corta «react-ivada»:
-      // «Deshacer» va al lado del texto y le deja una columna de ~135 px (la acción podría ir debajo).
-    }, skip: true);
+        expect(tester.getSize(find.byType(SnackBar)).height, lessThanOrEqualTo(640 / 3));
+      },
+    );
 
     testWidgets('dado una baja con saltos de línea en el motivo (se pegan en «Qué pasó»), entonces '
         'la fila de la Lista no crece más que una de dos renglones', (tester) async {
@@ -700,20 +700,19 @@ void main() {
 
       // Una fila normal (dirección + renglón) mide unos 70 px.
       expect(tester.getSize(find.byType(FilaUbicacionLista)).height, lessThanOrEqualTo(100));
-      // skip: QA #205 — el motivo se pega con saltos de línea (el campo es de 2 a 4 renglones) y la fila de
-      // la Lista, sin tope de renglones, crece con cada uno (241 px con 10 saltos).
-    }, skip: true);
+    });
   });
 
   group('QA 09 · privacidad', () {
-    test('dado el motivo de una baja (texto libre), entonces no sale en el toString de la fila de la '
-        'Lista', () {
-      final fila = _baja(motivo: 'Se mudó a Rivera, tel 099123456');
-      expect(fila.toString(), isNot(contains('Rivera')));
-      expect(fila.toString(), isNot(contains('099123456')));
-      // skip: QA #205 — `UbicacionConResumen` (y `ItemListaUbicacion`) llevan `motivoBaja` en `props` sin
-      // `stringify => false`: en debug el texto libre del colportor sale en el `toString()`.
-    }, skip: true);
+    test(
+      'dado el motivo de una baja (texto libre), entonces no sale en el toString de la fila de la '
+      'Lista',
+      () {
+        final fila = _baja(motivo: 'Se mudó a Rivera, tel 099123456');
+        expect(fila.toString(), isNot(contains('Rivera')));
+        expect(fila.toString(), isNot(contains('099123456')));
+      },
+    );
 
     test('dado el motivo de una baja, entonces no sale en el toString de los parámetros del caso '
         'de uso', () {

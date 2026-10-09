@@ -265,6 +265,10 @@ class FilaUbicacionLista extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 FormatoListaUbicaciones.meta(item, ahora),
+                // El motivo de una baja es texto libre (hasta 4 renglones pegados): la fila no crece
+                // con él. Entero se lee en la hoja de reactivar.
+                maxLines: esBaja ? 2 : null,
+                overflow: esBaja ? TextOverflow.ellipsis : null,
                 style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: colores.gris),
               ),
               if (apilada) ...[const SizedBox(height: 3), textoDerecha],

@@ -48,6 +48,11 @@ final class ItemListaUbicacion extends Equatable {
     proximaEntrevista,
     motivoBaja,
   ];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
 }
 
 /// Resultado de [ConsultaListaUbicaciones]: la página pedida y los contadores.

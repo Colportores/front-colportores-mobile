@@ -34,4 +34,9 @@ final class UbicacionConResumen extends Equatable {
 
   @override
   List<Object?> get props => [ubicacion, cantidadEspacios, estado, proximaEntrevista, motivoBaja];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
 }

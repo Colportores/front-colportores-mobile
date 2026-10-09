@@ -384,6 +384,39 @@ void main() {
       expect(salida.lineas.join(' '), isNot(contains('García')));
       expect(salida.lineas.join(' '), contains('con_motivo'));
     });
+
+    test('dado que falla el INSERT en audit_log (disco lleno, E/S), cuando se loguea la falla, el '
+        'motivo (texto libre) no sale en el log y la baja no queda a medias', () async {
+      final salida = _SalidaEnMemoria();
+      final repositorio = UbicacionRepositoryImpl(local, logger: AppLogger(output: salida));
+      await local.insertar(ubicacion());
+      await db.customStatement(
+        'CREATE TRIGGER falla_audit BEFORE INSERT ON audit_log '
+        "BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+      );
+      encolador.encolados.clear();
+
+      final r = await repositorio.cambiarBaja(
+        'ub-1',
+        baja: true,
+        baseUpdatedAt: t0,
+        ahora: t1,
+        motivo: 'La familia García se mudó a Rivera',
+      );
+
+      expect(r.isLeft(), isTrue);
+      expect(r.swap().getOrElse(() => throw StateError('era un Right')), isA<FailureInesperado>());
+      final log = salida.lineas.join(' ');
+      expect(log, contains('UBICACION_BAJA_FAIL'));
+      expect(log, contains('SqliteException'), reason: 'el tipo sí');
+      expect(log, contains('result_code'), reason: 'el código sí');
+      expect(log, isNot(contains('García')));
+      expect(log, isNot(contains('Rivera')));
+      expect(log, isNot(contains('INSERT INTO "audit_log"')), reason: 'ni la sentencia');
+      expect((await guardada()).auditoria.deletedAt, isNull, reason: 'la transacción se revirtió');
+      expect(encolador.encolados, isEmpty);
+      expect(await auditoria(), isEmpty);
+    });
   });
 
   group('Doble toque, edición concurrente y transacción', () {
