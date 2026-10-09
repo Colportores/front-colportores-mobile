@@ -16,13 +16,16 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/cierre_forzado_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_correo_repository.dart';
@@ -139,6 +142,25 @@ final class _CierreQueExplotaAlBorrar implements CierreForzadoRepository {
 
   @override
   Future<void> borrar() async => throw StateError('el almacén no responde');
+}
+
+/// Reenvíos guardados que, contra su contrato, lanzan al olvidar: cerrar sesión o entrar no pueden
+/// fallar por eso.
+final class _ReenviosQueExplotan implements BloqueoReenvioVerificacionRepository {
+  @override
+  Future<ReenviosGuardados> leer({required DateTime ahora}) async => ReenviosGuardados.vacio;
+
+  @override
+  Future<void> guardar(String correo, DateTime vence, {required DateTime ahora}) async {}
+
+  @override
+  Future<void> guardarEspera(String correo, DateTime vence, {required DateTime ahora}) async {}
+
+  @override
+  Future<void> olvidar(String correo) async => throw StateError('el almacén no responde');
+
+  @override
+  Future<void> olvidarTodo() async => throw StateError('el almacén no responde');
 }
 
 class _SalidaEnMemoria extends LogOutput {
@@ -952,6 +974,7 @@ void main() {
     late UltimoCorreoEnMemoria correo;
     late CierreForzadoEnMemoria cierres;
     late _DatosQueBorran datos;
+    late BloqueoReenvioVerificacionEnMemoria reenvios;
     late DateTime ahora;
     late ProviderContainer container;
 
@@ -961,6 +984,7 @@ void main() {
     ProviderContainer arrancar({
       _LocalQueFalla? sesionLocal,
       CierreForzadoRepository? repo,
+      BloqueoReenvioVerificacionRepository? reenviosGuardados,
       bool verificarAlRegistrar = false,
     }) {
       remote = AuthRemoteDataSourceEnMemoria(
@@ -976,6 +1000,9 @@ void main() {
           ultimoCorreoRepositoryProvider.overrideWithValue(correo),
           cierreForzadoRepositoryProvider.overrideWithValue(repo ?? cierres),
           datosLocalesRepositoryProvider.overrideWithValue(datos),
+          bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(
+            reenviosGuardados ?? reenvios,
+          ),
           relojSesionProvider.overrideWithValue(RelojSesionEnMemoria(sistema: () => ahora)),
         ],
       );
@@ -1000,6 +1027,7 @@ void main() {
       correo = UltimoCorreoEnMemoria();
       cierres = CierreForzadoEnMemoria();
       datos = _DatosQueBorran();
+      reenvios = BloqueoReenvioVerificacionEnMemoria();
       container = arrancar();
     });
 
@@ -1272,6 +1300,154 @@ void main() {
         expect(lento.operaciones, ['escribir', 'borrar']);
       },
     );
+
+    // HU-AUTH-002, #325: lo que el teléfono recuerda del reenvío del email de verificación (candado de
+    // una hora y espera de 60 s) no sobrevive a la cuenta: entrar lo olvida, cerrar sesión a propósito
+    // y «Borrar datos locales» también. Nada de esto guarda ni lee la dirección más allá de su hora.
+    group('el reenvío de verificación guardado (#325)', () {
+      Future<void> guardarReenvios() async {
+        const hora = Duration(minutes: 60);
+        const minuto = Duration(seconds: 60);
+        await reenvios.guardar('ana@example.com', ahora.add(hora), ahora: ahora);
+        await reenvios.guardarEspera('ana@example.com', ahora.add(minuto), ahora: ahora);
+        await reenvios.guardar('luis@example.com', ahora.add(hora), ahora: ahora);
+        await reenvios.guardarEspera('marta@example.com', ahora.add(minuto), ahora: ahora);
+      }
+
+      test('al iniciar sesión se olvida el de esa cuenta; los de las otras quedan', () async {
+        await guardarReenvios();
+        await container.read(sesionProvider.future);
+
+        final falla = await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(falla, isNull);
+        final guardados = await reenvios.leer(ahora: ahora);
+        expect(guardados.bloqueos.keys, ['luis@example.com']);
+        expect(guardados.esperas.keys, ['marta@example.com']);
+      });
+
+      test('una contraseña incorrecta no olvida nada', () async {
+        await guardarReenvios();
+        await container.read(sesionProvider.future);
+
+        final falla = await container
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'equivocada1');
+        await pumpEventQueue();
+
+        expect(falla, isA<FailureCredencialesInvalidas>());
+        final guardados = await reenvios.leer(ahora: ahora);
+        expect(guardados.bloqueos.keys, containsAll(['ana@example.com', 'luis@example.com']));
+        expect(guardados.esperas.keys, containsAll(['ana@example.com', 'marta@example.com']));
+      });
+
+      test('al cerrar sesión a propósito no queda ninguno, de ninguna dirección', () async {
+        await entrar();
+        await guardarReenvios();
+
+        final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(resultado.isRight(), isTrue);
+        expect((await reenvios.leer(ahora: ahora)).estaVacio, isTrue);
+      });
+
+      test('el cierre que hace la app por la recuperación de contraseña los conserva', () async {
+        await entrar();
+        await guardarReenvios();
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .cerrarSesion(conservarCorreo: true);
+
+        expect(resultado.isRight(), isTrue);
+        expect((await reenvios.leer(ahora: ahora)).bloqueos, hasLength(2));
+      });
+
+      test('si cerrar sesión falla (el usuario sigue adentro) se conservan', () async {
+        await entrar();
+        await guardarReenvios();
+        local.explotar = true;
+
+        final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(resultado.isLeft(), isTrue);
+        expect((await reenvios.leer(ahora: ahora)).bloqueos, hasLength(2));
+      });
+
+      test('al borrar los datos locales no queda ninguno', () async {
+        await entrar();
+        await guardarReenvios();
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+        expect(resultado.isRight(), isTrue);
+        expect((await reenvios.leer(ahora: ahora)).estaVacio, isTrue);
+      });
+
+      test('si el borrado de datos falla, el usuario sigue adentro y se conservan', () async {
+        await entrar();
+        await guardarReenvios();
+        datos.respuesta = const Left(FailureDatosLocalesIlegibles());
+
+        final resultado = await container
+            .read(sesionProvider.notifier)
+            .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+
+        expect(resultado.isLeft(), isTrue);
+        expect((await reenvios.leer(ahora: ahora)).bloqueos, hasLength(2));
+      });
+
+      test(
+        'registrarse sin sesión (falta verificar el email) no olvida el envío del alta',
+        () async {
+          await guardarReenvios();
+          container.dispose();
+          container = arrancar(verificarAlRegistrar: true);
+          await container.read(sesionProvider.future);
+
+          await container
+              .read(sesionProvider.notifier)
+              .registrar(
+                nombre: 'Ana',
+                apellido: 'Pérez',
+                cedula: '12345672',
+                email: 'nueva@example.com',
+                password: 'Secreto123',
+                aceptaTerminos: true,
+                aceptaTradeOffE2E: true,
+              );
+          await pumpEventQueue();
+
+          expect((await reenvios.leer(ahora: ahora)).bloqueos, hasLength(2));
+        },
+      );
+
+      test(
+        'si el almacén de reenvíos explota, entrar y cerrar sesión siguen funcionando',
+        () async {
+          container.dispose();
+          container = arrancar(reenviosGuardados: _ReenviosQueExplotan());
+          await container.read(sesionProvider.future);
+
+          final falla = await container
+              .read(sesionProvider.notifier)
+              .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+          await pumpEventQueue();
+          expect(falla, isNull);
+          expect(container.read(sesionProvider).value, isNotNull);
+
+          final resultado = await container.read(sesionProvider.notifier).cerrarSesion();
+
+          expect(resultado.isRight(), isTrue);
+          expect(container.read(sesionProvider).value, isNull);
+        },
+      );
+    });
 
     group('se borra con el correo', () {
       test('al cerrar sesión a propósito', () async {
