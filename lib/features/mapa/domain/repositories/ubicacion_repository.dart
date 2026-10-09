@@ -95,14 +95,15 @@ abstract interface class UbicacionRepository {
   /// Con [conservadaId], esa otra ubicación tiene que seguir activa en la misma transacción (la que
   /// se conserva al marcar un duplicado): si no está, [FailureUbicacionInexistente]; si está de
   /// baja, [FailureUbicacionCambio]; en los dos casos no escribe.
-  /// [conMotivo] solo va al log (`ubicacion_baja`, R-UB09): el motivo es texto libre y no se
-  /// registra.
+  /// [motivo] (solo al dar de baja, `baja: true`) va al `audit_log` local (`ubicacion_baja`, R-UB09),
+  /// en la misma transacción que la baja. Es texto libre: al log de la app solo llega si hubo motivo,
+  /// nunca cuál.
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
   });
 

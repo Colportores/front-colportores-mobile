@@ -4,7 +4,9 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../../auth/domain/entities/campania_colportor.dart';
+import '../../domain/entities/pendientes_ubicacion.dart';
 import '../../domain/services/ciudades_para_alta.dart';
+import '../../domain/services/consultor_pendientes_ubicacion.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/value_objects/coordenadas.dart';
 
@@ -62,6 +64,33 @@ final class InscripcionesColportorSinFuente implements InscripcionesColportor {
       'no hay inscripciones en el teléfono: la zona la calcula el servidor',
     );
     return const Right([]);
+  }
+}
+
+/// Sin visitas, ventas ni cobranzas en el teléfono (llegan con las HU de visitas y cobranzas y su
+/// réplica; el adaptador real es front-colportores-mobile#330): **no sabe, así que no afirma que la
+/// ubicación no tiene nada**. Devuelve la falla de revisión ([FailurePendientesNoDisponibles], «No
+/// pudimos revisar la ubicación. Probá de nuevo.», con «Reintentar») y deja un `warn`
+/// `PENDIENTES_SIN_FUENTE`: ante la duda se bloquea (decisión del agente de decisiones, 09/10, #205;
+/// mismo criterio que `CiudadesParaAltaSinFuente`). Hasta que exista el adaptador, «Dar de baja»
+/// no pasa de la revisión: la app no sale a producción con esta clase.
+///
+/// **No es la regla de la HU.** El servidor es quien hace valer el bloqueo (casa con ventas o con una
+/// visita de otro colportor, decisión de Cristian del 02/10).
+final class PendientesUbicacionSinFuente implements ConsultorPendientesUbicacion {
+  PendientesUbicacionSinFuente({AppLogger? logger}) : _log = logger ?? AppLogger.instance;
+
+  final AppLogger _log;
+
+  @override
+  Future<Either<Failure, PendientesUbicacion>> de(String ubicacionId) async {
+    _log.warn(
+      LogModulo.map,
+      'PENDIENTES_SIN_FUENTE',
+      'no hay visitas, ventas ni cobranzas en el teléfono: no se puede revisar la ubicación',
+      {'ubicacion_id': ubicacionId},
+    );
+    return const Left(FailurePendientesNoDisponibles());
   }
 }
 

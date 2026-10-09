@@ -5,6 +5,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -176,15 +177,18 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
   }) async {
+    // El motivo es texto del colportor: a la DB (auditoría local) sí, al log solo que hubo.
+    final conMotivo = baja && MotivosBaja.paraGuardar(motivo) != null;
     try {
       final (:ubicacion, :escribio) = await _local.cambiarBaja(
         id,
         baseUpdatedAt: baseUpdatedAt,
         updatedAt: ahora,
         deletedAt: baja ? ahora : null,
+        motivo: baja ? MotivosBaja.paraGuardar(motivo) : null,
         conservadaId: conservadaId,
       );
       // Un solo evento de auditoría por baja (R-UB09): el segundo de dos toques no escribió.
@@ -264,6 +268,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
             UbicacionConResumen(
               ubicacion: f.ubicacion.toEntity(),
               cantidadEspacios: f.cantidadEspacios,
+              motivoBaja: f.motivoBaja,
             ),
         ],
       );

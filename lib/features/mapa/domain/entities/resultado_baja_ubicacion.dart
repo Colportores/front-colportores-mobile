@@ -29,8 +29,8 @@ final class BajaSinCambios extends ResultadoBajaUbicacion {
   List<Object?> get props => [ubicacion];
 }
 
-/// Tiene pendientes: no se escribió nada. La pantalla muestra [pendientes] (`resumen`) y, tras la
-/// segunda confirmación, repite el pedido con `confirmaPendientes: true`.
+/// Tiene visitas pendientes propias: no se escribió nada. La pantalla muestra [pendientes] (`resumen`)
+/// y, tras la segunda confirmación, repite el pedido con `confirmaPendientes: true`.
 final class BajaRequiereConfirmacion extends ResultadoBajaUbicacion {
   const BajaRequiereConfirmacion({required this.pendientes});
 
@@ -39,4 +39,15 @@ final class BajaRequiereConfirmacion extends ResultadoBajaUbicacion {
 
   @override
   List<Object?> get props => [pendientes];
+}
+
+/// No se puede dar de baja: tiene una cobranza pendiente, alguna venta o una visita de otro
+/// colportor ([bloqueo]). No se escribió nada: la pantalla muestra el aviso que guía (canvas 09·02).
+final class BajaBloqueada extends ResultadoBajaUbicacion {
+  const BajaBloqueada({required this.bloqueo});
+
+  final BloqueoBaja bloqueo;
+
+  @override
+  List<Object?> get props => [bloqueo];
 }

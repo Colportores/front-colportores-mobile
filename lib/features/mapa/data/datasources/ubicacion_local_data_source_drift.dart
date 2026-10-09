@@ -15,6 +15,7 @@ import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
+import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
 import 'ubicacion_local_data_source.dart';
@@ -30,7 +31,7 @@ typedef _Motivo = MotivoRechazoEspacio;
 /// Es el DAO de las dos tablas (`@DriftAccessor`) y traduce modelos ↔ filas, como
 /// `JornadaLocalDataSourceDrift`. El sync entra por [EncoladorSync], dentro de la misma
 /// transacción que la escritura (contrato-sync-engine §3).
-@DriftAccessor(tables: [Ubicaciones, Espacios])
+@DriftAccessor(tables: [Ubicaciones, Espacios, AuditLogLocal])
 final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
@@ -166,6 +167,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required DateTime baseUpdatedAt,
     required DateTime updatedAt,
     required DateTime? deletedAt,
+    String? motivo,
     String? conservadaId,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
@@ -190,6 +192,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     final guardada = _aModelo(
       await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingle(),
     );
+    // La auditoría local (R-UB09): solo la baja, solo con motivo, y en la misma transacción.
+    if (deletedAt != null && motivo != null && motivo.trim().isNotEmpty) {
+      await into(auditLogLocal).insert(
+        AuditLogLocalCompanion.insert(
+          evento: EventoAuditoriaLocal.ubicacionBaja,
+          uuid: id,
+          motivo: Value(motivo.trim()),
+          creadoEn: deletedAt,
+        ),
+      );
+    }
     await _encolador.encolar(
       'ubicacion',
       deletedAt == null ? OperacionSync.update : OperacionSync.delete,
@@ -215,15 +228,25 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required String colportorId,
     bool incluirBajas = false,
   }) {
-    final cantidad = espacios.id.count();
+    // `distinct`: el segundo JOIN (la auditoría) puede repetir la fila de cada espacio.
+    final cantidad = espacios.id.count(distinct: true);
+    // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
+    // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
+    final motivo = auditLogLocal.motivo.max();
     final consulta =
         select(ubicaciones).join([
             leftOuterJoin(
               espacios,
               espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
             ),
+            leftOuterJoin(
+              auditLogLocal,
+              auditLogLocal.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
+                  auditLogLocal.uuid.equalsExp(ubicaciones.id) &
+                  auditLogLocal.creadoEn.equalsExp(ubicaciones.deletedAt),
+            ),
           ])
-          ..addColumns([cantidad])
+          ..addColumns([cantidad, motivo])
           ..where(ubicaciones.createdBy.equals(colportorId))
           ..groupBy([ubicaciones.id]);
     if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
@@ -233,6 +256,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
           (
             ubicacion: _aModelo(fila.readTable(ubicaciones)),
             cantidadEspacios: fila.read(cantidad) ?? 0,
+            motivoBaja: fila.read(motivo),
           ),
       ],
     );

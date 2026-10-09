@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_table.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
@@ -16,7 +17,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/services/consultor_pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/baja_ubicacion_use_cases.dart';
 import 'package:dartz/dartz.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:drift/native.dart';
 import 'package:logger/logger.dart';
 import 'package:test/test.dart';
@@ -46,23 +47,24 @@ void main() {
   final t0 = DateTime.utc(2026, 9, 29, 13, 45, 10, 123);
   final t1 = DateTime.utc(2026, 9, 30, 8, 0, 0, 500);
 
-  UbicacionModel ubicacion({DateTime? deletedAt, String ciudadId = 'mvd'}) => UbicacionModel(
-    id: 'ub-1',
-    tipo: TipoUbicacion.edificio,
-    calle: 'Av. Italia',
-    numero: '1234',
-    lat: -34.891,
-    lon: -56.125,
-    ciudadId: ciudadId,
-    zonaId: 'zona-9',
-    auditoria: Auditoria(
-      createdAt: t0,
-      updatedAt: t0,
-      createdBy: 'col-1',
-      deletedAt: deletedAt,
-      syncVersion: 4,
-    ),
-  );
+  UbicacionModel ubicacion({String id = 'ub-1', DateTime? deletedAt, String ciudadId = 'mvd'}) =>
+      UbicacionModel(
+        id: id,
+        tipo: TipoUbicacion.edificio,
+        calle: 'Av. Italia',
+        numero: '1234',
+        lat: -34.891,
+        lon: -56.125,
+        ciudadId: ciudadId,
+        zonaId: 'zona-9',
+        auditoria: Auditoria(
+          createdAt: t0,
+          updatedAt: t0,
+          createdBy: 'col-1',
+          deletedAt: deletedAt,
+          syncVersion: 4,
+        ),
+      );
 
   late AppDatabase db;
   late EncoladorSyncEnMemoria encolador;
@@ -98,6 +100,12 @@ void main() {
       (await darDeBaja(p)).swap().getOrElse(() => throw StateError('era un Right'));
 
   Future<UbicacionModel> guardada() async => (await local.obtener('ub-1'))!;
+
+  Future<List<AuditLogFila>> auditoria() =>
+      (db.select(db.auditLogLocal)..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
+
+  Future<List<UbicacionConEspacios>> lista() =>
+      local.observarListaDelColportor(colportorId: 'col-1', incluirBajas: true).first;
 
   Future<void> espacio(String id) => db
       .into(db.espacios)
@@ -157,30 +165,32 @@ void main() {
     });
   });
 
-  group('Baja con pendientes: doble confirmación', () {
+  group('Baja con visitas pendientes propias: doble confirmación', () {
     test(
-      'dado 2 cobranzas activas, cuando inicia la baja, muestra el resumen literal y no escribe; '
-      'con la segunda confirmación, procede',
+      'dado 2 visitas pendientes propias, cuando inicia la baja, muestra el resumen literal y no '
+      'escribe; con la segunda confirmación, procede',
       () async {
         await local.insertar(ubicacion());
         encolador.encolados.clear();
-        pendientes.pendientes = const PendientesUbicacion(cobranzasActivas: 2);
+        pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
 
-        final r = await okBaja(baja());
+        final r = await okBaja(baja(motivo: 'Ya no existe'));
 
         expect(r, isA<BajaRequiereConfirmacion>());
         expect((r as BajaRequiereConfirmacion).pendientes.resumen, [
-          'Esta ubicación tiene 2 cobranzas activas. Si la das de baja, no podrás registrar nuevos '
-              'cobros, pero el historial se conserva.',
+          'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar '
+              'nuevas visitas, pero el historial se conserva.',
         ]);
         expect((await guardada()).auditoria.deletedAt, isNull);
         expect(encolador.encolados, isEmpty);
+        expect(await auditoria(), isEmpty, reason: 'sin baja no hay motivo que guardar');
 
-        final confirmada = await okBaja(baja(confirma: true));
+        final confirmada = await okBaja(baja(confirma: true, motivo: 'Ya no existe'));
 
         expect(confirmada, isA<UbicacionDadaDeBaja>());
         expect((await guardada()).auditoria.deletedAt, t1);
         expect(encolador.encolados, hasLength(1));
+        expect(await auditoria(), hasLength(1));
       },
     );
 
@@ -191,6 +201,188 @@ void main() {
 
       expect(await fallaBaja(baja()), isA<FailureInesperado>());
       expect((await guardada()).auditoria.deletedAt, isNull);
+    });
+  });
+
+  group('Baja bloqueada (decisión de Cristian, 02/10)', () {
+    const cobranza = CobranzaPendiente(montoCentavos: 145000, numeroCuota: 2);
+
+    Future<void> comprobarSinEscribir() async {
+      expect((await guardada()).auditoria.deletedAt, isNull);
+      expect(encolador.encolados, isEmpty);
+      expect(await auditoria(), isEmpty);
+    }
+
+    test('dado una cobranza pendiente, cuando da de baja, queda bloqueada por la cobranza sin '
+        'escribir ni encolar ni guardar el motivo', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+      pendientes.pendientes = const PendientesUbicacion(
+        cobranzaPendiente: cobranza,
+        tieneVentas: true,
+      );
+
+      final r = await okBaja(baja(motivo: 'Ya no existe', confirma: true));
+
+      expect(r, const BajaBloqueada(bloqueo: BloqueoPorCobranza(cobranza)));
+      await comprobarSinEscribir();
+    });
+
+    test('dado una venta sin cobranza pendiente, cuando da de baja, queda bloqueada (ventas o '
+        'visitas de otro)', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+      pendientes.pendientes = const PendientesUbicacion(tieneVentas: true);
+
+      final r = await okBaja(baja(motivo: 'Ya no existe'));
+
+      expect(r, const BajaBloqueada(bloqueo: BloqueoPorVentasOVisitasAjenas()));
+      await comprobarSinEscribir();
+    });
+
+    test('dado una visita de otro colportor, cuando da de baja, queda bloqueada', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+      pendientes.pendientes = const PendientesUbicacion(tieneVisitasDeOtros: true);
+
+      final r = await okBaja(baja(motivo: 'Ya no existe'));
+
+      expect(r, isA<BajaBloqueada>());
+      await comprobarSinEscribir();
+    });
+
+    test('dado un bloqueo y además visitas propias pendientes, cuando da de baja, el bloqueo gana: '
+        'no pide la segunda confirmación', () async {
+      await local.insertar(ubicacion());
+      pendientes.pendientes = const PendientesUbicacion(
+        visitasPropiasPendientes: 3,
+        tieneVisitasDeOtros: true,
+      );
+
+      expect(await okBaja(baja()), isA<BajaBloqueada>());
+    });
+
+    test('dado un bloqueo, cuando es la baja de la duplicada de una unión (HU-UBI-006), no lo '
+        'aplica: esa baja no pasa por los bloqueos', () async {
+      await local.insertar(ubicacion());
+      await local.insertar(ubicacion(id: 'ub-2'));
+      pendientes.pendientes = const PendientesUbicacion(tieneVentas: true);
+
+      final r = await okBaja(
+        DarDeBajaUbicacionParams(
+          id: 'ub-1',
+          baseUpdatedAt: t0,
+          conservadaId: 'ub-2',
+          motivo: 'duplicado_de_ub-2',
+        ),
+      );
+
+      expect(r, isA<UbicacionDadaDeBaja>());
+    });
+  });
+
+  group('Motivo de la baja (audit_log local)', () {
+    test('dado una baja con motivo, cuando se confirma, queda una fila de auditoría con el evento, '
+        'el uuid, el motivo y el mismo instante que deleted_at', () async {
+      await local.insertar(ubicacion());
+
+      await okBaja(baja(motivo: '  Se mudaron  '));
+
+      final filas = await auditoria();
+      expect(filas, hasLength(1));
+      expect(filas.single.evento, EventoAuditoriaLocal.ubicacionBaja);
+      expect(filas.single.uuid, 'ub-1');
+      expect(filas.single.motivo, 'Se mudaron');
+      expect(filas.single.creadoEn, (await guardada()).auditoria.deletedAt);
+    });
+
+    test('dado una baja sin motivo o con el motivo en blanco, cuando se confirma, no se guarda '
+        'ninguna fila', () async {
+      await local.insertar(ubicacion());
+      await okBaja(baja(motivo: '   '));
+      expect(await auditoria(), isEmpty);
+    });
+
+    test('dado que el encolado falla, cuando da de baja con motivo, no queda ni la baja ni el '
+        'motivo (misma transacción)', () async {
+      await local.insertar(ubicacion());
+      encolador.fallarCon = StateError('motor apagado');
+
+      await fallaBaja(baja(motivo: 'Ya no existe'));
+
+      expect(await auditoria(), isEmpty);
+    });
+
+    test('dado un doble toque, cuando el segundo llega con la fila ya de baja, el motivo se guarda '
+        'una sola vez', () async {
+      await local.insertar(ubicacion());
+
+      await okBaja(baja(motivo: 'Ya no existe'));
+      await okBaja(baja(motivo: 'Ya no existe'));
+
+      expect(await auditoria(), hasLength(1));
+    });
+
+    test(
+      'dado una baja y su reactivación, cuando la vuelve a dar de baja con otro motivo, la Lista '
+      'muestra el motivo vigente y la auditoría conserva los dos',
+      () async {
+        await local.insertar(ubicacion());
+        await okBaja(baja(motivo: 'Ya no existe'));
+        await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t1));
+        expect((await lista()).single.motivoBaja, isNull, reason: 'activa: no hay motivo');
+
+        final t2 = t1.add(const Duration(days: 1));
+        final otraBaja = DarDeBajaUbicacionUseCase(
+          UbicacionRepositoryImpl(local, logger: loggerMudo()),
+          pendientes,
+          ahora: () => t2,
+        );
+        await otraBaja(
+          DarDeBajaUbicacionParams(id: 'ub-1', baseUpdatedAt: t1, motivo: 'Está deshabitada'),
+        );
+
+        expect((await lista()).single.motivoBaja, 'Está deshabitada');
+        expect((await auditoria()).map((f) => f.motivo), ['Ya no existe', 'Está deshabitada']);
+      },
+    );
+
+    test('dado una baja con motivo, cuando la Lista pide las bajas, la fila trae el motivo; una '
+        'ubicación activa no', () async {
+      await local.insertar(ubicacion());
+      await local.insertar(ubicacion(id: 'ub-2'));
+      await okBaja(baja(motivo: 'No quiere visitas'));
+
+      final filas = {for (final f in await lista()) f.ubicacion.id: f.motivoBaja};
+
+      expect(filas, {'ub-1': 'No quiere visitas', 'ub-2': null});
+    });
+
+    test(
+      'dado una baja que llegó por el sync (sin motivo local), cuando la Lista la pide, no tiene '
+      'motivo',
+      () async {
+        await local.insertar(ubicacion(deletedAt: t0));
+
+        expect((await lista()).single.motivoBaja, isNull);
+      },
+    );
+
+    test('dado una baja con motivo, cuando se loguea, el motivo (texto libre) no sale en el '
+        'log', () async {
+      final salida = _SalidaEnMemoria();
+      final conLog = DarDeBajaUbicacionUseCase(
+        UbicacionRepositoryImpl(local, logger: AppLogger(output: salida)),
+        pendientes,
+        ahora: () => t1,
+      );
+      await local.insertar(ubicacion());
+
+      await conLog(baja(motivo: 'La familia García se mudó a Rivera'));
+
+      expect(salida.lineas, isNotEmpty);
+      expect(salida.lineas.join(' '), isNot(contains('García')));
+      expect(salida.lineas.join(' '), contains('con_motivo'));
     });
   });
 

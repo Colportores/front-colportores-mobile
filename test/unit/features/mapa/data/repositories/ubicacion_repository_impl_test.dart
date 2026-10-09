@@ -199,7 +199,9 @@ void main() {
   group('UbicacionRepositoryImpl.observarListaDelColportor', () {
     test('devuelve entidades con sus espacios y sin estado (aún no hay house_status)', () async {
       final modelo = UbicacionModel.fromEntity(ubicacion);
-      final local = _LocalFijo(lista: Stream.value([(ubicacion: modelo, cantidadEspacios: 3)]));
+      final local = _LocalFijo(
+        lista: Stream.value([(ubicacion: modelo, cantidadEspacios: 3, motivoBaja: 'Ya no existe')]),
+      );
 
       final lista = await UbicacionRepositoryImpl(
         local,
@@ -208,6 +210,7 @@ void main() {
       expect(local.listaPedida, (colportorId: 'col-1', incluirBajas: true));
       expect(lista.single.ubicacion, ubicacion);
       expect(lista.single.cantidadEspacios, 3);
+      expect(lista.single.motivoBaja, 'Ya no existe');
       expect(lista.single.estado, isNull);
       expect(lista.single.proximaEntrevista, isNull);
     });

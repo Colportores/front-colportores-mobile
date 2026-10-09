@@ -162,7 +162,7 @@ void main() {
     test('dado pendientes en la duplicada, cuando confirmo "Conservar A", primero pide confirmar '
         'y no escribe nada', () async {
       await sembrarPar();
-      pendientes.pendientes = const PendientesUbicacion(visitasPendientes: 2);
+      pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
 
       final r = await marcar(
         MarcarDuplicadoParams(conservarId: 'ub-a', duplicadaId: 'ub-b', baseUpdatedAtDuplicada: t0),

@@ -473,6 +473,22 @@ final class FailureCiudadesNoDisponibles extends Failure {
       );
 }
 
+/// No se pudo revisar lo que la ubicación tiene pendiente (visitas, ventas, cobranza) antes de ofrecer
+/// «Dar de baja» (vista 09, HU-UBI-005): la base local no se pudo leer o todavía no existe de dónde
+/// leerlo (`PendientesUbicacionSinFuente`, hasta los adaptadores reales de
+/// front-colportores-mobile#330). Es **otra cosa** que «no tiene nada pendiente»: aquí no se sabe, y
+/// ofrecer la baja a ciegas dejaría dar de baja una casa con ventas. Se puede reintentar.
+///
+/// La HU no trae texto: el de la hoja ("No pudimos revisar la ubicación. Probá de nuevo.") lo decidió
+/// el agente de decisiones (mapa §2, 09/10, en #205).
+final class FailurePendientesNoDisponibles extends Failure {
+  const FailurePendientesNoDisponibles()
+    : super(
+        mensaje: 'No pudimos revisar la ubicación. Probá de nuevo.',
+        codigo: 'UBI_PENDIENTES_NO_DISPONIBLES',
+      );
+}
+
 /// HU-UBI-007, "único espacio activo con personas": no se puede dar de baja el último espacio
 /// activo de un edificio o negocio si tiene personas. El mensaje es el que fija la HU.
 final class FailureUltimoEspacioConPersonas extends Failure {

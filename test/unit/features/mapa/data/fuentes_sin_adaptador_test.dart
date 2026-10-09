@@ -4,11 +4,14 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_baja.dart'
+    show TextosBaja;
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderException;
@@ -81,6 +84,33 @@ void main() {
       expect(r.getOrElse(() => throw StateError('falló')), isEmpty);
     },
   );
+
+  test(
+    'sin visitas, ventas ni cobranzas en el teléfono: la revisión de la baja falla (no afirma que no '
+    'hay nada) y deja el aviso PENDIENTES_SIN_FUENTE',
+    () async {
+      final salida = _SalidaEnMemoria();
+      final c = PendientesUbicacionSinFuente(logger: AppLogger(output: salida));
+
+      expect(
+        await c.de('ubi-1'),
+        const Left<Failure, PendientesUbicacion>(FailurePendientesNoDisponibles()),
+      );
+
+      expect(
+        salida.lineas.where((l) => l.startsWith('[WARN][MAP][PENDIENTES_SIN_FUENTE]')),
+        hasLength(1),
+      );
+    },
+  );
+
+  test('la falla de revisión dice qué pasa y qué hacer, con el texto de la hoja de baja', () {
+    const falla = FailurePendientesNoDisponibles();
+
+    expect(falla.mensaje, TextosBaja.noPudimosRevisar);
+    expect(falla.mensaje, contains('Probá de nuevo'));
+    expect(falla.codigo, 'UBI_PENDIENTES_NO_DISPONIBLES');
+  });
 
   test('sin motor de sync encolar falla: un alta que no sube no se guarda', () async {
     await expectLater(

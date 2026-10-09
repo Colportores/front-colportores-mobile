@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/duplicado_ubicacion.dart';
+import '../entities/motivo_baja.dart';
 import '../entities/resultado_baja_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/pares_duplicados_repository.dart';
@@ -148,11 +149,10 @@ final class MarcarDuplicadoParams extends Equatable {
 ///    las dos el paso 2, pero si la baja de A escribe primero, la otra encuentra A de baja y no
 ///    escribe. Así el resultado es siempre el de hacerlas una después de la otra.
 ///
-/// **Pendiente** (#207): el `reason = "duplicado_de_A"` de la HU va como motivo de la baja
-/// ([motivoBaja]), pero hoy el motivo no se guarda en ningún lado —ni la tabla local ni
-/// `public.ubicacion` tienen dónde—: solo queda en el log que hubo motivo. Tampoco se mueven los
-/// espacios, visitas ni clientes de la duplicada a la que se conserva (la vista 10 dice "pasan a
-/// A"; la HU no lo pide): la duplicada queda de baja con lo suyo y se puede reactivar.
+/// El `reason = "duplicado_de_A"` de la HU va como motivo de la baja ([motivoBaja]) y queda en el
+/// `audit_log` local (#205, esquema v7); la Lista no lo muestra como motivo (`MotivosBaja`). Todavía
+/// no se mueven los espacios, visitas ni clientes de la duplicada a la que se conserva (la vista 10
+/// dice "pasan a A"; la HU no lo pide): la duplicada queda de baja con lo suyo y se puede reactivar.
 final class MarcarDuplicadoUseCase
     implements UseCase<ResultadoBajaUbicacion, MarcarDuplicadoParams> {
   MarcarDuplicadoUseCase(this._ubicaciones, this._darDeBaja);
@@ -160,9 +160,9 @@ final class MarcarDuplicadoUseCase
   final UbicacionRepository _ubicaciones;
   final DarDeBajaUbicacionUseCase _darDeBaja;
 
-  /// El `reason` de la HU para la baja de un duplicado de [conservadaId]. Punto único: cuando el
-  /// esquema tenga dónde guardar el motivo, es lo que se guarda.
-  static String motivoBaja(String conservadaId) => 'duplicado_de_$conservadaId';
+  /// El `reason` de la HU para la baja de un duplicado de [conservadaId]: lo que se guarda en el
+  /// `audit_log` local.
+  static String motivoBaja(String conservadaId) => '${MotivosBaja.prefijoDuplicado}$conservadaId';
 
   @override
   Future<Either<Failure, ResultadoBajaUbicacion>> call(MarcarDuplicadoParams params) async {
