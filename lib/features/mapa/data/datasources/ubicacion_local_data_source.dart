@@ -1,4 +1,5 @@
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
@@ -36,9 +37,11 @@ abstract interface class UbicacionLocalDataSource {
   /// Cuántos espacios sin baja tiene [ubicacionId].
   Future<int> contarEspaciosActivos(String ubicacionId);
 
-  /// El `numero_depto` del espacio de [ubicacionId] si tiene exactamente uno sin baja y ese tiene
-  /// número; `null` en cualquier otro caso.
-  Future<String?> numeroDelUnicoDepto(String ubicacionId);
+  /// Los espacios sin baja de [ubicacionId]: cuántos son y, si es uno solo, su `numero_depto` (`null`
+  /// si no tiene). Emite la cuenta de ahora al suscribirse y de nuevo cada vez que cambia —un
+  /// espacio que llega del sync, que se da de baja o al que se le cambia el número—, sin repetir un
+  /// valor igual al anterior. Una sola consulta agregada: no trae las filas.
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId);
 
   /// Escribe [nueva] sobre la fila con su mismo `id` y encola el `update` con la fila entera,
   /// **todo en una transacción** (HU-UBI-004; contrato-sync-engine §3). Solo cambian `tipo`,
