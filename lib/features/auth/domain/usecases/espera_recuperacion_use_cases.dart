@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
@@ -22,7 +24,9 @@ final class ConsultarEsperaRecuperacionParams extends Equatable {
 ///
 /// **La espera nunca pasa de 60 s**, aunque cambie la hora del teléfono: si la hora guardada queda
 /// en el futuro (se atrasó el reloj), se cuenta como recién enviada, no más (decisión del
-/// orquestador, 05/10, por el mapa de decisiones, #275).
+/// orquestador, 05/10, por el mapa de decisiones, #275). Y **se corrige sola** (agente de
+/// decisiones, 10/10, #318): la hora de ahora reemplaza a la guardada, así la espera baja entre
+/// entradas en vez de mostrar 60 s completos cada vez hasta que el reloj alcance la hora vieja.
 ///
 /// Nunca falla: si el teléfono no puede decir cuándo fue el último envío, no hay espera (el límite
 /// de verdad lo aplica el servidor).
@@ -40,8 +44,14 @@ final class ConsultarEsperaRecuperacionUseCase
     final ultimo = await _repository.leer();
     if (ultimo == null) return const Right(Duration.zero);
     final transcurrido = params.ahora.difference(ultimo);
-    // Hora guardada en el futuro: se cuenta como recién enviada, no más.
-    if (transcurrido.isNegative) return const Right(espera);
+    if (transcurrido.isNegative) {
+      // Hora guardada en el futuro: se cuenta como recién enviada, no más, y se guarda la de ahora
+      // para que la espera corra desde acá. No se espera el guardado (el repositorio ejecuta en
+      // orden: cualquier lectura o guardado que venga detrás lo ve), así un almacén lento no demora
+      // la respuesta; y si el guardado falla, no pasa nada: la espera sigue siendo de 60 s.
+      unawaited(_repository.guardar(params.ahora).catchError((Object _) {}));
+      return const Right(espera);
+    }
     final restante = espera - transcurrido;
     return Right(restante.isNegative ? Duration.zero : restante);
   }

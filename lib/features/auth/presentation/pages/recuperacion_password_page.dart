@@ -80,6 +80,17 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// muestra siempre, antes de enviar, sin casilla que aceptar (#272).
   static const String _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
+  /// Lo más que un envío espera a que el teléfono diga si hay una espera vigente (#318). Pasado el
+  /// tope no se envía a ciegas ni se deja «Enviando…» sin fin: se avisa con [_avisoLecturaLenta] y
+  /// se puede volver a intentar. Mismo tope que `VerificacionEmailPage._topeAlmacen`.
+  static const Duration _topeLectura = Duration(seconds: 3);
+
+  /// El aviso cuando el teléfono no contestó a tiempo (#318): qué pasó y qué hacer. Texto
+  /// confirmado por el agente de decisiones (10/10, mapa §2: texto/aviso).
+  static const String _avisoLecturaLenta =
+      'No pudimos comprobar si ya pediste un enlace hace poco. Esperá unos segundos y probá de '
+      'nuevo.';
+
   late final _email = TextEditingController(text: widget.emailInicial);
   Timer? _timer;
   int _segundosRestantes = 0;
@@ -113,7 +124,10 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     } finally {
       _leyendoEspera = false;
     }
-    if (!mounted || restante <= Duration.zero) return;
+    if (!mounted) return;
+    // La lectura que se dio por perdida (aviso por tope) terminó: el aviso ya no vale.
+    if (_errorGeneral == _avisoLecturaLenta) setState(() => _errorGeneral = null);
+    if (restante <= Duration.zero) return;
     _comenzarEspera(desde: ahora, restante: restante);
   }
 
@@ -175,10 +189,20 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
       _errorGeneral = null;
     });
 
-    // Un envío pedido mientras se lee la hora guardada espera a saber si la espera sigue vigente.
+    // Un envío pedido mientras se lee la hora guardada espera a saber si la espera sigue vigente,
+    // pero no más que [_topeLectura]: si el teléfono no contesta, no queda «Enviando…» ni el atrás
+    // bloqueado (#318). No se envía sin saberlo (la espera es de 60 s por teléfono): se avisa y la
+    // persona puede volver a intentar; si la lectura termina más tarde, la espera aparece sola.
     if (_leyendoEspera) {
-      await _lecturaEspera;
+      await _lecturaEspera.timeout(_topeLectura, onTimeout: () {});
       if (!mounted) return;
+      if (_leyendoEspera) {
+        setState(() {
+          _enviando = false;
+          _errorGeneral = _avisoLecturaLenta;
+        });
+        return;
+      }
       if (_segundosRestantes > 0) {
         setState(() => _enviando = false);
         return;
@@ -370,7 +394,10 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
             ),
             TextButton(
               key: const Key('recuperacion_password_volver_login'),
-              onPressed: () => Navigator.of(context).pop(),
+              // Con un reenvío en vuelo no se sale (#318), como la flecha de A01 y el atrás del
+              // sistema: el resultado se muestra acá, y al volver a entrar se lee la hora ya
+              // guardada, no la vieja.
+              onPressed: _enviando ? null : () => Navigator.of(context).pop(),
               // Con la sesión abierta no hay login al que volver: «Volver» lleva a donde estaba la
               // persona (el inicio o la preparación de la base). Sin sesión, al login (#313).
               child: Text(haySesion ? 'Volver' : 'Volver al login'),

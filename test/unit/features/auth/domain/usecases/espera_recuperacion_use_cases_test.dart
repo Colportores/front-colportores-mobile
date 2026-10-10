@@ -106,6 +106,45 @@ void main() {
       expect(repo.guardado, envio);
       expect(repo.escrituras, 0);
     });
+
+    // Decisión del agente de decisiones, 10/10 (#318): la hora futura se corrige sola.
+    for (final (nombre, adelantado) in [
+      ('1 milisegundo', const Duration(milliseconds: 1)),
+      ('3 horas', const Duration(hours: 3)),
+      ('un año', const Duration(days: 365)),
+    ]) {
+      test('dado que la hora guardada quedó $nombre en el futuro, cuando se consulta, se guarda '
+          'la hora de ahora y la espera baja desde ahí', () async {
+        final repo = _UltimoEnvioFalso(envio.add(adelantado));
+
+        expect(await esperaA(repo, envio), const Duration(seconds: 60));
+        expect(repo.guardado, envio, reason: 'la hora de ahora reemplazó a la del futuro');
+        expect(repo.escrituras, 1);
+
+        expect(
+          await esperaA(repo, envio.add(const Duration(seconds: 20))),
+          const Duration(seconds: 40),
+          reason: 'la próxima entrada ya cuenta desde la hora corregida, no 60 s completos',
+        );
+        expect(repo.escrituras, 1, reason: 'con la hora ya corregida no se vuelve a escribir');
+      });
+    }
+
+    test('dado que la hora guardada está en el futuro, cuando el reloj la alcanza, entonces ya '
+        'no hay espera después de los 60 s corregidos', () async {
+      final repo = _UltimoEnvioFalso(envio.add(const Duration(hours: 3)));
+      await esperaA(repo, envio);
+
+      expect(await esperaA(repo, envio.add(const Duration(seconds: 60))), Duration.zero);
+    });
+
+    test('dado que la hora guardada es la misma de ahora, cuando se consulta, no se reescribe '
+        'ni se pasa de 60 s', () async {
+      final repo = _UltimoEnvioFalso(envio);
+
+      expect(await esperaA(repo, envio), const Duration(seconds: 60));
+      expect(repo.escrituras, 0);
+    });
   });
 
   group('RegistrarEnvioRecuperacionUseCase', () {
