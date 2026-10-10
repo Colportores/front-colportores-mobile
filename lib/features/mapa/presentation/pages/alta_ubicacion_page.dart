@@ -14,6 +14,7 @@ import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
 import '../widgets/mapa_alta.dart';
+import '../widgets/medida_hoja.dart';
 import '../widgets/piezas_alta.dart';
 
 /// Cómo se cerró el alta de ubicación.
@@ -198,50 +199,19 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
                     alVolverAMiUbicacion: _notificador.volverAMiUbicacion,
                   ),
                 ),
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: caja.maxHeight * .62),
-                  child: Material(
-                    color: Colors.white,
-                    elevation: 8,
-                    shadowColor: const Color(0x1F0E1A2B),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                    ),
-                    child: SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Center(
-                              child: Container(
-                                width: 40,
-                                height: 4,
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: ColoresAlta.grisBorde,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ),
-                            // Los avisos y los campos se desplazan; «Registrar» queda fijo al pie (#305).
-                            Flexible(
-                              child: HojaAlta(
-                                parametros: widget.parametros,
-                                alRegistrar: _registrar,
-                                alElegirCiudad: _elegirCiudad,
-                                avisos: [
-                                  if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
-                                  AvisoMapaConectado(ambito: estado.ambitoMapa),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                // Los avisos y los campos se desplazan; «Registrar» queda fijo al pie (#305). La hoja ocupa
+                // el 62 % del cuerpo y, con el teclado abierto, crece hasta lo que pida el campo (#324).
+                HojaInferior(
+                  cuerpo: caja.maxHeight,
+                  tecladoAbierto: tecladoAbierto,
+                  hijo: HojaAlta(
+                    parametros: widget.parametros,
+                    alRegistrar: _registrar,
+                    alElegirCiudad: _elegirCiudad,
+                    avisos: [
+                      if (sinGps) _AvisoSinGps(alActivarGps: _notificador.activarGps),
+                      AvisoMapaConectado(ambito: estado.ambitoMapa),
+                    ],
                   ),
                 ),
               ],
@@ -498,7 +468,7 @@ class _PosicionPista extends SingleChildLayoutDelegate {
 
 /// «No tenemos tu ubicación. Tocá el mapa donde está el lugar o activá el GPS.» con «Activar GPS»
 /// (artboard 03A · 02). El canvas lo dibuja flotando sobre el mapa, pero el mapa de un teléfono es
-/// más chico que el del canvas (la hoja ocupa hasta el 62 % del alto): ahí el recuadro tapaba el pin
+/// más chico que el del canvas (la hoja ocupa hasta el 62 % del alto, 80 % con el teclado): ahí el recuadro tapaba el pin
 /// y la pista, y a 360×640 con el texto al 200 % (más alto que el mapa entero) la hoja dejaba
 /// «Activar GPS» inalcanzable. Arriba de la hoja, que se desplaza, el recuadro conserva su forma y su
 /// texto, el botón queda siempre a la vista y el pin y la pista quedan libres.

@@ -31,7 +31,14 @@ void main() {
           final handle = tester.ensureSemantics();
           await abrirEn(tester, estado, tamano: tamano, escala: escala, teclado: teclado);
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          // #324: a 320×568 con el teclado abierto la hoja crece lo justo para que el campo entre
+          // entero y el mapa queda de 77 dp: «Cerrar» (a 32 dp del borde, 48 dp de alto) mide 45 dp
+          // de objetivo, los 3 de abajo los tapa la hoja. La regla de 44 pt (iOS) sí se cumple.
+          // Aceptado (AA 2.5.8 pide 24×24): decisión en
+          // https://github.com/Colportores/front-colportores-mobile/pull/342#issuecomment-6093854734
+          if (tamano.width != 320) {
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          }
           await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
           await expectLater(tester, meetsGuideline(textContrastGuideline));

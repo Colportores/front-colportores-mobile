@@ -9,6 +9,9 @@ Future<bool> confirmarDescartarCambios(BuildContext context, List<String> cambio
   final descartar = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
+      // Con el texto del sistema muy grande el aviso no entra en la pantalla: se desplaza y los dos
+      // botones siguen a mano (#324).
+      scrollable: true,
       title: const Text(TextosModificar.descartarTitulo),
       content: Text(TextosModificar.descartarCuerpo(cambios)),
       actions: [
@@ -38,6 +41,7 @@ Future<bool> confirmarModificacion(BuildContext context, {required String texto}
   final confirmo = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
+      scrollable: true,
       content: Text(texto),
       actions: [
         TextButton(

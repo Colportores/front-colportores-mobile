@@ -49,28 +49,28 @@ void main() {
 
               // Escribe el número con el teclado arriba y guarda; la lectura espera a que el test
               // suelte la falla en el cuadro elegido de la baja del teclado. Con el teclado arriba
-              // en 320×568 al 200 % la hoja desborda al escribir (anterior a #307, issue aparte).
-              await sinContarElDesborde(() async {
-                await tester.enterText(campoNumero, '1238');
-                await asentarConTeclado(tester);
-                expect(tester.view.viewInsets.bottom, tecladoAbierto);
-                m.repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
-                final lectura = m.repo.bloqueoLectura = Completer<void>();
-                await tester.tap(botonGuardar);
-                await tester.pump(const Duration(milliseconds: 16));
-                expect(
-                  tester.testTextInput.isVisible,
-                  isFalse,
-                  reason: 'guardando, los campos son de lectura y el teclado empieza a bajar',
-                );
-                await bajarTecladoDeAPoco(
-                  tester,
-                  alCuadro: (n) {
-                    if (n == cuadro) lectura.complete();
-                  },
-                );
-                await asentar(tester);
-              });
+              // en 320×568 al 200 % «Guardar cambios» queda al final de lo que se desplaza (#324).
+              await tester.enterText(campoNumero, '1238');
+              await asentarConTeclado(tester);
+              expect(tester.view.viewInsets.bottom, tecladoAbierto);
+              m.repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
+              final lectura = m.repo.bloqueoLectura = Completer<void>();
+              await tester.ensureVisible(botonGuardar);
+              await tester.pump();
+              await tester.tap(botonGuardar);
+              await tester.pump(const Duration(milliseconds: 16));
+              expect(
+                tester.testTextInput.isVisible,
+                isFalse,
+                reason: 'guardando, los campos son de lectura y el teclado empieza a bajar',
+              );
+              await bajarTecladoDeAPoco(
+                tester,
+                alCuadro: (n) {
+                  if (n == cuadro) lectura.complete();
+                },
+              );
+              await asentar(tester);
 
               expect(find.textContaining('cambió mientras la editabas'), findsOneWidget);
               expect(tester.testTextInput.isVisible, isFalse, reason: 'el teclado no vuelve');

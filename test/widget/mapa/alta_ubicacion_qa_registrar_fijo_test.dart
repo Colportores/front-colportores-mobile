@@ -54,6 +54,15 @@ void _registrarEntero(WidgetTester tester, {required double alto, required Strin
   );
 }
 
+/// A 300 % con el teclado abierto ni con el 80 % del cuerpo entra el campo sobre «Registrar» (#324):
+/// el botón pasa al final de lo que se desplaza y se lo alcanza deslizando la hoja.
+Future<void> _alcanzarRegistrar(WidgetTester tester) async {
+  if (find.descendant(of: desplazable, matching: botonRegistrarFijo).evaluate().isNotEmpty) {
+    await tester.ensureVisible(botonRegistrarFijo);
+    await tester.pump();
+  }
+}
+
 /// El control se alcanza deslizando la hoja: su borde de arriba y su borde de abajo llegan a la zona
 /// visible (si es más alto que la zona, por partes) y, si cabe, se puede tocar. Nunca queda tapado
 /// por «Registrar» ni por el teclado.
@@ -581,8 +590,10 @@ void main() {
             '«Registrar» entero y sin desborde',
             (tester) async {
               await abrirEn(tester, estado, escala: escala, teclado: teclado);
+              await _alcanzarRegistrar(tester);
               _registrarEntero(tester, alto: 640 - teclado, donde: estado.rotulo);
               await tocar(tester, find.text('Casa'));
+              await _alcanzarRegistrar(tester);
               _registrarEntero(tester, alto: 640 - teclado, donde: '${estado.rotulo} con Casa');
             },
           );
