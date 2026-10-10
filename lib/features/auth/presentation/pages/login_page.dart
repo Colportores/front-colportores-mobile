@@ -196,6 +196,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
   /// pantalla de recuperación lo trae cargado.
   void _abrirRecuperacion() {
+    // El botón se apaga con «Entrar» en vuelo, pero en el cuadro en que se suelta «Entrar» todavía
+    // tiene el cierre de antes: acá se vuelve a mirar (#309).
+    if (_enviando) return;
     final email = _email.text.trim();
     unawaited(
       Navigator.of(context).push<void>(
@@ -203,6 +206,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           builder: (_) => RecuperacionPasswordPage(emailInicial: email.isEmpty ? null : email),
         ),
       ),
+    );
+  }
+
+  /// «¿No tenés cuenta? Registrate»: mismo criterio que [_abrirRecuperacion] (#309).
+  void _abrirRegistro() {
+    if (_enviando) return;
+    unawaited(
+      Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute<void>(builder: (_) => const RegistroPage())),
     );
   }
 
@@ -396,17 +409,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           key: const Key('login_ir_a_registro'),
                           // Mismo criterio que el enlace de recuperación (#309): con «Entrar» en
                           // vuelo no se apila el registro encima del inicio.
-                          onPressed: _enviando
-                              ? null
-                              : () {
-                                  unawaited(
-                                    Navigator.of(context).push<void>(
-                                      MaterialPageRoute<void>(builder: (_) => const RegistroPage()),
-                                    ),
-                                  );
-                                },
+                          onPressed: _enviando ? null : _abrirRegistro,
                           child: Text(
                             '¿No tenés cuenta? Registrate',
+                            // A texto grande se parte en dos renglones: van centrados, como el resto.
+                            textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: _enviando
                                   ? theme.colorScheme.onSurface.withValues(alpha: .38)

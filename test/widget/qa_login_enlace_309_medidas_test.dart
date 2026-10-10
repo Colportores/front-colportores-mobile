@@ -74,8 +74,12 @@ void main() {
   });
 
   group('«Registrate» con el texto al 200 %', () {
-    // skip: QA #309 — «Registrate» a 200 % parte el texto en dos renglones alineados a la izquierda,
-    // no centrados como el resto de la pantalla (captura 11, login a 412x915).
+    // skip: QA #309 — «Registrate» a 200 % partía el texto en dos renglones alineados a la izquierda.
+    // El texto ya va con `textAlign: center` (los renglones se centran; lo prueba
+    // `qa_login_sin_mantener_sesion_306_test.dart`), pero esta medida sigue sin pasar: el primer
+    // renglón termina en un espacio que `getBoxesForSelection` incluye aunque no se pinte, y corre el
+    // centro medio espacio (3,92 dp contra una tolerancia de 2). Para destaparla: medir cada renglón
+    // sin el espacio final.
     testWidgets(
       'si se parte en dos renglones, cada renglón queda centrado como el resto de la pantalla',
       (tester) async {

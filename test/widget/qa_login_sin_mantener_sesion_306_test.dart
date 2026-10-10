@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
@@ -19,6 +20,7 @@ import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_l
 import 'package:colportores_mobile/features/auth/domain/repositories/datos_locales_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
+import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -226,6 +228,12 @@ Future<Completer<void>> _entrarYQuedarEnVuelo(
   await tester.pump();
   return demora;
 }
+
+/// El color con que se pinta el texto del botón [boton] (el `Text` lleva su color propio).
+Color? _colorDelTexto(WidgetTester tester, Key boton) => tester
+    .widget<Text>(find.descendant(of: find.byKey(boton), matching: find.byType(Text)))
+    .style
+    ?.color;
 
 void main() {
   group('Sin «Mantener sesión» la sesión persiste igual (HU-AUTH-007, decisión del 07/10)', () {
@@ -575,8 +583,12 @@ void main() {
         await tester.ensureVisible(find.byKey(_entrar));
         await tester.pumpAndSettle();
         final antes = tester.getRect(find.byKey(_recuperar));
+        final esquema = Theme.of(tester.element(find.byKey(_recuperar))).colorScheme;
+        final apagado = esquema.onSurface.withValues(alpha: .38);
         expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNotNull);
         expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNotNull);
+        expect(_colorDelTexto(tester, _recuperar), esquema.secondary);
+        expect(_colorDelTexto(tester, _registro), esquema.secondary);
 
         final demora = await _entrarYQuedarEnVuelo(tester, e, pantalla);
 
@@ -586,6 +598,9 @@ void main() {
         expect(antes.height, greaterThanOrEqualTo(48));
         expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNull);
         expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNull);
+        // Apagados se pintan al 38 % de Material (el texto lleva color propio y no se atenúa solo).
+        expect(_colorDelTexto(tester, _recuperar), apagado);
+        expect(_colorDelTexto(tester, _registro), apagado);
         expect(
           tester.getSemantics(find.byKey(_recuperar)),
           isSemantics(
@@ -606,6 +621,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNotNull);
         expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNotNull);
+        expect(_colorDelTexto(tester, _recuperar), esquema.secondary);
+        expect(_colorDelTexto(tester, _registro), esquema.secondary);
         await tester.ensureVisible(find.byKey(_recuperar));
         await tester.tap(find.byKey(_recuperar));
         await tester.pumpAndSettle();
@@ -633,6 +650,126 @@ void main() {
         expect(e.remoto.llamadasIniciarSesion, 1);
       },
     );
+
+    // Cierre de un cuadro: «Entrar» y el enlace se sueltan sin cuadro de por medio, así que el botón
+    // todavía tiene el cierre de antes (no se reconstruyó apagado). `_abrirRecuperacion` y
+    // `_abrirRegistro` vuelven a mirar `_enviando`. Pantalla alta: nada se desplaza entre los dos toques.
+    for (final pantalla in _Pantalla.values.where((p) => p.textoDelEnlace != null)) {
+      testWidgets('${pantalla.nombre}: «Entrar» y el enlace de recuperación soltados en el mismo '
+          'cuadro: la recuperación no se abre', (tester) async {
+        _pantallaDe(tester, const Size(412, 1400));
+        final e = await _llegarA(tester, pantalla);
+        e.remoto.demoraIniciarSesion = Completer<void>();
+        await _escribirClaveIncorrecta(tester, pantalla);
+
+        await tester.tap(find.byKey(_entrar));
+        await tester.tap(find.byKey(_recuperar));
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.byType(RecuperacionPasswordPage), findsNothing);
+        expect(e.remoto.llamadasIniciarSesion, 1);
+        e.remoto.demoraIniciarSesion!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      });
+
+      testWidgets('${pantalla.nombre}: «Entrar» y «Registrate» soltados en el mismo cuadro: el '
+          'registro no se abre', (tester) async {
+        _pantallaDe(tester, const Size(412, 1400));
+        final e = await _llegarA(tester, pantalla);
+        e.remoto.demoraIniciarSesion = Completer<void>();
+        await _escribirClaveIncorrecta(tester, pantalla);
+
+        await tester.tap(find.byKey(_entrar));
+        await tester.tap(find.byKey(_registro));
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.byType(RegistroPage), findsNothing);
+        expect(e.remoto.llamadasIniciarSesion, 1);
+        e.remoto.demoraIniciarSesion!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(RegistroPage), findsNothing);
+      });
+    }
+
+    testWidgets(
+      'Enter (acción «listo» del teclado) con el intento en vuelo no manda otro intento ni '
+      'abre la recuperación o el registro, y al terminar todo vuelve a andar',
+      (tester) async {
+        final e = await _llegarA(tester, _Pantalla.inicial);
+        final demora = await _entrarYQuedarEnVuelo(tester, e, _Pantalla.inicial);
+
+        await tester.tap(find.byKey(_clave));
+        await tester.pump();
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(e.remoto.llamadasIniciarSesion, 1);
+        expect(find.byType(RecuperacionPasswordPage), findsNothing);
+        expect(find.byType(RegistroPage), findsNothing);
+        expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNull);
+        expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNull);
+
+        demora.complete();
+        await tester.pumpAndSettle();
+        expect(e.remoto.llamadasIniciarSesion, 1);
+        expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNotNull);
+        expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNotNull);
+      },
+    );
+
+    // De derecha a izquierda el enlace va en el borde final (izquierdo) de los campos.
+    for (final escala in const [1.0, 2.0]) {
+      testWidgets('RTL a 360x640, texto ×$escala: el texto del enlace va al ras del borde de los '
+          'campos y de «Entrar», con 48 de alto, y en vuelo enlace y «Registrate» se apagan', (
+        tester,
+      ) async {
+        _pantallaDe(tester, const Size(360, 640), texto: escala);
+        final remoto = _remoto()..demoraIniciarSesion = Completer<void>();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+              authRemoteDataSourceProvider.overrideWithValue(remoto),
+              authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+            ],
+            child: MaterialApp(
+              theme: temaClaro(),
+              builder: (_, hijo) => Directionality(textDirection: TextDirection.rtl, child: hijo!),
+              home: const LoginPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(_recuperar));
+        await tester.pumpAndSettle();
+
+        final texto = tester.getRect(
+          find.descendant(of: find.byKey(_recuperar), matching: find.text('¿Olvidaste tu clave?')),
+        );
+        final campo = tester.getRect(find.byKey(_clave));
+        final entrar = tester.getRect(find.byKey(_entrar));
+        expect(texto.left, closeTo(campo.left, 0.5), reason: '$texto contra $campo');
+        expect(texto.left, closeTo(entrar.left, 0.5), reason: '$texto contra $entrar');
+        expect(tester.getRect(find.byKey(_recuperar)).height, greaterThanOrEqualTo(48));
+        expect(tester.takeException(), isNull);
+
+        await tester.enterText(find.byKey(_correo), correoAna);
+        await tester.enterText(find.byKey(_clave), 'incorrecta1');
+        await tester.ensureVisible(find.byKey(_entrar));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(_entrar));
+        await tester.pump();
+        expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNull);
+        expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+
+        remoto.demoraIniciarSesion!.complete();
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextButton>(find.byKey(_recuperar)).onPressed, isNotNull);
+        expect(tester.widget<TextButton>(find.byKey(_registro)).onPressed, isNotNull);
+      });
+    }
 
     testWidgets('volver atrás y reentrar: abre la recuperación, vuelve, deja «Entrar» en vuelo y, '
         'al fallar, la abre otra vez una sola vez', (tester) async {
