@@ -362,8 +362,12 @@ final class FailureAlmacenSeguroRecuperable extends Failure {
 }
 
 /// El almacén seguro falló (o perdió la DEK) con la DB en el teléfono, y **no** hay envoltorio por
-/// contraseña (se perdió, o nunca se llegó a armar): ADR-006 muestra el mensaje de [FailureAlmacenSeguro]
+/// contraseña (se perdió, o nunca se llegó a armar). La pantalla «No pudimos abrir tus datos» no
+/// muestra este [mensaje]: dice el literal de HU-AUTH-009 (`TextosPreparacionDbLocal.sinRecuperacion`)
 /// y ofrece "empezar de nuevo", que avisa qué se pierde. **Nunca se borra sin ese sí.**
+///
+/// El [mensaje] es el de ADR-006 y queda para los demás lugares donde llega esta falla, como
+/// «Borrar datos locales» con los datos abiertos: ahí «no pudimos abrir tus datos» sería falso.
 final class FailureAlmacenSeguroSinRecuperacion extends Failure {
   const FailureAlmacenSeguroSinRecuperacion()
     : super(

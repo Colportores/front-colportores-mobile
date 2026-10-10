@@ -104,21 +104,82 @@ abstract final class TextosPreparacionDbLocal {
   static const actualizacionNecesaria = 'ACTUALIZACIÓN NECESARIA';
   static const actualizaLaApp = 'Actualizá la app';
 
-  static const sinRecuperacionQueHacer =
-      'Puede ser algo pasajero: reintentá. No se borró nada de este teléfono.';
+  /// «No pudimos abrir tus datos» (HU-AUTH-009, escenario «Edge -el envoltorio por contraseña falta
+  /// o está dañado»): el literal de la HU. Va en la página y no en
+  /// `FailureAlmacenSeguroSinRecuperacion`, que también sale en «Borrar datos locales» con los
+  /// datos abiertos, y ahí sería falso (decisión del orquestador, 09/10, front-colportores-mobile#283).
+  static const sinRecuperacion =
+      'No pudimos abrir los datos guardados en este teléfono: se perdieron la llave que los '
+      'protege y la copia que se abre con tu contraseña. No se borró nada.';
 
   static const empezarDeNuevoOferta =
       'Si sigue sin funcionar, podés empezar de nuevo con este teléfono.';
 
   static const empezarDeNuevoTitulo = '¿Empezar de nuevo?';
 
+  /// Qué se pierde: las personas y las notas nunca se suben, y lo demás (jornadas, ubicaciones y
+  /// ventas) se pierde solo si todavía no se subió (decisión del orquestador, 09/10,
+  /// front-colportores-mobile#283 y #337). No promete la copia de Drive ni que algo «se vuelve a
+  /// bajar».
   static const empezarDeNuevoDetalle =
-      'Los datos guardados en este teléfono no se pueden abrir sin su clave. Si empezás de nuevo, '
-      'se borran: las personas y las notas que no se hayan sincronizado se pierden, y lo '
-      'sincronizado se vuelve a bajar. No se puede deshacer.';
+      'Los datos guardados en este teléfono no se pueden abrir sin la llave que los protege. Si '
+      'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y todo '
+      'lo que todavía no se subió, como jornadas, ubicaciones y ventas. Lo que ya se subió no se '
+      'pierde. No se puede deshacer.';
 
   static const actualizarComo =
       'Buscá Colportores en la tienda de tu celular (Google Play o App Store) y actualizala.';
+}
+
+/// El título y el detalle del diálogo de «Empezar de nuevo», que se desplazan juntos con la barra
+/// siempre a la vista: con la letra grande el detalle no entra en una pantalla chica, y sin la barra
+/// no se nota que sigue más abajo. El título va acá y no en `AlertDialog.title` para que se
+/// desplace también: fijo, a 360x640 con el texto al 200 % se comería el lugar del detalle.
+class _DetalleConBarra extends StatefulWidget {
+  const _DetalleConBarra({required this.titulo, required this.detalle});
+
+  final String titulo;
+  final String detalle;
+
+  @override
+  State<_DetalleConBarra> createState() => _DetalleConBarraState();
+}
+
+class _DetalleConBarraState extends State<_DetalleConBarra> {
+  final _controlador = ScrollController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Scrollbar(
+      controller: _controlador,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _controlador,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              header: true,
+              child: Text(
+                widget.titulo,
+                style: tema.textTheme.headlineSmall?.copyWith(color: tema.colorScheme.onSurface),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(widget.detalle),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// La DB local de quien acaba de entrar, antes de la pantalla principal (HU-AUTH-009, #27).
@@ -161,6 +222,9 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
   /// «Contactar a soporte» en curso (guarda contra el doble toque) y, si no se pudo abrir, el aviso.
   bool _abriendoSoporte = false;
   String? _avisoSoporte;
+
+  /// El diálogo de «Empezar de nuevo» abierto (o abriéndose): guarda contra el doble toque.
+  bool _confirmandoEmpezar = false;
 
   @override
   void didUpdateWidget(PreparacionDbLocalPage anterior) {
@@ -264,16 +328,37 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     );
   }
 
+  /// «Empezar de nuevo»: pregunta qué se pierde y recién con el sí borra. Un segundo toque mientras
+  /// el diálogo está abierto no abre otro.
   Future<void> _confirmarEmpezarDeNuevo() async {
-    final confirmo = await showDialog<bool>(
-      context: context,
-      builder: (contexto) => AlertDialog(
-        title: const Text(TextosPreparacionDbLocal.empezarDeNuevoTitulo),
-        content: const Text(TextosPreparacionDbLocal.empezarDeNuevoDetalle),
+    if (_confirmandoEmpezar) return;
+    _confirmandoEmpezar = true;
+    final confirmo = await _preguntarEmpezarDeNuevo().whenComplete(() {
+      _confirmandoEmpezar = false;
+    });
+    if (mounted && (confirmo ?? false)) unawaited(_notifier.empezarDeNuevo());
+  }
+
+  Future<bool?> _preguntarEmpezarDeNuevo() => showDialog<bool>(
+    context: context,
+    builder: (contexto) {
+      // Un segundo toque antes de que el diálogo termine de cerrarse no cierra la pantalla de abajo.
+      void cerrar(bool valor) {
+        if (ModalRoute.of(contexto)?.isCurrent ?? false) Navigator.of(contexto).pop(valor);
+      }
+
+      return AlertDialog(
+        // El título y el detalle se desplazan juntos, con la barra a la vista (QA de #337).
+        semanticLabel: TextosPreparacionDbLocal.empezarDeNuevoTitulo,
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        content: const _DetalleConBarra(
+          titulo: TextosPreparacionDbLocal.empezarDeNuevoTitulo,
+          detalle: TextosPreparacionDbLocal.empezarDeNuevoDetalle,
+        ),
         actions: [
           TextButton(
             key: const Key('preparacion_db_cancelar_empezar'),
-            onPressed: () => Navigator.of(contexto).pop(false),
+            onPressed: () => cerrar(false),
             child: const Text('Cancelar'),
           ),
           FilledButton(
@@ -282,14 +367,13 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
               backgroundColor: Theme.of(contexto).colorScheme.error,
               foregroundColor: Theme.of(contexto).colorScheme.onError,
             ),
-            onPressed: () => Navigator.of(contexto).pop(true),
+            onPressed: () => cerrar(true),
             child: const Text('Borrar y empezar de nuevo'),
           ),
         ],
-      ),
-    );
-    if (confirmo ?? false) unawaited(_notifier.empezarDeNuevo());
-  }
+      );
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -599,13 +683,13 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     eyebrow: TextosPreparacionDbLocal.espacioSeguro,
     cuerpo: [
       _titulo(theme, 'No pudimos abrir tus datos'),
-      _mensaje(theme, falla.mensaje, const Key('preparacion_db_mensaje')),
-      Text(
-        reintentos == 0
-            ? TextosPreparacionDbLocal.sinRecuperacionQueHacer
-            : TextosPreparacionDbLocal.empezarDeNuevoOferta,
-        style: theme.textTheme.bodyMedium,
+      _mensaje(
+        theme,
+        TextosPreparacionDbLocal.sinRecuperacion,
+        const Key('preparacion_db_mensaje'),
       ),
+      if (reintentos > 0)
+        Text(TextosPreparacionDbLocal.empezarDeNuevoOferta, style: theme.textTheme.bodyMedium),
       if (_avisoSoporte case final aviso?)
         _avisoWidget(theme, aviso, 'preparacion_db_aviso_soporte'),
     ],
