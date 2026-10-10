@@ -14,6 +14,7 @@
 // negativos por el antialias). Las capturas (`--dart-define=QA_CAPTURAS=true`) sí las cargan y salen en
 // `.dart_tool/qa_capturas/` (gitignored).
 import 'dart:io';
+import 'dart:math' show min;
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -21,6 +22,8 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_modificar.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart'
+    show AvisoAlta;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -399,9 +402,8 @@ void main() {
       },
     );
 
-    // skip: QA #328 — con el teclado abierto en 360×640 el aviso que llega solo queda arriba, fuera
-    // de la vista, y el botón se apaga sin que se vea por qué (se anuncia al lector de pantalla). Es lo
-    // que sigue #324 (hojas con teclado): al cerrarlo, sacar el skip.
+    // Con la letra de prueba (cada letra mide un cuadrado) el aviso es más alto que lo que se desplaza
+    // con el teclado abierto: se mide la tarjeta entera, y si no entra se la empieza a leer desde arriba.
     testWidgets(
       'con el teclado abierto en 360×640 el aviso que llega solo se ve, no queda arriba de lo que se desplaza',
       (tester) async {
@@ -414,19 +416,22 @@ void main() {
         m.repo.cambiarEspacios(2);
         await _asentar(tester);
 
-        final aviso = tester.getRect(find.text(_avisoDos));
+        final aviso = tester.getRect(
+          find.ancestor(of: find.text(_avisoDos), matching: find.byType(AvisoAlta)).first,
+        );
         final zona = tester.getRect(
           find
               .ancestor(of: find.text(_avisoDos), matching: find.byType(SingleChildScrollView))
               .first,
         );
+        final visible =
+            aviso.bottom.clamp(zona.top, zona.bottom) - aviso.top.clamp(zona.top, zona.bottom);
         expect(
-          aviso.top >= zona.top && aviso.bottom <= zona.bottom,
-          isTrue,
+          visible,
+          greaterThanOrEqualTo(min(aviso.height, zona.height) - 1),
           reason: 'aviso $aviso fuera del área que se desplaza $zona',
         );
       },
-      skip: true,
     );
 
     testWidgets('con el texto al 200 % y el teclado abierto el aviso que llega solo no desborda', (

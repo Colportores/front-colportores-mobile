@@ -243,22 +243,29 @@ void main() {
       },
     );
 
-    testWidgets('el motivo más largo del canvas (GPS impreciso) sigue debajo del botón a texto 2x', (
-      tester,
-    ) async {
-      await _montar(tester, _Artboard.gpsImpreciso, escala: 2);
+    testWidgets(
+      'el motivo más largo del canvas (GPS impreciso) a texto 2x pasa a lo que se desplaza, arriba del '
+      'botón: con el botón medido (72 dp) lo fijo pasa de dos tercios de la hoja',
+      (tester) async {
+        await _montar(tester, _Artboard.gpsImpreciso, escala: 2);
 
-      final motivo = find.text(TextosAlta.elegiPrecision);
-      expect(motivo, findsOneWidget);
-      expect(
-        find.descendant(of: _desplazable, matching: motivo),
-        findsNothing,
-        reason:
-            'con las fuentes reales entra a 200 %: queda fijo debajo del botón, como en el canvas',
-      );
-      expect(tester.getRect(motivo).top, greaterThanOrEqualTo(tester.getRect(_registrar).bottom));
-      _registrarEntero(tester, alto: 640, donde: 'GPS impreciso a 2x');
-    });
+        final motivo = find.text(TextosAlta.elegiPrecision);
+        expect(motivo, findsOneWidget);
+        expect(find.descendant(of: _desplazable, matching: motivo), findsOneWidget);
+        expect(tester.getSize(_registrar).height, greaterThan(52), reason: 'el botón se mide');
+        _registrarEntero(tester, alto: 640, donde: 'GPS impreciso a 2x');
+
+        await tester.ensureVisible(motivo);
+        await tester.pump();
+        expect(motivo.hitTestable(), findsOneWidget, reason: 'el motivo se alcanza desplazando');
+        expect(
+          tester.getRect(motivo).bottom,
+          lessThanOrEqualTo(tester.getRect(_registrar).top),
+          reason: 'queda justo arriba del botón',
+        );
+        _registrarEntero(tester, alto: 640, donde: 'después de llevar el motivo a la vista');
+      },
+    );
 
     testWidgets(
       'a texto 3x el motivo dejaría poco para los campos: pasa a lo que se desplaza, arriba del '
@@ -456,6 +463,11 @@ void main() {
     ) async {
       await _montar(tester, _Artboard.gpsImpreciso, escala: 3, teclado: true);
 
+      // A 300 % ni con el 80 % del cuerpo entra el campo sobre el botón (#324): «Registrar» pasa al
+      // final de lo que se desplaza y se lo alcanza deslizando la hoja.
+      expect(find.descendant(of: _desplazable, matching: _registrar), findsOneWidget);
+      await tester.ensureVisible(_registrar);
+      await tester.pump();
       _registrarEntero(tester, alto: 640 - _teclado, donde: 'a 3x con el teclado');
       await motivoALaVista(
         tester,

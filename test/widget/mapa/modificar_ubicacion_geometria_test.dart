@@ -27,8 +27,7 @@ import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/alta_ubicacion_qa_arnes.dart' show cargarFuentesReales;
 import '../../helpers/mapa_base_falso.dart';
 import '../../helpers/modificar_ubicacion_falsos.dart';
-import '../../helpers/modificar_ubicacion_qa_307_arnes.dart'
-    show asentarConTeclado, sinContarElDesborde, tecladoAbierto;
+import '../../helpers/modificar_ubicacion_qa_307_arnes.dart' show asentarConTeclado, tecladoAbierto;
 
 /// Unos 18 m al norte del punto guardado.
 const _norte18m = 0.00016;
@@ -357,24 +356,23 @@ void main() {
       ) async {
         final (repo, _) = await _montar(tester, escala: escala, tamano: tamano);
 
-        // Escribir el número, con el teclado arriba, y guardar con la lectura lenta. Mientras el
-        // teclado está arriba en 320×568 al 200 % la hoja desborda (anterior a #307, issue aparte).
-        late Completer<void> lectura;
-        await sinContarElDesborde(() async {
-          await tester.enterText(_campoNumero, '1238');
-          await asentarConTeclado(tester);
-          expect(tester.view.viewInsets.bottom, tecladoAbierto, reason: 'escribe con el teclado');
-          repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
-          lectura = repo.bloqueoLectura = Completer<void>();
-          await tester.tap(_guardar);
-          await asentarConTeclado(tester);
-        });
+        // Escribir el número, con el teclado arriba, y guardar con la lectura lenta. Con el teclado
+        // arriba en 320×568 al 200 % «Guardar cambios» queda al final de lo que se desplaza (#324).
+        await tester.enterText(_campoNumero, '1238');
+        await asentarConTeclado(tester);
+        expect(tester.view.viewInsets.bottom, tecladoAbierto, reason: 'escribe con el teclado');
+        repo.actual = ubicacionGuardada(actualizada: DateTime.utc(2026, 10, 1, 9));
+        final lectura = repo.bloqueoLectura = Completer<void>();
+        await tester.ensureVisible(_guardar);
+        await tester.pump();
+        await tester.tap(_guardar);
+        await asentarConTeclado(tester);
         expect(tester.view.viewInsets.bottom, 0, reason: 'guardando, los campos son de lectura');
         expect(find.textContaining('cambió mientras la editabas'), findsNothing);
 
         // Llega la falla: el teclado no vuelve y la acción está a la vista.
         lectura.complete();
-        await sinContarElDesborde(() => asentarConTeclado(tester));
+        await asentarConTeclado(tester);
         expect(find.textContaining('cambió mientras la editabas'), findsOneWidget);
         expect(tester.testTextInput.isVisible, isFalse, reason: 'el teclado no vuelve a subir');
         expect(tester.view.viewInsets.bottom, 0);

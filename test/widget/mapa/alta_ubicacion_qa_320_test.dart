@@ -45,8 +45,13 @@ double _corte(Rect r, Rect area, Rect registrar) {
       (r.bottom - limite).clamp(0, double.infinity);
 }
 
-/// «Registrar» entero, por encima de lo que tapa el teclado (o la barra de abajo).
-void _registrarEntero(WidgetTester tester, double libre, String donde) {
+/// «Registrar» entero, por encima de lo que tapa el teclado (o la barra de abajo). Si está al final de
+/// lo que se desplaza (#324: el teléfono más chico con el texto muy grande) se lo lleva a la vista.
+Future<void> _registrarEntero(WidgetTester tester, double libre, String donde) async {
+  if (_enLoQueSeDesplaza(botonRegistrarFijo)) {
+    await tester.ensureVisible(botonRegistrarFijo);
+    await tester.pump();
+  }
   final r = tester.getRect(botonRegistrarFijo);
   expect(r.top, greaterThanOrEqualTo(0), reason: '$donde: «Registrar» se corta arriba ($r)');
   expect(r.bottom, lessThanOrEqualTo(libre + .5), reason: '$donde: «Registrar» queda tapado ($r)');
@@ -111,7 +116,7 @@ void main() {
 
               expect(tester.takeException(), isNull, reason: 'sin overflow');
               expect(registrarHabilitado(tester), isFalse, reason: 'apagado: por eso el motivo');
-              _registrarEntero(tester, libre, 'teclado abierto');
+              await _registrarEntero(tester, libre, 'teclado abierto');
               await _motivoALaVista(tester, texto, libre, 'teclado abierto');
               // Un solo motivo a la vez.
               for (final otro in {
@@ -133,13 +138,6 @@ void main() {
   group('QA #322 · el campo que se escribe sigue entero con el motivo a la vista', () {
     for (final (nombreTel, tamano, teclado) in telefonos) {
       for (final escala in [1.0, 1.3, 2.0]) {
-        // skip: QA #322 — a 360×640 con el teclado abierto, texto 1× y 1,3×, la regla «el campo con foco
-        // entero» no se cumple: tras escribir el número y luego la calle el campo queda cortado 3,8 dp
-        // (1×) y 1,4 dp (1,3×); la base de #322 lo dejaba entero (0 dp). La guarda mide el campo
-        // (51 a 57 dp) contra la zona que se desplaza (72 y 62 dp) y no deja lugar para el relleno con
-        // el que el campo se lleva a la vista. En 320×568 la zona mide 53, 48 y 34 dp: el campo queda
-        // cortado 4, 15 y 45 dp, igual que antes de #322 (mismo origen que QA #321, tope de 62 %).
-        final saltar = nombreTel == '320×568' || (nombreTel == '360×640' && escala <= 1.3);
         testWidgets(
           '$nombreTel · texto ${_x(escala)} · teclado de ${teclado.round()} dp: escribir el número y la '
           'calle los deja enteros, sobre «Registrar» y sin que el motivo se pierda',
@@ -171,7 +169,7 @@ void main() {
                 reason: 'escribiendo la $nombre se corta $corte dp',
               );
               expect(find.widgetWithText(TextField, valor), findsOneWidget);
-              _registrarEntero(tester, libre, 'escribiendo la $nombre');
+              await _registrarEntero(tester, libre, 'escribiendo la $nombre');
               expect(
                 find.text(TextosAlta.elegiElTipo),
                 findsOneWidget,
@@ -180,7 +178,6 @@ void main() {
             }
             expect(tester.takeException(), isNull);
           },
-          skip: saltar,
         );
       }
     }
@@ -211,7 +208,7 @@ void main() {
             reason: '$donde: lo escrito',
           );
           if (foco != null) expect(foco.hasFocus, isTrue, reason: '$donde: el foco sigue');
-          _registrarEntero(tester, 640 - teclado, donde);
+          await _registrarEntero(tester, 640 - teclado, donde);
           if (_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo))) {
             arriba++;
           } else {
@@ -239,7 +236,7 @@ void main() {
             findsOneWidget,
             reason: 'abierto, vuelta $vez',
           );
-          _registrarEntero(tester, 640 - tecladoAbierto, 'abierto, vuelta $vez');
+          await _registrarEntero(tester, 640 - tecladoAbierto, 'abierto, vuelta $vez');
           await cerrarTeclado(tester);
           expect(
             find.text(TextosAlta.elegiPrecision),
@@ -269,7 +266,7 @@ void main() {
 
       expect(find.text(TextosAlta.elegiElTipo), findsNothing);
       expect(registrarHabilitado(tester), isTrue);
-      _registrarEntero(tester, 640 - tecladoAbierto, 'con «Casa»');
+      await _registrarEntero(tester, 640 - tecladoAbierto, 'con «Casa»');
 
       await tester.tap(botonRegistrarFijo);
       await tester.tap(botonRegistrarFijo, warnIfMissed: false);
@@ -313,7 +310,7 @@ void main() {
 
         expect(motivo, findsOneWidget);
         expect(_enLoQueSeDesplaza(motivo), !debajoDelBoton);
-        _registrarEntero(tester, tamano.height - barra, 'sin teclado');
+        await _registrarEntero(tester, tamano.height - barra, 'sin teclado');
         expect(tester.takeException(), isNull);
       });
     }

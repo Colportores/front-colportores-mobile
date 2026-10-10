@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
@@ -13,6 +14,7 @@ import '../providers/modificar_ubicacion_notifier.dart';
 import 'aviso_mapa.dart';
 import 'campos_ubicacion.dart';
 import 'hoja_alta.dart' show TextosAlta;
+import 'medida_hoja.dart';
 import 'piezas_alta.dart';
 
 /// Textos de la vista 07 (HU-UBI-004). Los avisos literales de la HU («Esta ubicación tiene N
@@ -111,6 +113,10 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// - «Guardar cambios» y «Dar de baja» quedan fijos al pie de la hoja y se desplaza el resto: con un
 ///   teléfono chico o el texto grande la acción principal se ve siempre. Con el teclado abierto «Dar
 ///   de baja» no se dibuja (se está escribiendo).
+/// - Con el teclado abierto manda el campo que se escribe (#324, la misma regla que la hoja del alta):
+///   la hoja crece hasta lo que ese campo pide, con tope en el 80 % del cuerpo ([HojaInferior]), con
+///   «Guardar cambios» fijo; si ni así entra el campo entero sobre el botón, el botón pasa al final de
+///   lo que se desplaza.
 class HojaModificarDatos extends ConsumerStatefulWidget {
   const HojaModificarDatos({
     super.key,
@@ -150,6 +156,14 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
   /// grande.
   final _claveAvisoTipo = GlobalKey();
 
+  /// El campo «Número» y el botón, para medir cuánto alto ocupan (el de «Calle» mide lo mismo que el
+  /// de «Número»): con el teclado abierto la hoja pide ese alto.
+  final _claveCampo = GlobalKey();
+  final _claveBoton = GlobalKey();
+  double? _altoCampo;
+  double? _altoBoton;
+  MedidaDeLaHoja? _medida;
+
   ModificarUbicacionNotifier get _notificador =>
       ref.read(modificarUbicacionProvider(widget.parametros).notifier);
 
@@ -159,7 +173,44 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     final estado = ref.read(modificarUbicacionProvider(widget.parametros));
     _calle = TextEditingController(text: estado.calle);
     _numero = TextEditingController(text: estado.numero);
+    // Al volver de «Mover el punto» la hoja se arma de nuevo con el aviso de tipo (bloqueo por
+    // espacios o depto sin número) ya en pantalla: `ref.listen` solo ve cambios, no lo que ya estaba.
+    // Se lo lleva a la vista, arriba del botón fijo, y no queda abajo del borde.
+    if (estado.bloqueoPorEspacios != null || estado.deptoQueQuedaSinNumero != null) {
+      _llevarElAvisoDeTipoALaVista();
+    }
   }
+
+  void _llevarElAvisoDeTipoALaVista() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveAvisoTipo.currentContext;
+      if (mounted && contexto != null) _llevarALaVista(contexto);
+    });
+  }
+
+  /// Mide el campo y el botón y, si cambiaron (la primera vez, o con otro tamaño de texto), vuelve a
+  /// armar la hoja: el lugar del botón depende de esos altos. Después le dice a la hoja de afuera
+  /// cuánto alto necesita con el teclado abierto.
+  void _medir() {
+    if (!mounted) return;
+    final campo = _claveCampo.currentContext?.size?.height;
+    final boton = _claveBoton.currentContext?.size?.height;
+    bool cambio(double? nuevo, double? actual) =>
+        nuevo != null && (actual == null || (nuevo - actual).abs() >= .5);
+    if (cambio(campo, _altoCampo) || cambio(boton, _altoBoton)) {
+      setState(() {
+        _altoCampo = campo ?? _altoCampo;
+        _altoBoton = boton ?? _altoBoton;
+      });
+      return;
+    }
+    final c = _altoCampo;
+    if (c == null) return;
+    _medida?.informar(NecesidadHoja(campo: c, boton: _altoBoton ?? _alturaMinimaBoton));
+  }
+
+  /// El alto mínimo de «Guardar cambios»: con el texto más grande el botón crece y se lo mide.
+  static const _alturaMinimaBoton = 52.0;
 
   @override
   void didUpdateWidget(HojaModificarDatos oldWidget) {
@@ -230,21 +281,28 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
       nuevo,
     ) {
       if (nuevo == anterior || (nuevo.$1 == null && nuevo.$2 == null)) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final contexto = _claveAvisoTipo.currentContext;
-        if (mounted && contexto != null) {
-          unawaited(
-            Scrollable.ensureVisible(
-              contexto,
-              duration: Duration.zero,
-              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-            ),
-          );
-        }
-      });
+      _llevarElAvisoDeTipoALaVista();
     });
+    _medida = MedidaDeLaHoja.maybeOf(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _medir());
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final lugar = caja.hasBoundedHeight
+            ? lugarDeLaAccion(
+                contenido: caja.maxHeight,
+                tecladoAbierto: widget.tecladoAbierto,
+                boton: _altoBoton ?? _alturaMinimaBoton,
+                motivo: 0,
+                campo: _altoCampo,
+              )
+            : LugarDeLaAccion.fijaConMotivoAbajo;
+        return _hoja(context, estado, lugar);
+      },
+    );
+  }
+
+  Widget _hoja(BuildContext context, ModificarUbicacionState estado, LugarDeLaAccion lugar) {
     final original = estado.original!;
-    final theme = Theme.of(context);
     final bloqueo = estado.bloqueoPorEspacios;
     final deptoSinNumero = estado.deptoQueQuedaSinNumero;
     final falla = estado.falla;
@@ -252,7 +310,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     // mismo texto dos veces.
     final mostrarFalla =
         falla != null && !(falla is FailureUbicacionConEspacios && bloqueo != null);
-
+    final botonFijo = lugar != LugarDeLaAccion.alFinalDeLoQueSeDesplaza;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -324,6 +382,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                         limite: 20,
                         accion: TextInputAction.done,
                         bloqueado: estado.guardando,
+                        claveCampo: _claveCampo,
                       ),
                     ),
                   ],
@@ -347,24 +406,15 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                         : null,
                   ),
                 ],
+                if (!botonFijo) ...[
+                  const SizedBox(height: separacionDelBoton),
+                  _botonGuardar(estado),
+                ],
               ],
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        FilledButton(
-          onPressed: estado.puedeGuardar ? widget.alGuardar : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary,
-            disabledBackgroundColor: ColoresAlta.grisFondo,
-            disabledForegroundColor: ColoresAlta.gris,
-            minimumSize: const Size.fromHeight(52),
-          ),
-          child: Text(
-            estado.guardando ? TextosModificar.guardando : TextosModificar.guardarCambios,
-            textAlign: TextAlign.center,
-          ),
-        ),
+        if (botonFijo) ...[const SizedBox(height: separacionDelBoton), _botonGuardar(estado)],
         if (widget.alDarDeBaja != null && !widget.tecladoAbierto)
           Center(
             child: TextButton(
@@ -382,6 +432,23 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _botonGuardar(ModificarUbicacionState estado) {
+    return FilledButton(
+      key: _claveBoton,
+      onPressed: estado.puedeGuardar ? widget.alGuardar : null,
+      style: FilledButton.styleFrom(
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        disabledBackgroundColor: ColoresAlta.grisFondo,
+        disabledForegroundColor: ColoresAlta.gris,
+        minimumSize: const Size.fromHeight(_alturaMinimaBoton),
+      ),
+      child: Text(
+        estado.guardando ? TextosModificar.guardando : TextosModificar.guardarCambios,
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
@@ -697,4 +764,28 @@ class _Mensaje extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Lleva [contexto] a la vista dentro de lo que se desplaza, moviéndolo lo mínimo: si está abajo, su pie
+/// queda al pie del área; si está arriba (el colportor venía escribiendo en «Número», al final de la
+/// hoja, y el aviso aparece más arriba), su tope queda al tope; si ya se ve, no se mueve. Si es más
+/// alto que el área, queda a la vista su pie, como siempre. `Scrollable.ensureVisible` con
+/// `keepVisibleAtEnd` solo se mueve hacia adelante: no alcanza a un aviso que quedó arriba (#324).
+void _llevarALaVista(BuildContext contexto) {
+  final scrollable = Scrollable.maybeOf(contexto);
+  final objeto = contexto.findRenderObject();
+  if (scrollable == null || objeto == null || !objeto.attached) return;
+  final viewport = RenderAbstractViewport.maybeOf(objeto);
+  if (viewport == null) return;
+  final posicion = scrollable.position;
+  final alPie = viewport.getOffsetToReveal(objeto, 1).offset;
+  final alTope = viewport.getOffsetToReveal(objeto, 0).offset;
+  final double destino;
+  if (alPie <= alTope) {
+    destino = posicion.pixels.clamp(alPie, alTope).toDouble();
+  } else {
+    final cubreElArea = posicion.pixels >= alTope && posicion.pixels <= alPie;
+    destino = cubreElArea ? posicion.pixels : alPie;
+  }
+  posicion.jumpTo(destino.clamp(posicion.minScrollExtent, posicion.maxScrollExtent).toDouble());
 }

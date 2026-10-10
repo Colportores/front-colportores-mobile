@@ -20,6 +20,7 @@ import '../widgets/hoja_ciudad.dart';
 import '../widgets/hoja_duplicado_alta.dart';
 import '../widgets/hoja_modificar.dart';
 import '../widgets/mapa_modificar.dart';
+import '../widgets/medida_hoja.dart';
 import '../widgets/piezas_alta.dart';
 
 /// Cómo se cerró la edición de una ubicación.
@@ -374,18 +375,16 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
                         alVolverAMiUbicacion: () => unawaited(_volverAMiUbicacion()),
                       ),
                     ),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: caja.maxHeight * .62),
-                      child: _Hoja(
-                        parametros: widget.parametros,
-                        estado: estado,
-                        alGuardar: () => unawaited(_guardar()),
-                        alElegirCiudad: () => unawaited(_elegirCiudad()),
-                        alDarDeBaja: estado.original?.estaBorrada == false
-                            ? () => unawaited(_darDeBaja())
-                            : null,
-                        tecladoAbierto: tecladoAbierto,
-                      ),
+                    _Hoja(
+                      parametros: widget.parametros,
+                      estado: estado,
+                      cuerpo: caja.maxHeight,
+                      alGuardar: () => unawaited(_guardar()),
+                      alElegirCiudad: () => unawaited(_elegirCiudad()),
+                      alDarDeBaja: estado.original?.estaBorrada == false
+                          ? () => unawaited(_darDeBaja())
+                          : null,
+                      tecladoAbierto: tecladoAbierto,
                     ),
                   ],
                 ),
@@ -400,11 +399,13 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
   }
 }
 
-/// La hoja de abajo: el formulario o el ajuste del punto.
+/// La hoja de abajo: el formulario o el ajuste del punto. Ocupa el 62 % del cuerpo y, con el teclado
+/// abierto, crece hasta lo que pida el campo que se escribe (#324, [HojaInferior]).
 class _Hoja extends StatelessWidget {
   const _Hoja({
     required this.parametros,
     required this.estado,
+    required this.cuerpo,
     required this.alGuardar,
     required this.alElegirCiudad,
     required this.alDarDeBaja,
@@ -413,6 +414,9 @@ class _Hoja extends StatelessWidget {
 
   final ParametrosModificar parametros;
   final ModificarUbicacionState estado;
+
+  /// El alto del cuerpo de la pantalla (ya sin el teclado).
+  final double cuerpo;
   final VoidCallback alGuardar;
   final VoidCallback alElegirCiudad;
   final VoidCallback? alDarDeBaja;
@@ -421,48 +425,19 @@ class _Hoja extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mover = estado.modo == ModoEdicion.moverPunto;
-    return Material(
-      color: Colors.white,
-      elevation: 8,
-      shadowColor: const Color(0x1F0E1A2B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: ColoresAlta.grisBorde,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              // Cada hoja desplaza lo suyo y deja sus botones fijos al pie.
-              Flexible(
-                child: mover
-                    ? HojaMoverPunto(parametros: parametros)
-                    : HojaModificarDatos(
-                        parametros: parametros,
-                        alGuardar: alGuardar,
-                        alElegirCiudad: alElegirCiudad,
-                        alDarDeBaja: alDarDeBaja,
-                        tecladoAbierto: tecladoAbierto,
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    // Cada hoja desplaza lo suyo y deja sus botones fijos al pie.
+    return HojaInferior(
+      cuerpo: cuerpo,
+      tecladoAbierto: tecladoAbierto,
+      hijo: mover
+          ? HojaMoverPunto(parametros: parametros)
+          : HojaModificarDatos(
+              parametros: parametros,
+              alGuardar: alGuardar,
+              alElegirCiudad: alElegirCiudad,
+              alDarDeBaja: alDarDeBaja,
+              tecladoAbierto: tecladoAbierto,
+            ),
     );
   }
 }
@@ -574,41 +549,48 @@ class _Rotulos extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final movido = metros >= MapaModificar.metrosParaFantasma;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // «Moviste…» arranca 10 dp debajo de «Cerrar» (48 dp de alto, a 8 dp del borde de arriba) o,
-        // si el título ocupa dos renglones, debajo del título.
-        ConstrainedBox(
-          constraints: BoxConstraints(minHeight: mover ? arriba + 8 + 48 + 10 : 0),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _Pildora(
-                texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
-                encabezado: true,
+    // Con el teclado abierto y el texto grande, la hoja de abajo puede llevarse el 80 % del cuerpo y
+    // a la zona del mapa no le queda lugar para todos los rótulos (320×568 al 200 %: 54 dp): se
+    // recortan en vez de desbordar. Con el teclado cerrado vuelven enteros.
+    return SingleChildScrollView(
+      primary: false,
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // «Moviste…» arranca 10 dp debajo de «Cerrar» (48 dp de alto, a 8 dp del borde de arriba) o,
+          // si el título ocupa dos renglones, debajo del título.
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: mover ? arriba + 8 + 48 + 10 : 0),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _Pildora(
+                  texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
+                  encabezado: true,
+                ),
               ),
             ),
           ),
-        ),
-        if (mover)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Align(
-              alignment: Alignment.topCenter,
-              // Sin movimiento, el lugar queda reservado (un renglón en blanco del mismo tamaño):
-              // el mapa no se corre cuando el rótulo aparece.
-              child: movido
-                  ? _Pildora(texto: TextosModificar.moviste(metros), aviso: true)
-                  : const Opacity(
-                      opacity: 0,
-                      child: ExcludeSemantics(child: _Pildora(texto: '\u00A0')),
-                    ),
+          if (mover)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Align(
+                alignment: Alignment.topCenter,
+                // Sin movimiento, el lugar queda reservado (un renglón en blanco del mismo tamaño):
+                // el mapa no se corre cuando el rótulo aparece.
+                child: movido
+                    ? _Pildora(texto: TextosModificar.moviste(metros), aviso: true)
+                    : const Opacity(
+                        opacity: 0,
+                        child: ExcludeSemantics(child: _Pildora(texto: '\u00A0')),
+                      ),
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

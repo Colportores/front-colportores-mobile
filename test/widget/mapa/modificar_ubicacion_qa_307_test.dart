@@ -194,25 +194,25 @@ void main() {
 
       await fallarPorCambio(tester, m, numero: '1310', hora: 10);
 
+      // Se mide el objetivo táctil (el botón de 48 dp), no solo el texto: lo que se toca tiene que
+      // estar entero a la vista.
       final zona = rectZona(tester);
-      final texto = tester.getRect(_accion);
-      expect(texto.top, greaterThanOrEqualTo(zona.top - 4));
-      expect(texto.bottom, lessThanOrEqualTo(zona.bottom + .5));
+      final objetivo = tester.getRect(_objetivo);
+      expect(objetivo.top, greaterThanOrEqualTo(zona.top - .5));
+      expect(objetivo.bottom, lessThanOrEqualTo(zona.bottom + .5));
       expect(m.repo.escrituras, isEmpty);
       expect(tester.takeException(), isNull);
     });
   });
 
   group('QA #321 · texto al 300 % (por encima del máximo de Android, que es 200 %)', () {
-    // skip: QA #321 — al 300 % con el teclado de 300 dp la hoja no tiene lugar para sus botones
-    // fijos (360×640: la zona que se desplaza mide 5 dp y hay un overflow de 29 dp; 320×568: 0 dp), y
-    // en 320×568 con la barra de 3 botones el toque a «Abrir de nuevo» cae fuera de la zona. Es más
-    // de lo que da Android (200 %); va como informativo (menor).
     for (final (nombreTel, tamano, barra, teclado) in <(String, Size, double, bool)>[
       ('360×640', telefono360x640, 0, false),
       ('360×640', telefono360x640, 48, false),
       ('320×568', telefono320x568, 0, false),
-      ('320×568', telefono320x568, 48, false),
+      // 320×568 con barra de 3 botones, sin teclado, al 300 %: «Guardar cambios» (3 renglones, 146 dp)
+      // deja 45 dp a lo que se desplaza y «Abrir de nuevo» (102 dp) no se toca por el centro. Fuera de
+      // la regla de #324 (que es con el teclado) y por encima del máximo de Android: se quitó (#324).
       ('360×640', telefono360x640, 0, true),
       ('320×568', telefono320x568, 0, true),
     ]) {
@@ -224,10 +224,13 @@ void main() {
         expect(tester.takeException(), isNull, reason: 'sin overflow');
         expect(_visible(tester.getRect(_objetivo), rectZona(tester)), greaterThanOrEqualTo(24));
         final lecturas = m.repo.lecturas;
+        // Asoma 24 dp de su objetivo: para tocarla se desplaza la hoja hasta tenerla entera.
+        await tester.ensureVisible(_accion);
+        await tester.pump();
         await tester.tap(_accion);
         await asentar(tester);
         expect(m.repo.lecturas, lecturas + 1);
-      }, skip: teclado || (tamano == telefono320x568 && barra > 0));
+      });
     }
   });
 
@@ -241,8 +244,6 @@ void main() {
         ('320×568', telefono320x568, 2.0),
         ('360×640', telefono360x640, 3.0),
       ]) {
-        // skip: QA #321 — mismo hallazgo: 320×568 al 200 % y 360×640 al 300 % con el teclado abierto.
-        final falla = (nombreTel == '320×568' && escala == 2.0) || escala == 3.0;
         testWidgets('$nombreTel · texto ${_x(escala)}: abrir el teclado y escribir el número no '
             'desborda la hoja', (tester) async {
           await abrirEdicion(tester, tamano: tamano, escala: escala);
@@ -251,10 +252,16 @@ void main() {
           await asentar(tester);
 
           expect(tester.takeException(), isNull, reason: 'sin overflow');
+          // Si ni con el 80 % del cuerpo entra el campo sobre el botón, este pasa al final de lo que se
+          // desplaza (#324): se lo alcanza desplazando y queda entero sobre el teclado.
+          if (find.descendant(of: zonaDesplazable, matching: botonGuardar).evaluate().isNotEmpty) {
+            await tester.ensureVisible(botonGuardar);
+            await tester.pump();
+          }
           final fijo = tester.getRect(botonGuardar);
           expect(fijo.bottom, lessThanOrEqualTo(tamano.height - tecladoAbierto + .5));
           expect(rectZona(tester).height, greaterThan(0), reason: 'la hoja deja algo que leer');
-        }, skip: falla);
+        });
       }
     },
   );
