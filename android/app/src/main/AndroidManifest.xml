@@ -27,10 +27,14 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- Solo vertical (decisión de Cristian del 07/10, #301): la misma regla que Info.plist y
+             que SystemChrome.setPreferredOrientations en main.dart. Android 16 la ignora en
+             pantallas de 600 dp o más (tablets); los teléfonos la respetan. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:screenOrientation="portrait"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
