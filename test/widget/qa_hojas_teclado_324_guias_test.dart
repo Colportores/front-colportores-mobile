@@ -73,7 +73,9 @@ void main() {
     for (final t in telefonos) {
       for (final escala in [1.0, 2.0, 3.0]) {
         // Con texto 3× en 360×640 la hoja llega al 80 % y de «Cerrar» quedan 36 dp de 48 (ver
-        // `qa_hojas_teclado_324_test.dart`): las guías de toque de Android (48) y de iOS (44) fallan. Las de etiquetas y contraste sí pasan.
+        // `qa_hojas_teclado_324_test.dart`): la decisión del PR #342 lo acepta (AA se cumple; el atrás
+        // del sistema cierra el teclado y lo deja entero), así que no se exigen las guías de toque de
+        // Android (48) ni de iOS (44). Las de etiquetas y contraste sí.
         final cerrarChico = t.tamano.width == 360 && escala >= 3;
         testWidgets('07·01 Editar datos · ${t.nombre} · ${veces(escala)}', (tester) async {
           final handle = tester.ensureSemantics();
@@ -86,23 +88,6 @@ void main() {
         });
       }
     }
-
-    testWidgets(
-      '07·01 Editar datos · 360×640 · 3× · QA #324: con la hoja al 80 % «Cerrar» queda con 36 dp de '
-      'toque (guías de 48 y 44)',
-      (tester) async {
-        final handle = tester.ensureSemantics();
-        await abrirEdicionQa(tester, escala: 3);
-        await m.abrirTeclado(tester);
-        await tester.ensureVisible(m.campoNumero);
-        await tester.pump();
-        await tester.tap(m.campoNumero);
-        await m.asentar(tester);
-        await _guias(tester);
-        handle.dispose();
-      },
-      skip: true, // skip: QA #324 — «Cerrar» tapado 12 dp por la hoja con texto 3× y teclado
-    );
 
     testWidgets(
       '07 · aviso «cambió mientras la editabas» con el teclado de por medio · 360×640 · 2×',

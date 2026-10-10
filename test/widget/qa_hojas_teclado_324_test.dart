@@ -147,25 +147,19 @@ Future<void> _campoYAccionALaVista(
   expect(tester.takeException(), isNull, reason: '$donde: overflow');
 }
 
-/// Lo que se le pide a «Cerrar» con el teclado abierto en cada celda de la matriz, y el hallazgo si hoy
-/// no lo cumple. A 320×568 con texto 1× se acepta la decisión del pendiente P1 de #324 (AA 24×24); en
-/// el resto, los 48 dp de la guía de Android.
-({double minimo, String? hallazgo}) _exigencia(Telefono t, double escala) {
-  if (t.tamano.width == 320) {
-    return (
-      minimo: 24,
-      hallazgo: escala == 1
-          ? null
-          : 'de «Cerrar» quedan 22 dp a la vista (menos que los 24 de AA 2.5.8): la hoja crece al 80 %',
-    );
-  }
-  if (escala >= 3 && t.tamano.width == 360) {
-    return (
-      minimo: 48,
-      hallazgo: 'con texto 3× la hoja llega al 80 % y de «Cerrar» quedan 36 dp a la vista (de 48)',
-    );
-  }
-  return (minimo: 48, hallazgo: null);
+/// Lo que se le pide a «Cerrar» con el teclado abierto en cada celda de la matriz. A 320×568 con texto
+/// 1× se acepta la decisión del pendiente P1 de #324 (AA 24×24); en el resto, los 48 dp de la guía de
+/// Android.
+///
+/// Dos celdas quedan fuera porque la decisión del PR #342 las acepta (con el teclado abierto la hoja
+/// llega al 80 % y «Cerrar» queda a medio tapar; el atrás del sistema cierra el teclado y lo deja
+/// entero): 320×568 con texto 2× y 3× (quedan 22 dp, y no hay otro objetivo a menos de 24 dp: vale la
+/// excepción de espaciado de AA 2.5.8) y 360×640 con texto 3× (quedan 36 dp: AA se cumple).
+/// [aceptado] marca esas celdas y no se las prueba.
+({double minimo, bool aceptado}) _exigencia(Telefono t, double escala) {
+  if (t.tamano.width == 320) return (minimo: 24, aceptado: escala != 1);
+  if (escala >= 3 && t.tamano.width == 360) return (minimo: 48, aceptado: true);
+  return (minimo: 48, aceptado: false);
 }
 
 /// «Cerrar» se ve y se toca con el teclado abierto: la hoja no lo tapa más de lo que [minimo] deja.
@@ -243,22 +237,19 @@ void main() {
       for (final escala in [1.0, 2.0, 3.0]) {
         for (final estado in [a.EstadoAlta.gpsPreciso, a.EstadoAlta.gpsImpreciso]) {
           final e = _exigencia(t, escala);
-          testWidgets(
-            '${estado.rotulo} · ${t.nombre} · ${veces(escala)}${e.hallazgo == null ? '' : ' · QA #324: ${e.hallazgo}'}',
-            (tester) async {
-              await a.abrirEn(tester, estado, tamano: t.tamano, escala: escala, teclado: t.teclado);
-              await _tocarCampo(tester, a.campoNumero, a.asentar);
-              _cerrarALaVista(
-                tester,
-                _alta,
-                tamano: t.tamano,
-                teclado: t.teclado,
-                donde: '${estado.rotulo} ${t.nombre} ${veces(escala)}',
-                minimo: e.minimo,
-              );
-            },
-            skip: e.hallazgo != null && !_verHallazgos, // skip: QA #324 — ver el título del test
-          );
+          if (e.aceptado) continue;
+          testWidgets('${estado.rotulo} · ${t.nombre} · ${veces(escala)}', (tester) async {
+            await a.abrirEn(tester, estado, tamano: t.tamano, escala: escala, teclado: t.teclado);
+            await _tocarCampo(tester, a.campoNumero, a.asentar);
+            _cerrarALaVista(
+              tester,
+              _alta,
+              tamano: t.tamano,
+              teclado: t.teclado,
+              donde: '${estado.rotulo} ${t.nombre} ${veces(escala)}',
+              minimo: e.minimo,
+            );
+          });
         }
       }
     }
@@ -292,23 +283,20 @@ void main() {
     for (final t in [...telefonos, telefonoMinimo]) {
       for (final escala in [1.0, 2.0, 3.0]) {
         final e = _exigencia(t, escala);
-        testWidgets(
-          '07·01 Editar datos · ${t.nombre} · ${veces(escala)}${e.hallazgo == null ? '' : ' · QA #324: ${e.hallazgo}'}',
-          (tester) async {
-            await abrirEdicionQa(tester, tamano: t.tamano, escala: escala);
-            await m.abrirTeclado(tester, alto: t.teclado);
-            await _tocarCampo(tester, m.campoNumero, m.asentar);
-            _cerrarALaVista(
-              tester,
-              _edicion,
-              tamano: t.tamano,
-              teclado: t.teclado,
-              donde: '07·01 ${t.nombre} ${veces(escala)}',
-              minimo: e.minimo,
-            );
-          },
-          skip: e.hallazgo != null && !_verHallazgos, // skip: QA #324 — ver el título del test
-        );
+        if (e.aceptado) continue;
+        testWidgets('07·01 Editar datos · ${t.nombre} · ${veces(escala)}', (tester) async {
+          await abrirEdicionQa(tester, tamano: t.tamano, escala: escala);
+          await m.abrirTeclado(tester, alto: t.teclado);
+          await _tocarCampo(tester, m.campoNumero, m.asentar);
+          _cerrarALaVista(
+            tester,
+            _edicion,
+            tamano: t.tamano,
+            teclado: t.teclado,
+            donde: '07·01 ${t.nombre} ${veces(escala)}',
+            minimo: e.minimo,
+          );
+        });
       }
     }
   });
@@ -391,13 +379,9 @@ void main() {
     });
 
     for (final escala in [1.0, 2.0, 3.0]) {
-      final hallazgo = escala < 3
-          ? null
-          : 'el AlertDialog de «¿Descartar los cambios?» no se desplaza: a ${veces(escala)} se desborda 114 px '
-                'y los botones quedan fuera de la pantalla (previo al PR: dialogos_modificar.dart)';
       testWidgets(
         '07·04 Salir con cambios sin guardar · 360×640 · ${veces(escala)}: el diálogo cabe y sus dos '
-        'botones miden 48 dp${hallazgo == null ? '' : ' · QA #324: $hallazgo'}',
+        'botones miden 48 dp',
         (tester) async {
           await abrirEdicionQa(tester, escala: escala);
           await tester.enterText(m.campoNumero, '1240');
@@ -422,7 +406,6 @@ void main() {
           }
           expect(tester.takeException(), isNull);
         },
-        skip: hallazgo != null && !_verHallazgos, // skip: QA #324 — ver el título del test
       );
     }
   });

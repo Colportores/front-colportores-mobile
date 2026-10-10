@@ -33,8 +33,9 @@ void main() {
 
           // #324: a 320×568 con el teclado abierto la hoja crece lo justo para que el campo entre
           // entero y el mapa queda de 77 dp: «Cerrar» (a 32 dp del borde, 48 dp de alto) mide 45 dp
-          // de objetivo, los 3 de abajo los tapa la hoja. La regla de 44 pt (iOS) sí se cumple. Ver
-          // el pendiente de #324 (P1) sobre cuánto mapa le queda a «Cerrar».
+          // de objetivo, los 3 de abajo los tapa la hoja. La regla de 44 pt (iOS) sí se cumple.
+          // Aceptado (AA 2.5.8 pide 24×24): decisión en
+          // https://github.com/Colportores/front-colportores-mobile/pull/342#issuecomment-6093854734
           if (tamano.width != 320) {
             await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
           }
