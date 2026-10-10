@@ -78,4 +78,10 @@ final class ReenviosGuardados extends Equatable {
 
   @override
   List<Object?> get props => [bloqueos, esperas];
+
+  /// Las claves de los mapas son correos: no se imprimen nunca, ni con `EquatableConfig.stringify`
+  /// en `true` (mismo criterio que los `Params` de los casos de uso; convenciones-desarrollo.md
+  /// §7.5).
+  @override
+  bool? get stringify => false;
 }
