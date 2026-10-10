@@ -7,6 +7,7 @@
 //     semántica y foco del aviso. Capturas en `.dart_tool/qa_capturas/` (gitignored).
 //  2. El cierre a propósito: ni aviso ni correo en la misma corrida ni en el arranque siguiente.
 //  3. Hallazgos de la revisión (M1, M2, M3) reproducidos con un test cada uno.
+//  4. #311 (seguimiento): un fin de sesión que llega antes de que arranque la sesión, de punta a punta.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -15,8 +16,10 @@ import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzado_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
@@ -229,6 +232,27 @@ final class _RelojLento implements RelojSesion {
 
   @override
   Future<void> registrar(DateTime visto) async {}
+}
+
+/// La sesión guardada en el teléfono, que se lee cuando el test abre la [puerta]: el arranque con la
+/// sesión todavía leyéndose (#311).
+final class _LocalQueTardaEnLeer implements AuthLocalDataSource {
+  _LocalQueTardaEnLeer(this.puerta, this._sesion);
+
+  final Completer<void> puerta;
+  SesionModel? _sesion;
+
+  @override
+  Future<SesionModel?> leerSesion() async {
+    await puerta.future;
+    return _sesion;
+  }
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) async => _sesion = sesion;
+
+  @override
+  Future<void> borrarSesion() async => _sesion = null;
 }
 
 /// El cierre guardado se lee cuando el test abre la [puerta]: un teléfono lento al arrancar.
@@ -743,5 +767,69 @@ void main() {
         expect(lento.contenido, isNotNull, reason: 'sin cola, el guardado lento pisa al borrado');
       });
     });
+  });
+
+  // #311: con la app abierta, un fin de sesión que llega por el stream antes de que termine de leerse
+  // la sesión guardada. Antes dejaba el aviso puesto con la persona adentro (en la pantalla
+  // principal); ahora, al terminar de leerla, se cierra y sale el login con el aviso de la vista 17.
+  group('QA #311 — fin de sesión antes de que arranque la sesión', () {
+    final sesionGuardada = SesionModel(
+      usuarioId: '11111111-1111-4111-8111-111111111111',
+      email: _correo,
+      accessToken: 'token-guardado',
+      expiraEn: DateTime.now().toUtc().add(const Duration(days: 20)),
+    );
+
+    for (final (artboard, motivo, texto, guardado) in [
+      ('17-A03', MotivoExpiracion.revocada, _revocada, 'revocada|'),
+      ('17-A01', MotivoExpiracion.inactividad, _inactividad, 'inactividad|'),
+    ]) {
+      testWidgets('$artboard: el aviso llega con la app arrancando y la sesión guardada: termina '
+          'en el login con el aviso, no en la pantalla principal', (tester) async {
+        final puerta = Completer<void>();
+        final almacen = AlmacenSeguroEnMemoria();
+        final remoto = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _password});
+        final container = ProviderContainer(
+          overrides: [
+            dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+            authRemoteDataSourceProvider.overrideWithValue(remoto),
+            authLocalDataSourceProvider.overrideWithValue(
+              _LocalQueTardaEnLeer(puerta, sesionGuardada),
+            ),
+            ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacen)),
+            cierreForzadoRepositoryProvider.overrideWithValue(CierreForzadoRepositoryImpl(almacen)),
+          ],
+        );
+        addTearDown(container.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: container, child: const ColportoresApp()),
+        );
+        await tester.pump();
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        remoto.simularExpiracion(motivo);
+        await tester.pump();
+        puerta.complete();
+        await tester.pumpAndSettle();
+
+        expect(_principal, findsNothing, reason: 'la sesión terminó: no se queda adentro');
+        expect(container.read(sesionProvider).value, isNull);
+        expect(_aviso, findsOneWidget);
+        expect(find.text(texto), findsOneWidget);
+        expect(
+          _campoCorreo(tester),
+          _correo,
+          reason: 'el saludo del reingreso lleva el correo de la sesión que se cerró',
+        );
+        expect(almacen.contenido[ClaveSegura.cierreForzado], startsWith(guardado));
+        expect(tester.takeException(), isNull);
+
+        // Volver a entrar: la persona sigue el flujo normal y el aviso desaparece.
+        await _entrarDesdeElLogin(tester);
+        expect(_principal, findsOneWidget);
+        expect(_aviso, findsNothing);
+        expect(almacen.contenido.containsKey(ClaveSegura.cierreForzado), isFalse);
+      });
+    }
   });
 }
