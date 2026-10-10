@@ -551,45 +551,50 @@ class _Rotulos extends StatelessWidget {
     final movido = metros >= MapaModificar.metrosParaFantasma;
     // Con el teclado abierto y el texto grande, la hoja de abajo puede llevarse el 80 % del cuerpo y
     // a la zona del mapa no le queda lugar para todos los rótulos (320×568 al 200 %: 54 dp): se
-    // recortan en vez de desbordar. Con el teclado cerrado vuelven enteros.
-    return SingleChildScrollView(
-      primary: false,
-      physics: const NeverScrollableScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // «Moviste…» arranca 10 dp debajo de «Cerrar» (48 dp de alto, a 8 dp del borde de arriba) o,
-          // si el título ocupa dos renglones, debajo del título.
-          ConstrainedBox(
-            constraints: BoxConstraints(minHeight: mover ? arriba + 8 + 48 + 10 : 0),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _Pildora(
-                  texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
-                  encabezado: true,
+    // recortan en vez de desbordar. Con el teclado cerrado vuelven enteros. Los rótulos son solo texto
+    // y se pintan encima del mapa: sin `IgnorePointer` el `SingleChildScrollView` (que se lleva el
+    // puntero en todo su rectángulo aunque no se desplace) tapa el arrastre y el toque sobre el mapa
+    // de «Mover el punto».
+    return IgnorePointer(
+      child: SingleChildScrollView(
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // «Moviste…» arranca 10 dp debajo de «Cerrar» (48 dp de alto, a 8 dp del borde de arriba) o,
+            // si el título ocupa dos renglones, debajo del título.
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: mover ? arriba + 8 + 48 + 10 : 0),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(72, arriba + 14, 14, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _Pildora(
+                    texto: mover ? TextosModificar.tituloMover : TextosModificar.tituloEditar,
+                    encabezado: true,
+                  ),
                 ),
               ),
             ),
-          ),
-          if (mover)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Align(
-                alignment: Alignment.topCenter,
-                // Sin movimiento, el lugar queda reservado (un renglón en blanco del mismo tamaño):
-                // el mapa no se corre cuando el rótulo aparece.
-                child: movido
-                    ? _Pildora(texto: TextosModificar.moviste(metros), aviso: true)
-                    : const Opacity(
-                        opacity: 0,
-                        child: ExcludeSemantics(child: _Pildora(texto: '\u00A0')),
-                      ),
+            if (mover)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  // Sin movimiento, el lugar queda reservado (un renglón en blanco del mismo tamaño):
+                  // el mapa no se corre cuando el rótulo aparece.
+                  child: movido
+                      ? _Pildora(texto: TextosModificar.moviste(metros), aviso: true)
+                      : const Opacity(
+                          opacity: 0,
+                          child: ExcludeSemantics(child: _Pildora(texto: '\u00A0')),
+                        ),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

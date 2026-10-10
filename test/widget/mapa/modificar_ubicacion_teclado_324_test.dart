@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_qa_arnes.dart' show cargarFuentesReales;
+import '../../helpers/mapa_base_falso.dart' show VistaMapaFalsa;
 import '../../helpers/modificar_ubicacion_falsos.dart';
 import '../../helpers/modificar_ubicacion_qa_307_arnes.dart';
 
@@ -247,5 +248,43 @@ void main() {
       );
       expect(scroll.position.pixels, 0);
     });
+  });
+
+  group('#324 · 07·02 «Mover el punto» · los rótulos no se llevan el arrastre del mapa', () {
+    // Los rótulos van pintados encima del mapa y llevan un `SingleChildScrollView` (para recortarse con
+    // el teclado). Un `Scrollable` se queda con el puntero en todo su rectángulo aunque no se
+    // desplace: sin `IgnorePointer` esa franja de arriba (de 100 a 125 dp, según el teléfono y el
+    // texto) quedaba muerta para el mapa. Con el texto grande el mapa empieza más abajo (los rótulos
+    // lo hacen bajar para no tapar el pin): ahí se arrastra desde 4 dp debajo de su borde de arriba.
+    for (final (nombreTel, tamano) in <(String, Size)>[
+      ('360×640', telefono360x640),
+      ('412×915', const Size(412, 915)),
+    ]) {
+      for (final escala in [1.0, 2.0, 3.0]) {
+        for (final y in [60.0, 100.0]) {
+          testWidgets('$nombreTel · texto ${_x(escala)}: arrastrar el mapa desde y = ${y.round()} '
+              '(o desde su borde de arriba, si empieza más abajo) mueve la cámara', (tester) async {
+            final montada = await abrirEdicion(tester, tamano: tamano, escala: escala);
+            await tester.tap(find.text(TextosModificar.moverElPunto));
+            await asentar(tester);
+            expect(find.text(TextosModificar.tituloMover), findsOneWidget);
+
+            final mapa = tester.getRect(find.byType(VistaMapaFalsa));
+            final desde = Offset(tamano.width - 30, y < mapa.top + 4 ? mapa.top + 4 : y);
+            expect(desde.dy, lessThan(mapa.bottom), reason: 'el punto $desde está sobre el mapa');
+            final antes = montada.mapa.camara!.centro;
+            await tester.dragFrom(desde, const Offset(-60, 0));
+            await asentar(tester);
+
+            expect(
+              montada.mapa.camara!.centro.lon,
+              isNot(closeTo(antes.lon, 1e-9)),
+              reason: 'el arrastre desde $desde no llegó al mapa ($mapa)',
+            );
+            expect(tester.takeException(), isNull);
+          });
+        }
+      }
+    }
   });
 }
