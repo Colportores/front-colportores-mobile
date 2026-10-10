@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/auth/presentation/pages/login_page.d
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,6 +113,27 @@ String _textoDelCampo(WidgetTester tester) =>
 FilledButton _enviar(WidgetTester tester) =>
     tester.widget<FilledButton>(find.byKey(const Key('recuperacion_password_enviar')));
 
+/// La ruta de abajo (la pantalla de la que se sale) con «abrir recuperación», que abre la página
+/// encima.
+Widget _appConPantallaDeAbajo({DateTime Function()? ahora}) => MaterialApp(
+  theme: temaClaro(),
+  home: Builder(
+    builder: (context) => Scaffold(
+      body: Center(
+        child: TextButton(
+          key: const Key('abrir_recuperacion'),
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => RecuperacionPasswordPage(ahora: ahora ?? DateTime.now),
+            ),
+          ),
+          child: const Text('pantalla de abajo'),
+        ),
+      ),
+    ),
+  ),
+);
+
 /// La página dentro de un Navigator con una ruta debajo, para probar «Volver al login» y el atrás.
 Future<void> _montarSobreLogin(
   WidgetTester tester, {
@@ -128,28 +150,66 @@ Future<void> _montarSobreLogin(
         if (ultimoEnvio != null)
           ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(ultimoEnvio),
       ],
-      child: MaterialApp(
-        theme: temaClaro(),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: Center(
-              child: TextButton(
-                key: const Key('abrir_recuperacion'),
-                onPressed: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => RecuperacionPasswordPage(ahora: ahora ?? DateTime.now),
-                  ),
-                ),
-                child: const Text('pantalla de abajo'),
-              ),
-            ),
-          ),
-        ),
-      ),
+      child: _appConPantallaDeAbajo(ahora: ahora),
     ),
   );
   await tester.tap(find.byKey(const Key('abrir_recuperacion')));
   await tester.pumpAndSettle();
+}
+
+const _emailSesion = 'lucia.silva@correo.com';
+
+/// Como [_montarSobreLogin], pero con el contenedor a mano y, si [conSesion], la sesión abierta
+/// (#313): la pantalla de abajo hace de inicio o de preparación de la base.
+Future<ProviderContainer> _montarSobrePantallaDeAbajo(
+  WidgetTester tester, {
+  required AuthRemoteDataSourceEnMemoria remote,
+  bool conSesion = false,
+  UltimoEnvioRecuperacionRepository? ultimoEnvio,
+  DateTime Function()? ahora,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      if (ultimoEnvio != null)
+        ultimoEnvioRecuperacionRepositoryProvider.overrideWithValue(ultimoEnvio),
+    ],
+  );
+  addTearDown(container.dispose);
+  await container.read(sesionProvider.future);
+  if (conSesion) {
+    await container
+        .read(sesionProvider.notifier)
+        .iniciarSesion(email: _emailSesion, password: 'Secreto123');
+  }
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: _appConPantallaDeAbajo(ahora: ahora),
+    ),
+  );
+  await tester.tap(find.byKey(const Key('abrir_recuperacion')));
+  await tester.pumpAndSettle();
+  return container;
+}
+
+/// De A01 a A05: escribe el correo y pide el enlace.
+Future<void> _llegarAlExito(WidgetTester tester) async {
+  await _completar(tester);
+  await _tocar(tester, 'recuperacion_password_enviar');
+  await tester.pumpAndSettle();
+}
+
+/// Un teléfono chico con el texto al 200 % (WCAG 1.4.4).
+void _telefonoChicoConTextoAl200(WidgetTester tester) {
+  tester.view
+    ..physicalSize = const Size(360, 740)
+    ..devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 }
 
 void main() {
@@ -1250,6 +1310,147 @@ void main() {
         });
       }
     });
+  });
+
+  // Seguimiento de #312 (HU-AUTH-005): quien tiene la sesión abierta y pide un enlace nuevo desde la
+  // vista 15 (o desde la preparación de la base) no tiene login al que volver. A05 dice «Volver» y
+  // lleva a donde estaba la persona; sin sesión sigue «Volver al login», como el canvas.
+  group('Vista 14 A05 — con la sesión abierta (#313)', () {
+    final volver = find.byKey(const Key('recuperacion_password_volver_login'));
+    late AuthRemoteDataSourceEnMemoria remote;
+
+    setUp(() {
+      remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_emailSesion: 'Secreto123'});
+    });
+
+    testWidgets('dado que la sesión está abierta, cuando se pidió el enlace, entonces A05 dice '
+        '«Volver» y no «Volver al login»', (tester) async {
+      await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: true);
+      await _llegarAlExito(tester);
+
+      expect(find.text(_mensajeNeutro), findsOneWidget);
+      expect(find.descendant(of: volver, matching: find.text('Volver')), findsOneWidget);
+      expect(find.text('Volver al login'), findsNothing);
+    });
+
+    testWidgets('dado A05 con la sesión abierta, cuando se toca «Volver», entonces vuelve a donde '
+        'estaba la persona y la sesión sigue abierta', (tester) async {
+      final container = await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: true);
+      final sesionAntes = container.read(sesionProvider).value;
+      expect(sesionAntes, isNotNull);
+      await _llegarAlExito(tester);
+
+      await tester.tap(volver);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+      expect(container.read(sesionProvider).value, sesionAntes, reason: 'no cierra la sesión');
+    });
+
+    testWidgets('dado que no hay sesión, cuando se pidió el enlace, entonces A05 sigue diciendo '
+        '«Volver al login» y sale a la pantalla de abajo', (tester) async {
+      await _montarSobrePantallaDeAbajo(tester, remote: remote);
+      await _llegarAlExito(tester);
+
+      expect(find.descendant(of: volver, matching: find.text('Volver al login')), findsOneWidget);
+      expect(find.text('Volver'), findsNothing);
+
+      await tester.tap(volver);
+      await tester.pumpAndSettle();
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+    });
+
+    testWidgets('dada la sesión que se cierra con A05 en pantalla, cuando cambia el estado, '
+        'entonces el rótulo pasa a «Volver al login»', (tester) async {
+      final container = await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: true);
+      await _llegarAlExito(tester);
+      expect(find.descendant(of: volver, matching: find.text('Volver')), findsOneWidget);
+
+      await container.read(sesionProvider.notifier).cerrarSesion();
+      await tester.pumpAndSettle();
+
+      expect(find.descendant(of: volver, matching: find.text('Volver al login')), findsOneWidget);
+      expect(find.text('Volver'), findsNothing);
+    });
+
+    testWidgets('dado un doble toque en «Volver», cuando A05 se cierra, entonces se sale una sola '
+        'vez y la pantalla de abajo sigue ahí', (tester) async {
+      await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: true);
+      await _llegarAlExito(tester);
+
+      await tester.tap(volver);
+      await tester.tap(volver, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+    });
+
+    testWidgets('dado el texto al 200 % en un teléfono chico, cuando se abre A05 con la sesión '
+        'abierta, entonces no desborda y «Volver» se alcanza y funciona', (tester) async {
+      _telefonoChicoConTextoAl200(tester);
+      await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: true);
+      await _llegarAlExito(tester);
+
+      await tester.ensureVisible(volver);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Volver'), findsOneWidget);
+      expect(tester.getRect(volver).bottom, lessThanOrEqualTo(740));
+      expect(tester.getRect(volver).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(volver);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('pantalla de abajo'), findsOneWidget);
+    });
+
+    for (final (nombre, conSesion, rotulo) in [
+      ('con la sesión abierta', true, 'Volver'),
+      ('sin sesión', false, 'Volver al login'),
+    ]) {
+      testWidgets('dado el lector de pantalla $nombre, cuando se recorre A05, entonces el botón '
+          'tiene la etiqueta «$rotulo», va al final del recorrido y cumple las guías', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        await _montarSobrePantallaDeAbajo(tester, remote: remote, conSesion: conSesion);
+        await _llegarAlExito(tester);
+
+        expect(find.bySemanticsLabel(rotulo), findsOneWidget);
+        expect(
+          find.bySemanticsLabel(conSesion ? 'Volver al login' : 'Volver'),
+          findsNothing,
+          reason: 'el otro rótulo no puede quedar en el árbol de semántica',
+        );
+        expect(
+          tester.getSemantics(volver),
+          isSemantics(label: rotulo, isButton: true, isEnabled: true, hasTapAction: true),
+        );
+        final etiquetas = tester.semantics
+            .simulatedAccessibilityTraversal()
+            .map((n) => n.label)
+            .where((e) => e.isNotEmpty)
+            .toList();
+        final posiciones = [
+          _mensajeNeutro,
+          'Si no lo encontrás, revisá la carpeta de spam.',
+          'Reenviar en 60s',
+          rotulo,
+        ].map(etiquetas.indexOf).toList();
+        expect(posiciones, everyElement(greaterThanOrEqualTo(0)), reason: '$etiquetas');
+        expect(posiciones, orderedEquals([...posiciones]..sort()), reason: '$etiquetas');
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        handle.dispose();
+      });
+    }
   });
 
   group('RecuperacionPasswordPage — anti-enumeración', () {
