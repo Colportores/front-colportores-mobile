@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Right;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/politica_password.dart';
+import '../../domain/entities/resultado_registro.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../providers/auth_providers.dart';
 import '../providers/sesion_notifier.dart';
@@ -129,6 +131,10 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
 
     final email = _email.text;
     final password = _password.text;
+    // Se leen antes del `await`: si la persona sale de la pantalla con el alta en vuelo, `ref` ya no
+    // se puede usar, pero el correo del alta salió igual y hay que guardarlo.
+    final registrarEnvio = ref.read(registrarEnvioVerificacionUseCaseProvider);
+    final ahora = widget.ahora;
 
     final resultado = await ref
         .read(sesionProvider.notifier)
@@ -141,6 +147,22 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
           aceptaTerminos: _aceptaTerminos,
           aceptaTradeOffE2E: _aceptaTradeOffE2E,
         );
+
+    // El correo del alta es el primer envío: de acá cuentan los 60 s para reenviar (HU-AUTH-002,
+    // #325). Se guarda en el teléfono aunque la persona ya haya salido de esta pantalla (alta en
+    // vuelo): si no, al iniciar sesión después podría pedir otro reenvío sin esperar, y el servidor
+    // la bloquearía una hora.
+    final DateTime? envioDelAlta;
+    if (resultado case Right(
+      value: ResultadoRegistro(requiereVerificacion: true, email: final correo),
+    )) {
+      envioDelAlta = ahora();
+      unawaited(
+        registrarEnvio(RegistrarEnvioVerificacionParams(correo: correo, ahora: envioDelAlta)),
+      );
+    } else {
+      envioDelAlta = null;
+    }
 
     if (!mounted) return;
 
@@ -178,16 +200,8 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
       },
       (r) {
         if (r.requiereVerificacion) {
-          // El correo del alta es el primer envío: de acá cuentan los 60 s para reenviar (HU-AUTH-002,
-          // #325). Se guarda en el teléfono y se le pasa a la pantalla, que arranca como en 12-A02.
-          final envioDelAlta = widget.ahora();
-          unawaited(
-            ref.read(registrarEnvioVerificacionUseCaseProvider)(
-              RegistrarEnvioVerificacionParams(correo: r.email, ahora: envioDelAlta),
-            ),
-          );
-          // r.email es el normalizado por el use case (trim + minúsculas), no lo que haya
-          // tecleado el usuario.
+          // La pantalla arranca como en 12-A02, con la espera de 60 s desde el alta. r.email es el
+          // normalizado por el use case (trim + minúsculas), no lo que haya tecleado el usuario.
           unawaited(
             Navigator.of(context).pushReplacement(
               MaterialPageRoute<void>(

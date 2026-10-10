@@ -423,6 +423,65 @@ void main() {
         await tester.pumpWidget(const SizedBox());
       });
 
+      testWidgets('si la persona sale de «Registrarse» con el alta en vuelo, el correo que salió '
+          'igual cuenta: se guarda la espera de 60 s y no se abre la verificación', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPilaConPantallaInicial(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_registro')));
+        await tester.pumpAndSettle();
+        await _completarFormulario(tester, email: '  Lucia.Silva@Correo.COM ');
+
+        remote.demoraRegistrar = Completer<void>();
+        await _tocarContinuar(tester);
+        await tester.pump();
+        expect(remote.llamadasRegistrar, 1);
+
+        // Vuelve atrás antes de la respuesta de la red.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(RegistroPage), findsNothing);
+
+        remote.demoraRegistrar!.complete();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(VerificacionEmailPage), findsNothing);
+        expect(tester.takeException(), isNull);
+        final guardados = await bloqueos.leer(ahora: DateTime.now());
+        expect(guardados.esperas.keys, ['lucia.silva@correo.com']);
+        expect(guardados.bloqueos, isEmpty);
+      });
+
+      testWidgets('si sale con el alta en vuelo y el alta falla, no se guarda ningún envío', (
+        tester,
+      ) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'ana@example.com': 'secreto123'},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPilaConPantallaInicial(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_registro')));
+        await tester.pumpAndSettle();
+        await _completarFormulario(tester, email: 'ana@example.com');
+
+        remote.demoraRegistrar = Completer<void>();
+        await _tocarContinuar(tester);
+        await tester.pump();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        remote.demoraRegistrar!.complete();
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect((await bloqueos.leer(ahora: DateTime.now())).estaVacio, isTrue);
+      });
+
       testWidgets(
         'con la sesión inmediata (sin verificación pendiente) no se guarda ningún envío',
         (tester) async {
