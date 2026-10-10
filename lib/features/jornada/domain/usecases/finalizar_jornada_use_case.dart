@@ -33,16 +33,18 @@ final class FinalizarJornadaParams extends Equatable {
 ///    `Left(FailureJornadaDeDiaAnterior)`: cerrarla con la hora de hoy inventaría un `fin` —el
 ///    lunes olvidado y cerrado el martes a las 8:00 daría 14 h—, y la HU pide que nunca se
 ///    invente uno. Es la señal para que la pantalla ofrezca la corrección de la HU ("¿A qué hora
-///    terminaste?"). Cerca de la medianoche, con el margen todavía en el día del inicio, es un
-///    cierre normal: ver el punto 4.
+///    terminaste?"), con el inicio de la jornada siguiente del colportor si hay una (su tope).
+///    Cerca de la medianoche, con el margen todavía en el día del inicio, es un cierre normal: ver
+///    el punto 4.
 /// 2b. Si en cambio SÍ llegó [FinalizarJornadaParams.hora] para esa misma jornada de día
 ///    anterior, es la corrección: se acepta si está estrictamente después del inicio y no pasa
-///    del menor entre 12 h después del inicio y ahora ([JornadaSinCerrar], decisión de Cristian
-///    del 30/09 en #230). **El fin puede caer al día siguiente**, aunque cruce la medianoche: una
-///    jornada iniciada a las 23:59 es válida, y no queda trabada sin una hora posible. Sin el
-///    margen de 30 min, porque es una corrección, no un ajuste del momento. Fuera de ese rango,
-///    `Left(FailureHoraFueraDeRango)` con el rango real: nunca se ajusta en silencio ni se inventa
-///    un fin.
+///    del menor entre 12 h después del inicio, el inicio de la jornada siguiente y ahora
+///    ([JornadaSinCerrar], decisión de Cristian del 30/09 en #230; el tope de la siguiente, #327:
+///    el fin no pisa a la jornada que sigue ni cuenta dos veces las mismas horas). **El fin puede
+///    caer al día siguiente**, aunque cruce la medianoche: una jornada iniciada a las 23:59 es
+///    válida, y no queda trabada sin una hora posible. Sin el margen de 30 min, porque es una
+///    corrección, no un ajuste del momento. Fuera de ese rango, `Left(FailureHoraFueraDeRango)`
+///    con el rango real: nunca se ajusta en silencio ni se inventa un fin.
 /// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
@@ -111,11 +113,24 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
         ahora: ahora,
         margen: margenHaciaAtras,
       )) {
+        // La jornada siguiente (cerrada o abierta) topa el fin: se consulta solo acá, que es donde
+        // el fin se elige a mano. Si la consulta falla, el failure sale tal cual: ni se ofrece ni
+        // se acepta una hora sin saber si pisa a la que sigue.
+        final siguiente = await _repository.siguienteA(abierta);
+        final fallaDeLaConsulta = siguiente.fold<Failure?>((failure) => failure, (_) => null);
+        if (fallaDeLaConsulta != null) return Left(fallaDeLaConsulta);
+        final inicioSiguiente = siguiente.fold<DateTime?>((_) => null, (j) => j?.inicio);
         if (elegida == null) {
-          return Left(FailureJornadaDeDiaAnterior(inicio: abierta.inicio));
+          return Left(
+            FailureJornadaDeDiaAnterior(inicio: abierta.inicio, inicioSiguiente: inicioSiguiente),
+          );
         }
         final hora = _alMilisegundo(elegida);
-        final tope = JornadaSinCerrar.topeDelFin(inicio: abierta.inicio, ahora: ahora);
+        final tope = JornadaSinCerrar.topeDelFin(
+          inicio: abierta.inicio,
+          ahora: ahora,
+          inicioSiguiente: inicioSiguiente,
+        );
         if (!hora.isAfter(abierta.inicio) || hora.isAfter(tope)) {
           return Left(
             FailureHoraFueraDeRango(
@@ -142,9 +157,7 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
         return const Left(
           FailureValidacion(
             campos: {'hora': 'La hora del teléfono es anterior al inicio de la jornada'},
-            mensaje:
-                'La hora del teléfono es anterior al inicio de tu jornada. Revisá la fecha y '
-                'hora del teléfono y volvé a intentar.',
+            mensaje: JornadaSinCerrar.avisoRelojAtrasado,
           ),
         );
       }

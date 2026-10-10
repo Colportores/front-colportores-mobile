@@ -72,6 +72,27 @@ final class JornadaRepositoryImpl implements JornadaRepository {
     }
   }
 
+  @override
+  Future<Either<Failure, Jornada?>> siguienteA(Jornada jornada) async {
+    try {
+      final siguiente = await _local.siguienteA(
+        colportorId: jornada.colportorId,
+        inicio: jornada.inicio,
+      );
+      return Right(siguiente?.toEntity());
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'JORNADA_SIGUIENTE_FAIL',
+        'no se pudo leer la jornada siguiente',
+        {'jornada_id': jornada.id},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
   /// TODO(#74): encolar el sync del cierre (`engine.stage(Tables.jornada, Op.update, …)` en la
   /// misma transacción que la escritura, contrato-sync-engine.md §3), igual que el alta en
   /// [crear]; depende del mismo PR #40.

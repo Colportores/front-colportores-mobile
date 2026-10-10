@@ -34,12 +34,44 @@ abstract final class JornadaSinCerrar {
   static DateTime primerMinutoDelFin(DateTime inicio) =>
       _alMinuto(inicio).add(const Duration(minutes: 1));
 
-  /// El último instante válido para el fin: [maximoDespuesDelInicio] después del [inicio] y, como
-  /// mucho, [ahora] (sin horas futuras: HU-JOR-001 y HU-JOR-002). En UTC.
-  static DateTime topeDelFin({required DateTime inicio, required DateTime ahora}) {
-    final maximo = inicio.toUtc().add(maximoDespuesDelInicio);
+  /// El aviso cuando el reloj del teléfono quedó antes del inicio de la jornada (lo atrasaron a
+  /// mano): ningún minuto es válido y nunca se inventa un fin. Lo da el caso de uso y lo muestra
+  /// la pantalla "¿A qué hora terminaste?" (decisión del 08/10 en #326).
+  static const avisoRelojAtrasado =
+      'La hora del teléfono es anterior al inicio de tu jornada. Revisá la fecha y hora del '
+      'teléfono y volvé a intentar.';
+
+  /// El aviso cuando la jornada siguiente empezó en el mismo minuto que la que quedó abierta
+  /// ([inicio]): entre las dos no cabe ningún minuto, así que no hay hora para cerrarla y nunca se
+  /// inventa un fin. Lo muestra la pantalla "¿A qué hora terminaste?" (decisión del agente de
+  /// decisiones en #327). `HH:mm` en la zona del dispositivo.
+  static String avisoSinHoraPorJornadaSiguiente(DateTime inicio) =>
+      'Esta jornada y la siguiente empezaron a la misma hora (${_horaLocal(inicio)}), así que no '
+      'hay una hora para cerrarla. Avisale a tu coordinador.';
+
+  /// El último instante válido para el fin: el menor entre [maximoDespuesDelInicio] después del
+  /// [inicio], [ahora] (sin horas futuras: HU-JOR-001 y HU-JOR-002) y, si hay, el [inicioSiguiente]
+  /// —el inicio de la jornada siguiente del mismo colportor—, para que el fin no pise a la que
+  /// sigue y las horas no se cuenten dos veces (HU-JOR-002). Con el [inicioSiguiente] el fin
+  /// puede ser igual a él (queda a ras, sin superponerse). En UTC.
+  static DateTime topeDelFin({
+    required DateTime inicio,
+    required DateTime ahora,
+    DateTime? inicioSiguiente,
+  }) {
+    var tope = inicio.toUtc().add(maximoDespuesDelInicio);
     final actual = ahora.toUtc();
-    return maximo.isBefore(actual) ? maximo : actual;
+    if (actual.isBefore(tope)) tope = actual;
+    final siguiente = inicioSiguiente?.toUtc();
+    if (siguiente != null && siguiente.isBefore(tope)) tope = siguiente;
+    return tope;
+  }
+
+  /// `HH:mm` en la zona del dispositivo.
+  static String _horaLocal(DateTime instante) {
+    final local = instante.toLocal();
+    String dosDigitos(int n) => n.toString().padLeft(2, '0');
+    return '${dosDigitos(local.hour)}:${dosDigitos(local.minute)}';
   }
 
   /// [fecha] en UTC, al principio de su minuto.
