@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/core/secure_storage/generacion_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_remote_data_source.dart';
@@ -207,6 +208,147 @@ void main() {
       await vieja;
 
       expect(repo.ultimaConsultaExitosa('ana'), DateTime(2026, 10, 7, 14, 30));
+    });
+  });
+
+  group('una respuesta lenta que llega cuando la sesión o los datos ya cambiaron (#319)', () {
+    late _RemotoManual manual;
+    late GeneracionDatosLocales generacion;
+    String? sesionDe;
+
+    setUp(() {
+      manual = _RemotoManual();
+      generacion = GeneracionDatosLocales();
+      sesionDe = 'ana';
+      repo = CuentaRepositoryImpl(
+        manual,
+        EstadoCuentaEnAlmacen(almacen),
+        usuarioEnSesion: () => sesionDe,
+        generacion: generacion,
+        logger: loggerMudo(),
+      );
+    });
+
+    test(
+      'dado el mismo usuario y los mismos datos, la respuesta se recuerda como siempre',
+      () async {
+        final consulta = repo.consultar('ana');
+
+        manual.pedidos.single.complete(EstadoCuenta.activa);
+
+        expect(await consulta, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+        expect(almacen.contenido[ClaveSegura.estadoCuenta], 'ana:activa');
+      },
+    );
+
+    test('dado que se borraron los datos locales mientras esperaba, la respuesta no reescribe '
+        'lo borrado, pero se la devuelve a quien la pidió', () async {
+      final consulta = repo.consultar('ana');
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'ana:pendienteAsignacion');
+      await almacen.borrar(ClaveSegura.estadoCuenta);
+      generacion
+        ..avanzar()
+        ..avanzar();
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+
+      expect(await consulta, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
+      expect(await repo.ultimoConocido('ana'), isNull);
+    });
+
+    test('dado que se borraron los datos locales mientras esperaba, la respuesta tampoco cuenta '
+        'como una revisión exitosa', () async {
+      final consulta = repo.consultar('ana');
+      generacion.avanzar();
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+      await consulta;
+
+      expect(repo.ultimaConsultaExitosa('ana'), isNull);
+    });
+
+    test('dado que entró otra cuenta mientras esperaba, la respuesta de la anterior no pisa lo '
+        'que recuerda la nueva', () async {
+      final deAna = repo.consultar('ana');
+      sesionDe = 'beto';
+      final deBeto = repo.consultar('beto');
+
+      manual.pedidos[1].complete(EstadoCuenta.activa);
+      await deBeto;
+      manual.pedidos[0].complete(EstadoCuenta.suspendida);
+      await deAna;
+
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'beto:activa');
+      expect(await repo.ultimoConocido('ana'), isNull);
+      expect(await repo.ultimoConocido('beto'), EstadoCuenta.activa);
+    });
+
+    test('dado que la otra cuenta todavía no consultó, la respuesta de la anterior tampoco deja '
+        'su estado en el único lugar donde se recuerda', () async {
+      final deAna = repo.consultar('ana');
+      sesionDe = 'beto';
+
+      manual.pedidos.single.complete(EstadoCuenta.suspendida);
+      await deAna;
+
+      expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
+    });
+
+    test('dado que se cerró la sesión mientras esperaba, la respuesta no se recuerda', () async {
+      final consulta = repo.consultar('ana');
+      sesionDe = null;
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+      await consulta;
+
+      expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
+    });
+
+    test(
+      'dado que la persona vuelve a entrar con la misma cuenta, la consulta de antes del borrado '
+      'se descarta aunque el usuario coincida',
+      () async {
+        final deAntes = repo.consultar('ana');
+        sesionDe = null;
+        generacion.avanzar();
+        sesionDe = 'ana';
+        final deAhora = repo.consultar('ana');
+
+        manual.pedidos[0].complete(EstadoCuenta.activa);
+        await deAntes;
+        expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
+        manual.pedidos[1].complete(EstadoCuenta.pendienteAsignacion);
+        await deAhora;
+
+        expect(almacen.contenido[ClaveSegura.estadoCuenta], 'ana:pendienteAsignacion');
+      },
+    );
+
+    test(
+      'dado un pedido hecho después del borrado, la respuesta se recuerda con normalidad',
+      () async {
+        generacion
+          ..avanzar()
+          ..avanzar();
+        final consulta = repo.consultar('ana');
+
+        manual.pedidos.single.complete(EstadoCuenta.activa);
+        await consulta;
+
+        expect(almacen.contenido[ClaveSegura.estadoCuenta], 'ana:activa');
+        expect(repo.ultimaConsultaExitosa('ana'), isNotNull);
+      },
+    );
+
+    test('dado que se borraron los datos y la consulta falla, la falla sale igual', () async {
+      final consulta = repo.consultar('ana');
+      generacion.avanzar();
+
+      manual.pedidos.single.completeError(const SinConexionException());
+
+      expect(await consulta, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
     });
   });
 

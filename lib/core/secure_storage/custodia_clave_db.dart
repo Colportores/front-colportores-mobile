@@ -7,6 +7,7 @@ import 'almacen_seguro.dart';
 import 'archivo_envoltorio_dek.dart';
 import 'clave_db.dart';
 import 'envoltorio_dek.dart';
+import 'generacion_datos_locales.dart';
 
 /// Custodia la DEK de la DB local cifrada y sus dos envoltorios (ADR-006).
 ///
@@ -28,14 +29,17 @@ final class CustodiaClaveDb {
     this._proveedorClave,
     this._sellador, {
     this._parametros = ParametrosArgon2id.adr006,
+    GeneracionDatosLocales? generacion,
     AppLogger? logger,
-  }) : _log = logger ?? AppLogger.instance;
+  }) : _generacion = generacion ?? GeneracionDatosLocales(),
+       _log = logger ?? AppLogger.instance;
 
   final AlmacenSeguro _almacen;
   final ArchivoEnvoltorioDek _archivo;
   final ProveedorClaveDb _proveedorClave;
   final SelladorDek _sellador;
   final ParametrosArgon2id _parametros;
+  final GeneracionDatosLocales _generacion;
   final AppLogger _log;
   final Random _aleatorio = Random.secure();
 
@@ -334,10 +338,19 @@ final class CustodiaClaveDb {
   ///   que es justo el caso en que el use case le ofrece reintentar.
   /// - `sesionMigrada`: no tiene datos del usuario, y sin ella una copia vieja de la sesión que haya
   ///   quedado en SharedPreferences se volvería a migrar.
+  ///
+  /// Avanza la [GeneracionDatosLocales] antes de empezar y otra vez al terminar (también si falla):
+  /// una respuesta del servidor que ya iba en camino no vuelve a escribir lo que se acaba de borrar
+  /// (el estado de cuenta, #319).
   Future<void> olvidarDatosDelUsuario() async {
-    await olvidar();
-    for (final clave in seBorranAlBorrarDatos) {
-      await _almacen.borrar(clave);
+    _generacion.avanzar();
+    try {
+      await olvidar();
+      for (final clave in seBorranAlBorrarDatos) {
+        await _almacen.borrar(clave);
+      }
+    } finally {
+      _generacion.avanzar();
     }
     _log.warn(
       LogModulo.db,

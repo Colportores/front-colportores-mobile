@@ -29,10 +29,14 @@ EstadoCuentaLocalDataSource estadoCuentaLocalDataSource(Ref ref) => ConfigSupaba
     ? EstadoCuentaEnAlmacen(ref.watch(almacenSeguroProvider))
     : EstadoCuentaLocalEnMemoria();
 
+/// Con la sesión de quien la tiene ahora y la cuenta de los borrados de datos locales: una respuesta
+/// lenta de otra sesión, o de antes de «Borrar datos locales», no se recuerda (#319).
 @Riverpod(keepAlive: true)
 CuentaRepository cuentaRepository(Ref ref) => CuentaRepositoryImpl(
   ref.watch(estadoCuentaRemoteDataSourceProvider),
   ref.watch(estadoCuentaLocalDataSourceProvider),
+  usuarioEnSesion: () => ref.mounted ? ref.read(sesionProvider).value?.usuarioId : null,
+  generacion: ref.watch(generacionDatosLocalesProvider),
   ahora: ref.watch(ahoraEsperaProvider),
 );
 
@@ -107,6 +111,12 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
     final resultado = await ref.read(consultarEstadoCuentaUseCaseProvider)(
       ConsultarEstadoCuentaParams(usuarioId: sesion.usuarioId, admiteUltimoConocido: false),
     );
+    // Mientras esperaba, la persona salió o entró otra cuenta: lo que trae es de la sesión anterior
+    // y no se muestra como el estado de la que está ahora (#319). Es lo mismo que hace la respuesta
+    // tardía del arranque.
+    if (!ref.mounted || ref.read(sesionProvider).value?.usuarioId != sesion.usuarioId) {
+      return resultado.fold((falla) => falla, (_) => null);
+    }
     return resultado.fold(
       (falla) {
         if (state.hasError) state = AsyncError<EstadoCuenta?>(falla, StackTrace.current);
@@ -114,7 +124,7 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
       },
       (estado) {
         // Si una consulta pedida después ya contestó, esta trae lo que el backend sabía antes.
-        if (ref.mounted && pedido >= _ultimaContestada) {
+        if (pedido >= _ultimaContestada) {
           _ultimaContestada = pedido;
           state = AsyncData(estado);
         }

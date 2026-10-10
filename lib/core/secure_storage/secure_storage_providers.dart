@@ -5,6 +5,7 @@ import 'archivo_envoltorio_dek.dart';
 import 'clave_db.dart';
 import 'cripto_sodium.dart';
 import 'custodia_clave_db.dart';
+import 'generacion_datos_locales.dart';
 
 part 'secure_storage_providers.g.dart';
 
@@ -38,10 +39,16 @@ ProveedorClaveDb proveedorClaveDb(Ref ref) => ref.watch(criptoSodiumProvider);
 @Riverpod(keepAlive: true)
 SelladorDek selladorDek(Ref ref) => ref.watch(criptoSodiumProvider);
 
+/// Cuántas veces se borraron los datos del usuario del teléfono (HU-AUTH-010): la avanza la custodia
+/// y la lee quien no debe volver a escribir, con una respuesta lenta, lo que se borró (#319).
+@Riverpod(keepAlive: true)
+GeneracionDatosLocales generacionDatosLocales(Ref ref) => GeneracionDatosLocales();
+
 @Riverpod(keepAlive: true)
 CustodiaClaveDb custodiaClaveDb(Ref ref) => CustodiaClaveDb(
   ref.watch(almacenSeguroProvider),
   ref.watch(archivoEnvoltorioDekProvider),
   ref.watch(proveedorClaveDbProvider),
   ref.watch(selladorDekProvider),
+  generacion: ref.watch(generacionDatosLocalesProvider),
 );
