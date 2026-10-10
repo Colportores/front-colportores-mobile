@@ -3,6 +3,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/resultado_union_duplicados.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
@@ -40,6 +41,12 @@ mixin UbicacionRepositorySinModificar {
     required String colportorId,
     bool incluirBajas = false,
   }) => throw UnimplementedError();
+
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
+  }) => throw UnimplementedError();
 }
 
 /// Lo mismo para los fakes de [UbicacionLocalDataSource].
@@ -69,5 +76,11 @@ mixin UbicacionLocalSinModificar {
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({
     required String colportorId,
     bool incluirBajas = false,
+  }) => throw UnimplementedError();
+
+  Future<UnionLocal> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
   }) => throw UnimplementedError();
 }

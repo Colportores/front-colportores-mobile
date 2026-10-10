@@ -16,9 +16,18 @@ final class ParesDuplicadosLocalDataSourceDrift extends DatabaseAccessor<AppData
   ParesDuplicadosLocalDataSourceDrift(super.attachedDatabase);
 
   @override
-  Future<Map<String, DateTime>> decididos() async => {
-    for (final fila in await select(paresDecididos).get())
-      ParDuplicado.claveDe(fila.ubicacionAId, fila.ubicacionBId): fila.decididoEn,
+  Future<Map<String, ParDecidido>> decididos() async => _aMapa(await select(paresDecididos).get());
+
+  @override
+  Stream<Map<String, ParDecidido>> observarDecididos() =>
+      select(paresDecididos).watch().map(_aMapa);
+
+  static Map<String, ParDecidido> _aMapa(List<ParDecididoFila> filas) => {
+    for (final fila in filas)
+      ParDuplicado.claveDe(fila.ubicacionAId, fila.ubicacionBId): ParDecidido(
+        decision: decisionDe(fila.decision),
+        decididoEn: fila.decididoEn,
+      ),
   };
 
   @override
@@ -38,6 +47,13 @@ final class ParesDuplicadosLocalDataSourceDrift extends DatabaseAccessor<AppData
       ),
     );
   }
+
+  /// La decisión que guarda el valor [codigo] de la columna `decision` (el `CHECK` de [ParesDecididos]
+  /// no admite otro).
+  static DecisionParDuplicado decisionDe(String codigo) => switch (codigo) {
+    'CONSERVAR_AMBOS' => DecisionParDuplicado.conservarAmbos,
+    _ => DecisionParDuplicado.ignorar,
+  };
 
   /// El valor de la columna `decision` (ver el `CHECK` de [ParesDecididos]).
   static String codigoDe(DecisionParDuplicado decision) => switch (decision) {

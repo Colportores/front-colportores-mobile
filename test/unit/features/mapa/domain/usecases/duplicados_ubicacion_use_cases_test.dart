@@ -1,19 +1,20 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests). El scan y
 // la resolución contra la DB real están en duplicados_drift_test.dart.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
-import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
-import 'package:colportores_mobile/features/mapa/domain/entities/resultado_baja_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/resultado_union_duplicados.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/pares_duplicados_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/consultor_pendientes_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
-import 'package:colportores_mobile/features/mapa/domain/usecases/baja_ubicacion_use_cases.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/duplicados_ubicacion_use_cases.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
@@ -38,10 +39,16 @@ Ubicacion _ubicacion(String id, {double metrosAlNorte = 0, DateTime? deletedAt})
 final class _Ubicaciones with UbicacionRepositorySinModificar implements UbicacionRepository {
   List<Ubicacion> propias = [];
   Object? errorAlObservar;
-  final porId = <String, Ubicacion>{};
-  Failure? fallaAlObtener;
   final pedidos = <({String colportorId, bool incluirBajas})>[];
-  final bajas = <({String id, DateTime baseUpdatedAt, String? motivo, String? conservadaId})>[];
+
+  /// La lista con resumen que sigue el caso de uso reactivo.
+  StreamController<List<UbicacionConResumen>> lista = StreamController<List<UbicacionConResumen>>();
+  var listaCancelada = false;
+
+  final uniones = <({String conservadaId, String duplicadaId, DateTime ahora})>[];
+  Either<Failure, ResultadoUnionDuplicados> respuestaUnion = const Right(
+    ResultadoUnionDuplicados(escribio: true, espaciosPasados: 1),
+  );
 
   @override
   Stream<List<Ubicacion>> observarDelColportor({
@@ -55,33 +62,23 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
   }
 
   @override
-  Future<Either<Failure, Ubicacion?>> obtener(String id) async =>
-      fallaAlObtener != null ? Left(fallaAlObtener!) : Right(porId[id]);
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) {
+    pedidos.add((colportorId: colportorId, incluirBajas: incluirBajas));
+    lista = StreamController<List<UbicacionConResumen>>(onCancel: () => listaCancelada = true);
+    return lista.stream;
+  }
 
   @override
-  Future<Either<Failure, CambioDeBaja>> cambiarBaja(
-    String id, {
-    required bool baja,
-    required DateTime baseUpdatedAt,
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
     required DateTime ahora,
-    String? motivo,
-    String? conservadaId,
   }) async {
-    bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo, conservadaId: conservadaId));
-    final actual = porId[id]!;
-    return Right((
-      ubicacion: Ubicacion(
-        id: actual.id,
-        tipo: actual.tipo,
-        calle: actual.calle,
-        numero: actual.numero,
-        lat: actual.lat,
-        lon: actual.lon,
-        ciudadId: actual.ciudadId,
-        auditoria: Auditoria(createdAt: _t0, updatedAt: ahora, deletedAt: baja ? ahora : null),
-      ),
-      escribio: true,
-    ));
+    uniones.add((conservadaId: conservadaId, duplicadaId: duplicadaId, ahora: ahora));
+    return respuestaUnion;
   }
 
   @override
@@ -100,13 +97,22 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
 }
 
 final class _Pares implements ParesDuplicadosRepository {
-  Map<String, DateTime> guardados = {};
+  Map<String, ParDecidido> guardados = {};
   Failure? fallaAlLeer;
   final decisiones = <({String clave, DecisionParDuplicado decision, DateTime ahora})>[];
 
+  StreamController<Map<String, ParDecidido>> cambios = StreamController<Map<String, ParDecidido>>();
+  var cambiosCancelados = false;
+
   @override
-  Future<Either<Failure, Map<String, DateTime>>> decididos() async =>
+  Future<Either<Failure, Map<String, ParDecidido>>> decididos() async =>
       fallaAlLeer != null ? Left(fallaAlLeer!) : Right(guardados);
+
+  @override
+  Stream<Map<String, ParDecidido>> observarDecididos() {
+    cambios = StreamController<Map<String, ParDecidido>>(onCancel: () => cambiosCancelados = true);
+    return cambios.stream;
+  }
 
   @override
   Future<Either<Failure, Unit>> decidir(
@@ -117,12 +123,6 @@ final class _Pares implements ParesDuplicadosRepository {
     decisiones.add((clave: par.clave, decision: decision, ahora: ahora));
     return const Right(unit);
   }
-}
-
-final class _SinPendientes implements ConsultorPendientesUbicacion {
-  @override
-  Future<Either<Failure, PendientesUbicacion>> de(String ubicacionId) async =>
-      const Right(PendientesUbicacion.ninguno);
 }
 
 Failure _falla<T>(Either<Failure, T> r) => r.swap().getOrElse(() => throw StateError('era Right'));
@@ -162,14 +162,38 @@ void main() {
         'justos, vuelve', () async {
       ubicaciones.propias = [_ubicacion('ub-a'), _ubicacion('ub-b', metrosAlNorte: 300)];
       pares.guardados = {
-        'ub-a|ub-b': ahora.subtract(const Duration(days: 30)).add(const Duration(milliseconds: 1)),
+        'ub-a|ub-b': ParDecidido(
+          decision: DecisionParDuplicado.ignorar,
+          decididoEn: ahora.subtract(const Duration(days: 30)).add(const Duration(milliseconds: 1)),
+        ),
       };
 
       expect(_ok(await consultar(params)), isEmpty);
 
-      pares.guardados = {'ub-a|ub-b': ahora.subtract(ConsultarParesDuplicadosUseCase.ventana)};
+      pares.guardados = {
+        'ub-a|ub-b': ParDecidido(
+          decision: DecisionParDuplicado.ignorar,
+          decididoEn: ahora.subtract(ParDecidido.ventanaIgnorar),
+        ),
+      };
       expect(_ok(await consultar(params)), hasLength(1));
     });
+
+    test(
+      'dado un par que el colportor marcó como "Son distintos", cuando escanea, no vuelve nunca, '
+      'ni pasados mil días',
+      () async {
+        ubicaciones.propias = [_ubicacion('ub-a'), _ubicacion('ub-b', metrosAlNorte: 300)];
+        pares.guardados = {
+          'ub-a|ub-b': ParDecidido(
+            decision: DecisionParDuplicado.conservarAmbos,
+            decididoEn: ahora.subtract(const Duration(days: 1000)),
+          ),
+        };
+
+        expect(_ok(await consultar(params)), isEmpty);
+      },
+    );
 
     test(
       'dado el colportor en blanco, cuando escanea, devuelve FailureValidacion sin leer nada',
@@ -254,82 +278,230 @@ void main() {
     );
   });
 
-  group('MarcarDuplicadoUseCase', () {
+  group('UnirDuplicadosUseCase', () {
     final ahora = DateTime.utc(2026, 10, 1, 12);
-    late MarcarDuplicadoUseCase marcar;
+    late UnirDuplicadosUseCase unir;
+
+    setUp(() => unir = UnirDuplicadosUseCase(ubicaciones, ahora: () => ahora));
+
+    test('dado el par A-B, cuando une conservando A, le pide a la base la unión con la hora de '
+        'ahora y devuelve lo que hizo', () async {
+      final r = _ok(
+        await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b')),
+      );
+
+      expect(r, const ResultadoUnionDuplicados(escribio: true, espaciosPasados: 1));
+      expect(ubicaciones.uniones, [(conservadaId: 'ub-a', duplicadaId: 'ub-b', ahora: ahora)]);
+    });
+
+    test('dado el par A-B, cuando elige conservar B, la que se conserva es B (se puede elegir '
+        'cuál)', () async {
+      await unir(const UnirDuplicadosParams(conservarId: 'ub-b', duplicadaId: 'ub-a'));
+
+      expect(ubicaciones.uniones.single.conservadaId, 'ub-b');
+      expect(ubicaciones.uniones.single.duplicadaId, 'ub-a');
+    });
+
+    test('dado ids con espacios alrededor, cuando une, los usa sin ellos', () async {
+      await unir(const UnirDuplicadosParams(conservarId: ' ub-a ', duplicadaId: ' ub-b '));
+
+      expect(ubicaciones.uniones.single.conservadaId, 'ub-a');
+      expect(ubicaciones.uniones.single.duplicadaId, 'ub-b');
+    });
+
+    test('dado un id en blanco o el mismo en los dos, cuando une, devuelve FailureValidacion y no '
+        'escribe', () async {
+      const enBlanco = UnirDuplicadosParams(conservarId: ' ', duplicadaId: 'ub-b');
+      const otraEnBlanco = UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: '');
+      const lasMismas = UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: ' ub-a');
+
+      expect(_falla(await unir(enBlanco)), isA<FailureValidacion>());
+      expect(_falla(await unir(otraEnBlanco)), isA<FailureValidacion>());
+      expect(_falla(await unir(lasMismas)), isA<FailureValidacion>());
+      expect(ubicaciones.uniones, isEmpty);
+    });
+
+    test('dado que la que se conserva está de baja, cuando une, devuelve esa falla tal cual (la '
+        'base no escribe nada)', () async {
+      ubicaciones.respuestaUnion = const Left(FailureConservadaDeBaja());
+
+      final f = _falla(
+        await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b')),
+      );
+
+      expect(f, const FailureConservadaDeBaja());
+    });
+
+    test('dado que la duplicada ya estaba unida, cuando une, devuelve yaUnida', () async {
+      ubicaciones.respuestaUnion = const Right(ResultadoUnionDuplicados.yaUnida);
+
+      final r = _ok(
+        await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b')),
+      );
+
+      expect(r.escribio, isFalse);
+    });
+  });
+
+  group('ObservarParesDuplicadosUseCase', () {
+    final ahora = DateTime.utc(2026, 10, 1, 12);
+    late ObservarParesDuplicadosUseCase observar;
+    late List<List<ParaRevisar>> emisiones;
+    late List<Object> errores;
+    late StreamSubscription<List<ParaRevisar>> suscripcion;
+
+    UbicacionConResumen resumen(Ubicacion u, {int espacios = 1, EstadoCasa? estado}) =>
+        UbicacionConResumen(ubicacion: u, cantidadEspacios: espacios, estado: estado);
+
+    Future<void> asentar() => Future<void>.delayed(Duration.zero);
 
     setUp(() {
-      marcar = MarcarDuplicadoUseCase(
-        ubicaciones,
-        DarDeBajaUbicacionUseCase(ubicaciones, _SinPendientes(), ahora: () => ahora),
-      );
-      ubicaciones.porId
-        ..['ub-a'] = _ubicacion('ub-a')
-        ..['ub-b'] = _ubicacion('ub-b', metrosAlNorte: 300);
+      observar = ObservarParesDuplicadosUseCase(ubicaciones, pares, ahora: () => ahora);
+      emisiones = [];
+      errores = [];
+      suscripcion = observar('col-1').listen(emisiones.add, onError: errores.add);
     });
 
-    MarcarDuplicadoParams params({String conservar = 'ub-a', String duplicada = 'ub-b'}) =>
-        MarcarDuplicadoParams(
-          conservarId: conservar,
-          duplicadaId: duplicada,
-          baseUpdatedAtDuplicada: _t0,
-        );
+    tearDown(() async => suscripcion.cancel());
 
-    test('dado el par A–B, cuando marca B como duplicado conservando A, da de baja B con motivo '
-        'y no toca A', () async {
-      final r = _ok(await marcar(params()));
+    final a = _ubicacion('ub-a');
+    final b = _ubicacion('ub-b', metrosAlNorte: 300);
 
-      expect(r, isA<UbicacionDadaDeBaja>());
-      expect((r as UbicacionDadaDeBaja).ubicacion.id, 'ub-b');
-      expect(ubicaciones.bajas, [
-        (id: 'ub-b', baseUpdatedAt: _t0, motivo: 'duplicado_de_ub-a', conservadaId: 'ub-a'),
-      ]);
+    test('dado que solo llegó la lista, cuando espera las decisiones, no emite todavía (un par '
+        'decidido no puede aparecer un instante)', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      await asentar();
+
+      expect(emisiones, isEmpty);
     });
 
-    test('dado el par A–B, cuando elige conservar B, da de baja A (se puede elegir cuál '
-        'conservar)', () async {
-      await marcar(
-        MarcarDuplicadoParams(
-          conservarId: 'ub-b',
-          duplicadaId: 'ub-a',
-          baseUpdatedAtDuplicada: _t0,
+    test(
+      'dado la lista y las decisiones, cuando llegan las dos, emite el par con los espacios y el '
+      'estado de cada ubicación',
+      () async {
+        ubicaciones.lista.add([
+          resumen(a, espacios: 2, estado: EstadoCasa.entrevistaHecha),
+          resumen(b),
+        ]);
+        pares.cambios.add({});
+        await asentar();
+
+        expect(emisiones, hasLength(1));
+        final item = emisiones.single.single;
+        expect(item.par.clave, 'ub-a|ub-b');
+        expect(item.espaciosA, 2);
+        expect(item.espaciosB, 1);
+        expect(item.estadoA, EstadoCasa.entrevistaHecha);
+        expect(item.estadoB, isNull);
+        expect(ubicaciones.pedidos, [(colportorId: 'col-1', incluirBajas: false)]);
+      },
+    );
+
+    test('dado un par en la lista, cuando el colportor dice "Son distintos", sale solo y no '
+        'vuelve', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({});
+      await asentar();
+      expect(emisiones.last, hasLength(1));
+
+      pares.cambios.add({
+        'ub-a|ub-b': ParDecidido(decision: DecisionParDuplicado.conservarAmbos, decididoEn: ahora),
+      });
+      await asentar();
+
+      expect(emisiones.last, isEmpty);
+    });
+
+    test('dado un par ignorado hace 30 días justos, cuando se leen las decisiones, vuelve a la '
+        'lista', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({
+        'ub-a|ub-b': ParDecidido(
+          decision: DecisionParDuplicado.ignorar,
+          decididoEn: ahora.subtract(ParDecidido.ventanaIgnorar),
         ),
+      });
+      await asentar();
+
+      expect(emisiones.single, hasLength(1));
+    });
+
+    test('dado un par en la lista, cuando una de las dos queda de baja (la lista sin ella), el par '
+        'sale', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({});
+      await asentar();
+
+      ubicaciones.lista.add([resumen(a)]);
+      await asentar();
+
+      expect(emisiones.last, isEmpty);
+    });
+
+    test('dado que la lista falla, cuando emite el error, el stream sigue y vuelve a emitir con la '
+        'lectura siguiente', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({});
+      await asentar();
+
+      ubicaciones.lista.addError(StateError('disco'));
+      await asentar();
+      pares.cambios.add({});
+      await asentar();
+
+      expect(errores, hasLength(1));
+      expect(emisiones, hasLength(2));
+    });
+
+    test('dado que las decisiones fallan, cuando emite el error, lo pasa', () async {
+      pares.cambios.addError(StateError('disco'));
+      await asentar();
+
+      expect(errores, hasLength(1));
+    });
+
+    test('dado el colportor en blanco, cuando observa, el stream sale con error sin leer nada', () {
+      final stream = observar('  ');
+
+      expect(stream, emitsError(isA<StateError>()));
+    });
+
+    test(
+      'dado que se cancela la suscripción, cuando se corta, cancela la lista y las decisiones',
+      () async {
+        await suscripcion.cancel();
+
+        expect(ubicaciones.listaCancelada, isTrue);
+        expect(pares.cambiosCancelados, isTrue);
+      },
+    );
+  });
+
+  group('ParDecidido.ocultaEn', () {
+    final ahora = DateTime.utc(2026, 10, 1, 12);
+
+    test('dado "Son distintos", cuando pasa el tiempo que pase, sigue escondido', () {
+      final decidido = ParDecidido(
+        decision: DecisionParDuplicado.conservarAmbos,
+        decididoEn: ahora.subtract(const Duration(days: 4000)),
       );
 
-      expect(ubicaciones.bajas.single.id, 'ub-a');
+      expect(decidido.ocultaEn(ahora), isTrue);
     });
 
-    test('dado un id en blanco o el mismo en los dos, cuando marca, devuelve FailureValidacion y '
-        'no escribe', () async {
-      expect(_falla(await marcar(params(conservar: ' '))), isA<FailureValidacion>());
-      expect(_falla(await marcar(params(duplicada: 'ub-a'))), isA<FailureValidacion>());
-      expect(ubicaciones.bajas, isEmpty);
-    });
+    test('dado "Ignorar", cuando faltan 1 ms para los 30 días sigue escondido y a los 30 días '
+        'justos vuelve', () {
+      final casi = ParDecidido(
+        decision: DecisionParDuplicado.ignorar,
+        decididoEn: ahora.subtract(ParDecidido.ventanaIgnorar).add(const Duration(milliseconds: 1)),
+      );
+      final justo = ParDecidido(
+        decision: DecisionParDuplicado.ignorar,
+        decididoEn: ahora.subtract(ParDecidido.ventanaIgnorar),
+      );
 
-    test('dado que la que se conserva ya no está, cuando marca, devuelve '
-        'FailureUbicacionInexistente y no da de baja la otra', () async {
-      ubicaciones.porId.remove('ub-a');
-
-      expect(_falla(await marcar(params())), const FailureUbicacionInexistente());
-      expect(ubicaciones.bajas, isEmpty);
-    });
-
-    test('dado que la que se conserva quedó de baja desde el scan, cuando marca, devuelve '
-        'FailureConservadaDeBaja y no deja a las dos de baja', () async {
-      ubicaciones.porId['ub-a'] = _ubicacion('ub-a', deletedAt: _t0);
-
-      expect(_falla(await marcar(params())), const FailureConservadaDeBaja());
-      expect(ubicaciones.bajas, isEmpty);
-    });
-
-    test('dado que leer la que se conserva falla, cuando marca, devuelve esa falla', () async {
-      ubicaciones.fallaAlObtener = const FailureInesperado();
-
-      expect(_falla(await marcar(params())), const FailureInesperado());
-    });
-
-    test('el motivo de la baja es el reason de la HU', () {
-      expect(MarcarDuplicadoUseCase.motivoBaja('ub-a'), 'duplicado_de_ub-a');
+      expect(casi.ocultaEn(ahora), isTrue);
+      expect(justo.ocultaEn(ahora), isFalse);
     });
   });
 
@@ -348,11 +520,8 @@ void main() {
         distanciaMetros: 3,
         admiteConservarAmbos: true,
       );
-      MarcarDuplicadoParams marcar(String duplicada) => MarcarDuplicadoParams(
-        conservarId: 'ub-a',
-        duplicadaId: duplicada,
-        baseUpdatedAtDuplicada: _t0,
-      );
+      UnirDuplicadosParams unir(String duplicada) =>
+          UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: duplicada);
 
       expect(candidata(3), candidata(3));
       expect(candidata(3), isNot(candidata(4)));
@@ -374,8 +543,35 @@ void main() {
           ),
         ),
       );
-      expect(marcar('ub-b'), marcar('ub-b'));
-      expect(marcar('ub-b'), isNot(marcar('ub-c')));
+      expect(unir('ub-b'), unir('ub-b'));
+      expect(unir('ub-b'), isNot(unir('ub-c')));
+      expect(
+        ParDecidido(decision: DecisionParDuplicado.ignorar, decididoEn: _t0),
+        ParDecidido(decision: DecisionParDuplicado.ignorar, decididoEn: _t0),
+      );
+      expect(
+        ParDecidido(decision: DecisionParDuplicado.ignorar, decididoEn: _t0),
+        isNot(ParDecidido(decision: DecisionParDuplicado.conservarAmbos, decididoEn: _t0)),
+      );
+      expect(
+        ParaRevisar(par: par(MotivoDuplicado.cercania), espaciosA: 1, espaciosB: 2),
+        ParaRevisar(par: par(MotivoDuplicado.cercania), espaciosA: 1, espaciosB: 2),
+      );
+      expect(
+        ParaRevisar(par: par(MotivoDuplicado.cercania), espaciosA: 1, espaciosB: 2),
+        isNot(
+          ParaRevisar(
+            par: par(MotivoDuplicado.cercania),
+            espaciosA: 1,
+            espaciosB: 2,
+            estadoA: EstadoCasa.rechazo,
+          ),
+        ),
+      );
+      expect(
+        const ResultadoUnionDuplicados(escribio: true, espaciosPasados: 1),
+        isNot(const ResultadoUnionDuplicados(escribio: true, espaciosFundidos: 1)),
+      );
     });
   });
 }

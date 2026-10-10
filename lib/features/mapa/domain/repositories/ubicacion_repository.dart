@@ -6,6 +6,7 @@ import '../entities/espacios_activos.dart';
 import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
+import '../entities/resultado_union_duplicados.dart';
 import '../entities/ubicacion.dart';
 import '../entities/ubicacion_con_resumen.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
@@ -105,6 +106,23 @@ abstract interface class UbicacionRepository {
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+  });
+
+  /// HU-UBI-006, la unión de un par de duplicados, **una sola transacción local**: pasa a
+  /// [conservadaId] los espacios de [duplicadaId] (los únicos se funden en el de la conservada), la
+  /// conservada pasa a edificio si es una casa y queda con más de un espacio, la duplicada queda de
+  /// baja con el motivo `duplicado_de_<conservadaId>` en la auditoría local y se encola el trabajo
+  /// «marcar como duplicado». Ver `UnirDuplicadosUseCase`.
+  ///
+  /// - [conservadaId] no existe, o [duplicadaId] no existe: `Left(FailureUbicacionInexistente)`.
+  /// - [conservadaId] de baja: `Left(FailureConservadaDeBaja)`; no cambia nada.
+  /// - La duplicada ya de baja y sin espacios: `Right(ResultadoUnionDuplicados.yaUnida)`.
+  /// - Si el encolado falla (no hay motor de sync, #178) la transacción se revierte entera:
+  ///   `Left(FailureInesperado)` y nada cambió.
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
   });
 
   /// Las ubicaciones del colportor [colportorId] (`created_by`), como stream: emite de nuevo ante

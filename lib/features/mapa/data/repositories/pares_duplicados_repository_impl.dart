@@ -19,7 +19,7 @@ final class ParesDuplicadosRepositoryImpl implements ParesDuplicadosRepository {
   final AppLogger _log;
 
   @override
-  Future<Either<Failure, Map<String, DateTime>>> decididos() async {
+  Future<Either<Failure, Map<String, ParDecidido>>> decididos() async {
     try {
       return Right(await _local.decididos());
     } on Object catch (e, st) {
@@ -34,6 +34,9 @@ final class ParesDuplicadosRepositoryImpl implements ParesDuplicadosRepository {
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  @override
+  Stream<Map<String, ParDecidido>> observarDecididos() => _local.observarDecididos();
 
   @override
   Future<Either<Failure, Unit>> decidir(

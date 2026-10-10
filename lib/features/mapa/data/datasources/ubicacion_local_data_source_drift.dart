@@ -9,12 +9,15 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
+import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
+import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
 import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
@@ -35,10 +38,16 @@ typedef _Motivo = MotivoRechazoEspacio;
 final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
-  /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
-  UbicacionLocalDataSourceDrift(super.attachedDatabase, {required this._encolador});
+  /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10). El trabajo
+  /// «marcar como duplicado» entra por [_marcarDuplicado]: sin motor de sync (#178), falla.
+  UbicacionLocalDataSourceDrift(
+    super.attachedDatabase, {
+    required this._encolador,
+    this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
+  });
 
   final EncoladorSync _encolador;
+  final EncoladorMarcarDuplicado _marcarDuplicado;
 
   /// Metros por grado de latitud (y de longitud en el ecuador).
   static const _metrosPorGrado = 111320.0;
@@ -209,6 +218,127 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       guardada.toJson(),
     );
     return (ubicacion: guardada, escribio: true);
+  });
+
+  /// Los espacios sin baja de [ubicacionId], del más viejo al más nuevo (el orden de la RPC 0026).
+  Future<List<EspacioFila>> _espaciosActivosEnOrden(String ubicacionId) =>
+      (select(espacios)
+            ..where((e) => e.ubicacionId.equals(ubicacionId) & e.deletedAt.isNull())
+            ..orderBy([(e) => OrderingTerm.asc(e.createdAt), (e) => OrderingTerm.asc(e.id)]))
+          .get();
+
+  /// La unión de un par de duplicados (HU-UBI-006), espejo local de la RPC `marcar_como_duplicado`
+  /// (backend-supabase 0026), en una sola transacción:
+  ///
+  /// - **Espacios de B** (los activos; los de baja se quedan en B): pasan a A tal cual (cambia
+  ///   `ubicacion_id`, sin mezclarse ni validar `numero_depto` repetido), salvo el espacio único
+  ///   (`numero_depto` nulo o en blanco) cuando A y B son casa o negocio: se funde en el único vivo
+  ///   más viejo de A (el de B queda de baja) o, si A no tiene, pasa a serlo.
+  /// - **A casa con más de un espacio** pasa a edificio ("Unir tipos"); un negocio sigue negocio.
+  /// - **B** queda de baja con `duplicado_de_<A>` en el `audit_log` local (no se sincroniza).
+  /// - **Encolado**: la actualización de A solo si cambió de tipo (es una fila común, que sale antes
+  ///   que el trabajo) y el trabajo «marcar como duplicado». No se encolan los espacios movidos ni
+  ///   el tombstone de B: los aplica el servidor al correr el trabajo (su forma y qué más viaja es
+  ///   del motor de sync).
+  ///
+  /// B ya de baja y sin espacios activos: no hace nada ([UnionLocal.escribio] `false`).
+  @override
+  Future<UnionLocal> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
+  }) => transaction(() async {
+    final conservada = await _ubicacionPorId(conservadaId);
+    final duplicada = await _ubicacionPorId(duplicadaId);
+    if (conservada == null || duplicada == null) throw const UbicacionInexistenteException();
+    if (conservada.deletedAt != null) throw const ConservadaDeBajaException();
+
+    final deB = await _espaciosActivosEnOrden(duplicadaId);
+    if (duplicada.deletedAt != null && deB.isEmpty) {
+      return (
+        escribio: false,
+        espaciosPasados: 0,
+        espaciosFundidos: 0,
+        conservadaPasoAEdificio: false,
+      );
+    }
+
+    final instante = instanteMs(ahora);
+    final tipoA = UbicacionModel.tipoDesdeCodigo(conservada.tipo);
+    final tipoB = UbicacionModel.tipoDesdeCodigo(duplicada.tipo);
+    final deA = await _espaciosActivosEnOrden(conservadaId);
+
+    // Solo se funden los únicos si las dos son casa o negocio (un edificio no tiene espacio único).
+    final unePorUnico = tipoA != TipoUbicacion.edificio && tipoB != TipoUbicacion.edificio;
+    bool esUnico(EspacioFila e) => e.numeroDepto == null || e.numeroDepto!.trim().isEmpty;
+    String? unicoDeA;
+    if (unePorUnico) {
+      for (final e in deA) {
+        if (esUnico(e)) {
+          unicoDeA = e.id;
+          break;
+        }
+      }
+    }
+
+    var pasados = 0;
+    var fundidos = 0;
+    for (final e in deB) {
+      if (unePorUnico && esUnico(e) && unicoDeA != null) {
+        await (update(espacios)..where((x) => x.id.equals(e.id))).write(
+          EspaciosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+        );
+        fundidos++;
+      } else {
+        await (update(espacios)..where((x) => x.id.equals(e.id))).write(
+          EspaciosCompanion(ubicacionId: Value(conservadaId), updatedAt: Value(instante)),
+        );
+        pasados++;
+        if (unePorUnico && unicoDeA == null && esUnico(e)) unicoDeA = e.id;
+      }
+    }
+
+    // "Unir tipos": una casa que queda con más de un espacio pasa a edificio sola.
+    final pasoAEdificio = tipoA == TipoUbicacion.casa && deA.length + pasados > 1;
+    if (pasoAEdificio) {
+      await (update(ubicaciones)..where((u) => u.id.equals(conservadaId))).write(
+        UbicacionesCompanion(
+          tipo: Value(UbicacionModel.codigoDeTipo(TipoUbicacion.edificio)),
+          updatedAt: Value(instante),
+        ),
+      );
+    }
+
+    if (duplicada.deletedAt == null) {
+      await (update(ubicaciones)..where((u) => u.id.equals(duplicadaId))).write(
+        UbicacionesCompanion(updatedAt: Value(instante), deletedAt: Value(instante)),
+      );
+      // Misma marca que el `deleted_at`: así la Lista encuentra el motivo de esta baja (y no lo
+      // muestra: `MotivosBaja.paraMostrar` oculta los `duplicado_de_*`).
+      await into(auditLogLocal).insert(
+        AuditLogLocalCompanion.insert(
+          evento: EventoAuditoriaLocal.ubicacionBaja,
+          uuid: duplicadaId,
+          motivo: Value('${MotivosBaja.prefijoDuplicado}$conservadaId'),
+          creadoEn: instante,
+        ),
+      );
+    }
+
+    if (pasoAEdificio) {
+      final guardada = await _ubicacionPorId(conservadaId);
+      await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
+    }
+    await _marcarDuplicado.encolarMarcarDuplicado(
+      duplicadaId: duplicadaId,
+      conservadaId: conservadaId,
+    );
+    return (
+      escribio: true,
+      espaciosPasados: pasados,
+      espaciosFundidos: fundidos,
+      conservadaPasoAEdificio: pasoAEdificio,
+    );
   });
 
   @override
