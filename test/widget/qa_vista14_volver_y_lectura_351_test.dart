@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/confirmar_recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/recuperacion_password_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
@@ -526,5 +527,17 @@ void main() {
         isNot(contains(correo)),
       );
     });
+
+    // skip: QA #351 — F3 (previo al PR, vista 14): los parámetros de «Enviar enlace de recuperación»
+    // llevan el correo en `props` y, a diferencia de los de `ConfirmarRecuperacionPasswordParams`,
+    // `ConfirmarPasswordParams` o `IniciarSesionParams`, no apagan `stringify`: en debug, su
+    // `toString()` imprime el correo.
+    test('los parámetros de pedir el enlace no imprimen el correo en su toString', () {
+      const correo = 'ana.perez@correo.com';
+      expect(
+        const SolicitarRecuperacionPasswordParams(email: correo).toString(),
+        isNot(contains(correo)),
+      );
+    }, skip: true);
   });
 }
