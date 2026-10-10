@@ -196,6 +196,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   /// «¿Olvidaste tu clave?» / «Recuperar acceso»: con el correo ya escrito en el formulario, la
   /// pantalla de recuperación lo trae cargado.
   void _abrirRecuperacion() {
+    // El botón se apaga con «Entrar» en vuelo, pero en el cuadro en que se suelta «Entrar» todavía
+    // tiene el cierre de antes: acá se vuelve a mirar (#309).
+    if (_enviando) return;
     final email = _email.text.trim();
     unawaited(
       Navigator.of(context).push<void>(
@@ -203,6 +206,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           builder: (_) => RecuperacionPasswordPage(emailInicial: email.isEmpty ? null : email),
         ),
       ),
+    );
+  }
+
+  /// «¿No tenés cuenta? Registrate»: mismo criterio que [_abrirRecuperacion] (#309).
+  void _abrirRegistro() {
+    if (_enviando) return;
+    unawaited(
+      Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute<void>(builder: (_) => const RegistroPage())),
     );
   }
 
@@ -333,7 +346,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       if (!vencidaSinConexion) ...[
                         _EnlaceRecuperacion(
                           texto: reingreso == null ? '¿Olvidaste tu clave?' : 'Recuperar acceso',
-                          alRecuperar: _abrirRecuperacion,
+                          // Con «Entrar» en vuelo no se abre otra pantalla: si el login sale bien,
+                          // quedaría apilada encima del inicio (#309).
+                          alRecuperar: _enviando ? null : _abrirRecuperacion,
                         ),
                         const SizedBox(height: 16),
                       ],
@@ -392,17 +407,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       Center(
                         child: TextButton(
                           key: const Key('login_ir_a_registro'),
-                          onPressed: () {
-                            unawaited(
-                              Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(builder: (_) => const RegistroPage()),
-                              ),
-                            );
-                          },
+                          // Mismo criterio que el enlace de recuperación (#309): con «Entrar» en
+                          // vuelo no se apila el registro encima del inicio.
+                          onPressed: _enviando ? null : _abrirRegistro,
                           child: Text(
                             '¿No tenés cuenta? Registrate',
+                            // A texto grande se parte en dos renglones: van centrados, como el resto.
+                            textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.secondary,
+                              color: _enviando
+                                  ? theme.colorScheme.onSurface.withValues(alpha: .38)
+                                  : theme.colorScheme.secondary,
                             ),
                           ),
                         ),
@@ -618,11 +633,16 @@ class _CampoLoginState extends State<_CampoLogin> {
 /// El enlace de recuperación, a la derecha, debajo de la contraseña (HU-AUTH-004). El login no
 /// ofrece «Mantener sesión»: la sesión es siempre la de HU-AUTH-007, 30 días desde el último uso, y
 /// se cierra con «Cerrar sesión» (decisión de Cristian, 07/10, #303).
+///
+/// Con [alRecuperar] `null` (hay un «Entrar» en vuelo) el botón queda apagado pero sigue en el árbol
+/// de semántica con su nombre y su zona de 48×48: el lector de pantalla lo anuncia como no disponible.
+/// El texto va al ras del borde derecho de los campos (canvas 1a, 1b y 17): sin relleno horizontal,
+/// la zona de toque es tan ancha como el texto y de 48 de alto.
 class _EnlaceRecuperacion extends StatelessWidget {
   const _EnlaceRecuperacion({required this.texto, required this.alRecuperar});
 
   final String texto;
-  final VoidCallback alRecuperar;
+  final VoidCallback? alRecuperar;
 
   @override
   Widget build(BuildContext context) {
@@ -631,15 +651,15 @@ class _EnlaceRecuperacion extends StatelessWidget {
       alignment: AlignmentDirectional.centerEnd,
       child: TextButton(
         key: const Key('login_olvidaste_clave'),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          minimumSize: const Size(48, 48),
-        ),
+        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(48, 48)),
         onPressed: alRecuperar,
         child: Text(
           texto,
+          // El texto lleva su color: apagado hay que pintarlo apagado a mano (el 38 % de Material).
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.secondary,
+            color: alRecuperar == null
+                ? theme.colorScheme.onSurface.withValues(alpha: .38)
+                : theme.colorScheme.secondary,
             fontWeight: FontWeight.w600,
           ),
         ),
