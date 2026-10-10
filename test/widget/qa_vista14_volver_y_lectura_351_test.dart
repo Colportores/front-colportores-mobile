@@ -5,8 +5,8 @@
 // checklist (360×640 y 412×915) con el texto al 100 %, 200 % y 300 %; el atrás del sistema en cada
 // estado; los límites del tope de 3 s; y los casos en que el almacén no contesta o falla.
 //
-// Los dos tests con `skip` (comentario `// skip: QA #351 — …`) documentan un hallazgo de la QA del
-// PR #351 (el comentario «QA ronda 1»): el implementador les saca el `skip` cuando lo arregla.
+// Los tres tests marcados `// QA #351 — F1/F2/F3` nacieron como hallazgos de la QA del PR #351 (el
+// comentario «QA ronda 1») y se activaron al arreglarlos (ronda única).
 import 'dart:async';
 
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -342,9 +342,8 @@ void main() {
       expect(tester.getRect(enviarQa).bottom, lessThanOrEqualTo(640));
     });
 
-    // skip: QA #351 — F2 (#318): la lectura que llega tarde cuenta la espera desde la hora en que
-    // EMPEZÓ a leer (`ahora` se captura antes del `await`), no desde la hora en que terminó. Con un
-    // envío hace 20 s y la lectura terminando 10 s después, quedan 30 s; la pantalla dice 40 s.
+    // QA #351 — F2 (#318, #352): la lectura que llega tarde descuenta lo que tardó. Con un envío
+    // hace 20 s y la lectura terminando 10 s después quedan 30 s, no los 40 s de cuando empezó.
     testWidgets('la lectura tarda 10 s: la espera que se muestra es la que falta de verdad (30 s '
         'de 60 con el envío hace 30 s), no la que había al empezar a leer', (tester) async {
       armar();
@@ -356,13 +355,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('Podés pedir otro enlace en 30s.'), findsOneWidget);
-    }, skip: true);
+    });
   });
 
   group('QA #351 · el almacén colgado después de enviar (#318)', () {
-    // skip: QA #351 — F1 (#318): el tope de 3 s cubre la LECTURA, pero la escritura de la hora
-    // (`await registrar(...)`) no tiene tope. Si el almacén no contesta, el correo ya salió y la
-    // pantalla queda en «Enviando…» para siempre: ni A05, ni la flecha, ni el atrás del sistema.
+    // QA #351 — F1 (#318): el tope de 3 s también cubre la ESCRITURA de la hora (`await registrar`).
+    // Si el almacén no contesta, el correo ya salió y A05 se ve igual: ni «Enviando…» para siempre
+    // ni el atrás del sistema bloqueado.
     testWidgets('el correo salió y el almacén no contesta la escritura: pasados 3 s se llega a A05 '
         'y se puede salir', (tester) async {
       final remote = remotoQa();
@@ -382,7 +381,7 @@ void main() {
       );
       expect(exitoQa, findsOneWidget, reason: 'la persona tiene que saber que el enlace salió');
       expect(await atrasDelSistemaQa(tester), isFalse);
-    }, skip: true);
+    });
   });
 
   group('QA #351 · la hora guardada en el futuro se corrige sola (#318)', () {
@@ -528,16 +527,16 @@ void main() {
       );
     });
 
-    // skip: QA #351 — F3 (previo al PR, vista 14): los parámetros de «Enviar enlace de recuperación»
-    // llevan el correo en `props` y, a diferencia de los de `ConfirmarRecuperacionPasswordParams`,
-    // `ConfirmarPasswordParams` o `IniciarSesionParams`, no apagan `stringify`: en debug, su
-    // `toString()` imprime el correo.
+    // QA #351 — F3 (previo al PR, vista 14): los parámetros de «Enviar enlace de recuperación» llevan
+    // el correo en `props` y, como los de `ConfirmarRecuperacionPasswordParams`,
+    // `ConfirmarPasswordParams` o `IniciarSesionParams`, apagan `stringify`: su `toString()` no
+    // imprime el correo.
     test('los parámetros de pedir el enlace no imprimen el correo en su toString', () {
       const correo = 'ana.perez@correo.com';
       expect(
         const SolicitarRecuperacionPasswordParams(email: correo).toString(),
         isNot(contains(correo)),
       );
-    }, skip: true);
+    });
   });
 }

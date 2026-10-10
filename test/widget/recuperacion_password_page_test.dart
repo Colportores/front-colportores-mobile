@@ -1694,6 +1694,48 @@ void main() {
       expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
     });
 
+    prueba('dado el aviso, cuando la lectura termina 10 s después, entonces la espera descuenta '
+        'lo que tardó (30 s, no los 40 s de cuando empezó) (#352)', (tester) async {
+      await _montarPagina(tester, remote: remote, ultimoEnvio: demorado, ahora: reloj.call);
+      await tester.pump();
+      final alAbrir = reloj.ahora;
+      await tocarEnviarConLaLecturaColgada(tester);
+      await tester.pump(tope);
+      await tester.pump();
+      expect(find.text(aviso), findsOneWidget);
+
+      reloj.avanzar(const Duration(seconds: 10));
+      lectura.complete(alAbrir.subtract(const Duration(seconds: 20)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Podés pedir otro enlace en 30s.'), findsOneWidget);
+      expect(find.text(aviso), findsNothing);
+      await _pasar(tester, reloj, const Duration(seconds: 30));
+      expect(find.textContaining('Podés pedir otro enlace'), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+    });
+
+    prueba('dado el aviso, cuando la lectura termina después de que la espera ya venció, '
+        'entonces no hay espera ni aviso y se puede pedir el enlace (#352)', (tester) async {
+      await _montarPagina(tester, remote: remote, ultimoEnvio: demorado, ahora: reloj.call);
+      await tester.pump();
+      final alAbrir = reloj.ahora;
+      await tocarEnviarConLaLecturaColgada(tester);
+      await tester.pump(tope);
+      await tester.pump();
+
+      reloj.avanzar(const Duration(seconds: 10));
+      lectura.complete(alAbrir.subtract(const Duration(seconds: 55)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('Podés pedir otro enlace'), findsNothing);
+      expect(find.text(aviso), findsNothing);
+      expect(_enviar(tester).onPressed, isNotNull);
+      expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+    });
+
     prueba('dado dos toques seguidos con el teléfono colgado, cuando pasa cada tope, '
         'entonces avisa las dos veces sin trabarse ni enviar', (tester) async {
       await _montarPagina(tester, remote: remote, ultimoEnvio: demorado, ahora: reloj.call);
