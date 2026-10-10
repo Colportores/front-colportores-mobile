@@ -117,16 +117,69 @@ abstract final class TextosPreparacionDbLocal {
 
   static const empezarDeNuevoTitulo = '¿Empezar de nuevo?';
 
-  /// Qué se pierde: las personas y las notas nunca se suben, y las ventas se pierden solo si todavía
-  /// no se subieron (decisión del orquestador, 09/10, front-colportores-mobile#283). No promete la
-  /// copia de Drive ni que algo «se vuelve a bajar».
+  /// Qué se pierde: las personas y las notas nunca se suben, y lo demás (jornadas, ubicaciones y
+  /// ventas) se pierde solo si todavía no se subió (decisión del orquestador, 09/10,
+  /// front-colportores-mobile#283 y #337). No promete la copia de Drive ni que algo «se vuelve a
+  /// bajar».
   static const empezarDeNuevoDetalle =
       'Los datos guardados en este teléfono no se pueden abrir sin la llave que los protege. Si '
-      'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y las '
-      'ventas que todavía no se subieron. Lo que ya se subió no se pierde. No se puede deshacer.';
+      'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y todo '
+      'lo que todavía no se subió, como jornadas, ubicaciones y ventas. Lo que ya se subió no se '
+      'pierde. No se puede deshacer.';
 
   static const actualizarComo =
       'Buscá Colportores en la tienda de tu celular (Google Play o App Store) y actualizala.';
+}
+
+/// El título y el detalle del diálogo de «Empezar de nuevo», que se desplazan juntos con la barra
+/// siempre a la vista: con la letra grande el detalle no entra en una pantalla chica, y sin la barra
+/// no se nota que sigue más abajo. El título va acá y no en `AlertDialog.title` para que se
+/// desplace también: fijo, a 360x640 con el texto al 200 % se comería el lugar del detalle.
+class _DetalleConBarra extends StatefulWidget {
+  const _DetalleConBarra({required this.titulo, required this.detalle});
+
+  final String titulo;
+  final String detalle;
+
+  @override
+  State<_DetalleConBarra> createState() => _DetalleConBarraState();
+}
+
+class _DetalleConBarraState extends State<_DetalleConBarra> {
+  final _controlador = ScrollController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Scrollbar(
+      controller: _controlador,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _controlador,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              header: true,
+              child: Text(
+                widget.titulo,
+                style: tema.textTheme.headlineSmall?.copyWith(color: tema.colorScheme.onSurface),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(widget.detalle),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// La DB local de quien acaba de entrar, antes de la pantalla principal (HU-AUTH-009, #27).
@@ -295,10 +348,13 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       }
 
       return AlertDialog(
-        // Con el texto al 200 % el detalle no entra en una pantalla chica: se desplaza.
-        scrollable: true,
-        title: const Text(TextosPreparacionDbLocal.empezarDeNuevoTitulo),
-        content: const Text(TextosPreparacionDbLocal.empezarDeNuevoDetalle),
+        // El título y el detalle se desplazan juntos, con la barra a la vista (QA de #337).
+        semanticLabel: TextosPreparacionDbLocal.empezarDeNuevoTitulo,
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+        content: const _DetalleConBarra(
+          titulo: TextosPreparacionDbLocal.empezarDeNuevoTitulo,
+          detalle: TextosPreparacionDbLocal.empezarDeNuevoDetalle,
+        ),
         actions: [
           TextButton(
             key: const Key('preparacion_db_cancelar_empezar'),

@@ -443,8 +443,8 @@ void main() {
     const queSePierde =
         'Los datos guardados en este teléfono no se pueden abrir sin la llave que los protege. Si '
         'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y '
-        'las ventas que todavía no se subieron. Lo que ya se subió no se pierde. No se puede '
-        'deshacer.';
+        'todo lo que todavía no se subió, como jornadas, ubicaciones y ventas. Lo que ya se subió '
+        'no se pierde. No se puede deshacer.';
 
     /// Una base que no abre (sin la llave en el almacén ni la copia por contraseña) y un primer
     /// «Reintentar» que vuelve a fallar: ya se ofrece «Empezar de nuevo».

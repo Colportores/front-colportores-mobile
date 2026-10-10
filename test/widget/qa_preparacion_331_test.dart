@@ -37,11 +37,13 @@ const _literalHu =
 const _tituloPantalla = 'No pudimos abrir tus datos';
 const _ofertaEmpezar = 'Si sigue sin funcionar, podés empezar de nuevo con este teléfono.';
 const _tituloDialogo = '¿Empezar de nuevo?';
-// Decisión del orquestador (09/10) en front-colportores-mobile#283, P2.
+// Decisión del orquestador (09/10) en front-colportores-mobile#283, P2, y en #337 (jornadas,
+// ubicaciones y ventas).
 const _detalleDialogo =
     'Los datos guardados en este teléfono no se pueden abrir sin la llave que los protege. Si '
-    'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y las '
-    'ventas que todavía no se subieron. Lo que ya se subió no se pierde. No se puede deshacer.';
+    'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y todo '
+    'lo que todavía no se subió, como jornadas, ubicaciones y ventas. Lo que ya se subió no se '
+    'pierde. No se puede deshacer.';
 
 /// Lo que un usuario nunca debe leer: el texto viejo, el del `Failure`, el código o jerga técnica.
 const _prohibidoEnPantalla = [
@@ -536,10 +538,8 @@ void main() {
   });
 
   group('QA #331 — el diálogo con el texto al 200 % en una pantalla chica', () {
-    // skip: QA #331 — con el texto al 200 % en 360x640 el cuerpo que dice qué se pierde queda detrás
-    // de un desplazamiento sin ninguna señal (en Android no hay barra visible): se ven 4 de ~15
-    // líneas, y el botón rojo «Borrar y empezar de nuevo» está a la vista antes de leer «ventas».
-    // Con el skip sacado, pasa cuando el diálogo muestra un `Scrollbar` con `thumbVisibility`.
+    // Con el texto al 200 % en 360x640 el detalle que dice qué se pierde queda detrás de un
+    // desplazamiento: el diálogo muestra un `Scrollbar` con `thumbVisibility` para que se note.
     testWidgets(
       'con el texto al 200 % en 360x640 el desplazamiento del detalle se ve (barra visible)',
       (tester) async {
@@ -550,7 +550,6 @@ void main() {
         expect(barra, findsOneWidget);
         expect(tester.widget<Scrollbar>(barra).thumbVisibility, isTrue);
       },
-      skip: true,
     );
   });
 
