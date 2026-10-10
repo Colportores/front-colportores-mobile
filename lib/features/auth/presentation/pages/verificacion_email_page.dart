@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,8 @@ import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../providers/auth_providers.dart';
 import '../providers/enlace_verificacion_usado_providers.dart';
 import '../providers/sesion_notifier.dart';
+import '../widgets/borde_discontinuo.dart';
+import '../widgets/icono_sin_conexion.dart';
 
 /// Estado visible de [VerificacionEmailPage] (HU-AUTH-002).
 enum EstadoVerificacionEmail {
@@ -88,9 +91,12 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   /// la espera ni el candado se pierden al salir de la pantalla o reiniciar la app (30/09, #249).
   static const Duration _cooldown = esperaReenvioVerificacion;
 
-  /// Lo más que un reenvío espera a que se lean los reenvíos guardados: pasado ese tope se pide igual
-  /// (el servidor tiene la última palabra) en vez de dejar el botón en «ocupado» sin fin (como #318).
-  static const Duration _topeLectura = Duration(seconds: 3);
+  /// Lo más que un reenvío espera al almacén del teléfono, para leer los reenvíos guardados antes de
+  /// pedir y para guardar lo que dejó el servidor después: pasado ese tope sigue igual (el servidor
+  /// tiene la última palabra; la pantalla ya sabe lo que pasó) en vez de dejar los botones en
+  /// «ocupado» sin fin (como #318). El almacén atiende de a una operación (cola del repositorio):
+  /// una lectura que no termina también frena los guardados que vienen detrás.
+  static const Duration _topeAlmacen = Duration(seconds: 3);
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
@@ -112,7 +118,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   ReenviosGuardados _reenvios = ReenviosGuardados.vacio;
 
   /// `true` mientras se leen del teléfono los reenvíos guardados: un reenvío pedido en ese instante
-  /// espera a [_lecturaReenvios] (hasta [_topeLectura]) para no saltearse un candado vigente.
+  /// espera a [_lecturaReenvios] (hasta [_topeAlmacen]) para no saltearse un candado vigente.
   bool _leyendoReenvios = true;
   late final Future<void> _lecturaReenvios;
 
@@ -137,6 +143,10 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
 
   String? _errorEmail;
   String? _errorGeneral;
+
+  /// El error de [_errorGeneral] es la falta de conexión (12-A08): se dibuja neutro, no como un
+  /// error de la cuenta.
+  bool _errorSinConexion = false;
   String? _mensajeReenvio;
   bool _reenviando = false;
   bool _verificando = false;
@@ -370,13 +380,14 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _reenviando = true;
       _errorEmail = null;
       _errorGeneral = null;
+      _errorSinConexion = false;
       _mensajeReenvio = null;
     });
 
     // Un reenvío pedido mientras se leen los reenvíos guardados espera a saber si esta dirección
-    // está bloqueada o esperando, pero no más que [_topeLectura].
+    // está bloqueada o esperando, pero no más que [_topeAlmacen].
     if (_leyendoReenvios) {
-      await _lecturaReenvios.timeout(_topeLectura, onTimeout: () {});
+      await _lecturaReenvios.timeout(_topeAlmacen, onTimeout: () {});
       if (!mounted) return;
       if (_estaBloqueado(email) || _segundosRestantes > 0) {
         setState(() => _reenviando = false);
@@ -392,13 +403,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     DateTime? venceBloqueo;
     DateTime? venceEspera;
     if (failure case FailureServidor(status: 429)) {
-      venceBloqueo = (await registrarBloqueo(
-        RegistrarBloqueoReenvioVerificacionParams(correo: email, ahora: cuando),
-      )).fold((_) => cuando.add(bloqueoReenvioVerificacion), (vence) => vence);
+      venceBloqueo = await _vencimientoGuardado(
+        registrarBloqueo(RegistrarBloqueoReenvioVerificacionParams(correo: email, ahora: cuando)),
+        cuando.add(bloqueoReenvioVerificacion),
+      );
     } else if (failure == null) {
-      venceEspera = (await registrarEnvio(
-        RegistrarEnvioVerificacionParams(correo: email, ahora: cuando),
-      )).fold((_) => cuando.add(_cooldown), (vence) => vence);
+      venceEspera = await _vencimientoGuardado(
+        registrarEnvio(RegistrarEnvioVerificacionParams(correo: email, ahora: cuando)),
+        cuando.add(_cooldown),
+      );
     }
 
     if (!mounted) return;
@@ -421,9 +434,24 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           _reenvios = _reenvios.conBloqueo(correoParaBloqueo(email), venceBloqueo!);
           _programarCambioDelLimite();
         case final Failure f:
-          _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
+          _fijarErrorGeneral(f, 'reenviar el email', 'No pudimos reenviar el email.');
       }
     });
+  }
+
+  /// El vencimiento que dejó [guardado] en el teléfono o, si no se pudo guardar o el almacén no
+  /// contesta en [_topeAlmacen], el [local] que calcula la pantalla. El guardado sigue su camino
+  /// (si termina más tarde, queda guardado), pero la pantalla no lo espera más que el tope: el
+  /// estado y el aviso salen igual y ningún botón queda en «ocupado» por un almacén colgado.
+  Future<DateTime> _vencimientoGuardado(
+    Future<Either<Failure, DateTime>> guardado,
+    DateTime local,
+  ) async {
+    try {
+      return (await guardado.timeout(_topeAlmacen)).fold((_) => local, (vence) => vence);
+    } on Object {
+      return local;
+    }
   }
 
   Future<void> _yaVerifique() async {
@@ -433,6 +461,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     setState(() {
       _verificando = true;
       _errorGeneral = null;
+      _errorSinConexion = false;
       _mensajeReenvio = null;
     });
 
@@ -446,13 +475,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       if (failure == null) {
         _estado = EstadoVerificacionEmail.verificado;
       } else {
-        _errorGeneral = _textoDeError(
-          failure,
-          'verificar tu cuenta',
-          'No pudimos verificar tu cuenta.',
-        );
+        _fijarErrorGeneral(failure, 'verificar tu cuenta', 'No pudimos verificar tu cuenta.');
       }
     });
+  }
+
+  /// Deja el aviso de [failure] (dentro de un `setState`).
+  void _fijarErrorGeneral(Failure failure, String accion, String noPudimos) {
+    _errorGeneral = _textoDeError(failure, accion, noPudimos);
+    _errorSinConexion = failure is FailureSinConexion;
   }
 
   void _continuar() => Navigator.of(context).popUntil((route) => route.isFirst);
@@ -677,8 +708,11 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         _AvisoVerificacion(
           key: const Key('verificacion_email_error_general'),
           texto: error,
-          icono: Icons.error_outline,
-          esError: true,
+          // 12-A08: la falta de conexión no es un error de la cuenta; el canvas la dibuja neutra
+          // (borde de trazos gris y círculo con una ✕), como el login (17-A02).
+          icono: _errorSinConexion ? null : Icons.error_outline,
+          esError: !_errorSinConexion,
+          sinConexion: _errorSinConexion,
         ),
       if (_estado == EstadoVerificacionEmail.pendiente && widget.password != null)
         FilledButton(
@@ -780,14 +814,20 @@ class _AvisoVerificacion extends StatelessWidget {
   const _AvisoVerificacion({
     super.key,
     required this.texto,
-    required this.icono,
+    this.icono,
     this.esError = false,
+    this.sinConexion = false,
     this.liveRegion = true,
-  });
+  }) : assert(icono != null || sinConexion, 'sin ícono propio solo el aviso de sin conexión');
 
   final String texto;
-  final IconData icono;
+
+  /// El ícono del aviso; `null` con [sinConexion], que lleva el suyo ([IconoSinConexion]).
+  final IconData? icono;
   final bool esError;
+
+  /// Aviso de falta de conexión (12-A08): neutro, con borde de trazos gris, sin el rojo del error.
+  final bool sinConexion;
 
   /// `false` cuando quien lo muestra lo anuncia aparte (y una sola vez).
   final bool liveRegion;
@@ -796,27 +836,40 @@ class _AvisoVerificacion extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
+    final colores = theme.extension<ColoresColportaje>()!;
     final color = esError ? esquema.error : esquema.primary;
+
+    final caja = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: esquema.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: sinConexion ? null : Border.all(color: color, width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 12,
+        children: [
+          if (sinConexion)
+            const IconoSinConexion()
+          else
+            ExcludeSemantics(child: Icon(icono, color: color)),
+          Expanded(child: Text(texto, style: theme.textTheme.bodyLarge)),
+        ],
+      ),
+    );
 
     return Semantics(
       liveRegion: liveRegion,
       container: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: esquema.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color, width: 1.5),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 12,
-          children: [
-            ExcludeSemantics(child: Icon(icono, color: color)),
-            Expanded(child: Text(texto, style: theme.textTheme.bodyLarge)),
-          ],
-        ),
-      ),
+      child: sinConexion
+          ? BordeDiscontinuo(
+              key: const Key('verificacion_email_aviso_borde_discontinuo'),
+              color: colores.gris,
+              radio: 14,
+              child: caja,
+            )
+          : caja,
     );
   }
 }

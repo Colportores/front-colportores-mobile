@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/core/theme/colores_colportaje.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -11,6 +12,8 @@ import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_ree
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/widgets/borde_discontinuo.dart';
+import 'package:colportores_mobile/features/auth/presentation/widgets/icono_sin_conexion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1562,34 +1565,222 @@ void main() {
         expect(find.byKey(const Key('verificacion_email_error_general')), findsOneWidget);
       });
 
-      testWidgets('una lectura de los reenvíos que no termina no deja «Reenviar» ocupado: a los '
-          '3 s el pedido sale igual', (tester) async {
-        final bloqueos = _BloqueosEspiados()..demoraLectura = Completer<void>();
-        final remote = remotoSano();
-        await _montarPagina(
-          tester,
-          remote: remote,
-          password: 'Secreto123',
-          ahora: () => base,
-          bloqueos: bloqueos,
+      // El repositorio real atiende de a una operación (cola): si la lectura del almacén no termina,
+      // los guardados que vienen detrás tampoco. La pantalla no puede quedar esperándolos (B1 de la
+      // revisión del PR #333). Cada caso dice cuántos segundos tarda en soltar el «ocupado»: 3 s del
+      // tope de la lectura inicial más 3 s del tope del guardado, o solo los 3 s del guardado.
+      for (final (nombre, crearAlmacen, segundos) in <(String, _AlmacenColgado Function(), int)>[
+        ('que no lee', () => _AlmacenColgado(colgarLectura: true), 6),
+        ('que no escribe', () => _AlmacenColgado(colgarEscritura: true), 3),
+      ]) {
+        final yaVerifique = find.byKey(const Key('verificacion_email_ya_verifique'));
+        bool yaVerifiqueHabilitado(WidgetTester tester) =>
+            tester.widget<FilledButton>(yaVerifique).onPressed != null;
+
+        testWidgets('con un almacén $nombre, el reenvío que salió bien no deja ningún botón '
+            'ocupado y muestra la cuenta regresiva y el aviso', (tester) async {
+          final remote = remotoSano();
+          await _montarPagina(
+            tester,
+            remote: remote,
+            password: 'Secreto123',
+            ahora: () => base,
+            bloqueos: BloqueoReenvioVerificacionRepositoryImpl(
+              crearAlmacen(),
+              logger: loggerMudo(),
+            ),
+          );
+          await tester.pump();
+
+          await tester.tap(botonReenviar);
+          await tester.pump();
+          await tester.pump(Duration(seconds: segundos - 1));
+          expect(
+            volverHabilitado(tester),
+            isFalse,
+            reason: 'mientras espera al almacén, sigue ocupado',
+          );
+          expect(yaVerifiqueHabilitado(tester), isFalse);
+
+          await tester.pump(const Duration(milliseconds: 1100));
+
+          expect(remote.reenviosPorEmail[lucia], 1);
+          expect(volverHabilitado(tester), isTrue);
+          expect(yaVerifiqueHabilitado(tester), isTrue);
+          expect(find.text('Reenviar en 60s'), findsOneWidget);
+          expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsOneWidget);
+          await _desmontar(tester);
+        });
+
+        testWidgets(
+          'con un almacén $nombre, el rechazo por límite (429) igual bloquea la dirección '
+          'y no deja ningún botón ocupado',
+          (tester) async {
+            await _montarPagina(
+              tester,
+              remote: remotoConLimite(),
+              password: 'Secreto123',
+              ahora: () => base,
+              bloqueos: BloqueoReenvioVerificacionRepositoryImpl(
+                crearAlmacen(),
+                logger: loggerMudo(),
+              ),
+            );
+            await tester.pump();
+
+            await tester.tap(botonReenviar);
+            await tester.pump();
+            await tester.pump(Duration(seconds: segundos - 1));
+            expect(volverHabilitado(tester), isFalse);
+
+            await tester.pump(const Duration(milliseconds: 1100));
+
+            expect(aviso, findsOneWidget);
+            expect(habilitado(tester), isFalse);
+            expect(volverHabilitado(tester), isTrue);
+            expect(yaVerifiqueHabilitado(tester), isTrue);
+            await _desmontar(tester);
+          },
         );
-        await tester.pump();
-
-        await tester.tap(botonReenviar);
-        await tester.pump();
-        await tester.pump(const Duration(seconds: 2));
-        expect(remote.reenviosPorEmail, isEmpty);
-        expect(habilitado(tester), isFalse, reason: 'ocupado mientras espera la lectura');
-
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pumpAndSettle();
-
-        expect(remote.reenviosPorEmail[lucia], 1);
-        expect(find.text('Reenviar en 60s'), findsOneWidget);
-        expect(volverHabilitado(tester), isTrue);
-        await _desmontar(tester);
-      });
+      }
     });
+
+    // Decisión del orquestador, 09/10 (QA del PR #333): en 12-A08 el canvas dibuja la falta de
+    // conexión neutra —borde de trazos gris y un círculo con una ✕—, como el login (17-A02); el aviso
+    // del límite (12-A06) y los demás errores siguen en rojo.
+    group(
+      'el aviso de sin conexión es neutro y el del límite y los errores siguen en rojo (12-A08)',
+      () {
+        final avisoError = find.byKey(const Key('verificacion_email_error_general'));
+        final borde = find.descendant(of: avisoError, matching: find.byType(BordeDiscontinuo));
+        final icono = find.descendant(of: avisoError, matching: find.byType(IconoSinConexion));
+        final yaVerifique = find.byKey(const Key('verificacion_email_ya_verifique'));
+
+        ColorScheme esquema(WidgetTester tester) =>
+            Theme.of(tester.element(find.byType(VerificacionEmailPage))).colorScheme;
+
+        /// El borde sólido del aviso (`null` si no lo tiene: el de trazos va aparte).
+        BoxBorder? bordeSolido(WidgetTester tester, Finder aviso) {
+          final caja = tester.widget<Container>(
+            find.descendant(of: aviso, matching: find.byType(Container)).first,
+          );
+          return (caja.decoration as BoxDecoration?)?.border;
+        }
+
+        testWidgets('sin conexión al reenviar: borde de trazos gris y el círculo con una ✕, sin el '
+            'rojo ni el «!» de error', (tester) async {
+          final remote = remotoSano()..simularSinConexion = true;
+          await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => base);
+          await tester.pumpAndSettle();
+
+          await tester.tap(botonReenviar);
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text('Necesitás conexión para reenviar el email. Conectate y probá de nuevo.'),
+            findsOneWidget,
+          );
+          expect(borde, findsOneWidget);
+          final colores = Theme.of(
+            tester.element(find.byType(VerificacionEmailPage)),
+          ).extension<ColoresColportaje>()!;
+          expect(tester.widget<BordeDiscontinuo>(borde).color, colores.gris);
+          expect(tester.widget<BordeDiscontinuo>(borde).color, isNot(esquema(tester).error));
+          expect(icono, findsOneWidget);
+          expect(
+            find.descendant(of: avisoError, matching: find.byIcon(Icons.close)),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: avisoError, matching: find.byIcon(Icons.error_outline)),
+            findsNothing,
+          );
+          expect(bordeSolido(tester, avisoError), isNull);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('sin conexión al tocar «Ya verifiqué»: el mismo aviso neutro', (tester) async {
+          final remote = remotoSano()..simularSinConexion = true;
+          await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => base);
+          await tester.pumpAndSettle();
+
+          await tester.tap(yaVerifique);
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text('Necesitás conexión para verificar tu cuenta. Conectate y probá de nuevo.'),
+            findsOneWidget,
+          );
+          expect(borde, findsOneWidget);
+          expect(icono, findsOneWidget);
+        });
+
+        testWidgets(
+          'el aviso del límite (12-A06) sigue rojo: borde sólido de error y «!», sin trazos '
+          'ni la ✕',
+          (tester) async {
+            await _montarPagina(
+              tester,
+              remote: remotoConLimite(),
+              password: 'Secreto123',
+              ahora: () => base,
+              bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+            );
+            await tester.pumpAndSettle();
+
+            await tester.tap(botonReenviar);
+            await tester.pumpAndSettle();
+
+            expect(aviso, findsOneWidget);
+            expect(
+              find.descendant(of: aviso, matching: find.byType(BordeDiscontinuo)),
+              findsNothing,
+            );
+            expect(
+              find.descendant(of: aviso, matching: find.byType(IconoSinConexion)),
+              findsNothing,
+            );
+            expect(
+              find.descendant(of: aviso, matching: find.byIcon(Icons.error_outline)),
+              findsOneWidget,
+            );
+            expect(
+              bordeSolido(tester, aviso),
+              Border.all(color: esquema(tester).error, width: 1.5),
+            );
+            await _desmontar(tester);
+          },
+        );
+
+        testWidgets('un error del servidor sigue rojo, y después de un «sin conexión» no queda el '
+            'aviso neutro', (tester) async {
+          final remote = remotoSano()..simularSinConexion = true;
+          await _montarPagina(tester, remote: remote, password: 'Secreto123', ahora: () => base);
+          await tester.pumpAndSettle();
+          await tester.tap(botonReenviar);
+          await tester.pumpAndSettle();
+          expect(borde, findsOneWidget);
+
+          remote
+            ..simularSinConexion = false
+            ..fallaAlReenviar = const ServidorException(status: 500);
+          await tester.tap(botonReenviar);
+          await tester.pumpAndSettle();
+
+          expect(avisoError, findsOneWidget);
+          expect(borde, findsNothing);
+          expect(icono, findsNothing);
+          expect(
+            find.descendant(of: avisoError, matching: find.byIcon(Icons.error_outline)),
+            findsOneWidget,
+          );
+          expect(
+            bordeSolido(tester, avisoError),
+            Border.all(color: esquema(tester).error, width: 1.5),
+          );
+        });
+      },
+    );
   });
 
   group('VerificacionEmailPage — estado expirado', () {
@@ -1816,4 +2007,28 @@ final class _BloqueosEspiados implements BloqueoReenvioVerificacionRepository {
 
   @override
   Future<void> olvidarTodo() => _real.olvidarTodo();
+}
+
+/// Almacén seguro cuya lectura o escritura no termina nunca (un Keystore colgado), para probar que
+/// la pantalla no queda en «ocupado» esperándolo.
+final class _AlmacenColgado implements AlmacenSeguro {
+  _AlmacenColgado({this.colgarLectura = false, this.colgarEscritura = false});
+
+  final bool colgarLectura;
+  final bool colgarEscritura;
+  final AlmacenSeguroEnMemoria _real = AlmacenSeguroEnMemoria();
+
+  @override
+  Future<String?> leer(ClaveSegura clave) =>
+      colgarLectura ? Completer<String?>().future : _real.leer(clave);
+
+  @override
+  Future<void> escribir(ClaveSegura clave, String valor) =>
+      colgarEscritura ? Completer<void>().future : _real.escribir(clave, valor);
+
+  @override
+  Future<void> borrar(ClaveSegura clave) => _real.borrar(clave);
+
+  @override
+  Future<void> borrarTodo() => _real.borrarTodo();
 }
