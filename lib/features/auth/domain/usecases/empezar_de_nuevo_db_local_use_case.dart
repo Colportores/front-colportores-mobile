@@ -9,8 +9,8 @@ import '../services/turno_db_local.dart';
 /// envoltorio por contraseña con qué recuperarla ([FailureAlmacenSeguroSinRecuperacion]).
 ///
 /// **Destructivo y solo con el sí explícito del usuario.** La UI avisa antes que se pierden las
-/// personas y las notas guardadas en el teléfono y que lo sincronizado se vuelve a bajar; recién
-/// con ese sí llama a este caso de uso. Nunca se llama solo.
+/// personas y las notas (que nunca se suben) y las ventas que todavía no se subieron; recién con
+/// ese sí llama a este caso de uso. Nunca se llama solo.
 ///
 /// Deja el dispositivo sin DB, sin DEK y sin envoltorio. Después la UI vuelve a llamar a
 /// `InicializarDbLocalUseCase`, que lo trata como dispositivo nuevo. Corre dentro de

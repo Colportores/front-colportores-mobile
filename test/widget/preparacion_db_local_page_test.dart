@@ -394,7 +394,7 @@ void main() {
         _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
         await _entrar(tester);
 
-        expect(find.text(const FailureAlmacenSeguroSinRecuperacion().mensaje), findsOneWidget);
+        expect(find.text(TextosPreparacionDbLocal.sinRecuperacion), findsOneWidget);
         expect(_boton('preparacion_db_reintentar'), findsOneWidget);
         expect(_boton('preparacion_db_empezar_de_nuevo'), findsNothing);
 
@@ -431,6 +431,168 @@ void main() {
         );
       },
     );
+  });
+
+  group('Base cerrada: «No pudimos abrir tus datos» y «Empezar de nuevo» (#331)', () {
+    // El literal de HU-AUTH-009, escenario «Edge -el envoltorio por contraseña falta o está
+    // dañado».
+    const literalDeLaHu =
+        'No pudimos abrir los datos guardados en este teléfono: se perdieron la llave que los '
+        'protege y la copia que se abre con tu contraseña. No se borró nada.';
+    // Lo que se pierde, como lo decidió el orquestador el 09/10 (front-colportores-mobile#283).
+    const queSePierde =
+        'Los datos guardados en este teléfono no se pueden abrir sin la llave que los protege. Si '
+        'empezás de nuevo, se borran: se pierden las personas y las notas (que nunca se suben) y '
+        'las ventas que todavía no se subieron. Lo que ya se subió no se pierde. No se puede '
+        'deshacer.';
+
+    /// Una base que no abre (sin la llave en el almacén ni la copia por contraseña) y un primer
+    /// «Reintentar» que vuelve a fallar: ya se ofrece «Empezar de nuevo».
+    Future<void> baseCerradaConEmpezarDeNuevo(WidgetTester tester) async {
+      _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+      await _entrar(tester);
+      await _tocar(tester, 'preparacion_db_reintentar');
+    }
+
+    Future<void> abrirElDialogo(WidgetTester tester) async {
+      await baseCerradaConEmpezarDeNuevo(tester);
+      await _tocar(tester, 'preparacion_db_empezar_de_nuevo');
+    }
+
+    int descartes() => _db.llamadas.where((l) => l == 'descartar').length;
+
+    testWidgets(
+      'dado que la base no abre, la pantalla dice el literal de HU-AUTH-009 y no el texto '
+      'del Failure',
+      (tester) async {
+        _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+        await _entrar(tester);
+
+        expect(find.text('No pudimos abrir tus datos'), findsOneWidget);
+        expect(find.text(literalDeLaHu), findsOneWidget);
+        expect(find.text(const FailureAlmacenSeguroSinRecuperacion().mensaje), findsNothing);
+        expect(_boton('preparacion_db_contactar_soporte'), findsOneWidget);
+        expect(_db.archivo, isTrue, reason: 'no se borró nada');
+      },
+    );
+
+    testWidgets('dado que la base no abre, no dice «Puede ser algo pasajero…», ni antes ni después '
+        'de reintentar, y el literal sigue', (tester) async {
+      _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+      await _entrar(tester);
+      expect(find.textContaining('pasajero'), findsNothing);
+      expect(find.textContaining('No se borró nada de este teléfono'), findsNothing);
+
+      await _tocar(tester, 'preparacion_db_reintentar');
+
+      expect(find.textContaining('pasajero'), findsNothing);
+      expect(find.text(literalDeLaHu), findsOneWidget);
+      expect(find.text(TextosPreparacionDbLocal.empezarDeNuevoOferta), findsOneWidget);
+      expect(_boton('preparacion_db_empezar_de_nuevo'), findsOneWidget);
+    });
+
+    testWidgets('dado que toca «Empezar de nuevo», el diálogo dice qué se pierde: personas, notas '
+        'y ventas sin subir', (tester) async {
+      await abrirElDialogo(tester);
+
+      expect(find.text('¿Empezar de nuevo?'), findsOneWidget);
+      expect(find.text(queSePierde), findsOneWidget);
+      expect(find.textContaining('sincronizado'), findsNothing);
+      expect(find.textContaining('vuelve a bajar'), findsNothing);
+      expect(find.textContaining('Drive'), findsNothing);
+      expect(descartes(), 0, reason: 'preguntar no borra');
+    });
+
+    testWidgets('dado que cancela el diálogo, no se borra nada y al volver a tocar «Empezar de '
+        'nuevo» el aviso es el mismo', (tester) async {
+      await abrirElDialogo(tester);
+
+      await _tocar(tester, 'preparacion_db_cancelar_empezar');
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_preparacion, findsOneWidget);
+      expect(find.text(literalDeLaHu), findsOneWidget);
+      expect(descartes(), 0);
+
+      await _tocar(tester, 'preparacion_db_empezar_de_nuevo');
+      expect(find.text(queSePierde), findsOneWidget);
+      expect(descartes(), 0);
+      expect(_db.archivo, isTrue);
+    });
+
+    testWidgets('dado un doble toque en «Empezar de nuevo», se abre un solo diálogo', (
+      tester,
+    ) async {
+      await baseCerradaConEmpezarDeNuevo(tester);
+
+      await tester.ensureVisible(_boton('preparacion_db_empezar_de_nuevo'));
+      await tester.tap(_boton('preparacion_db_empezar_de_nuevo'));
+      await tester.tap(_boton('preparacion_db_empezar_de_nuevo'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await _tocar(tester, 'preparacion_db_cancelar_empezar');
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_preparacion, findsOneWidget);
+    });
+
+    testWidgets('dado un doble toque en «Borrar y empezar de nuevo», prepara una sola vez y no '
+        'cierra otra pantalla', (tester) async {
+      await abrirElDialogo(tester);
+
+      await tester.tap(_boton('preparacion_db_confirmar_empezar'));
+      await tester.tap(_boton('preparacion_db_confirmar_empezar'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(_db.llamadas.where((l) => l == 'crearDek'), hasLength(1), reason: 'prepara una vez');
+      expect(_principal, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dado que falla a mitad de «Empezar de nuevo», la pantalla vuelve con sus botones '
+        'habilitados y nada queda trabado', (tester) async {
+      await abrirElDialogo(tester);
+      _db.fallas['descartar'] = const FailureAlmacenSeguro();
+
+      await _tocar(tester, 'preparacion_db_confirmar_empezar');
+
+      expect(_principal, findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Preparando tu espacio seguro…'), findsNothing);
+      expect(_botonHabilitado(tester, 'preparacion_db_reintentar'), isTrue);
+      expect(_botonHabilitado(tester, 'preparacion_db_contactar_soporte'), isTrue);
+      expect(_db.archivo, isTrue, reason: 'si no pudo descartar, no se perdió nada');
+
+      _db.fallas.remove('descartar');
+      await _tocar(tester, 'preparacion_db_reintentar');
+      expect(_preparacion, findsOneWidget);
+    });
+
+    for (final (tam, escala) in [
+      (const Size(360, 640), 1.0),
+      (const Size(360, 640), 2.0),
+      (const Size(412, 915), 2.0),
+    ]) {
+      testWidgets('el diálogo de «Empezar de nuevo» entra en ${tam.width.toInt()}x'
+          '${tam.height.toInt()} con texto $escala y se llega a «Borrar y empezar de nuevo»', (
+        tester,
+      ) async {
+        tester.view.physicalSize = tam;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = escala;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await abrirElDialogo(tester);
+
+        expect(find.text(queSePierde), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        expect(_boton('preparacion_db_cancelar_empezar'), findsOneWidget);
+
+        await tester.tap(_boton('preparacion_db_confirmar_empezar'));
+        await tester.pumpAndSettle();
+        expect(_db.llamadas, contains('descartar'));
+        expect(_principal, findsOneWidget);
+      });
+    }
   });
 
   group('Cerrar sesión', () {
@@ -1227,5 +1389,19 @@ void main() {
   test('los textos de la HU no cambian sin querer', () {
     expect(TextosPreparacionDbLocal.progreso(1), 'Preparando tu espacio seguro… 1/3');
     expect(TextosPreparacionDbLocal.aceptarRiesgo, 'Entiendo el riesgo y quiero continuar');
+  });
+
+  test('el texto de la falla «sin recuperación» de ADR-006 no cambia: «Borrar datos locales» lo '
+      'usa con los datos abiertos y el literal de HU-AUTH-009 va en la página (#331)', () {
+    expect(
+      const FailureAlmacenSeguroSinRecuperacion().mensaje,
+      'No pudimos preparar el almacenamiento seguro. Consultá a soporte antes de reinstalar la '
+      'app.',
+    );
+    expect(
+      TextosPreparacionDbLocal.sinRecuperacion,
+      'No pudimos abrir los datos guardados en este teléfono: se perdieron la llave que los '
+      'protege y la copia que se abre con tu contraseña. No se borró nada.',
+    );
   });
 }
