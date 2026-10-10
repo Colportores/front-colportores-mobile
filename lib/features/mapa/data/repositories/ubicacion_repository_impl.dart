@@ -9,6 +9,7 @@ import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
+import '../../domain/entities/resultado_union_duplicados.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/entities/ubicacion_con_resumen.dart';
 import '../../domain/repositories/ubicacion_repository.dart';
@@ -239,6 +240,67 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'no se pudo cambiar la baja',
         {
           'ubicacion_id': id,
+          'tipo': e.runtimeType.toString(),
+          if (e is SqliteException) 'result_code': e.resultCode,
+        },
+        null,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
+  }) async {
+    final datos = {'conservada_id': conservadaId, 'duplicada_id': duplicadaId};
+    try {
+      final union = await _local.unirDuplicada(conservadaId, duplicadaId, ahora: ahora);
+      if (!union.escribio) {
+        _log.info(
+          LogModulo.db,
+          'UBICACION_YA_UNIDA',
+          'el par ya estaba unido: no se hizo nada',
+          datos,
+        );
+        return const Right(ResultadoUnionDuplicados.yaUnida);
+      }
+      _log.info(LogModulo.db, 'UBICACION_UNIDA', 'par de duplicados unido', {
+        ...datos,
+        'espacios_pasados': union.espaciosPasados,
+        'espacios_fundidos': union.espaciosFundidos,
+        'a_edificio': union.conservadaPasoAEdificio,
+      });
+      return Right(
+        ResultadoUnionDuplicados(
+          escribio: true,
+          espaciosPasados: union.espaciosPasados,
+          espaciosFundidos: union.espaciosFundidos,
+          conservadaPasoAEdificio: union.conservadaPasoAEdificio,
+        ),
+      );
+    } on UbicacionInexistenteException {
+      return const Left(FailureUbicacionInexistente());
+    } on ConservadaDeBajaException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CONSERVADA_DE_BAJA',
+        'la ubicación que se conserva ya estaba de baja',
+        datos,
+      );
+      return const Left(FailureConservadaDeBaja());
+    } on Object catch (e, st) {
+      // Como en la baja: nunca la excepción al log (una `SqliteException` imprime la sentencia con
+      // sus parámetros). Solo el tipo y, de SQLite, el código.
+      _log.error(
+        LogModulo.db,
+        'UBICACION_UNIR_FAIL',
+        'no se pudo unir el par de duplicados',
+        {
+          ...datos,
           'tipo': e.runtimeType.toString(),
           if (e is SqliteException) 'result_code': e.resultCode,
         },

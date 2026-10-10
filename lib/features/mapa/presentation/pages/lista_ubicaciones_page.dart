@@ -13,13 +13,16 @@ import '../../domain/usecases/baja_ubicacion_use_cases.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../providers/baja_ubicacion_providers.dart';
+import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import '../widgets/piezas_lista_ubicaciones.dart';
+import '../widgets/textos_posibles_duplicados.dart';
 import 'alta_ubicacion_page.dart';
+import 'posibles_duplicados_page.dart';
 
 /// Los textos de la pantalla que el canvas no dibuja (el vacío, el «sin resultados» y el error de
 /// lectura). Los del canvas están en cada widget.
@@ -56,6 +59,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
     this.activa = true,
     this.alAbrirUbicacion,
     this.alRegistrar,
+    this.alRevisarDuplicados,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -72,6 +76,10 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// `AltaUbicacionPage`; un test lo reemplaza.
   final Future<void> Function()? alRegistrar;
 
+  /// Cómo se abre «Posibles duplicados» desde el aviso «N posibles duplicados · Revisar». Por defecto
+  /// abre `PosiblesDuplicadosPage`; un test lo reemplaza.
+  final Future<void> Function()? alRevisarDuplicados;
+
   @override
   ConsumerState<ListaUbicacionesPage> createState() => _ListaUbicacionesPageState();
 }
@@ -85,6 +93,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// Una sola hoja de filtros y una sola alta a la vez: un segundo toque no abre otra encima.
   var _abriendoHoja = false;
   var _abriendoAlta = false;
+  var _abriendoDuplicados = false;
 
   ListaUbicacionesNotifier get _notificador =>
       ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
@@ -289,6 +298,22 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
+  /// Abre «Posibles duplicados» (vista 10). Uno solo a la vez.
+  Future<void> _revisarDuplicados() async {
+    if (_abriendoDuplicados) return;
+    _abriendoDuplicados = true;
+    try {
+      final personalizado = widget.alRevisarDuplicados;
+      if (personalizado != null) {
+        await personalizado();
+      } else {
+        await PosiblesDuplicadosPage.abrir(context, colportorId: widget.colportorId);
+      }
+    } finally {
+      _abriendoDuplicados = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final proveedor = listaUbicacionesProvider(widget.colportorId);
@@ -336,6 +361,11 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: _AvisoLectura(alReintentar: _notificador.reintentar),
+              ),
+            if (!sinUbicaciones)
+              _AvisoDuplicados(
+                colportorId: widget.colportorId,
+                alRevisar: () => unawaited(_revisarDuplicados()),
               ),
             Expanded(
               child: _Cuerpo(
@@ -934,6 +964,63 @@ class _AvisoLectura extends StatelessWidget {
       acciones: Align(
         alignment: Alignment.centerLeft,
         child: EnlaceAlta(texto: TextosListaUbicaciones.reintentar, alPresionar: alReintentar),
+      ),
+    );
+  }
+}
+
+/// «3 posibles duplicados · Revisar»: el aviso de la Lista mientras queden pares para revisar
+/// (HU-UBI-006, canvas de la vista 10). Lleva a «Posibles duplicados». Sin pares no ocupa lugar.
+class _AvisoDuplicados extends ConsumerWidget {
+  const _AvisoDuplicados({required this.colportorId, required this.alRevisar});
+
+  final String colportorId;
+  final VoidCallback alRevisar;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
+    if (cantidad == 0) return const SizedBox.shrink();
+    final texto = TextosPosiblesDuplicados.avisoEnLista(cantidad);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Semantics(
+        button: true,
+        liveRegion: true,
+        label: '$texto. ${TextosPosiblesDuplicados.revisar}',
+        child: ExcludeSemantics(
+          child: Material(
+            color: const Color(0xFFFBF1DA),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              key: const Key('lista_aviso_duplicados'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: alRevisar,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: '$texto · '),
+                        const TextSpan(
+                          text: TextosPosiblesDuplicados.revisar,
+                          style: TextStyle(fontWeight: FontWeight.w700, color: ColoresLista.azul),
+                        ),
+                      ],
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13.5,
+                      color: Color(0xFF6E5212),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

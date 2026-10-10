@@ -17,6 +17,7 @@ import '../../domain/repositories/ubicacion_repository.dart';
 import '../../domain/repositories/zona_repository.dart';
 import '../../domain/services/activador_gps.dart';
 import '../../domain/services/ciudades_para_alta.dart';
+import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/services/geocodificador_inverso.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/services/proveedor_gps.dart';
@@ -33,13 +34,24 @@ import '../../domain/value_objects/area_mapa.dart';
 /// se guarda, en vez de quedar en el teléfono sin subir nunca.
 final encoladorSyncProvider = Provider<EncoladorSync>((ref) => const EncoladorSyncSinMotor());
 
+/// El job «marcar como duplicado» del motor de sync (#178, RPC 0026). Hasta que llegue,
+/// [EncoladorMarcarDuplicadoSinMotor]: unir dos ubicaciones falla y no cambia nada, en vez de dejar la
+/// unión hecha en el teléfono sin avisarle nunca al servidor.
+final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>(
+  (ref) => const EncoladorMarcarDuplicadoSinMotor(),
+);
+
 /// La DB local abierta (`dbLocalProvider`). Sin DB abierta no hay dónde guardar: lanza, y quien lo
 /// lee lo traduce a una falla.
 final ubicacionRepositoryProvider = Provider<UbicacionRepository>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) throw StateError('La base de datos local no está abierta');
   return UbicacionRepositoryImpl(
-    UbicacionLocalDataSourceDrift(db, encolador: ref.watch(encoladorSyncProvider)),
+    UbicacionLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      marcarDuplicado: ref.watch(encoladorMarcarDuplicadoProvider),
+    ),
   );
 });
 

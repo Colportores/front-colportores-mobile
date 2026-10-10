@@ -17,15 +17,37 @@ enum MotivoDuplicado {
   cercania,
 }
 
-/// Lo que el colportor decidió sobre un par del scan que no se da de baja (HU-UBI-006). Las dos
-/// sacan el par de "Posibles duplicados" durante `ConsultarParesDuplicadosUseCase.ventana`.
+/// Lo que el colportor decidió sobre un par del scan que no se une (HU-UBI-006, decisión del
+/// 06/10): «Son distintos» no vuelve nunca y «Ignorar» esconde el par [ParDecidido.ventanaIgnorar].
 enum DecisionParDuplicado {
-  /// "Conservar ambos": son lugares distintos. Solo si el par lo admite
+  /// «Son distintos» (el botón de la vista 10; «Conservar ambos» en la HU): son lugares distintos y
+  /// el par **no vuelve a proponerse nunca**. Solo si el par lo admite
   /// ([ParDuplicado.admiteConservarAmbos]). Cuenta como falso positivo (R21).
   conservarAmbos,
 
-  /// "Ignorar": no lo resuelve ahora.
+  /// «Ignorar» (y «Después» en la vista 10, que no guarda nada): no lo resuelve ahora. El par
+  /// vuelve a aparecer pasados [ParDecidido.ventanaIgnorar].
   ignorar,
+}
+
+/// Una decisión ya guardada sobre un par, con su fecha.
+final class ParDecidido extends Equatable {
+  const ParDecidido({required this.decision, required this.decididoEn});
+
+  final DecisionParDuplicado decision;
+  final DateTime decididoEn;
+
+  /// HU-UBI-006: «Conservar histórico de "ignorados" 30 días para no reaparecer constantemente».
+  static const ventanaIgnorar = Duration(days: 30);
+
+  /// Si el par sigue escondido en [ahora]: «Son distintos» siempre; «Ignorar» hasta que vence.
+  bool ocultaEn(DateTime ahora) => switch (decision) {
+    DecisionParDuplicado.conservarAmbos => true,
+    DecisionParDuplicado.ignorar => decididoEn.isAfter(ahora.subtract(ventanaIgnorar)),
+  };
+
+  @override
+  List<Object?> get props => [decision, decididoEn];
 }
 
 /// Una ubicación que ya existe y parece la misma que otra (alta, modificación o scan).

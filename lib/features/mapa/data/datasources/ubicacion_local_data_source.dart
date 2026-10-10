@@ -9,6 +9,14 @@ import '../models/ubicacion_model.dart';
 /// Resultado de [UbicacionLocalDataSource.insertar]: la ubicación guardada y si ya estaba.
 typedef InsercionUbicacion = ({UbicacionModel ubicacion, bool yaEstaba});
 
+/// Lo que hizo [UbicacionLocalDataSource.unirDuplicada].
+typedef UnionLocal = ({
+  bool escribio,
+  int espaciosPasados,
+  int espaciosFundidos,
+  bool conservadaPasoAEdificio,
+});
+
 /// Una ubicación con la cantidad de espacios sin baja que tiene y, si está de baja, el motivo con que
 /// se dio de baja (`audit_log` local), para la lista (HU-UBI-002, HU-UBI-005).
 typedef UbicacionConEspacios = ({
@@ -104,6 +112,18 @@ abstract interface class UbicacionLocalDataSource {
     required DateTime? deletedAt,
     String? motivo,
     String? conservadaId,
+  });
+
+  /// La unión de un par de duplicados en una sola transacción (HU-UBI-006). Ver
+  /// `UbicacionRepository.unirDuplicada`.
+  ///
+  /// Lanza [UbicacionInexistenteException] si falta una de las dos y [ConservadaDeBajaException] si
+  /// la conservada está de baja. Lo que lance el encolado (no hay motor de sync, #178) revierte la
+  /// transacción entera.
+  Future<UnionLocal> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
   });
 
   /// Ubicaciones cuyo `created_by` es [colportorId] (filtro opcional por [ciudadId]), con las bajas

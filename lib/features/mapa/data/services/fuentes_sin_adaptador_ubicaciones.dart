@@ -7,6 +7,7 @@ import '../../../auth/domain/entities/campania_colportor.dart';
 import '../../domain/entities/pendientes_ubicacion.dart';
 import '../../domain/services/ciudades_para_alta.dart';
 import '../../domain/services/consultor_pendientes_ubicacion.dart';
+import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/value_objects/coordenadas.dart';
 
@@ -105,6 +106,21 @@ final class EncoladorSyncSinMotor implements EncoladorSync {
     OperacionSync operacion,
     Map<String, Object?> payload,
   ) async {
+    throw StateError('El motor de sync todavía no está en la app (#178)');
+  }
+}
+
+/// Sin motor de sync en la app (#178): encolar el trabajo «marcar como duplicado» falla a propósito,
+/// y la unión local (que lo llama dentro de su transacción) se revierte entera en vez de quedar en el
+/// teléfono sin subir nunca. Mismo criterio que [EncoladorSyncSinMotor].
+final class EncoladorMarcarDuplicadoSinMotor implements EncoladorMarcarDuplicado {
+  const EncoladorMarcarDuplicadoSinMotor();
+
+  @override
+  Future<void> encolarMarcarDuplicado({
+    required String duplicadaId,
+    required String conservadaId,
+  }) async {
     throw StateError('El motor de sync todavía no está en la app (#178)');
   }
 }
