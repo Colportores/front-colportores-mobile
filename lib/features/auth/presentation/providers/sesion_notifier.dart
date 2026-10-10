@@ -40,9 +40,14 @@ class SesionNotifier extends _$SesionNotifier {
 
   final AppLogger _log;
 
-  /// Cuenta las veces que la persona resolvió el cierre (entró, se registró, cerró a propósito o
-  /// borró los datos): lo que se guarda tras una espera lenta mira si cambió mientras esperaba.
+  /// Cuenta las veces que cambió el cierre que vale: la persona lo resolvió (entró, se registró,
+  /// cerró a propósito o borró los datos) o llegó otro fin de sesión que pasa a ser el del aviso.
+  /// Lo que se guarda tras una espera lenta mira si cambió mientras esperaba (ver [_guardarCierre]).
   int _generacionCierre = 0;
+
+  /// El fin de sesión que llegó mientras `build()` todavía leía la sesión (#311): sin sesión
+  /// publicada no hay a quién cerrarle ni login que avise, así que se atiende apenas termina.
+  MotivoExpiracion? _vencimientoTemprano;
 
   @override
   Future<Sesion?> build() async {
@@ -52,6 +57,15 @@ class SesionNotifier extends _$SesionNotifier {
         .watch(observarExpiracionesSesionUseCaseProvider)(const NoParams())
         .listen((motivo) => unawaited(_alExpirar(motivo)));
     ref.onDispose(expiraciones.cancel);
+    listenSelf((_, estado) {
+      final motivo = _vencimientoTemprano;
+      if (motivo == null || (estado.isLoading && !estado.hasValue)) return;
+      _vencimientoTemprano = null;
+      // Ya con la sesión (o su ausencia) publicada: es un fin de sesión como cualquier otro.
+      scheduleMicrotask(() {
+        if (ref.mounted) unawaited(_alExpirar(motivo));
+      });
+    });
 
     final resultado = await ref.watch(obtenerSesionActualUseCaseProvider)(const NoParams());
     _reintentarRevocacionPendiente();
@@ -94,11 +108,15 @@ class SesionNotifier extends _$SesionNotifier {
   /// Guarda el motivo y la fecha del cierre que la persona no pidió, al lado del último correo:
   /// sin esto, el aviso de la vista 17 valdría solo en el arranque que lo detectó.
   ///
-  /// Leer la fecha del reloj puede tardar (Keystore) y la persona puede resolver el cierre mientras
-  /// tanto: entra, se registra, cierra a propósito. Si pasó, el guardado se descarta: el borrado ya
-  /// está pedido y guardar después lo desharía, dejando el motivo con la sesión abierta.
+  /// Leer la fecha del reloj puede tardar (Keystore) y mientras tanto pueden pasar dos cosas: la
+  /// persona resuelve el cierre (entra, se registra, cierra a propósito) o llega otro fin de sesión
+  /// con otro motivo, cuyo aviso reemplaza al de este. En los dos casos el guardado se descarta: el
+  /// borrado ya está pedido y guardar después lo desharía, dejando el motivo con la sesión abierta,
+  /// y el que queda en disco tiene que ser el del aviso que se ve, no el de la lectura que termina
+  /// última. Por eso cada llamada empieza invalidando las anteriores: se llama justo al fijar el
+  /// aviso, sin esperas de por medio.
   Future<void> _guardarCierre(MotivoExpiracion motivo) async {
-    final generacion = _generacionCierre;
+    final generacion = ++_generacionCierre;
     final fecha = await ref.read(relojSesionProvider).ahora();
     if (!ref.mounted || generacion != _generacionCierre) return;
     await ref
@@ -131,7 +149,19 @@ class SesionNotifier extends _$SesionNotifier {
   /// La sesión venció o el servidor la revocó (HU-AUTH-007): de vuelta al login con el motivo.
   /// Es un cierre de sesión, no un borrado: la DB local se cierra con todo lo que tiene —incluido
   /// lo que falta sincronizar— y se vuelve a abrir al entrar de nuevo.
+  ///
+  /// Si llega mientras `build()` todavía lee la sesión (#311) no se atiende en el momento: la sesión
+  /// que esa lectura devuelva ya habría terminado, y `habiaSesion` daría `false` con una sesión en
+  /// camino (el aviso se quedaba puesto con la app abierta). Queda anotado y se atiende al
+  /// publicarse el resultado, con la misma lógica que cualquier otro fin de sesión.
   Future<void> _alExpirar(MotivoExpiracion motivo) async {
+    if (state.isLoading && !state.hasValue) {
+      _vencimientoTemprano = motivo;
+      _log.info(LogModulo.auth, 'SESION_FIN_FORZADO_TEMPRANO', 'se atiende al leer la sesión', {
+        'motivo': motivo.name,
+      });
+      return;
+    }
     final Failure aviso = switch (motivo) {
       MotivoExpiracion.inactividad => const FailureSesionExpiradaPorInactividad(),
       MotivoExpiracion.revocada => const FailureSesionRevocada(),
@@ -326,6 +356,9 @@ class SesionNotifier extends _$SesionNotifier {
   Future<void> revisarVigencia() async {
     if (state.value == null) return;
     final resultado = await ref.read(obtenerSesionActualUseCaseProvider)(const NoParams());
+    // La sesión pudo terminar mientras se leía (por el stream, o porque la persona cerró): avisar
+    // ahora de un segundo motivo taparía el verdadero, o dejaría el aviso tras un cierre a propósito.
+    if (!ref.mounted || state.value == null) return;
     if (resultado case Left(value: FailureSesionExpiradaPorInactividad())) {
       await _alExpirar(MotivoExpiracion.inactividad);
     }
