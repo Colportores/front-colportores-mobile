@@ -119,10 +119,10 @@ CierreForzadoRepository cierreForzadoRepository(Ref ref) => CierreForzadoEnMemor
 UltimoEnvioRecuperacionRepository ultimoEnvioRecuperacionRepository(Ref ref) =>
     UltimoEnvioRecuperacionEnMemoria();
 
-/// Los correos con el reenvío del email de verificación bloqueado y hasta cuándo (decisión de
-/// Cristian, 30/09, #221 y #239; seguimiento #249): el candado de 60 minutos es por dirección y
-/// sobrevive a reiniciar la app. En el equipo, `main.dart` lo sobreescribe con el almacén seguro;
-/// por defecto (tests), en memoria.
+/// Lo que el teléfono recuerda del reenvío del email de verificación, por dirección: los candados
+/// de 60 minutos (decisión de Cristian, 30/09, #221 y #239; seguimiento #249) y la espera de 60 s
+/// desde el último correo que salió (#325). Sobrevive a reiniciar la app. En el equipo, `main.dart`
+/// lo sobreescribe con el almacén seguro; por defecto (tests), en memoria.
 @Riverpod(keepAlive: true)
 BloqueoReenvioVerificacionRepository bloqueoReenvioVerificacionRepository(Ref ref) =>
     BloqueoReenvioVerificacionEnMemoria();
@@ -199,10 +199,8 @@ RegistrarEnvioRecuperacionUseCase registrarEnvioRecuperacionUseCase(Ref ref) =>
 
 // autoDispose: lo usa solo `VerificacionEmailPage`.
 @riverpod
-ConsultarBloqueosReenvioVerificacionUseCase consultarBloqueosReenvioVerificacionUseCase(Ref ref) =>
-    ConsultarBloqueosReenvioVerificacionUseCase(
-      ref.watch(bloqueoReenvioVerificacionRepositoryProvider),
-    );
+ConsultarReenviosVerificacionUseCase consultarReenviosVerificacionUseCase(Ref ref) =>
+    ConsultarReenviosVerificacionUseCase(ref.watch(bloqueoReenvioVerificacionRepositoryProvider));
 
 // autoDispose: lo usa solo `VerificacionEmailPage`.
 @riverpod
@@ -210,6 +208,11 @@ RegistrarBloqueoReenvioVerificacionUseCase registrarBloqueoReenvioVerificacionUs
     RegistrarBloqueoReenvioVerificacionUseCase(
       ref.watch(bloqueoReenvioVerificacionRepositoryProvider),
     );
+
+// autoDispose: lo usan `RegistroPage` y `VerificacionEmailPage`.
+@riverpod
+RegistrarEnvioVerificacionUseCase registrarEnvioVerificacionUseCase(Ref ref) =>
+    RegistrarEnvioVerificacionUseCase(ref.watch(bloqueoReenvioVerificacionRepositoryProvider));
 
 /// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
 /// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este

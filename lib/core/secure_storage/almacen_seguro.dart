@@ -64,11 +64,14 @@ enum ClaveSegura {
 
   /// Los correos a los que el servidor rechazó el reenvío del email de verificación por límite de
   /// intentos y hasta cuándo no se les vuelve a ofrecer (HU-AUTH-002, vista 12-A06; decisión de
-  /// Cristian, 30/09, front-colportores-mobile#221 y #239; seguimiento #249): un JSON
-  /// `{"<correo en minúsculas>": "<vencimiento ISO 8601 UTC>"}`, solo con los bloqueos vigentes.
-  /// El candado es por dirección (otra dirección no queda bloqueada) y sobrevive a reiniciar la
-  /// app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`, para no sumar otro
-  /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
+  /// Cristian, 30/09, front-colportores-mobile#221 y #239; seguimiento #249), y la espera de 60 s
+  /// desde el último correo que salió a cada dirección (#325): un JSON
+  /// `{"<correo en minúsculas>": {"bloqueo": "<vencimiento ISO 8601 UTC>", "espera": "<ídem>"}}`,
+  /// cada campo opcional y solo lo vigente (se poda al leer y al guardar, y la clave se borra
+  /// cuando no queda nada). El candado es por dirección (otra dirección no queda bloqueada) y
+  /// sobrevive a reiniciar la app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`,
+  /// para no sumar otro almacenamiento; se borra con el borrado de datos locales (HU-AUTH-010) y
+  /// con «Cerrar sesión» a propósito.
   bloqueoReenvioVerificacion('verification_resend_locks'),
 
   /// La zona de cada inscripción del colportor la última vez que se le avisó de su zona (HU-CAM-006,

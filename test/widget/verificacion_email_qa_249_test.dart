@@ -6,6 +6,10 @@
 // mayúsculas y espacios), el reloj movido hacia atrás, el candado junto a la cuenta regresiva y los
 // ocho artboards de la vista a 360x640 y 412x915 (sin regresión).
 //
+// Con el seguimiento #325: el aviso cuenta en minutos y se anuncia una sola vez, el reloj atrasado se
+// recorta con la pantalla abierta, y el aviso de éxito de una dirección no queda junto al límite de
+// otra (tests que estaban en `skip`).
+//
 // Las capturas van a `.dart_tool/qa_capturas/` (ignorado por git, nunca se commitean).
 import 'dart:convert';
 import 'dart:io';
@@ -32,7 +36,7 @@ import '../helpers/logger_mudo.dart';
 
 const _lucia = 'lucia.silva@correo.com';
 const _ana = 'ana@correo.com';
-const _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
+String _textoLimite(String cuanto) => 'Demasiados intentos. Probá nuevamente en $cuanto.';
 const _unaHora = Duration(minutes: 60);
 
 final _base = DateTime(2026, 10, 8, 10);
@@ -110,6 +114,7 @@ Future<void> _montar(
   String email = _lucia,
   String? password = 'Secreto123',
   EstadoVerificacionEmail estado = EstadoVerificacionEmail.pendiente,
+  DateTime? envioDelAlta,
   double escala = 1,
   Size tam = const Size(390, 844),
 }) async {
@@ -137,6 +142,7 @@ Future<void> _montar(
             email: email,
             password: password,
             estadoInicial: estado,
+            envioDelAlta: envioDelAlta,
             ahora: ahora,
           ),
         ),
@@ -206,9 +212,9 @@ void main() {
 
           expect(tester.takeException(), isNull);
           expect(_aviso, findsOneWidget);
-          expect(find.text(_textoLimite), findsOneWidget);
+          expect(find.text(_textoLimite('56 minutos')), findsOneWidget);
           expect(_habilitado(tester), isFalse);
-          _entraEnLaPantalla(tester, find.text(_textoLimite), tam);
+          _entraEnLaPantalla(tester, find.text(_textoLimite('56 minutos')), tam);
           await _capturar(tester, 'a06_${tam.width.toInt()}x${tam.height.toInt()}_x$escala');
           await _guias(tester);
 
@@ -225,8 +231,8 @@ void main() {
       }
     }
 
-    testWidgets('el aviso del límite se anuncia (liveRegion) con su texto y el botón bloqueado se '
-        'lee como botón deshabilitado', (tester) async {
+    testWidgets('el aviso del límite se lee con su texto (sin región viva: se anuncia aparte, una '
+        'sola vez) y el botón bloqueado se lee como botón deshabilitado', (tester) async {
       final semantica = tester.ensureSemantics();
       await _montar(
         tester,
@@ -236,7 +242,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getSemantics(_aviso), isSemantics(isLiveRegion: true, label: _textoLimite));
+      expect(
+        tester.getSemantics(_aviso),
+        isSemantics(isLiveRegion: false, label: _textoLimite('56 minutos')),
+      );
       expect(
         tester.getSemantics(_botonReenviar),
         isSemantics(
@@ -249,8 +258,8 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('dado un 429 en pantalla, cuando aparece el aviso, nace como región viva (se '
-        'anuncia sin que la persona lo busque) y el foco no se pierde', (tester) async {
+    testWidgets('dado un 429 en pantalla, cuando aparece el aviso, se anuncia al lector de '
+        'pantalla una sola vez y el foco no se pierde', (tester) async {
       final semantica = tester.ensureSemantics();
       await _montar(
         tester,
@@ -260,12 +269,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(_aviso, findsNothing);
+      tester.takeAnnouncements();
 
       await tester.tap(_botonReenviar);
       await tester.pumpAndSettle();
 
       expect(_aviso, findsOneWidget);
-      expect(tester.getSemantics(_aviso), isSemantics(isLiveRegion: true, label: _textoLimite));
+      expect(tester.takeAnnouncements().map((a) => a.message), [_textoLimite('una hora')]);
+      expect(
+        tester.getSemantics(_aviso),
+        isSemantics(isLiveRegion: false, label: _textoLimite('una hora')),
+      );
       // Sigue habiendo una salida a mano: «Volver al login» (y «Ya verifiqué mi email»).
       expect(_volver, findsOneWidget);
       expect(find.byKey(const Key('verificacion_email_ya_verifique')), findsOneWidget);
@@ -423,9 +437,9 @@ void main() {
       await _cerrarApp(tester);
     });
 
-    // skip: QA #249 — el reloj atrasado con la pantalla abierta alarga el candado: `_programarDesbloqueo`
-    // no recorta a ahora+60 min (solo lo hace la lectura al abrir), así que el aviso dura hasta que
-    // el reloj movido llega al vencimiento viejo.
+    // QA #249, arreglado en #325: con el reloj atrasado y la pantalla abierta, al volver a la app el
+    // candado se recorta a ahora+60 min (antes duraba hasta que el reloj movido llegaba al
+    // vencimiento viejo).
     testWidgets('con la pantalla abierta y el reloj atrasado 3 h, el candado sigue venciendo una '
         'hora después del rechazo', (tester) async {
       final reloj = _Reloj(_base);
@@ -453,7 +467,7 @@ void main() {
       expect(_aviso, findsNothing, reason: 'pasó más de una hora desde el rechazo');
       expect(_habilitado(tester), isTrue);
       await _cerrarApp(tester);
-    }, skip: true);
+    });
 
     testWidgets('con el reloj adelantado 2 h al volver a la app, el candado ya no está', (
       tester,
@@ -480,17 +494,18 @@ void main() {
     });
   });
 
-  group('el candado junto a la cuenta regresiva de 60 s (sin correo conocido)', () {
-    testWidgets('reenviar a una dirección libre y pasar a una bloqueada: el aviso del límite se '
-        've, el botón queda con candado y la cuenta regresiva sigue; sin overflow a 360x640 y '
-        'texto 2x', (tester) async {
+  group('el candado y la cuenta regresiva de 60 s son de cada dirección (sin correo conocido)', () {
+    testWidgets('reenviar a una dirección libre y pasar a una bloqueada: se ve el aviso del límite '
+        'y el botón con candado, sin la cuenta regresiva de la otra; al volver a la primera sigue '
+        'su cuenta; sin overflow a 360x640 y texto 2x', (tester) async {
       final semantica = tester.ensureSemantics();
       const tam = Size(360, 640);
+      final reloj = _Reloj(_base.add(const Duration(minutes: 5)));
       await _montar(
         tester,
         remote: AuthRemoteDataSourceEnMemoria(credenciales: const {}),
         bloqueos: BloqueoReenvioVerificacionEnMemoria({_ana: _base.add(_unaHora)}),
-        ahora: () => _base.add(const Duration(minutes: 5)),
+        ahora: reloj.leer,
         email: '',
         password: null,
         estado: EstadoVerificacionEmail.expirado,
@@ -505,21 +520,32 @@ void main() {
       expect(_mensajeReenvio, findsOneWidget);
       expect(find.text('Reenviar en 60s'), findsOneWidget);
 
-      await tester.enterText(_campo, _ana);
+      reloj.ahora = reloj.ahora.add(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
+      await tester.enterText(_campo, _ana);
+      await tester.pump();
 
       expect(tester.takeException(), isNull);
       expect(_aviso, findsOneWidget);
       expect(_habilitado(tester), isFalse);
-      expect(find.text('Reenviar en 59s'), findsOneWidget);
-      await _recorrer(tester, 'a06_con_cuenta_regresiva_360x640_x2');
+      expect(_mensajeReenvio, findsNothing);
+      expect(find.text('Reenviar email de verificación'), findsOneWidget);
+      expect(find.textContaining('Reenviar en'), findsNothing, reason: 'la espera es de Luis');
+      await _recorrer(tester, 'a06_tras_reenviar_a_otra_360x640_x2');
       expect(tester.takeException(), isNull);
+
+      // Vuelve a la dirección a la que salió el correo: su cuenta sigue donde iba.
+      await tester.enterText(_campo, 'luis@correo.com');
+      await tester.pump();
+      expect(_aviso, findsNothing);
+      expect(find.text('Reenviar en 59s'), findsOneWidget);
+      expect(_habilitado(tester), isFalse);
       semantica.dispose();
       await _cerrarApp(tester);
     });
 
-    // skip: QA #249 — en el modo sin correo, «Te reenviamos el correo…» (de la dirección enviada)
-    // queda junto al aviso del límite de la otra dirección que se ve ahora.
+    // QA #249, arreglado en #325: en el modo sin correo, «Te reenviamos el correo…» (de la dirección
+    // enviada) ya no queda junto al aviso del límite de la otra dirección que se ve ahora.
     testWidgets('el aviso «Te reenviamos el correo» es de la dirección a la que se envió: al pasar '
         'a otra dirección bloqueada no queda junto al aviso del límite', (tester) async {
       await _montar(
@@ -547,10 +573,10 @@ void main() {
         reason: 'dice «te reenviamos el correo» mientras se ve una dirección bloqueada',
       );
       await _cerrarApp(tester);
-    }, skip: true);
+    });
   });
 
-  group('sin regresión — los otros siete artboards de la vista 12 a 360x640 y 412x915', () {
+  group('sin regresión — los artboards de la vista 12 a 360x640 y 412x915', () {
     final artboards = <String, Future<void> Function(WidgetTester, Size, double)>{
       'a01_pendiente': (tester, tam, escala) async {
         await _montar(
@@ -565,6 +591,24 @@ void main() {
         expect(find.text('Verificá tu cuenta'), findsOneWidget);
         expect(_aviso, findsNothing);
         expect(_habilitado(tester), isTrue);
+      },
+      'a01b_tras_el_alta': (tester, tam, escala) async {
+        await _montar(
+          tester,
+          remote: _remotoSano(),
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+          ahora: () => _base,
+          envioDelAlta: _base.subtract(const Duration(seconds: 12)),
+          tam: tam,
+          escala: escala,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Verificá tu cuenta'), findsOneWidget);
+        expect(find.text('Te enviamos un correo a'), findsOneWidget);
+        expect(find.text('Reenviar en 48s'), findsOneWidget);
+        expect(find.byKey(const Key('verificacion_email_progreso')), findsOneWidget);
+        expect(_mensajeReenvio, findsNothing, reason: 'no hubo reenvío: el correo salió del alta');
+        expect(_aviso, findsNothing);
       },
       'a02_reenviado': (tester, tam, escala) async {
         await _montar(

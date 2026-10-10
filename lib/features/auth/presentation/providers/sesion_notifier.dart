@@ -14,6 +14,7 @@ import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
@@ -184,6 +185,8 @@ class SesionNotifier extends _$SesionNotifier {
         unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
         // Entrar resuelve el cierre que la persona no pidió: el motivo guardado se borra.
         unawaited(_borrarCierre());
+        // La cuenta entró: el candado y la espera de reenvío de su email ya no hacen falta (#325).
+        unawaited(_olvidarReenvios({sesion.email, email}));
         ref.read(avisoSesionProvider.notifier).descartar();
         ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
@@ -304,6 +307,7 @@ class SesionNotifier extends _$SesionNotifier {
       if (!conservarCorreo) {
         await ref.read(ultimoCorreoRepositoryProvider).borrar();
         await _borrarCierre();
+        await _olvidarReenvios();
       }
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
@@ -348,6 +352,8 @@ class SesionNotifier extends _$SesionNotifier {
       _olvidarPassword();
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
       await _borrarCierre();
+      // El borrado de datos ya vació la clave del almacén seguro; esto cubre el repositorio.
+      await _olvidarReenvios();
       state = const AsyncData(null);
     }
     return resultado;
@@ -395,6 +401,26 @@ class SesionNotifier extends _$SesionNotifier {
       await _borrarCierre();
     } on Object {
       _log.warn(LogModulo.auth, 'CIERRE_FORZADO_BORRAR', 'no se pudo borrar el motivo del cierre');
+    }
+    await _olvidarReenvios();
+  }
+
+  /// Olvida lo que el teléfono recuerda del reenvío del email de verificación (HU-AUTH-002, #325):
+  /// el de las direcciones de [correos] o, sin ellas, todo (cerrar la sesión a propósito, como el
+  /// último correo y el motivo del cierre: ningún correo queda en el teléfono más allá de su hora).
+  /// Nunca lanza: tapar el error de un cierre que ya está fallando sería peor.
+  Future<void> _olvidarReenvios([Set<String>? correos]) async {
+    try {
+      final repositorio = ref.read(bloqueoReenvioVerificacionRepositoryProvider);
+      if (correos == null) {
+        await repositorio.olvidarTodo();
+      } else {
+        for (final correo in {for (final c in correos) correoParaBloqueo(c)}) {
+          if (correo.isNotEmpty) await repositorio.olvidar(correo);
+        }
+      }
+    } on Object {
+      _log.warn(LogModulo.auth, 'VERIFICACION_BLOQUEO_OLVIDAR', 'no se pudo olvidar el reenvío');
     }
   }
 

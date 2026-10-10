@@ -1,14 +1,19 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../domain/entities/reenvios_guardados.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../providers/auth_providers.dart';
 import '../providers/enlace_verificacion_usado_providers.dart';
 import '../providers/sesion_notifier.dart';
+import '../widgets/borde_discontinuo.dart';
+import '../widgets/icono_sin_conexion.dart';
 
 /// Estado visible de [VerificacionEmailPage] (HU-AUTH-002).
 enum EstadoVerificacionEmail {
@@ -47,6 +52,7 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
     this.email = '',
     this.password,
     this.estadoInicial = EstadoVerificacionEmail.pendiente,
+    this.envioDelAlta,
     @visibleForTesting this.ahora = DateTime.now,
   });
 
@@ -61,7 +67,14 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 
   final EstadoVerificacionEmail estadoInicial;
 
-  /// Reloj de la cuenta regresiva del reenvío; se inyecta solo en tests.
+  /// Cuándo salió el correo del alta, si la pantalla se abre justo después del registro: la espera
+  /// de 60 s para reenviar cuenta desde ahí, así que el botón arranca como en 12-A02,
+  /// «Reenviar en Ns», sin el aviso «Te reenviamos el correo» (no hubo reenvío), y pasados los 60 s
+  /// queda como en 12-A01 (decisión del orquestador, 08/10, #325). `null` cuando se llega por otro
+  /// camino: la espera, si hay, sale de lo guardado en el teléfono.
+  final DateTime? envioDelAlta;
+
+  /// Reloj de la cuenta regresiva y del candado del reenvío; se inyecta solo en tests.
   final DateTime Function() ahora;
 
   @override
@@ -70,50 +83,70 @@ class VerificacionEmailPage extends ConsumerStatefulWidget {
 
 class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     with WidgetsBindingObserver {
-  /// Regla de negocio HU-AUTH-002: "máximo 1 reenvío cada 60 segundos". El tope por hora lo hace
-  /// cumplir Supabase; cuando rechaza por límite, el botón de **esa dirección** queda bloqueado una
-  /// hora fija ([bloqueoReenvioVerificacion], decisión de Cristian 29/09) y el candado se guarda en
-  /// el teléfono: sobrevive a salir de la pantalla y a reiniciar la app (decisión de Cristian,
-  /// 30/09, #249).
-  static const Duration _cooldown = Duration(seconds: 60);
+  /// Reglas de negocio de HU-AUTH-002: «máximo 1 reenvío cada 60 segundos»
+  /// ([esperaReenvioVerificacion]), que se cuenta desde el último correo que salió a **esa
+  /// dirección** —el del alta o un reenvío— y se guarda en el teléfono (decisión del orquestador,
+  /// 08/10, #325); y, cuando Supabase rechaza por límite, el reenvío a esa dirección queda bloqueado
+  /// una hora fija ([bloqueoReenvioVerificacion], decisión de Cristian, 29/09), también guardada: ni
+  /// la espera ni el candado se pierden al salir de la pantalla o reiniciar la app (30/09, #249).
+  static const Duration _cooldown = esperaReenvioVerificacion;
 
-  static const String _textoLimite = 'Demasiados intentos. Probá nuevamente en una hora.';
+  /// Lo más que un reenvío espera al almacén del teléfono, para leer los reenvíos guardados antes de
+  /// pedir y para guardar lo que dejó el servidor después: pasado ese tope sigue igual (el servidor
+  /// tiene la última palabra; la pantalla ya sabe lo que pasó) en vez de dejar los botones en
+  /// «ocupado» sin fin (como #318). El almacén atiende de a una operación (cola del repositorio):
+  /// una lectura que no termina también frena los guardados que vienen detrás.
+  static const Duration _topeAlmacen = Duration(seconds: 3);
 
   late final TextEditingController _emailController;
   late EstadoVerificacionEmail _estado;
+
+  /// El tic de 1 s de «Reenviar en Ns».
   Timer? _timer;
+
+  /// El próximo cambio del texto o del candado: que venza uno o que pase el minuto que se muestra.
   Timer? _timerBloqueo;
   bool _saliendo = false;
   late final VerificacionEnEsperaNotifier _enEspera;
   DatosDeEsperaVerificacion? _datosEnEspera;
+
+  /// Segundos que faltan para poder reenviar a la dirección que se ve; 0 si ya se puede.
   int _segundosRestantes = 0;
 
-  /// Los candados por límite de reenvíos que siguen vigentes: correo normalizado
-  /// ([correoParaBloqueo]) → instante en que vencen. Salen del teléfono al abrir la pantalla.
-  Map<String, DateTime> _bloqueos = const {};
+  /// Lo que sigue vigente de los reenvíos, por dirección: los candados y las esperas de 60 s. Sale
+  /// del teléfono al abrir la pantalla y se completa con lo que pasa mientras está abierta.
+  ReenviosGuardados _reenvios = ReenviosGuardados.vacio;
 
-  /// `true` mientras se leen del teléfono los candados guardados: un reenvío pedido en ese instante
-  /// espera a [_lecturaBloqueos] para no saltearse un candado vigente.
-  bool _leyendoBloqueos = true;
-  late final Future<void> _lecturaBloqueos;
+  /// `true` mientras se leen del teléfono los reenvíos guardados: un reenvío pedido en ese instante
+  /// espera a [_lecturaReenvios] (hasta [_topeAlmacen]) para no saltearse un candado vigente.
+  bool _leyendoReenvios = true;
+  late final Future<void> _lecturaReenvios;
+
+  /// La dirección para la que ya se anunció (al lector de pantalla) el aviso del límite: se anuncia
+  /// una sola vez al aparecer, no cada vez que el texto cambia de minuto.
+  String? _limiteAnunciadoA;
+  bool _anuncioProgramado = false;
+
+  /// La dirección a la que se reenvió con éxito: «Te reenviamos el correo» es de esa dirección.
+  String? _correoReenviado;
 
   /// La dirección que ve la persona: la conocida o, si hay que escribirla, la que va en el campo.
   String get _correoVisible => _emailConocido ? widget.email : _emailController.text;
 
   bool _estaBloqueado(String correo) {
-    final hasta = _bloqueos[correoParaBloqueo(correo)];
+    final hasta = _reenvios.bloqueos[correoParaBloqueo(correo)];
     return hasta != null && widget.ahora().isBefore(hasta);
   }
 
   /// El reenvío a la dirección que se ve está bloqueado. Otra dirección no lo está.
   bool get _bloqueado => _estaBloqueado(_correoVisible);
 
-  /// Instante en que vence la espera del reenvío: con la app en segundo plano el `Timer` se
-  /// pausa, así que al volver se recalcula desde la hora real.
-  DateTime? _venceCooldown;
-
   String? _errorEmail;
   String? _errorGeneral;
+
+  /// El error de [_errorGeneral] es la falta de conexión (12-A08): se dibuja neutro, no como un
+  /// error de la cuenta.
+  bool _errorSinConexion = false;
   String? _mensajeReenvio;
   bool _reenviando = false;
   bool _verificando = false;
@@ -126,7 +159,13 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     WidgetsBinding.instance.addObserver(this);
     _estado = widget.estadoInicial;
     _emailController = TextEditingController(text: widget.email);
-    _lecturaBloqueos = _leerBloqueosGuardados();
+    final delAlta = widget.envioDelAlta;
+    if (delAlta != null && _emailConocido) {
+      // El correo del alta es el primer envío: la espera de 60 s cuenta desde que salió.
+      _reenvios = _reenvios.conEspera(correoParaBloqueo(widget.email), delAlta.add(_cooldown));
+      _sincronizarEspera();
+    }
+    _lecturaReenvios = _leerReenviosGuardados();
     _enEspera = ref.read(verificacionEnEsperaProvider.notifier);
     final password = widget.password;
     if (_estado == EstadoVerificacionEmail.pendiente && _emailConocido && password != null) {
@@ -151,76 +190,183 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     super.dispose();
   }
 
-  /// Lee del teléfono los candados vigentes (los de cualquier dirección) y los retoma.
-  Future<void> _leerBloqueosGuardados() async {
-    final consultar = ref.read(consultarBloqueosReenvioVerificacionUseCaseProvider);
-    var vigentes = const <String, DateTime>{};
+  /// Lo que el teléfono recuerda de los reenvíos, a la hora de ahora. Nunca lanza: sin poder leerlo,
+  /// es como si no hubiera nada (el candado es una comodidad de la pantalla; el servidor tiene la
+  /// última palabra).
+  Future<ReenviosGuardados> _consultarReenvios() async {
+    final consultar = ref.read(consultarReenviosVerificacionUseCaseProvider);
     try {
-      vigentes = (await consultar(
-        ConsultarBloqueosReenvioVerificacionParams(ahora: widget.ahora()),
-      )).fold((_) => const <String, DateTime>{}, (vigentes) => vigentes);
+      return (await consultar(
+        ConsultarReenviosVerificacionParams(ahora: widget.ahora()),
+      )).fold((_) => ReenviosGuardados.vacio, (guardados) => guardados);
     } on Object {
-      // El candado es una comodidad de la pantalla: sin poder leerlo, sigue sin candados (el
-      // servidor tiene la última palabra).
-    } finally {
-      _leyendoBloqueos = false;
+      return ReenviosGuardados.vacio;
     }
-    if (!mounted || vigentes.isEmpty) return;
+  }
+
+  /// Suma a lo que ya se sabe lo guardado en el teléfono (lo de esta pantalla, que es más nuevo,
+  /// manda) y retoma la espera y el candado de la dirección que se ve.
+  void _adoptar(ReenviosGuardados guardados) {
+    _reenvios = ReenviosGuardados(
+      bloqueos: {...guardados.bloqueos, ..._reenvios.bloqueos},
+      esperas: {...guardados.esperas, ..._reenvios.esperas},
+    );
+    _sincronizarEspera();
+    _programarCambioDelLimite();
+  }
+
+  /// Lee del teléfono los reenvíos vigentes (los de cualquier dirección) y los retoma.
+  Future<void> _leerReenviosGuardados() async {
+    ReenviosGuardados guardados;
+    try {
+      guardados = await _consultarReenvios();
+    } finally {
+      _leyendoReenvios = false;
+    }
+    if (!mounted || guardados.estaVacio) return;
+    setState(() => _adoptar(guardados));
+  }
+
+  /// Al volver de segundo plano los `Timer` estuvieron pausados y la hora pudo cambiar: la espera
+  /// se recalcula desde la hora real y los vencimientos se recortan a su tope (una hora hacia atrás
+  /// no estira un candado; #325). El recorte queda también en el teléfono.
+  Future<void> _alVolver() async {
     setState(() {
-      _bloqueos = {...vigentes, ..._bloqueos};
-      _programarDesbloqueo();
+      _sincronizarEspera();
+      _programarCambioDelLimite();
     });
+    final guardados = await _consultarReenvios();
+    if (!mounted || guardados.estaVacio) return;
+    setState(() => _adoptar(guardados));
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _bloqueos.isNotEmpty) {
-      setState(_programarDesbloqueo);
-    }
-    final vence = _venceCooldown;
-    if (state != AppLifecycleState.resumed || vence == null || _segundosRestantes <= 0) return;
-    final restanteMs = vence.difference(widget.ahora()).inMilliseconds;
-    setState(() {
-      _segundosRestantes = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
-      if (_segundosRestantes <= 0) _terminarCooldown();
-    });
+    if (state == AppLifecycleState.resumed) unawaited(_alVolver());
   }
 
-  /// Descarta los candados que ya vencieron y agenda el repintado para cuando venza el próximo
-  /// (de cualquier dirección: la persona puede cambiar la que escribió).
-  void _programarDesbloqueo() {
-    _timerBloqueo?.cancel();
+  /// Retoma «Reenviar en Ns» para la dirección que se ve, desde su vencimiento guardado y la hora
+  /// de ahora: la espera es de cada dirección, así que cambiar la que se escribe cambia (o quita) la
+  /// cuenta regresiva. Sin espera vigente, la deja en cero.
+  void _sincronizarEspera() {
     final ahora = widget.ahora();
-    _bloqueos = {
-      for (final MapEntry(key: correo, value: vence) in _bloqueos.entries)
-        if (vence.isAfter(ahora)) correo: vence,
-    };
-    if (_bloqueos.isEmpty) return;
-    final proximo = _bloqueos.values.reduce((a, b) => a.isBefore(b) ? a : b);
-    _timerBloqueo = Timer(proximo.difference(ahora), () {
-      if (!mounted) return;
-      setState(_programarDesbloqueo);
-    });
+    _reenvios = _reenvios.vigentesA(ahora);
+    final vence = _reenvios.esperas[correoParaBloqueo(_correoVisible)];
+    final restanteMs = vence == null ? 0 : vence.difference(ahora).inMilliseconds;
+    final segundos = (restanteMs / 1000).ceil().clamp(0, _cooldown.inSeconds);
+    if (segundos <= 0) {
+      _terminarCooldown();
+      return;
+    }
+    _segundosRestantes = segundos;
+    if (_timer?.isActive != true) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _segundosRestantes--;
+          if (_segundosRestantes <= 0) _terminarCooldown();
+        });
+      });
+    }
   }
 
   void _terminarCooldown() {
     _timer?.cancel();
+    _timer = null;
+    _segundosRestantes = 0;
     _mensajeReenvio = null;
   }
 
-  void _iniciarCooldown() {
-    _timer?.cancel();
-    _venceCooldown = widget.ahora().add(_cooldown);
-    setState(() => _segundosRestantes = _cooldown.inSeconds);
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        _segundosRestantes--;
-        if (_segundosRestantes <= 0) _terminarCooldown();
-      });
+  /// Descarta los candados que ya vencieron y agenda el repintado para el próximo cambio: que venza
+  /// alguno (de cualquier dirección: la persona puede cambiar la que escribió) o que pase el minuto
+  /// que dice el aviso del límite de la dirección que se ve.
+  void _programarCambioDelLimite() {
+    _timerBloqueo?.cancel();
+    _timerBloqueo = null;
+    final ahora = widget.ahora();
+    _reenvios = _reenvios.vigentesA(ahora);
+    Duration? proximo;
+    void considerar(Duration duracion) {
+      if (proximo == null || duracion < proximo!) proximo = duracion;
+    }
+
+    for (final vence in _reenvios.bloqueos.values) {
+      considerar(vence.difference(ahora));
+    }
+    if (_reenvios.bloqueos[correoParaBloqueo(_correoVisible)] case final vence?) {
+      final restanteMs = vence.difference(ahora).inMilliseconds;
+      final minutosPorVenir = (restanteMs / Duration.millisecondsPerMinute).ceil() - 1;
+      considerar(
+        Duration(milliseconds: restanteMs - minutosPorVenir * Duration.millisecondsPerMinute),
+      );
+    }
+    final cuando = proximo;
+    if (cuando == null) return;
+    _timerBloqueo = Timer(cuando, _alCambiarElLimite);
+  }
+
+  /// Pasó un minuto del aviso o venció un candado: se repinta con la hora de ahora (a lo sumo una vez
+  /// por minuto) y se agenda el próximo cambio.
+  void _alCambiarElLimite() {
+    if (!mounted) return;
+    setState(_programarCambioDelLimite);
+  }
+
+  /// Dice cuánto falta del candado de la dirección que se ve, redondeado hacia arriba a minutos:
+  /// «una hora» al rechazo (decisión de Cristian, 29/09), después lo que queda (decisión del
+  /// orquestador, 08/10, #325; el canvas 12-A06 dibuja «en 4 minutos»).
+  String _textoLimite() {
+    final vence = _reenvios.bloqueos[correoParaBloqueo(_correoVisible)];
+    final minutos = vence == null
+        ? bloqueoReenvioVerificacion.inMinutes
+        : (vence.difference(widget.ahora()).inMilliseconds / Duration.millisecondsPerMinute)
+              .ceil()
+              .clamp(1, bloqueoReenvioVerificacion.inMinutes);
+    final cuanto = switch (minutos) {
+      >= 60 => 'una hora',
+      1 => '1 minuto',
+      _ => '$minutos minutos',
+    };
+    return 'Demasiados intentos. Probá nuevamente en $cuanto.';
+  }
+
+  /// Anuncia el aviso del límite al lector de pantalla **una sola vez**, cuando aparece (al
+  /// rechazo, al entrar a la pantalla con el candado, o al escribir una dirección bloqueada), y no
+  /// cada minuto que el texto se actualiza (como en #297). Por eso el aviso no es un `liveRegion`.
+  void _revisarAnuncioDelLimite() {
+    final correo = correoParaBloqueo(_correoVisible);
+    if (!_bloqueado) {
+      _limiteAnunciadoA = null;
+      return;
+    }
+    if (_limiteAnunciadoA == correo || _anuncioProgramado) return;
+    _anuncioProgramado = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _anuncioProgramado = false;
+      if (!mounted || !_bloqueado) return;
+      final actual = correoParaBloqueo(_correoVisible);
+      if (_limiteAnunciadoA == actual) return;
+      _limiteAnunciadoA = actual;
+      unawaited(
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          _textoLimite(),
+          Directionality.of(context),
+        ),
+      );
+    });
+  }
+
+  /// Se escribe otra dirección: el candado, la espera y el aviso de éxito son de cada dirección.
+  void _alCambiarCorreo(String _) {
+    setState(() {
+      _errorEmail = null;
+      if (correoParaBloqueo(_correoVisible) != _correoReenviado) _mensajeReenvio = null;
+      _sincronizarEspera();
+      _programarCambioDelLimite();
     });
   }
 
@@ -229,19 +375,21 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     final email = _emailConocido ? widget.email : _emailController.text.trim();
     final sesion = ref.read(sesionProvider.notifier);
     final registrarBloqueo = ref.read(registrarBloqueoReenvioVerificacionUseCaseProvider);
+    final registrarEnvio = ref.read(registrarEnvioVerificacionUseCaseProvider);
     setState(() {
       _reenviando = true;
       _errorEmail = null;
       _errorGeneral = null;
+      _errorSinConexion = false;
       _mensajeReenvio = null;
     });
 
-    // Un reenvío pedido mientras se leen los candados guardados espera a saber si esta dirección
-    // está bloqueada.
-    if (_leyendoBloqueos) {
-      await _lecturaBloqueos;
+    // Un reenvío pedido mientras se leen los reenvíos guardados espera a saber si esta dirección
+    // está bloqueada o esperando, pero no más que [_topeAlmacen].
+    if (_leyendoReenvios) {
+      await _lecturaReenvios.timeout(_topeAlmacen, onTimeout: () {});
       if (!mounted) return;
-      if (_estaBloqueado(email)) {
+      if (_estaBloqueado(email) || _segundosRestantes > 0) {
         setState(() => _reenviando = false);
         return;
       }
@@ -249,14 +397,21 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
 
     final failure = await sesion.reenviarVerificacion(email);
 
-    // El candado se guarda aunque la pantalla ya no esté (el servidor ya rechazó a esta dirección)
-    // y antes de soltar el «ocupado»: al volver a entrar, ya está guardado.
+    // Lo que dejó el servidor se guarda aunque la pantalla ya no esté (el correo salió, o rechazó a
+    // esta dirección) y antes de soltar el «ocupado»: al volver a entrar, ya está guardado.
+    final cuando = widget.ahora();
     DateTime? venceBloqueo;
+    DateTime? venceEspera;
     if (failure case FailureServidor(status: 429)) {
-      final cuando = widget.ahora();
-      venceBloqueo = (await registrarBloqueo(
-        RegistrarBloqueoReenvioVerificacionParams(correo: email, ahora: cuando),
-      )).fold((_) => cuando.add(bloqueoReenvioVerificacion), (vence) => vence);
+      venceBloqueo = await _vencimientoGuardado(
+        registrarBloqueo(RegistrarBloqueoReenvioVerificacionParams(correo: email, ahora: cuando)),
+        cuando.add(bloqueoReenvioVerificacion),
+      );
+    } else if (failure == null) {
+      venceEspera = await _vencimientoGuardado(
+        registrarEnvio(RegistrarEnvioVerificacionParams(correo: email, ahora: cuando)),
+        cuando.add(_cooldown),
+      );
     }
 
     if (!mounted) return;
@@ -264,18 +419,39 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       _reenviando = false;
       switch (failure) {
         case null:
-          _mensajeReenvio = 'Te reenviamos el correo. Puede tardar unos minutos.';
-          _iniciarCooldown();
+          // La espera es de la dirección a la que salió el correo, no de la que se vea cuando
+          // conteste; «Te reenviamos el correo» solo se dice si sigue siendo la que se ve.
+          _reenvios = _reenvios.conEspera(correoParaBloqueo(email), venceEspera!);
+          if (correoParaBloqueo(_correoVisible) == correoParaBloqueo(email)) {
+            _correoReenviado = correoParaBloqueo(email);
+            _mensajeReenvio = 'Te reenviamos el correo. Puede tardar unos minutos.';
+          }
+          _sincronizarEspera();
         case FailureValidacion(:final campos):
           _errorEmail = campos['email'];
         case FailureServidor(status: 429):
           // Bloquea la dirección a la que se pidió el reenvío, no la que se vea cuando conteste.
-          _bloqueos = {..._bloqueos, correoParaBloqueo(email): venceBloqueo!};
-          _programarDesbloqueo();
+          _reenvios = _reenvios.conBloqueo(correoParaBloqueo(email), venceBloqueo!);
+          _programarCambioDelLimite();
         case final Failure f:
-          _errorGeneral = _textoDeError(f, 'reenviar el email', 'No pudimos reenviar el email.');
+          _fijarErrorGeneral(f, 'reenviar el email', 'No pudimos reenviar el email.');
       }
     });
+  }
+
+  /// El vencimiento que dejó [guardado] en el teléfono o, si no se pudo guardar o el almacén no
+  /// contesta en [_topeAlmacen], el [local] que calcula la pantalla. El guardado sigue su camino
+  /// (si termina más tarde, queda guardado), pero la pantalla no lo espera más que el tope: el
+  /// estado y el aviso salen igual y ningún botón queda en «ocupado» por un almacén colgado.
+  Future<DateTime> _vencimientoGuardado(
+    Future<Either<Failure, DateTime>> guardado,
+    DateTime local,
+  ) async {
+    try {
+      return (await guardado.timeout(_topeAlmacen)).fold((_) => local, (vence) => vence);
+    } on Object {
+      return local;
+    }
   }
 
   Future<void> _yaVerifique() async {
@@ -285,6 +461,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     setState(() {
       _verificando = true;
       _errorGeneral = null;
+      _errorSinConexion = false;
       _mensajeReenvio = null;
     });
 
@@ -298,13 +475,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
       if (failure == null) {
         _estado = EstadoVerificacionEmail.verificado;
       } else {
-        _errorGeneral = _textoDeError(
-          failure,
-          'verificar tu cuenta',
-          'No pudimos verificar tu cuenta.',
-        );
+        _fijarErrorGeneral(failure, 'verificar tu cuenta', 'No pudimos verificar tu cuenta.');
       }
     });
+  }
+
+  /// Deja el aviso de [failure] (dentro de un `setState`).
+  void _fijarErrorGeneral(Failure failure, String accion, String noPudimos) {
+    _errorGeneral = _textoDeError(failure, accion, noPudimos);
+    _errorSinConexion = failure is FailureSinConexion;
   }
 
   void _continuar() => Navigator.of(context).popUntil((route) => route.isFirst);
@@ -346,6 +525,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     final conAvisoDeReenvio = _mensajeReenvio != null;
     // Con sesión, al salir la app entra a Inicio (casos 1 y 2 de HU-AUTH-002): el botón lo dice así.
     final haySesion = ref.watch(sesionProvider).value != null;
+    _revisarAnuncioDelLimite();
 
     return Scaffold(
       body: SafeArea(
@@ -450,8 +630,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
                           _CampoEmail(
                             controller: _emailController,
                             errorText: _errorEmail,
-                            // Repinta siempre: el candado depende de la dirección que se escribe.
-                            onChanged: (_) => setState(() => _errorEmail = null),
+                            // Repinta siempre: el candado y la espera dependen de la dirección que se
+                            // escribe.
+                            onChanged: _alCambiarCorreo,
                           ),
                       ],
                     ),
@@ -496,12 +677,14 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     final inutil = _estado == EstadoVerificacionEmail.enlaceInutil;
     // El botón dice «de verificación» cuando el enlace no sirvió (vencido o inútil).
     final expirado = _estado == EstadoVerificacionEmail.expirado || inutil;
-    final conCuentaRegresiva = _segundosRestantes > 0;
+    final bloqueado = _bloqueado;
+    // Con el candado puesto el botón dice lo mismo que en 12-A06, sin cuenta regresiva: la espera
+    // de 60 s es mucho menos que la hora que falta.
+    final conCuentaRegresiva = _segundosRestantes > 0 && !bloqueado;
     final etiquetaReenviar = conCuentaRegresiva
         ? 'Reenviar en ${_segundosRestantes}s'
         : (expirado ? 'Reenviar email de verificación' : 'Reenviar email');
     final ocupado = _reenviando || _verificando;
-    final bloqueado = _bloqueado;
     final reenviar = ocupado || conCuentaRegresiva || bloqueado ? null : _reenviar;
 
     return [
@@ -512,18 +695,24 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           icono: Icons.check_circle_outline,
         ),
       if (bloqueado)
-        const _AvisoVerificacion(
-          key: Key('verificacion_email_limite'),
-          texto: _textoLimite,
-          icono: Icons.lock_outline,
+        _AvisoVerificacion(
+          key: const Key('verificacion_email_limite'),
+          texto: _textoLimite(),
+          // El canvas 12-A06 dibuja «!» (el candado va en el botón).
+          icono: Icons.error_outline,
           esError: true,
+          // Lo anuncia `_revisarAnuncioDelLimite` una sola vez: el texto cambia cada minuto.
+          liveRegion: false,
         ),
       if (_errorGeneral case final error?)
         _AvisoVerificacion(
           key: const Key('verificacion_email_error_general'),
           texto: error,
-          icono: Icons.error_outline,
-          esError: true,
+          // 12-A08: la falta de conexión no es un error de la cuenta; el canvas la dibuja neutra
+          // (borde de trazos gris y círculo con una ✕), como el login (17-A02).
+          icono: _errorSinConexion ? null : Icons.error_outline,
+          esError: !_errorSinConexion,
+          sinConexion: _errorSinConexion,
         ),
       if (_estado == EstadoVerificacionEmail.pendiente && widget.password != null)
         FilledButton(
@@ -570,7 +759,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         ),
       TextButton(
         key: const Key('verificacion_email_volver_login'),
-        onPressed: inutil ? _irAlLogin : _volverAlLogin,
+        // Con un reenvío en vuelo no se sale: el resultado (el correo que salió o el candado) se
+        // guarda y se muestra en esta pantalla.
+        onPressed: _reenviando ? null : (inutil ? _irAlLogin : _volverAlLogin),
         child: Text(
           inutil ? 'Ir al login' : 'Volver al login',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.secondary),
@@ -623,39 +814,62 @@ class _AvisoVerificacion extends StatelessWidget {
   const _AvisoVerificacion({
     super.key,
     required this.texto,
-    required this.icono,
+    this.icono,
     this.esError = false,
-  });
+    this.sinConexion = false,
+    this.liveRegion = true,
+  }) : assert(icono != null || sinConexion, 'sin ícono propio solo el aviso de sin conexión');
 
   final String texto;
-  final IconData icono;
+
+  /// El ícono del aviso; `null` con [sinConexion], que lleva el suyo ([IconoSinConexion]).
+  final IconData? icono;
   final bool esError;
+
+  /// Aviso de falta de conexión (12-A08): neutro, con borde de trazos gris, sin el rojo del error.
+  final bool sinConexion;
+
+  /// `false` cuando quien lo muestra lo anuncia aparte (y una sola vez).
+  final bool liveRegion;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
+    final colores = theme.extension<ColoresColportaje>()!;
     final color = esError ? esquema.error : esquema.primary;
 
-    return Semantics(
-      liveRegion: true,
-      container: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: esquema.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color, width: 1.5),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 12,
-          children: [
-            ExcludeSemantics(child: Icon(icono, color: color)),
-            Expanded(child: Text(texto, style: theme.textTheme.bodyLarge)),
-          ],
-        ),
+    final caja = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: esquema.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: sinConexion ? null : Border.all(color: color, width: 1.5),
       ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 12,
+        children: [
+          if (sinConexion)
+            const IconoSinConexion()
+          else
+            ExcludeSemantics(child: Icon(icono, color: color)),
+          Expanded(child: Text(texto, style: theme.textTheme.bodyLarge)),
+        ],
+      ),
+    );
+
+    return Semantics(
+      liveRegion: liveRegion,
+      container: true,
+      child: sinConexion
+          ? BordeDiscontinuo(
+              key: const Key('verificacion_email_aviso_borde_discontinuo'),
+              color: colores.gris,
+              radio: 14,
+              child: caja,
+            )
+          : caja,
     );
   }
 }

@@ -4,6 +4,8 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
@@ -87,6 +89,8 @@ Future<void> _montarPagina(
   ThemeData? tema,
   AuthRemoteDataSource? remote,
   double escalaTexto = 1,
+  DateTime Function()? ahora,
+  BloqueoReenvioVerificacionRepository? bloqueos,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -97,6 +101,8 @@ Future<void> _montarPagina(
             AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
       ),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      if (bloqueos != null)
+        bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(bloqueos),
     ],
     child: MaterialApp(
       theme: tema ?? temaClaro(),
@@ -104,7 +110,7 @@ Future<void> _montarPagina(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
         child: child!,
       ),
-      home: const RegistroPage(),
+      home: RegistroPage(ahora: ahora ?? DateTime.now),
     ),
   ),
 );
@@ -118,6 +124,7 @@ Future<void> _montarPagina(
 Future<void> _montarPilaConPantallaInicial(
   WidgetTester tester, {
   required AuthRemoteDataSourceEnMemoria remote,
+  BloqueoReenvioVerificacionRepository? bloqueos,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -125,6 +132,8 @@ Future<void> _montarPilaConPantallaInicial(
       dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
       authRemoteDataSourceProvider.overrideWithValue(remote),
       authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      if (bloqueos != null)
+        bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(bloqueos),
     ],
     child: MaterialApp(
       theme: temaClaro(),
@@ -362,6 +371,154 @@ void main() {
         expect(pagina.password, 'Secreto123');
       },
     );
+
+    // HU-AUTH-002, #325: el correo del alta es el primer envío; los 60 s para reenviar cuentan desde
+    // ahí, así que la pantalla de verificación arranca con «Reenviar en Ns».
+    group('el correo del alta cuenta como primer envío (#325)', () {
+      final antiguo = DateTime(2026, 10, 8, 10);
+
+      testWidgets('requiere verificación: la pantalla de verificación recibe la hora del alta que '
+          'tomó el registro', (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPagina(tester, remote: remote, ahora: () => antiguo);
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester, email: 'lucia.silva@correo.com');
+        await _tocarContinuar(tester);
+        await tester.pumpAndSettle();
+
+        final pagina = tester.widget<VerificacionEmailPage>(find.byType(VerificacionEmailPage));
+        expect(pagina.envioDelAlta, antiguo);
+      });
+
+      testWidgets('requiere verificación: el teléfono guarda la espera de 60 s de esa dirección y '
+          'la pantalla arranca con «Reenviar en 60s», sin el aviso «Te reenviamos el correo»', (
+        tester,
+      ) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPagina(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester, email: '  Lucia.Silva@Correo.COM ');
+        await _tocarContinuar(tester);
+        await tester.pumpAndSettle();
+
+        final pagina = tester.widget<VerificacionEmailPage>(find.byType(VerificacionEmailPage));
+        final delAlta = pagina.envioDelAlta!;
+        final guardados = await bloqueos.leer(ahora: delAlta);
+        expect(guardados.esperas, {
+          'lucia.silva@correo.com': delAlta.add(const Duration(seconds: 60)).toUtc(),
+        });
+        expect(guardados.bloqueos, isEmpty);
+        expect(find.text('Reenviar en 60s'), findsOneWidget);
+        expect(find.byKey(const Key('verificacion_email_mensaje_reenvio')), findsNothing);
+        // Cierra la pantalla (y su cuenta regresiva) como lo haría la app.
+        await tester.pumpWidget(const SizedBox());
+      });
+
+      testWidgets('si la persona sale de «Registrarse» con el alta en vuelo, el correo que salió '
+          'igual cuenta: se guarda la espera de 60 s y no se abre la verificación', (tester) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPilaConPantallaInicial(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_registro')));
+        await tester.pumpAndSettle();
+        await _completarFormulario(tester, email: '  Lucia.Silva@Correo.COM ');
+
+        remote.demoraRegistrar = Completer<void>();
+        await _tocarContinuar(tester);
+        await tester.pump();
+        expect(remote.llamadasRegistrar, 1);
+
+        // Vuelve atrás antes de la respuesta de la red.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(RegistroPage), findsNothing);
+
+        remote.demoraRegistrar!.complete();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(VerificacionEmailPage), findsNothing);
+        expect(tester.takeException(), isNull);
+        final guardados = await bloqueos.leer(ahora: DateTime.now());
+        expect(guardados.esperas.keys, ['lucia.silva@correo.com']);
+        expect(guardados.bloqueos, isEmpty);
+      });
+
+      testWidgets('si sale con el alta en vuelo y el alta falla, no se guarda ningún envío', (
+        tester,
+      ) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'ana@example.com': 'secreto123'},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await _montarPilaConPantallaInicial(tester, remote: remote, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('abrir_registro')));
+        await tester.pumpAndSettle();
+        await _completarFormulario(tester, email: 'ana@example.com');
+
+        remote.demoraRegistrar = Completer<void>();
+        await _tocarContinuar(tester);
+        await tester.pump();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        remote.demoraRegistrar!.complete();
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect((await bloqueos.leer(ahora: DateTime.now())).estaVacio, isTrue);
+      });
+
+      testWidgets(
+        'con la sesión inmediata (sin verificación pendiente) no se guarda ningún envío',
+        (tester) async {
+          final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+          final remote = AuthRemoteDataSourceEnMemoria(
+            credenciales: const {'ana@example.com': 'secreto123'},
+          );
+          await _montarPilaConPantallaInicial(tester, remote: remote, bloqueos: bloqueos);
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('abrir_registro')));
+          await tester.pumpAndSettle();
+
+          await _completarFormulario(tester);
+          await _tocarContinuar(tester);
+          await tester.pumpAndSettle();
+
+          expect(find.byType(VerificacionEmailPage), findsNothing);
+          expect(find.text('Cuenta creada'), findsOneWidget);
+          expect((await bloqueos.leer(ahora: DateTime.now())).estaVacio, isTrue);
+        },
+      );
+
+      testWidgets('el registro rechazado (correo ya registrado) no guarda ningún envío', (
+        tester,
+      ) async {
+        final bloqueos = BloqueoReenvioVerificacionEnMemoria();
+        await _montarPagina(tester, bloqueos: bloqueos);
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester, email: 'ana@example.com');
+        await _tocarContinuar(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(VerificacionEmailPage), findsNothing);
+        expect((await bloqueos.leer(ahora: DateTime.now())).estaVacio, isTrue);
+      });
+    });
 
     // Nueva cobertura: "sin conectividad" (HU-AUTH-001) a nivel de página — antes solo estaba
     // probado en el repositorio/use case, no en que RegistroPage efectivamente muestre el banner.

@@ -6,6 +6,7 @@
 // apagan `stringify`; esto lo verifica con la config en `true`, que es el peor caso.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
@@ -138,6 +139,19 @@ void main() {
 
       expect(texto, isNot(contains('matias@example.com')));
       expect(texto, isNot(contains('jwt-super-secreto')));
+    });
+
+    test('dado unos ReenviosGuardados, cuando se interpolan, no aparece ningún correo (las claves '
+        'de los mapas son correos)', () {
+      final guardados = ReenviosGuardados(
+        bloqueos: {'matias@example.com': DateTime.utc(2026, 10, 9, 12)},
+        esperas: {'sosa@example.com': DateTime.utc(2026, 10, 9, 11)},
+      );
+
+      final texto = '$guardados';
+
+      expect(texto, isNot(contains('matias@example.com')));
+      expect(texto, isNot(contains('sosa@example.com')));
     });
 
     test('dado que se apaga stringify, cuando se comparan dos entidades iguales, siguen siendo '

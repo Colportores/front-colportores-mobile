@@ -54,25 +54,27 @@ void main() {
       await repo.guardar(ana, venceEn1h, ahora: base);
     });
 
+    Future<Map<String, DateTime>> bloqueos() async => (await repo.leer(ahora: base)).bloqueos;
+
     tearDown(() async {
       if (dir.existsSync()) await dir.delete(recursive: true);
     });
 
     test('«Borrar datos locales» (olvidarDatosDelUsuario): ya no hay candados que leer', () async {
-      expect(await repo.leer(), {ana: venceEn1h});
+      expect(await bloqueos(), {ana: venceEn1h});
 
       await custodia.olvidarDatosDelUsuario();
 
-      expect(await repo.leer(), isEmpty);
+      expect(await bloqueos(), isEmpty);
     });
 
     test('«Empezar de nuevo» (olvidar) y recuperar el almacén conservan el candado: Supabase sigue '
         'bloqueando a esa dirección', () async {
       await custodia.olvidar();
-      expect(await repo.leer(), {ana: venceEn1h});
+      expect(await bloqueos(), {ana: venceEn1h});
 
       await custodia.reconstruirAlmacen(custodia.generarDek());
-      expect(await repo.leer(), {ana: venceEn1h});
+      expect(await bloqueos(), {ana: venceEn1h});
     });
 
     test(
@@ -82,7 +84,7 @@ void main() {
 
         await repo.guardar('luis@correo.com', venceEn1h, ahora: base);
 
-        expect(await repo.leer(), {'luis@correo.com': venceEn1h});
+        expect(await bloqueos(), {'luis@correo.com': venceEn1h});
       },
     );
   });
@@ -99,7 +101,10 @@ void main() {
         );
 
         await repo.guardar(ana, venceEn1h, ahora: base);
-        await repo.leer();
+        await repo.guardarEspera(ana, base.add(const Duration(seconds: 60)), ahora: base);
+        await repo.leer(ahora: base);
+        await repo.olvidar(ana);
+        await repo.olvidarTodo();
 
         expect(salida.lineas, isNotEmpty, reason: 'tiene que haber avisado de la falla');
         final todo = salida.lineas.join('\n');
@@ -108,21 +113,17 @@ void main() {
       },
     );
 
-    test(
-      'el caso de uso que guarda el candado no deja la dirección en su toString() ni con '
-      'EquatableConfig.stringify en true',
-      () {
-        final previo = EquatableConfig.stringify;
-        addTearDown(() => EquatableConfig.stringify = previo);
-        EquatableConfig.stringify = true;
+    test('el caso de uso que guarda el candado no deja la dirección en su toString() ni con '
+        'EquatableConfig.stringify en true', () {
+      final previo = EquatableConfig.stringify;
+      addTearDown(() => EquatableConfig.stringify = previo);
+      EquatableConfig.stringify = true;
 
-        final params = RegistrarBloqueoReenvioVerificacionParams(correo: ana, ahora: base);
+      final params = RegistrarBloqueoReenvioVerificacionParams(correo: ana, ahora: base);
+      final envio = RegistrarEnvioVerificacionParams(correo: ana, ahora: base);
 
-        expect('$params', isNot(contains(ana)));
-      },
-      skip:
-          'QA #249: RegistrarBloqueoReenvioVerificacionParams lleva el correo en props y no apaga '
-          'stringify (toString lo imprime con stringify en true; IniciarSesionParams sí lo apaga)',
-    );
+      expect('$params', isNot(contains(ana)));
+      expect('$envio', isNot(contains(ana)));
+    });
   });
 }

@@ -16,6 +16,7 @@ import '../providers/reingreso_sesion_notifier.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
 import '../widgets/borde_discontinuo.dart';
+import '../widgets/icono_sin_conexion.dart';
 import '../widgets/texto_error_anunciado.dart';
 import 'recuperacion_password_page.dart';
 import 'registro_page.dart';
@@ -456,22 +457,20 @@ class _AvisoSesion extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: sinConexion ? tinta : null,
-                border: sinConexion ? null : Border.all(color: tinta, width: 1.5),
-              ),
-              child: Icon(
-                icono,
-                size: 13,
-                color: sinConexion ? theme.colorScheme.onPrimary : tinta,
+          if (sinConexion)
+            const IconoSinConexion()
+          else
+            ExcludeSemantics(
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: tinta, width: 1.5),
+                ),
+                child: Icon(icono, size: 13, color: tinta),
               ),
             ),
-          ),
           const SizedBox(width: 12),
           Expanded(child: Text(aviso.mensaje, style: theme.textTheme.bodyMedium)),
           if (alCerrar != null)
