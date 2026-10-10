@@ -264,6 +264,67 @@ void main() {
     });
   });
 
+  group('JornadaLocalDataSourceDrift — siguienteA (#327)', () {
+    JornadaModel cerradaA(String id, Duration despues, {String colportorId = 'u-1'}) {
+      final inicio = t0.add(despues);
+      return jornada(
+        id: id,
+        colportorId: colportorId,
+        inicio: inicio,
+        fin: inicio.add(const Duration(hours: 1)),
+      );
+    }
+
+    test('dado varias jornadas posteriores, cuando se consulta, devuelve la de inicio más '
+        'cercano, sea cual sea el orden en que se guardaron', () async {
+      await local.insertar(cerradaA('tarde', const Duration(days: 2)));
+      await local.insertar(cerradaA('cerca', const Duration(hours: 20)));
+      await local.insertar(cerradaA('lejos', const Duration(days: 1)));
+
+      final siguiente = await local.siguienteA(colportorId: 'u-1', inicio: t0);
+
+      expect(siguiente?.id, 'cerca');
+    });
+
+    test('dado que la siguiente sigue abierta, cuando se consulta, también la devuelve', () async {
+      await local.insertar(jornada(id: 'abierta', inicio: t0.add(const Duration(hours: 3))));
+
+      expect((await local.siguienteA(colportorId: 'u-1', inicio: t0))?.id, 'abierta');
+    });
+
+    test('dado la misma hora de inicio, una anterior, otro colportor o una borrada, cuando se '
+        'consulta, ninguna cuenta como siguiente', () async {
+      await local.insertar(cerradaA('misma', Duration.zero));
+      await local.insertar(cerradaA('anterior', const Duration(hours: -5)));
+      await local.insertar(cerradaA('ajena', const Duration(hours: 2), colportorId: 'u-2'));
+      await local.insertar(
+        jornada(
+          id: 'borrada',
+          inicio: t0.add(const Duration(hours: 3)),
+          fin: t0.add(const Duration(hours: 4)),
+          deletedAt: t0,
+        ),
+      );
+
+      expect(await local.siguienteA(colportorId: 'u-1', inicio: t0), isNull);
+    });
+
+    test('dado una jornada que empieza un milisegundo después, cuando se consulta, cuenta como '
+        'siguiente (la comparación es exacta)', () async {
+      await local.insertar(cerradaA('justo', const Duration(milliseconds: 1)));
+
+      expect((await local.siguienteA(colportorId: 'u-1', inicio: t0))?.id, 'justo');
+    });
+
+    test('dado la jornada que se consulta, cuando es la última del colportor, devuelve null y no '
+        'toca la tabla', () async {
+      await local.insertar(jornada(inicio: t0));
+
+      expect(await local.siguienteA(colportorId: 'u-1', inicio: t0), isNull);
+      expect(await filas(), 1);
+    });
+  });
+
   group('IniciarJornadaUseCase + JornadaRepositoryImpl sobre Drift — precisión de fechas', () {
     test(
       'dado un reloj con microsegundos, cuando se inicia la jornada, la que devuelve crear es '

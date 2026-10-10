@@ -46,6 +46,17 @@ final class JornadaLocalDataSourceEnMemoria implements JornadaLocalDataSource {
     );
   }
 
+  @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) async {
+    JornadaModel? siguiente;
+    for (final jornada in _jornadas.values) {
+      if (jornada.colportorId != colportorId || jornada.auditoria.deletedAt != null) continue;
+      if (!jornada.inicio.isAfter(inicio)) continue;
+      if (siguiente == null || jornada.inicio.isBefore(siguiente.inicio)) siguiente = jornada;
+    }
+    return siguiente;
+  }
+
   JornadaModel? _activa(String colportorId) {
     for (final jornada in _jornadas.values) {
       if (jornada.colportorId == colportorId && jornada.estaAbierta) return jornada;

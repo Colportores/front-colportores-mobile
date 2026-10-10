@@ -23,6 +23,11 @@ abstract interface class JornadaLocalDataSource {
   /// o soft delete). Comprobar y escribir tiene que ser atómico, para que dos toques seguidos en
   /// "Finalizar jornada" no pisen el `fin` del primero.
   Future<void> finalizar(JornadaModel jornada);
+
+  /// La jornada del colportor con el `inicio` más cercano **después** de [inicio], sin soft
+  /// delete, abierta o cerrada, o `null` si no hay ninguna (HU-JOR-002: el fin de la jornada que
+  /// quedó abierta no pasa del inicio de la que sigue).
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio});
 }
 
 /// La jornada que se quiso cerrar ya no está abierta; el repositorio la traduce a

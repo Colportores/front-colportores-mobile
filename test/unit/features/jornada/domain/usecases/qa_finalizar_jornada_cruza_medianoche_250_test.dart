@@ -10,9 +10,12 @@ import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
 
 final class _Repositorio implements JornadaRepository {
-  _Repositorio(this.activa);
+  _Repositorio(this.activa, {this.siguiente});
 
   final Jornada activa;
+
+  /// La jornada que sigue a [activa], si hay una.
+  final Jornada? siguiente;
   final List<Jornada> finalizadas = [];
 
   @override
@@ -27,6 +30,9 @@ final class _Repositorio implements JornadaRepository {
     finalizadas.add(jornada);
     return Right(jornada);
   }
+
+  @override
+  Future<Either<Failure, Jornada?>> siguienteA(Jornada jornada) async => Right(siguiente);
 }
 
 final class _Backup implements DisparadorBackup {
@@ -49,8 +55,12 @@ Future<Either<Failure, Jornada>> _finalizar({
   required DateTime inicio,
   required DateTime ahora,
   DateTime? hora,
+  DateTime? inicioSiguiente,
 }) => FinalizarJornadaUseCase(
-  _Repositorio(_abierta(inicio)),
+  _Repositorio(
+    _abierta(inicio),
+    siguiente: inicioSiguiente == null ? null : _abierta(inicioSiguiente),
+  ),
   _Backup(),
   ahora: () => ahora.toUtc(),
 )(FinalizarJornadaParams(colportorId: 'u-1', hora: hora?.toUtc()));
@@ -166,12 +176,60 @@ void main() {
     );
   });
 
+  group('La jornada siguiente topa el fin también cuando el rango cruza la medianoche (#327)', () {
+    // Inicio el lunes a las 20:00; ahora el martes a las 09:00; las 12 h darían las 08:00.
+    final ahora = _local(1, 9, 0);
+    final siguiente = _local(1, 2, 0);
+
+    test('una hora de la madrugada anterior a la siguiente vale', () async {
+      final r = await _finalizar(
+        inicio: inicio,
+        ahora: ahora,
+        hora: _local(1, 1, 59),
+        inicioSiguiente: siguiente,
+      );
+
+      expect(r.getOrElse(() => fail('se esperaba Right')).fin, _local(1, 1, 59).toUtc());
+    });
+
+    test('la hora justo en el inicio de la siguiente vale (queda a ras) y un minuto después '
+        'no, con el rango real en el aviso', () async {
+      final justo = await _finalizar(
+        inicio: inicio,
+        ahora: ahora,
+        hora: siguiente,
+        inicioSiguiente: siguiente,
+      );
+      expect(justo.fold((f) => f, (_) => null), isNull);
+
+      final pasado = await _finalizar(
+        inicio: inicio,
+        ahora: ahora,
+        hora: _local(1, 2, 1),
+        inicioSiguiente: siguiente,
+      );
+      final falla = pasado.fold((f) => f, (_) => null);
+      expect(falla, isA<FailureHoraFueraDeRango>());
+      expect(falla!.mensaje, 'La hora tiene que estar entre las 20:01 y las 02:00.');
+    });
+
+    test('sin hora elegida avisa del día anterior y trae el inicio de la siguiente', () async {
+      final r = await _finalizar(inicio: inicio, ahora: ahora, inicioSiguiente: siguiente);
+
+      final falla = r.fold((f) => f, (_) => null);
+      expect(
+        falla,
+        FailureJornadaDeDiaAnterior(inicio: inicio.toUtc(), inicioSiguiente: siguiente.toUtc()),
+      );
+    });
+  });
+
   test(
     'privacidad: el mensaje de la jornada sin cerrar nombra el día, no a la persona ni su id',
     () {
       final f = FailureJornadaDeDiaAnterior(inicio: inicio);
 
-      expect(f.mensaje, contains('Tenés una jornada del lunes 21 sin cerrar.'));
+      expect(f.mensaje, contains('Tu jornada del lunes 21 empezó a las 20:00 y quedó abierta.'));
       expect(f.toString(), isNot(contains('u-1')));
       expect(f.mensaje, isNot(contains('u-1')));
     },

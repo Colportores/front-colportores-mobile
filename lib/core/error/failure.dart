@@ -174,35 +174,41 @@ final class FailureHoraFueraDeRango extends Failure {
 
   @override
   List<Object?> get props => [...super.props, desde, hasta];
+}
 
-  /// `HH:MM` en la zona del dispositivo: la hora que el colportor ve en su reloj.
-  static String _horaLocal(DateTime instante) {
-    final local = instante.toLocal();
-    String dosDigitos(int n) => n.toString().padLeft(2, '0');
-    return '${dosDigitos(local.hour)}:${dosDigitos(local.minute)}';
-  }
+/// `HH:MM` en la zona del dispositivo: la hora que el colportor ve en su reloj.
+String _horaLocal(DateTime instante) {
+  final local = instante.toLocal();
+  String dosDigitos(int n) => n.toString().padLeft(2, '0');
+  return '${dosDigitos(local.hour)}:${dosDigitos(local.minute)}';
 }
 
 /// La jornada en curso empezó un día anterior (HU-JOR-002, "Jornada que quedó abierta"): no se
 /// cierra con la hora de hoy, porque eso inventaría un `fin` y sumaría horas que no se trabajaron.
-/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", hasta 12 h después del inicio,
-/// aunque el fin caiga al día siguiente—, que es otra pantalla. [mensaje] nombra el día en la zona
-/// del dispositivo ("Tenés una jornada del lunes 21 sin cerrar.", como la HU).
+/// Se cierra con la corrección de la HU —"¿A qué hora terminaste?", hasta 12 h después del inicio
+/// (y sin pasar del inicio de la jornada siguiente), aunque el fin caiga al día siguiente—, que es
+/// otra pantalla. [mensaje] es el texto del canvas 21A·08: nombra el día entero y la hora de
+/// inicio en la zona del dispositivo, sin atar el fin al día del inicio ("Tu jornada del martes 22
+/// empezó a las 23:30 y quedó abierta. Cerrala para empezar la de hoy.", decisión del 08/10 en
+/// #326).
 final class FailureJornadaDeDiaAnterior extends Failure {
-  FailureJornadaDeDiaAnterior({required this.inicio})
+  FailureJornadaDeDiaAnterior({required this.inicio, this.inicioSiguiente})
     : super(
         mensaje:
-            'Tenés una jornada del ${_dia(inicio)} sin cerrar. No la cerramos con la hora de hoy '
-            'para no sumarle horas que no trabajaste: hay que indicar a qué hora terminaste ese '
-            'día.',
+            'Tu jornada del ${_dia(inicio)} empezó a las ${_horaLocal(inicio)} y quedó abierta. '
+            'Cerrala para empezar la de hoy.',
         codigo: 'JOR_JORNADA_DIA_ANTERIOR',
       );
 
   /// Inicio de la jornada que quedó abierta.
   final DateTime inicio;
 
+  /// Inicio de la jornada siguiente del mismo colportor, si hay una: el fin de la que quedó abierta
+  /// no puede pasarlo. La pantalla lo usa para ofrecer el mismo rango que valida el caso de uso.
+  final DateTime? inicioSiguiente;
+
   @override
-  List<Object?> get props => [...super.props, inicio];
+  List<Object?> get props => [...super.props, inicio, inicioSiguiente];
 
   static const _dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 

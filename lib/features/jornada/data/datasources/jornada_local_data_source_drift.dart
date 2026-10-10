@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../models/jornada_model.dart';
 import 'jornada_local_data_source.dart';
@@ -55,6 +56,25 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               JornadasCompanion(fin: Value(fin), updatedAt: Value(jornada.auditoria.updatedAt)),
             );
     if (actualizadas == 0) throw const JornadaNoAbiertaException();
+  }
+
+  /// La primera jornada no borrada del colportor con `inicio` estrictamente posterior, abierta o
+  /// cerrada: el tope del fin de la que quedó abierta (HU-JOR-002).
+  @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) async {
+    final desde = const FechaUtcConverter().toSql(inicio);
+    final fila =
+        await (select(jornadas)
+              ..where(
+                (j) =>
+                    j.colportorId.equals(colportorId) &
+                    j.inicio.isBiggerThanValue(desde) &
+                    j.deletedAt.isNull(),
+              )
+              ..orderBy([(j) => OrderingTerm.asc(j.inicio)])
+              ..limit(1))
+            .getSingleOrNull();
+    return fila == null ? null : _aModelo(fila);
   }
 
   /// La jornada sin `fin` y sin soft delete del colportor. `limit(1)`: la regla de una sola activa

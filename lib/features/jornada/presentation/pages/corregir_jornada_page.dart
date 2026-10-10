@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
@@ -8,23 +11,34 @@ import '../../domain/jornada_sin_cerrar.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
+import '../widgets/con_espera.dart';
 import '../widgets/hoja_hora_inicio.dart';
 
 /// "¿A qué hora terminaste?" (HU-JOR-002, "Jornada que quedó abierta"): corrige una jornada que
 /// quedó abierta de un día anterior, con una hora elegida a mano entre el inicio (excluido) y
-/// 12 h después, sin pasar de ahora: el fin puede caer al día siguiente, aunque cruce la
-/// medianoche (decisión de Cristian, 30/09, #250) — [FinalizarJornadaUseCase] valida el rango
-/// real ([JornadaSinCerrar]); acá solo se ofrece el selector, nunca se inventa un fin.
+/// 12 h después, sin pasar de ahora ni del inicio de la jornada siguiente si hay una: el fin puede
+/// caer al día siguiente, aunque cruce la medianoche (decisión de Cristian, 30/09, #250) —
+/// [FinalizarJornadaUseCase] valida el rango real ([JornadaSinCerrar]); acá solo se ofrece el
+/// selector, nunca se inventa un fin.
 /// `JornadaPage` llega a esta pantalla cuando "Finalizar jornada" devuelve
 /// `FailureJornadaDeDiaAnterior` (issue #109). Vista 21 del diseño (A08); el texto de la
 /// explicación es el literal de la HU, no la propuesta del diseño.
 class CorregirJornadaPage extends ConsumerStatefulWidget {
-  const CorregirJornadaPage({super.key, required this.sesion, required this.inicio});
+  const CorregirJornadaPage({
+    super.key,
+    required this.sesion,
+    required this.inicio,
+    this.inicioSiguiente,
+  });
 
   final Sesion sesion;
 
   /// Inicio de la jornada que quedó abierta.
   final DateTime inicio;
+
+  /// Inicio de la jornada siguiente del mismo colportor, si hay una (viene de
+  /// `FailureJornadaDeDiaAnterior`): el fin no puede pasarlo.
+  final DateTime? inicioSiguiente;
 
   @override
   ConsumerState<CorregirJornadaPage> createState() => _CorregirJornadaPageState();
@@ -37,15 +51,39 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   bool _cerrando = false;
   String? _error;
 
+  /// Si el último dibujo mostró el aviso de reloj atrasado: un toque más en «Elegir la hora» lo
+  /// vuelve a anunciar (un aviso que ya está en pantalla no se lee otra vez solo).
+  bool _relojAtrasadoVisible = false;
+
   /// Del primer minuto válido al último, en la zona del dispositivo y al minuto, o `null` si ya no
   /// queda ninguno (el reloj del teléfono quedó antes del inicio): ahí no hay hora que elegir y la
   /// pantalla no puede ser una trampa, así que deja volver. Es la misma regla que valida el caso
-  /// de uso ([JornadaSinCerrar]).
+  /// de uso ([JornadaSinCerrar]), con el inicio de la jornada siguiente como tope si hay una.
   ({DateTime primero, DateTime ultimo})? _rango(DateTime ahora) {
     final primero = JornadaSinCerrar.primerMinutoDelFin(widget.inicio).toLocal();
-    final tope = JornadaSinCerrar.topeDelFin(inicio: widget.inicio, ahora: ahora).toLocal();
+    final tope = JornadaSinCerrar.topeDelFin(
+      inicio: widget.inicio,
+      ahora: ahora,
+      inicioSiguiente: widget.inicioSiguiente,
+    ).toLocal();
     final ultimo = DateTime(tope.year, tope.month, tope.day, tope.hour, tope.minute);
     return ultimo.isBefore(primero) ? null : (primero: primero, ultimo: ultimo);
+  }
+
+  /// El reloj del teléfono quedó antes del inicio de la jornada (lo atrasaron a mano): ningún
+  /// minuto es válido y la pantalla lo dice, con el mismo texto que da el caso de uso.
+  bool _relojAtrasado(DateTime ahora) => ahora.isBefore(widget.inicio);
+
+  /// La jornada siguiente empezó en el mismo minuto que ésta (con el reloj en hora): no queda
+  /// ningún minuto entre las dos y la pantalla lo dice. Con el reloj atrasado manda ese aviso.
+  /// El aviso sale por su causa real (la siguiente empieza antes del primer minuto válido), no
+  /// porque no haya rango: con el reloj dentro del minuto del inicio tampoco hay rango, y ahí la
+  /// siguiente puede estar horas después, así que decir "empezaron a la misma hora" sería falso.
+  bool _sinHoraPorSiguiente(DateTime ahora) {
+    final siguiente = widget.inicioSiguiente;
+    return siguiente != null &&
+        !_relojAtrasado(ahora) &&
+        siguiente.isBefore(JornadaSinCerrar.primerMinutoDelFin(widget.inicio));
   }
 
   /// Si el fin cae al día siguiente del inicio (el rango cruza la medianoche) lo dice, porque
@@ -57,8 +95,25 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// La hoja propia (la misma que Hoy) en vez del selector del sistema: valida el rango sin
   /// ajustar nada en silencio y aguanta el texto al 200 %.
   Future<void> _elegirHora() async {
-    final rango = _rango(ref.read(relojJornadaProvider)());
-    if (rango == null) return;
+    final ahora = ref.read(relojJornadaProvider)();
+    final rango = _rango(ahora);
+    // El reloj puede haberse atrasado, o arreglado, con la pantalla abierta: se vuelve a dibujar
+    // con el de ahora. Si no queda ninguna hora que ofrecer el toque no puede quedar mudo: el
+    // aviso aparece y, si ya estaba a la vista, se lo anuncia otra vez.
+    final avisoYaVisible = _relojAtrasadoVisible;
+    setState(() {});
+    if (rango == null) {
+      if (_relojAtrasado(ahora) && avisoYaVisible) {
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            JornadaSinCerrar.avisoRelojAtrasado,
+            Directionality.of(context),
+          ),
+        );
+      }
+      return;
+    }
     final maximo = rango.ultimo.difference(rango.primero).inMinutes;
     final actual = _horaElegida;
     final elegida = await mostrarHojaHoraInicio(
@@ -83,6 +138,12 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   Future<void> _cerrar() async {
     final hora = _horaElegida;
     if (hora == null || _cerrando) return;
+    // Sin ningún minuto válido (el reloj quedó antes del inicio) no se le pide nada al caso de
+    // uso: el aviso ya explica por qué, y nunca se inventa un fin.
+    if (_rango(ref.read(relojJornadaProvider)()) == null) {
+      setState(() {});
+      return;
+    }
 
     setState(() {
       _cerrando = true;
@@ -126,14 +187,28 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     final esquema = theme.colorScheme;
     final mensaje = FailureJornadaDeDiaAnterior(inicio: widget.inicio).mensaje;
     final horaElegida = _horaElegida;
-    final sinHoraValida = _rango(ref.watch(relojJornadaProvider)()) == null;
+    final ahora = ref.watch(relojJornadaProvider)();
+    final sinHoraValida = _rango(ahora) == null;
+    final relojAtrasado = _relojAtrasado(ahora);
+    final sinHoraPorSiguiente = _sinHoraPorSiguiente(ahora);
+    _relojAtrasadoVisible = relojAtrasado;
 
     // Sin flecha de volver ni atrás del sistema (decisión de Cristian, 29/09, como el diseño): el
     // colportor indica la hora de fin antes de seguir; nunca se inventa un fin. El `pop` al cerrar
     // (o si la jornada ya estaba cerrada) no pasa por acá, y sin minuto válido sí se puede volver.
     return PopScope(
       canPop: sinHoraValida,
-      child: _scaffold(context, theme, colores, esquema, mensaje, horaElegida, sinHoraValida),
+      child: _scaffold(
+        context,
+        theme,
+        colores,
+        esquema,
+        mensaje,
+        horaElegida,
+        sinHoraValida: sinHoraValida,
+        relojAtrasado: relojAtrasado,
+        sinHoraPorSiguiente: sinHoraPorSiguiente,
+      ),
     );
   }
 
@@ -143,10 +218,16 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     ColoresColportaje colores,
     ColorScheme esquema,
     String mensaje,
-    DateTime? horaElegida,
-    bool sinHoraValida,
-  ) {
+    DateTime? horaElegida, {
+    required bool sinHoraValida,
+    required bool relojAtrasado,
+    required bool sinHoraPorSiguiente,
+  }) {
     final notaDelDia = horaElegida == null ? null : _notaDelDia(horaElegida);
+    // Sin ninguna hora que ofrecer por la jornada siguiente (o mientras cierra) no hay nada que
+    // elegir: el toque no responde y el texto se ve apagado. Con el reloj atrasado el toque sí
+    // responde (anuncia el aviso), así que sigue encendido.
+    final elegirApagado = _cerrando || sinHoraPorSiguiente;
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
@@ -197,7 +278,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                             ),
                             InkWell(
                               key: const Key('corregir_jornada_elegir_hora'),
-                              onTap: _cerrando ? null : _elegirHora,
+                              onTap: elegirApagado ? null : _elegirHora,
                               child: Container(
                                 constraints: const BoxConstraints(minHeight: 48),
                                 padding: const EdgeInsets.only(top: 4, bottom: 10),
@@ -220,7 +301,9 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                                       'Elegir la hora',
                                       style: theme.textTheme.bodyLarge?.copyWith(
                                         fontWeight: FontWeight.w600,
-                                        color: esquema.primary,
+                                        // Apagado se ve apagado: el gris de los textos sin acción
+                                        // (cumple AA; el gris al 38 % de Material no).
+                                        color: elegirApagado ? colores.gris : esquema.primary,
                                       ),
                                     ),
                                   ],
@@ -253,41 +336,32 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     spacing: 10,
                     children: [
-                      if (_error case final error?)
-                        Semantics(
-                          liveRegion: true,
-                          child: Container(
-                            key: const Key('corregir_jornada_error'),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: esquema.errorContainer,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              spacing: 12,
-                              children: [
-                                Icon(Icons.error_outline, color: esquema.onErrorContainer),
-                                Expanded(
-                                  child: Text(
-                                    error,
-                                    style: theme.textTheme.bodyLarge?.copyWith(
-                                      color: esquema.onErrorContainer,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      // Con el reloj atrasado el aviso de reloj le gana a los demás: es lo que hay que
+                      // arreglar antes de cualquier otra cosa.
+                      if (relojAtrasado)
+                        _aviso(
+                          theme,
+                          esquema,
+                          const Key('corregir_jornada_reloj_atrasado'),
+                          JornadaSinCerrar.avisoRelojAtrasado,
+                        )
+                      else if (sinHoraPorSiguiente)
+                        _aviso(
+                          theme,
+                          esquema,
+                          const Key('corregir_jornada_sin_hora_siguiente'),
+                          JornadaSinCerrar.avisoSinHoraPorJornadaSiguiente(widget.inicio),
+                        )
+                      else if (_error case final error?)
+                        _aviso(theme, esquema, const Key('corregir_jornada_error'), error),
                       FilledButton(
                         key: const Key('corregir_jornada_cerrar'),
-                        onPressed: (horaElegida == null || _cerrando) ? null : _cerrar,
+                        onPressed: (horaElegida == null || _cerrando || sinHoraValida)
+                            ? null
+                            : _cerrar,
+                        style: _cerrando ? ConEspera.estiloDelBoton(context) : null,
                         child: _cerrando
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
+                            ? const ConEspera('Finalizando…')
                             : Text(
                                 horaElegida == null
                                     ? 'Cerrar'
@@ -304,4 +378,31 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
       ),
     );
   }
+
+  /// Un aviso en línea: qué pasó y qué hacer. `liveRegion` para que el lector de pantalla lo lea
+  /// cuando aparece.
+  Widget _aviso(ThemeData theme, ColorScheme esquema, Key clave, String texto) => Semantics(
+    liveRegion: true,
+    child: Container(
+      key: clave,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: esquema.errorContainer,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 12,
+        children: [
+          Icon(Icons.error_outline, color: esquema.onErrorContainer),
+          Expanded(
+            child: Text(
+              texto,
+              style: theme.textTheme.bodyLarge?.copyWith(color: esquema.onErrorContainer),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

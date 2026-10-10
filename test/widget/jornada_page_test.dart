@@ -16,6 +16,7 @@ import 'package:colportores_mobile/features/jornada/domain/services/disparador_b
 import 'package:colportores_mobile/features/jornada/presentation/pages/corregir_jornada_page.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,6 +56,10 @@ final class _DataSource implements JornadaLocalDataSource {
   int lecturasSinVer = 0;
 
   List<JornadaModel> get jornadas => _real.jornadas;
+
+  @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
 
   @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
@@ -707,6 +712,42 @@ void main() {
       expect(dataSource.jornadas, hasLength(1));
     });
 
+    testWidgets(
+      'mientras guarda, «Iniciando…» se lee: onPrimary sobre primary al 85 % y el círculo '
+      'del mismo color (vista 21A·04, #327)',
+      (tester) async {
+        _pantalla(tester, const Size(390, 844));
+        final dataSource = _DataSource()..demoraInsercion = Completer<void>();
+        await _montar(tester, dataSource);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Iniciar jornada'));
+        // El círculo gira sin parar: se avanza con el tiempo, no con pumpAndSettle.
+        await tester.pump(const Duration(seconds: 1));
+
+        final esquema = temaClaro().colorScheme;
+        final etiqueta = find.text('Iniciando…');
+        expect(tester.renderObject<RenderParagraph>(etiqueta).text.style!.color, esquema.onPrimary);
+        final material = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byKey(const Key('jornada_iniciar')),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(material.color, esquema.primary.withValues(alpha: .85));
+        final aro = tester.widget<CircularProgressIndicator>(
+          find.byType(CircularProgressIndicator),
+        );
+        expect(aro.color, esquema.onPrimary);
+
+        dataSource.demoraInsercion!.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Jornada activa'), findsOneWidget);
+      },
+    );
+
     testWidgets('sin jornada: fecha de hoy, estado "Sin jornada", la hora como fila y el botón al '
         'pie', (tester) async {
       _pantalla(tester, const Size(390, 844));
@@ -901,7 +942,10 @@ void main() {
       await _tocarFinalizar(tester);
 
       expect(find.byType(CorregirJornadaPage), findsOneWidget);
-      expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      expect(
+        find.textContaining('Tu jornada del martes 22 empezó a las 18:00 y quedó abierta.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
@@ -1124,7 +1168,10 @@ void main() {
       expect(find.byType(CorregirJornadaPage), findsOneWidget);
       expect(find.text('¿A qué hora terminaste?'), findsOneWidget);
       expect(find.text('Martes 22 · después de las 18:00'), findsOneWidget);
-      expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      expect(
+        find.textContaining('Tu jornada del martes 22 empezó a las 18:00 y quedó abierta.'),
+        findsOneWidget,
+      );
       // Se navegó: la pantalla de jornada (con su bloqueo "Jornada activa") ya no está en pantalla.
       expect(find.text('Jornada activa'), findsNothing);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);

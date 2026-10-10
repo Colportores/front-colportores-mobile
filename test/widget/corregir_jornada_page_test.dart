@@ -1,13 +1,15 @@
 // "¿A qué hora terminaste?" (HU-JOR-002, "jornada que quedó abierta", #109): corrige una jornada
 // que quedó abierta de un día anterior, con la hora elegida a mano entre el inicio (excluido) y
-// 12 h después, sin pasar de ahora: el fin puede caer al día siguiente (#250). Un test por
-// escenario con el texto literal, estados (incluido el error al guardar), validación del rango,
-// casos límite y accesibilidad (tamaño de toque, etiquetas, contraste y texto al 200 %). El wiring con `JornadaPage` (a qué pantalla se llega y qué pasa al volver) se prueba
-// en `jornada_page_test.dart`; acá la pantalla se abre igual que ella lo hace: empujada sobre otra
-// ruta, para que `Navigator.pop` tenga a dónde volver.
+// 12 h después, sin pasar de ahora ni del inicio de la jornada siguiente: el fin puede caer al día
+// siguiente (#250, #327). Un test por escenario con el texto literal, estados (incluido el error
+// al guardar), validación del rango, casos límite y accesibilidad (tamaño de toque, etiquetas,
+// contraste y texto al 200 %). El wiring con `JornadaPage` (a qué pantalla se llega y qué pasa al
+// volver) se prueba en `jornada_page_test.dart`; acá la pantalla se abre igual que ella lo hace:
+// empujada sobre otra ruta, para que `Navigator.pop` tenga a dónde volver.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/theme/colores_colportaje.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
@@ -48,6 +50,18 @@ JornadaModel _jornadaAbierta({DateTime? inicio}) => JornadaModel.fromEntity(
   ),
 );
 
+/// Una jornada ya cerrada: la que sigue a la que quedó abierta (el tope de su fin, #327).
+JornadaModel _jornadaCerrada({required DateTime inicio, required DateTime fin}) =>
+    JornadaModel.fromEntity(
+      Jornada(
+        id: 'jor-siguiente',
+        colportorId: _sesion.usuarioId,
+        inicio: inicio,
+        fin: fin,
+        auditoria: Auditoria(createdAt: inicio, updatedAt: fin, createdBy: _sesion.usuarioId),
+      ),
+    );
+
 /// El almacenamiento en memoria de la app, con la perilla para el estado de guardar. La pantalla
 /// no lee la jornada activa (no hay "cargando" acá), solo la cierra.
 final class _DataSource implements JornadaLocalDataSource {
@@ -60,11 +74,18 @@ final class _DataSource implements JornadaLocalDataSource {
   Completer<void>? demoraFinalizar;
   Object? errorAlFinalizar;
 
+  /// Cuántos cierres llegaron al almacenamiento (un doble toque no debe sumar dos).
+  int escrituras = 0;
+
   /// Cuántas lecturas más devuelven "sin jornada" aunque haya una abierta: simula que otro
   /// teléfono ya la cerró (sync) o un doble toque.
   int lecturasSinVer = 0;
 
   List<JornadaModel> get jornadas => _real.jornadas;
+
+  @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
 
   @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
@@ -80,6 +101,7 @@ final class _DataSource implements JornadaLocalDataSource {
 
   @override
   Future<void> finalizar(JornadaModel jornada) async {
+    escrituras++;
     if (demoraFinalizar case final demora?) await demora.future;
     if (errorAlFinalizar case final error?) throw error;
     return _real.finalizar(jornada);
@@ -117,15 +139,16 @@ Future<void> _montar(
   ThemeData? tema,
   _Escala? escala,
   DateTime? ahora,
+  DateTime Function()? reloj,
 }) {
   final escalaEfectiva = escala ?? _Escala(1);
-  final reloj = ahora ?? _ahora;
+  final relojFijo = ahora ?? _ahora;
   return tester.pumpWidget(
     ProviderScope(
       overrides: [
         jornadaLocalDataSourceProvider.overrideWithValue(dataSource),
         disparadorBackupProvider.overrideWithValue(_BackupFalso()),
-        relojJornadaProvider.overrideWithValue(() => reloj),
+        relojJornadaProvider.overrideWithValue(reloj ?? () => relojFijo),
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,
@@ -142,13 +165,21 @@ Future<void> _montar(
   );
 }
 
-Future<_Resultado> _abrirCorregir(WidgetTester tester, {DateTime? inicio}) async {
+Future<_Resultado> _abrirCorregir(
+  WidgetTester tester, {
+  DateTime? inicio,
+  DateTime? inicioSiguiente,
+}) async {
   final resultado = _Resultado();
   unawaited(
     _navigatorKey.currentState!
         .push<Jornada>(
           MaterialPageRoute(
-            builder: (_) => CorregirJornadaPage(sesion: _sesion, inicio: inicio ?? _inicio),
+            builder: (_) => CorregirJornadaPage(
+              sesion: _sesion,
+              inicio: inicio ?? _inicio,
+              inicioSiguiente: inicioSiguiente,
+            ),
           ),
         )
         .then((valor) {
@@ -174,12 +205,14 @@ Future<void> _elegirHora(WidgetTester tester, int hora, int minuto, {bool confir
   await tester.ensureVisible(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(const Key('hoja_hora_valor')));
   await tester.tap(find.byKey(const Key('hoja_hora_valor')));
   await tester.pumpAndSettle();
   final texto = '${hora.toString().padLeft(2, '0')}:${minuto.toString().padLeft(2, '0')}';
   await tester.enterText(find.byKey(const Key('hoja_hora_campo')), texto);
   await tester.pumpAndSettle();
   if (!confirmar) return;
+  await tester.ensureVisible(find.byKey(const Key('hoja_hora_usar_escrita')));
   await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
   await tester.pumpAndSettle();
 }
@@ -198,8 +231,8 @@ void main() {
       expect(find.text('¿A qué hora terminaste?'), findsOneWidget);
       expect(
         find.text(
-          'Tenés una jornada del martes 22 sin cerrar. No la cerramos con la hora de hoy para no '
-          'sumarle horas que no trabajaste: hay que indicar a qué hora terminaste ese día.',
+          'Tu jornada del martes 22 empezó a las 18:00 y quedó abierta. Cerrala para empezar la '
+          'de hoy.',
         ),
         findsOneWidget,
       );
@@ -261,11 +294,19 @@ void main() {
       await tester.pump();
       expect(_botonCerrar(tester).onPressed, isNull);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // 21A·04 (#327): el círculo no va solo, dice qué está pasando, como "Finalizando…" en Hoy.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('corregir_jornada_cerrar')),
+          matching: find.text('Finalizando…'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')), warnIfMissed: false);
 
       dataSource.demoraFinalizar!.complete();
       await tester.pumpAndSettle();
-      expect(dataSource.jornadas, hasLength(1));
+      expect(dataSource.escrituras, 1);
       expect(dataSource.jornadas.single.estaAbierta, isFalse);
     });
 
@@ -535,7 +576,9 @@ void main() {
 
       dataSource.demoraFinalizar!.complete();
       await tester.pumpAndSettle();
-      expect(dataSource.jornadas, hasLength(1));
+      // Una sola escritura llegó al almacenamiento: `jornadas` tiene una fila aunque se cerrara
+      // dos veces, así que lo que prueba el doble toque es el conteo de escrituras.
+      expect(dataSource.escrituras, 1);
       expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 23, 0, 30).toUtc());
     });
 
@@ -599,6 +642,573 @@ void main() {
         expect(_botonCerrar(tester).onPressed, isNotNull);
       },
     );
+  });
+
+  group('Jornada siguiente, reloj atrasado y hoja de ajuste (#327)', () {
+    // Martes 22 a las 22:00: sus 12 h terminarían el miércoles a las 10:00.
+    final inicio = DateTime(2026, 9, 22, 22);
+    // La jornada siguiente empezó el miércoles a las 08:00 y se cerró a las 10:00.
+    final siguiente = DateTime(2026, 9, 23, 8);
+    final ahoraTarde = DateTime(2026, 9, 23, 12);
+
+    _DataSource conSiguiente() => _DataSource(
+      iniciales: [
+        _jornadaAbierta(inicio: inicio),
+        _jornadaCerrada(inicio: siguiente, fin: DateTime(2026, 9, 23, 10)),
+      ],
+    );
+
+    final botonElegir = find.byKey(const Key('corregir_jornada_elegir_hora'));
+    final avisoReloj = find.byKey(const Key('corregir_jornada_reloj_atrasado'));
+
+    testWidgets('con la jornada siguiente a las 08:00, la hoja ofrece hasta las 08:00 y no hasta '
+        'las 10:00 que darían las 12 h; la jornada cierra a las 08:00', (tester) async {
+      final dataSource = conSiguiente();
+      await _montar(tester, dataSource, ahora: ahoraTarde);
+      final resultado = await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguiente);
+
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+      expect(find.text('Entre las 22:01 y las 08:00.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('hoja_hora_cancelar')));
+      await tester.pumpAndSettle();
+
+      // 08:01 pisaría a la jornada siguiente: la hoja lo rechaza con el rango y no deja usarlo.
+      await _elegirHora(tester, 8, 1, confirmar: false);
+      expect(find.text('La hora tiene que estar entre las 22:01 y las 08:00.'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('hoja_hora_usar_escrita'))).onPressed,
+        isNull,
+      );
+
+      // 08:00 queda a ras de la siguiente, sin superponerse: vale.
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '08:00');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+      await tester.pumpAndSettle();
+      expect(find.text('Terminé a las 08:00'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      final esperado = DateTime(2026, 9, 23, 8).toUtc();
+      expect(resultado.valor?.fin, esperado);
+      expect(dataSource.jornadas.firstWhere((j) => j.id == 'jor-previa').fin, esperado);
+      // La siguiente no se tocó.
+      expect(
+        dataSource.jornadas.firstWhere((j) => j.id == 'jor-siguiente').fin,
+        DateTime(2026, 9, 23, 10).toUtc(),
+      );
+    });
+
+    testWidgets('sin jornada siguiente, el tope siguen siendo las 12 h: hasta las 10:00', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+        ahora: ahoraTarde,
+      );
+      await _abrirCorregir(tester, inicio: inicio);
+
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Entre las 22:01 y las 10:00.'), findsOneWidget);
+    });
+
+    testWidgets('con ahora a las 07:00, antes de la jornada siguiente, el tope es ahora (gana el '
+        'menor de los tres)', (tester) async {
+      await _montar(tester, conSiguiente(), ahora: DateTime(2026, 9, 23, 7));
+      await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguiente);
+
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Entre las 22:01 y las 07:00.'), findsOneWidget);
+    });
+
+    testWidgets('si la pantalla no conocía la siguiente, el caso de uso igual rechaza la hora que '
+        'la pisa, con el rango real, y la jornada sigue abierta', (tester) async {
+      final dataSource = conSiguiente();
+      await _montar(tester, dataSource, ahora: ahoraTarde);
+      await _abrirCorregir(tester, inicio: inicio);
+
+      await _elegirHora(tester, 9, 0);
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('La hora tiene que estar entre las 22:01 y las 08:00.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Elegí otra hora y volvé a intentar.'), findsOneWidget);
+      expect(dataSource.jornadas.firstWhere((j) => j.id == 'jor-previa').estaAbierta, isTrue);
+      expect(_botonCerrar(tester).onPressed, isNotNull);
+
+      // Con otra hora dentro del rango, cierra.
+      await _elegirHora(tester, 7, 30);
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(
+        dataSource.jornadas.firstWhere((j) => j.id == 'jor-previa').fin,
+        DateTime(2026, 9, 23, 7, 30).toUtc(),
+      );
+    });
+
+    testWidgets('reloj atrasado con la pantalla abierta: «Elegir la hora» no queda muda, dice qué '
+        'pasó y qué hacer, se anuncia, deshabilita el botón y deja volver', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
+      // El reloj del teléfono quedó el lunes a las 12:00, antes del inicio (martes 18:00).
+      await _montar(tester, dataSource, ahora: DateTime(2026, 9, 21, 12));
+      final resultado = await _abrirCorregir(tester);
+
+      expect(avisoReloj, findsOneWidget);
+      expect(
+        find.descendant(
+          of: avisoReloj,
+          matching: find.text(
+            'La hora del teléfono es anterior al inicio de tu jornada. Revisá la fecha y hora del '
+            'teléfono y volvé a intentar.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSemantics(avisoReloj), isSemantics(isLiveRegion: true));
+      expect(_botonCerrar(tester).onPressed, isNull);
+
+      tester.takeAnnouncements();
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      // No abre la hoja, no se desvanece el aviso y el toque se anuncia otra vez.
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      expect(avisoReloj, findsOneWidget);
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'La hora del teléfono es anterior al inicio de tu jornada. Revisá la fecha y hora del '
+            'teléfono y volvé a intentar.',
+      ]);
+
+      // Con la flecha de volver, no queda atrapado; la jornada sigue abierta.
+      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(resultado.recibido, isTrue);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+      expect(dataSource.escrituras, 0);
+      semantica.dispose();
+    });
+
+    testWidgets('reloj atrasado: el atrás del sistema también sale (no es una trampa)', (
+      tester,
+    ) async {
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
+      await _montar(tester, dataSource, ahora: DateTime(2026, 9, 21, 12));
+      final resultado = await _abrirCorregir(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(resultado.recibido, isTrue);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
+
+    testWidgets('el reloj se atrasa con una hora ya elegida: el aviso aparece sin cerrar nada, y '
+        'al corregirlo la pantalla vuelve a ofrecer horas', (tester) async {
+      var ahora = _ahora;
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()]);
+      await _montar(tester, dataSource, reloj: () => ahora);
+      await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+      expect(avisoReloj, findsNothing);
+      expect(_botonCerrar(tester).onPressed, isNotNull);
+
+      ahora = DateTime(2026, 9, 21, 12);
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(avisoReloj, findsOneWidget);
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      expect(_botonCerrar(tester).onPressed, isNull);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+      expect(dataSource.escrituras, 0);
+
+      ahora = _ahora;
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+      expect(avisoReloj, findsNothing);
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsOneWidget);
+    });
+
+    testWidgets('reloj atrasado y un error viejo: el aviso del reloj es el único que se muestra', (
+      tester,
+    ) async {
+      var ahora = _ahora;
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+        ..errorAlFinalizar = StateError('disco lleno');
+      await _montar(tester, dataSource, reloj: () => ahora);
+      await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
+
+      ahora = DateTime(2026, 9, 21, 12);
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(avisoReloj, findsOneWidget);
+      expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
+    });
+
+    testWidgets('mientras cierra no se puede abrir la hoja: la acción en curso no se pisa', (
+      tester,
+    ) async {
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+        ..demoraFinalizar = Completer<void>();
+      await _montar(tester, dataSource);
+      await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pump();
+      await tester.tap(botonElegir, warnIfMissed: false);
+      await tester.pump();
+
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      expect(find.text('Finalizando…'), findsOneWidget);
+
+      dataSource.demoraFinalizar!.complete();
+      await tester.pumpAndSettle();
+      expect(dataSource.escrituras, 1);
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+    });
+
+    testWidgets('mientras cierra, el botón conserva su nombre para el lector de pantalla', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+        ..demoraFinalizar = Completer<void>();
+      await _montar(tester, dataSource);
+      await _abrirCorregir(tester);
+      await _elegirHora(tester, 20, 30);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pump();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('corregir_jornada_cerrar'))).label,
+        contains('Finalizando…'),
+      );
+
+      dataSource.demoraFinalizar!.complete();
+      await tester.pumpAndSettle();
+      semantica.dispose();
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('hoja de ajuste (21A·02) a 360x640 con texto ${escala}x: −5 y +5 quedan a la '
+          'altura de la hora y la nota del día siguiente va debajo de la fila, sin moverlos', (
+        tester,
+      ) async {
+        final esc = _Escala(escala);
+        _pantalla(tester, const Size(360, 640));
+        await _montar(tester, _DataSource(iniciales: [_jornadaAbierta()]), escala: esc);
+        await _abrirCorregir(tester);
+
+        Future<({Rect menos, Rect mas, Rect valor, Rect? nota})> medir() async {
+          await tester.ensureVisible(botonElegir);
+          await tester.tap(botonElegir);
+          await tester.pumpAndSettle();
+          final medidas = (
+            menos: tester.getRect(find.byKey(const Key('hoja_hora_menos'))),
+            mas: tester.getRect(find.byKey(const Key('hoja_hora_mas'))),
+            valor: tester.getRect(find.byKey(const Key('hoja_hora_valor'))),
+            nota: find.byKey(const Key('hoja_hora_nota')).evaluate().isEmpty
+                ? null
+                : tester.getRect(find.byKey(const Key('hoja_hora_nota'))),
+          );
+          expect(tester.takeException(), isNull);
+          await tester.ensureVisible(find.byKey(const Key('hoja_hora_cancelar')));
+          await tester.tap(find.byKey(const Key('hoja_hora_cancelar')));
+          await tester.pumpAndSettle();
+          return medidas;
+        }
+
+        await _elegirHora(tester, 21, 10);
+        final sinNota = await medir();
+        await _elegirHora(tester, 0, 30);
+        final conNota = await medir();
+
+        expect(sinNota.nota, isNull);
+        expect(conNota.nota, isNotNull);
+        for (final m in [sinNota, conNota]) {
+          // Los dos botones y la columna de la hora comparten el centro vertical.
+          expect(m.menos.center.dy, closeTo(m.valor.center.dy, 0.5));
+          expect(m.mas.center.dy, closeTo(m.valor.center.dy, 0.5));
+          // Y los botones no se salen de la hoja por los costados.
+          expect(m.menos.left, greaterThanOrEqualTo(0));
+          expect(m.mas.right, lessThanOrEqualTo(360));
+        }
+        // La nota no agranda la columna de la hora: la altura es la misma con y sin nota, así
+        // que los botones no se corren al aparecer.
+        expect(conNota.valor.height, closeTo(sinNota.valor.height, 0.5));
+        // Y queda debajo de la fila (no dentro de la columna de la hora).
+        expect(conNota.nota!.top, greaterThanOrEqualTo(conNota.valor.bottom));
+        expect(conNota.nota!.top, greaterThanOrEqualTo(conNota.menos.bottom));
+        expect(conNota.nota!.top, greaterThanOrEqualTo(conNota.mas.bottom));
+      });
+    }
+
+    testWidgets('cuando la siguiente empieza en el mismo minuto que el inicio no queda ninguna '
+        'hora válida: avisa qué pasa y qué hacer, apaga «Elegir la hora» y deja volver', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      final dataSource = _DataSource(
+        iniciales: [
+          _jornadaAbierta(inicio: inicio),
+          _jornadaCerrada(
+            inicio: inicio.add(const Duration(seconds: 30)),
+            fin: inicio.add(const Duration(hours: 2)),
+          ),
+        ],
+      );
+      await _montar(tester, dataSource, ahora: ahoraTarde);
+      final resultado = await _abrirCorregir(
+        tester,
+        inicio: inicio,
+        inicioSiguiente: inicio.add(const Duration(seconds: 30)),
+      );
+
+      final aviso = find.byKey(const Key('corregir_jornada_sin_hora_siguiente'));
+      expect(aviso, findsOneWidget);
+      expect(
+        find.descendant(
+          of: aviso,
+          matching: find.text(
+            'Esta jornada y la siguiente empezaron a la misma hora (22:00), así que no hay una '
+            'hora para cerrarla. Avisale a tu coordinador.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSemantics(aviso), isSemantics(isLiveRegion: true));
+      // No es el aviso del reloj (el reloj está en hora) y «Elegir la hora» está apagado.
+      expect(avisoReloj, findsNothing);
+      expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+      expect(_botonCerrar(tester).onPressed, isNull);
+      await tester.tap(botonElegir, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      await tester.pumpAndSettle();
+      expect(resultado.recibido, isTrue);
+      expect(dataSource.escrituras, 0);
+      semantica.dispose();
+    });
+
+    testWidgets('el aviso de la siguiente en el mismo minuto se lee entero con el texto al 200 %', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+        ahora: ahoraTarde,
+        escala: _Escala(2),
+      );
+      await _abrirCorregir(
+        tester,
+        inicio: inicio,
+        inicioSiguiente: inicio.add(const Duration(seconds: 30)),
+      );
+
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    });
+
+    testWidgets('con el reloj atrasado y la siguiente en el mismo minuto, manda el aviso del '
+        'reloj y no el de la siguiente', (tester) async {
+      await _montar(
+        tester,
+        _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+        ahora: DateTime(2026, 9, 21, 12),
+      );
+      await _abrirCorregir(
+        tester,
+        inicio: inicio,
+        inicioSiguiente: inicio.add(const Duration(seconds: 30)),
+      );
+
+      expect(avisoReloj, findsOneWidget);
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+    });
+
+    testWidgets('sin jornada siguiente, con el reloj dentro del minuto del inicio no se culpa a '
+        'una siguiente que no existe: solo deja volver', (tester) async {
+      await _montar(
+        tester,
+        _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+        ahora: inicio.add(const Duration(seconds: 20)),
+      );
+      await _abrirCorregir(tester, inicio: inicio);
+
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+      expect(avisoReloj, findsNothing);
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+      expect(_botonCerrar(tester).onPressed, isNull);
+    });
+
+    testWidgets('con una siguiente que deja horas libres no aparece el aviso del mismo minuto', (
+      tester,
+    ) async {
+      await _montar(tester, conSiguiente(), ahora: ahoraTarde);
+      await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguiente);
+
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+      expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+    });
+
+    testWidgets('con la siguiente a 3 h y la hora del teléfono dentro del minuto del inicio no se '
+        'dice que empezaron a la misma hora: ese aviso es falso', (tester) async {
+      var ahora = ahoraTarde;
+      final siguienteEnTresHoras = inicio.add(const Duration(hours: 3));
+      final dataSource = _DataSource(
+        iniciales: [
+          _jornadaAbierta(inicio: inicio),
+          _jornadaCerrada(
+            inicio: siguienteEnTresHoras,
+            fin: siguienteEnTresHoras.add(const Duration(hours: 1)),
+          ),
+        ],
+      );
+      await _montar(tester, dataSource, reloj: () => ahora);
+      await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguienteEnTresHoras);
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+
+      // Con la pantalla abierta, el reloj se mueve a 22:00:20 (dentro del minuto del inicio).
+      ahora = inicio.add(const Duration(seconds: 20));
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+      expect(find.textContaining('misma hora'), findsNothing);
+      expect(avisoReloj, findsNothing);
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      // No se culpa a nadie, no se pierde nada: queda la flecha y la jornada sigue abierta.
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+      expect(_botonCerrar(tester).onPressed, isNull);
+      expect(dataSource.escrituras, 0);
+    });
+
+    for (final (nombre, segundos, hayAviso) in [
+      ('a 59 s del inicio (mismo minuto): hay aviso', 59, true),
+      ('justo en el minuto siguiente: no hay aviso, queda ese único minuto', 60, false),
+    ]) {
+      testWidgets(
+        'el aviso de la misma hora sale solo con su causa real, con la siguiente $nombre',
+        (tester) async {
+          final empieza = inicio.add(Duration(seconds: segundos));
+          final dataSource = _DataSource(
+            iniciales: [
+              _jornadaAbierta(inicio: inicio),
+              _jornadaCerrada(inicio: empieza, fin: empieza.add(const Duration(hours: 1))),
+            ],
+          );
+          await _montar(tester, dataSource, ahora: ahoraTarde);
+          await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: empieza);
+
+          expect(
+            find.byKey(const Key('corregir_jornada_sin_hora_siguiente')),
+            hayAviso ? findsOneWidget : findsNothing,
+          );
+          expect(tester.widget<InkWell>(botonElegir).onTap, hayAviso ? isNull : isNotNull);
+        },
+      );
+    }
+
+    group('«Elegir la hora» se ve apagado cuando no responde', () {
+      final tema = temaClaro();
+      final gris = tema.extension<ColoresColportaje>()!.gris;
+      final primario = tema.colorScheme.primary;
+
+      Color colorDelTexto(WidgetTester tester) => tester
+          .widget<Text>(find.descendant(of: botonElegir, matching: find.text('Elegir la hora')))
+          .style!
+          .color!;
+
+      testWidgets('encendido va en el color primario', (tester) async {
+        await _montar(tester, conSiguiente(), ahora: ahoraTarde);
+        await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguiente);
+
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
+
+      testWidgets('sin horas por la jornada siguiente: el texto también va apagado, en el gris '
+          'de los textos sin acción (que cumple AA)', (tester) async {
+        await _montar(
+          tester,
+          _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+          ahora: ahoraTarde,
+        );
+        await _abrirCorregir(
+          tester,
+          inicio: inicio,
+          inicioSiguiente: inicio.add(const Duration(seconds: 30)),
+        );
+
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+        expect(colorDelTexto(tester), gris);
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+
+      testWidgets('mientras cierra también va apagado, y vuelve a encenderse si la falla deja la '
+          'pantalla lista para reintentar', (tester) async {
+        final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+          ..demoraFinalizar = Completer<void>()
+          ..errorAlFinalizar = StateError('disco lleno');
+        await _montar(tester, dataSource);
+        await _abrirCorregir(tester);
+        await _elegirHora(tester, 20, 30);
+        expect(colorDelTexto(tester), primario);
+
+        await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+        await tester.pump();
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+        expect(colorDelTexto(tester), gris);
+
+        dataSource.demoraFinalizar!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
+
+      testWidgets('con el reloj atrasado el toque responde (anuncia el aviso): sigue encendido', (
+        tester,
+      ) async {
+        await _montar(
+          tester,
+          _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+          ahora: DateTime(2026, 9, 21, 12),
+        );
+        await _abrirCorregir(tester, inicio: inicio);
+
+        expect(avisoReloj, findsOneWidget);
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
+    });
   });
 
   group('Accesibilidad', () {

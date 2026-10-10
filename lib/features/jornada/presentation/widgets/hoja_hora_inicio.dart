@@ -230,6 +230,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     final horaElegida = horaCorta(_hora(_minutos));
+    final nota = widget.notaDeHora?.call(_hora(_minutos));
 
     return Column(
       key: const Key('hoja_hora_ajuste'),
@@ -284,13 +285,6 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                             _minutos == 0 ? 'Ahora' : 'Hace $_minutos min',
                             style: theme.textTheme.bodyMedium,
                           ),
-                        if (widget.notaDeHora?.call(_hora(_minutos)) case final nota?)
-                          Text(
-                            nota,
-                            key: const Key('hoja_hora_nota'),
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium,
-                          ),
                       ],
                     ),
                   ),
@@ -305,6 +299,17 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
             ),
           ],
         ),
+        // La aclaración va debajo de la fila, no dentro de la columna de la hora: así −5 y +5
+        // quedan alineados con la hora y no se corren cuando la nota aparece o cambia de alto.
+        if (nota != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            nota,
+            key: const Key('hoja_hora_nota'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
         const SizedBox(height: 20),
         FilledButton(
           key: const Key('hoja_hora_usar'),

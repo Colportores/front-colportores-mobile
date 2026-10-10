@@ -13,6 +13,7 @@ import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
+import '../widgets/con_espera.dart';
 import '../widgets/hoja_hora_inicio.dart';
 import 'corregir_jornada_page.dart';
 import 'resumen_jornada_page.dart';
@@ -147,9 +148,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// jornada quedó abierta de un día anterior (HU-JOR-002, bug #118): el margen normal no
   /// corresponde, hay que preguntar a qué hora terminó (el mismo criterio que usa el caso de uso,
   /// [JornadaSinCerrar]). Cerca de la medianoche, con el margen todavía en el día del inicio, sí se
-  /// ofrece, y la hora elegida puede caer pasadas las 00:00 (#250). Con
-  /// 0 el selector no se muestra (la fila de fin queda sin toque con `maximo == 0`) y el botón
-  /// "Cambiar" queda deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
+  /// ofrece, y la hora elegida puede caer pasadas las 00:00 (#250). Con 0 el selector no se
+  /// muestra (la fila de fin queda sin toque con `maximo == 0`) y el botón "Cambiar" queda
+  /// deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
   /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
   static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
     const margen = FinalizarJornadaUseCase.margenHaciaAtras;
@@ -190,7 +191,11 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       setState(() => _finalizando = false);
       final corregida = await Navigator.of(context).push<Jornada>(
         MaterialPageRoute(
-          builder: (_) => CorregirJornadaPage(sesion: widget.sesion, inicio: jornada.inicio),
+          builder: (_) => CorregirJornadaPage(
+            sesion: widget.sesion,
+            inicio: jornada.inicio,
+            inicioSiguiente: failure.inicioSiguiente,
+          ),
         ),
       );
       if (!mounted) return;
@@ -367,7 +372,8 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         FilledButton(
           key: const Key('jornada_iniciar'),
           onPressed: _iniciando ? null : _iniciar,
-          child: _iniciando ? const _ConEspera('Iniciando…') : const Text('Iniciar jornada'),
+          style: _iniciando ? ConEspera.estiloDelBoton(context) : null,
+          child: _iniciando ? const ConEspera('Iniciando…') : const Text('Iniciar jornada'),
         ),
       ],
     );
@@ -442,7 +448,8 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         FilledButton(
           key: const Key('jornada_finalizar'),
           onPressed: _finalizando ? null : () => _finalizar(jornada),
-          child: _finalizando ? const _ConEspera('Finalizando…') : const Text('Finalizar jornada'),
+          style: _finalizando ? ConEspera.estiloDelBoton(context) : null,
+          child: _finalizando ? const ConEspera('Finalizando…') : const Text('Finalizar jornada'),
         ),
         // Vista 20 A08: con una jornada en curso no se puede iniciar otra.
         const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
@@ -698,23 +705,6 @@ class _FilaHora extends StatelessWidget {
       ),
     );
   }
-}
-
-/// El texto de un botón que está trabajando: círculo girando + [texto].
-class _ConEspera extends StatelessWidget {
-  const _ConEspera(this.texto);
-
-  final String texto;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    spacing: 10,
-    children: [
-      const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-      Flexible(child: Text(texto)),
-    ],
-  );
 }
 
 /// Aviso en línea: error (qué pasó y qué hacer) o información (el bloqueo de jornada activa).
