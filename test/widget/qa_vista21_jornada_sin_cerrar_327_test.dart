@@ -27,6 +27,11 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../helpers/qa_jornada_sin_cerrar_250_arnes.dart';
 
+/// Los casos de borde de una jornada siguiente que llega con la pantalla abierta pasan al S7:
+/// necesitan que el motor de sync (#175) traiga la jornada, y no pierden nada. El `skip` de
+/// `testWidgets` no admite un texto: el motivo es el issue #339.
+const _pasaAlS7 = true;
+
 /// Lunes 21 18:00:30: la jornada siguiente empezó en el mismo minuto que `inicioQa` (18:00).
 final _siguienteMismoMinuto = inicioQa.add(const Duration(seconds: 30));
 
@@ -558,27 +563,30 @@ void main() {
       });
     }
 
-    testWidgets('el spinner (color primario) sobre el fondo del botón apagado supera 3:1 '
-        '(WCAG 1.4.11, componentes de interfaz)', (tester) async {
+    testWidgets('el spinner (onPrimary, como la etiqueta) sobre el fondo del botón mientras '
+        'trabaja supera 3:1 (WCAG 1.4.11, componentes de interfaz)', (tester) async {
       await _armar(tester, _Estado.cerrando);
+      // Con la transición del botón apagado ya terminada.
+      await tester.pump(const Duration(seconds: 1));
 
-      final tema = Theme.of(tester.element(find.byKey(const Key('corregir_jornada_cerrar'))));
-      final fondoPantalla = tema.scaffoldBackgroundColor;
-      // Un FilledButton apagado pinta onSurface al 12 % sobre lo que tiene debajo.
-      final apagado = Color.alphaBlend(
-        tema.colorScheme.onSurface.withValues(alpha: 0.12),
-        fondoPantalla,
+      final boton = find.byKey(const Key('corregir_jornada_cerrar'));
+      final tema = Theme.of(tester.element(boton));
+      // El fondo real del botón (primary al 85 %, ver `ConEspera.estiloDelBoton`) sobre la pantalla.
+      final material = tester.widget<Material>(
+        find.descendant(of: boton, matching: find.byType(Material)).first,
+      );
+      final fondo = Color.alphaBlend(
+        material.color ?? const Color(0x00000000),
+        tema.scaffoldBackgroundColor,
       );
       final indicador = tester.widget<CircularProgressIndicator>(
-        find.descendant(
-          of: find.byKey(const Key('corregir_jornada_cerrar')),
-          matching: find.byType(CircularProgressIndicator),
-        ),
+        find.descendant(of: boton, matching: find.byType(CircularProgressIndicator)),
       );
       final colorSpinner =
           indicador.color ?? tema.progressIndicatorTheme.color ?? tema.colorScheme.primary;
 
-      expect(_contraste(colorSpinner, apagado), greaterThanOrEqualTo(3));
+      expect(colorSpinner, tema.colorScheme.onPrimary);
+      expect(_contraste(colorSpinner, fondo), greaterThanOrEqualTo(3));
     });
 
     testWidgets('mientras cierra, el botón conserva su nombre «Finalizando…» para el lector y el '
@@ -800,10 +808,10 @@ void main() {
     });
   });
 
-  group('Hallazgos de QA (con skip hasta que se arreglen)', () {
-    // skip: QA #327 (PR #336) — la etiqueta «Finalizando…» queda con ~1.1:1 de contraste cuando
-    // termina la transición del botón apagado: el canvas 21A·04 la pinta en blanco sobre #13407A
-    // al 85 %, y acá sale gris sobre azul grisáceo (foreground apagado de Material, 38 %).
+  group('Hallazgos de QA (el primero arreglado; los otros dos pasan al S7)', () {
+    // QA #327 (PR #336), arreglado en la ronda única: la etiqueta «Finalizando…» salía a ~1.9:1 al
+    // terminar la transición del botón apagado (gris al 38 % de Material sobre azul al 50 %). El
+    // canvas 21A·04 la pinta en blanco sobre el azul al 85 %, y así queda ahora (`ConEspera`).
     testWidgets('«Finalizando…» de la corrección se lee: contraste de texto (WCAG 1.4.3)', (
       tester,
     ) async {
@@ -822,9 +830,9 @@ void main() {
         greaterThanOrEqualTo(4.5),
       );
       ds.demoraFinalizar!.complete();
-    }, skip: true);
+    });
 
-    // skip: QA #327 (PR #336) — ídem en Hoy (21A·04), que comparte ConEspera y el estilo apagado.
+    // Ídem en Hoy (21A·04), que comparte `ConEspera` y el estilo del botón mientras trabaja.
     testWidgets('«Finalizando…» de Hoy se lee: contraste de texto (WCAG 1.4.3)', (tester) async {
       fijarPantallaQa(tester, telefonoGrandeQa);
       final ds = DataSourceQa(iniciales: [jornadaAbiertaQa(DateTime(2026, 9, 22, 7, 30))])
@@ -848,11 +856,11 @@ void main() {
         greaterThanOrEqualTo(4.5),
       );
       ds.demoraFinalizar!.complete();
-    }, skip: true);
+    });
 
-    // skip: QA #327 (PR #336) — si cuando se cierra ya hay una jornada siguiente en el mismo minuto
-    // del inicio y la pantalla se abrió sin ella (foto vieja), el aviso dice «entre las 18:01 y las
-    // 18:00»: un rango al revés que no le sirve a nadie (el caso de uso no lo cuida).
+    // skip, pasa al S7 (#339) — si cuando se cierra ya hay una jornada siguiente en el mismo
+    // minuto del inicio y la pantalla se abrió sin ella (foto vieja), el aviso dice «entre las
+    // 18:01 y las 18:00»: un rango al revés que no le sirve a nadie (el caso de uso no lo cuida).
     testWidgets('una siguiente que llega con la pantalla abierta no deja un rango invertido en el '
         'aviso', (tester) async {
       fijarPantallaQa(tester, telefonoChicoQa);
@@ -870,29 +878,31 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('entre las 18:01 y las 18:00'), findsNothing);
-    }, skip: true);
+    }, skip: _pasaAlS7);
 
-    // skip: QA #327 (PR #336) — en ese mismo caso la pantalla no ofrece salida: sin flecha (la foto
+    // skip, pasa al S7 (#339) — en ese mismo caso la pantalla no ofrece salida: sin flecha (la foto
     // vieja dice que hay hora válida) y con el atrás del sistema bloqueado por el PopScope.
-    testWidgets('una siguiente que llega con la pantalla abierta no deja la pantalla sin salida', (
-      tester,
-    ) async {
-      fijarPantallaQa(tester, telefonoChicoQa);
-      final ds = DataSourceQa(
-        iniciales: [jornadaAbiertaQa(), _cerradaQa(DateTime(2026, 9, 21, 18, 0, 30))],
-      );
-      await montarQa(tester, ds);
-      final resultado = await abrirCorregirQa(tester);
-      await elegirHoraQa(tester, '20:00');
-      await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
-      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'una siguiente que llega con la pantalla abierta no deja la pantalla sin salida',
+      (tester) async {
+        fijarPantallaQa(tester, telefonoChicoQa);
+        final ds = DataSourceQa(
+          iniciales: [jornadaAbiertaQa(), _cerradaQa(DateTime(2026, 9, 21, 18, 0, 30))],
+        );
+        await montarQa(tester, ds);
+        final resultado = await abrirCorregirQa(tester);
+        await elegirHoraQa(tester, '20:00');
+        await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
+        await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+        await tester.pumpAndSettle();
 
-      final hayFlecha = _flecha.evaluate().isNotEmpty;
-      await navegadorQa.currentState!.maybePop();
-      await tester.pumpAndSettle();
+        final hayFlecha = _flecha.evaluate().isNotEmpty;
+        await navegadorQa.currentState!.maybePop();
+        await tester.pumpAndSettle();
 
-      expect(hayFlecha || resultado.recibido, isTrue, reason: 'tiene que haber una salida');
-    }, skip: true);
+        expect(hayFlecha || resultado.recibido, isTrue, reason: 'tiene que haber una salida');
+      },
+      skip: _pasaAlS7,
+    );
   });
 }
