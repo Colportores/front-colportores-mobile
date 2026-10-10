@@ -1009,10 +1009,13 @@ void main() {
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
     });
 
-    testWidgets('dado que la sesión está abierta, cuando llega un enlace que no sirve, entonces '
-        'A06 dice «Ir a mi inicio», sin «Volver al login», y conserva «Solicitar un enlace '
-        'nuevo»', (tester) async {
+    testWidgets('Escenario: Edge -enlace no válido con la sesión abierta. Dado que tengo la sesión '
+        'abierta en este teléfono, cuando abro un enlace de recuperación que ya no sirve, entonces '
+        'la UI muestra la misma pantalla única «ENLACE NO VÁLIDO» y ofrece «Solicitar un enlace '
+        'nuevo» e «Ir a mi inicio», en lugar de «Volver al login»', (tester) async {
       await montarConSesion(tester);
+
+      expect(find.text('ENLACE NO VÁLIDO'), findsOneWidget);
 
       expect(find.text(_textoVencido), findsOneWidget);
       expect(find.descendant(of: salida, matching: find.text('Ir a mi inicio')), findsOneWidget);
@@ -1064,9 +1067,8 @@ void main() {
     });
 
     testWidgets('dado que el enlace era válido y venció a mitad del cambio, cuando la sesión sigue '
-        'abierta, entonces A06 también dice «Ir a mi inicio» y suelta solo la sesión del enlace', (
-      tester,
-    ) async {
+        'abierta, entonces A06 también dice «Ir a mi inicio», pide soltar la sesión del enlace una '
+        'vez y la sesión de la persona sigue abierta', (tester) async {
       final container = await montarConSesion(tester, enlace: EnlaceRecuperacion.valido);
       _recuperacion.rechazarSesionDeRecuperacion();
       await _completar(tester, 'NuevaClave1');
@@ -1095,6 +1097,31 @@ void main() {
       expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
       expect(inicio, findsOneWidget);
       expect(container.read(sesionProvider).value, isNotNull);
+    });
+
+    testWidgets('dado A06 con la sesión abierta, cuando se pide un enlace nuevo y se toca «Volver» '
+        'en A05, entonces termina en el inicio con la sesión intacta (#313)', (tester) async {
+      final container = await montarConSesion(tester);
+      final sesionAntes = container.read(sesionProvider).value;
+
+      await tester.tap(find.text('Solicitar un enlace nuevo'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('recuperacion_password_email')), _email);
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+
+      final volver = find.byKey(const Key('recuperacion_password_volver_login'));
+      expect(find.descendant(of: volver, matching: find.text('Volver')), findsOneWidget);
+      expect(find.text('Volver al login'), findsNothing);
+
+      await tester.tap(volver);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('recuperacion_password_volver_login')), findsNothing);
+      expect(find.byType(ConfirmarRecuperacionPasswordPage), findsNothing);
+      expect(inicio, findsOneWidget);
+      expect(_login, findsNothing);
+      expect(container.read(sesionProvider).value, sesionAntes, reason: 'la sesión sigue abierta');
     });
 
     testWidgets('dado que se volvió al inicio, cuando llegan otros dos enlaces seguidos (uno que '

@@ -11,6 +11,11 @@ final class SolicitarRecuperacionPasswordParams extends Equatable {
 
   final String email;
 
+  /// [props] lleva el correo: sin esto, interpolar los params en un log lo filtraría
+  /// (convenciones-desarrollo.md §7.5), como en los params de las pantallas vecinas.
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [email];
 }

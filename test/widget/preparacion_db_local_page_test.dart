@@ -336,6 +336,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
     });
+
+    testWidgets('dado que se pidió el enlace desde la preparación de la base, cuando se toca '
+        '«Volver» en A05, entonces vuelve a la preparación (no hay login al que volver) con la '
+        'sesión abierta y sin tocar la base (#313)', (tester) async {
+      _dbExistente(dekEnAlmacen: true, conEnvoltorio: false);
+      final container = await _entrar(tester, restaurada: true);
+      final sesionAntes = container.read(sesionProvider).value;
+      await _tocar(tester, 'preparacion_db_olvide_password');
+
+      await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+      await tester.pumpAndSettle();
+      final volver = find.byKey(const Key('recuperacion_password_volver_login'));
+      expect(find.descendant(of: volver, matching: find.text('Volver')), findsOneWidget);
+      expect(find.text('Volver al login'), findsNothing);
+
+      await tester.tap(volver);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecuperacionPasswordPage), findsNothing);
+      expect(_preparacion, findsOneWidget);
+      expect(find.text(const FailurePasswordParaProteger().mensaje), findsOneWidget);
+      expect(container.read(sesionProvider).value, sesionAntes, reason: 'la sesión sigue abierta');
+      expect(_db.llamadas, isNot(contains('descartar')), reason: 'no toca la DB del teléfono');
+    });
   });
 
   group('Reintentar (#27)', () {

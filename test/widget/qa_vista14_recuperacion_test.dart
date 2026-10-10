@@ -573,11 +573,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // QA #281: un reenvío en vuelo no queda registrado hasta que el servidor contesta, y en A05
-    // «Volver al login» sigue habilitado (la flecha y el atrás de A01 sí se bloquean). Se sale, se
-    // vuelve a entrar y la pantalla nueva lee la hora vieja: sin espera, con «Enviar» habilitado,
-    // mientras el reenvío anterior sigue en vuelo.
-    // skip: QA #281 — A05: «Volver al login» sale con un reenvío en vuelo y la reentrada ofrece otro
+    // QA #281 (activado en #318): un reenvío en vuelo no queda registrado hasta que el servidor
+    // contesta. Si A05 dejara salir con «Volver al login» y volver a entrar, la pantalla nueva leería
+    // la hora vieja y dejaría pedir otro enlace con el anterior todavía en vuelo. Por eso el botón se
+    // apaga mientras tanto, como la flecha de A01 y el atrás del sistema.
     testWidgets(
       'A05: con un reenvío en vuelo no se puede salir y reentrar a un formulario que deja pedir '
       'otro enlace',
@@ -596,21 +595,31 @@ void main() {
         await tester.pump(); // el spinner no deja asentar
         expect(find.text('Enviando…'), findsOneWidget);
 
-        final volver = tester.widget<TextButton>(_k('recuperacion_password_volver_login'));
-        if (volver.onPressed != null) {
-          await tester.tap(_k('recuperacion_password_volver_login'));
-          await tester.pumpAndSettle();
-          await _reabrir(tester);
-          expect(
-            _botonEnviar(tester).onPressed,
-            isNull,
-            reason: 'el reenvío anterior sigue en vuelo y la pantalla nueva deja pedir otro enlace',
-          );
-        }
+        expect(
+          tester.widget<TextButton>(_k('recuperacion_password_volver_login')).onPressed,
+          isNull,
+          reason: 'con el reenvío en vuelo no se sale',
+        );
+        await tester.tap(_k('recuperacion_password_volver_login'));
+        await tester.pump();
+        expect(find.byType(RecuperacionPasswordPage), findsOneWidget, reason: 'sigue en A05');
+
         remote.demoraRecuperacion!.complete();
         await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextButton>(_k('recuperacion_password_volver_login')).onPressed,
+          isNotNull,
+          reason: 'terminó el reenvío: ya se puede salir',
+        );
+
+        await _tocar(tester, 'recuperacion_password_volver_login');
+        await _reabrir(tester);
+        expect(
+          _botonEnviar(tester).onPressed,
+          isNull,
+          reason: 'la hora del reenvío ya quedó guardada: la reentrada sigue en espera',
+        );
       },
-      skip: true,
     );
   });
 

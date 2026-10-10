@@ -9,10 +9,13 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/usecases/espera_recuperacion_use_cases.dart';
 import '../../domain/usecases/solicitar_recuperacion_password_use_case.dart';
 import '../providers/auth_providers.dart';
+import '../providers/sesion_notifier.dart';
 
 /// Pantalla "Olvidé mi contraseña" (HU-AUTH-004), vista 14 del diseño (#223): el formulario con el
 /// aviso informativo arriba y el botón al pie (A01 a A04 y A06) y, al enviar, una pantalla aparte
-/// con el mensaje neutro, «Reenviar» con cuenta regresiva y «Volver al login» (A05).
+/// con el mensaje neutro, «Reenviar» con cuenta regresiva y «Volver al login» (A05). Con la sesión
+/// abierta (se llega desde la vista 15 o desde la preparación de la base) no hay login al que
+/// volver: el botón dice «Volver» y lleva a donde estaba la persona (#313, decisión del PR #312).
 ///
 /// Sin casilla «Entiendo el impacto» ni ⚠ (decisión de Cristian del 02/10, #272): como los datos
 /// del teléfono se conservan, no hay impacto que aceptar, así que el botón está habilitado desde el
@@ -77,6 +80,18 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// muestra siempre, antes de enviar, sin casilla que aceptar (#272).
   static const String _textoAviso = 'Tus datos guardados en este teléfono se conservan.';
 
+  /// Lo más que un envío espera al almacén del teléfono (#318): para leer si hay una espera vigente
+  /// (pasado el tope no se envía a ciegas ni se deja «Enviando…» sin fin: se avisa con
+  /// [_avisoLecturaLenta] y se puede volver a intentar) y para guardar la hora del envío (pasado el
+  /// tope se sigue a A05: el correo ya salió). Mismo tope que `VerificacionEmailPage._topeAlmacen`.
+  static const Duration _topeAlmacen = Duration(seconds: 3);
+
+  /// El aviso cuando el teléfono no contestó a tiempo (#318): qué pasó y qué hacer. Texto
+  /// confirmado por el agente de decisiones (10/10, mapa §2: texto/aviso).
+  static const String _avisoLecturaLenta =
+      'No pudimos comprobar si ya pediste un enlace hace poco. Esperá unos segundos y probá de '
+      'nuevo.';
+
   late final _email = TextEditingController(text: widget.emailInicial);
   Timer? _timer;
   int _segundosRestantes = 0;
@@ -110,8 +125,15 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     } finally {
       _leyendoEspera = false;
     }
-    if (!mounted || restante <= Duration.zero) return;
-    _comenzarEspera(desde: ahora, restante: restante);
+    if (!mounted) return;
+    // La lectura que se dio por perdida (aviso por tope) terminó: el aviso ya no vale.
+    if (_errorGeneral == _avisoLecturaLenta) setState(() => _errorGeneral = null);
+    // Lo que falta es lo calculado a la hora [ahora] menos lo que tardó la lectura: si el teléfono
+    // contestó tarde, la cuenta no puede mostrar más de lo que de verdad queda (#352).
+    final terminoA = widget.ahora();
+    final faltante = restante - terminoA.difference(ahora);
+    if (faltante <= Duration.zero) return;
+    _comenzarEspera(desde: terminoA, restante: faltante);
   }
 
   @override
@@ -172,10 +194,20 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
       _errorGeneral = null;
     });
 
-    // Un envío pedido mientras se lee la hora guardada espera a saber si la espera sigue vigente.
+    // Un envío pedido mientras se lee la hora guardada espera a saber si la espera sigue vigente,
+    // pero no más que [_topeAlmacen]: si el teléfono no contesta, no queda «Enviando…» ni el atrás
+    // bloqueado (#318). No se envía sin saberlo (la espera es de 60 s por teléfono): se avisa y la
+    // persona puede volver a intentar; si la lectura termina más tarde, la espera aparece sola.
     if (_leyendoEspera) {
-      await _lecturaEspera;
+      await _lecturaEspera.timeout(_topeAlmacen, onTimeout: () {});
       if (!mounted) return;
+      if (_leyendoEspera) {
+        setState(() {
+          _enviando = false;
+          _errorGeneral = _avisoLecturaLenta;
+        });
+        return;
+      }
       if (_segundosRestantes > 0) {
         setState(() => _enviando = false);
         return;
@@ -185,9 +217,18 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
     final resultado = await solicitar(SolicitarRecuperacionPasswordParams(email: _email.text));
 
     // La hora se guarda aunque la pantalla ya no esté (el enlace salió) y antes de soltar el
-    // «Enviando…» (que bloquea el atrás): al volver a entrar, la espera ya está guardada.
+    // «Enviando…» (que bloquea el atrás): al volver a entrar, la espera ya está guardada. Pero no
+    // se espera más que [_topeAlmacen]: con el almacén colgado el correo ya salió, así que A05 se
+    // ve igual (el guardado sigue su camino y, si termina más tarde, queda guardado) (#318).
     final cuando = widget.ahora();
-    if (resultado.isRight()) await registrar(RegistrarEnvioRecuperacionParams(cuando: cuando));
+    if (resultado.isRight()) {
+      try {
+        await registrar(RegistrarEnvioRecuperacionParams(cuando: cuando)).timeout(_topeAlmacen);
+      } on Object {
+        // Sin guardar la hora la espera de 60 s sigue corriendo en esta pantalla; solo no sobrevive
+        // a salir y volver a entrar. El límite de verdad lo aplica el servidor.
+      }
+    }
 
     if (!mounted) return;
 
@@ -216,6 +257,8 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
 
   @override
   Widget build(BuildContext context) {
+    // Con la sesión abierta (A05) no hay login al que volver: el botón de salida lo dice (#313).
+    final haySesion = ref.watch(sesionProvider).value != null;
     // Mientras envía no se sale: ni la flecha ni el atrás del sistema (la solicitud sigue en vuelo).
     return PopScope(
       canPop: !_enviando,
@@ -228,7 +271,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
                 constraints: BoxConstraints(
                   minHeight: (constraints.maxHeight - 26).clamp(0, double.infinity),
                 ),
-                child: _enviado ? _exito(context) : _formulario(context),
+                child: _enviado ? _exito(context, haySesion: haySesion) : _formulario(context),
               ),
             ),
           ),
@@ -308,7 +351,7 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
   /// A05: el mensaje neutro, «Reenviar» con la cuenta regresiva y «Volver al login». El título es
   /// el texto de la HU (nunca dice si el email existe). Los límites de intentos muestran esta misma
   /// pantalla.
-  Widget _exito(BuildContext context) {
+  Widget _exito(BuildContext context, {required bool haySesion}) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     return Column(
@@ -365,8 +408,13 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
             ),
             TextButton(
               key: const Key('recuperacion_password_volver_login'),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Volver al login'),
+              // Con un reenvío en vuelo no se sale (#318), como la flecha de A01 y el atrás del
+              // sistema: el resultado se muestra acá, y al volver a entrar se lee la hora ya
+              // guardada, no la vieja.
+              onPressed: _enviando ? null : () => Navigator.of(context).pop(),
+              // Con la sesión abierta no hay login al que volver: «Volver» lleva a donde estaba la
+              // persona (el inicio o la preparación de la base). Sin sesión, al login (#313).
+              child: Text(haySesion ? 'Volver' : 'Volver al login'),
             ),
           ],
         ),
