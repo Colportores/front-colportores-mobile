@@ -560,7 +560,7 @@ void main() {
     });
 
     testWidgets(
-      'el error al guardar no se pierde con un giro de pantalla ni al subir el texto a 2.0',
+      'el error al guardar no se pierde al cambiar el tamaño ni al subir el texto a 2.0',
       (tester) async {
         fijarPantallaQa(tester, telefonoGrandeQa);
         final escala = EscalaQa();
@@ -572,7 +572,7 @@ void main() {
         expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
 
         escala.valor = 2;
-        fijarPantallaQa(tester, const Size(915, 412));
+        fijarPantallaQa(tester, const Size(360, 640));
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);

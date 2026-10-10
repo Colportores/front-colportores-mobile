@@ -412,42 +412,6 @@ void main() {
     });
   });
 
-  group('QA #199 r2 · casos límite del aviso en horizontal (la app no fija la orientación)', () {
-    // skip: pregunta «Horizontal» (`mobile-294-p1-horizontal`, para Cristian: fijar la app en
-    // vertical o diseñar el horizontal) — en horizontal (640x360) «Referencias» queda tapado: la zona
-    // del aviso mide 0 dp (`libre = max(0, …)`) y el chip, que vive ahí, no se toca.
-    testWidgets('en 640x360 «Referencias» y «Mi ubicación» se pueden tocar', (tester) async {
-      await montarEnPantallaPrincipal(
-        tester,
-        repo: RepoListaFalso(canvas()),
-        tamano: const Size(640, 360),
-      );
-
-      expect(tester.takeException(), isNull);
-      expect(motivoInaccesible(tester, chipReferencias), isNull, reason: '«Referencias»');
-      expect(
-        motivoInaccesible(tester, find.byKey(ClavesMapaUbicaciones.miUbicacion)),
-        isNull,
-        reason: '«Mi ubicación»',
-      );
-    }, skip: true);
-
-    // skip: pregunta «Horizontal» (`mobile-294-p1-horizontal`) — en horizontal (640x360) la tarjeta
-    // «Sin conexión» queda en una zona de 0 dp: el colportor no ve el aviso ni puede tocar «Activar
-    // datos» / «Descargar mapa».
-    testWidgets(
-      'en 640x360 sin conexión el aviso sigue a la vista y «Activar datos» se puede tocar',
-      (tester) async {
-        await escenaSinConexion(tester, const Size(640, 360));
-
-        expect(tester.takeException(), isNull);
-        expect(find.byKey(ClavesAvisoMapa.sinConexion), findsOneWidget);
-        expect(await _llegarConElDedo(tester, _activarDatos), isNull);
-      },
-      skip: true,
-    );
-  });
-
   group('QA #199 r2 · M2: el aviso de «ya la registró otro colportor»', () {
     for (final escala in [1.0, 2.0]) {
       testWidgets('se anuncia (liveRegion), entra entero y no desborda · 360x640 · texto $escala', (

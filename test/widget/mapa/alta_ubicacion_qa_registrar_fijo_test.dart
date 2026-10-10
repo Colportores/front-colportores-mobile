@@ -818,15 +818,7 @@ void main() {
     }
   });
 
-  group('QA #305 · apaisado y entradas largas', () {
-    testWidgets('en 640×360 (apaisado) «Registrar» sigue entero y se puede tocar', (tester) async {
-      await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: const Size(640, 360));
-      await tocar(tester, find.text('Casa'));
-      _registrarEntero(tester, alto: 360, donde: 'apaisado');
-      await tester.tap(botonRegistrarFijo);
-      await asentar(tester);
-    });
-
+  group('QA #305 · entradas largas', () {
     testWidgets(
       'un texto pegado larguísimo con emoji en calle y número no desborda ni tapa «Registrar»',
       (tester) async {

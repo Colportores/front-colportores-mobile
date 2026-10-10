@@ -10,6 +10,7 @@ import 'core/config/config_supabase.dart';
 import 'core/database/database_helper.dart';
 import 'core/database/database_providers.dart';
 import 'core/dispositivo/dispositivo_providers.dart';
+import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
@@ -31,6 +32,8 @@ import 'features/tiles/presentation/providers/tiles_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Solo vertical (#301): la misma regla que el manifest de Android y el Info.plist de iOS.
+  await OrientacionApp.fijarVertical();
 
   final almacenSeguro = AlmacenSeguroKeystore();
   final relojSesion = RelojSesionEnAlmacen(almacenSeguro);
