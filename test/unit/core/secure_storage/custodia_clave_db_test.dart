@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/core/secure_storage/generacion_datos_locales.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -105,15 +106,19 @@ void main() {
   late ProveedorClaveDbFalso proveedor;
   late CustodiaClaveDb custodia;
 
-  CustodiaClaveDb custodiaCon(AlmacenSeguro almacen, {ParametrosArgon2id? parametros}) =>
-      CustodiaClaveDb(
-        almacen,
-        archivo,
-        proveedor,
-        CriptoSodium(),
-        parametros: parametros ?? _parametros,
-        logger: loggerMudo(),
-      );
+  CustodiaClaveDb custodiaCon(
+    AlmacenSeguro almacen, {
+    ParametrosArgon2id? parametros,
+    GeneracionDatosLocales? generacion,
+  }) => CustodiaClaveDb(
+    almacen,
+    archivo,
+    proveedor,
+    CriptoSodium(),
+    parametros: parametros ?? _parametros,
+    generacion: generacion,
+    logger: loggerMudo(),
+  );
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('custodia_');
@@ -681,6 +686,57 @@ void main() {
       await custodia.olvidar();
 
       expect(almacen.contenido[ClaveSegura.ultimoCorreo], 'ana@example.com');
+    });
+  });
+
+  group('CustodiaClaveDb.olvidarDatosDelUsuario — generación de los datos locales (#319)', () {
+    late GeneracionDatosLocales generacion;
+
+    setUp(() {
+      generacion = GeneracionDatosLocales();
+      custodia = custodiaCon(almacen, generacion: generacion);
+    });
+
+    test('dado un borrado de datos, cuando termina, la generación ya no es la de antes', () async {
+      final antes = generacion.valor;
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(generacion.valor, isNot(antes));
+    });
+
+    test('dado un borrado en curso, la generación ya cambió antes de que termine: lo que se '
+        'pida mientras tanto tampoco vale', () async {
+      final antes = generacion.valor;
+
+      final borrado = custodia.olvidarDatosDelUsuario();
+      final alEmpezar = generacion.valor;
+      await borrado;
+
+      expect(alEmpezar, isNot(antes));
+      expect(generacion.valor, isNot(alEmpezar));
+    });
+
+    test('dado un borrado que falla a mitad, la generación cambia igual', () async {
+      final antes = generacion.valor;
+      final fragil = custodiaCon(
+        _AlmacenQueFallaAlBorrar(almacen, fallaEn: ClaveSegura.relojSesion),
+        generacion: generacion,
+      );
+
+      await expectLater(fragil.olvidarDatosDelUsuario(), throwsA(isA<AlmacenSeguroException>()));
+
+      expect(generacion.valor, isNot(antes));
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el estado de cuenta ni la generación', () async {
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');
+      final antes = generacion.valor;
+
+      await custodia.olvidar();
+
+      expect(generacion.valor, antes);
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'u-1:activa');
     });
   });
 
