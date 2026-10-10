@@ -76,8 +76,15 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
 
   /// La jornada siguiente empezó en el mismo minuto que ésta (con el reloj en hora): no queda
   /// ningún minuto entre las dos y la pantalla lo dice. Con el reloj atrasado manda ese aviso.
-  bool _sinHoraPorSiguiente(DateTime ahora) =>
-      widget.inicioSiguiente != null && !_relojAtrasado(ahora) && _rango(ahora) == null;
+  /// El aviso sale por su causa real (la siguiente empieza antes del primer minuto válido), no
+  /// porque no haya rango: con el reloj dentro del minuto del inicio tampoco hay rango, y ahí la
+  /// siguiente puede estar horas después, así que decir "empezaron a la misma hora" sería falso.
+  bool _sinHoraPorSiguiente(DateTime ahora) {
+    final siguiente = widget.inicioSiguiente;
+    return siguiente != null &&
+        !_relojAtrasado(ahora) &&
+        siguiente.isBefore(JornadaSinCerrar.primerMinutoDelFin(widget.inicio));
+  }
 
   /// Si el fin cae al día siguiente del inicio (el rango cruza la medianoche) lo dice, porque
   /// "00:05" solo no aclara de qué día es. `null` si cae el mismo día.
@@ -217,6 +224,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     required bool sinHoraPorSiguiente,
   }) {
     final notaDelDia = horaElegida == null ? null : _notaDelDia(horaElegida);
+    // Sin ninguna hora que ofrecer por la jornada siguiente (o mientras cierra) no hay nada que
+    // elegir: el toque no responde y el texto se ve apagado. Con el reloj atrasado el toque sí
+    // responde (anuncia el aviso), así que sigue encendido.
+    final elegirApagado = _cerrando || sinHoraPorSiguiente;
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
@@ -267,9 +278,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                             ),
                             InkWell(
                               key: const Key('corregir_jornada_elegir_hora'),
-                              // Sin ninguna hora que ofrecer por la jornada siguiente no hay nada que
-                              // elegir: apagado. Con el reloj atrasado el toque sí responde (anuncia).
-                              onTap: (_cerrando || sinHoraPorSiguiente) ? null : _elegirHora,
+                              onTap: elegirApagado ? null : _elegirHora,
                               child: Container(
                                 constraints: const BoxConstraints(minHeight: 48),
                                 padding: const EdgeInsets.only(top: 4, bottom: 10),
@@ -292,7 +301,9 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                                       'Elegir la hora',
                                       style: theme.textTheme.bodyLarge?.copyWith(
                                         fontWeight: FontWeight.w600,
-                                        color: esquema.primary,
+                                        // Apagado se ve apagado: el gris de los textos sin acción
+                                        // (cumple AA; el gris al 38 % de Material no).
+                                        color: elegirApagado ? colores.gris : esquema.primary,
                                       ),
                                     ),
                                   ],
@@ -348,6 +359,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
                         onPressed: (horaElegida == null || _cerrando || sinHoraValida)
                             ? null
                             : _cerrar,
+                        style: _cerrando ? ConEspera.estiloDelBoton(context) : null,
                         child: _cerrando
                             ? const ConEspera('Finalizando…')
                             : Text(

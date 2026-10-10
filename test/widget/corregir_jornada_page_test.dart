@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/theme/colores_colportaje.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
@@ -1075,6 +1076,138 @@ void main() {
 
       expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
       expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+    });
+
+    testWidgets('con la siguiente a 3 h y la hora del teléfono dentro del minuto del inicio no se '
+        'dice que empezaron a la misma hora: ese aviso es falso', (tester) async {
+      var ahora = ahoraTarde;
+      final siguienteEnTresHoras = inicio.add(const Duration(hours: 3));
+      final dataSource = _DataSource(
+        iniciales: [
+          _jornadaAbierta(inicio: inicio),
+          _jornadaCerrada(
+            inicio: siguienteEnTresHoras,
+            fin: siguienteEnTresHoras.add(const Duration(hours: 1)),
+          ),
+        ],
+      );
+      await _montar(tester, dataSource, reloj: () => ahora);
+      await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguienteEnTresHoras);
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+
+      // Con la pantalla abierta, el reloj se mueve a 22:00:20 (dentro del minuto del inicio).
+      ahora = inicio.add(const Duration(seconds: 20));
+      await tester.tap(botonElegir);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+      expect(find.textContaining('misma hora'), findsNothing);
+      expect(avisoReloj, findsNothing);
+      expect(find.byKey(const Key('hoja_hora_ajuste')), findsNothing);
+      // No se culpa a nadie, no se pierde nada: queda la flecha y la jornada sigue abierta.
+      expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+      expect(_botonCerrar(tester).onPressed, isNull);
+      expect(dataSource.escrituras, 0);
+    });
+
+    for (final (nombre, segundos, hayAviso) in [
+      ('a 59 s del inicio (mismo minuto): hay aviso', 59, true),
+      ('justo en el minuto siguiente: no hay aviso, queda ese único minuto', 60, false),
+    ]) {
+      testWidgets(
+        'el aviso de la misma hora sale solo con su causa real, con la siguiente $nombre',
+        (tester) async {
+          final empieza = inicio.add(Duration(seconds: segundos));
+          final dataSource = _DataSource(
+            iniciales: [
+              _jornadaAbierta(inicio: inicio),
+              _jornadaCerrada(inicio: empieza, fin: empieza.add(const Duration(hours: 1))),
+            ],
+          );
+          await _montar(tester, dataSource, ahora: ahoraTarde);
+          await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: empieza);
+
+          expect(
+            find.byKey(const Key('corregir_jornada_sin_hora_siguiente')),
+            hayAviso ? findsOneWidget : findsNothing,
+          );
+          expect(tester.widget<InkWell>(botonElegir).onTap, hayAviso ? isNull : isNotNull);
+        },
+      );
+    }
+
+    group('«Elegir la hora» se ve apagado cuando no responde', () {
+      final tema = temaClaro();
+      final gris = tema.extension<ColoresColportaje>()!.gris;
+      final primario = tema.colorScheme.primary;
+
+      Color colorDelTexto(WidgetTester tester) => tester
+          .widget<Text>(find.descendant(of: botonElegir, matching: find.text('Elegir la hora')))
+          .style!
+          .color!;
+
+      testWidgets('encendido va en el color primario', (tester) async {
+        await _montar(tester, conSiguiente(), ahora: ahoraTarde);
+        await _abrirCorregir(tester, inicio: inicio, inicioSiguiente: siguiente);
+
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
+
+      testWidgets('sin horas por la jornada siguiente: el texto también va apagado, en el gris '
+          'de los textos sin acción (que cumple AA)', (tester) async {
+        await _montar(
+          tester,
+          _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+          ahora: ahoraTarde,
+        );
+        await _abrirCorregir(
+          tester,
+          inicio: inicio,
+          inicioSiguiente: inicio.add(const Duration(seconds: 30)),
+        );
+
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+        expect(colorDelTexto(tester), gris);
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      });
+
+      testWidgets('mientras cierra también va apagado, y vuelve a encenderse si la falla deja la '
+          'pantalla lista para reintentar', (tester) async {
+        final dataSource = _DataSource(iniciales: [_jornadaAbierta()])
+          ..demoraFinalizar = Completer<void>()
+          ..errorAlFinalizar = StateError('disco lleno');
+        await _montar(tester, dataSource);
+        await _abrirCorregir(tester);
+        await _elegirHora(tester, 20, 30);
+        expect(colorDelTexto(tester), primario);
+
+        await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+        await tester.pump();
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+        expect(colorDelTexto(tester), gris);
+
+        dataSource.demoraFinalizar!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('corregir_jornada_error')), findsOneWidget);
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
+
+      testWidgets('con el reloj atrasado el toque responde (anuncia el aviso): sigue encendido', (
+        tester,
+      ) async {
+        await _montar(
+          tester,
+          _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+          ahora: DateTime(2026, 9, 21, 12),
+        );
+        await _abrirCorregir(tester, inicio: inicio);
+
+        expect(avisoReloj, findsOneWidget);
+        expect(tester.widget<InkWell>(botonElegir).onTap, isNotNull);
+        expect(colorDelTexto(tester), primario);
+      });
     });
   });
 

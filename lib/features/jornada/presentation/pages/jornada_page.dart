@@ -372,6 +372,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         FilledButton(
           key: const Key('jornada_iniciar'),
           onPressed: _iniciando ? null : _iniciar,
+          style: _iniciando ? ConEspera.estiloDelBoton(context) : null,
           child: _iniciando ? const ConEspera('Iniciando…') : const Text('Iniciar jornada'),
         ),
       ],
@@ -447,6 +448,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         FilledButton(
           key: const Key('jornada_finalizar'),
           onPressed: _finalizando ? null : () => _finalizar(jornada),
+          style: _finalizando ? ConEspera.estiloDelBoton(context) : null,
           child: _finalizando ? const ConEspera('Finalizando…') : const Text('Finalizar jornada'),
         ),
         // Vista 20 A08: con una jornada en curso no se puede iniciar otra.
