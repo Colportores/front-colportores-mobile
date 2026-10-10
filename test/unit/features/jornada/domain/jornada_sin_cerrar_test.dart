@@ -122,5 +122,96 @@ void main() {
         DateTime(2026, 9, 23, 11, 59).toUtc(),
       );
     });
+
+    group('con la jornada siguiente (#327)', () {
+      final inicio = DateTime(2026, 9, 22, 22);
+
+      test('should be the inicio of the next jornada when it comes before the 12 hours', () {
+        // Las 12 h darían las 10:00; la siguiente empezó a las 08:00 y el fin no la pisa.
+        expect(
+          JornadaSinCerrar.topeDelFin(
+            inicio: inicio,
+            ahora: DateTime(2026, 9, 23, 12),
+            inicioSiguiente: DateTime(2026, 9, 23, 8),
+          ),
+          DateTime(2026, 9, 23, 8).toUtc(),
+        );
+      });
+
+      test('should stay at 12 hours when there is no next jornada', () {
+        expect(
+          JornadaSinCerrar.topeDelFin(inicio: inicio, ahora: DateTime(2026, 9, 23, 12)),
+          DateTime(2026, 9, 23, 10).toUtc(),
+        );
+      });
+
+      test('should ignore a next jornada that starts after the 12 hours', () {
+        expect(
+          JornadaSinCerrar.topeDelFin(
+            inicio: inicio,
+            ahora: DateTime(2026, 9, 23, 12),
+            inicioSiguiente: DateTime(2026, 9, 23, 10, 1),
+          ),
+          DateTime(2026, 9, 23, 10).toUtc(),
+        );
+      });
+
+      test('should be ahora when it is earlier than both the 12 hours and the next jornada', () {
+        expect(
+          JornadaSinCerrar.topeDelFin(
+            inicio: inicio,
+            ahora: DateTime(2026, 9, 23, 7),
+            inicioSiguiente: DateTime(2026, 9, 23, 8),
+          ),
+          DateTime(2026, 9, 23, 7).toUtc(),
+        );
+      });
+
+      test('should be the same instant when the next jornada starts exactly at the limit', () {
+        expect(
+          JornadaSinCerrar.topeDelFin(
+            inicio: inicio,
+            ahora: DateTime(2026, 9, 23, 12),
+            inicioSiguiente: DateTime(2026, 9, 23, 10),
+          ),
+          DateTime(2026, 9, 23, 10).toUtc(),
+        );
+      });
+
+      test('should return UTC whatever the zone of the arguments', () {
+        final tope = JornadaSinCerrar.topeDelFin(
+          inicio: inicio,
+          ahora: DateTime(2026, 9, 23, 12).toUtc(),
+          inicioSiguiente: DateTime(2026, 9, 23, 8).toUtc(),
+        );
+
+        expect(tope.isUtc, isTrue);
+        expect(tope, DateTime(2026, 9, 23, 8).toUtc());
+      });
+    });
+  });
+
+  group('JornadaSinCerrar.avisoSinHoraPorJornadaSiguiente', () {
+    test('should name the start hour, local with leading zeros, and tell what to do', () {
+      expect(
+        JornadaSinCerrar.avisoSinHoraPorJornadaSiguiente(DateTime(2026, 9, 22, 23, 30)),
+        'Esta jornada y la siguiente empezaron a la misma hora (23:30), así que no hay una hora '
+        'para cerrarla. Avisale a tu coordinador.',
+      );
+      expect(
+        JornadaSinCerrar.avisoSinHoraPorJornadaSiguiente(DateTime(2026, 9, 22, 5, 5).toUtc()),
+        contains('(05:05)'),
+      );
+    });
+  });
+
+  group('JornadaSinCerrar.avisoRelojAtrasado', () {
+    test('should say what happened and what to do, with the literal of the use case', () {
+      expect(
+        JornadaSinCerrar.avisoRelojAtrasado,
+        'La hora del teléfono es anterior al inicio de tu jornada. Revisá la fecha y hora del '
+        'teléfono y volvé a intentar.',
+      );
+    });
   });
 }

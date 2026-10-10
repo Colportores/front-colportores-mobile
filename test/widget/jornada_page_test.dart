@@ -57,6 +57,10 @@ final class _DataSource implements JornadaLocalDataSource {
   List<JornadaModel> get jornadas => _real.jornadas;
 
   @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
+
+  @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
     if (demoraLectura case final demora?) await demora.future;
     if (errorAlLeer case final error?) throw error;
@@ -901,7 +905,10 @@ void main() {
       await _tocarFinalizar(tester);
 
       expect(find.byType(CorregirJornadaPage), findsOneWidget);
-      expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      expect(
+        find.textContaining('Tu jornada del martes 22 empezó a las 18:00 y quedó abierta.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);
     });
@@ -1124,7 +1131,10 @@ void main() {
       expect(find.byType(CorregirJornadaPage), findsOneWidget);
       expect(find.text('¿A qué hora terminaste?'), findsOneWidget);
       expect(find.text('Martes 22 · después de las 18:00'), findsOneWidget);
-      expect(find.textContaining('Tenés una jornada del martes 22 sin cerrar.'), findsOneWidget);
+      expect(
+        find.textContaining('Tu jornada del martes 22 empezó a las 18:00 y quedó abierta.'),
+        findsOneWidget,
+      );
       // Se navegó: la pantalla de jornada (con su bloqueo "Jornada activa") ya no está en pantalla.
       expect(find.text('Jornada activa'), findsNothing);
       expect(dataSource.jornadas.single.estaAbierta, isTrue);

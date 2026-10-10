@@ -44,6 +44,10 @@ final class _DataSource implements JornadaLocalDataSource {
   List<JornadaModel> get jornadas => _real.jornadas;
 
   @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
+
+  @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
     if (errorAlLeer case final error?) throw error;
     if (lecturasSinVer > 0) {

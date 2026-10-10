@@ -22,6 +22,10 @@ final class _DataSourceRoto implements JornadaLocalDataSource {
 
   @override
   Future<void> finalizar(JornadaModel jornada) async => throw Exception('disco');
+
+  @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) async =>
+      throw Exception('disco');
 }
 
 void main() {
@@ -220,6 +224,78 @@ void main() {
         );
 
         expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      },
+    );
+  });
+
+  group('JornadaRepositoryImpl.siguienteA (#327)', () {
+    Jornada enHora(
+      String id,
+      DateTime inicio, {
+      String colportorId = 'u-1',
+      DateTime? borrada,
+      bool abierta = false,
+    }) => Jornada(
+      id: id,
+      colportorId: colportorId,
+      inicio: inicio,
+      fin: abierta ? null : inicio.add(const Duration(hours: 1)),
+      auditoria: Auditoria(
+        createdAt: inicio,
+        updatedAt: inicio,
+        createdBy: colportorId,
+        deletedAt: borrada,
+      ),
+    );
+
+    JornadaRepositoryImpl conJornadas(List<Jornada> jornadas) => JornadaRepositoryImpl(
+      JornadaLocalDataSourceEnMemoria(iniciales: jornadas.map(JornadaModel.fromEntity)),
+      logger: loggerMudo(),
+    );
+
+    test('dado varias jornadas posteriores, cuando se consulta, devuelve la de inicio más '
+        'cercano, sea cual sea el orden en que se guardaron', () async {
+      final repo = conJornadas([
+        enHora('tarde', t0.add(const Duration(days: 2))),
+        enHora('cerca', t0.add(const Duration(hours: 20))),
+        enHora('lejos', t0.add(const Duration(days: 1))),
+      ]);
+
+      final r = await repo.siguienteA(jornada());
+
+      expect(r.getOrElse(() => fail('se esperaba Right'))?.id, 'cerca');
+    });
+
+    test('dado la misma hora de inicio, una anterior, otro colportor o una borrada, cuando se '
+        'consulta, ninguna cuenta como siguiente', () async {
+      final repo = conJornadas([
+        enHora('misma', t0),
+        enHora('anterior', t0.subtract(const Duration(hours: 5))),
+        enHora('ajena', t0.add(const Duration(hours: 2)), colportorId: 'u-2'),
+        enHora('borrada', t0.add(const Duration(hours: 3)), borrada: t0),
+      ]);
+
+      expect(await repo.siguienteA(jornada()), const Right<Failure, Jornada?>(null));
+    });
+
+    test('dado que la siguiente sigue abierta, cuando se consulta, también la devuelve', () async {
+      final repo = conJornadas([
+        enHora('abierta-despues', t0.add(const Duration(hours: 4)), abierta: true),
+      ]);
+
+      final r = await repo.siguienteA(jornada());
+
+      expect(r.getOrElse(() => fail('se esperaba Right'))?.id, 'abierta-despues');
+    });
+
+    test(
+      'dado que el almacenamiento falla, cuando se consulta, devuelve FailureInesperado',
+      () async {
+        final roto = JornadaRepositoryImpl(_DataSourceRoto(), logger: loggerMudo());
+
+        final r = await roto.siguienteA(jornada());
+
+        expect(r.fold((f) => f, (_) => null), isA<FailureInesperado>());
       },
     );
   });

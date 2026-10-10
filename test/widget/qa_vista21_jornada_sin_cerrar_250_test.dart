@@ -155,9 +155,8 @@ void main() {
       semantica.dispose();
     });
 
-    // skip: QA #250 — mientras cierra, el botón queda con un spinner de 18 dp y sin texto: el lector de
-    // pantalla lo lee como «botón» sin nombre y a la vista es un spinner sin contexto (§8.3). En Hoy
-    // el mismo momento dice «Finalizando…» (21A·04).
+    // QA #250: mientras cierra, el botón tenía un spinner de 18 dp sin texto: el lector de pantalla
+    // lo leía como «botón» sin nombre (§8.3). Desde #327 dice «Finalizando…» (21A·04), como Hoy.
     testWidgets('mientras cierra, el botón conserva un texto que dice qué está pasando', (
       tester,
     ) async {
@@ -166,11 +165,11 @@ void main() {
 
       final boton = find.byKey(const Key('corregir_jornada_cerrar'));
       expect(find.descendant(of: boton, matching: find.byType(Text)), findsWidgets);
-      expect(tester.getSemantics(boton).label, isNotEmpty);
+      expect(tester.getSemantics(boton).label, contains('Finalizando…'));
 
       ds.demoraFinalizar!.complete();
       semantica.dispose();
-    }, skip: true);
+    });
   });
 
   group('Validación de «Otra hora» (checklist 4): cada entrada, con el botón y el aviso', () {
@@ -399,7 +398,10 @@ void main() {
       await montarQa(tester, ds, reloj: () => DateTime(2027, 1, 1, 8));
       final resultado = await abrirCorregirQa(tester, inicio: inicio);
 
-      expect(find.textContaining('Tenés una jornada del jueves 31 sin cerrar.'), findsOneWidget);
+      expect(
+        find.textContaining('Tu jornada del jueves 31 empezó a las 18:00 y quedó abierta.'),
+        findsOneWidget,
+      );
       expect(find.text('Jueves 31 · después de las 18:00'), findsOneWidget);
 
       await elegirHoraQa(tester, '00:30');

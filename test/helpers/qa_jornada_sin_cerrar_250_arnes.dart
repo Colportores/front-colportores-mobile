@@ -63,6 +63,10 @@ final class DataSourceQa implements JornadaLocalDataSource {
   List<JornadaModel> get jornadas => _real.jornadas;
 
   @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
+
+  @override
   Future<JornadaModel?> obtenerActiva(String colportorId) => _real.obtenerActiva(colportorId);
 
   @override
@@ -137,13 +141,21 @@ Future<void> montarQa(
   );
 }
 
-Future<ResultadoQa> abrirCorregirQa(WidgetTester tester, {DateTime? inicio}) async {
+Future<ResultadoQa> abrirCorregirQa(
+  WidgetTester tester, {
+  DateTime? inicio,
+  DateTime? inicioSiguiente,
+}) async {
   final resultado = ResultadoQa();
   unawaited(
     navegadorQa.currentState!
         .push<Jornada>(
           MaterialPageRoute(
-            builder: (_) => CorregirJornadaPage(sesion: sesionQa, inicio: inicio ?? inicioQa),
+            builder: (_) => CorregirJornadaPage(
+              sesion: sesionQa,
+              inicio: inicio ?? inicioQa,
+              inicioSiguiente: inicioSiguiente,
+            ),
           ),
         )
         .then((valor) {
