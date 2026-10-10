@@ -12,7 +12,9 @@ abstract final class TextosPosiblesDuplicados {
   static const titulo = 'Posibles duplicados';
   static const etiquetaBarra = 'POSIBLES DUPLICADOS';
   static const volver = 'Volver';
-  static const subtitulo = 'Son ubicaciones tuyas con la misma calle y número, o a menos de 5 m.';
+  // Espacio sin corte entre «5» y «m»: a 360 px con texto grande la «m.» no queda sola en un renglón.
+  static const subtitulo =
+      'Son ubicaciones tuyas con la misma calle y número, o a menos de 5${FormatoUbicaciones.espacioDuro}m.';
   static const revisar = 'Revisar';
 
   /// «3 para revisar».

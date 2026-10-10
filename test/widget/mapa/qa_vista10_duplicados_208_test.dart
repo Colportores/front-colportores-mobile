@@ -303,7 +303,7 @@ final _estados = <_Estado>[
 
 /// Las tres guías de accesibilidad de Flutter menos el contraste (que con las fuentes reales no es
 /// fiable: el contraste se mide aparte, par de colores por par de colores).
-Future<List<String>> _guias(WidgetTester tester, {bool etiquetas = true}) async {
+Future<List<String>> _guias(WidgetTester tester) async {
   final fallas = <String>[];
   Future<void> probar(String nombre, AccessibilityGuideline guia) async {
     try {
@@ -315,9 +315,7 @@ Future<List<String>> _guias(WidgetTester tester, {bool etiquetas = true}) async 
 
   await probar('android 48dp', androidTapTargetGuideline);
   await probar('ios 44dp', iOSTapTargetGuideline);
-  // Las opciones de la hoja y del selector «Editar uno» no tienen nombre en el nodo que se toca:
-  // eso lo documenta un test aparte, con skip (hallazgo), para no repetirlo en cada celda.
-  if (etiquetas) await probar('etiquetas', labeledTapTargetGuideline);
+  await probar('etiquetas', labeledTapTargetGuideline);
   return fallas;
 }
 
@@ -445,7 +443,7 @@ void main() {
 
             expect(tester.takeException(), isNull, reason: 'overflow o excepción de layout');
             expectSinTextoFueraDeLosCostados208(tester, tamano);
-            final fallas = await _guias(tester, etiquetas: !estado.nombre.startsWith('10-02-'));
+            final fallas = await _guias(tester);
             await capturar208(tester, '${estado.nombre}_$etiqueta');
             // La hoja es larga con texto grande: también el pie, donde están los botones.
             if (find.byType(HojaCompararDuplicado).evaluate().isNotEmpty &&
@@ -517,14 +515,33 @@ void main() {
       expect(contraste208(ColoresLista.grisEstado, blanco), greaterThanOrEqualTo(4.5));
     });
 
-    // skip: issue #208 — la opción elegida de "¿Cuál conservar?" pinta el texto gris #6B7688 sobre el
-    // azul claro #E6EEF8 (3.9:1); el canvas usa #5B6B82 (5.4:1 sobre blanco, 4.6:1 sobre el azul claro).
-    test('el texto secundario sobre la opción elegida (azul claro) llega a 4.5:1', () {
+    // El gris que la fila PINTA de verdad (no un token): la opción elegida de "¿Cuál conservar?" es azul
+    // claro #E6EEF8, donde el gris de la Lista (#6B7688) daba 3.9:1; el canvas usa #5B6B82 (4.6:1).
+    _prueba('el texto secundario sobre la opción elegida (azul claro) llega a 4.5:1', (
+      tester,
+    ) async {
+      await _montar(tester, _datosCanvas());
+      await _revisarPar(tester, _parMichigan);
+
+      Color colorDelResumen(String opcion) {
+        final resumen = find.descendant(
+          of: find.byKey(Key(opcion)),
+          matching: find.textContaining('Casa'),
+        );
+        return tester.widget<Text>(resumen).style!.color!;
+      }
+
       expect(
-        contraste208(ColoresLista.grisEstado, ColoresAlta.azulFondo),
+        contraste208(colorDelResumen('comparar_opcion_primera'), ColoresAlta.azulFondo),
         greaterThanOrEqualTo(4.5),
+        reason: 'la elegida (A) va sobre el azul claro',
       );
-    }, skip: true);
+      expect(
+        contraste208(colorDelResumen('comparar_opcion_segunda'), blanco),
+        greaterThanOrEqualTo(4.5),
+        reason: 'la otra (B) va sobre blanco',
+      );
+    });
 
     test('el gris del canvas (#5B6B82) llega a 4.5:1 sobre blanco y sobre el azul claro', () {
       const canvas = Color(0xFF5B6B82);
@@ -656,8 +673,9 @@ void main() {
       expect(find.byType(PosiblesDuplicadosPage), findsNothing);
     });
 
-    // skip: issue #208 — la unión que falla después de salir de la pantalla no deja rastro: el
+    // skip: issue #340 — la unión que falla después de salir de la pantalla no deja rastro: el
     // provider se descarta con la página, la colportora vio "unidas en una" y al volver no se le avisa.
+    // Decidido (mapa §2): hoy sin aviso; el aviso "No pudimos unir …" en la Lista va al #340.
     _prueba(
       'si la unión falla estando yo en otra pantalla, al volver el par sigue y se me avisa',
       (tester) async {
@@ -790,8 +808,6 @@ void main() {
   // Ítem 6 · nombre de lo que se toca (labeledTapTargetGuideline) en la hoja y en «Editar uno»
   // ----------------------------------------------------------------------------------------------
   group('Nombre de lo que se toca en la hoja', () {
-    // skip: issue #208 — las dos opciones "¿Cuál conservar?" son nodos tocables sin etiqueta: la
-    // dirección está en un `Semantics(container: true)` hijo que no se funde con el `InkWell`.
     _prueba('cada opción de "¿Cuál conservar?" tiene su nombre en el nodo que se toca', (
       tester,
     ) async {
@@ -799,10 +815,8 @@ void main() {
       await _revisarPar(tester, _parMichigan);
 
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-    }, skip: true);
+    });
 
-    // skip: issue #208 — igual en el selector "¿Cuál querés editar?": `_OpcionEditar` pone el texto en
-    // un `Semantics(container: true)` dentro de `SimpleDialogOption`.
     _prueba('cada opción de "¿Cuál querés editar?" tiene su nombre en el nodo que se toca', (
       tester,
     ) async {
@@ -811,6 +825,6 @@ void main() {
       await _tocar(tester, find.byKey(const Key('comparar_editar_uno')));
 
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-    }, skip: true);
+    });
   });
 }

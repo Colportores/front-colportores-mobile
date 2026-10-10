@@ -70,13 +70,38 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
   /// La hoja ya se está cerrando: un segundo toque no cierra dos veces.
   var _cerrando = false;
   var _eligiendoCual = false;
+
+  /// El par dejó de existir con otra ruta arriba de la hoja (la edición de «Editar uno»): la hoja se
+  /// cierra cuando esa ruta vuelve, sin tocarla.
+  var _cerrarAlVolver = false;
   Failure? _falla;
+  ModalRoute<void>? _ruta;
 
   Ubicacion get _conservada => _conservaLaPrimera ? _par.par.a : _par.par.b;
   Ubicacion get _duplicada => _conservaLaPrimera ? _par.par.b : _par.par.a;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ruta = ModalRoute.of<void>(context);
+  }
+
+  /// Cierra **la ruta de la hoja**. `Navigator.pop()` saca la de más arriba, y con «Editar uno» hay
+  /// otras encima: el selector «¿Cuál querés editar?» y la edición. Si una de ellas se llevaba el
+  /// cierre, la hoja quedaba abierta mostrando un par que ya no existe y sin respuesta.
   void _cerrar() {
     if (_cerrando || !mounted) return;
+    final ruta = _ruta;
+    if (_eligiendoCual) {
+      // El selector es de este par: si el par ya no existe, no hay nada que elegir.
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    if (ruta != null && !ruta.isCurrent) {
+      // La edición está arriba: no se la saca (se perdería lo que está escribiendo). La hoja se cierra
+      // al volver (`_editarUno`).
+      _cerrarAlVolver = true;
+      return;
+    }
     _cerrando = true;
     Navigator.of(context).pop();
   }
@@ -138,6 +163,9 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
     setState(() => _eligiendoCual = false);
     if (id == null) return;
     await ModificarUbicacionPage.abrir(context, colportorId: widget.colportorId, ubicacionId: id);
+    // Si mientras se editaba el par dejó de existir (por ejemplo, se corrigió la dirección), la hoja
+    // ya no tiene nada que mostrar.
+    if (mounted && _cerrarAlVolver) _cerrar();
   }
 
   @override
@@ -361,9 +389,25 @@ class _OpcionConservar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // El nombre y el toque van en UN nodo: el del lector de pantalla es esta opción entera («Ubicación
+    // A, la que se conserva: …», botón, marcada o no) y no la dirección suelta de adentro, que sin
+    // esto quedaba como un nodo aparte y la opción como un «botón» sin nombre.
     return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
       inMutuallyExclusiveGroup: true,
       checked: conservada,
+      label: FilaUbicacionPar.descripcion(
+        letra: letra,
+        ubicacion: ubicacion,
+        espacios: espacios,
+        estado: estado,
+        etiqueta: conservada
+            ? TextosPosiblesDuplicados.conservada(letra)
+            : TextosPosiblesDuplicados.duplicada(letra),
+      ),
+      onTap: alElegir,
       child: Material(
         color: conservada ? ColoresAlta.azulFondo : Colors.white,
         shape: RoundedRectangleBorder(
@@ -528,13 +572,17 @@ class _OpcionEditar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SimpleDialogOption(
-      key: Key('editar_opcion_${ubicacion.id}'),
-      onPressed: () => Navigator.of(context).pop(ubicacion.id),
-      child: Semantics(
-        container: true,
-        excludeSemantics: true,
-        label: '$letra: ${FormatoUbicaciones.direccion(ubicacion)}, $resumen',
+    void elegir() => Navigator.of(context).pop(ubicacion.id);
+    // El nombre va en el nodo que se toca (el del `SimpleDialogOption`), no en uno de adentro.
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      label: '$letra: ${FormatoUbicaciones.direccion(ubicacion)}, $resumen',
+      onTap: elegir,
+      child: SimpleDialogOption(
+        key: Key('editar_opcion_${ubicacion.id}'),
+        onPressed: elegir,
         child: Row(
           children: [
             LetraPar(letra),

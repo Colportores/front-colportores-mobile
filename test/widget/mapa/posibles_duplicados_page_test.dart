@@ -220,7 +220,7 @@ void main() {
       expect(find.byKey(const Key('duplicados_titulo')), findsOneWidget);
       expect(find.text('3 para revisar'), findsOneWidget);
       expect(
-        find.text('Son ubicaciones tuyas con la misma calle y número, o a menos de 5 m.'),
+        find.text('Son ubicaciones tuyas con la misma calle y número, o a menos de 5${_nbsp}m.'),
         findsOneWidget,
       );
       expect(find.text('POSIBLES DUPLICADOS'), findsOneWidget);
@@ -491,6 +491,59 @@ void main() {
       expect(find.text('2 para revisar'), findsOneWidget);
       expect(_par(_parFlores), findsNothing);
     });
+
+    _prueba(
+      'dado "Editar uno" con el selector "¿Cuál querés editar?" abierto, cuando una de las dos se '
+      'da de baja desde afuera, se cierran el selector y la hoja: no queda una hoja sin respuesta',
+      (tester) async {
+        final datos = _datosCanvas();
+        await _montar(tester, datos);
+        await _revisarPar(tester, _parFlores);
+        await _tocar(tester, find.byKey(const Key('comparar_editar_uno')));
+        expect(find.text('¿Cuál querés editar?'), findsOneWidget);
+
+        datos.darDeBaja('ub-f');
+        await _transicion(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('¿Cuál querés editar?'), findsNothing);
+        expect(_hoja, findsNothing, reason: 'el cierre sacaba el selector y dejaba la hoja');
+        expect(find.byType(PosiblesDuplicadosPage), findsOneWidget);
+        expect(find.text('2 para revisar'), findsOneWidget);
+
+        // La pantalla sigue respondiendo: se abre la hoja de otro par.
+        await _revisarPar(tester, _parItalia);
+        expect(_hoja, findsOneWidget);
+      },
+    );
+
+    _prueba(
+      'dado "Editar uno" con la edición abierta, cuando el par deja de existir, no se le saca la '
+      'edición a quien escribe y la hoja se cierra al volver',
+      (tester) async {
+        final datos = _datosCanvas();
+        await _montar(tester, datos);
+        await _revisarPar(tester, _parFlores);
+        await _tocar(tester, find.byKey(const Key('comparar_editar_uno')));
+        await tester.tap(find.byKey(const Key('editar_opcion_ub-e')));
+        await _transicion(tester);
+        expect(find.byType(ModificarUbicacionPage), findsOneWidget);
+
+        datos.darDeBaja('ub-f');
+        await _transicion(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ModificarUbicacionPage), findsOneWidget, reason: 'la edición sigue');
+        expect(find.byType(HojaCompararDuplicado, skipOffstage: false), findsOneWidget);
+
+        await tester.binding.handlePopRoute();
+        await _transicion(tester);
+
+        expect(find.byType(ModificarUbicacionPage), findsNothing);
+        expect(find.byType(HojaCompararDuplicado, skipOffstage: false), findsNothing);
+        expect(find.text('2 para revisar'), findsOneWidget);
+      },
+    );
 
     _prueba('dado un par con dos toques seguidos en "Revisar", se abre una sola hoja', (
       tester,

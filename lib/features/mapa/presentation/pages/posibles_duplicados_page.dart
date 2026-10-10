@@ -86,8 +86,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     final aviso = mensajero.showSnackBar(
       SnackBar(
         duration: plazo,
-        // Con un lector de pantalla el aviso no se cierra solo (WCAG 2.2.1): se cierra cuando la
-        // unión se hace, a los 8 s (`_ocultarAviso`).
+        // Con un lector de pantalla el aviso no se cierra solo (le da tiempo de leerlo y de llegar a
+        // «Deshacer»): se va cuando la unión se hace o con «Deshacer» (`_ocultarAviso`). Eso NO cumple
+        // WCAG 2.2.1 (límite de tiempo ajustable): la unión se hace igual a los 8 s, también con
+        // lector. Cuánto espera con lector lo decide Cristian (mobile-208-impl-p6-deshacer-lector).
         persist: mediaQuery.accessibleNavigation,
         // Sin arrastrar para cerrarlo: «Deshacer» es lo único que sale de ahí antes de los 8 s.
         dismissDirection: DismissDirection.none,

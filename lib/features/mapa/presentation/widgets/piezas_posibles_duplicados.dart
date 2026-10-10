@@ -41,6 +41,11 @@ class LetraPar extends StatelessWidget {
   }
 }
 
+/// El gris del texto secundario de la fila («Casa · 2 espacios»): el `#5B6B82` del canvas 10·02, que
+/// llega a 4,6:1 también sobre el azul claro de la opción elegida (`ColoresLista.grisEstado`, que
+/// usa la Lista, da 3,9:1 ahí). Es solo de esta vista: el token compartido no se toca.
+const _grisSecundario = Color(0xFF5B6B82);
+
 /// Una ubicación del par: su letra, el estado de la casa si se sabe, la dirección y «Casa · 2
 /// espacios» (canvas 10·01 y 10·02). Para el lector de pantalla es un solo renglón.
 class FilaUbicacionPar extends StatelessWidget {
@@ -65,15 +70,36 @@ class FilaUbicacionPar extends StatelessWidget {
   /// conserva»). Sin esto dice la letra.
   final String? etiqueta;
 
+  /// Lo que dice el lector de pantalla de esta fila, de corrido: «Ubicación A, la que se conserva:
+  /// Av. Italia 1234, Casa · 2 espacios, Entrevista agendada». Lo usan también las opciones tocables
+  /// de la hoja, que llevan la etiqueta en el nodo que se toca.
+  static String descripcion({
+    required String letra,
+    required Ubicacion ubicacion,
+    required int espacios,
+    EstadoCasa? estado,
+    String? etiqueta,
+  }) {
+    final direccion = FormatoUbicaciones.direccion(ubicacion);
+    final resumen = TextosPosiblesDuplicados.resumen(ubicacion, espacios);
+    final estadoDicho = estado == null ? '' : ', ${FormatoListaUbicaciones.estado(estado)}';
+    return '${etiqueta ?? 'Ubicación $letra'}: $direccion, $resumen$estadoDicho';
+  }
+
   @override
   Widget build(BuildContext context) {
     final direccion = FormatoUbicaciones.direccion(ubicacion);
     final resumen = TextosPosiblesDuplicados.resumen(ubicacion, espacios);
-    final estadoDicho = estado == null ? '' : ', ${FormatoListaUbicaciones.estado(estado!)}';
     return Semantics(
       container: true,
       excludeSemantics: true,
-      label: '${etiqueta ?? 'Ubicación $letra'}: $direccion, $resumen$estadoDicho',
+      label: descripcion(
+        letra: letra,
+        ubicacion: ubicacion,
+        espacios: espacios,
+        estado: estado,
+        etiqueta: etiqueta,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -100,7 +126,7 @@ class FilaUbicacionPar extends StatelessWidget {
                   style: const TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 12.5,
-                    color: ColoresLista.grisEstado,
+                    color: _grisSecundario,
                   ),
                 ),
               ],
