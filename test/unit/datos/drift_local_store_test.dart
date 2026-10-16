@@ -5,6 +5,7 @@
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
@@ -16,6 +17,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
+import 'package:sync_engine/sync_engine.dart';
 
 import '../../helpers/logger_mudo.dart';
 
@@ -278,5 +280,154 @@ void main() {
     // Una tabla nueva sin declarar en `catalogo.dart` revienta acá y al arrancar el motor: con
     // datos personales, olvidarse no puede ser silencioso.
     expect(() => registroDeLaApp(db.allTables.map((t) => t.actualTableName)), returnsNormally);
+  });
+
+  group('réplicas del catálogo', () {
+    test('booleanos, enteros y fechas de calendario llegan con su tipo', () async {
+      await store.applyDelta(
+        {
+          'producto': [
+            {
+              'id': 'pro-1',
+              'nombre': 'El Deseado de todas las gentes',
+              'descripcion': null,
+              'tipo': 'LIBRO',
+              'es_bonificable': true,
+              'es_misionero': false,
+              'precio_base_compra': 450,
+              'casa_editora': 'ACES',
+              'imagen_url': null,
+              'created_at': '2026-10-16T12:00:00.000Z',
+              'updated_at': '2026-10-16T12:00:00.000Z',
+              'created_by': null,
+              'deleted_at': null,
+              'sync_version': 2,
+              'xmin_w': '99',
+            },
+          ],
+          'precio_por_ciudad': [
+            {
+              'id': 'pre-1',
+              'campania_ciudad_id': 'cc-1',
+              'producto_id': 'pro-1',
+              'coleccion_id': null,
+              'precio_venta': 1200,
+              'valido_desde': '2026-12-01',
+              'valido_hasta': null,
+              'created_at': '2026-10-16T12:00:00.000Z',
+              'updated_at': '2026-10-16T12:00:00.000Z',
+              'created_by': null,
+              'deleted_at': null,
+              'sync_version': 1,
+            },
+          ],
+        },
+        scope: 'replica',
+        watermark: 'w1',
+      );
+
+      final producto = await db.select(db.replicaProductos).getSingle();
+      expect(producto.esBonificable, isTrue);
+      expect(producto.esMisionero, isFalse);
+      expect(producto.precioBaseCompra, 450);
+      expect(producto.createdAt, DateTime.utc(2026, 10, 16, 12));
+      final precio = await db.select(db.replicaPreciosPorCiudad).getSingle();
+      expect(precio.validoDesde, '2026-12-01');
+      expect(precio.precioVenta, 1200);
+    });
+  });
+
+  group('fuera del área (§2.1): se marca, nunca se borra', () {
+    Map<String, Object?> ubi(String id) => {..._ubicacion, 'id': id};
+
+    Future<void> tener(List<String> ids) =>
+        store.applyDelta({'ubicacion': ids.map(ubi).toList()}, scope: 'replica', watermark: 'w0');
+
+    test('out_of_area la marca y la app la ve', () async {
+      await tener(['u1', 'u2']);
+
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test('la que vuelve a bajar deja de estar afuera', () async {
+      await tener(['u1']);
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      await tener(['u1']);
+
+      expect(await store.observarFueraDelArea('ubicacion').first, isEmpty);
+    });
+
+    test('area_reset: lo que no vuelve a bajar queda afuera recién en la última página, '
+        'y lo que tiene escrituras sin subir no cuenta', () async {
+      await tener(['u1', 'u2', 'u3', 'u4']);
+      // u4 tiene una corrección en la cola que todavía no subió.
+      await DriftJobStore(db).append(
+        SyncJob(
+          clientOpId: 'op-u4',
+          entity: 'ubicacion',
+          op: Op.update,
+          payload: ubi('u4'),
+          createdAt: DateTime.utc(2026, 10, 16),
+          rowPk: 'u4',
+        ),
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u2')],
+        },
+        scope: 'replica',
+        watermark: 'r1',
+        notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+      );
+      expect(
+        await store.observarFueraDelArea('ubicacion').first,
+        isEmpty,
+        reason: 'a mitad de la descarga no se sabe qué quedó afuera',
+      );
+
+      // El LWW de un push, en el medio, no concluye nada.
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u9')],
+        },
+        scope: 'mirror',
+        watermark: '',
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'r2',
+        notices: const PullNotices(),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(5));
+    });
   });
 }

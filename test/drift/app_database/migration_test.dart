@@ -20,6 +20,7 @@ import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
 import 'generated/schema_v8.dart' as v8;
+import 'generated/schema_v9.dart' as v9;
 
 class _SinSalida extends LogOutput {
   @override
@@ -552,6 +553,50 @@ void main() {
           expect(auditorias.map((f) => f.toJson()).toList(), [auditoria.toJson()]);
           expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
           expect(await nuevo.select(nuevo.syncWatermark).get(), isEmpty);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 8, cuando migra a la 9, se conserva todo y las réplicas del '
+    'catálogo quedan vacías',
+    () async {
+      // #181: solo se suman las réplicas del catálogo y `sync_fuera_del_area`. La cola del motor no
+      // se toca: lo que esperaba subir sigue esperando (convenciones §9).
+      const job = v8.SyncQueueData(
+        id: 'job-1',
+        clientOpId: 'op-1',
+        entity: 'ubicacion',
+        op: 'insert',
+        payload: '{"id":"ub-1"}',
+        rowPk: 'ub-1',
+        createdAt: 1758700000000,
+        state: 'PENDING',
+        code: '',
+        message: '',
+      );
+      const watermark = v8.SyncWatermarkData(scope: 'replica', watermark: 'w-1');
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 8,
+        newVersion: 9,
+        createOld: v8.DatabaseAtV8.new,
+        createNew: v9.DatabaseAtV9.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.syncQueue, job)
+            ..insert(viejo.syncWatermark, watermark);
+        },
+        validateItems: (nuevo) async {
+          final jobs = await nuevo.select(nuevo.syncQueue).get();
+          expect(jobs.map((f) => f.toJson()).toList(), [job.toJson()]);
+          final marcas = await nuevo.select(nuevo.syncWatermark).get();
+          expect(marcas.map((f) => f.toJson()).toList(), [watermark.toJson()]);
+          expect(await nuevo.select(nuevo.producto).get(), isEmpty);
+          expect(await nuevo.select(nuevo.precioPorCiudad).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncFueraDelArea).get(), isEmpty);
         },
       );
     },

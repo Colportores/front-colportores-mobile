@@ -232,6 +232,30 @@ void main() {
     });
   });
 
+  test('el LWW de un push en medio de una descarga cortada no confirma nada '
+      'afuera', () async {
+    final store = InMemoryLocalStore();
+    store.rows['ubicacion'] = [_ubi('u1')];
+    await store.applyDelta(
+      const {},
+      scope: 'replica',
+      watermark: 'r1',
+      notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+    );
+
+    // El LWW aplica la fila del servidor con los avisos por defecto.
+    await store.applyDelta(
+      {
+        'ubicacion': [_ubi('u9')],
+      },
+      scope: 'mirror',
+      watermark: '',
+    );
+
+    expect(store.fueraDelArea['ubicacion'] ?? const <String>{}, isEmpty);
+    expect(store.aLaEspera['ubicacion'], {'u1'});
+  });
+
   test('el pull no pisa una fila con una escritura local sin subir', () async {
     final t = _Guion([
       _pagina(

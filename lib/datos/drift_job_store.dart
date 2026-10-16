@@ -170,6 +170,25 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
   }
 
   @override
+  Future<Set<String>> withUnapplied(String entity, Iterable<String> rowPks) async {
+    final pks = rowPks.toList();
+    final ocupadas = <String>{};
+    // De a 500: SQLite limita la cantidad de variables por sentencia.
+    for (var i = 0; i < pks.length; i += 500) {
+      final tramo = pks.sublist(i, i + 500 > pks.length ? pks.length : i + 500);
+      final consulta = selectOnly(syncQueue, distinct: true)
+        ..addColumns([syncQueue.rowPk])
+        ..where(
+          syncQueue.entity.equals(entity) &
+              syncQueue.rowPk.isIn(tramo) &
+              syncQueue.state.isIn(EstadoJob.sinAplicar),
+        );
+      ocupadas.addAll([for (final f in await consulta.get()) f.read(syncQueue.rowPk)!]);
+    }
+    return ocupadas;
+  }
+
+  @override
   Future<void> rebaseVersions(String entity, Map<String, int> versionPorFila) =>
       transaction(() async {
         for (final MapEntry(key: pk, value: version) in versionPorFila.entries) {

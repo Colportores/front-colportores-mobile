@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../datos/replicas_catalogo_table.dart';
 import '../../datos/sync_queue_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
@@ -44,6 +45,15 @@ part 'app_database.g.dart';
     AuditLogLocal,
     SyncQueue,
     SyncWatermarks,
+    ReplicaPaises,
+    ReplicaCiudades,
+    ReplicaCampanias,
+    ReplicaCampaniasColportor,
+    ReplicaProductos,
+    ReplicaColecciones,
+    ReplicaProductosColeccion,
+    ReplicaPreciosPorCiudad,
+    SyncFueraDelArea,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -64,10 +74,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 6: `sesion_usuario`, copia local del nombre del usuario (#243).
   /// - 7: `audit_log`, la auditoría del dispositivo, solo local (#205: el motivo de la baja).
   /// - 8: `sync_queue` y `sync_watermark`, la cola y los watermarks del motor de sync (#178).
+  /// - 9: las réplicas del catálogo (`pais`, `ciudad`, `campania`, `campania_colportor`, `producto`,
+  ///   `coleccion`, `producto_coleccion`, `precio_por_ciudad`) y `sync_fuera_del_area` (#181).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 8;
+  static const int versionEsquema = 9;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -155,6 +167,22 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.syncQueueFila);
       await m.createIndex(esquema.syncQueueDoneAt);
       await m.createTable(esquema.syncWatermark);
+    },
+    // Solo crea las réplicas del catálogo, vacías (las llena el pull), y la marca de «fuera del
+    // área» del motor: nada de lo guardado cambia.
+    from8To9: (m, esquema) async {
+      await m.createTable(esquema.pais);
+      await m.createTable(esquema.ciudad);
+      await m.createTable(esquema.campania);
+      await m.createTable(esquema.campaniaColportor);
+      await m.createIndex(esquema.campaniaColportorUsuarioIdx);
+      await m.createTable(esquema.producto);
+      await m.createTable(esquema.coleccion);
+      await m.createTable(esquema.productoColeccion);
+      await m.createIndex(esquema.productoColeccionColeccionIdx);
+      await m.createTable(esquema.precioPorCiudad);
+      await m.createIndex(esquema.precioPorCiudadCampaniaCiudadIdx);
+      await m.createTable(esquema.syncFueraDelArea);
     },
   );
 }

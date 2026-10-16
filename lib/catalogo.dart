@@ -9,26 +9,42 @@ import 'package:sync_engine/sync_engine.dart';
 
 /// Las tablas de la DB local que **no** son entidades del contrato: la cola y los watermarks del
 /// motor. No se declaran ni se sincronizan.
-const tablasDelMotor = {'sync_queue', 'sync_watermark'};
+const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_fuera_del_area'};
 
 /// Lo que dice §2 para cada tabla local.
 final specsDeLaApp = <SyncSpec>[
   // push: lo que escribe el colportor. `critical` sube al instante (§5.2).
   SyncSpec.push('jornada', critical: true),
-  // `alsoPull` (la réplica de las casas de la ciudad, §2.1) llega con I2 (#181): el pull por
-  // ciudad y el aviso de fuera del área.
-  SyncSpec.push('ubicacion'),
-  SyncSpec.push('espacio'),
+  // Bidireccionales (§2.1): baja toda la ciudad de su zona, más lo que registró él. Lo que sale
+  // del área se marca, no se borra (`sync_fuera_del_area`).
+  SyncSpec.push('ubicacion', alsoPull: true),
+  SyncSpec.push('espacio', alsoPull: true),
   // §2 y backend 0032: sube y sobrevive a una reinstalación. Hoy la tabla local no tiene `id` ni
   // columnas de sync y nada la encola: eso es un seguimiento de #178.
   SyncSpec.push('ubicacion_par_decidido'),
 
-  // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
+  // pull: réplicas de solo lectura, la app nunca las escribe (§2).
+  // El mapa de la campaña, por el canal de catálogo.
   SyncSpec.pull('campania_ciudad'),
   SyncSpec.pull('zona'),
   SyncSpec.pull('zona_vertice'),
+  SyncSpec.pull('pais'),
+  SyncSpec.pull('ciudad'),
+  SyncSpec.pull('campania'),
+  // Solo las inscripciones propias (RLS): de acá sale la zona de cada campaña (HU-CAM-006).
+  SyncSpec.pull('campania_colportor'),
+  // El catálogo de venta: un cambio del administrador baja al instante (realtime, §5.6). Son las
+  // cuatro tablas que el backend publica en `supabase_realtime` (0001).
+  SyncSpec.pull('producto', realtime: true),
+  SyncSpec.pull('coleccion', realtime: true),
+  SyncSpec.pull('producto_coleccion', realtime: true),
+  SyncSpec.pull('precio_por_ciudad', realtime: true),
 
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
+  // `persona` y `nota` todavía no tienen tabla; se declaran ya para que la suite de conformidad
+  // (`test/unit/datos/conformidad_test.dart`) lo exija desde el primer día.
+  SyncSpec.local('persona'),
+  SyncSpec.local('nota'),
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.
   SyncSpec.local('sesion_usuario'),

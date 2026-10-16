@@ -7,12 +7,14 @@ import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../catalogo.dart';
+import '../../datos/adaptadores_sync.dart';
 import '../../datos/drift_job_store.dart';
 import '../../datos/drift_local_store.dart';
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
+import '../../plataforma/realtime_supabase.dart';
 import '../conectividad/conectividad_providers.dart';
 import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
@@ -57,10 +59,14 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
   if (db == null) return null;
   final motor = SyncEngine(
     specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
+    adapters: adaptadoresDeLaApp,
     transport: ref.watch(transporteSyncProvider),
     jobs: DriftJobStore(db),
     store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
     connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+    // El catálogo de venta baja al instante cuando el administrador lo cambia (§5.6). Sin
+    // backend no hay a qué suscribirse.
+    realtime: ConfigSupabase.configurada ? RealtimeSupabase(Supabase.instance.client) : null,
   );
   ref.onDispose(() => unawaited(motor.dispose()));
   return motor;

@@ -289,8 +289,11 @@ class PullNotices {
     this.complete = true,
   });
 
-  /// Sin avisos y con la descarga terminada.
-  static const none = PullNotices();
+  /// Sin avisos y sin concluir nada: lo que aplica el LWW de un push (§5.4).
+  /// No es `complete` a propósito, porque puede caer en medio de una descarga
+  /// cortada después de un `areaReset`, y confirmaría afuera lo que todavía no
+  /// volvió a bajar.
+  static const none = PullNotices(complete: false);
 
   /// Ver [PullDelta.outOfArea].
   final Map<String, List<String>> outOfArea;

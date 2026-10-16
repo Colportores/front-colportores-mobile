@@ -3,6 +3,7 @@ import 'package:sync_engine/sync_engine.dart';
 
 import '../core/database/app_database.dart';
 import '../core/database/fecha_utc_converter.dart';
+import 'replicas_catalogo_table.dart';
 import 'sync_queue_table.dart';
 
 part 'drift_local_store.g.dart';
@@ -19,7 +20,7 @@ part 'drift_local_store.g.dart';
 ///
 /// Solo escribe en [entidades]: una fila del servidor no puede caer en `sync_queue`, en
 /// `audit_log` ni en una tabla `local` por un nombre de entidad mal escrito.
-@DriftAccessor(tables: [SyncWatermarks])
+@DriftAccessor(tables: [SyncWatermarks, SyncFueraDelArea, SyncQueue])
 final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     with _$DriftLocalStoreMixin
     implements LocalStorePort {
@@ -28,14 +29,24 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
 
   final Set<String> _entidades;
 
-  /// Aplica el delta y el watermark en una sola transacción (§10): si una fila falla, el
-  /// watermark no avanza y el próximo pull vuelve a traer lo mismo.
+  /// Aplica el delta, los avisos de área y el watermark en una sola transacción (§10): si una
+  /// fila falla, el watermark no avanza y el próximo pull vuelve a traer lo mismo.
+  ///
+  /// Los avisos (§2.1) viven en `sync_fuera_del_area` y nunca borran nada de las tablas de
+  /// negocio. Con un `area_reset`, lo que el teléfono tenía de la entidad queda a la espera
+  /// (`confirmada = false`), salvo lo que tiene escrituras en la cola sin terminar: eso el servidor
+  /// todavía no lo vio, no salió de ningún lado. Lo que vuelve a bajar sale de la espera y de la
+  /// marca; lo que sigue a la espera cuando llega la última página, quedó afuera.
   @override
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
     required String watermark,
+    PullNotices notices = PullNotices.none,
   }) => transaction(() async {
+    for (final entidad in notices.areaReset) {
+      await _ponerALaEspera(_tabla(entidad));
+    }
     for (final MapEntry(key: entidad, value: filas) in rows.entries) {
       final tabla = _tabla(entidad);
       for (final fila in filas) {
@@ -43,11 +54,59 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
         // el tipo de su fila; un insertable de `Never` es subtipo de cualquiera.
         await into(tabla).insertOnConflictUpdate(RawValuesInsertable<Never>(_valores(tabla, fila)));
       }
+      final ids = [
+        for (final fila in filas)
+          if (fila[_pkDe(tabla)] case final id?) '$id',
+      ];
+      for (var i = 0; i < ids.length; i += 500) {
+        final tramo = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
+        await (delete(
+          syncFueraDelArea,
+        )..where((f) => f.entidad.equals(entidad) & f.filaId.isIn(tramo))).go();
+      }
     }
+    for (final MapEntry(key: entidad, value: ids) in notices.outOfArea.entries) {
+      _tabla(entidad);
+      for (final id in ids) {
+        await into(syncFueraDelArea).insertOnConflictUpdate(
+          SyncFueraDelAreaCompanion.insert(entidad: entidad, filaId: id, confirmada: true),
+        );
+      }
+    }
+    if (notices.complete) {
+      await (update(syncFueraDelArea)..where((f) => f.confirmada.equals(false))).write(
+        const SyncFueraDelAreaCompanion(confirmada: Value(true)),
+      );
+    }
+
     await into(
       syncWatermarks,
     ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
   });
+
+  /// Con un `area_reset` de [tabla]: todo lo que el teléfono tiene de ella pasa a esperar volver a
+  /// bajar, menos lo que ya se sabe afuera y lo que tiene escrituras en la cola sin terminar.
+  Future<void> _ponerALaEspera(TableInfo<Table, Object?> tabla) async {
+    final pk = _pkDe(tabla);
+    final entidad = tabla.actualTableName;
+    await customStatement(
+      'INSERT OR IGNORE INTO sync_fuera_del_area (entidad, fila_id, confirmada) '
+      'SELECT ?, t."$pk", 0 FROM "$entidad" t '
+      'WHERE NOT EXISTS (SELECT 1 FROM sync_queue q WHERE q.entity = ? AND q.row_pk = t."$pk" '
+      "AND q.state <> 'DONE')",
+      [entidad, entidad],
+    );
+  }
+
+  /// La PK de [tabla] (una sola columna en toda tabla del sync).
+  String _pkDe(TableInfo<Table, Object?> tabla) => tabla.$primaryKey.single.name;
+
+  /// Los ids de [entidad] que quedaron fuera del área (§2.1): la app los marca, no los borra.
+  Stream<Set<String>> observarFueraDelArea(String entidad) =>
+      (select(syncFueraDelArea)
+            ..where((f) => f.entidad.equals(entidad) & f.confirmada.equals(true)))
+          .watch()
+          .map((filas) => {for (final f in filas) f.filaId});
 
   @override
   Future<String?> watermarkOf(String scope) async {
