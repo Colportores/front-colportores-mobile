@@ -38,9 +38,18 @@ abstract final class ValidadorEmail {
   /// El aviso de un 400 `email_address_invalid` del servidor (la dirección tiene el formato de un
   /// email pero no puede recibir correos: un dominio mal tipeado, uno de prueba…). No dice «ese
   /// dominio no existe»: el servidor lo manda también por otras causas y el aviso no afirma lo que
-  /// no sabe. Igual en las cuatro pantallas, en el campo del email.
+  /// no sabe. Igual en el login, el registro y el reenvío de la verificación, en el campo del email;
+  /// la recuperación de contraseña no lo muestra (anti-enumeración, HU-AUTH-004: solo existe para
+  /// una cuenta que existe) y con el correo conocido, donde no hay campo, el reenvío usa
+  /// [avisoDireccionRechazadaSinCampo] (#363).
   static const String avisoDireccionRechazada =
       'Revisá el email: no podemos mandar correos a esa dirección.';
+
+  /// El aviso de [avisoDireccionRechazada] donde la dirección no se puede corregir (la pantalla
+  /// «Verificá tu cuenta» con el correo del alta o del ingreso): dice qué hacer, en el aviso general
+  /// de la pantalla (#363).
+  static const String avisoDireccionRechazadaSinCampo =
+      'No podemos mandar correos a esa dirección. Volvé al login y registrate con otro email.';
 
   /// Los caracteres de formato de Unicode (categoría Cf): el espacio de ancho cero `U+200B`, las
   /// marcas de dirección `U+200E`/`U+200F` y `U+202A`–`U+202E`, el guion blando `U+00AD`, el

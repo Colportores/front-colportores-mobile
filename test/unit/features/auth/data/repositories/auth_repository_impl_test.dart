@@ -1040,16 +1040,32 @@ void main() {
       expect(resultado, const Left<Failure, Unit>(aviso));
     });
 
-    test(
-      'al pedir la recuperación, también la muestra (no es el rate limit: no se enmascara)',
-      () async {
-        remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+    // HU-AUTH-004 «nunca debe revelar si el email existe» (#363): el servidor rechaza la dirección
+    // solo al armar el correo, o sea solo si la cuenta existe; mostrarlo la distinguiría de una que
+    // no existe. Vuelve como el éxito de siempre.
+    test('al pedir la recuperación, vuelve como éxito (no revela que la cuenta existe)', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
 
-        final resultado = await repository.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
 
-        expect(resultado, const Left<Failure, Unit>(aviso));
-      },
-    );
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('al pedir la recuperación, el rechazo deja un warn sin el correo', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+      final salida = _SalidaEnMemoria();
+      final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+      await repo.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+      expect(
+        salida.lineas,
+        anyElement(startsWith('[WARN][AUTH][RECUPERACION_EMAIL_RECHAZADO]')),
+        reason: 'queda registrado que el servidor rechazó la dirección',
+      );
+      expect(salida.lineas.join('\n'), isNot(contains('lucia')));
+      expect(salida.lineas.join('\n'), isNot(contains('gmial')));
+    });
   });
 
   group('AuthRepositoryImpl.erroresVerificacionEmail', () {

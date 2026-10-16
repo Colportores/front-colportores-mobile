@@ -37,8 +37,10 @@ import '../providers/sesion_notifier.dart';
 ///
 /// El mensaje de éxito es **siempre el mismo** exista o no el email (anti-enumeración, OWASP): el
 /// back (`AuthRepositoryImpl.solicitarRecuperacionPassword`) ya enmascara como éxito tanto "no
-/// existe" como el rate limit de Supabase (429) — esta pantalla no puede ni debe intentar
-/// distinguirlos. Los errores reales del servicio (sin conexión, falla del servidor) sí llegan
+/// existe" como el rate limit de Supabase (429) y la dirección que el servidor no puede recibir
+/// (400 `email_address_invalid`, #363: solo la rechaza si la cuenta existe) — esta pantalla no
+/// puede ni debe intentar distinguirlos: para los tres guarda la hora del envío y muestra la
+/// espera. Los errores reales del servicio (sin conexión, falla del servidor) sí llegan
 /// como [Failure] visible, con el mismo tratamiento que el resto del flujo de auth.
 class RecuperacionPasswordPage extends ConsumerStatefulWidget {
   const RecuperacionPasswordPage({
