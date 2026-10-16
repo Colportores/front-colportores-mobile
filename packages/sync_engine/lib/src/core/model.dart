@@ -52,6 +52,7 @@ class SyncJob {
     required this.payload,
     required this.createdAt,
     this.syncVersion,
+    this.rowPk,
   });
 
   /// UUID del job. Reintentar N veces jamás duplica una venta o un cobro.
@@ -71,6 +72,27 @@ class SyncJob {
 
   /// Los jobs de una misma entidad se suben en orden de creación (§5.5).
   final DateTime createdAt;
+
+  /// La PK de la fila que escribe: el valor de la columna `SyncSpec.pk` del
+  /// payload. La pone `SyncEngine.stage`, y la cola la indexa para encontrar
+  /// las escrituras de una fila sin recorrerla entera (`unsentFor`). `null` en
+  /// un job armado a mano sin ella: ese no se compacta ni recibe la versión.
+  final String? rowPk;
+
+  SyncJob copyWith({
+    Map<String, Object?>? payload,
+    int? syncVersion,
+    DateTime? createdAt,
+  }) =>
+      SyncJob(
+        clientOpId: clientOpId,
+        entity: entity,
+        op: op,
+        payload: payload ?? this.payload,
+        syncVersion: syncVersion ?? this.syncVersion,
+        createdAt: createdAt ?? this.createdAt,
+        rowPk: rowPk,
+      );
 }
 
 /// Un lote de jobs para un `POST /sync/push` contra el BFF (§6).

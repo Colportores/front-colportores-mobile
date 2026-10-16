@@ -24,6 +24,14 @@ class InMemoryJobStore implements JobStorePort {
 
   int _n = 0;
 
+  /// Orden de llegada de cada job: el desempate de [_enOrden].
+  final Map<String, int> _llegada = {};
+
+  /// `entidad` + `rowPk` → ids de sus jobs, para [unsentFor] y [rebaseUnsent]
+  /// sin recorrer la cola: se llaman en cada `stage()` de un update y por cada
+  /// lote que vuelve.
+  final Map<(String, String), List<String>> _porFila = {};
+
   /// Todo lo que hay en la cola, en orden de llegada.
   List<QueuedJob> get all => List.unmodifiable(_jobs.values);
 
@@ -39,6 +47,8 @@ class InMemoryJobStore implements JobStorePort {
   Future<String> append(SyncJob job) async {
     final id = 'job-${++_n}';
     _jobs[id] = QueuedJob(id: id, job: job, state: JobState.pending);
+    _llegada[id] = _n;
+    if (job.rowPk case final pk?) (_porFila[(job.entity, pk)] ??= []).add(id);
     _cuenta[JobState.pending] = _cuenta[JobState.pending]! + 1;
     return id;
   }
@@ -119,19 +129,43 @@ class InMemoryJobStore implements JobStorePort {
   @override
   Future<void> replacePayload(
       String jobId, Map<String, Object?> payload) async {
-    final q = byId(jobId);
-    if (q.state != JobState.blocked && q.state != JobState.waiting) {
-      throw StateError('replacePayload sobre un job en ${q.state.name}');
+    final q = _sinMandar(jobId, 'replacePayload');
+    _reemplazar(q.copyWith(job: q.job.copyWith(payload: payload)));
+  }
+
+  @override
+  Future<List<QueuedJob>> unsentFor(String entity, String rowPk) async =>
+      _enOrden([
+        for (final id in _porFila[(entity, rowPk)] ?? const <String>[])
+          if (_jobs[id] case final j? when _esSinMandar(j.state)) j
+      ]);
+
+  @override
+  Future<void> rebaseVersions(
+      String entity, Map<String, int> versionPorFila) async {
+    for (final MapEntry(key: pk, value: version) in versionPorFila.entries) {
+      for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
+        final q = _jobs[id];
+        if (q == null ||
+            q.job.op == Op.insert ||
+            q.state == JobState.done ||
+            q.state == JobState.invalid) {
+          continue;
+        }
+        _reemplazar(q.copyWith(job: q.job.copyWith(syncVersion: version)));
+      }
     }
-    _reemplazar(q.copyWith(
-        job: SyncJob(
-      clientOpId: q.job.clientOpId,
-      entity: q.job.entity,
-      op: q.job.op,
-      payload: payload,
-      syncVersion: q.job.syncVersion,
-      createdAt: q.job.createdAt,
-    )));
+  }
+
+  static bool _esSinMandar(JobState s) =>
+      s == JobState.pending || s == JobState.blocked || s == JobState.waiting;
+
+  QueuedJob _sinMandar(String jobId, String operacion) {
+    final q = byId(jobId);
+    if (!_esSinMandar(q.state)) {
+      throw StateError('$operacion sobre un job en ${q.state.name}');
+    }
+    return q;
   }
 
   @override
@@ -157,14 +191,7 @@ class InMemoryJobStore implements JobStorePort {
         code: '',
         message: '',
         limpiarDependsOn: true,
-        job: SyncJob(
-          clientOpId: q.job.clientOpId,
-          entity: q.job.entity,
-          op: q.job.op,
-          payload: q.job.payload,
-          syncVersion: q.job.syncVersion,
-          createdAt: base.add(Duration(microseconds: i++)),
-        ),
+        job: q.job.copyWith(createdAt: base.add(Duration(microseconds: i++))),
       ));
     }
   }
@@ -178,8 +205,7 @@ class InMemoryJobStore implements JobStorePort {
           (job.state != JobState.blocked && job.state != JobState.waiting)) {
         continue;
       }
-      _cuenta[job.state] = _cuenta[job.state]! - 1;
-      _jobs.remove(id);
+      _quitar(id);
       n++;
     }
     return n;
@@ -187,13 +213,19 @@ class InMemoryJobStore implements JobStorePort {
 
   /// Orden de creación con desempate por orden de llegada. `List.sort` de Dart
   /// no es estable, así que el desempate va explícito.
-  List<QueuedJob> _enOrden(List<QueuedJob> jobs) {
-    final llegada = {for (final (i, id) in _jobs.keys.indexed) id: i};
-    return jobs
-      ..sort((a, b) {
-        final c = a.job.createdAt.compareTo(b.job.createdAt);
-        return c != 0 ? c : llegada[a.id]!.compareTo(llegada[b.id]!);
-      });
+  List<QueuedJob> _enOrden(List<QueuedJob> jobs) => jobs
+    ..sort((a, b) {
+      final c = a.job.createdAt.compareTo(b.job.createdAt);
+      return c != 0 ? c : _llegada[a.id]!.compareTo(_llegada[b.id]!);
+    });
+
+  /// Saca [id] de la cola y de sus índices.
+  void _quitar(String id) {
+    final q = _jobs.remove(id);
+    if (q == null) return;
+    _cuenta[q.state] = _cuenta[q.state]! - 1;
+    _llegada.remove(id);
+    if (q.job.rowPk case final pk?) _porFila[(q.job.entity, pk)]?.remove(id);
   }
 
   @override
@@ -205,8 +237,7 @@ class InMemoryJobStore implements JobStorePort {
       // en otro estado se saltea en silencio, para que descartar la cola que
       // se leyó hace un segundo no falle porque uno de esos jobs ya se movió.
       if (job == null || job.state != JobState.invalid) continue;
-      _cuenta[JobState.invalid] = _cuenta[JobState.invalid]! - 1;
-      _jobs.remove(id);
+      _quitar(id);
       n++;
     }
     return n;
@@ -253,10 +284,7 @@ class InMemoryJobStore implements JobStorePort {
             j.doneAt!.isBefore(before))
           j.id,
     ];
-    for (final id in aBorrar) {
-      _cuenta[JobState.done] = _cuenta[JobState.done]! - 1;
-      _jobs.remove(id);
-    }
+    aBorrar.forEach(_quitar);
     return aBorrar.length;
   }
 
@@ -304,4 +332,17 @@ class InMemoryLocalStore implements LocalStorePort {
 
   @override
   Future<String?> watermarkOf(String scope) async => watermarks[scope];
+
+  @override
+  Future<void> applyVersions(String entity,
+      {required String pkColumn,
+      required Map<String, int> versionPorFila}) async {
+    final filas = rows[entity];
+    if (filas == null || versionPorFila.isEmpty) return;
+    for (final (i, fila) in filas.indexed) {
+      if (versionPorFila['${fila[pkColumn]}'] case final version?) {
+        filas[i] = {...fila, 'sync_version': version};
+      }
+    }
+  }
 }

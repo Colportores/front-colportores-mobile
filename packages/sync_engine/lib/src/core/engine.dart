@@ -232,6 +232,7 @@ class SyncEngine {
       payload: payload,
       syncVersion: syncVersion,
       createdAt: ahora,
+      rowPk: payload[_specs.of(entity).pk]?.toString(),
     );
 
     // §2.2: si la fila tiene una escritura en espera, esta la reemplaza en vez
@@ -243,6 +244,13 @@ class SyncEngine {
       // que suba: no hay por qué esperar al próximo trigger.
       _programarCritico();
       return absorbido;
+    }
+
+    final fundido = op == Op.insert ? null : await _fundirEnPendiente(job);
+    if (fundido != null) {
+      await _emit();
+      if (_specs.of(entity).critical) _programarCritico();
+      return fundido;
     }
 
     final id = await _jobs.append(job);
@@ -315,6 +323,49 @@ class SyncEngine {
     await _jobs.release([destino.id, for (final q in colgados) q.id],
         at: ahora);
     return destino.id;
+  }
+
+  /// [job] reescribe una fila que ya tiene una escritura `PENDING`, que todavía
+  /// no salió: se funde en ella en vez de encolarse aparte. Devuelve el id del
+  /// job que la absorbió, o `null` si no había ninguno.
+  ///
+  /// Dos escrituras de la misma fila en la cola son dos `sync_version`
+  /// esperadas iguales (las dos se stagearon sobre la misma fila local), y en
+  /// el servidor la segunda vuelve `conflict` (§5.4): el LWW la pisaría con la
+  /// primera. Fundidas, sube una sola con la fila final. El job que absorbe
+  /// conserva su `op` (un alta sigue siendo un alta) y su versión esperada.
+  ///
+  /// Un `delete` no se funde: se encola detrás y sale después.
+  Future<String?> _fundirEnPendiente(SyncJob job) async {
+    final pk = job.rowPk;
+    if (job.op == Op.delete || pk == null) return null;
+    final sinMandar = await _jobs.unsentFor(job.entity, pk);
+    if (sinMandar.isEmpty) return null;
+    final destino = sinMandar.last;
+    if (destino.state != JobState.pending || destino.job.op == Op.delete) {
+      return null;
+    }
+    await _jobs.replacePayload(
+        destino.id, {...destino.job.payload, ...job.payload});
+    return destino.id;
+  }
+
+  /// Las `sync_version` que el servidor les dio a las filas de un lote vuelven
+  /// a las filas locales y a lo que de esas filas espera en la cola (§5.4).
+  /// [versiones] va de entidad a `rowPk` → versión.
+  ///
+  /// Sin esto el próximo `update` de una fila espera la versión de antes,
+  /// vuelve `conflict` y el LWW pisa la edición: cerrar una jornada que ya
+  /// subió la reabriría en el teléfono. Va una vez por entidad y por lote, no
+  /// por fila: con 20.000 jobs, una consulta por fila es la diferencia entre
+  /// subir en segundos y en minutos.
+  Future<void> _devolverVersiones(
+      Map<String, Map<String, int>> versiones) async {
+    for (final MapEntry(key: entidad, value: porFila) in versiones.entries) {
+      await _store.applyVersions(entidad,
+          pkColumn: _specs.of(entidad).pk, versionPorFila: porFila);
+      await _jobs.rebaseVersions(entidad, porFila);
+    }
   }
 
   /// Lo que cuelga, directa o indirectamente, de la fila [pk]: los `WAITING`
@@ -723,6 +774,12 @@ class SyncEngine {
         ? FilasRetenidas(_specs)
         : FilasRetenidas.de(_specs, await _jobs.listHeld());
 
+    // §5.4: la versión que devuelve un lote, para los lotes que siguen en este
+    // ciclo. Sus jobs ya están tomados con la versión de antes; sin esto, una
+    // segunda escritura de la misma fila (que buildBatches manda en otro lote)
+    // saldría esperando una versión que el servidor ya no tiene.
+    final versionVista = <(String, String), int>{};
+
     // Todo lo que se tomó y todavía no se resolvió. Si algo revienta de una
     // forma que este código no previó —un bug del adaptador, un OOM—, estos
     // vuelven a PENDING antes de propagar: un job colgado en IN_FLIGHT es una
@@ -730,9 +787,12 @@ class SyncEngine {
     final sinResolver = {for (final q in tomados) q.id};
     try {
       for (final armado in buildBatches(tomados)) {
-        final lote = await _sinLoQueEspera(armado, retenidas, idPorOpId);
+        final lote = _conVersionVista(
+            await _sinLoQueEspera(armado, retenidas, idPorOpId), versionVista);
+        // Lo que se retuvo ya no está en vuelo: quedó WAITING.
+        final salen = {for (final job in lote.jobs) job.clientOpId};
         for (final job in armado.jobs) {
-          if (!lote.jobs.contains(job)) {
+          if (!salen.contains(job.clientOpId)) {
             sinResolver.remove(idPorOpId[job.clientOpId]);
           }
         }
@@ -767,12 +827,18 @@ class SyncEngine {
         }
 
         final hechos = <String>[];
+        final versiones = <String, Map<String, int>>{};
         for (final r in resultado.results) {
           final id = idPorOpId[r.clientOpId];
           if (id == null) continue;
           switch (r.outcome) {
             case JobOutcome.accepted:
             case JobOutcome.duplicate:
+              final job = jobPorId[id]!;
+              if ((r.syncVersion, job.rowPk) case (final v?, final pk?)
+                  when job.op != Op.delete) {
+                (versiones[job.entity] ??= {})[pk] = v;
+              }
               hechos.add(id);
               pushed++;
             case JobOutcome.conflict when r.serverRow != null:
@@ -811,6 +877,13 @@ class SyncEngine {
           }
           sinResolver.remove(id);
         }
+        await _devolverVersiones(versiones);
+        for (final MapEntry(key: entidad, value: porFila)
+            in versiones.entries) {
+          for (final MapEntry(key: pk, value: v) in porFila.entries) {
+            versionVista[(entidad, pk)] = v;
+          }
+        }
         if (hechos.isNotEmpty) await _jobs.markDone(hechos, at: _clock());
       }
     } on Object {
@@ -824,6 +897,27 @@ class SyncEngine {
       conflicts: conflicts,
       failure: null,
     );
+  }
+
+  /// [lote] con la `sync_version` que el servidor devolvió en este mismo
+  /// ciclo para cada fila que ya viajó (ver `versionVista` en
+  /// [_pushPending]). Las altas no esperan versión.
+  PushBatch _conVersionVista(
+      PushBatch lote, Map<(String, String), int> versionVista) {
+    if (versionVista.isEmpty) return lote;
+    var cambio = false;
+    final jobs = <SyncJob>[];
+    for (final job in lote.jobs) {
+      final pk = job.rowPk;
+      final vista = pk == null ? null : versionVista[(job.entity, pk)];
+      if (job.op == Op.insert || vista == null || vista == job.syncVersion) {
+        jobs.add(job);
+      } else {
+        jobs.add(job.copyWith(syncVersion: vista));
+        cambio = true;
+      }
+    }
+    return cambio ? PushBatch(jobs) : lote;
   }
 
   /// [lote] sin lo que nombra una fila retenida, que pasa a `WAITING` sin

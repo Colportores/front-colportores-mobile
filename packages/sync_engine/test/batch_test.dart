@@ -57,4 +57,35 @@ void main() {
         reason: 'descartarlo perdería una venta; que el backend lo rechace y '
             'quede INVALID es mejor que desaparecer en silencio');
   });
+
+  test('una fila viaja una sola vez por lote (§5.4)', () {
+    QueuedJob deFila(String op, String fila) => QueuedJob(
+          id: 'job-$op',
+          state: JobState.pending,
+          job: SyncJob(
+            clientOpId: op,
+            entity: 'ubicacion',
+            op: Op.update,
+            payload: {'id': fila},
+            syncVersion: 1,
+            createdAt: DateTime.utc(2026, 10, 16),
+            rowPk: fila,
+          ),
+        );
+
+    final lotes = buildBatches([
+      deFila('op-1', 'u-1'),
+      deFila('op-2', 'u-2'),
+      deFila('op-3', 'u-1'),
+      deFila('op-4', 'u-3'),
+    ]);
+
+    expect([
+      for (final l in lotes) [for (final j in l.jobs) j.clientOpId]
+    ], [
+      ['op-1', 'op-2'],
+      ['op-3', 'op-4'],
+    ], reason: 'la segunda de u-1 esperaría la misma versión y volvería '
+        'conflict');
+  });
 }
