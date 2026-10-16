@@ -71,6 +71,49 @@ abstract interface class JobStorePort {
   /// `INVALID` → `PENDING`, tras corregir el dato (§3, `engine.requeue`).
   Future<void> requeue(String jobId);
 
+  /// `IN_FLIGHT` → `BLOCKED` (§2.2): el servidor no lo aplicó por un conflicto
+  /// que resuelve la colportora. Guarda [code] y [message] como [markInvalid].
+  Future<void> markBlocked(String jobId,
+      {required String code, String message});
+
+  /// `IN_FLIGHT` → `WAITING` (§2.2): nombra la fila [dependsOn], que el
+  /// servidor no tiene. Guarda [code] y [message] como [markInvalid].
+  Future<void> markWaiting(String jobId,
+      {required String dependsOn, String code, String message});
+
+  /// Los jobs en `BLOCKED` y en `WAITING`, en orden de creación (el mismo de
+  /// [claimPending]).
+  ///
+  /// Son pocos —un alta en conflicto y lo que cuelga de ella— y el motor los
+  /// mira en cada `stage()` y en cada lote, así que tiene que ser una lectura
+  /// barata cuando no hay ninguno.
+  Future<List<QueuedJob>> listHeld();
+
+  /// Reemplaza el payload de un job en `BLOCKED` o `WAITING` por [payload].
+  ///
+  /// Es la compactación de §2.2: el servidor no tiene esa escritura, así que la
+  /// fila que la app escribió después la reemplaza entera, sin un job más. No
+  /// cambia el estado: eso lo hace [release].
+  Future<void> replacePayload(String jobId, Map<String, Object?> payload);
+
+  /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
+  /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
+  ///
+  /// El orden es la garantía de §2.2: el servidor deja en espera solo lo que
+  /// viaja en el mismo lote que el alta y después de ella. Por eso el alta va
+  /// primera y lo que cuelga de ella, a continuación; y por eso van al final,
+  /// detrás de lo que la app encoló para resolver el conflicto (una
+  /// `ubicacion_par_decidido`, por ejemplo). [at] es el instante del `stage()`
+  /// que los liberó.
+  Future<void> release(List<String> jobIds, {required DateTime at});
+
+  /// Borra jobs en `BLOCKED` o `WAITING`. Devuelve cuántos borró.
+  ///
+  /// Es para el alta que la app da de baja antes de que el servidor la haya
+  /// guardado nunca: no hay nada que avisarle. Como [discardInvalid], saltea en
+  /// silencio lo que está en otro estado o ya no existe.
+  Future<int> discardHeld(Iterable<String> jobIds);
+
   /// Borra jobs de `INVALID`. Devuelve cuántos borró.
   ///
   /// Es la contracara de [requeue], y hace falta porque no todo error es

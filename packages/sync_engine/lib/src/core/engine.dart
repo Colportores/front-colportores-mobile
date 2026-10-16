@@ -8,6 +8,7 @@ import 'ports.dart';
 import 'queue.dart';
 import 'adapter.dart';
 import 'recover.dart';
+import 'retenidas.dart';
 import 'spec.dart';
 import 'uuid.dart';
 
@@ -223,23 +224,126 @@ class SyncEngine {
     _verificarVivo();
     _specs.assertStageable(entity);
 
-    final id = await _jobs.append(SyncJob(
+    final ahora = _clock();
+    final job = SyncJob(
       clientOpId: clientOpId ?? _uuid.next(),
       entity: entity,
       op: op,
       payload: payload,
       syncVersion: syncVersion,
-      createdAt: _clock(),
-    ));
+      createdAt: ahora,
+    );
+
+    // §2.2: si la fila tiene una escritura en espera, esta la reemplaza en vez
+    // de encolarse aparte. Es como la app resuelve un conflicto (vista 10).
+    final absorbido = op == Op.insert ? null : await _absorber(job);
+    if (absorbido != null) {
+      await _emit();
+      // Resolver un conflicto es lo que la colportora estaba esperando para
+      // que suba: no hay por qué esperar al próximo trigger.
+      _programarCritico();
+      return absorbido;
+    }
+
+    final id = await _jobs.append(job);
     await _emit();
 
-    if (_specs.of(entity).critical) {
-      _criticalTimer?.cancel();
-      _criticalTimer = _zona.createTimer(criticalDebounce, () {
-        unawaited(trigger(SyncTrigger.criticalWrite));
-      });
-    }
+    if (_specs.of(entity).critical) _programarCritico();
     return id;
+  }
+
+  void _programarCritico() {
+    _criticalTimer?.cancel();
+    _criticalTimer = _zona.createTimer(criticalDebounce, () {
+      unawaited(trigger(SyncTrigger.criticalWrite));
+    });
+  }
+
+  /// La compactación de §2.2: [job] escribe una fila cuya escritura anterior
+  /// quedó en espera. Devuelve el id del job que la absorbió, o `null` si no
+  /// había nada en espera y hay que encolarlo como siempre.
+  ///
+  /// El servidor no tiene esa escritura anterior, así que no hay nada que
+  /// ordenarle: la fila nueva la reemplaza, fundida sobre la vieja (un update
+  /// que trae solo algunas columnas no borra las demás del alta). Lo que la
+  /// escritura vieja tenía colgando vuelve a la cola con ella, detrás, para
+  /// viajar en el mismo lote.
+  ///
+  /// Si [job] da de baja una fila que el servidor nunca tuvo (un `delete`, o un
+  /// `deleted_at`), no se sube nada: el alta se descarta. Lo que colgaba de ella
+  /// vuelve a la cola igual; si todavía la nombra, el servidor lo rechaza y
+  /// queda `INVALID`, visible, en vez de esperar para siempre a una fila que ya
+  /// no existe.
+  Future<String?> _absorber(SyncJob job) async {
+    final pk = pkDe(_specs, job);
+    if (pk == null) return null;
+    final enEspera = await _jobs.listHeld();
+    if (enEspera.isEmpty) return null;
+
+    // Todas las escrituras en espera de esta fila, de la más vieja a la más
+    // nueva: un update que se mandó antes de que el alta chocara también quedó
+    // esperándola, y fundirlo después de esta escritura la pisaría.
+    final deLaFila = [
+      for (final q in enEspera)
+        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q
+    ];
+    if (deLaFila.isEmpty) return null;
+
+    final destino = deLaFila.first;
+    final colgados = _colgadosDe(pk, enEspera, excepto: deLaFila);
+    final ahora = job.createdAt;
+
+    if (job.op == Op.delete && destino.job.op != Op.insert) {
+      // La fila existe en el servidor y la corrección que esperaba ya no
+      // importa: se descarta y el delete se encola como siempre.
+      await _jobs.discardHeld([for (final q in deLaFila) q.id]);
+      return null;
+    }
+    final baja = job.op == Op.delete || job.payload['deleted_at'] != null;
+    if (baja && destino.job.op == Op.insert) {
+      await _jobs.discardHeld([for (final q in deLaFila) q.id]);
+      await _jobs.release([for (final q in colgados) q.id], at: ahora);
+      return destino.id;
+    }
+
+    final fila = <String, Object?>{
+      for (final q in deLaFila) ...q.job.payload,
+      ...job.payload,
+    };
+    await _jobs.replacePayload(destino.id, fila);
+    await _jobs.discardHeld([for (final q in deLaFila.skip(1)) q.id]);
+    await _jobs.release([destino.id, for (final q in colgados) q.id],
+        at: ahora);
+    return destino.id;
+  }
+
+  /// Lo que cuelga, directa o indirectamente, de la fila [pk]: los `WAITING`
+  /// cuyo `dependsOn` es ella, o una fila que a su vez cuelga de ella. En orden
+  /// de creación.
+  List<QueuedJob> _colgadosDe(String pk, List<QueuedJob> enEspera,
+      {required List<QueuedJob> excepto}) {
+    final fuera = {for (final q in excepto) q.id};
+    final filas = {pk};
+    final colgados = <String>{};
+    var crecio = true;
+    while (crecio) {
+      crecio = false;
+      for (final q in enEspera) {
+        if (q.state != JobState.waiting ||
+            fuera.contains(q.id) ||
+            colgados.contains(q.id) ||
+            !filas.contains(q.dependsOn)) {
+          continue;
+        }
+        colgados.add(q.id);
+        if (pkDe(_specs, q.job) case final propia?) filas.add(propia);
+        crecio = true;
+      }
+    }
+    return [
+      for (final q in enEspera)
+        if (colgados.contains(q.id)) q
+    ];
   }
 
   /// (Re)suscribe a las entidades `realtime` (§5.6).
@@ -320,6 +424,16 @@ class SyncEngine {
   /// que después va a [requeue].
   Future<List<QueuedJob>> errorQueue({int limit = 100}) =>
       _jobs.listInvalid(limit: limit);
+
+  /// Lo que está en espera (§2.2), en orden de creación: las escrituras que el
+  /// servidor no aplicó por un conflicto ([JobState.blocked]) y lo que cuelga
+  /// de ellas ([JobState.waiting]).
+  ///
+  /// La app lo usa para la vista 10: un `blocked` con `code` `23505` es una
+  /// ubicación a resolver. No hay `requeue` para esto: se resuelve volviendo a
+  /// escribir la fila con [stage], y eso devuelve a la cola la escritura y todo
+  /// lo que colgaba de ella.
+  Future<List<QueuedJob>> heldQueue() => _jobs.listHeld();
 
   /// `INVALID` → `PENDING`, tras corregir el dato (§3).
   Future<void> requeue(String jobId) async {
@@ -600,6 +714,14 @@ class SyncEngine {
     // Un mapa una vez por ciclo, en vez de recorrer la lista por cada
     // resultado: con lotes de 500 son 500 búsquedas de 500 elementos.
     final idPorOpId = {for (final q in tomados) q.job.clientOpId: q.id};
+    final jobPorId = {for (final q in tomados) q.id: q.job};
+
+    // §2.2: lo que el servidor no tiene. Crece a medida que los lotes vuelven
+    // con conflictos, para que lo que cuelga de ellos no salga en un lote
+    // posterior sin la fila que nombra.
+    final retenidas = tomados.isEmpty
+        ? FilasRetenidas(_specs)
+        : FilasRetenidas.de(_specs, await _jobs.listHeld());
 
     // Todo lo que se tomó y todavía no se resolvió. Si algo revienta de una
     // forma que este código no previó —un bug del adaptador, un OOM—, estos
@@ -607,7 +729,15 @@ class SyncEngine {
     // venta que no sube nunca más.
     final sinResolver = {for (final q in tomados) q.id};
     try {
-      for (final lote in buildBatches(tomados)) {
+      for (final armado in buildBatches(tomados)) {
+        final lote = await _sinLoQueEspera(armado, retenidas, idPorOpId);
+        for (final job in armado.jobs) {
+          if (!lote.jobs.contains(job)) {
+            sinResolver.remove(idPorOpId[job.clientOpId]);
+          }
+        }
+        if (lote.isEmpty) continue;
+
         final PushResult resultado;
         try {
           resultado = await _transport.push(lote);
@@ -645,20 +775,35 @@ class SyncEngine {
             case JobOutcome.duplicate:
               hechos.add(id);
               pushed++;
-            case JobOutcome.conflict:
+            case JobOutcome.conflict when r.serverRow != null:
               // §5.4: el servidor gana por sync_version. Se aplica su fila y el
               // job se cierra: no es un error del colportor, no va a la cola de
               // error.
-              if (r.serverRow != null) {
-                await _store.applyDelta(
-                  {
-                    _entidadDe(tomados, id): [r.serverRow!]
-                  },
-                  scope: _scopeMirror,
-                  watermark: await _store.watermarkOf(_scopeMirror) ?? '',
-                );
-              }
+              await _store.applyDelta(
+                {
+                  _entidadDe(tomados, id): [r.serverRow!]
+                },
+                scope: _scopeMirror,
+                watermark: await _store.watermarkOf(_scopeMirror) ?? '',
+              );
               hechos.add(id);
+              conflicts++;
+            case JobOutcome.conflict:
+              // §2.2: sin server_row no hay con qué resolver. El servidor no
+              // guardó la fila y la colportora la resuelve en la vista 10; lo
+              // que cuelga de ella espera. Ninguno se cierra: un DONE acá es
+              // una venta que no sube nunca.
+              final dependeDe = r.dependsOn ?? '';
+              if (r.code == kCodigoEsperaAltaEnConflicto &&
+                  dependeDe.isNotEmpty) {
+                await _jobs.markWaiting(id,
+                    dependsOn: dependeDe, code: r.code, message: r.message);
+              } else {
+                // Una espera sin depends_on no dice qué esperar: si quedara
+                // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
+                await _jobs.markBlocked(id, code: r.code, message: r.message);
+              }
+              retenidas.retener(jobPorId[id]!);
               conflicts++;
             case JobOutcome.invalid:
               await _jobs.markInvalid(id, code: r.code, message: r.message);
@@ -679,6 +824,27 @@ class SyncEngine {
       conflicts: conflicts,
       failure: null,
     );
+  }
+
+  /// [lote] sin lo que nombra una fila retenida, que pasa a `WAITING` sin
+  /// salir (§2.2). Si viajara, el servidor no lo podría aplicar: la fila no
+  /// existe allá, y como el alta que la crea no va en este lote, no lo deja en
+  /// espera sino `INVALID`.
+  Future<PushBatch> _sinLoQueEspera(PushBatch lote, FilasRetenidas retenidas,
+      Map<String, String> idPorOpId) async {
+    if (retenidas.isEmpty) return lote;
+    final salen = <SyncJob>[];
+    for (final job in lote.jobs) {
+      final fila = retenidas.nombrada(job);
+      if (fila == null) {
+        salen.add(job);
+        continue;
+      }
+      await _jobs.markWaiting(idPorOpId[job.clientOpId]!, dependsOn: fila);
+      // En cascada: lo que nombre a esta fila más adelante también espera.
+      retenidas.retener(job);
+    }
+    return salen.length == lote.length ? lote : PushBatch(salen);
   }
 
   /// Baja el delta hasta agotarlo. El watermark solo avanza dentro de
@@ -764,6 +930,8 @@ class SyncEngine {
       pending: s.pending,
       inFlight: s.inFlight,
       invalid: s.invalid,
+      blocked: s.blocked,
+      waiting: s.waiting,
       lastSuccessAt: _lastSuccessAt,
       unauthorizedSince: _sinSesionDesde,
     ));

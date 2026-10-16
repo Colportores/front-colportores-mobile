@@ -266,6 +266,135 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
                 'solo (§5.1)');
       });
     });
+
+    // §2.2: el alta en conflicto (BLOCKED) y lo que cuelga de ella (WAITING).
+    group('en espera', () {
+      /// Encola [opIds] en orden, los toma y deja el primero BLOCKED y el
+      /// resto WAITING de él. Devuelve los ids en el mismo orden.
+      Future<List<String>> enEspera(
+          JobStorePort cola, List<String> opIds) async {
+        final ids = [
+          for (final (i, op) in opIds.indexed)
+            await cola.append(_job(op, minuto: i)),
+        ];
+        await cola.claimPending(limit: ids.length);
+        await cola.markBlocked(ids.first, code: '23505', message: 'D1');
+        for (final id in ids.skip(1)) {
+          await cola.markWaiting(id,
+              dependsOn: 'pk-${opIds.first}', code: 'ESPERA_ALTA_EN_CONFLICTO');
+        }
+        return ids;
+      }
+
+      test('markBlocked y markWaiting guardan el porqué y lo sacan del claim',
+          () async {
+        final cola = crear();
+        await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        expect(await cola.claimPending(limit: 10), isEmpty,
+            reason: 'lo que espera no se reintenta solo');
+        final s = await cola.status();
+        expect((s.blocked, s.waiting, s.pending, s.inFlight), (1, 1, 0, 0));
+
+        final retenidos = await cola.listHeld();
+        expect([for (final q in retenidos) q.state],
+            [JobState.blocked, JobState.waiting]);
+        expect(retenidos.first.code, '23505');
+        expect(retenidos.first.message, 'D1');
+        expect(retenidos.first.dependsOn, isNull);
+        expect(retenidos.last.dependsOn, 'pk-op-alta');
+        expect(retenidos.last.code, 'ESPERA_ALTA_EN_CONFLICTO');
+      });
+
+      test('listHeld no trae lo que no espera, y va en orden de creación',
+          () async {
+        final cola = crear();
+        await cola.append(_job('op-suelto', minuto: 30));
+        await enEspera(cola, ['op-alta', 'op-espacio', 'op-venta']);
+
+        expect([for (final q in await cola.listHeld()) q.job.clientOpId],
+            ['op-alta', 'op-espacio', 'op-venta']);
+      });
+
+      test('replacePayload cambia el payload y nada más', () async {
+        final cola = crear();
+        final [alta, _] = await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        await cola.replacePayload(alta, {'id': 'pk-op-alta', 'calle': 'nueva'});
+
+        final q = (await cola.listHeld()).first;
+        expect(q.job.payload, {'id': 'pk-op-alta', 'calle': 'nueva'});
+        expect(q.job.clientOpId, 'op-alta',
+            reason: 'es el mismo intento: el servidor nunca lo aplicó');
+        expect(q.job.op, Op.insert);
+        expect(q.state, JobState.blocked);
+      });
+
+      test('release los devuelve detrás de todo, en el orden pedido', () async {
+        final cola = crear();
+        final [alta, espacio] = await enEspera(cola, ['op-alta', 'op-espacio']);
+        // Lo que la app encola para resolver el conflicto, antes de liberar.
+        await cola.append(_job('op-par', minuto: 60));
+
+        await cola.release([alta, espacio],
+            at: _t0.add(const Duration(minutes: 61)));
+
+        final tomados = await cola.claimPending(limit: 10);
+        expect([for (final q in tomados) q.job.clientOpId],
+            ['op-par', 'op-alta', 'op-espacio']);
+        expect(await cola.listHeld(), isEmpty);
+      });
+
+      test('release al mismo instante que lo último encolado igual va detrás',
+          () async {
+        final cola = crear();
+        final [alta, espacio] = await enEspera(cola, ['op-alta', 'op-espacio']);
+        await cola.append(_job('op-par', minuto: 60));
+
+        await cola.release([alta, espacio],
+            at: _t0.add(const Duration(minutes: 60)));
+
+        final tomados = await cola.claimPending(limit: 10);
+        expect([for (final q in tomados) q.job.clientOpId],
+            ['op-par', 'op-alta', 'op-espacio']);
+      });
+
+      test('release limpia el error y dependsOn', () async {
+        final cola = crear();
+        final ids = await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        await cola.release(ids, at: _t0.add(const Duration(hours: 1)));
+        final tomados = await cola.claimPending(limit: 10);
+        await cola.markInvalid(tomados.last.id, code: 'X');
+
+        final [invalido] = await cola.listInvalid();
+        expect(invalido.dependsOn, isNull);
+        expect((await cola.status()).blocked, 0);
+      });
+
+      test('release no toca lo que no espera', () async {
+        final cola = crear();
+        final suelto = await cola.append(_job('op-suelto'));
+        await cola.claimPending(limit: 1);
+        await cola.markInvalid(suelto, code: 'X');
+
+        await cola.release([suelto], at: _t0.add(const Duration(hours: 1)));
+
+        expect((await cola.status()).invalid, 1);
+      });
+
+      test('discardHeld borra lo que espera y nada más', () async {
+        final cola = crear();
+        final suelto = await cola.append(_job('op-suelto', minuto: 30));
+        final [alta, espacio] = await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        expect(await cola.discardHeld([alta, suelto, 'no-existe']), 1);
+
+        final s = await cola.status();
+        expect((s.blocked, s.waiting, s.pending), (0, 1, 1));
+        expect([for (final q in await cola.listHeld()) q.id], [espacio]);
+      });
+    });
   });
 }
 

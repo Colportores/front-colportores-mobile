@@ -10,6 +10,7 @@ class QueuedJob {
     this.message = '',
     this.doneAt,
     this.claimedAt,
+    this.dependsOn,
   });
 
   /// Id local. Es lo que la app le pasa a `engine.requeue(jobId)`.
@@ -31,6 +32,10 @@ class QueuedJob {
   /// "quedó colgado": ver [JobStorePort.reclaimInFlight].
   final DateTime? claimedAt;
 
+  /// En [JobState.waiting]: el id (la PK) de la fila que el servidor no tiene
+  /// y que este job nombra. `null` en cualquier otro estado.
+  final String? dependsOn;
+
   QueuedJob copyWith({
     JobState? state,
     String? code,
@@ -38,15 +43,19 @@ class QueuedJob {
     DateTime? doneAt,
     DateTime? claimedAt,
     bool limpiarClaimedAt = false,
+    SyncJob? job,
+    String? dependsOn,
+    bool limpiarDependsOn = false,
   }) =>
       QueuedJob(
         id: id,
-        job: job,
+        job: job ?? this.job,
         state: state ?? this.state,
         code: code ?? this.code,
         message: message ?? this.message,
         doneAt: doneAt ?? this.doneAt,
         claimedAt: limpiarClaimedAt ? null : (claimedAt ?? this.claimedAt),
+        dependsOn: limpiarDependsOn ? null : (dependsOn ?? this.dependsOn),
       );
 }
 
@@ -56,6 +65,8 @@ class SyncStatus {
     this.pending = 0,
     this.inFlight = 0,
     this.invalid = 0,
+    this.blocked = 0,
+    this.waiting = 0,
     this.lastSuccessAt,
     this.unauthorizedSince,
   });
@@ -68,6 +79,13 @@ class SyncStatus {
   /// En la cola de error, visibles. **Nunca se reintentan solos**: solo
   /// `engine.requeue(jobId)` los devuelve a `pending` (§5.1).
   final int invalid;
+
+  /// Esperando que la colportora resuelva un conflicto (§2.2, vista 10). No
+  /// suben hasta que la app reescriba la fila. Ver [JobState.blocked].
+  final int blocked;
+
+  /// Retenidos porque nombran una fila [blocked]. Ver [JobState.waiting].
+  final int waiting;
 
   final DateTime? lastSuccessAt;
 
@@ -88,7 +106,8 @@ class SyncStatus {
 
   @override
   String toString() => 'SyncStatus(pending: $pending, inFlight: $inFlight, '
-      'invalid: $invalid, lastSuccessAt: $lastSuccessAt'
+      'invalid: $invalid, blocked: $blocked, waiting: $waiting, '
+      'lastSuccessAt: $lastSuccessAt'
       '${unauthorizedSince == null ? '' : ', sin sesión desde '
           '$unauthorizedSince'})';
 }

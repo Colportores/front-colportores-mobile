@@ -10,7 +10,32 @@ enum Op { insert, update, delete }
 /// Estados de un job en `sync_queue` (§5.1). **Sin retry counter**: un error
 /// transitorio deja el job en [pending] y se reintenta indefinidamente al
 /// próximo trigger; uno de payload lo deja en [invalid], visible, para siempre.
-enum JobState { pending, inFlight, invalid, done }
+///
+/// [blocked] y [waiting] son el «en espera» de §2.2: lo que el servidor no
+/// guardó por un conflicto que tiene que resolver la colportora, y lo que
+/// cuelga de eso. Ninguno de los dos se reintenta solo, y ninguno es un error:
+/// vuelven a [pending] cuando la app escribe la fila de nuevo (ver
+/// `SyncEngine.stage`).
+enum JobState {
+  pending,
+  inFlight,
+  invalid,
+  done,
+
+  /// El servidor no lo aplicó por un conflicto sin `server_row`: hoy, el alta o
+  /// la corrección de una ubicación a menos de 100 m de otra con la misma
+  /// dirección (`23505` `ubicacion_direccion_unica`, §2.2). La fila queda en el
+  /// teléfono y la app la resuelve en la vista 10: cambiando la dirección o
+  /// uniéndola con la otra. Las dos cosas son escribir la fila otra vez, y eso
+  /// es lo que la devuelve a [pending].
+  blocked,
+
+  /// Nombra una fila que el servidor no tiene porque está [blocked] (o porque
+  /// a su vez espera): `ESPERA_ALTA_EN_CONFLICTO`, o el motor que lo retuvo
+  /// antes de mandarlo. [QueuedJob.dependsOn] dice cuál. Vuelve a [pending]
+  /// junto con esa fila, o antes si la app lo reescribe sin nombrarla.
+  waiting,
+}
 
 /// Una escritura local esperando subir.
 ///
@@ -117,14 +142,23 @@ enum JobOutcome {
   /// **Es un éxito idempotente, no un error** (§7): también → `DONE`.
   duplicate,
 
-  /// El servidor tiene una `sync_version` más nueva. El motor resuelve por LWW
-  /// (§5.4) con [JobResult.serverRow]; el job no queda `INVALID`.
+  /// Con [JobResult.serverRow]: el servidor tiene una `sync_version` más
+  /// nueva. El motor resuelve por LWW (§5.4) y el job no queda `INVALID`.
+  ///
+  /// Sin [JobResult.serverRow]: no se aplicó y no hay fila con la que
+  /// resolver (§2.2). Con `code` `ESPERA_ALTA_EN_CONFLICTO` el job pasa a
+  /// [JobState.waiting]; con cualquier otro (el `23505` de dirección única), a
+  /// [JobState.blocked].
   conflict,
 
   /// Error de payload (400/422/403). → `INVALID`, visible, sin reintento
   /// automático. Solo `engine.requeue(jobId)` lo vuelve a poner en `PENDING`.
   invalid,
 }
+
+/// El `code` del [JobOutcome.conflict] de lo que cuelga de un alta en
+/// conflicto del mismo lote (§2.2, §6.1). Trae [JobResult.dependsOn].
+const String kCodigoEsperaAltaEnConflicto = 'ESPERA_ALTA_EN_CONFLICTO';
 
 /// El resultado de un job dentro del lote.
 class JobResult {

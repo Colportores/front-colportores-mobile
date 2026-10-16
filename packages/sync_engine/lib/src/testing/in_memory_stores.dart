@@ -48,9 +48,8 @@ class InMemoryJobStore implements JobStorePort {
     final tomados = <QueuedJob>[];
     // §5.5: orden de creación. La lista ya está en ese orden porque append
     // agrega al final; ordenar explícito deja el invariante escrito.
-    final candidatos = [
-      ..._jobs.values.where((j) => j.state == JobState.pending)
-    ]..sort((a, b) => a.job.createdAt.compareTo(b.job.createdAt));
+    final candidatos =
+        _enOrden([..._jobs.values.where((j) => j.state == JobState.pending)]);
 
     final ahora = _clock();
     for (final job in candidatos.take(limit)) {
@@ -89,6 +88,115 @@ class InMemoryJobStore implements JobStorePort {
   }
 
   @override
+  Future<void> markBlocked(String jobId,
+      {required String code, String message = ''}) async {
+    _reemplazar(byId(jobId).copyWith(
+        state: JobState.blocked,
+        code: code,
+        message: message,
+        limpiarClaimedAt: true));
+  }
+
+  @override
+  Future<void> markWaiting(String jobId,
+      {required String dependsOn,
+      String code = '',
+      String message = ''}) async {
+    _reemplazar(byId(jobId).copyWith(
+        state: JobState.waiting,
+        code: code,
+        message: message,
+        dependsOn: dependsOn,
+        limpiarClaimedAt: true));
+  }
+
+  @override
+  Future<List<QueuedJob>> listHeld() async => _enOrden([
+        for (final j in _jobs.values)
+          if (j.state == JobState.blocked || j.state == JobState.waiting) j
+      ]);
+
+  @override
+  Future<void> replacePayload(
+      String jobId, Map<String, Object?> payload) async {
+    final q = byId(jobId);
+    if (q.state != JobState.blocked && q.state != JobState.waiting) {
+      throw StateError('replacePayload sobre un job en ${q.state.name}');
+    }
+    _reemplazar(q.copyWith(
+        job: SyncJob(
+      clientOpId: q.job.clientOpId,
+      entity: q.job.entity,
+      op: q.job.op,
+      payload: payload,
+      syncVersion: q.job.syncVersion,
+      createdAt: q.job.createdAt,
+    )));
+  }
+
+  @override
+  Future<void> release(List<String> jobIds, {required DateTime at}) async {
+    // Detrás de todo: un microsegundo después del último createdAt de la cola,
+    // o de [at] si es más tarde, y uno más por cada job, para que el orden de
+    // [jobIds] sea el del claim.
+    var base = at;
+    for (final j in _jobs.values) {
+      if (!j.job.createdAt.isBefore(base)) {
+        base = j.job.createdAt.add(const Duration(microseconds: 1));
+      }
+    }
+    var i = 0;
+    for (final id in jobIds) {
+      final q = _jobs[id];
+      if (q == null ||
+          (q.state != JobState.blocked && q.state != JobState.waiting)) {
+        continue;
+      }
+      _reemplazar(q.copyWith(
+        state: JobState.pending,
+        code: '',
+        message: '',
+        limpiarDependsOn: true,
+        job: SyncJob(
+          clientOpId: q.job.clientOpId,
+          entity: q.job.entity,
+          op: q.job.op,
+          payload: q.job.payload,
+          syncVersion: q.job.syncVersion,
+          createdAt: base.add(Duration(microseconds: i++)),
+        ),
+      ));
+    }
+  }
+
+  @override
+  Future<int> discardHeld(Iterable<String> jobIds) async {
+    var n = 0;
+    for (final id in jobIds) {
+      final job = _jobs[id];
+      if (job == null ||
+          (job.state != JobState.blocked && job.state != JobState.waiting)) {
+        continue;
+      }
+      _cuenta[job.state] = _cuenta[job.state]! - 1;
+      _jobs.remove(id);
+      n++;
+    }
+    return n;
+  }
+
+  /// Orden de creación con desempate por orden de llegada. `List.sort` de Dart
+  /// no es estable, así que el desempate va explícito.
+  List<QueuedJob> _enOrden(List<QueuedJob> jobs) {
+    final llegada = {for (final (i, id) in _jobs.keys.indexed) id: i};
+    return jobs
+      ..sort((a, b) {
+        final c = a.job.createdAt.compareTo(b.job.createdAt);
+        return c != 0 ? c : llegada[a.id]!.compareTo(llegada[b.id]!);
+      });
+  }
+
+  @override
   Future<int> discardInvalid(Iterable<String> jobIds) async {
     var n = 0;
     for (final id in jobIds) {
@@ -109,6 +217,8 @@ class InMemoryJobStore implements JobStorePort {
         pending: _cuenta[JobState.pending]!,
         inFlight: _cuenta[JobState.inFlight]!,
         invalid: _cuenta[JobState.invalid]!,
+        blocked: _cuenta[JobState.blocked]!,
+        waiting: _cuenta[JobState.waiting]!,
       );
 
   @override

@@ -22,6 +22,7 @@ dart test        # ~1 s
 | §2, §3 — las tres políticas, `SyncSpec`, registro validado al arrancar | ✅ [`core/spec.dart`](lib/src/core/spec.dart) |
 | §3 — `stage()`, `syncNow()`, `status`, `requeue()`, `setDataSaver()` | ✅ [`core/engine.dart`](lib/src/core/engine.dart) |
 | §5.1 — estados `PENDING`/`IN_FLIGHT`/`INVALID`/`DONE`, sin retry counter | ✅ |
+| §2.2 — «en espera»: `BLOCKED`/`WAITING`, compactación y el mismo lote | ✅ [`core/retenidas.dart`](lib/src/core/retenidas.dart), [formato de cable](docs/formato-de-cable.md#en-espera-22) |
 | RF-SY06 — `engine.errorQueue()`: la cola de error, con código y job | ✅ |
 | §5.2 — triggers: conectividad, app resumed, escritura crítica. Sin timer | ✅ |
 | §5.3 — idempotencia por `client_op_id` + PK v7 | ✅ |

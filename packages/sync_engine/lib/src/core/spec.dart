@@ -20,6 +20,7 @@ class SyncSpec {
     this.realtime = false,
     this.alsoPull = false,
     this.critical = false,
+    this.pk = 'id',
   });
 
   /// Réplica de solo lectura. Con [realtime], además se suscribe a cambios y
@@ -32,13 +33,19 @@ class SyncSpec {
   /// [critical] dispara el trigger de escritura crítica (§5.2): una venta o un
   /// cobro no espera al próximo trigger. [alsoPull] la hace bidireccional, con
   /// LWW por `sync_version`.
+  ///
+  /// [pk] es la columna del payload que identifica la fila: la misma que
+  /// `sync.entidad.columna_pk` en el backend. Casi siempre `id`; `house_status`
+  /// usa `ubicacion_id`. El motor la necesita para reconocer una fila que el
+  /// servidor no tiene (§2.2, «en espera»).
   factory SyncSpec.push(
     String entity, {
     bool critical = false,
     bool alsoPull = false,
+    String pk = 'id',
   }) =>
       SyncSpec._(entity, SyncPolicy.push,
-          critical: critical, alsoPull: alsoPull);
+          critical: critical, alsoPull: alsoPull, pk: pk);
 
   /// Nunca sale por sync. Intentar stagearla lanza [LocalOnlyViolationError].
   factory SyncSpec.local(String entity) => SyncSpec._(entity, SyncPolicy.local);
@@ -48,6 +55,9 @@ class SyncSpec {
   final bool realtime;
   final bool alsoPull;
   final bool critical;
+
+  /// La columna del payload que identifica la fila. Ver [SyncSpec.push].
+  final String pk;
 
   /// Si el motor baja delta de esta entidad: las `pull`, y las `push` con
   /// [alsoPull].
