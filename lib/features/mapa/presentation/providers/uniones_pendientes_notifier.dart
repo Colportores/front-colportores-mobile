@@ -25,7 +25,9 @@ final class UnionPendiente extends Equatable {
   final String conservarId;
   final String duplicadaId;
 
-  /// «Av. Italia 1234»: lo que dice el aviso («Las dos Av. Italia 1234 quedaron unidas en una.»).
+  /// «Av. Italia 1234»: lo que dice el aviso («Las dos Av. Italia 1234 quedaron unidas en una.»). La
+  /// de la ubicación que se conserva o, si no tiene calle ni número, la de la otra; vacía si ninguna
+  /// de las dos tiene (los avisos tienen su frase para ese caso).
   final String direccion;
 
   @override
@@ -53,7 +55,7 @@ final class UnionesPendientesState extends Equatable {
     this.pendiente,
     this.ocultas = const {},
     this.duplicadasEnCurso = const {},
-    this.falla,
+    this.fallas = const [],
   });
 
   /// La unión que espera sus 8 s: el aviso «Las dos … quedaron unidas en una.» con «Deshacer».
@@ -69,8 +71,13 @@ final class UnionesPendientesState extends Equatable {
   /// «quedaron unidas» sin que pasara (revisión r1 de #338, M3).
   final Set<String> duplicadasEnCurso;
 
-  /// La última unión que falló: la pantalla dice por qué y, si sirve, ofrece «Reintentar».
-  final FallaUnion? falla;
+  /// Las uniones que fallaron, de la más vieja a la más nueva, una por par: la pantalla dice por qué
+  /// y, si sirve, ofrece «Reintentar». Ninguna pisa a otra: cada una se queda hasta que se reintenta,
+  /// se descarta o una unión nueva toca la misma ubicación.
+  final List<FallaUnion> fallas;
+
+  /// La última que falló, si hay alguna.
+  FallaUnion? get falla => fallas.lastOrNull;
 
   /// Si la lista de pares no tiene que mostrar [par]: es uno de [ocultas] o contiene a una de
   /// [duplicadasEnCurso].
@@ -80,7 +87,7 @@ final class UnionesPendientesState extends Equatable {
       duplicadasEnCurso.contains(par.b.id);
 
   @override
-  List<Object?> get props => [pendiente, ocultas, duplicadasEnCurso, falla];
+  List<Object?> get props => [pendiente, ocultas, duplicadasEnCurso, fallas];
 }
 
 /// Las uniones que fallaron cuando la pantalla de «Posibles duplicados» ya no estaba (la colportora
@@ -144,10 +151,10 @@ final avisoUnionFallidaProvider = Provider.autoDispose.family<List<FallaUnion>, 
 ///   definitiva: una sola transacción local (`UnirDuplicadosUseCase`).
 /// - Si la app se cierra de golpe en los 8 s, no se hizo nada (todo está en memoria).
 /// - Las uniones definitivas corren de a una y en el orden en que se pidieron.
-/// - Si una falla, no cambia nada, el par vuelve a la lista y [UnionesPendientesState.falla] dice
-///   por qué; [reintentar] la vuelve a correr ya, sin otra espera. La falla se queda hasta que se
-///   reintenta, se descarta o se une otro par con la misma duplicada; unir otro par distinto no la
-///   borra.
+/// - Si una falla, no cambia nada, el par vuelve a la lista y [UnionesPendientesState.fallas] dice
+///   por qué; [reintentar] las vuelve a correr ya, sin otra espera. Una falla no pisa a otra: se
+///   queda hasta que se reintenta, se descarta o se une otro par que toca la misma ubicación; unir
+///   otro par distinto no la borra.
 /// - Mientras una unión espera o corre, los demás pares que contienen a la duplicada tampoco se
 ///   muestran ([UnionesPendientesState.duplicadasEnCurso]).
 /// - Si la unión falla cuando la pantalla ya no está, la falla va a
@@ -189,24 +196,26 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       pendiente: union,
       ocultas: {...state.ocultas, union.clavePar},
       duplicadasEnCurso: {...state.duplicadasEnCurso, union.duplicadaId},
-      falla: _fallaQueSigueCon(union),
+      fallas: _fallasQueSiguenCon(union),
     );
     _reloj = Timer(_plazo, _alCumplirse);
   }
 
-  /// La falla que se queda cuando se pide [nueva]: la que ya estaba, salvo que [nueva] la reemplace.
-  /// La reemplaza el mismo par (otro intento) o una unión que toca a la misma duplicada: reintentar
-  /// la vieja después correría sobre una ubicación que la nueva ya movió o va a mover.
-  FallaUnion? _fallaQueSigueCon(UnionPendiente nueva) {
-    final falla = state.falla;
-    if (falla == null) return null;
-    final vieja = falla.union;
-    final laReemplaza =
-        vieja.clavePar == nueva.clavePar ||
-        vieja.duplicadaId == nueva.duplicadaId ||
-        vieja.duplicadaId == nueva.conservarId;
-    return laReemplaza ? null : falla;
-  }
+  /// Las fallas que se quedan cuando se pide [nueva]: las que ya estaban, menos las que [nueva]
+  /// reemplaza. Reemplaza a la del mismo par (otro intento) y a las que tocan la misma ubicación:
+  /// reintentar la vieja después correría sobre una ubicación que la nueva ya movió o va a mover (que
+  /// la nueva dé de baja a la que la vieja iba a conservar, o conserve a la que iba a quedar de baja,
+  /// o duplique la misma).
+  List<FallaUnion> _fallasQueSiguenCon(UnionPendiente nueva) => [
+    for (final falla in state.fallas)
+      if (!_seCruzaCon(falla.union, nueva)) falla,
+  ];
+
+  static bool _seCruzaCon(UnionPendiente vieja, UnionPendiente nueva) =>
+      vieja.clavePar == nueva.clavePar ||
+      vieja.duplicadaId == nueva.duplicadaId ||
+      vieja.duplicadaId == nueva.conservarId ||
+      vieja.conservarId == nueva.duplicadaId;
 
   /// «Deshacer»: cancela la unión que espera. Si ya se hizo, no hay nada que deshacer (el aviso ya
   /// no está).
@@ -219,25 +228,35 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     state = UnionesPendientesState(
       ocultas: {...state.ocultas}..remove(union.clavePar),
       duplicadasEnCurso: {...state.duplicadasEnCurso}..remove(union.duplicadaId),
-      falla: state.falla,
+      fallas: state.fallas,
     );
   }
 
-  /// «Reintentar» tras una falla: la corre ya.
+  /// «Reintentar» tras una falla: corre ya todas las que se pueden reintentar, una detrás de otra y
+  /// en el orden en que fallaron. Las que vuelven a fallar quedan de nuevo en
+  /// [UnionesPendientesState.fallas]; las que no se pueden reintentar (la que se iba a conservar ya
+  /// es baja) se quedan hasta que se descartan.
   void reintentar() {
-    final falla = state.falla;
-    if (falla == null || !falla.sePuedeReintentar) return;
+    final aReintentar = [
+      for (final falla in state.fallas)
+        if (falla.sePuedeReintentar) falla.union,
+    ];
+    if (aReintentar.isEmpty) return;
     state = UnionesPendientesState(
       pendiente: state.pendiente,
-      ocultas: {...state.ocultas, falla.union.clavePar},
-      duplicadasEnCurso: {...state.duplicadasEnCurso, falla.union.duplicadaId},
+      ocultas: {...state.ocultas, for (final u in aReintentar) u.clavePar},
+      duplicadasEnCurso: {...state.duplicadasEnCurso, for (final u in aReintentar) u.duplicadaId},
+      fallas: [
+        for (final falla in state.fallas)
+          if (!falla.sePuedeReintentar) falla,
+      ],
     );
-    _confirmar(falla.union);
+    aReintentar.forEach(_confirmar);
   }
 
-  /// Cierra el aviso de una falla sin reintentar.
+  /// Cierra el aviso de las fallas sin reintentar.
   void descartarFalla() {
-    if (state.falla == null) return;
+    if (state.fallas.isEmpty) return;
     state = UnionesPendientesState(
       pendiente: state.pendiente,
       ocultas: state.ocultas,
@@ -253,7 +272,7 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     state = UnionesPendientesState(
       ocultas: state.ocultas,
       duplicadasEnCurso: state.duplicadasEnCurso,
-      falla: state.falla,
+      fallas: state.fallas,
     );
     _confirmar(union);
   }
@@ -271,7 +290,7 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     _cola = _cola.then((_) => _ejecutar(union));
   }
 
-  /// No lanza: lo que salga mal se traduce a [UnionesPendientesState.falla].
+  /// No lanza: lo que salga mal se traduce a [UnionesPendientesState.fallas].
   Future<void> _ejecutar(UnionPendiente union) async {
     Failure? falla;
     try {
@@ -294,7 +313,11 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       pendiente: state.pendiente,
       ocultas: {...state.ocultas}..remove(union.clavePar),
       duplicadasEnCurso: {...state.duplicadasEnCurso}..remove(union.duplicadaId),
-      falla: fallaDeLaUnion,
+      fallas: [
+        for (final f in state.fallas)
+          if (f.union.clavePar != union.clavePar) f,
+        fallaDeLaUnion,
+      ],
     );
   }
 }

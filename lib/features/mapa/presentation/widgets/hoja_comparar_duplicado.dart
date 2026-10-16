@@ -120,7 +120,7 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
             clavePar: _par.par.clave,
             conservarId: _conservada.id,
             duplicadaId: _duplicada.id,
-            direccion: FormatoUbicaciones.direccion(_conservada),
+            direccion: FormatoUbicaciones.direccionDeLaUnion(_conservada, _duplicada),
           ),
         );
     _cerrar();

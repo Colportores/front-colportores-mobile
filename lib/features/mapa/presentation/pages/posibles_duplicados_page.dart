@@ -21,6 +21,10 @@ import '../widgets/textos_posibles_duplicados.dart';
 /// la unión esperando 8 s con «Deshacer» (`UnionesPendientesNotifier`); el par esperando no se ve
 /// en la lista (ni los otros pares que contienen a la que quedaría de baja), y sale definitivo al
 /// cumplirse el tiempo o al salir de la pantalla.
+///
+/// Si una unión no se puede hacer, el aviso rojo queda FIJO debajo de la barra (no dentro de la lista,
+/// donde se iba de vista al bajar): con una falla dice por qué; con dos o más, cuántos pares son. Con
+/// el texto agrandado no pasa del 200 % y, si no entra, se desplaza: la lista siempre tiene lugar.
 class PosiblesDuplicadosPage extends ConsumerStatefulWidget {
   const PosiblesDuplicadosPage({super.key, required this.colportorId});
 
@@ -44,6 +48,9 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
 
   /// Una sola hoja a la vez: un segundo toque en «Revisar» no abre otra encima.
   var _abriendoHoja = false;
+
+  /// Lo más que ocupa el aviso rojo de la altura disponible: el resto es de la lista.
+  static const _fraccionMaximaDelAviso = 0.5;
 
   @override
   void dispose() {
@@ -150,44 +157,43 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAF7),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _Barra(),
-            Expanded(
-              child: pares == null
-                  ? _SinLista(
-                      falla: lectura.hasError,
-                      alReintentar: () =>
-                          ref.invalidate(paresParaRevisarProvider(widget.colportorId)),
-                    )
-                  : visibles.isEmpty
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (uniones.falla != null) _AvisoFalla(falla: uniones.falla!),
-                        const Expanded(child: _Vacio()),
-                      ],
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                      itemCount: visibles.length + 1 + (uniones.falla == null ? 0 : 1),
-                      itemBuilder: (context, i) {
-                        if (i == 0) return _Encabezado(cantidad: visibles.length);
-                        final falla = uniones.falla;
-                        if (falla != null && i == 1) return _AvisoFalla(falla: falla);
-                        final item = visibles[i - 1 - (falla == null ? 0 : 1)];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _TarjetaPar(
-                            item: item,
-                            alRevisar: () => unawaited(_abrirHoja(item)),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, restricciones) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _Barra(),
+              if (uniones.fallas.isNotEmpty)
+                _AvisoFalla(
+                  fallas: uniones.fallas,
+                  alturaMaxima: restricciones.maxHeight * _fraccionMaximaDelAviso,
+                ),
+              Expanded(
+                child: pares == null
+                    ? _SinLista(
+                        falla: lectura.hasError,
+                        alReintentar: () =>
+                            ref.invalidate(paresParaRevisarProvider(widget.colportorId)),
+                      )
+                    : visibles.isEmpty
+                    ? const _Vacio()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        itemCount: visibles.length + 1,
+                        itemBuilder: (context, i) {
+                          if (i == 0) return _Encabezado(cantidad: visibles.length);
+                          final item = visibles[i - 1];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _TarjetaPar(
+                              item: item,
+                              alRevisar: () => unawaited(_abrirHoja(item)),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -336,36 +342,59 @@ class _TarjetaPar extends StatelessWidget {
   }
 }
 
-/// El aviso rojo cuando la unión no se pudo hacer (HU-UBI-006, «Edge - la unión local falla»).
+/// El aviso rojo cuando una unión no se pudo hacer (HU-UBI-006, «Edge - la unión local falla»), fijo
+/// debajo de la barra. Con una falla dice por qué; con dos o más, cuántos pares son. «Reintentar»
+/// prueba todas las que se pueden reintentar y las que vuelven a fallar quedan con su cuenta.
+///
+/// El texto no pasa del 200 % ([escalaMaximaDelAviso]): este aviso comparte la pantalla con la lista y,
+/// a 320×568, más grande no deja lugar. Si aun así no entra en [alturaMaxima], se desplaza.
 class _AvisoFalla extends ConsumerWidget {
-  const _AvisoFalla({required this.falla});
+  const _AvisoFalla({required this.fallas, required this.alturaMaxima});
 
-  final FallaUnion falla;
+  final List<FallaUnion> fallas;
+  final double alturaMaxima;
+
+  /// El tamaño más grande del texto del aviso: el 200 % de WCAG 1.4.4, que a 320×568 deja la lista a la
+  /// vista (revisión de #357).
+  static const escalaMaximaDelAviso = 2.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificador = ref.read(unionesPendientesProvider.notifier);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: AvisoAlta(
-        key: const Key('duplicados_falla_union'),
-        color: ColoresAlta.rojo,
-        glyph: '!',
-        texto: TextosPosiblesDuplicados.falloUnion(falla.falla),
-        acciones: Wrap(
-          children: [
-            if (falla.sePuedeReintentar)
-              EnlaceAlta(
-                key: const Key('duplicados_reintentar_union'),
-                texto: TextosPosiblesDuplicados.reintentar,
-                alPresionar: notificador.reintentar,
+    final mediaQuery = MediaQuery.of(context);
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: mediaQuery.textScaler.clamp(maxScaleFactor: escalaMaximaDelAviso),
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: alturaMaxima),
+        child: SingleChildScrollView(
+          // La lista de abajo es la que usa el controlador principal de la pantalla.
+          primary: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: AvisoAlta(
+              key: const Key('duplicados_falla_union'),
+              color: ColoresAlta.rojo,
+              glyph: '!',
+              texto: TextosPosiblesDuplicados.falloUniones([for (final f in fallas) f.falla]),
+              acciones: Wrap(
+                children: [
+                  if (fallas.any((f) => f.sePuedeReintentar))
+                    EnlaceAlta(
+                      key: const Key('duplicados_reintentar_union'),
+                      texto: TextosPosiblesDuplicados.reintentar,
+                      alPresionar: notificador.reintentar,
+                    ),
+                  EnlaceAlta(
+                    key: const Key('duplicados_descartar_falla'),
+                    texto: TextosPosiblesDuplicados.entendido,
+                    alPresionar: notificador.descartarFalla,
+                  ),
+                ],
               ),
-            EnlaceAlta(
-              key: const Key('duplicados_descartar_falla'),
-              texto: TextosPosiblesDuplicados.entendido,
-              alPresionar: notificador.descartarFalla,
             ),
-          ],
+          ),
         ),
       ),
     );
