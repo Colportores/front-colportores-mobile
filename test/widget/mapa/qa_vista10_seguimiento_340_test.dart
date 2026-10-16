@@ -16,7 +16,8 @@
 //
 // Capturas: `flutter test --dart-define=QA_CAPTURAS=true …` las deja en `.dart_tool/qa_capturas/`
 // (gitignored: nunca se commitean). Un test que documenta un hallazgo va con `skip` y el comentario
-// `// skip: QA #340 — <motivo>`; con `--dart-define=QA_VER_HALLAZGOS=true` se corre igual.
+// `// skip: QA #340 — <motivo>`; con `--dart-define=QA_VER_HALLAZGOS=true` se corre igual. Los
+// hallazgos de la primera vuelta ya están arreglados y sus tests corren sin `skip`.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -42,7 +43,6 @@ import '../../helpers/duplicados_falsos.dart';
 import '../../helpers/qa_hojas_teclado_324_arnes.dart' show conCapturas;
 import '../../helpers/qa_vista10_arnes.dart';
 
-const _verHallazgos = bool.fromEnvironment('QA_VER_HALLAZGOS');
 const _ocho = Duration(seconds: 8);
 
 const _parItalia = 'ub-a|ub-b';
@@ -195,13 +195,13 @@ Future<void> _desmontar(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 10));
 }
 
-void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo, {bool? skip}) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo) {
   testWidgets(descripcion, (tester) async {
     final semantica = tester.ensureSemantics();
     await cuerpo(tester);
     await _desmontar(tester);
     semantica.dispose();
-  }, skip: skip);
+  });
 }
 
 FallaUnion _falla(String clavePar, String direccion) {
@@ -494,10 +494,14 @@ const _combosLista = <({Size tamano, double escala})>[
   (tamano: telefonoGrande208, escala: 3.0),
 ];
 
-/// Las combinaciones donde la franja rompe la Lista (hallazgo de QA #340).
-bool _franjaRompeLaLista(String variante, Size tamano, double escala) =>
-    (tamano == _telefonoMinimo && escala == 2.0) ||
-    (tamano == telefonoGrande208 && escala == 3.0 && variante == 'una-falla-direccion-larga');
+/// Donde el encabezado fijo de la Lista (título, búsqueda, filtros, contador) ya ocupa casi toda la
+/// pantalla, la franja —que es lo primero de lo que se desplaza, no del encabezado— no entra entera
+/// en el pedazo que queda: se ve el comienzo y el resto se alcanza desplazando. Pasa en 320×568 con el
+/// texto al 200 % (el encabezado mide ~456 dp) y, con la dirección larga, en 412×915 al 300 %. Es del
+/// encabezado de la Lista (vista 05), no de la franja: sin ella la Lista ya desborda a 300 %.
+bool _franjaNoEntraSinBajar(String variante, Size tamano, double escala) =>
+    (tamano == _telefonoMinimo && escala >= 2.0) ||
+    (tamano == telefonoGrande208 && escala >= 3.0 && variante == 'una-falla-direccion-larga');
 
 class _Estado {
   const _Estado(this.nombre, this.datos, this.llegar, {this.situacion});
@@ -571,51 +575,57 @@ void main() {
   group('Franja de la Lista (matriz 320×568, 360×640 y 412×915 × texto 100/200/300 %)', () {
     for (final v in _variantesLista) {
       for (final c in _combosLista) {
-        // skip: QA #340 — la franja desborda la Lista a 320×568 con texto al 200 % (29 px; con una
-        // dirección larga mide 289 px y «Revisar» queda fuera de la pantalla), y con una dirección
-        // larga a 300 % en 412×915 también se corta.
-        final hallazgo = _franjaRompeLaLista(v.nombre, c.tamano, c.escala);
-        _prueba(
-          '${hallazgo ? 'QA #340 hallazgo · ' : ''}${v.nombre} · ${_tam(c.tamano)} · x${c.escala}: se ve '
-          'entera, sin overflow, con 48 dp y etiqueta',
-          (tester) async {
-            final datos = v.datos();
-            await _montarLista(
-              tester,
-              datos,
-              escala: c.escala,
-              tamano: c.tamano,
-              capturaComo: 'lista-${v.nombre}-${_tam(c.tamano)}-x${c.escala}',
-              fallas: [
-                for (final clave in v.fallas)
-                  _falla(
-                    clave,
-                    FormatoUbicaciones.direccion(datos.ubicacion(clave.split('|').first)),
-                  ),
-              ],
-            );
-            await _asentar(tester);
+        _prueba('${v.nombre} · ${_tam(c.tamano)} · x${c.escala}: se ve '
+            'entera, sin overflow, con 48 dp y etiqueta', (tester) async {
+          final datos = v.datos();
+          await _montarLista(
+            tester,
+            datos,
+            escala: c.escala,
+            tamano: c.tamano,
+            capturaComo: 'lista-${v.nombre}-${_tam(c.tamano)}-x${c.escala}',
+            fallas: [
+              for (final clave in v.fallas)
+                _falla(
+                  clave,
+                  FormatoUbicaciones.direccion(datos.ubicacion(clave.split('|').first)),
+                ),
+            ],
+          );
+          await _asentar(tester);
 
-            expect(tester.takeException(), isNull);
-            final conFalla = v.fallas.isNotEmpty;
-            final franja = conFalla ? _franjaFalla : _franja;
-            expect(franja, findsOneWidget);
-            final caja = tester.getRect(franja);
-            expect(caja.left, greaterThanOrEqualTo(0));
-            expect(caja.right, lessThanOrEqualTo(c.tamano.width));
-            expect(caja.top, greaterThanOrEqualTo(0), reason: 'franja en $caja');
+          expect(tester.takeException(), isNull);
+          final conFalla = v.fallas.isNotEmpty;
+          final franja = conFalla ? _franjaFalla : _franja;
+          expect(franja, findsOneWidget);
+          final noEntra = _franjaNoEntraSinBajar(v.nombre, c.tamano, c.escala);
+          final caja = tester.getRect(franja);
+          expect(caja.left, greaterThanOrEqualTo(0));
+          expect(caja.right, lessThanOrEqualTo(c.tamano.width));
+          expect(caja.top, greaterThanOrEqualTo(0), reason: 'franja en $caja');
+          expect(caja.height, greaterThanOrEqualTo(48));
+          expectSinTextoFueraDeLosCostados208(tester, c.tamano);
+          if (noEntra) {
+            // Se ve el comienzo, arriba de lo que se desplaza, y baja con las filas (no tapa nada).
+            expect(caja.top, lessThan(c.tamano.height), reason: 'se ve el comienzo: $caja');
+            await tester.dragFrom(Offset(4, caja.top + 8), const Offset(0, -24));
+            await _asentar(tester);
             expect(
-              caja.bottom,
-              lessThanOrEqualTo(c.tamano.height),
-              reason: 'la franja está a la vista sin tener que bajar: $caja',
+              tester.getRect(franja).top,
+              lessThan(caja.top),
+              reason: 'se desplaza con las filas',
             );
-            expect(franja.hitTestable(), findsOneWidget, reason: 'nada la tapa: $caja');
-            expect(caja.height, greaterThanOrEqualTo(48));
-            expectSinTextoFueraDeLosCostados208(tester, c.tamano);
-            expect(await _guias(tester), isEmpty);
-          },
-          skip: hallazgo && !_verHallazgos,
-        );
+            expect(tester.takeException(), isNull);
+            return;
+          }
+          expect(
+            caja.bottom,
+            lessThanOrEqualTo(c.tamano.height),
+            reason: 'la franja está a la vista sin tener que bajar: $caja',
+          );
+          expect(franja.hitTestable(), findsOneWidget, reason: 'nada la tapa: $caja');
+          expect(await _guias(tester), isEmpty);
+        });
       }
     }
 
@@ -686,27 +696,23 @@ void main() {
       );
     });
 
-    // skip: QA #340 — el nodo de la franja (botón + región viva) no tiene la acción «tap»: el doble toque
-    // de TalkBack/VoiceOver no tiene a qué llamar. Falta `onTap: alRevisar` en su `Semantics`.
-    _prueba(
-      'QA #340 hallazgo · la franja de siempre y la de la falla tienen acción de toque para el lector',
-      (tester) async {
-        final datos = _datosDosPares();
-        await _montarLista(tester, datos);
-        expect(
-          tester.getSemantics(find.bySemanticsLabel('2 posibles duplicados. Revisar')),
-          isSemantics(isButton: true, isLiveRegion: true, hasTapAction: true),
-        );
+    _prueba('la franja de siempre y la de la falla tienen acción de toque para el lector', (
+      tester,
+    ) async {
+      final datos = _datosDosPares();
+      await _montarLista(tester, datos);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('2 posibles duplicados. Revisar')),
+        isSemantics(isButton: true, isLiveRegion: true, hasTapAction: true),
+      );
 
-        _fallaFuera(tester, _parItalia, 'Av. Italia 1234');
-        await _asentar(tester);
-        expect(
-          tester.getSemantics(find.bySemanticsLabel('No pudimos unir Av. Italia 1234. Revisar')),
-          isSemantics(isButton: true, isLiveRegion: true, hasTapAction: true),
-        );
-      },
-      skip: !_verHallazgos,
-    );
+      _fallaFuera(tester, _parItalia, 'Av. Italia 1234');
+      await _asentar(tester);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('No pudimos unir Av. Italia 1234. Revisar')),
+        isSemantics(isButton: true, isLiveRegion: true, hasTapAction: true),
+      );
+    });
 
     _prueba(
       'al llegar una falla con la Lista a la vista, el mismo nodo cambia de etiqueta (se anuncia)',
@@ -730,23 +736,20 @@ void main() {
       },
     );
 
-    // skip: QA #340 — mismo motivo: sin la acción «tap», `semantics.tap` (lo que hace el lector) falla.
-    _prueba(
-      'QA #340 hallazgo · el toque por accesibilidad abre la pantalla igual que el toque con el dedo',
-      (tester) async {
-        final datos = _datosDosPares();
-        await _montarLista(tester, datos);
-        _fallaFuera(tester, _parItalia, 'Av. Italia 1234');
-        await _asentar(tester);
+    _prueba('el toque por accesibilidad abre la pantalla igual que el toque con el dedo', (
+      tester,
+    ) async {
+      final datos = _datosDosPares();
+      await _montarLista(tester, datos);
+      _fallaFuera(tester, _parItalia, 'Av. Italia 1234');
+      await _asentar(tester);
 
-        tester.semantics.tap(find.semantics.byLabel('No pudimos unir Av. Italia 1234. Revisar'));
-        await _transicion(tester);
+      tester.semantics.tap(find.semantics.byLabel('No pudimos unir Av. Italia 1234. Revisar'));
+      await _transicion(tester);
 
-        expect(_pagina, findsOneWidget);
-        expect(_par(_parItalia), findsOneWidget);
-      },
-      skip: !_verHallazgos,
-    );
+      expect(_pagina, findsOneWidget);
+      expect(_par(_parItalia), findsOneWidget);
+    });
   });
 
   // ----------------------------------------------------------------------------------------------
@@ -848,26 +851,21 @@ void main() {
       },
     );
 
-    // skip: QA #340 — con una ubicación sin calle ni número («Sin dirección») el aviso queda «No pudimos
-    // unir Sin dirección · Revisar», con mayúscula en medio de la frase.
-    _prueba(
-      'QA #340 hallazgo · dado un par por distancia sin calle ni número, la franja de la falla no dice '
-      '"unir Sin dirección"',
-      (tester) async {
-        final datos = DuplicadosEnMemoria()
-          ..agregar(_sinDireccion('ub-a', creada: DateTime.utc(2026, 8, 1)))
-          ..agregar(_sinDireccion('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
-        await _montarLista(tester, datos);
-        await _entrar(tester);
-        await _unir(tester, _parItalia);
-        datos.falloAlUnir = const FailureInesperado();
-        await _salir(tester);
+    _prueba('dado un par por distancia sin calle ni número, la franja de la falla no dice '
+        '"unir Sin dirección"', (tester) async {
+      final datos = DuplicadosEnMemoria()
+        ..agregar(_sinDireccion('ub-a', creada: DateTime.utc(2026, 8, 1)))
+        ..agregar(_sinDireccion('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
+      await _montarLista(tester, datos);
+      await _entrar(tester);
+      await _unir(tester, _parItalia);
+      datos.falloAlUnir = const FailureInesperado();
+      await _salir(tester);
 
-        expect(_franjaFalla, findsOneWidget);
-        expect(_texto('unir Sin dirección'), findsNothing);
-      },
-      skip: !_verHallazgos,
-    );
+      expect(_franjaFalla, findsOneWidget);
+      expect(_texto('unir Sin dirección'), findsNothing);
+      expect(_texto('No pudimos unir dos ubicaciones sin dirección · Revisar'), findsOneWidget);
+    });
   });
 
   // ----------------------------------------------------------------------------------------------

@@ -11,8 +11,10 @@
 // en memoria de `DuplicadosEnMemoria`, y desde ahí se entra y se sale de «Posibles duplicados».
 import 'dart:async';
 
+import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/posibles_duplicados_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/textos_posibles_duplicados.dart';
@@ -63,6 +65,37 @@ DuplicadosEnMemoria _datosTresIguales() => DuplicadosEnMemoria()
   ..agregar(ubicacionDuplicable('ub-b', metrosAlNorte: 12, creada: DateTime.utc(2026, 8, 3)))
   ..agregar(ubicacionDuplicable('ub-c', metrosAlNorte: 24, creada: DateTime.utc(2026, 8, 5)));
 
+/// Una ubicación sin calle ni número: solo participa de un par por distancia (HU-UBI-006).
+Ubicacion _sinDireccion(String id, {double metrosAlNorte = 0, DateTime? creada}) {
+  final t = creada ?? DateTime.utc(2026, 9, 1, 10);
+  return Ubicacion(
+    id: id,
+    tipo: TipoUbicacion.casa,
+    lat: -34.891 + metrosAlNorte / 111195.08,
+    lon: -56.125,
+    ciudadId: 'mvd',
+    zonaId: 'zona-1',
+    auditoria: Auditoria(createdAt: t, updatedAt: t, createdBy: 'col-1'),
+  );
+}
+
+/// Ninguna palabra del texto es más ancha que su renglón: el texto no se corta a media palabra.
+void _expectSinPalabrasPartidas(WidgetTester tester, Finder texto) {
+  final render = tester.renderObject<RenderParagraph>(texto);
+  for (final palabra in render.text.toPlainText().split(RegExp(r'\s+'))) {
+    final pintor = TextPainter(
+      text: TextSpan(text: palabra, style: render.text.style),
+      textDirection: TextDirection.ltr,
+      textScaler: render.textScaler,
+    )..layout();
+    expect(
+      pintor.width,
+      lessThanOrEqualTo(render.size.width + 0.5),
+      reason: '«$palabra» no entra en un renglón de ${render.size.width} px',
+    );
+  }
+}
+
 Future<void> _asentar(WidgetTester tester, [int veces = 8]) async {
   for (var i = 0; i < veces; i++) {
     await tester.pump(const Duration(milliseconds: 60));
@@ -101,6 +134,49 @@ Future<void> _montarLista(
     ),
   );
   await _asentar(tester);
+}
+
+/// «Posibles duplicados» sola, abierta desde un botón: en los teléfonos más chicos con el texto muy
+/// grande la Lista de abajo ya no entra (su encabezado mide más que la pantalla) y no se puede usar
+/// para entrar.
+Future<void> _montarPantalla(
+  WidgetTester tester,
+  DuplicadosEnMemoria datos, {
+  double escala = 1,
+  Size tamano = const Size(390, 844),
+}) async {
+  tester.view.physicalSize = tamano;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  addTearDown(datos.cerrar);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overridesDuplicados(datos, conMapa: true),
+      child: MaterialApp(
+        theme: temaClaro(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                key: const Key('abrir'),
+                onPressed: () =>
+                    unawaited(PosiblesDuplicadosPage.abrir(context, colportorId: 'col-1')),
+                child: const Text('abrir'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await _asentar(tester);
+  await tester.tap(find.byKey(const Key('abrir')));
+  await _transicion(tester);
+  expect(find.byType(PosiblesDuplicadosPage), findsOneWidget);
 }
 
 Future<void> _desmontar(WidgetTester tester) async {
@@ -349,6 +425,46 @@ void main() {
       expect(
         TextosPosiblesDuplicados.avisoUnionesFallidas(['a 1', 'b 2', 'c 3']),
         'No pudimos unir 3 pares',
+      );
+    });
+
+    test('los textos sin dirección (ninguna de las dos tiene calle ni número) no dicen «Sin '
+        'dirección»', () {
+      expect(
+        TextosPosiblesDuplicados.unidas('Av. Italia 1234'),
+        'Las dos Av. Italia 1234 quedaron unidas en una.',
+      );
+      expect(TextosPosiblesDuplicados.unidas(''), 'Las dos ubicaciones quedaron unidas en una.');
+      expect(
+        TextosPosiblesDuplicados.noPudimosUnir(''),
+        'No pudimos unir dos ubicaciones sin dirección',
+      );
+      expect(
+        TextosPosiblesDuplicados.avisoUnionesFallidas(['']),
+        'No pudimos unir dos ubicaciones sin dirección',
+      );
+      expect(TextosPosiblesDuplicados.avisoUnionesFallidas(['', '']), 'No pudimos unir 2 pares');
+    });
+
+    test('los textos del aviso rojo: la razón con una falla, la cuenta con dos o más', () {
+      expect(
+        TextosPosiblesDuplicados.falloUniones(const [FailureInesperado()]),
+        'No se pudo marcar como duplicado. Probá de nuevo.',
+      );
+      expect(
+        TextosPosiblesDuplicados.falloUniones(const [FailureConservadaDeBaja()]),
+        const FailureConservadaDeBaja().mensaje,
+      );
+      expect(
+        TextosPosiblesDuplicados.falloUniones(const [
+          FailureInesperado(),
+          FailureConservadaDeBaja(),
+        ]),
+        'No se pudieron marcar 2 pares como duplicados. Probá de nuevo.',
+      );
+      expect(
+        TextosPosiblesDuplicados.noSePudieronUnir(3),
+        'No se pudieron marcar 3 pares como duplicados. Probá de nuevo.',
       );
     });
 
@@ -688,6 +804,262 @@ void main() {
         );
         await recorrerAnchos(tester, (ancho) => expectSinCorte(tester, cuerpo, ancho));
         expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // QA de #357 · P1: el aviso rojo queda fijo y cuenta todas las fallas
+  // ----------------------------------------------------------------------------------------------
+  group('QA #357 P1 · el aviso rojo queda fijo debajo de la barra y no pierde ninguna falla', () {
+    /// Italia y Artigas fallan con la pantalla abierta, una detrás de la otra. [sola] abre la pantalla
+    /// sin la Lista debajo (a 320×568 con el texto muy grande la Lista no entra).
+    Future<DuplicadosEnMemoria> dosFallas(
+      WidgetTester tester, {
+      double escala = 1,
+      Size tamano = const Size(390, 844),
+      bool sola = false,
+    }) async {
+      final datos = _datosDosPares();
+      if (sola) {
+        await _montarPantalla(tester, datos, escala: escala, tamano: tamano);
+      } else {
+        await _montarLista(tester, datos, escala: escala, tamano: tamano);
+        await _entrar(tester);
+      }
+      datos.falloAlUnir = const FailureInesperado();
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      await _unir(tester, _parArtigas);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      return datos;
+    }
+
+    const unaFalla = 'No se pudo marcar como duplicado. Probá de nuevo.';
+    const dos = 'No se pudieron marcar 2 pares como duplicados. Probá de nuevo.';
+
+    _prueba('dado una sola falla, el aviso rojo dice por qué y no cuenta pares', (tester) async {
+      final datos = _datosDosPares();
+      await _montarLista(tester, datos);
+      await _entrar(tester);
+      datos.falloAlUnir = const FailureInesperado();
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+
+      expect(_avisoRojo, findsOneWidget);
+      expect(_texto(unaFalla), findsOneWidget);
+    });
+
+    _prueba('dado que dos uniones fallan con la pantalla abierta, el aviso rojo cuenta los dos '
+        'pares y los dos vuelven a la lista', (tester) async {
+      await dosFallas(tester);
+
+      expect(_avisoRojo, findsOneWidget);
+      expect(_texto(dos), findsOneWidget);
+      expect(_texto(unaFalla), findsNothing, reason: 'la segunda no pisa a la primera');
+      expect(_par(_parItalia), findsOneWidget);
+      expect(_par(_parArtigas), findsOneWidget);
+      expect(find.byKey(const Key('duplicados_reintentar_union')), findsOneWidget);
+      expect(find.byKey(const Key('duplicados_descartar_falla')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _prueba('dado el aviso rojo, no es parte de la lista: queda debajo de la barra y arriba del '
+        'encabezado de la lista', (tester) async {
+      await dosFallas(tester);
+
+      expect(find.descendant(of: find.byType(ListView), matching: _avisoRojo), findsNothing);
+      final barra = tester.getBottomLeft(find.byKey(const Key('duplicados_volver'))).dy;
+      expect(tester.getTopLeft(_avisoRojo).dy, greaterThanOrEqualTo(barra - 0.5));
+      expect(tester.getBottomLeft(_avisoRojo).dy, lessThan(tester.getTopLeft(_par(_parItalia)).dy));
+    });
+
+    _prueba('dado el aviso rojo y una lista larga que se baja, el aviso no se mueve', (
+      tester,
+    ) async {
+      await dosFallas(tester, escala: 2, tamano: const Size(360, 640));
+      final antes = tester.getRect(_avisoRojo);
+
+      await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+      await _asentar(tester);
+
+      expect(_avisoRojo.hitTestable(), findsOneWidget, reason: 'sigue a la vista');
+      expect(tester.getRect(_avisoRojo), antes);
+    });
+
+    _prueba('dado dos fallas, cuando toco "Reintentar", las dos uniones corren y no queda ningún '
+        'aviso', (tester) async {
+      final datos = await dosFallas(tester);
+      datos.falloAlUnir = null;
+
+      await _tocar(tester, find.byKey(const Key('duplicados_reintentar_union')));
+      await _asentar(tester);
+
+      expect(_avisoRojo, findsNothing);
+      expect(
+        datos.uniones.map((u) => u.conservadaId),
+        ['ub-a', 'ub-c', 'ub-a', 'ub-c'],
+        reason: 'los dos intentos que fallaron y los dos reintentos',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    _prueba('dado dos fallas, cuando reintento y vuelven a fallar, el aviso sigue con su cuenta y '
+        'los dos pares están en la lista', (tester) async {
+      await dosFallas(tester);
+
+      await _tocar(tester, find.byKey(const Key('duplicados_reintentar_union')));
+      await _asentar(tester);
+
+      expect(_texto(dos), findsOneWidget);
+      expect(_par(_parItalia), findsOneWidget);
+      expect(_par(_parArtigas), findsOneWidget);
+    });
+
+    _prueba('dado dos fallas, cuando toco "Entendido", se van las dos y el aviso no vuelve', (
+      tester,
+    ) async {
+      await dosFallas(tester);
+
+      await _tocar(tester, find.byKey(const Key('duplicados_descartar_falla')));
+
+      expect(_avisoRojo, findsNothing);
+      expect(_par(_parItalia), findsOneWidget);
+    });
+
+    _prueba('dado 320×568 con el texto al 200 %, la franja de la Lista no desborda: está arriba de '
+        'lo que se desplaza y baja con las filas', (tester) async {
+      await _montarLista(tester, _datosDosPares(), escala: 2, tamano: const Size(320, 568));
+
+      expect(tester.takeException(), isNull);
+      expect(_franja, findsOneWidget);
+      final arriba = tester.getTopLeft(_franja).dy;
+      expect(arriba, lessThan(568), reason: 'se ve el comienzo');
+
+      await tester.dragFrom(Offset(4, arriba + 8), const Offset(0, -24));
+      await _asentar(tester);
+
+      expect(tester.getTopLeft(_franja).dy, lessThan(arriba), reason: 'baja con las filas');
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final escala in [2.0, 3.0]) {
+      _prueba('dado dos fallas a 320×568 con el texto al ${(escala * 100).toInt()} %, no se corta '
+          'ninguna palabra, no desborda y la lista conserva lugar', (tester) async {
+        await dosFallas(tester, escala: escala, tamano: const Size(320, 568), sola: true);
+
+        expect(tester.takeException(), isNull);
+        final texto = _texto(dos);
+        expect(texto, findsOneWidget);
+        _expectSinPalabrasPartidas(tester, texto);
+        // El aviso no se come la pantalla: la lista conserva por lo menos un tercio.
+        final lista = tester.getRect(find.byType(ListView).first);
+        expect(lista.height, greaterThanOrEqualTo(568 / 3), reason: 'lista en $lista');
+        expect(tester.getRect(_par(_parItalia)).top, lessThan(568));
+        // Los dos botones del aviso se alcanzan.
+        await tester.ensureVisible(find.byKey(const Key('duplicados_reintentar_union')));
+        await tester.pump();
+        expect(find.byKey(const Key('duplicados_reintentar_union')).hitTestable(), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const Key('duplicados_descartar_falla')));
+        await tester.pump();
+        expect(find.byKey(const Key('duplicados_descartar_falla')).hitTestable(), findsOneWidget);
+      });
+    }
+
+    _prueba('dado una falla a 320×568 con el texto al 200 %, el aviso rojo se ve entero con sus '
+        'dos botones', (tester) async {
+      final datos = _datosDosPares();
+      await _montarPantalla(tester, datos, escala: 2, tamano: const Size(320, 568));
+      datos.falloAlUnir = const FailureInesperado();
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+
+      expect(tester.takeException(), isNull);
+      _expectSinPalabrasPartidas(tester, _texto(unaFalla));
+      expect(tester.getRect(_avisoRojo).bottom, lessThanOrEqualTo(568));
+      expect(find.byKey(const Key('duplicados_reintentar_union')).hitTestable(), findsOneWidget);
+      expect(find.byKey(const Key('duplicados_descartar_falla')).hitTestable(), findsOneWidget);
+    });
+
+    _prueba('dado el texto al 300 %, el aviso rojo no crece más que al 200 % (se limita a lo que '
+        'entra)', (tester) async {
+      await dosFallas(tester, escala: 2, tamano: const Size(412, 915));
+      final conDos = tester.getSize(_texto(dos));
+      await _desmontar(tester);
+
+      await dosFallas(tester, escala: 3, tamano: const Size(412, 915));
+      final conTres = tester.getSize(_texto(dos));
+
+      expect(conTres, conDos, reason: 'el texto del aviso no pasa del 200 %');
+    });
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // QA de #357 · P2: sin calle ni número no se dice «Sin dirección» en una frase
+  // ----------------------------------------------------------------------------------------------
+  group('QA #357 P2 · la dirección de los avisos de unión', () {
+    _prueba(
+      'dado un par por distancia donde ninguna tiene calle ni número, el aviso de la pantalla '
+      'dice "Las dos ubicaciones quedaron unidas en una."',
+      (tester) async {
+        final datos = DuplicadosEnMemoria()
+          ..agregar(_sinDireccion('ub-a', creada: DateTime.utc(2026, 8, 1)))
+          ..agregar(_sinDireccion('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
+        await _montarLista(tester, datos);
+        await _entrar(tester);
+
+        await _unir(tester, _parItalia);
+
+        expect(_texto('Las dos ubicaciones quedaron unidas en una.'), findsOneWidget);
+        expect(_texto('Sin dirección'), findsNothing);
+      },
+    );
+
+    _prueba('dado un par donde la que se conserva no tiene dirección pero la otra sí, el aviso '
+        'usa la de la otra', (tester) async {
+      final datos = DuplicadosEnMemoria()
+        ..agregar(_sinDireccion('ub-a', creada: DateTime.utc(2026, 8, 1)))
+        ..agregar(ubicacionDuplicable('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
+      await _montarLista(tester, datos);
+      await _entrar(tester);
+
+      await _unir(tester, _parItalia);
+
+      expect(_texto('Las dos Av. Italia 1234 quedaron unidas en una.'), findsOneWidget);
+    });
+
+    _prueba('dado un par donde la que se conserva tiene dirección, el aviso usa la suya aunque la '
+        'otra no tenga', (tester) async {
+      final datos = DuplicadosEnMemoria()
+        ..agregar(ubicacionDuplicable('ub-a', creada: DateTime.utc(2026, 8, 1)))
+        ..agregar(_sinDireccion('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
+      await _montarLista(tester, datos);
+      await _entrar(tester);
+
+      await _unir(tester, _parItalia);
+
+      expect(_texto('Las dos Av. Italia 1234 quedaron unidas en una.'), findsOneWidget);
+    });
+
+    _prueba(
+      'dado que la unión sin dirección falla fuera de la pantalla, la franja dice "No pudimos '
+      'unir dos ubicaciones sin dirección · Revisar"',
+      (tester) async {
+        final datos = DuplicadosEnMemoria()
+          ..agregar(_sinDireccion('ub-a', creada: DateTime.utc(2026, 8, 1)))
+          ..agregar(_sinDireccion('ub-b', metrosAlNorte: 3, creada: DateTime.utc(2026, 8, 5)));
+        await _montarLista(tester, datos);
+        await _entrar(tester);
+        await _unir(tester, _parItalia);
+        datos.falloAlUnir = const FailureInesperado();
+        await _salir(tester);
+
+        expect(_texto('No pudimos unir dos ubicaciones sin dirección · Revisar'), findsOneWidget);
+        expect(_texto('unir Sin dirección'), findsNothing);
       },
     );
   });
