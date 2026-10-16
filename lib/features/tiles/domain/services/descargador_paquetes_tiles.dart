@@ -134,6 +134,19 @@ final class DescargadorPaquetesTiles {
   static PaqueteTiles _delNivelMasChico(PaqueteTiles? actual, PaqueteTiles otro) =>
       actual == null || otro.nivel.index < actual.nivel.index ? otro : actual;
 
+  /// `true` si hay una descarga que cubre [ambito], distinta de la de [salvoId], en marcha o en
+  /// cola (bajando, validando o esperando la conexión). Es la misma regla de prioridad de
+  /// [paqueteEnMarchaQueCubre] para quien se entera de una falla cuando ocurre: lo que baja manda
+  /// sobre lo que falló, así que esa falla no se le muestra al colportor mientras el mapa se
+  /// descarga.
+  bool hayOtraEnMarchaQueCubre(AmbitoTrabajo ambito, {required String salvoId}) {
+    for (final descarga in _descargas.values) {
+      if (descarga.paquete.id == salvoId || !descarga.enMarcha) continue;
+      if (descarga.paquete.cubre(ambito)) return true;
+    }
+    return false;
+  }
+
   /// Termina cuando termina el intento en curso de [paqueteId] (completo, en pausa o fallido).
   Future<void> esperar(String paqueteId) async {
     await _descargas[paqueteId]?.intento?.future;

@@ -1089,6 +1089,48 @@ void main() {
         });
       }
 
+      // Quien se entera de una falla cuando ocurre (la tarjeta ya abierta) aplica la misma
+      // prioridad: la falla de una no se muestra mientras otra del lugar sigue en marcha.
+      test('dado que la de zona falló y la de ciudad sigue bajando, hay otra en marcha para la '
+          'zona fallada pero no para la que baja', () async {
+        servidor.archivos.remove(paquete.origen);
+        servidor.soloEnOrigen = paqueteCiudad.origen;
+        servidor.retenerDespuesDe = 1000;
+        final app = await abrirConLasDos(ciudadPrimero: false);
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isTrue);
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paqueteCiudad.id), isFalse);
+        expect(
+          app.hayOtraEnMarchaQueCubre(
+            const AmbitoTrabajo(zonaId: 'z-9', ciudadId: 'c-9'),
+            salvoId: paquete.id,
+          ),
+          isFalse,
+          reason: 'la que baja es de otro lugar',
+        );
+
+        await app.pausar(paqueteCiudad.id);
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isFalse);
+      });
+
+      test('dado que la de ciudad espera la conexión, cuenta como otra en marcha para la zona '
+          'fallada', () async {
+        servidor.archivos.remove(paquete.origen);
+        await repositorio.anotarDescargaPendiente(anotada(paquete));
+        final app = abrirApp();
+        await app.retomarPendientes();
+        await terminar(app, paquete);
+        conectividad.tipo = TipoConexion.sinConexion;
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isFalse);
+
+        await app.descargar(paqueteCiudad, esperarConexion: true);
+        await dejarCorrer();
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isTrue);
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paqueteCiudad.id), isFalse);
+      });
+
       test('dado que la de zona falló al retomar y la de ciudad quedó en cola sin señal, elige '
           'la que está en cola: se descarga sola', () async {
         servidor.archivos.remove(paquete.origen);
