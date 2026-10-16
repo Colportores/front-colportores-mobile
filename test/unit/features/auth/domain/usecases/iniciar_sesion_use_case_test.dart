@@ -7,6 +7,8 @@ import 'package:dartz/dartz.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/casos_email.dart';
+
 class _MockAuthRepository extends Mock implements AuthRepository {}
 
 void main() {
@@ -45,6 +47,57 @@ void main() {
         ).called(1);
       });
 
+      for (final email in emailsValidosRaros) {
+        test('cuando el email es «$email» (raro pero válido), llega al repositorio', () async {
+          when(
+            () => repository.iniciarSesion(
+              email: any(named: 'email'),
+              password: any(named: 'password'),
+            ),
+          ).thenAnswer((_) async => Right(sesion));
+
+          final resultado = await useCase(
+            IniciarSesionParams(email: email, password: 'secreto123'),
+          );
+
+          expect(resultado, Right<Failure, Sesion>(sesion));
+          verify(
+            () => repository.iniciarSesion(email: email.toLowerCase(), password: 'secreto123'),
+          ).called(1);
+        });
+      }
+
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              when(
+                () => repository.iniciarSesion(
+                  email: any(named: 'email'),
+                  password: any(named: 'password'),
+                ),
+              ).thenAnswer((_) async => Right(sesion));
+
+              for (final email in emails) {
+                final resultado = await useCase(
+                  IniciarSesionParams(email: email, password: 'secreto123'),
+                );
+
+                expect(resultado, Right<Failure, Sesion>(sesion), reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.iniciarSesion(email: emailLimpio, password: 'secreto123'),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
+
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
         when(
           () => repository.iniciarSesion(
@@ -62,6 +115,24 @@ void main() {
     });
 
     group('dado que los datos son inválidos', () {
+      test('cuando el email son solo invisibles, pide el email y no toca el repositorio', () async {
+        final resultado = await useCase(
+          IniciarSesionParams(
+            email: String.fromCharCodes(invisiblesDeFormato),
+            password: 'secreto123',
+          ),
+        );
+
+        final failure = resultado.swap().getOrElse(() => throw StateError('esperaba Left'));
+        expect((failure as FailureValidacion).campos, {'email': 'Ingresá tu email'});
+        verifyNever(
+          () => repository.iniciarSesion(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      });
+
       test(
         'cuando el email está vacío, retorna FailureValidacion sin tocar el repositorio',
         () async {
@@ -90,6 +161,35 @@ void main() {
         final failure = resultado.swap().getOrElse(() => throw StateError('esperaba Left'));
         expect((failure as FailureValidacion).campos.keys, ['email']);
       });
+
+      Future<void> afirmarEmailInvalido(String email, String texto) async {
+        final resultado = await useCase(IniciarSesionParams(email: email, password: 'secreto123'));
+
+        final failure = resultado.swap().getOrElse(() => throw StateError('esperaba Left'));
+        expect((failure as FailureValidacion).campos, {'email': texto});
+        verifyNever(
+          () => repository.iniciarSesion(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      }
+
+      for (final email in emailsIncompletos) {
+        test(
+          'cuando el email «$email» está incompleto, marca el campo email con el texto de la '
+          'pantalla',
+          () => afirmarEmailInvalido(email, 'El email no es válido'),
+        );
+      }
+
+      for (final email in emailsConCaracterNoPermitido) {
+        test(
+          'cuando el email «$email» lleva un carácter que no va, avisa lo mismo que las otras '
+          'pantallas',
+          () => afirmarEmailInvalido(email, avisoCaracterNoPermitido),
+        );
+      }
 
       test('cuando la contraseña es corta, marca el campo password', () async {
         final resultado = await useCase(

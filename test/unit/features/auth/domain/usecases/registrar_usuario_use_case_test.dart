@@ -8,6 +8,8 @@ import 'package:dartz/dartz.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/casos_email.dart';
+
 class _MockAuthRepository extends Mock implements AuthRepository {}
 
 void main() {
@@ -28,6 +30,7 @@ void main() {
     email: 'ana@example.com',
     password: 'Secreto123',
     aceptaTerminos: true,
+    aceptaTradeOffE2E: true,
   );
 
   setUp(() {
@@ -61,6 +64,7 @@ void main() {
             email: '  Ana@Example.COM ',
             password: 'Secreto123',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -74,6 +78,95 @@ void main() {
             password: 'Secreto123',
           ),
         ).called(1);
+      });
+
+      for (final email in emailsValidosRaros) {
+        test('cuando el email es «$email» (raro pero válido), llega al repositorio', () async {
+          stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+          final resultado = await useCase(
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: email,
+              password: datosValidos.password,
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            ),
+          );
+
+          expect(resultado.isRight(), isTrue);
+          verify(
+            () => repository.registrar(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: '12345678',
+              email: email.toLowerCase(),
+              password: datosValidos.password,
+            ),
+          ).called(1);
+        });
+      }
+
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+              for (final email in emails) {
+                final resultado = await useCase(
+                  RegistrarUsuarioParams(
+                    nombre: datosValidos.nombre,
+                    apellido: datosValidos.apellido,
+                    cedula: datosValidos.cedula,
+                    email: email,
+                    password: datosValidos.password,
+                    aceptaTerminos: true,
+                    aceptaTradeOffE2E: true,
+                  ),
+                );
+
+                expect(resultado.isRight(), isTrue, reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.registrar(
+                  nombre: datosValidos.nombre,
+                  apellido: datosValidos.apellido,
+                  cedula: '12345678',
+                  email: emailLimpio,
+                  password: datosValidos.password,
+                ),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
+
+      test('una mayúscula con tilde o Ñ cumple la política («Ñandú2026», «Élan2026»)', () async {
+        for (final password in ['Ñandú2026', 'Élan2026']) {
+          stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+          final resultado = await useCase(
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: datosValidos.email,
+              password: password,
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            ),
+          );
+
+          expect(resultado.isRight(), isTrue, reason: password);
+        }
       });
 
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
@@ -103,6 +196,22 @@ void main() {
         return (failure as FailureValidacion).campos;
       }
 
+      test('cuando el email son solo invisibles, marca el campo email como vacío', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: String.fromCharCodes(invisiblesDeFormato),
+            password: datosValidos.password,
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'email': 'Ingresá tu email'});
+      });
+
       test('cuando el nombre está vacío, marca el campo nombre', () async {
         final campos = await camposInvalidos(
           RegistrarUsuarioParams(
@@ -112,6 +221,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -127,6 +237,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -142,6 +253,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -157,6 +269,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -172,6 +285,7 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
@@ -187,11 +301,55 @@ void main() {
             email: 'no-es-un-email',
             password: datosValidos.password,
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
         expect(campos, {'email': 'El email no es válido'});
       });
+
+      for (final email in emailsIncompletos) {
+        test('cuando el email «$email» está incompleto, marca el campo email con el texto de la '
+            'pantalla', () async {
+          final campos = await camposInvalidos(
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: email,
+              password: datosValidos.password,
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            ),
+          );
+
+          expect(campos, {'email': 'El email no es válido'});
+        });
+      }
+
+      // HU-AUTH-001 listaba como caso borde «tildes en el local-part (RFC 6531)», pero Supabase Auth
+      // rechaza esos emails con un 400 `validation_failed`: la decisión del 10/10 (#353) es avisarlo
+      // en el campo, con el mismo texto que las otras pantallas, en vez de mandarlo al servidor.
+      for (final email in [...emailsConCaracterNoPermitido, 'José.Pérez@example.com']) {
+        test(
+          'cuando el email «$email» lleva un carácter que no va, avisa y no llega al servidor',
+          () async {
+            final campos = await camposInvalidos(
+              RegistrarUsuarioParams(
+                nombre: datosValidos.nombre,
+                apellido: datosValidos.apellido,
+                cedula: datosValidos.cedula,
+                email: email,
+                password: datosValidos.password,
+                aceptaTerminos: true,
+                aceptaTradeOffE2E: true,
+              ),
+            );
+
+            expect(campos, {'email': avisoCaracterNoPermitido});
+          },
+        );
+      }
 
       test('cuando la contraseña no tiene mayúscula ni número, marca el campo password', () async {
         final campos = await camposInvalidos(
@@ -202,10 +360,107 @@ void main() {
             email: datosValidos.email,
             password: 'secretito',
             aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
           ),
         );
 
         expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
+      });
+
+      // Refuerzo: la política es "≥ 8 y mayúscula y dígito" combinados (Supuesto S1 de la HU),
+      // no solo "algo de cada uno". Con mayúscula y dígito pero 7 caracteres tiene que rechazarla
+      // igual que si le faltara la mayúscula o el dígito.
+      test('cuando la contraseña tiene mayúscula y dígito pero menos de 8 caracteres, marca el '
+          'campo password', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ab1defg',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
+      });
+
+      test('con 7 caracteres visibles (un emoji cuenta 1) marca el campo password', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ab1😀😀😀😀',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Usá al menos 8 caracteres, una mayúscula y un número.'});
+      });
+
+      test('con 73 bytes (72 + 1) marca el campo password y no llama al repositorio', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Aa1${'x' * 70}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Es demasiado larga. Acortala.'});
+        verifyNever(
+          () => repository.registrar(
+            nombre: any(named: 'nombre'),
+            apellido: any(named: 'apellido'),
+            cedula: any(named: 'cedula'),
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      });
+
+      test('con 38 caracteres de 2 bytes (75 bytes) también es demasiado larga', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Ñ1${'ñ' * 36}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'password': 'Es demasiado larga. Acortala.'});
+      });
+
+      test('con exactamente 72 bytes registra', () async {
+        final resultadoRegistro = ResultadoRegistro(sesion: sesion, email: sesion.email);
+        stubRepositorio(Right(resultadoRegistro));
+
+        final resultado = await useCase(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: 'Aa1${'x' * 69}',
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(resultado.isRight(), isTrue);
       });
 
       test('cuando no acepta los términos, marca el campo aceptaTerminos', () async {
@@ -217,10 +472,28 @@ void main() {
             email: datosValidos.email,
             password: datosValidos.password,
             aceptaTerminos: false,
+            aceptaTradeOffE2E: true,
           ),
         );
 
         expect(campos, {'aceptaTerminos': 'Tenés que aceptar los términos.'});
+      });
+
+      // Issue #85 (R-AU05): segunda casilla obligatoria, independiente de la de términos.
+      test('cuando no acepta el trade-off E2E, marca el campo aceptaTradeOffE2E', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: datosValidos.email,
+            password: datosValidos.password,
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: false,
+          ),
+        );
+
+        expect(campos, {'aceptaTradeOffE2E': 'Tenés que aceptar el trade-off de tu contraseña.'});
       });
 
       test('cuando todos los datos son inválidos, reporta todos los campos a la vez', () async {
@@ -232,12 +505,21 @@ void main() {
             email: '',
             password: '',
             aceptaTerminos: false,
+            aceptaTradeOffE2E: false,
           ),
         );
 
         expect(
           campos.keys,
-          containsAll(['nombre', 'apellido', 'cedula', 'email', 'password', 'aceptaTerminos']),
+          containsAll([
+            'nombre',
+            'apellido',
+            'cedula',
+            'email',
+            'password',
+            'aceptaTerminos',
+            'aceptaTradeOffE2E',
+          ]),
         );
       });
     });

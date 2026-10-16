@@ -1,0 +1,632 @@
+// Vista 03 «Alta de ubicación» (HU-UBI-001), seguimiento #324 de #320 y #307: con el teclado abierto,
+// el campo que se escribe y «Registrar» siguen a la vista.
+//
+// Lo que se prueba, con las fuentes reales del proyecto (con la de prueba cada letra mide un cuadrado):
+// - Si el campo con foco no entra entero sobre «Registrar», la hoja crece lo justo para que entre, hasta
+//   el 80 % del cuerpo, con «Registrar» fijo; si ni así entra, «Registrar» pasa al final de lo que se
+//   desplaza. En los seis estados del alta.
+// - Tocar «Registrar» apagado lleva el motivo a la vista, lo anuncia una vez por toque y no registra,
+//   no cierra el teclado ni mueve el foco; el motivo es la pista del botón para el lector de pantalla.
+// - El alto de «Registrar» se mide (con el texto grande mide 56 a 72 dp, no 52).
+import 'dart:async';
+
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData, SemanticsNode;
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/alta_ubicacion_qa_317_arnes.dart';
+import '../../helpers/alta_ubicacion_qa_arnes.dart' show asentar, cargarFuentesReales;
+
+const _telefono320x568 = Size(320, 568);
+
+String _x(double escala) => escala == escala.roundToDouble()
+    ? '${escala.round()}×'
+    : '${escala.toString().replaceAll('.', ',')}×';
+
+/// El borde de la hoja (su `Material`).
+Finder get _hoja => find.ancestor(of: find.byType(HojaAlta), matching: find.byType(Material)).first;
+
+bool _enLoQueSeDesplaza(Finder f) =>
+    find.descendant(of: desplazable, matching: f).evaluate().isNotEmpty;
+
+/// Cuánto del alto de [r] queda fuera de [area] o detrás del botón fijo.
+double _corte(Rect r, Rect area, Rect registrar) {
+  final limite = area.bottom < registrar.top ? area.bottom : registrar.top;
+  return (area.top - r.top).clamp(0, double.infinity) +
+      (r.bottom - limite).clamp(0, double.infinity);
+}
+
+/// Lleva «Registrar» a la vista si está al final de lo que se desplaza y comprueba que queda entero
+/// sobre el teclado y que se toca.
+Future<void> _registrarEntero(WidgetTester tester, double libre, String donde) async {
+  if (_enLoQueSeDesplaza(botonRegistrarFijo)) {
+    await tester.ensureVisible(botonRegistrarFijo);
+    await tester.pump();
+  }
+  final r = tester.getRect(botonRegistrarFijo);
+  expect(r.top, greaterThanOrEqualTo(0), reason: '$donde: «Registrar» se corta arriba ($r)');
+  expect(r.bottom, lessThanOrEqualTo(libre + .5), reason: '$donde: «Registrar» queda tapado ($r)');
+  expect(botonRegistrarFijo.hitTestable(), findsOneWidget, reason: '$donde: «Registrar» se toca');
+}
+
+/// Los anuncios que la app le manda al lector de pantalla.
+List<String> _escucharAnuncios(WidgetTester tester) {
+  final anuncios = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<dynamic>(
+    SystemChannels.accessibility,
+    (dynamic mensaje) async {
+      if (mensaje is Map && mensaje['type'] == 'announce') {
+        anuncios.add((mensaje['data'] as Map)['message'] as String);
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<dynamic>(
+      SystemChannels.accessibility,
+      null,
+    ),
+  );
+  return anuncios;
+}
+
+/// Cuántos nodos de semántica leen [texto] (en la etiqueta, la pista o el valor): cada uno es una lectura
+/// del lector de pantalla. Un nodo que se funde en su padre ya va dentro de la etiqueta del padre: no
+/// cuenta aparte.
+int _lecturasDe(WidgetTester tester, String texto) {
+  var lecturas = 0;
+  void visitar(SemanticsNode nodo) {
+    final d = nodo.getSemanticsData();
+    if (!nodo.isMergedIntoParent && [d.label, d.hint, d.value].any((t) => t.contains(texto))) {
+      lecturas++;
+    }
+    nodo.visitChildren((hijo) {
+      visitar(hijo);
+      return true;
+    });
+  }
+
+  visitar(tester.binding.renderViews.first.owner!.semanticsOwner!.rootSemanticsNode!);
+  return lecturas;
+}
+
+void main() {
+  setUpAll(cargarFuentesReales);
+
+  final telefonos = <(String, Size, double)>[
+    ('360×640', telefonoChico, tecladoAbierto),
+    ('412×915', telefonoGrande, 340),
+    ('320×568', _telefono320x568, tecladoAbierto),
+  ];
+
+  // Los seis estados del alta, que son los artboards 03A·01 a 03A·04 y las dos variantes sin conexión
+  // y sin ciudades. Los de la HU que no son un artboard (cargando, error al guardar, éxito) los cubre
+  // `alta_ubicacion_registrar_fijo_test.dart`.
+  group(
+    '#324 · 03 · con el teclado abierto, el campo que se escribe y «Registrar» siguen a la vista',
+    () {
+      for (final (nombreTel, tamano, teclado) in telefonos) {
+        for (final escala in [1.0, 1.3, 2.0, 3.0]) {
+          for (final estado in EstadoAlta.values) {
+            // El estado más ancho del canvas (GPS impreciso) y el más corto bastan en 3×.
+            if (escala == 3.0 &&
+                estado != EstadoAlta.gpsPreciso &&
+                estado != EstadoAlta.gpsImpreciso) {
+              continue;
+            }
+            testWidgets(
+              '${estado.rotulo} · $nombreTel · texto ${_x(escala)} · teclado de ${teclado.round()} dp: '
+              'escribir el número y la calle los deja enteros, «Registrar» entero y la hoja no pasa del 80 %',
+              (tester) async {
+                await abrirEn(tester, estado, tamano: tamano, escala: escala, teclado: teclado);
+                final cuerpo = tamano.height - teclado;
+                expect(tester.takeException(), isNull, reason: 'sin overflow al abrir el teclado');
+
+                for (final (campo, nombre, valor) in <(Finder, String, String)>[
+                  (campoNumero, 'número', '1240'),
+                  (campoCalle, 'calle', 'Avenida Italia'),
+                ]) {
+                  await tester.enterText(campo, valor);
+                  await asentar(tester);
+                  final hoja = tester.getRect(_hoja);
+                  expect(
+                    hoja.height,
+                    lessThanOrEqualTo(cuerpo * .8 + .5),
+                    reason: 'escribiendo la $nombre: la hoja pasa del 80 % del cuerpo ($hoja)',
+                  );
+                  expect(hoja.height, greaterThanOrEqualTo(cuerpo * .62 - .5));
+                  expect(hoja.bottom, closeTo(cuerpo, .5), reason: 'la hoja apoya en el teclado');
+                  final corte = _corte(
+                    tester.getRect(campo),
+                    zonaQueSeDesplaza(tester),
+                    tester.getRect(botonRegistrarFijo),
+                  );
+                  expect(
+                    corte,
+                    lessThanOrEqualTo(1),
+                    reason: 'escribiendo la $nombre se corta $corte dp',
+                  );
+                  expect(find.widgetWithText(TextField, valor), findsOneWidget);
+                  expect(
+                    tester.takeException(),
+                    isNull,
+                    reason: 'escribiendo la $nombre: overflow',
+                  );
+                }
+                // Hasta 200 % de texto, en 360×640 y en 412×915, «Registrar» queda FIJO al pie
+                // (#345): un cambio que lo mandara al final de lo que se desplaza no pasaría
+                // desapercibido con el `ensureVisible` de `_registrarEntero`. En el teléfono mínimo o
+                // con el texto más grande puede pasar al final, y ahí sí se lo lleva a la vista.
+                if (tamano.width >= 360 && escala <= 2.0) {
+                  expect(
+                    _enLoQueSeDesplaza(botonRegistrarFijo),
+                    isFalse,
+                    reason:
+                        '${estado.rotulo} · $nombreTel · ${_x(escala)}: «Registrar» debería '
+                        'quedar fijo al pie',
+                  );
+                  expect(
+                    botonRegistrarFijo.hitTestable(),
+                    findsOneWidget,
+                    reason: 'fijo y a la mano',
+                  );
+                }
+                await _registrarEntero(tester, cuerpo, 'con el teclado abierto');
+                expect(tester.takeException(), isNull);
+              },
+            );
+          }
+        }
+      }
+    },
+  );
+
+  group('#324 · 03 · cuánto crece la hoja y dónde queda «Registrar»', () {
+    for (final (nombreTel, tamano, _) in telefonos) {
+      testWidgets('$nombreTel · sin teclado la hoja ocupa el 62 % del cuerpo', (tester) async {
+        await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: tamano);
+        expect(tester.getRect(_hoja).height, lessThanOrEqualTo(tamano.height * .62 + .5));
+      });
+    }
+
+    testWidgets(
+      '320×568 · 1×: con el teclado la hoja crece lo justo para que el campo entre entero '
+      'sobre «Registrar», que sigue fijo',
+      (tester) async {
+        await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: _telefono320x568);
+        final cerrada = tester.getRect(_hoja).height;
+        await abrirTeclado(tester);
+        const cuerpo = 568 - tecladoAbierto;
+        final abierta = tester.getRect(_hoja).height;
+
+        expect(abierta, greaterThan(cuerpo * .62 + 1), reason: 'crece más allá del 62 %');
+        expect(abierta, lessThanOrEqualTo(cuerpo * .8 + .5));
+        expect(abierta, lessThan(cerrada + 200), reason: 'y es una hoja, no la pantalla');
+        expect(
+          _enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)),
+          isTrue,
+          reason: 'el motivo no entra debajo del botón: queda al final de lo que se desplaza',
+        );
+        expect(_enLoQueSeDesplaza(botonRegistrarFijo), isFalse);
+        await tester.enterText(campoNumero, '1240');
+        await asentar(tester);
+        expect(
+          _corte(
+            tester.getRect(campoNumero),
+            zonaQueSeDesplaza(tester),
+            tester.getRect(botonRegistrarFijo),
+          ),
+          lessThanOrEqualTo(1),
+        );
+      },
+    );
+
+    testWidgets(
+      '360×640 · 1×: con el teclado, «Registrar» sigue fijo con el motivo debajo (como en el canvas) '
+      'y la hoja crece apenas, lo que ese motivo pide',
+      (tester) async {
+        await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+        const cuerpo = 640 - tecladoAbierto;
+        final hoja = tester.getRect(_hoja);
+        expect(hoja.height, lessThanOrEqualTo(cuerpo * .8 + .5));
+        expect(hoja.height, lessThan(cuerpo * .62 + 20), reason: 'crece apenas');
+        expect(_enLoQueSeDesplaza(botonRegistrarFijo), isFalse);
+        expect(_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)), isFalse);
+        expect(
+          tester.getRect(find.text(TextosAlta.elegiElTipo)).top,
+          greaterThanOrEqualTo(tester.getRect(botonRegistrarFijo).bottom),
+        );
+      },
+    );
+
+    testWidgets('texto al 300 %: con el teclado «Registrar» pasa al final de lo que se desplaza, '
+        'debajo del motivo, y la hoja no desborda ni pasa del 80 %', (tester) async {
+      await abrirEn(
+        tester,
+        EstadoAlta.gpsPreciso,
+        tamano: _telefono320x568,
+        escala: 3,
+        teclado: tecladoAbierto,
+      );
+      const cuerpo = 568 - tecladoAbierto;
+
+      expect(tester.getRect(_hoja).height, closeTo(cuerpo * .8, .5), reason: 'pide todo el 80 %');
+      expect(_enLoQueSeDesplaza(botonRegistrarFijo), isTrue, reason: 'el botón va al final');
+      expect(_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)), isTrue);
+      await tester.enterText(campoNumero, '1240');
+      await asentar(tester);
+      expect(tester.takeException(), isNull);
+      expect(
+        _corte(
+          tester.getRect(campoNumero),
+          zonaQueSeDesplaza(tester),
+          // Sin botón fijo: el borde de abajo de la zona es el único límite.
+          Rect.fromLTWH(0, zonaQueSeDesplaza(tester).bottom, 1, 1),
+        ),
+        lessThanOrEqualTo(1),
+        reason: 'el campo se ve entero',
+      );
+      // Y «Registrar» se alcanza desplazando, entero sobre el teclado.
+      await _registrarEntero(tester, cuerpo, 'texto 3×');
+      await tester.tap(botonRegistrarFijo);
+      await asentar(tester);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('al cerrar el teclado «Registrar» vuelve a quedar fijo al pie, donde estaba', (
+      tester,
+    ) async {
+      await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: _telefono320x568, escala: 3);
+      final antes = tester.getRect(botonRegistrarFijo);
+      await abrirTeclado(tester);
+      expect(_enLoQueSeDesplaza(botonRegistrarFijo), isTrue);
+      await cerrarTeclado(tester);
+
+      expect(_enLoQueSeDesplaza(botonRegistrarFijo), isFalse);
+      expect(tester.getRect(botonRegistrarFijo), antes);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('#324 · 03 · el alto de «Registrar» se mide', () {
+    for (final escala in [1.0, 1.15, 1.3, 1.5, 2.0]) {
+      testWidgets('360×640 · texto ${_x(escala)}: con el teclado el campo y el motivo no se cortan '
+          'aunque el botón mida más de 52 dp', (tester) async {
+        await abrirEn(tester, EstadoAlta.gpsPreciso, escala: escala, teclado: tecladoAbierto);
+        final boton = tester.getSize(botonRegistrarFijo).height;
+        expect(boton, greaterThanOrEqualTo(52));
+        if (escala >= 1.3) {
+          expect(boton, greaterThan(52), reason: 'con el texto grande el botón crece');
+        }
+        const cuerpo = 640 - tecladoAbierto;
+        await tester.enterText(campoNumero, '1240');
+        await asentar(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(tester.getRect(_hoja).height, lessThanOrEqualTo(cuerpo * .8 + .5));
+        expect(
+          _corte(
+            tester.getRect(campoNumero),
+            zonaQueSeDesplaza(tester),
+            tester.getRect(botonRegistrarFijo),
+          ),
+          lessThanOrEqualTo(1),
+          reason: 'con un botón de ${boton.toStringAsFixed(1)} dp el campo se corta',
+        );
+        final motivo = find.text(TextosAlta.elegiElTipo);
+        if (_enLoQueSeDesplaza(motivo)) {
+          await tester.ensureVisible(motivo);
+          await tester.pump();
+          final zona = zonaQueSeDesplaza(tester);
+          expect(tester.getRect(motivo).top, greaterThanOrEqualTo(zona.top - .5));
+        } else {
+          expect(tester.getRect(motivo).bottom, lessThanOrEqualTo(cuerpo + .5));
+        }
+      });
+    }
+
+    for (final escala in [1.15, 1.3, 2.0]) {
+      testWidgets(
+        '360×640 · texto ${_x(escala)} sin teclado: «Registrar» y su motivo entran enteros '
+        'en la hoja',
+        (tester) async {
+          await abrirEn(tester, EstadoAlta.gpsPreciso, escala: escala);
+          final hoja = tester.getRect(_hoja);
+          final boton = tester.getRect(botonRegistrarFijo);
+
+          expect(tester.takeException(), isNull);
+          expect(boton.bottom, lessThanOrEqualTo(hoja.bottom));
+          final motivo = find.text(TextosAlta.elegiElTipo);
+          if (!_enLoQueSeDesplaza(motivo)) {
+            expect(tester.getRect(motivo).bottom, lessThanOrEqualTo(hoja.bottom - 20 + .5));
+          }
+        },
+      );
+    }
+  });
+
+  group('#324 · 03 · tocar «Registrar» apagado dice por qué', () {
+    for (final (nombre, tamano, escala, estado, motivo)
+        in <(String, Size, double, EstadoAlta, String)>[
+          ('320×568', _telefono320x568, 1.0, EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
+          ('320×568', _telefono320x568, 1.0, EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
+          ('360×640', telefonoChico, 2.0, EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
+          ('360×640', telefonoChico, 1.0, EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
+        ]) {
+      testWidgets(
+        '$nombre · texto ${_x(escala)} · ${estado.rotulo}: lleva el motivo a la vista, lo '
+        'anuncia una vez por toque y no registra, no cierra el teclado ni mueve el foco',
+        (tester) async {
+          final anuncios = _escucharAnuncios(tester);
+          final m = await abrirEn(
+            tester,
+            estado,
+            tamano: tamano,
+            escala: escala,
+            teclado: tecladoAbierto,
+          );
+          final libre = tamano.height - tecladoAbierto;
+          await tester.enterText(campoNumero, '1240');
+          await asentar(tester);
+          final foco = FocusManager.instance.primaryFocus;
+          expect(foco, isNotNull, reason: 'se escribe en el número');
+          expect(registrarHabilitado(tester), isFalse);
+
+          // El colportor subió la hoja hasta el principio: el motivo, si está en lo que se desplaza,
+          // queda fuera de la vista.
+          await irAlPrincipioDeLaHoja(tester);
+          final enLaZona = _enLoQueSeDesplaza(find.text(motivo));
+          if (enLaZona) {
+            expect(
+              tester.getRect(find.text(motivo)).top,
+              greaterThanOrEqualTo(zonaQueSeDesplaza(tester).bottom - .5),
+              reason: 'antes del toque el motivo está fuera de la vista',
+            );
+          }
+
+          await tester.tap(botonRegistrarFijo);
+          await asentar(tester);
+
+          // El motivo está a la vista: dentro de la zona que se desplaza o debajo del botón fijo.
+          final r = tester.getRect(find.text(motivo));
+          if (enLaZona) {
+            final zona = zonaQueSeDesplaza(tester);
+            expect(r.top, greaterThanOrEqualTo(zona.top - .5));
+            expect(r.bottom, lessThanOrEqualTo(zona.bottom + .5));
+          } else {
+            expect(r.bottom, lessThanOrEqualTo(libre + .5));
+          }
+          expect(anuncios, [motivo], reason: 'se anuncia una vez');
+          expect(m.repo.llamadas, isEmpty, reason: 'no registra');
+          expect(tester.testTextInput.isVisible, isTrue, reason: 'el teclado sigue arriba');
+          expect(tester.view.viewInsets.bottom, tecladoAbierto);
+          expect(
+            identical(FocusManager.instance.primaryFocus, foco),
+            isTrue,
+            reason: 'el foco no se movió',
+          );
+          expect(
+            find.widgetWithText(TextField, '1240'),
+            findsOneWidget,
+            reason: 'lo escrito sigue',
+          );
+
+          // Un segundo toque anuncia una vez más (uno por toque), sin acumular nada.
+          await tester.tap(botonRegistrarFijo);
+          await asentar(tester);
+          expect(anuncios, [motivo, motivo]);
+          expect(m.repo.llamadas, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    testWidgets('sin teclado también: anuncia el motivo y no registra', (tester) async {
+      final anuncios = _escucharAnuncios(tester);
+      final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
+
+      await tester.tap(botonRegistrarFijo);
+      await asentar(tester);
+
+      expect(anuncios, [TextosAlta.elegiElTipo]);
+      expect(m.repo.llamadas, isEmpty);
+    });
+
+    testWidgets('con «Registrar» habilitado no anuncia nada y registra una sola vez', (
+      tester,
+    ) async {
+      final anuncios = _escucharAnuncios(tester);
+      final m = await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+      await tester.ensureVisible(find.text('Casa'));
+      await tester.pump();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+      expect(registrarHabilitado(tester), isTrue);
+
+      await tester.tap(botonRegistrarFijo);
+      await tester.tap(botonRegistrarFijo, warnIfMissed: false);
+      await asentar(tester);
+
+      expect(anuncios, isEmpty);
+      expect(m.repo.llamadas, hasLength(1));
+    });
+
+    testWidgets('mientras guarda, el botón apagado no anuncia ningún motivo', (tester) async {
+      final anuncios = _escucharAnuncios(tester);
+      final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
+      m.repo.bloqueo = Completer<void>();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+      await tester.tap(botonRegistrarFijo);
+      await tester.pump();
+      expect(find.text(TextosAlta.registrando), findsOneWidget);
+
+      await tester.tap(botonRegistrarFijo);
+      await tester.pump();
+
+      expect(anuncios, isEmpty);
+    });
+
+    testWidgets(
+      'el motivo va en la etiqueta del botón apagado, sin pista, para el lector de pantalla',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+
+        // El nodo del botón junta lo suyo con lo del texto: `getSemanticsData` da lo juntado.
+        SemanticsData datos() => tester.getSemantics(botonRegistrarFijo).getSemanticsData();
+        final apagado = datos();
+        expect(apagado.label, '${TextosAlta.registrar}. ${TextosAlta.elegiElTipo}');
+        expect(apagado.hint, isEmpty, reason: 'las pistas se pueden apagar en VoiceOver (#355)');
+
+        await tester.ensureVisible(find.text('Casa'));
+        await tester.pump();
+        await tester.tap(find.text('Casa'));
+        await asentar(tester);
+        expect(datos().hint, isEmpty, reason: 'habilitado no hay pista');
+        expect(datos().label, TextosAlta.registrar, reason: 'habilitado, solo el nombre');
+        semantica.dispose();
+      },
+    );
+
+    // Decisión del 16/10 en #355: una sola forma para Android y para iOS, sin rama por plataforma.
+    testWidgets(
+      '«Registrar» apagado dice "Registrar. Elegí el tipo de ubicación para registrar." en la '
+      'etiqueta y sin pista, igual en Android e iOS',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsPreciso);
+
+        final nodo = tester.getSemantics(botonRegistrarFijo);
+        expect(
+          nodo,
+          isSemantics(
+            label: 'Registrar. Elegí el tipo de ubicación para registrar.',
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: false,
+          ),
+        );
+        expect(
+          nodo.getSemanticsData().hint,
+          isEmpty,
+          reason: 'sin pista: con «Hablar pistas» apagado no se leería',
+        );
+        expect(
+          find.text(TextosAlta.elegiElTipo),
+          findsOneWidget,
+          reason: 'el motivo se sigue viendo',
+        );
+        semantica.dispose();
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
+    );
+  });
+
+  // #345 (M3 de la revisión de #342): el motivo de «Registrar» apagado va en la etiqueta del botón y,
+  // además, es un texto visible debajo. El lector de pantalla tiene que leerlo una sola vez.
+  group('#345 · 03 · el motivo de «Registrar» apagado se lee una sola vez', () {
+    for (final (estado, motivo, tamano, escala, teclado)
+        in <(EstadoAlta, String, Size, double, double)>[
+          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 2.0, tecladoAbierto),
+          (EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision, telefonoChico, 1.0, tecladoAbierto),
+          (EstadoAlta.sinGps, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.numeroEditado, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinCiudades, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinGps, TextosAlta.marcaElPunto, _telefono320x568, 2.0, tecladoAbierto),
+        ]) {
+      testWidgets(
+        '${estado.rotulo} · ${tamano.width.round()}×${tamano.height.round()} · texto ${_x(escala)}'
+        '${teclado > 0 ? ' · con teclado' : ''}: el motivo se ve y el lector lo lee una vez, en la '
+        'etiqueta del botón',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          await abrirEn(tester, estado, tamano: tamano, escala: escala, teclado: teclado);
+
+          expect(find.text(motivo), findsOneWidget, reason: 'el motivo se sigue viendo');
+          expect(_lecturasDe(tester, motivo), 1, reason: 'una sola lectura');
+          final boton = tester.getSemantics(botonRegistrarFijo).getSemanticsData();
+          expect(
+            boton.label,
+            '${TextosAlta.registrar}. $motivo',
+            reason: 'la lectura es la etiqueta de «Registrar»: su nombre y el motivo',
+          );
+          expect(boton.hint, isEmpty, reason: 'sin pista: el lector puede no hablarla');
+          expect(
+            find.bySemanticsLabel(motivo),
+            findsNothing,
+            reason: 'el texto de al lado no es un nodo propio',
+          );
+
+          // Tocarlo apagado lo anuncia (no es un nodo) y no suma una lectura. Con el texto grande y el
+          // teclado, «Registrar» puede estar al final de lo que se desplaza.
+          await tester.ensureVisible(botonRegistrarFijo);
+          await tester.pump();
+          await tester.tap(botonRegistrarFijo);
+          await asentar(tester);
+          expect(_lecturasDe(tester, motivo), 1);
+          expect(tester.takeException(), isNull);
+          semantica.dispose();
+        },
+      );
+    }
+
+    testWidgets('habilitado no queda ninguna lectura del motivo, ni el texto', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await abrirEn(tester, EstadoAlta.gpsPreciso);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
+
+      await tester.ensureVisible(find.text('Casa'));
+      await tester.pump();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+
+      expect(registrarHabilitado(tester), isTrue);
+      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+      semantica.dispose();
+    });
+
+    testWidgets(
+      'cuando el motivo cambia (de la precisión al tipo) sigue habiendo una sola lectura, '
+      'la del motivo nuevo',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsImpreciso);
+        expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 1);
+        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+
+        await tester.ensureVisible(find.text(TextosAlta.continuar));
+        await tester.pump();
+        await tester.tap(find.text(TextosAlta.continuar));
+        await asentar(tester);
+
+        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 0);
+        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
+        semantica.dispose();
+      },
+    );
+
+    testWidgets('mientras guarda no hay motivo: ni texto ni lectura', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
+      m.repo.bloqueo = Completer<void>();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+      await tester.tap(botonRegistrarFijo);
+      await tester.pump();
+
+      expect(find.text(TextosAlta.registrando), findsOneWidget);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      m.repo.bloqueo!.complete();
+      await asentar(tester);
+      semantica.dispose();
+    });
+  });
+}

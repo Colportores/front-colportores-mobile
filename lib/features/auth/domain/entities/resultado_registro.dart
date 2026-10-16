@@ -19,6 +19,12 @@ final class ResultadoRegistro extends Equatable {
 
   bool get requiereVerificacion => sesion == null;
 
+  /// [props] lleva el email; `EquatableConfig.stringify` arranca en `true` en debug, así que sin
+  /// esto cualquier interpolación del objeto filtraría el email (convenciones-desarrollo.md
+  /// §7.5). La [sesion] anidada ya se protege sola desde #8.
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [sesion, email];
 }

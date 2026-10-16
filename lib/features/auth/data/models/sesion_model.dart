@@ -6,11 +6,14 @@ import '../../domain/entities/sesion.dart';
 /// a una `Sesion` con los mismos datos. Los repositorios devuelven al dominio [toEntity], nunca
 /// el modelo.
 final class SesionModel extends Sesion {
-  const SesionModel({
+  // Sin `const`: [Sesion] normaliza `expiraEn` a UTC en su lista de inicialización, así que su
+  // constructor ya no puede ser const (y con un `DateTime` requerido nunca lo fue en la práctica).
+  SesionModel({
     required super.usuarioId,
     required super.email,
     required super.accessToken,
     required super.expiraEn,
+    super.nombre,
   });
 
   factory SesionModel.fromEntity(Sesion sesion) => SesionModel(
@@ -18,6 +21,7 @@ final class SesionModel extends Sesion {
     email: sesion.email,
     accessToken: sesion.accessToken,
     expiraEn: sesion.expiraEn,
+    nombre: sesion.nombre,
   );
 
   factory SesionModel.fromJson(Map<String, Object?> json) => SesionModel(
@@ -25,15 +29,22 @@ final class SesionModel extends Sesion {
     email: json['email']! as String,
     accessToken: json['access_token']! as String,
     expiraEn: DateTime.parse(json['expira_en']! as String).toUtc(),
+    nombre: json['nombre'] as String?,
   );
 
-  Sesion toEntity() =>
-      Sesion(usuarioId: usuarioId, email: email, accessToken: accessToken, expiraEn: expiraEn);
+  Sesion toEntity() => Sesion(
+    usuarioId: usuarioId,
+    email: email,
+    accessToken: accessToken,
+    expiraEn: expiraEn,
+    nombre: nombre,
+  );
 
   Map<String, Object?> toJson() => {
     'usuario_id': usuarioId,
     'email': email,
     'access_token': accessToken,
     'expira_en': expiraEn.toUtc().toIso8601String(),
+    'nombre': nombre,
   };
 }
