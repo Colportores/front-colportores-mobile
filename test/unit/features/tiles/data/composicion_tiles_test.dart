@@ -6,11 +6,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/tiles/data/composicion_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,18 +85,21 @@ final class _Bucket {
     var bytes = archivos[nombre];
     if (bytes == null) return _simple(404);
     if (alterados.contains(nombre)) bytes = [...bytes]..[bytes.length ~/ 2] ^= 0xFF;
-    final rango = RegExp(r'^bytes=(\d+)-$').firstMatch(pedido.headers['range'] ?? '');
+    // `bytes=<desde>-` (la descarga) o `bytes=<desde>-<hasta>` (la prueba del mapa, `bytes=0-0`).
+    final rango = RegExp(r'^bytes=(\d+)-(\d*)$').firstMatch(pedido.headers['range'] ?? '');
     final desde = rango == null ? 0 : int.parse(rango.group(1)!);
     if (desde >= bytes.length) return _simple(416);
-    final resto = bytes.sublist(desde);
+    final pedidoHasta = rango?.group(2) ?? '';
+    final hasta = pedidoHasta.isEmpty
+        ? bytes.length - 1
+        : min(int.parse(pedidoHasta), bytes.length - 1);
+    final resto = bytes.sublist(desde, hasta + 1);
     final corte = cortarEn.remove(nombre);
     final cuerpo = _pedazos(resto, corte);
     return http.StreamedResponse(
       cuerpo,
       rango == null ? 200 : 206,
-      headers: rango == null
-          ? const {}
-          : {'content-range': 'bytes $desde-${bytes.length - 1}/${bytes.length}'},
+      headers: rango == null ? const {} : {'content-range': 'bytes $desde-$hasta/${bytes.length}'},
     );
   }
 
@@ -197,6 +202,40 @@ void main() {
 
     expect((await c.repository.catalogo()).getOrElse(() => fail('catálogo')), isEmpty);
     expect(bucket.pedidos, isEmpty);
+  });
+
+  group('la prueba del archivo del mapa en línea (#299)', () {
+    test('pide 1 byte con Range al archivo del bucket y no baja más', () async {
+      final c = await abrir();
+      final mvd = await delCatalogo(c, 'ciudad-montevideo');
+      bucket.pedidos.clear();
+
+      await c.sonda.probar(mvd.partes.single.origen);
+
+      final pedido = bucket.pedidos.single;
+      expect(pedido.url, mvd.partes.single.origen);
+      expect(pedido.headers['range'], 'bytes=0-0');
+    });
+
+    test('un archivo que ya no está en el bucket es un ErrorServidorTiles 404', () async {
+      final c = await abrir();
+      final mvd = await delCatalogo(c, 'ciudad-montevideo');
+      bucket.archivos.remove('ciudad-mvd-3f9c1a2b7d44.pmtiles');
+
+      await expectLater(
+        c.sonda.probar(mvd.partes.single.origen),
+        throwsA(isA<ErrorServidorTiles>().having((e) => e.status, 'status', 404)),
+      );
+    });
+
+    test('las dos partes de una ciudad grande se prueban por separado', () async {
+      final c = await abrir();
+      final salto = await delCatalogo(c, 'ciudad-salto');
+      bucket.archivos.remove('ciudad-salto-0f1e2d3c4b5a-p2.pmtiles');
+
+      await c.sonda.probar(salto.partes[0].origen);
+      await expectLater(c.sonda.probar(salto.partes[1].origen), throwsA(isA<ErrorServidorTiles>()));
+    });
   });
 
   group('una ciudad en un solo archivo', () {

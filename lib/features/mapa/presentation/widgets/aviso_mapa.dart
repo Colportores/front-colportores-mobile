@@ -43,6 +43,12 @@ abstract final class TextosAvisoMapa {
       'Tus ubicaciones se siguen viendo. Para ver las calles, probá de nuevo.';
   static const reintentar = 'Reintentar';
 
+  /// El botón mientras «Reintentar» vuelve a preguntar el catálogo y a probar el archivo (hasta
+  /// ~50 s sin señal): dice qué pasa en vez de quedar apagado sin explicación. Decisión del
+  /// 16/10 sobre el pendiente P1 de #299; suena como «Revisando con el servidor…» y «Revisando la
+  /// ubicación…».
+  static const revisandoElMapa = 'Revisando el mapa…';
+
   // Entre tocar «Descargar mapa» y tener el mapa (decisión del 06/10 sobre el pendiente P1).
   static const seDescargaSola = 'Se descarga sola cuando vuelva la señal.';
   static const descargandoMapa = 'Descargando el mapa…';
@@ -62,6 +68,9 @@ abstract final class ClavesAvisoMapa {
   static const pildora = Key('aviso_mapa_pildora');
   static const datosMoviles = Key('aviso_mapa_datos_moviles');
   static const noCarga = Key('aviso_mapa_no_carga');
+
+  /// El contenido del botón «Reintentar» mientras revisa (círculo + «Revisando el mapa…»).
+  static const revisando = Key('aviso_mapa_revisando');
 }
 
 /// Dónde va el aviso.
@@ -148,9 +157,15 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
     if (_reintentando) return;
     setState(() => _reintentando = true);
     try {
+      // Vuelve a preguntar el catálogo y a probar el archivo del mapa (#299): si el aviso salió
+      // porque el archivo no contestó, el catálogo igual da lo mismo y solo la prueba lo corrige.
       final consulta = paqueteDelAmbitoProvider(widget.ambito);
-      ref.invalidate(consulta);
+      final prueba = pruebaDelMapaProvider(widget.ambito);
+      ref
+        ..invalidate(consulta)
+        ..invalidate(prueba);
       await ref.read(consulta.future);
+      await ref.read(prueba.future);
     } on Object {
       // El proveedor ya convierte sus fallos en un valor; si igual llega un error, el aviso sigue.
     } finally {
@@ -454,21 +469,28 @@ class _Insignia extends StatelessWidget {
   }
 }
 
+/// [enEspera]: el botón está apagado porque trabaja, no porque no se pueda usar; se queda con el
+/// texto en blanco pleno sobre el azul al 85 % (como `ConEspera.estiloDelBoton`), porque el apagado
+/// de siempre (60 %) deja un texto que ya no se lee, y acá el texto dice qué pasa.
 ButtonStyle _estiloPildora({
   required Color fondo,
   required Color texto,
   required FontWeight peso,
   BorderSide? borde,
+  bool enEspera = false,
 }) => ButtonStyle(
   minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
   padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
   shape: const WidgetStatePropertyAll(StadiumBorder()),
   side: borde == null ? null : WidgetStatePropertyAll(borde),
   backgroundColor: WidgetStateProperty.resolveWith(
-    (estados) => estados.contains(WidgetState.disabled) ? fondo.withValues(alpha: .6) : fondo,
+    (estados) => estados.contains(WidgetState.disabled)
+        ? fondo.withValues(alpha: enEspera ? .85 : .6)
+        : fondo,
   ),
   foregroundColor: WidgetStateProperty.resolveWith(
-    (estados) => estados.contains(WidgetState.disabled) ? texto.withValues(alpha: .6) : texto,
+    (estados) =>
+        estados.contains(WidgetState.disabled) && !enEspera ? texto.withValues(alpha: .6) : texto,
   ),
   textStyle: WidgetStatePropertyAll(TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: peso)),
 );
@@ -729,10 +751,53 @@ class _TarjetaNoCarga extends StatelessWidget {
       pesoTitulo: FontWeight.w600,
       tamanoTitulo: 15,
       botones: [
+        // Mientras revisa sigue apagado (un doble toque es una sola prueba), pero dice qué pasa.
         FilledButton(
           onPressed: reintentando ? null : alReintentar,
-          style: _estiloPildora(fondo: _azulBoton, texto: Colors.white, peso: FontWeight.w600),
-          child: const Text(TextosAvisoMapa.reintentar, textAlign: TextAlign.center),
+          style: _estiloPildora(
+            fondo: _azulBoton,
+            texto: Colors.white,
+            peso: FontWeight.w600,
+            enEspera: reintentando,
+          ),
+          child: reintentando
+              ? const _RevisandoElMapa()
+              : const Text(TextosAvisoMapa.reintentar, textAlign: TextAlign.center),
+        ),
+      ],
+    );
+  }
+}
+
+/// Lo que dice «Reintentar» mientras trabaja: un círculo chico girando y «Revisando el mapa…», con
+/// el mismo patrón que «Revisando la ubicación…» de la hoja de baja. El texto es una región viva:
+/// el lector de pantalla lo anuncia al cambiar la etiqueta del botón (que sigue apagado, así que
+/// dice «Revisando el mapa…, botón, deshabilitado»). El círculo no suma nada al lector. Si el texto
+/// no entra (texto grande), baja de renglón entre palabras y el círculo se queda a su lado.
+class _RevisandoElMapa extends StatelessWidget {
+  const _RevisandoElMapa() : super(key: ClavesAvisoMapa.revisando);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 10,
+      children: [
+        ExcludeSemantics(
+          child: SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: .35),
+            ),
+          ),
+        ),
+        Flexible(
+          child: Semantics(
+            liveRegion: true,
+            child: const Text(TextosAvisoMapa.revisandoElMapa, textAlign: TextAlign.center),
+          ),
         ),
       ],
     );

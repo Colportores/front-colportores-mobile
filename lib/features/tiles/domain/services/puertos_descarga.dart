@@ -4,8 +4,9 @@
 /// Adaptadores (decisiones del 02/10 en el issue #189): [ClienteDescargaRango] con `package:http`,
 /// [CalculadorChecksum] con SHA-256 de `package:crypto`, [MonitorConectividad] con
 /// `connectivity_plus`, [MedidorEspacioDisco] con un canal propio (StatFs en Android,
-/// `volumeAvailableCapacityForImportantUsage` en iOS) y [ArchivosTiles] con `dart:io`. Los tests
-/// usan fakes (`test/helpers/tiles_falsos.dart`).
+/// `volumeAvailableCapacityForImportantUsage` en iOS) y [ArchivosTiles] con `dart:io`; la
+/// [SondaArchivoTiles] del mapa en línea (#299) usa el mismo cliente HTTP. Los tests usan fakes
+/// (`test/helpers/tiles_falsos.dart`).
 library;
 
 /// Qué conexión tiene el teléfono.
@@ -44,6 +45,23 @@ abstract interface class ClienteDescargaRango {
   /// Lanza [ErrorRedTiles] si no hay red o se corta antes de la respuesta, y [ErrorServidorTiles]
   /// si el servidor responde con error (4xx o 5xx, incluido un 416).
   Future<RespuestaDescarga> pedir(Uri origen, {required int desde});
+}
+
+/// Prueba que un archivo del bucket contesta, sin bajarlo («Mapa caído», #299): el mapa de la
+/// ciudad se muestra en línea desde el `.pmtiles` del bucket, y si el archivo se borró o el
+/// servidor no responde, las calles no aparecen y nada lo dice.
+abstract interface class SondaArchivoTiles {
+  /// Le pide a [origen] su primer byte (`Range: bytes=0-0`) y termina si el servidor contesta bien:
+  /// un 206, o un 200 de un servidor que ignora el `Range` (en ese caso el cuerpo no se lee).
+  ///
+  /// Lanza [ErrorRedTiles] si no hay red, se corta, el servidor no contesta a tiempo o se canceló
+  /// la prueba, y [ErrorServidorTiles] si responde con error (404, 416, 5xx…).
+  ///
+  /// [cancelacion] es un `Future` que se completa cuando a quien pide ya no le importa la
+  /// respuesta (salió del mapa, se pidió una prueba nueva): el pedido en vuelo se aborta y la
+  /// conexión se cierra, en vez de quedar abierta contra un servidor que no contesta. Completarla
+  /// después de que la prueba terminó no hace nada.
+  Future<void> probar(Uri origen, {Future<void>? cancelacion});
 }
 
 /// No hay red o se cortó: la descarga queda en pausa y sigue sola cuando vuelve la conexión.

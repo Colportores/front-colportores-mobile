@@ -143,6 +143,9 @@ final class ArnesMapa {
   final archivos = ArchivosEnMemoria();
   final repositorio = RepositorioTilesEnMemoria();
   final ajustes = AjustesRedFalsos();
+
+  /// La prueba del archivo del mapa en línea (#299): contesta bien salvo que el test la rompa.
+  final sonda = SondaFalsa();
   late final DescargadorPaquetesTiles descargador;
 
   /// Lo que se registró como descargado: el paquete de Montevideo cuando la descarga terminó.
@@ -152,6 +155,7 @@ final class ArnesMapa {
     monitorConectividadProvider.overrideWithValue(conectividad),
     paquetesTilesRepositoryProvider.overrideWithValue(repositorio),
     descargadorPaquetesTilesProvider.overrideWithValue(descargador),
+    sondaArchivoTilesProvider.overrideWithValue(sonda),
     abridorAjustesSistemaProvider.overrideWithValue(ajustes),
   ];
 

@@ -72,6 +72,61 @@ final paqueteDelAmbitoProvider = FutureProvider.autoDispose.family<PaqueteDelAmb
   },
 );
 
+/// La prueba del archivo del mapa en línea de [AmbitoTrabajo] (#299, «Mapa caído»): al abrir el mapa
+/// con conexión, si el mapa que va a mostrar no está en el teléfono, se le pide 1 byte (`Range`) a
+/// cada `.pmtiles` del paquete del catálogo. Una prueba por apertura: el provider se descarta con la
+/// pantalla, y «Reintentar» lo invalida para probar de nuevo.
+///
+/// `null`: no corresponde probar (sin conexión, sin ámbito, el catálogo no trae el paquete o ya está
+/// descargado) o la prueba no se pudo hacer (la sonda sin cablear, un error de programación): sin
+/// saberlo no se afirma nada. Si el paquete tiene varias partes se prueban todas a la vez, y alcanza
+/// que una falle para que las calles no se vean completas.
+///
+/// No demora a [paqueteDelAmbitoProvider]: «Descargar mapa» y el peso del botón salen del catálogo
+/// aunque la prueba siga en curso o haya fallado. Mientras la prueba no termina el mapa se pide en
+/// línea como siempre; el aviso sale recién si falla.
+final pruebaDelMapaProvider = FutureProvider.autoDispose.family<PruebaDelMapa?, AmbitoTrabajo>((
+  ref,
+  ambito,
+) async {
+  // Solo cambia cuando cambia el paquete (o aparece/desaparece): pasar de Wi-Fi a datos móviles, o
+  // releer el catálogo, no vuelve a probar.
+  final paquete = ref.watch(
+    paqueteDelAmbitoProvider(ambito).select(
+      (consulta) => switch (_lectura(consulta)) {
+        PaqueteHallado(:final paquete) => paquete,
+        _ => null,
+      },
+    ),
+  );
+  if (paquete == null) return null;
+  // Se completa cuando a nadie le importa más lo que contesten los pedidos en vuelo: salió del mapa
+  // o se pidió otra prueba (el provider se descarta), o la prueba ya tiene su respuesta (si una
+  // parte falló, las demás no se siguen esperando). La sonda aborta entonces los pedidos que queden
+  // y cierra las conexiones, en vez de dejarlas abiertas contra un servidor que no contesta.
+  final cancelar = Completer<void>();
+  void cancelarLoQueQuede() {
+    if (!cancelar.isCompleted) cancelar.complete();
+  }
+
+  ref.onDispose(cancelarLoQueQuede);
+  try {
+    final sonda = ref.read(sondaArchivoTilesProvider);
+    await Future.wait([
+      for (final parte in paquete.partes) sonda.probar(parte.origen, cancelacion: cancelar.future),
+    ], eagerError: true);
+    return PruebaDelMapa.respondio;
+  } on ErrorRedTiles {
+    return PruebaDelMapa.fallo;
+  } on ErrorServidorTiles {
+    return PruebaDelMapa.fallo;
+  } on Object {
+    return null;
+  } finally {
+    cancelarLoQueQuede();
+  }
+});
+
 /// El mapa y el aviso de [AmbitoTrabajo]. Sin lo que hace falta saber (la conexión, lo descargado)
 /// es el color liso sin aviso.
 final situacionMapaProvider = Provider.autoDispose.family<SituacionMapa, AmbitoTrabajo>((
@@ -84,6 +139,7 @@ final situacionMapaProvider = Provider.autoDispose.family<SituacionMapa, AmbitoT
     // Un error al leer el registro de descargas cuenta como «sin descargas»: el mapa en línea sigue.
     rutasDescargadas: rutas.hasError && !rutas.hasValue ? const <String>[] : _lectura(rutas),
     consulta: _lectura(ref.watch(paqueteDelAmbitoProvider(ambito))),
+    prueba: _lectura<PruebaDelMapa?>(ref.watch(pruebaDelMapaProvider(ambito))),
   );
 });
 

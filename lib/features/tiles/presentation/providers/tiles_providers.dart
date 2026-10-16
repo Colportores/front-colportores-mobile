@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/estado_descarga.dart';
 import '../../domain/repositories/paquetes_tiles_repository.dart';
 import '../../domain/services/descargador_paquetes_tiles.dart';
+import '../../domain/services/puertos_descarga.dart' show SondaArchivoTiles;
 import '../../domain/usecases/descarga_paquete_tiles_use_cases.dart';
 import '../../domain/usecases/listar_cobertura_tiles_use_case.dart';
 import '../../domain/usecases/observar_paquete_offline_use_case.dart';
@@ -23,6 +24,13 @@ final paquetesTilesRepositoryProvider = Provider<PaquetesTilesRepository>((ref) 
 /// conectividad.
 final descargadorPaquetesTilesProvider = Provider<DescargadorPaquetesTiles>((ref) {
   throw UnimplementedError('descargadorPaquetesTilesProvider se sobreescribe en main.dart');
+});
+
+/// La prueba del archivo del mapa en línea (#299). Sin default, como el descargador: `main.dart` la
+/// sobreescribe con `ComposicionTiles.sonda` y los tests con una falsa. Quien la lee sin cablear no
+/// afirma nada (no hay prueba, no hay aviso).
+final sondaArchivoTilesProvider = Provider<SondaArchivoTiles>((ref) {
+  throw UnimplementedError('sondaArchivoTilesProvider se sobreescribe en main.dart');
 });
 
 /// Cada cambio de estado de las descargas (progreso, pausa, fin, falla), para quien tiene que

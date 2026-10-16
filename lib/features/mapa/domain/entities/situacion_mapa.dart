@@ -81,6 +81,18 @@ final class PaqueteYaDescargado extends PaqueteDelAmbito {
   const PaqueteYaDescargado();
 }
 
+/// Lo que dio la prueba de pedirle 1 byte al archivo del mapa en línea de la ciudad (#299, «Mapa
+/// caído»). Mientras no hay resultado (se está probando, no corresponde probar o la prueba no se pudo
+/// hacer) se usa `null`: sin saberlo no se afirma ni que el mapa carga ni que no.
+enum PruebaDelMapa {
+  /// El archivo contestó: el mapa en línea se puede cargar.
+  respondio,
+
+  /// El archivo no contestó (se borró del servidor, el servidor está caído o no respondió a tiempo):
+  /// las calles no van a aparecer.
+  fallo,
+}
+
 /// El mapa que se dibuja y el aviso que lo acompaña, según la conexión, el paquete descargado y el
 /// catálogo.
 final class SituacionMapa extends Equatable {
@@ -106,12 +118,14 @@ final class SituacionMapa extends Equatable {
 /// - Con el paquete descargado: el mapa sale de él, con o sin conexión, y no hay aviso.
 /// - Sin él y sin conexión: color liso y [AvisoSinConexion].
 /// - Sin él y con conexión: el mapa en línea del paquete del catálogo (con datos móviles, además
-///   [AvisoDatosMoviles]); si el catálogo no lo trae, [AvisoMapaNoCarga]. Sin ámbito no hay aviso.
+///   [AvisoDatosMoviles]); si el catálogo no lo trae, o su archivo no contestó a la [prueba] (#299),
+///   [AvisoMapaNoCarga]. Sin ámbito no hay aviso.
 abstract final class ResolutorSituacionMapa {
   static SituacionMapa resolver({
     required TipoConexion? conexion,
     required List<String>? rutasDescargadas,
     required PaqueteDelAmbito? consulta,
+    PruebaDelMapa? prueba,
   }) {
     if (rutasDescargadas == null) return const SituacionMapa.sinDatos();
     if (rutasDescargadas.isNotEmpty) {
@@ -124,6 +138,10 @@ abstract final class ResolutorSituacionMapa {
       return const SituacionMapa(fuente: FuenteMapa.sinTiles(), aviso: AvisoSinConexion());
     }
     return switch (consulta) {
+      PaqueteHallado() when prueba == PruebaDelMapa.fallo => const SituacionMapa(
+        fuente: FuenteMapa.sinTiles(),
+        aviso: AvisoMapaNoCarga(),
+      ),
       PaqueteHallado(:final paquete) => SituacionMapa(
         fuente: FuenteMapa.resolver(
           urlsOnline: [for (final parte in paquete.partes) parte.origen.toString()],
