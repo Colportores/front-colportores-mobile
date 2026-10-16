@@ -24,6 +24,7 @@ import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiraci
 import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/auth_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/cierre_forzado_repository.dart';
@@ -1847,6 +1848,119 @@ void main() {
         expect(container.read(sesionProvider).value, isNull);
         expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
         expect(await cierres.leer(), cierre(MotivoExpiracion.revocada));
+      });
+
+      // #347 (seguimiento de la revisión del PR #346): un fin de sesión que sigue esperando el reloj
+      // no puede cerrar la sesión a la que la persona entró mientras tanto.
+      group('la sesión nueva no la cierra un fin de sesión viejo que sigue esperando (#347)', () {
+        /// La persona toca «Entrar» otra vez: devuelve la sesión nueva.
+        Future<Sesion> volverAEntrar() async {
+          final falla = await container
+              .read(sesionProvider.notifier)
+              .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+          expect(falla, isNull);
+          await pumpEventQueue();
+          return container.read(sesionProvider).value!;
+        }
+
+        /// Lo que tiene que valer con la sesión [nueva] ya abierta, después de que termine la espera.
+        Future<void> esperarQueSigaAdentro(Sesion nueva) async {
+          await esperarCierreDeSesion();
+          expect(container.read(sesionProvider).value, same(nueva), reason: 'sigue adentro');
+          expect(container.read(avisoSesionProvider), isNull, reason: 'sin aviso');
+          expect(container.read(reingresoSesionProvider), isNull);
+          expect(await cierres.leer(), isNull, reason: 'sin motivo guardado');
+          expect(await local.leerSesion(), isNotNull, reason: 'la sesión sigue guardada');
+        }
+
+        for (final (descripcion, primeroElQueSeVe) in [
+          ('el que se ve termina de leer el reloj primero', true),
+          ('el que se ve termina de leer el reloj último', false),
+        ]) {
+          test(
+            'dos fines de sesión casi juntos por el stream y la persona vuelve a entrar antes de '
+            'que termine el segundo: $descripcion, la sesión nueva sigue abierta',
+            () async {
+              final reloj = await entrarConRelojRetenible();
+              reloj.retener = true;
+              remote.simularExpiracion(MotivoExpiracion.revocada);
+              await pumpEventQueue();
+              remote.simularExpiracion(MotivoExpiracion.inactividad);
+              await pumpEventQueue();
+              expect(reloj.turnos, hasLength(2), reason: 'el guardado de cada fin de sesión');
+              final (primero, ultimo) = primeroElQueSeVe ? (1, 0) : (0, 1);
+
+              reloj.turnos[primero].complete(ahora);
+              await esperarCierreDeSesion();
+              expect(container.read(sesionProvider).value, isNull, reason: 'el primero la cerró');
+              reloj.retener = false;
+              final nueva = await volverAEntrar();
+              reloj.turnos[ultimo].complete(ahora);
+
+              await esperarQueSigaAdentro(nueva);
+            },
+          );
+        }
+
+        test('la revisión al volver espera el reloj, el servidor revoca y la persona vuelve a '
+            'entrar: al terminar la lectura, la sesión nueva sigue abierta', () async {
+          final reloj = await entrarConRelojRetenible();
+          reloj.retener = true;
+          final revision = container.read(sesionProvider.notifier).revisarVigencia();
+          await pumpEventQueue();
+          expect(reloj.turnos, hasLength(1));
+          reloj.retener = false;
+          remote.simularExpiracion(MotivoExpiracion.revocada);
+          await esperarCierreDeSesion();
+          expect(container.read(sesionProvider).value, isNull, reason: 'el servidor la cerró');
+          final nueva = await volverAEntrar();
+
+          reloj.turnos.single.complete(ahora.add(unMesDespues));
+          await revision;
+
+          await esperarQueSigaAdentro(nueva);
+        });
+
+        test('la revisión al volver espera el reloj, la persona cierra sesión a propósito y vuelve '
+            'a entrar: al terminar la lectura, la sesión nueva sigue abierta', () async {
+          final reloj = await entrarConRelojRetenible();
+          reloj.retener = true;
+          final revision = container.read(sesionProvider.notifier).revisarVigencia();
+          await pumpEventQueue();
+          reloj.retener = false;
+          final cerro = await container.read(sesionProvider.notifier).cerrarSesion();
+          expect(cerro.isRight(), isTrue);
+          final nueva = await volverAEntrar();
+
+          reloj.turnos.single.complete(ahora.add(unMesDespues));
+          await revision;
+
+          await esperarQueSigaAdentro(nueva);
+        });
+
+        test('la sesión nueva sí termina con su propio fin de sesión: el guardia no la vuelve '
+            'inmune', () async {
+          final reloj = await entrarConRelojRetenible();
+          reloj.retener = true;
+          remote
+            ..simularExpiracion(MotivoExpiracion.revocada)
+            ..simularExpiracion(MotivoExpiracion.revocada);
+          await pumpEventQueue();
+          reloj.turnos[0].complete(ahora);
+          await esperarCierreDeSesion();
+          reloj.retener = false;
+          final nueva = await volverAEntrar();
+          reloj.turnos[1].complete(ahora);
+          await esperarQueSigaAdentro(nueva);
+
+          remote.simularExpiracion(MotivoExpiracion.inactividad);
+          await esperarCierreDeSesion();
+
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
+          expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+          expect(await local.leerSesion(), isNull);
+        });
       });
     });
 

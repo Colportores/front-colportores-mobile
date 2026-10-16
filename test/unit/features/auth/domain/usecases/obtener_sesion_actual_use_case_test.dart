@@ -106,6 +106,46 @@ void main() {
     });
   });
 
+  group('RevisarVigenciaSesionUseCase (#347, volver a la app con la sesión abierta)', () {
+    Future<Either<Failure, Sesion?>> revisar() =>
+        RevisarVigenciaSesionUseCase(repository, _RelojFijo(ahora))(const NoParams());
+
+    test('dentro de la ventana, devuelve la sesión', () async {
+      final sesion = sesionQueExpira(
+        PoliticaSesion.expiraEn(ahora.subtract(const Duration(days: 25))),
+      );
+      when(() => repository.sesionActual()).thenAnswer((_) async => Right(sesion));
+
+      expect(await revisar(), Right<Failure, Sesion?>(sesion));
+      verifyNever(() => repository.expirarSesion(any()));
+    });
+
+    test('dado que pasaron los 30 días, devuelve el aviso de inactividad pero NO la descarta: '
+        'quien llama la cierra después de comprobar que sigue siendo la misma', () async {
+      final vencida = sesionQueExpira(ahora.subtract(const Duration(minutes: 6)));
+      when(() => repository.sesionActual()).thenAnswer((_) async => Right(vencida));
+
+      expect(await revisar(), const Left<Failure, Sesion?>(FailureSesionExpiradaPorInactividad()));
+      verifyNever(() => repository.expirarSesion(any()));
+    });
+
+    test('sin sesión guardada, devuelve null', () async {
+      when(() => repository.sesionActual()).thenAnswer((_) async => const Right(null));
+
+      expect(await revisar(), const Right<Failure, Sesion?>(null));
+      verifyNever(() => repository.expirarSesion(any()));
+    });
+
+    test('si el repositorio falla, propaga la falla', () async {
+      when(
+        () => repository.sesionActual(),
+      ).thenAnswer((_) async => const Left(FailureInesperado()));
+
+      expect(await revisar(), const Left<Failure, Sesion?>(FailureInesperado()));
+      verifyNever(() => repository.expirarSesion(any()));
+    });
+  });
+
   group('PoliticaSesion', () {
     test('la ventana es de 30 días desde la emisión, con 5 min de tolerancia de reloj', () {
       final emitida = DateTime.utc(2026, 8, 1, 10);
