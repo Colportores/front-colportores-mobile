@@ -48,6 +48,7 @@ const _ocho = Duration(seconds: 8);
 const _parItalia = 'ub-a|ub-b';
 const _parArtigas = 'ub-c|ub-d';
 const _parMichigan = 'ub-c|ub-d';
+const _parMataojo = 'ub-e|ub-f';
 
 /// El teléfono más chico que se soporta.
 const _telefonoMinimo = Size(320, 568);
@@ -195,13 +196,13 @@ Future<void> _desmontar(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 10));
 }
 
-void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo, {bool? skip}) {
   testWidgets(descripcion, (tester) async {
     final semantica = tester.ensureSemantics();
     await cuerpo(tester);
     await _desmontar(tester);
     semantica.dispose();
-  });
+  }, skip: skip);
 }
 
 FallaUnion _falla(String clavePar, String direccion) {
@@ -470,6 +471,37 @@ void _expectUnidadesSinCorte(WidgetTester tester) {
 
 String _tam(Size t) => '${t.width.toInt()}x${t.height.toInt()}';
 
+const _verHallazgos = bool.fromEnvironment('QA_VER_HALLAZGOS');
+
+/// Aviso rojo con [fallas] uniones fallidas y, a la vez, el aviso «quedaron unidas» de otro par
+/// esperando sus 8 s (el estado M2 de la HU con una o con dos fallas).
+Future<void> _avisoRojoMasSnackbar(
+  WidgetTester tester,
+  int fallas,
+  Size tamano,
+  double escala,
+) async {
+  final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+  await _montarPantalla(tester, datos, escala: escala, tamano: tamano);
+  final pares = [_parItalia, _parMichigan, _parMataojo];
+  for (var i = 0; i < fallas; i++) {
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, 5000));
+    await tester.pump();
+    await _unir(tester, pares[i]);
+    await tester.pump(_ocho);
+    await _asentar(tester);
+  }
+  datos.falloAlUnir = null;
+  await tester.drag(find.byType(Scrollable).last, const Offset(0, 5000));
+  await tester.pump();
+  await _unir(tester, pares[fallas]);
+  await _asentar(tester);
+}
+
+/// Dónde el aviso rojo y el SnackBar juntos dejan lista a la vista y los botones del aviso tocables: solo
+/// en 412×915 (medido: en 320×568 al 200 % y 300 % y en 360×640 al 300 % no, con una o con dos fallas).
+bool _avisoYSnackEntran(Size tamano) => tamano.height >= 915;
+
 // ------------------------------------------------------------------------------------------------
 // La matriz
 // ------------------------------------------------------------------------------------------------
@@ -540,6 +572,32 @@ final _estados = <_Estado>[
     await _asentar(t);
     d.falloAlUnir = null;
     await _unir(t, _parMichigan);
+    await _asentar(t);
+  }),
+  // P1 de #357: dos uniones fallan con la pantalla abierta y el aviso rojo (fijo) cuenta los pares.
+  _Estado('dos-fallas', _datosCanvas, (t, d) async {
+    d.falloAlUnir = const FailureInesperado();
+    await _unir(t, _parItalia);
+    await t.pump(_ocho);
+    await _asentar(t);
+    await _unir(t, _parMichigan);
+    await t.pump(_ocho);
+    await _asentar(t);
+  }),
+  // El peor caso de altura: dos fallas en el aviso rojo y, a la vez, el aviso «quedaron unidas» de otro.
+  _Estado('dos-fallas-y-otro-par-esperando', _datosCanvas, (t, d) async {
+    d.falloAlUnir = const FailureInesperado();
+    await _unir(t, _parItalia);
+    await t.pump(_ocho);
+    await _asentar(t);
+    await _unir(t, _parMichigan);
+    await t.pump(_ocho);
+    await _asentar(t);
+    d.falloAlUnir = null;
+    // La lista quedó bajada por lo anterior: se sube para que el tercer par esté a la vista.
+    await t.drag(find.byType(Scrollable).last, const Offset(0, 5000));
+    await t.pump();
+    await _unir(t, _parMataojo);
     await _asentar(t);
   }),
   _Estado('m3-tres-iguales-A-B-esperando', _datosTresIguales, (t, d) => _unir(t, _parItalia)),
@@ -925,7 +983,7 @@ void main() {
 
     _prueba(
       'dado que dos uniones de pares distintos fallan con la pantalla abierta, nada se pierde: los '
-      'dos pares vuelven a la lista y el aviso rojo es el de la última',
+      'dos pares vuelven a la lista y el aviso rojo cuenta los dos (ninguna pisa a la otra)',
       (tester) async {
         final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
         await _montarPantalla(tester, datos);
@@ -939,6 +997,10 @@ void main() {
         expect(await _hayPar(tester, _parItalia), isTrue);
         expect(await _hayPar(tester, _parMichigan), isTrue);
         expect(_avisoRojo, findsOneWidget);
+        expect(
+          _texto('No se pudieron marcar 2 pares como duplicados. Probá de nuevo.'),
+          findsOneWidget,
+        );
       },
     );
 
@@ -965,5 +1027,267 @@ void main() {
         expect(find.text('No hay posibles duplicados'), findsOneWidget);
       },
     );
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Re-QA de #357 (ronda única de fix): P1, P2 y la franja dentro del scroll de la Lista
+  // ----------------------------------------------------------------------------------------------
+  group('Re-QA de #357 · la franja dentro del scroll de la Lista', () {
+    // A 320×568 con el texto al 200 % el encabezado fijo de la Lista mide ~456 dp y la franja (133 dp,
+    // o más con una dirección larga) no entra entera en los ~112 dp que quedan: tiene que poder
+    // alcanzarse bajando y tocarse (WCAG 1.4.10 y 2.5.8), sin que «+ Nueva» la tape.
+    for (final v in _variantesLista.where((v) => v.fallas.isNotEmpty)) {
+      _prueba(
+        '${v.nombre} · 320x568 · x2.0: bajando un poco la franja queda a la vista y al tocarla se abre '
+        '«Posibles duplicados»',
+        (tester) async {
+          final datos = v.datos();
+          await _montarLista(
+            tester,
+            datos,
+            escala: 2,
+            tamano: _telefonoMinimo,
+            fallas: [
+              for (final clave in v.fallas)
+                _falla(
+                  clave,
+                  FormatoUbicaciones.direccion(datos.ubicacion(clave.split('|').first)),
+                ),
+            ],
+          );
+          await _asentar(tester);
+          final franja = _franjaFalla;
+          expect(franja, findsOneWidget);
+
+          final lista = find.byKey(const Key('lista_filas'));
+          // Se arrastra desde el borde izquierdo: «+ Nueva» tapa el centro de lo poco que se ve de la lista.
+          final arriba = tester.getRect(lista).top;
+          for (var i = 0; i < 12 && franja.hitTestable().evaluate().isEmpty; i++) {
+            await tester.dragFrom(Offset(6, arriba + 20), const Offset(0, -30));
+            await tester.pump();
+          }
+          expect(
+            franja.hitTestable(),
+            findsOneWidget,
+            reason:
+                'bajando se alcanza un punto de la franja que nada tapa: ${tester.getRect(franja)}',
+          );
+          expect(tester.takeException(), isNull);
+
+          await tester.tap(franja);
+          await _transicion(tester);
+          expect(_pagina, findsOneWidget);
+        },
+      );
+    }
+
+    _prueba('la franja es lo primero que se ve de la lista, antes de bajar', (tester) async {
+      await _montarLista(tester, _datosDosPares(), escala: 2, tamano: _telefonoMinimo);
+      await _asentar(tester);
+      final franja = tester.getRect(_franja);
+      final lista = tester.getRect(find.byKey(const Key('lista_filas')));
+      expect(franja.top, closeTo(lista.top + 8, 1), reason: 'franja $franja · lista $lista');
+    });
+
+    _prueba('dado que una falla llega con la Lista bajada, la franja de la falla está al subir', (
+      tester,
+    ) async {
+      // Límite conocido: la franja es un ítem más de la lista; con la Lista bajada no se ve ni se
+      // anuncia. Al subir está con el texto de la falla (no se pierde).
+      final datos = _datosDosPares();
+      await _montarLista(tester, datos, escala: 2, tamano: _telefonoMinimo);
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -300));
+      await tester.pump();
+      _fallaFuera(tester, _parItalia, 'Av. Italia 1234');
+      await _asentar(tester);
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, 800));
+      await _asentar(tester);
+      expect(_franjaFalla, findsOneWidget);
+      expect(_texto('No pudimos unir Av. Italia 1234'), findsOneWidget);
+    });
+  });
+
+  group('Re-QA de #357 · P1 el aviso rojo fijo de la pantalla', () {
+    Future<void> dosFallasEnPantalla(
+      WidgetTester tester, {
+      double escala = 1,
+      Size tamano = telefonoChico208,
+    }) async {
+      final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+      await _montarPantalla(tester, datos, escala: escala, tamano: tamano);
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      await _unir(tester, _parMichigan);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+    }
+
+    _prueba(
+      'dado un aviso con una falla, cuando llega otra, el mismo aviso se actualiza con la cuenta '
+      '(región viva: el lector lo anuncia)',
+      (tester) async {
+        final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+        await _montarPantalla(tester, datos);
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(RegExp('No se pudo marcar como duplicado'))),
+          isSemantics(isLiveRegion: true),
+        );
+
+        await _unir(tester, _parMichigan);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        final nodo = tester.getSemantics(
+          find.bySemanticsLabel(RegExp('No se pudieron marcar 2 pares como duplicados')),
+        );
+        expect(nodo, isSemantics(isLiveRegion: true));
+        expect(find.bySemanticsLabel(RegExp('No se pudo marcar como duplicado')), findsNothing);
+      },
+    );
+
+    _prueba(
+      'dado dos fallas donde una no se puede reintentar, "Reintentar" prueba solo la otra y el '
+      'aviso queda con la que no, sin "Reintentar"',
+      (tester) async {
+        final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+        await _montarPantalla(tester, datos);
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        await _unir(tester, _parMichigan);
+        datos.falloAlUnir = const FailureConservadaDeBaja();
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        expect(datos.uniones, hasLength(2));
+        expect(_reintentarUnion, findsOneWidget, reason: 'una de las dos se puede reintentar');
+        expect(_texto('No se pudieron marcar 2 pares como duplicados'), findsOneWidget);
+
+        datos.falloAlUnir = null;
+        await _tocar(tester, _reintentarUnion);
+        await _asentar(tester);
+
+        expect(datos.uniones, hasLength(3), reason: 'solo la reintentable corrió de nuevo');
+        expect(_avisoRojo, findsOneWidget, reason: 'la que no se puede reintentar sigue avisada');
+        expect(_reintentarUnion, findsNothing);
+        expect(_texto('No se pudieron marcar'), findsNothing);
+        expect(find.byKey(const Key('duplicados_descartar_falla')), findsOneWidget);
+      },
+    );
+
+    _prueba('dado una falla, dos toques seguidos en "Reintentar" corren la unión una sola vez', (
+      tester,
+    ) async {
+      final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+      await _montarPantalla(tester, datos);
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      expect(datos.uniones, hasLength(1));
+
+      datos.falloAlUnir = null;
+      await tester.ensureVisible(_reintentarUnion);
+      await tester.pump();
+      final centro = tester.getCenter(_reintentarUnion);
+      await tester.tapAt(centro);
+      await tester.tapAt(centro);
+      await _asentar(tester);
+
+      expect(datos.uniones, hasLength(2), reason: 'un solo reintento, no dos');
+      expect(_avisoRojo, findsNothing);
+    });
+
+    _prueba(
+      'dado dos fallas, cuando salgo y vuelvo a entrar, el aviso no queda pegado y los dos pares '
+      'siguen para revisar',
+      (tester) async {
+        await dosFallasEnPantalla(tester);
+        expect(_avisoRojo, findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('duplicados_volver')));
+        await _transicion(tester);
+        await tester.tap(find.byKey(const Key('abrir')));
+        await _transicion(tester);
+
+        expect(_avisoRojo, findsNothing);
+        expect(await _hayPar(tester, _parItalia), isTrue);
+        expect(await _hayPar(tester, _parMichigan), isTrue);
+      },
+    );
+
+    // El aviso rojo (fijo) y el aviso «quedaron unidas» de otro par (8 s) a la vez: la persona tiene que
+    // poder tocar «Reintentar» y «Entendido» y ver algo de la lista aunque el SnackBar tape el pie.
+    for (final fallas in [1, 2]) {
+      for (final c in const [
+        (tamano: Size(320, 568), escala: 2.0),
+        (tamano: Size(320, 568), escala: 3.0),
+        (tamano: Size(360, 640), escala: 3.0),
+        (tamano: Size(412, 915), escala: 3.0),
+      ]) {
+        final alAire = !_avisoYSnackEntran(c.tamano);
+        _prueba(
+          '${alAire ? 'QA #357 hallazgo · ' : ''}$fallas falla(s) y otro par esperando sus 8 s · '
+          '${_tam(c.tamano)} · x${c.escala}: se pueden tocar «Reintentar», «Entendido» y «Deshacer» y '
+          'queda lista a la vista',
+          (tester) async {
+            await _avisoRojoMasSnackbar(tester, fallas, c.tamano, c.escala);
+
+            final lista = tester.getRect(find.byType(ListView).first);
+            final snack = tester.getRect(find.byType(SnackBar));
+            final visible = (snack.top - lista.top).clamp(0.0, lista.height);
+            expect(tester.takeException(), isNull);
+            expect(_deshacer.hitTestable(), findsOneWidget);
+            expect(
+              _reintentarUnion.hitTestable(),
+              findsOneWidget,
+              reason: 'tapado por el SnackBar',
+            );
+            expect(
+              find.byKey(const Key('duplicados_descartar_falla')).hitTestable(),
+              findsOneWidget,
+              reason: 'tapado por el SnackBar: snack $snack',
+            );
+            expect(
+              visible,
+              greaterThanOrEqualTo(c.tamano.height / 6),
+              reason: 'de la lista se ven $visible dp entre el aviso rojo y el SnackBar',
+            );
+          },
+          // skip: QA #357 — con el aviso rojo fijo y el «quedaron unidas» de otro par (8 s) a la vez, en un
+          // teléfono chico con texto grande el SnackBar tapa «Entendido» y casi toda la lista.
+          skip: alAire && !_verHallazgos,
+        );
+      }
+    }
+
+    for (final c in const [
+      (tamano: Size(320, 568), escala: 2.0),
+      (tamano: Size(320, 568), escala: 3.0),
+      (tamano: Size(360, 640), escala: 3.0),
+    ]) {
+      _prueba(
+        'dos fallas, pasados los 8 s del otro par · ${_tam(c.tamano)} · x${c.escala}: el aviso rojo se '
+        'puede tocar y la lista conserva al menos un tercio',
+        (tester) async {
+          await _avisoRojoMasSnackbar(tester, 2, c.tamano, c.escala);
+          await tester.pump(_ocho);
+          await _asentar(tester);
+          await tester.pump(const Duration(seconds: 1));
+
+          expect(find.byType(SnackBar), findsNothing);
+          expect(tester.takeException(), isNull);
+          expect(_reintentarUnion.hitTestable(), findsOneWidget);
+          await tester.ensureVisible(find.byKey(const Key('duplicados_descartar_falla')));
+          await tester.pump();
+          expect(find.byKey(const Key('duplicados_descartar_falla')).hitTestable(), findsOneWidget);
+          expect(
+            tester.getRect(find.byType(ListView).first).height,
+            greaterThanOrEqualTo(c.tamano.height / 3),
+          );
+        },
+      );
+    }
   });
 }
