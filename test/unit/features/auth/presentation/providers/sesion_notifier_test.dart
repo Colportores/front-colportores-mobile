@@ -54,9 +54,17 @@ final class _LocalQueFalla implements AuthLocalDataSource {
   /// sesión todavía leyéndose (#311).
   Completer<void>? puerta;
 
+  /// Cuántas veces se pidió la sesión. Con [bloquearLecturaN], la lectura número N no sigue hasta
+  /// que el test complete [puertaN]: el Keystore lento en medio de `expirarSesion` (#347).
+  int lecturas = 0;
+  int? bloquearLecturaN;
+  Completer<void>? puertaN;
+
   @override
   Future<SesionModel?> leerSesion() async {
+    final numero = ++lecturas;
     await puerta?.future;
+    if (numero == bloquearLecturaN) await puertaN?.future;
     if (explotar) throw const _FallaDeAlmacen();
     return _real.leerSesion();
   }
@@ -144,6 +152,25 @@ final class _RelojPorTurnos implements RelojSesion {
 
   @override
   Future<void> registrar(DateTime visto) async {}
+}
+
+/// El último correo en memoria cuya lectura se puede retener (el Keystore lento): con [puerta], [leer]
+/// no sigue hasta que el test la completa.
+final class _CorreoConPuerta implements UltimoCorreoRepository {
+  final _real = UltimoCorreoEnMemoria();
+  Completer<void>? puerta;
+
+  @override
+  Future<String?> leer() async {
+    await puerta?.future;
+    return _real.leer();
+  }
+
+  @override
+  Future<void> guardar(String email) => _real.guardar(email);
+
+  @override
+  Future<void> borrar() => _real.borrar();
 }
 
 /// Un correo que, contra su contrato, lanza al borrar: el cierre que ya está fallando no puede
@@ -999,7 +1026,7 @@ void main() {
     late DatabaseHelper helper;
     late AuthRemoteDataSourceEnMemoria remote;
     late _LocalQueFalla local;
-    late UltimoCorreoEnMemoria correo;
+    late _CorreoConPuerta correo;
     late CierreForzadoEnMemoria cierres;
     late _DatosQueBorran datos;
     late BloqueoReenvioVerificacionEnMemoria reenvios;
@@ -1015,10 +1042,12 @@ void main() {
       BloqueoReenvioVerificacionRepository? reenviosGuardados,
       bool verificarAlRegistrar = false,
       RelojSesion? reloj,
+      DateTime Function()? relojRemoto,
     }) {
       remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'ana@example.com': 'secreto123'},
         requiereVerificacionAlRegistrar: verificarAlRegistrar,
+        ahora: relojRemoto,
       );
       local = sesionLocal ?? _LocalQueFalla();
       return ProviderContainer(
@@ -1055,7 +1084,7 @@ void main() {
         logger: loggerMudo(),
       );
       ahora = DateTime.now().toUtc();
-      correo = UltimoCorreoEnMemoria();
+      correo = _CorreoConPuerta();
       cierres = CierreForzadoEnMemoria();
       datos = _DatosQueBorran();
       reenvios = BloqueoReenvioVerificacionEnMemoria();
@@ -1587,6 +1616,41 @@ void main() {
         });
 
         test(
+          'retira también el aviso y el saludo del fin de sesión que estaban puestos (#349)',
+          () async {
+            final c = await conUseCaseQueLanza(cierres);
+            c.read(avisoSesionProvider.notifier).mostrar(const FailureSesionRevocada());
+            c
+                .read(reingresoSesionProvider.notifier)
+                .iniciar(const DatosReingreso(motivo: MotivoExpiracion.revocada));
+
+            await expectLater(
+              c.read(sesionProvider.notifier).cerrarSesion(),
+              throwsA(isA<_FallaDeAlmacen>()),
+            );
+
+            expect(c.read(avisoSesionProvider), isNull);
+            expect(c.read(reingresoSesionProvider), isNull);
+          },
+        );
+
+        test('con conservarCorreo, el aviso y el saludo quedan (#349)', () async {
+          final c = await conUseCaseQueLanza(cierres);
+          c.read(avisoSesionProvider.notifier).mostrar(const FailureSesionRevocada());
+          c
+              .read(reingresoSesionProvider.notifier)
+              .iniciar(const DatosReingreso(motivo: MotivoExpiracion.revocada));
+
+          await expectLater(
+            c.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true),
+            throwsA(isA<_FallaDeAlmacen>()),
+          );
+
+          expect(c.read(avisoSesionProvider), const FailureSesionRevocada());
+          expect(c.read(reingresoSesionProvider)?.motivo, MotivoExpiracion.revocada);
+        });
+
+        test(
           'si borrarlo también falla, no tapa el error original ni deja la DB abierta',
           () async {
             final c = await conUseCaseQueLanza(_CierreQueExplotaAlBorrar());
@@ -1612,11 +1676,13 @@ void main() {
     group('fines de sesión que se pisan (#311)', () {
       const unMesDespues = Duration(days: 31);
 
-      /// La app abierta con una sesión adentro y el reloj de la sesión retenible.
+      /// La app abierta con una sesión adentro y el reloj de la sesión retenible. El remoto usa el
+      /// mismo reloj fijo: dos logins dan sesiones `==` entre sí (mismo token y vencimiento), y solo
+      /// `identical` las distingue (#347).
       Future<_RelojPorTurnos> entrarConRelojRetenible() async {
         final reloj = _RelojPorTurnos(() => ahora);
         container.dispose();
-        container = arrancar(reloj: reloj);
+        container = arrancar(reloj: reloj, relojRemoto: () => ahora);
         await entrar();
         return reloj;
       }
@@ -1938,6 +2004,55 @@ void main() {
           await esperarQueSigaAdentro(nueva);
         });
 
+        test(
+          'el fin de sesión viejo ya está descartando la sesión guardada cuando la persona termina '
+          'de entrar: la sesión nueva sigue abierta',
+          () async {
+            final reloj = await entrarConRelojRetenible();
+            reloj.retener = true;
+            remote.simularExpiracion(MotivoExpiracion.revocada);
+            await pumpEventQueue();
+            remote.simularExpiracion(MotivoExpiracion.inactividad);
+            await pumpEventQueue();
+            expect(reloj.turnos, hasLength(2));
+            // El segundo llega al descarte y se queda leyendo la sesión guardada (Keystore lento).
+            local.puertaN = Completer<void>();
+            local.bloquearLecturaN = local.lecturas + 1;
+            reloj.turnos[1].complete(ahora);
+            await pumpEventQueue();
+            expect(local.lecturas, local.bloquearLecturaN, reason: 'el descarte está leyendo');
+            // Mientras tanto el primero cierra la sesión y la persona vuelve a entrar.
+            reloj.turnos[0].complete(ahora);
+            await esperarCierreDeSesion();
+            expect(container.read(sesionProvider).value, isNull, reason: 'el primero la cerró');
+            reloj.retener = false;
+            final nueva = await volverAEntrar();
+
+            local.puertaN!.complete();
+            await esperarCierreDeSesion();
+
+            expect(container.read(sesionProvider).value, same(nueva), reason: 'sigue adentro');
+            expect(container.read(avisoSesionProvider), isNull);
+            expect(container.read(reingresoSesionProvider), isNull);
+            expect(await cierres.leer(), isNull);
+          },
+        );
+
+        test('la app se cierra mientras un fin de sesión espera el reloj: al terminar la espera no '
+            'toca nada ni falla', () async {
+          final reloj = await entrarConRelojRetenible();
+          reloj.retener = true;
+          remote.simularExpiracion(MotivoExpiracion.revocada);
+          await pumpEventQueue();
+
+          container.dispose();
+          reloj.turnos.single.complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(reloj.turnos, hasLength(1));
+          container = arrancar();
+        });
+
         test('la sesión nueva sí termina con su propio fin de sesión: el guardia no la vuelve '
             'inmune', () async {
           final reloj = await entrarConRelojRetenible();
@@ -1962,6 +2077,230 @@ void main() {
           expect(await local.leerSesion(), isNull);
         });
       });
+
+      // #349 (seguimiento del QA del PR #346): la persona cierra sesión a propósito mientras el
+      // motivo del fin de sesión que acaba de llegar sigue esperando al reloj. El aviso y el saludo
+      // ya estaban puestos y nadie los retiraba.
+      group('cerrar a propósito retira el aviso del fin de sesión que esperaba al reloj (#349)', () {
+        /// Llega un fin de sesión con la app abierta y su guardado espera al reloj: devuelve el reloj.
+        Future<_RelojPorTurnos> llegaUnFinDeSesionQueEspera() async {
+          final reloj = await entrarConRelojRetenible();
+          reloj.retener = true;
+          remote.simularExpiracion(MotivoExpiracion.revocada);
+          await pumpEventQueue();
+          expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+          expect(container.read(reingresoSesionProvider), isNotNull);
+          return reloj;
+        }
+
+        test(
+          '«Cerrar sesión» a propósito: el login sale sin aviso ni saludo, y sin motivo guardado',
+          () async {
+            final reloj = await llegaUnFinDeSesionQueEspera();
+            reloj.retener = false;
+
+            final cerro = await container.read(sesionProvider.notifier).cerrarSesion();
+            reloj.turnos.single.complete(ahora);
+            await esperarCierreDeSesion();
+
+            expect(cerro.isRight(), isTrue);
+            expect(container.read(sesionProvider).value, isNull);
+            expect(container.read(avisoSesionProvider), isNull);
+            expect(container.read(reingresoSesionProvider), isNull);
+            expect(await cierres.leer(), isNull);
+          },
+        );
+
+        test('«Cerrar sesión» sin red desde Configuración: el login deja el aviso del cierre sin '
+            'conexión, no el del fin de sesión', () async {
+          final reloj = await llegaUnFinDeSesionQueEspera();
+          remote.simularSinConexion = true;
+
+          final cerro = await container
+              .read(sesionProvider.notifier)
+              .cerrarSesion(avisarCierreSinConexion: true);
+          reloj.turnos.single.complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(
+            cerro,
+            const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
+          );
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), const FailureCierreSesionSinConexion());
+          expect(container.read(reingresoSesionProvider), isNull);
+          expect(await cierres.leer(), isNull);
+        });
+
+        test('borrar los datos del teléfono: tampoco queda aviso, saludo ni motivo', () async {
+          final reloj = await llegaUnFinDeSesionQueEspera();
+
+          final borro = await container
+              .read(sesionProvider.notifier)
+              .borrarDatosLocales(incluirBackupDrive: false, reintento: true);
+          reloj.turnos.single.complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(borro.isRight(), isTrue);
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), isNull);
+          expect(container.read(reingresoSesionProvider), isNull);
+          expect(await cierres.leer(), isNull);
+        });
+
+        test('el cierre que hace la app sola (cambio de contraseña, conservarCorreo): el aviso, el '
+            'saludo y el motivo quedan', () async {
+          final reloj = await llegaUnFinDeSesionQueEspera();
+
+          await container.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true);
+          reloj.turnos.single.complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+          expect(container.read(reingresoSesionProvider)?.motivo, MotivoExpiracion.revocada);
+          expect(await cierres.leer(), cierre(MotivoExpiracion.revocada));
+        });
+
+        test('el fin de sesión en espera y la sesión se vuelve a confirmar con la contraseña: la '
+            'sesión nueva no deja aviso, saludo ni motivo', () async {
+          final reloj = await llegaUnFinDeSesionQueEspera();
+          reloj.retener = false;
+          expect(
+            await container.read(sesionProvider.notifier).confirmarPassword('secreto123'),
+            isNull,
+          );
+          final nueva = container.read(sesionProvider).value!;
+
+          reloj.turnos.single.complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(container.read(sesionProvider).value, same(nueva), reason: 'sigue adentro');
+          expect(container.read(avisoSesionProvider), isNull);
+          expect(container.read(reingresoSesionProvider), isNull);
+          expect(await cierres.leer(), isNull, reason: 'el motivo guardado se retira');
+        });
+
+        test('lo mismo, pero llega otro fin de sesión para la sesión nueva antes de que el viejo '
+            'termine: el aviso y el motivo son los del último', () async {
+          final reloj = await llegaUnFinDeSesionQueEspera();
+          reloj.retener = false;
+          expect(
+            await container.read(sesionProvider.notifier).confirmarPassword('secreto123'),
+            isNull,
+          );
+          final nueva = container.read(sesionProvider).value!;
+          reloj.retener = true;
+          remote.simularExpiracion(MotivoExpiracion.inactividad);
+          await pumpEventQueue();
+          expect(reloj.turnos, hasLength(2));
+
+          reloj.turnos[0].complete(ahora);
+          await esperarCierreDeSesion();
+          expect(container.read(sesionProvider).value, same(nueva), reason: 'todavía adentro');
+          expect(
+            container.read(avisoSesionProvider),
+            const FailureSesionExpiradaPorInactividad(),
+            reason: 'el viejo no retira el aviso del que llegó después',
+          );
+          reloj.turnos[1].complete(ahora);
+          await esperarCierreDeSesion();
+
+          expect(container.read(sesionProvider).value, isNull);
+          expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
+          expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+        });
+
+        test('un fin de sesión que llega después de cerrar a propósito vuelve a avisar', () async {
+          await entrar();
+          await container.read(sesionProvider.notifier).cerrarSesion();
+          expect(container.read(sesionProvider).value, isNull);
+
+          remote.simularExpiracion(MotivoExpiracion.inactividad);
+          await esperarCierreDeSesion();
+
+          expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
+          expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
+        });
+      });
+
+      // #349: sin sesión que cerrar ni saludo previo, el fin de sesión deja el correo de la última
+      // cuenta en el saludo, como el arranque siguiente.
+      group(
+        'el saludo de un fin de sesión sin nadie a quien nombrar lleva el último correo (#349)',
+        () {
+          /// El login ya a la vista (sin sesión), con el último correo en el teléfono y su lectura
+          /// retenida.
+          Future<Completer<void>> loginConElCorreoRetenido() async {
+            await correo.guardar('ana@example.com');
+            container.dispose();
+            container = arrancar();
+            expect(await container.read(sesionProvider.future), isNull);
+            return correo.puerta = Completer<void>();
+          }
+
+          test(
+            'con el login a la vista: al terminar de leer el correo, el saludo lo lleva',
+            () async {
+              final puerta = await loginConElCorreoRetenido();
+
+              remote.simularExpiracion(MotivoExpiracion.revocada);
+              await pumpEventQueue();
+              expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+              expect(
+                container.read(reingresoSesionProvider)?.email,
+                isNull,
+                reason: 'todavía leyendo',
+              );
+              puerta.complete();
+              await pumpEventQueue();
+
+              final reingreso = container.read(reingresoSesionProvider)!;
+              expect(reingreso.motivo, MotivoExpiracion.revocada);
+              expect(reingreso.email, 'ana@example.com');
+            },
+          );
+
+          test(
+            'la persona entra mientras se lee el correo: no vuelve a aparecer un saludo',
+            () async {
+              final puerta = await loginConElCorreoRetenido();
+              remote.simularExpiracion(MotivoExpiracion.revocada);
+              await pumpEventQueue();
+
+              await container
+                  .read(sesionProvider.notifier)
+                  .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+              puerta.complete();
+              await pumpEventQueue();
+
+              expect(container.read(sesionProvider).value, isNotNull);
+              expect(container.read(avisoSesionProvider), isNull);
+              expect(container.read(reingresoSesionProvider), isNull);
+            },
+          );
+
+          test('llega otro fin de sesión mientras se lee el correo: el saludo es el del último '
+              'motivo, con el correo', () async {
+            final puerta = await loginConElCorreoRetenido();
+            remote.simularExpiracion(MotivoExpiracion.revocada);
+            await pumpEventQueue();
+            remote.simularExpiracion(MotivoExpiracion.inactividad);
+            await pumpEventQueue();
+
+            puerta.complete();
+            await pumpEventQueue();
+
+            final reingreso = container.read(reingresoSesionProvider)!;
+            expect(reingreso.motivo, MotivoExpiracion.inactividad);
+            expect(reingreso.email, 'ana@example.com');
+            expect(
+              container.read(avisoSesionProvider),
+              const FailureSesionExpiradaPorInactividad(),
+            );
+          });
+        },
+      );
     });
 
     group('con el almacén seguro roto o con basura', () {
