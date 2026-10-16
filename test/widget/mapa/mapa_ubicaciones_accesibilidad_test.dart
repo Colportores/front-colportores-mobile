@@ -8,13 +8,34 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_mapa_
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart' show SemanticsAction;
+import 'package:flutter/semantics.dart' show SemanticsAction, SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/alta_ubicacion_falsos.dart' show GpsFalso;
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/mapa_descargas_arnes.dart';
 import 'mapa_ubicaciones_arnes.dart';
 import 'mapa_ubicaciones_page_test.dart' show canvas, gpsSinPermiso;
+
+/// Cuántos nodos de semántica leen [texto] (en la etiqueta, la pista o el valor): cada uno es una lectura
+/// del lector de pantalla. Un nodo que se funde en su padre ya va dentro de la etiqueta del padre: no
+/// cuenta aparte.
+int _lecturasDe(WidgetTester tester, String texto) {
+  var lecturas = 0;
+  void visitar(SemanticsNode nodo) {
+    final d = nodo.getSemanticsData();
+    if (!nodo.isMergedIntoParent && [d.label, d.hint, d.value].any((t) => t.contains(texto))) {
+      lecturas++;
+    }
+    nodo.visitChildren((hijo) {
+      visitar(hijo);
+      return true;
+    });
+  }
+
+  visitar(tester.binding.renderViews.first.owner!.semanticsOwner!.rootSemanticsNode!);
+  return lecturas;
+}
 
 typedef _Escena =
     Future<MontajeMapaUbicaciones> Function(WidgetTester tester, Size tamano, double escala);
@@ -271,16 +292,92 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('«Mi ubicación» sin GPS se anuncia como no disponible', (tester) async {
-      final semantica = tester.ensureSemantics();
-      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gpsSinPermiso());
+    // #359 (seguimiento de #355): el motivo va en la ETIQUETA del botón apagado y la pista queda vacía,
+    // igual en Android y en iOS: con «Hablar pistas» apagado en VoiceOver una pista no se leería.
+    testWidgets(
+      '«Mi ubicación» sin GPS dice «Mi ubicación. No disponible: no hay GPS.» en la etiqueta, sin '
+      'pista, y el motivo se lee una sola vez',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gpsSinPermiso());
+        await tocarAsa(tester);
 
-      final nodo = tester.getSemantics(botonMiUbicacion);
-      expect(nodo.label, contains('Mi ubicación'));
-      expect(nodo.hint, contains('No disponible'));
-      expect(nodo.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
-      semantica.dispose();
-    });
+        final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
+        expect(nodo.label, 'Mi ubicación. No disponible: no hay GPS.');
+        expect(nodo.hint, isEmpty, reason: 'sin pista: con «Hablar pistas» apagado no se leería');
+        expect(nodo.hasAction(SemanticsAction.tap), isFalse, reason: 'apagado no se toca');
+        expect(_lecturasDe(tester, 'No disponible'), 1, reason: 'el motivo se lee una sola vez');
+        expect(_lecturasDe(tester, 'Mi ubicación'), 1, reason: 'el nombre también');
+        semantica.dispose();
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
+    );
+
+    testWidgets(
+      '«Mi ubicación» con GPS dice solo «Mi ubicación», sin motivo ni pista, y se puede tocar',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+        final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
+        expect(nodo.label, 'Mi ubicación');
+        expect(nodo.hint, isEmpty);
+        expect(nodo.hasAction(SemanticsAction.tap), isTrue);
+        expect(_lecturasDe(tester, 'No disponible'), 0);
+        expect(_lecturasDe(tester, 'Mi ubicación'), 1);
+        semantica.dispose();
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
+    );
+
+    testWidgets(
+      '«Mi ubicación» pasa de la etiqueta con el motivo a «Mi ubicación» cuando llega la lectura '
+      'y no queda el motivo viejo',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final gps = GpsFalso()..bloqueo = Completer<void>();
+        await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gps);
+
+        expect(
+          tester.getSemantics(botonMiUbicacion).label,
+          'Mi ubicación. No disponible: no hay GPS.',
+          reason: 'mientras no hay lectura, el botón está apagado y dice por qué',
+        );
+
+        gps.bloqueo!.complete();
+        await asentarLista(tester);
+
+        final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
+        expect(nodo.label, 'Mi ubicación');
+        expect(nodo.hint, isEmpty);
+        expect(nodo.hasAction(SemanticsAction.tap), isTrue);
+        expect(_lecturasDe(tester, 'No disponible'), 0);
+        semantica.dispose();
+      },
+    );
+
+    for (final escala in [1.0, 2.0, 3.0]) {
+      testWidgets('«Mi ubicación» sin GPS, con el texto a ${escala}x: la misma etiqueta y el botón '
+          'sigue en 48 dp o más', (tester) async {
+        final semantica = tester.ensureSemantics();
+        await montarMapaUbicaciones(
+          tester,
+          repo: RepoListaFalso(canvas()),
+          gps: gpsSinPermiso(),
+          tamano: const Size(360, 640),
+          escala: escala,
+        );
+
+        expect(
+          tester.getSemantics(botonMiUbicacion).label,
+          'Mi ubicación. No disponible: no hay GPS.',
+        );
+        final tam = tester.getSize(botonMiUbicacion);
+        expect(tam.width, greaterThanOrEqualTo(48));
+        expect(tam.height, greaterThanOrEqualTo(48));
+        semantica.dispose();
+      });
+    }
 
     testWidgets('la cuenta de la pestaña se lee «Cercanía, 6 ubicaciones»', (tester) async {
       final semantica = tester.ensureSemantics();

@@ -42,8 +42,11 @@ class BotonMiUbicacion extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: habilitado,
-      label: TextosMapaUbicaciones.miUbicacion,
-      hint: habilitado ? null : TextosMapaUbicaciones.miUbicacionSinGps,
+      // Apagado, el motivo va en la etiqueta, detrás del nombre, y no en la pista: con «Hablar pistas»
+      // apagado en VoiceOver una pista no se leería (#359; igual que «Registrar» apagado, #345).
+      label: habilitado
+          ? TextosMapaUbicaciones.miUbicacion
+          : '${TextosMapaUbicaciones.miUbicacion}. ${TextosMapaUbicaciones.miUbicacionSinGps}',
       onTap: alPresionar,
       child: ExcludeSemantics(
         child: Material(
