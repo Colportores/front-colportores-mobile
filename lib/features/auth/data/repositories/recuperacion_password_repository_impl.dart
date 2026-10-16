@@ -120,6 +120,7 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     // No son de este flujo: la revocada solo sale de renovar la sesión (HU-AUTH-007).
     CredencialesInvalidasException() ||
     EmailYaRegistradoException() ||
+    EmailInvalidoException() ||
     EmailNoConfirmadoException() ||
     SesionRevocadaException() => const FailureInesperado(),
   };

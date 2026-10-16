@@ -6,6 +6,7 @@ import '../../../../core/usecases/use_case.dart';
 import '../entities/politica_password.dart';
 import '../entities/resultado_registro.dart';
 import '../repositories/auth_repository.dart';
+import '../services/validador_email.dart';
 
 /// Parámetros de [RegistrarUsuarioUseCase].
 final class RegistrarUsuarioParams extends Equatable {
@@ -65,7 +66,9 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
 
   final AuthRepository _repository;
 
-  static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
+  /// Lo que dice el campo cuando el email está incompleto o mal armado.
+  static const String _emailIncompleto = 'El email no es válido';
+
   static final RegExp _cedulaFormatoRegExp = RegExp(r'^[\d.\-]+$');
   static final RegExp _cedulaNormalizadaRegExp = RegExp(r'^\d{7,8}$');
 
@@ -73,7 +76,7 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
   Future<Either<Failure, ResultadoRegistro>> call(RegistrarUsuarioParams params) async {
     final nombre = params.nombre.trim();
     final apellido = params.apellido.trim();
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
     final cedula = params.cedula.trim();
     final cedulaNormalizada = cedula.replaceAll(RegExp(r'[.\-]'), '');
     final errores = <String, String>{};
@@ -90,8 +93,8 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
 
     if (email.isEmpty) {
       errores['email'] = 'Ingresá tu email';
-    } else if (!_emailRegExp.hasMatch(email)) {
-      errores['email'] = 'El email no es válido';
+    } else if (ValidadorEmail.mensaje(email, siIncompleto: _emailIncompleto) case final aviso?) {
+      errores['email'] = aviso;
     }
 
     if (PoliticaPassword.excedeLargoMaximo(params.password)) {

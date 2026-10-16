@@ -644,8 +644,9 @@ class _CampoRegistroState extends State<_CampoRegistro> {
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
             counterText: '',
-            // Con el texto grande el aviso del campo no se corta con puntos suspensivos.
-            errorMaxLines: 3,
+            // Con el texto grande el aviso del campo no se corta con puntos suspensivos (WCAG 1.4.4):
+            // 6 es lo que miden los avisos del email a 320 dp de ancho y texto al 300 %.
+            errorMaxLines: 6,
             helperText: widget.textoAyudaInferior,
             helperStyle: TextStyle(color: colores.gris, fontSize: 11),
             helperMaxLines: 2,

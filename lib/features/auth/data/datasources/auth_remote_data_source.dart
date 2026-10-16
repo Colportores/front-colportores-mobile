@@ -110,6 +110,14 @@ final class EmailNoConfirmadoException extends AuthRemoteException {
   const EmailNoConfirmadoException();
 }
 
+/// El servidor no manda correos a esa dirección (400 `email_address_invalid`): tiene el formato de
+/// un email, pero su validación de direcciones —si el proyecto la tiene activa— la rechaza (un
+/// dominio de prueba, uno mal tipeado, `lucia.@…`). Llega al campo del email con un aviso que dice
+/// qué hacer.
+final class EmailInvalidoException extends AuthRemoteException {
+  const EmailInvalidoException();
+}
+
 final class SinConexionException extends AuthRemoteException {
   const SinConexionException();
 }

@@ -125,7 +125,7 @@ void main() {
     });
 
     // QA #272: a texto 2x el error del campo no se corta con puntos suspensivos («Revisá el
-    // email: parece…»): el `InputDecoration` pone `errorMaxLines: 3`, como las otras páginas.
+    // email: parece…»): el `InputDecoration` pone `errorMaxLines: 6`, como las otras páginas.
     testWidgets('a 360×640 y texto 2.0 el mensaje de A03 no se corta', (tester) async {
       await _montar(tester, tamano: const Size(360, 640), escala: 2);
       await _llegarAA03(tester);

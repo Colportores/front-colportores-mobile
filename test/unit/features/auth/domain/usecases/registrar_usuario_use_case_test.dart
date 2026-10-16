@@ -8,6 +8,8 @@ import 'package:dartz/dartz.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/casos_email.dart';
+
 class _MockAuthRepository extends Mock implements AuthRepository {}
 
 void main() {
@@ -78,23 +80,17 @@ void main() {
         ).called(1);
       });
 
-      // Caso borde de la HU (§Casos borde identificados): "Email con caracteres Unicode válidos
-      // (ej: tildes en el local-part RFC 6531)". El regex de email (`[^\s@]+@[^\s@]+\.[^\s@]{2,}`)
-      // no restringe a ASCII: si alguien lo "endurece" a `[a-zA-Z0-9.]` para "ser más estricto",
-      // este test lo agarra.
-      test(
-        'cuando el email tiene tildes en el local-part, lo acepta y lo normaliza en minúsculas',
-        () async {
-          final resultadoRegistro = ResultadoRegistro(sesion: sesion, email: sesion.email);
-          stubRepositorio(Right(resultadoRegistro));
+      for (final email in emailsValidosRaros) {
+        test('cuando el email es «$email» (raro pero válido), llega al repositorio', () async {
+          stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
 
           final resultado = await useCase(
-            const RegistrarUsuarioParams(
-              nombre: 'José',
-              apellido: 'Pérez',
-              cedula: '1.234.567-8',
-              email: 'José.Pérez@example.com',
-              password: 'Secreto123',
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: email,
+              password: datosValidos.password,
               aceptaTerminos: true,
               aceptaTradeOffE2E: true,
             ),
@@ -103,15 +99,55 @@ void main() {
           expect(resultado.isRight(), isTrue);
           verify(
             () => repository.registrar(
-              nombre: 'José',
-              apellido: 'Pérez',
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
               cedula: '12345678',
-              email: 'josé.pérez@example.com',
-              password: 'Secreto123',
+              email: email.toLowerCase(),
+              password: datosValidos.password,
             ),
           ).called(1);
-        },
-      );
+        });
+      }
+
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+              for (final email in emails) {
+                final resultado = await useCase(
+                  RegistrarUsuarioParams(
+                    nombre: datosValidos.nombre,
+                    apellido: datosValidos.apellido,
+                    cedula: datosValidos.cedula,
+                    email: email,
+                    password: datosValidos.password,
+                    aceptaTerminos: true,
+                    aceptaTradeOffE2E: true,
+                  ),
+                );
+
+                expect(resultado.isRight(), isTrue, reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.registrar(
+                  nombre: datosValidos.nombre,
+                  apellido: datosValidos.apellido,
+                  cedula: '12345678',
+                  email: emailLimpio,
+                  password: datosValidos.password,
+                ),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
 
       test('una mayúscula con tilde o Ñ cumple la política («Ñandú2026», «Élan2026»)', () async {
         for (final password in ['Ñandú2026', 'Élan2026']) {
@@ -159,6 +195,22 @@ void main() {
         );
         return (failure as FailureValidacion).campos;
       }
+
+      test('cuando el email son solo invisibles, marca el campo email como vacío', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: String.fromCharCodes(invisiblesDeFormato),
+            password: datosValidos.password,
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'email': 'Ingresá tu email'});
+      });
 
       test('cuando el nombre está vacío, marca el campo nombre', () async {
         final campos = await camposInvalidos(
@@ -255,6 +307,49 @@ void main() {
 
         expect(campos, {'email': 'El email no es válido'});
       });
+
+      for (final email in emailsIncompletos) {
+        test('cuando el email «$email» está incompleto, marca el campo email con el texto de la '
+            'pantalla', () async {
+          final campos = await camposInvalidos(
+            RegistrarUsuarioParams(
+              nombre: datosValidos.nombre,
+              apellido: datosValidos.apellido,
+              cedula: datosValidos.cedula,
+              email: email,
+              password: datosValidos.password,
+              aceptaTerminos: true,
+              aceptaTradeOffE2E: true,
+            ),
+          );
+
+          expect(campos, {'email': 'El email no es válido'});
+        });
+      }
+
+      // HU-AUTH-001 listaba como caso borde «tildes en el local-part (RFC 6531)», pero Supabase Auth
+      // rechaza esos emails con un 400 `validation_failed`: la decisión del 10/10 (#353) es avisarlo
+      // en el campo, con el mismo texto que las otras pantallas, en vez de mandarlo al servidor.
+      for (final email in [...emailsConCaracterNoPermitido, 'José.Pérez@example.com']) {
+        test(
+          'cuando el email «$email» lleva un carácter que no va, avisa y no llega al servidor',
+          () async {
+            final campos = await camposInvalidos(
+              RegistrarUsuarioParams(
+                nombre: datosValidos.nombre,
+                apellido: datosValidos.apellido,
+                cedula: datosValidos.cedula,
+                email: email,
+                password: datosValidos.password,
+                aceptaTerminos: true,
+                aceptaTradeOffE2E: true,
+              ),
+            );
+
+            expect(campos, {'email': avisoCaracterNoPermitido});
+          },
+        );
+      }
 
       test('cuando la contraseña no tiene mayúscula ni número, marca el campo password', () async {
         final campos = await camposInvalidos(

@@ -25,6 +25,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/logger_mudo.dart';
 
@@ -200,12 +201,7 @@ void main() {
       });
     }
 
-    for (final email in [
-      'lucia@@correo.com',
-      'lucia@correo.c',
-      '@correo.com',
-      'lucia correo.com',
-    ]) {
+    for (final email in ['lucia@@correo.com', 'lucia@correo.c', '@correo.com']) {
       testWidgets('«$email» muestra A03 y no envía', (tester) async {
         await _montar(tester, remote);
         await _enviarCon(tester, email);
@@ -213,6 +209,17 @@ void main() {
         expect(find.text(_mensajeNeutro), findsNothing);
       });
     }
+
+    // #353: con un carácter que el servidor no acepta (acá, el espacio) A03 dice cuál es el problema.
+    testWidgets('«lucia correo.com» (un espacio, y sin arroba) avisa del carácter y no envía', (
+      tester,
+    ) async {
+      await _montar(tester, remote);
+      await _enviarCon(tester, 'lucia correo.com');
+      expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+      expect(find.text(_incompleto), findsNothing);
+      expect(find.text(_mensajeNeutro), findsNothing);
+    });
 
     testWidgets('solo espacios: pide el email, no dice «parece incompleto»', (tester) async {
       await _montar(tester, remote);

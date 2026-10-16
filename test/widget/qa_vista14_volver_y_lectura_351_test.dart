@@ -18,6 +18,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/sesion_n
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/logger_mudo.dart';
 import '../helpers/qa_vista14_351_arnes.dart';
 
@@ -459,12 +460,13 @@ void main() {
   });
 
   group('QA #351 · validación del email (los casos de la lista que faltaban)', () {
-    for (final (nombre, texto) in [
-      ('con un tabulador pegado', 'lucia@correo.com\tana'),
-      ('dos correos pegados', 'lucia@correo.com ana@correo.com'),
-      ('solo el arroba', '@'),
-      ('sin dominio', 'lucia@'),
-      ('un texto largo pegado sin arroba', 'x' * 1000),
+    for (final (nombre, texto, aviso) in [
+      // Con un tabulador o un espacio de por medio, A03 dice qué carácter no va (#353).
+      ('con un tabulador pegado', 'lucia@correo.com\tana', avisoCaracterNoPermitido),
+      ('dos correos pegados', 'lucia@correo.com ana@correo.com', avisoCaracterNoPermitido),
+      ('solo el arroba', '@', incompletoQa),
+      ('sin dominio', 'lucia@', incompletoQa),
+      ('un texto largo pegado sin arroba', 'x' * 1000, incompletoQa),
     ]) {
       testWidgets('$nombre: A03, sin enviar y sin perder lo tipeado', (tester) async {
         final remote = remotoQa();
@@ -473,7 +475,7 @@ void main() {
         await tocarQa(tester, enviarQa);
         await tester.pumpAndSettle();
 
-        expect(find.text(incompletoQa), findsOneWidget);
+        expect(find.text(aviso), findsOneWidget);
         expect(pedidosQa(remote), 0);
         expect(textoDelCampoQa(tester), isNotEmpty);
         expect(habilitadoQa(tester, enviarQa), isTrue);

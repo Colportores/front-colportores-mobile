@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/acceso_qa_arnes.dart';
+import '../helpers/casos_email.dart';
 
 const _enviar = Key('login_enviar');
 const _correo = Key('login_email');
@@ -268,7 +269,7 @@ void main() {
       expect(remoto.llamadasIniciarSesion, 0);
     });
 
-    for (final invalido in ['ana', 'ana@', '@example.com', 'ana@example', 'ana @example.com']) {
+    for (final invalido in ['ana', 'ana@', '@example.com', 'ana@example']) {
       testWidgets('el correo «$invalido» no es válido y no sale del teléfono', (tester) async {
         final remoto = await _llegarA(tester, _Estado.inicial);
 
@@ -277,6 +278,23 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('El email no es válido'), findsOneWidget);
+        expect(remoto.llamadasIniciarSesion, 0);
+      });
+    }
+
+    // #353: un carácter que el servidor no acepta se avisa en el campo y el correo no sale.
+    for (final invalido in ['ana @example.com', 'ana,@example.com', 'aña@example.com']) {
+      testWidgets('el correo «$invalido» lleva un carácter que no va y no sale del teléfono', (
+        tester,
+      ) async {
+        final remoto = await _llegarA(tester, _Estado.inicial);
+
+        await _escribir(tester, correo: invalido);
+        await _tocarEntrar(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+        expect(find.text('El email no es válido'), findsNothing);
         expect(remoto.llamadasIniciarSesion, 0);
       });
     }
@@ -321,16 +339,17 @@ void main() {
       expect(container.read(sesionProvider).value?.email, correoAna);
     });
 
-    testWidgets('un correo con emoji no revienta: llega al servidor y vuelve «incorrectos»', (
-      tester,
-    ) async {
-      await _llegarA(tester, _Estado.inicial);
+    testWidgets('un correo con emoji no revienta: avisa que lleva un carácter que no va y no sale '
+        '(#353)', (tester) async {
+      final remoto = await _llegarA(tester, _Estado.inicial);
 
       await _escribir(tester, correo: 'ana😀@example.com');
       await _tocarEntrar(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text('Email o contraseña incorrectos'), findsOneWidget);
+      expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+      expect(find.text('Email o contraseña incorrectos'), findsNothing);
+      expect(remoto.llamadasIniciarSesion, 0);
       expect(tester.takeException(), isNull);
     });
 

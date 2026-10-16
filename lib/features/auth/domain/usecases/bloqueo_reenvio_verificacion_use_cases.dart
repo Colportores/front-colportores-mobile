@@ -5,11 +5,13 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/reenvios_guardados.dart';
 import '../repositories/bloqueo_reenvio_verificacion_repository.dart';
+import '../services/validador_email.dart';
 
-/// La dirección tal como se la compara para el candado y para la espera: sin espacios alrededor y en
-/// minúsculas (Supabase guarda los correos en minúsculas, así que `Lucia@Correo.com` y
-/// `lucia@correo.com` son la misma dirección).
-String correoParaBloqueo(String correo) => correo.trim().toLowerCase();
+/// La dirección tal como se la compara para el candado y para la espera: normalizada como la manda
+/// el reenvío ([ValidadorEmail.normalizar]: sin invisibles ni espacios alrededor y en minúsculas;
+/// Supabase guarda los correos en minúsculas, así que `Lucia@Correo.com` y `lucia@correo.com` son
+/// la misma dirección).
+String correoParaBloqueo(String correo) => ValidadorEmail.normalizar(correo);
 
 /// Parámetros de [ConsultarReenviosVerificacionUseCase].
 final class ConsultarReenviosVerificacionParams extends Equatable {

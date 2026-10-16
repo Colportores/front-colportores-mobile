@@ -548,8 +548,9 @@ class _CampoRecuperacion extends StatelessWidget {
             hintText: 'lucia.silva@correo.com',
             errorText: errorText,
             // Con el texto al 200 % el error pasa a más de un renglón: sin esto se corta con
-            // puntos suspensivos (WCAG 1.4.4). Igual que el resto de los campos de auth.
-            errorMaxLines: 3,
+            // puntos suspensivos (WCAG 1.4.4). 6 es lo que miden los avisos del email a 320 dp de
+            // ancho y texto al 300 %. Igual que el resto de los campos de auth.
+            errorMaxLines: 6,
             constraints: const BoxConstraints(minHeight: 48),
           ),
         ),
