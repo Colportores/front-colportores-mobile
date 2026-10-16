@@ -10,6 +10,7 @@ import '../entities/resultado_baja_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
 import '../services/consultor_pendientes_ubicacion.dart';
+import '../services/criterio_duplicado_ubicacion.dart';
 
 /// Parámetros de [DarDeBajaUbicacionUseCase].
 final class DarDeBajaUbicacionParams extends Equatable {
@@ -152,17 +153,32 @@ final class ReactivarUbicacionParams extends Equatable {
 /// como la baja; ya activa (doble toque): `Right` con la ubicación tal cual, sin escribir; la fila
 /// cambió: `Left(FailureReactivacionCambioReciente)`; si no, escribe y encola el `update`.
 ///
+/// Antes de escribir, **en la misma transacción** (decisión del orquestador, 09/10, por el mapa de
+/// decisiones, front-colportores-mobile#205; HU-UBI-005, «Reactivar»):
+///
+/// - una baja por unión de duplicados (`duplicado_de_*`) no se reactiva:
+///   `Left(FailureReactivacionDeUnion)`, con la ubicación a la que se unió si sigue activa;
+/// - las demás pasan por la regla de dirección única (D1) que usa la edición
+///   ([CriterioDuplicadoUbicacion.alSeguirIgual], el punto único de D1): si hay otra activa con la
+///   misma dirección a menos de 100 m, `Left(FailureReactivacionChocaConActiva)` con la más cercana.
+///   Es **solo D1**: el posible duplicado que avisa sin frenar (a menos de 5 m, o la misma dirección
+///   a 100 m o más) lo encuentra el scan de "Posibles duplicados".
+///
+/// En los dos casos no se escribe ni se toca nada. La guarda vive en quien escribe la reactivación,
+/// así que vale también al reactivar al guardar desde Editar ([ModificarUbicacionUseCase]).
+///
 /// **No** mira si la ciudad sigue en el catálogo (decisión de Cristian, 29/09): la ciudad es una
 /// parte más de la dirección y ninguna acción sobre una ubicación se frena por eso.
-///
-/// No busca duplicados al reactivar (la HU no lo pide; sí lo hace la reactivación que va dentro de
-/// editar, en `ModificarUbicacionUseCase`, HU-UBI-004): para confirmar.
 final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbicacionParams> {
-  ReactivarUbicacionUseCase(this._repository, {DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  ReactivarUbicacionUseCase(
+    this._repository, {
+    DateTime Function()? ahora,
+    this._criterio = const CriterioDuplicadoUbicacion(),
+  }) : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _repository;
   final DateTime Function() _ahora;
+  final CriterioDuplicadoUbicacion _criterio;
 
   @override
   Future<Either<Failure, Ubicacion>> call(ReactivarUbicacionParams params) async {
@@ -184,6 +200,7 @@ final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbi
         baja: false,
         baseUpdatedAt: params.baseUpdatedAt,
         ahora: _ahora(),
+        duplicados: _criterio.alSeguirIgual,
       );
       return reactivada.map((r) => r.ubicacion);
     });

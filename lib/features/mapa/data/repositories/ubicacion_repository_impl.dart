@@ -153,6 +153,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         {'ubicacion_id': nueva.id, 'espacios': e.cantidad},
       );
       return Left(FailureUbicacionConEspacios(cantidadEspacios: e.cantidad));
+    } on ReactivacionDeUnionException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_UNION',
+        'la baja nació de unir duplicados: no se reactiva',
+        {'ubicacion_id': nueva.id},
+      );
+      return Left(FailureReactivacionDeUnion(conservadaId: await _conservadaActiva(e)));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {
@@ -181,6 +189,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
     // El motivo es texto del colportor: a la DB (auditoría local) sí, al log solo que hubo.
     final conMotivo = baja && MotivosBaja.paraGuardar(motivo) != null;
@@ -192,6 +201,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         deletedAt: baja ? ahora : null,
         motivo: baja ? MotivosBaja.paraGuardar(motivo) : null,
         conservadaId: conservadaId,
+        duplicados: baja ? null : duplicados,
       );
       // Un solo evento de auditoría por baja (R-UB09): el segundo de dos toques no escribió.
       if (escribio) {
@@ -210,6 +220,29 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         );
       }
       return Right((ubicacion: ubicacion.toEntity(), escribio: escribio));
+    } on ReactivacionDeUnionException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_UNION',
+        'la baja nació de unir duplicados: no se reactiva',
+        {'ubicacion_id': id},
+      );
+      return Left(FailureReactivacionDeUnion(conservadaId: await _conservadaActiva(e)));
+    } on UbicacionDuplicadaException catch (e) {
+      // Reactivar choca con otra activa por D1 (la más cercana primero). Al log, solo los uuid.
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_MISMA_DIRECCION',
+        'reactivar choca con otra ubicación activa por la dirección única',
+        {'ubicacion_id': id, 'existente_id': e.candidatas.first.ubicacion.id},
+      );
+      final existente = e.candidatas.first.ubicacion;
+      return Left(
+        FailureReactivacionChocaConActiva(
+          existenteId: existente.id,
+          direccion: _direccionDe(existente),
+        ),
+      );
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on ConservadaDeBajaException {
@@ -348,4 +381,28 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required String colportorId,
     required AreaMapa area,
   }) => _local.observarMarcadoresEnArea(colportorId: colportorId, area: area);
+
+  /// La ubicación a la que se unió la baja de [union], solo si sigue activa: es a la que la hoja de
+  /// «Reactivar» ofrece abrir. `null` si el motivo no trae el uuid, si ya no existe, si también está
+  /// de baja o si no se pudo leer (la hoja entonces solo dice «Entendido»).
+  Future<String?> _conservadaActiva(ReactivacionDeUnionException union) async {
+    final id = union.conservadaId;
+    if (id == null) return null;
+    try {
+      final conservada = await _local.obtener(id);
+      return conservada == null || conservada.auditoria.estaBorrada ? null : id;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// «Av. Italia 1240»: calle y número como los escribió quien la cargó. Un choque de D1 siempre
+  /// tiene los dos; «otra ubicación» solo por si alguna vez faltaran.
+  static String _direccionDe(Ubicacion u) {
+    final partes = [
+      for (final p in [u.calle, u.numero])
+        if (p != null && p.trim().isNotEmpty) p.trim(),
+    ];
+    return partes.isEmpty ? 'otra ubicación' : partes.join(' ');
+  }
 }

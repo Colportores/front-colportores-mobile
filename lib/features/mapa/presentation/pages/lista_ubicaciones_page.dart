@@ -189,18 +189,32 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
-  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04).
+  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
+  /// choca con otra casa activa (D1), la hoja lo dice y ofrece «Abrir la existente» solo si la Lista
+  /// tiene a dónde abrirla ([ListaUbicacionesPage.alAbrirUbicacion]).
   Future<void> _reactivar(ItemListaUbicacion item) async {
     if (_abriendoHoja) return;
     _abriendoHoja = true;
-    Ubicacion? reactivada;
+    SalidaHojaReactivar? salida;
     try {
-      reactivada = await mostrarHojaReactivar(context, colportorId: widget.colportorId, item: item);
+      salida = await mostrarHojaReactivar(
+        context,
+        colportorId: widget.colportorId,
+        item: item,
+        ofreceAbrirExistente: widget.alAbrirUbicacion != null,
+      );
     } finally {
       _abriendoHoja = false;
     }
-    if (reactivada == null || !mounted) return;
-    _avisarReactivada(reactivada, item.motivoBaja);
+    if (!mounted) return;
+    switch (salida) {
+      case ReactivacionRealizada(:final ubicacion):
+        _avisarReactivada(ubicacion, item.motivoBaja);
+      case AbrirExistenteElegida(:final ubicacionId):
+        widget.alAbrirUbicacion?.call(ubicacionId);
+      case null:
+        break;
+    }
   }
 
   /// El aviso de la vista 09·04: «Av. Italia 1240 reactivada. Vuelve a aparecer en el mapa.» con
@@ -903,7 +917,9 @@ class _Cuerpo extends StatelessWidget {
           lista: lista,
           ahora: ahora,
           alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
-          alReactivar: item.esBaja ? () => alReactivar(item) : null,
+          // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
+          // se toca (HU-UBI-005, «Reactivar»).
+          alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,
         );
       },
     );
