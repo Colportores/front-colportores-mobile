@@ -35,6 +35,7 @@ mixin UbicacionRepositorySinModificar {
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConResumen>> observarListaDelColportor({
@@ -64,6 +65,7 @@ mixin UbicacionLocalSinModificar {
     required DateTime? deletedAt,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) => throw UnimplementedError();
 
   Future<UbicacionModel> actualizar(

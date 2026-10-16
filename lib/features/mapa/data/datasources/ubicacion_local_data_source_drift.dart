@@ -123,6 +123,11 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+    // Reactivar al guardar: una baja por unión de duplicados no se reactiva (HU-UBI-005).
+    if (nueva.auditoria.deletedAt == null) {
+      final union = await _unionDe(fila);
+      if (union != null) throw union;
+    }
 
     // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
     // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
@@ -178,6 +183,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required DateTime? deletedAt,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -194,6 +200,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       return (ubicacion: _aModelo(fila), escribio: false);
     }
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+    if (deletedAt == null) await _exigirReactivable(fila, duplicados);
 
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
       UbicacionesCompanion(updatedAt: Value(updatedAt), deletedAt: Value(deletedAt)),
@@ -219,6 +226,73 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     );
     return (ubicacion: guardada, escribio: true);
   });
+
+  /// El motivo `duplicado_de_<A>` de la baja vigente de [fila] si nació de unir duplicados
+  /// (HU-UBI-006), o `null` si no: su evento `ubicacion_baja` en la auditoría local, con la misma marca
+  /// que `deleted_at`. Una baja que llegó del servidor, sin fila local, no se reconoce (no se inventa
+  /// un motivo). El prefijo se compara en Dart y no con `LIKE`: el `_` del patrón es un comodín y
+  /// «duplicado de la casa» (texto libre de «Otro») pasaría por una unión.
+  Future<String?> _motivoDeUnion(UbicacionFila fila) async {
+    final marca = fila.deletedAt;
+    if (marca == null) return null;
+    final motivos =
+        await (select(auditLogLocal)..where(
+              (a) =>
+                  a.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
+                  a.uuid.equals(fila.id) &
+                  a.creadoEn.equalsValue(marca),
+            ))
+            .map((a) => a.motivo)
+            .get();
+    return motivos.where(MotivosBaja.esUnion).firstOrNull;
+  }
+
+  /// La excepción a lanzar si la baja vigente de [fila] nació de unir duplicados (HU-UBI-006), o
+  /// `null` si no (la excepción lleva la `A` de `duplicado_de_<A>`, ver [_conservadaFinal]).
+  Future<ReactivacionDeUnionException?> _unionDe(UbicacionFila fila) async {
+    final union = await _motivoDeUnion(fila);
+    if (union == null) return null;
+    return ReactivacionDeUnionException(
+      conservadaId: await _conservadaFinal(MotivosBaja.conservadaDe(union)),
+    );
+  }
+
+  /// Hasta cuántas uniones seguidas se siguen para dar con la ubicación que quedó (B se unió a A y A
+  /// a C: B termina en C). Más allá, o con un ciclo, no se ofrece ninguna.
+  static const _maximoSaltosDeUnion = 8;
+
+  /// La ubicación a la que apunta la cadena de uniones que empieza en [primera]: la primera activa
+  /// que encuentra siguiendo el `duplicado_de_<A>` de cada baja por unión. Si la cadena se corta (la
+  /// ubicación no existe o está de baja por otro motivo), se pasa de largo, o se cierra en un ciclo,
+  /// devuelve la última que alcanzó (de baja o inexistente): el repositorio solo ofrece abrir una
+  /// activa. `null` si [primera] es `null`.
+  Future<String?> _conservadaFinal(String? primera) async {
+    var actual = primera;
+    final vistas = <String>{};
+    while (actual != null && vistas.length < _maximoSaltosDeUnion && vistas.add(actual)) {
+      final fila = await _ubicacionPorId(actual);
+      if (fila == null || fila.deletedAt == null) return actual;
+      final siguiente = MotivosBaja.conservadaDe(await _motivoDeUnion(fila));
+      if (siguiente == null) return actual;
+      actual = siguiente;
+    }
+    return actual;
+  }
+
+  /// Lo que se exige antes de reactivar la baja [fila] (HU-UBI-005, «Reactivar»), dentro de la
+  /// transacción: que no sea una unión de duplicados ([ReactivacionDeUnionException]) y, si llega
+  /// [duplicados], que ninguna activa choque con ella ([UbicacionDuplicadaException]; con el criterio
+  /// de `alSeguirIgual`, solo D1: la misma dirección a menos de 100 m).
+  Future<void> _exigirReactivable(
+    UbicacionFila fila,
+    CriterioDuplicadoUbicacion? duplicados,
+  ) async {
+    final union = await _unionDe(fila);
+    if (union != null) throw union;
+    if (duplicados == null) return;
+    final candidatas = await _candidatas(_aModelo(fila), duplicados);
+    if (candidatas.isNotEmpty) throw UbicacionDuplicadaException(candidatas);
+  }
 
   /// Los espacios sin baja de [ubicacionId], del más viejo al más nuevo (el orden de la RPC 0026).
   Future<List<EspacioFila>> _espaciosActivosEnOrden(String ubicacionId) =>

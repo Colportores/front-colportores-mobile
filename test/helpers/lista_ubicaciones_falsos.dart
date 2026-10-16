@@ -167,6 +167,7 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
     cambiosDeBaja.add((id: id, baja: baja, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoCambioDeBaja;

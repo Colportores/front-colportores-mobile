@@ -69,6 +69,10 @@ abstract interface class UbicacionRepository {
   ///   transacción** y, si hay, no escribe nada y devuelve [ModificacionConDuplicados]. "Seguir
   ///   igual" (el colportor ya las vio) llega como `CriterioDuplicadoUbicacion.alSeguirIgual`.
   ///
+  /// Si [nueva] reactiva una baja por unión de duplicados (`duplicado_de_*`), no escribe nada y
+  /// devuelve [FailureReactivacionDeUnion] (con la ubicación a la que se unió, si sigue activa): la
+  /// unión es definitiva (HU-UBI-005, «Reactivar»). Va antes que la búsqueda de duplicados.
+  ///
   /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
   /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).
   ///
@@ -99,6 +103,12 @@ abstract interface class UbicacionRepository {
   /// [motivo] (solo al dar de baja, `baja: true`) va al `audit_log` local (`ubicacion_baja`, R-UB09),
   /// en la misma transacción que la baja. Es texto libre: al log de la app solo llega si hubo motivo,
   /// nunca cuál.
+  ///
+  /// Al **reactivar** (`baja: false` sobre una baja), en la misma transacción y antes de escribir
+  /// (HU-UBI-005, «Reactivar»): una baja por unión de duplicados (`duplicado_de_*`) no se reactiva,
+  /// [FailureReactivacionDeUnion] (con la conservada si sigue activa); y si llega [duplicados] y hay otra activa que choca con ella (con
+  /// el criterio de `alSeguirIgual`, la misma dirección a menos de 100 m, D1),
+  /// [FailureReactivacionChocaConActiva] con la más cercana. En los dos casos no escribe nada.
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
@@ -106,6 +116,7 @@ abstract interface class UbicacionRepository {
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   });
 
   /// HU-UBI-006, la unión de un par de duplicados, **una sola transacción local**: pasa a

@@ -16,16 +16,75 @@ void main() {
       expect(MotivosBaja.paraGuardar(null), isNull);
     });
 
-    test('paraMostrar devuelve el motivo guardado, pero no el de una unión de duplicados', () {
+    test('paraGuardar no deja pasar el prefijo de una unión: lo que escribió el colportor con '
+        '«duplicado_de_» se guarda como texto común y nunca es una unión', () {
+      expect(MotivosBaja.paraGuardar('duplicado_de_vecino'), 'duplicado de vecino');
+      expect(MotivosBaja.paraGuardar('  duplicado_de_vecino  '), 'duplicado de vecino');
+      expect(MotivosBaja.paraGuardar('duplicado_de_'), 'duplicado de');
+      expect(MotivosBaja.paraGuardar('duplicado_de_ub-9'), 'duplicado de ub-9');
+      expect(MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_vecino')), isFalse);
+      expect(MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_')), isFalse);
+      expect(MotivosBaja.conservadaDe(MotivosBaja.paraGuardar('duplicado_de_vecino')), isNull);
+      // Lo que no empieza con el prefijo exacto queda como lo escribió.
+      expect(MotivosBaja.paraGuardar('era duplicado_de_otra'), 'era duplicado_de_otra');
+      expect(MotivosBaja.paraGuardar('Duplicado_de_otra'), 'Duplicado_de_otra');
+      expect(MotivosBaja.paraGuardar('duplicado de la casa'), 'duplicado de la casa');
+    });
+
+    test(
+      'paraGuardar con deUnion (el motivo lo armó el sistema al unir) guarda el prefijo tal cual',
+      () {
+        expect(MotivosBaja.paraGuardar('duplicado_de_ub-a', deUnion: true), 'duplicado_de_ub-a');
+        expect(MotivosBaja.paraGuardar('  duplicado_de_ub-a ', deUnion: true), 'duplicado_de_ub-a');
+        expect(
+          MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_ub-a', deUnion: true)),
+          isTrue,
+        );
+        expect(MotivosBaja.paraGuardar('  ', deUnion: true), isNull);
+      },
+    );
+
+    test('paraGuardar es idempotente y respeta el largo máximo de «Otro»', () {
+      final largo = 'duplicado_de_${'x' * (MotivosBaja.maximoOtro - 13)}';
+      expect(largo.length, MotivosBaja.maximoOtro);
+      final guardado = MotivosBaja.paraGuardar(largo)!;
+      expect(guardado.length, MotivosBaja.maximoOtro);
+      expect(MotivosBaja.paraGuardar(guardado), guardado);
+    });
+
+    test('paraMostrar devuelve el motivo guardado y, para una unión de duplicados, «Unida a otra '
+        'ubicación» (nunca el código ni el uuid)', () {
       expect(MotivosBaja.paraMostrar('Ya no existe'), 'Ya no existe');
       expect(MotivosBaja.paraMostrar('  Ya no existe '), 'Ya no existe');
-      expect(MotivosBaja.paraMostrar('duplicado_de_ub-a'), isNull);
+      expect(MotivosBaja.paraMostrar('duplicado_de_ub-a'), 'Unida a otra ubicación');
+      expect(MotivosBaja.paraMostrar('  duplicado_de_ub-a '), MotivosBaja.unidaAOtra);
       expect(MotivosBaja.paraMostrar(null), isNull);
       expect(MotivosBaja.paraMostrar(''), isNull);
     });
 
     test('un texto libre que solo contiene el prefijo en el medio sí se muestra', () {
       expect(MotivosBaja.paraMostrar('era duplicado_de_otra'), 'era duplicado_de_otra');
+    });
+
+    test('conservadaDe devuelve el uuid de la ubicación que se conservó, solo de una unión', () {
+      expect(MotivosBaja.conservadaDe('duplicado_de_ub-a'), 'ub-a');
+      expect(MotivosBaja.conservadaDe('  duplicado_de_ub-a '), 'ub-a');
+      expect(MotivosBaja.conservadaDe('duplicado_de_'), isNull);
+      expect(MotivosBaja.conservadaDe('era duplicado_de_otra'), isNull);
+      expect(MotivosBaja.conservadaDe('Ya no existe'), isNull);
+      expect(MotivosBaja.conservadaDe(null), isNull);
+    });
+
+    test('esUnion es verdadero solo con el prefijo exacto al principio del motivo', () {
+      expect(MotivosBaja.esUnion('duplicado_de_ub-a'), isTrue);
+      expect(MotivosBaja.esUnion('  duplicado_de_ub-a  '), isTrue);
+      expect(MotivosBaja.esUnion('duplicado_de_'), isTrue);
+      expect(MotivosBaja.esUnion('era duplicado_de_otra'), isFalse);
+      expect(MotivosBaja.esUnion('duplicado de la casa'), isFalse);
+      expect(MotivosBaja.esUnion('Duplicado_de_ub-a'), isFalse);
+      expect(MotivosBaja.esUnion('Ya no existe'), isFalse);
+      expect(MotivosBaja.esUnion(''), isFalse);
+      expect(MotivosBaja.esUnion(null), isFalse);
     });
   });
 }

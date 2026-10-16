@@ -209,6 +209,7 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
     bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoBaja;
