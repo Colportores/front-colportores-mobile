@@ -27,6 +27,7 @@ dart test        # ~1 s
 | §5.2 — triggers: conectividad, app resumed, escritura crítica. Sin timer | ✅ |
 | §5.3 — idempotencia por `client_op_id` + PK v7 | ✅ |
 | §5.4 — conflictos LWW por `sync_version` | ✅ |
+| §5.4 — la versión que da el servidor vuelve a la fila y a la cola; lo sin mandar de una fila se funde; una fila por lote | ✅ [`test/version_de_vuelta_test.dart`](test/version_de_vuelta_test.dart) |
 | §5.5 — orden por entidad y lotes por bytes | ✅ [`core/batch.dart`](lib/src/core/batch.dart) |
 | §5.8 — purga de `DONE` a los 7 días | ✅ |
 | §6 — `FakeSyncTransport` | ✅ [`testing/`](lib/src/testing/) |

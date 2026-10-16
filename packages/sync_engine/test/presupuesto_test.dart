@@ -115,7 +115,7 @@ void main() {
     await motor.dispose();
   });
 
-  test('editar la misma fila 50 veces manda 50 jobs: cuánto cuesta', () async {
+  test('editar la misma fila 50 veces sin señal manda un solo job', () async {
     final transport = FakeSyncTransport();
     final motor = SyncEngine(
       specs: _registro(),
@@ -124,29 +124,28 @@ void main() {
       store: InMemoryLocalStore(),
     );
 
-    // El colportor corrige el estado de la misma ubicación toda la tarde.
-    await motor.stage('ubicacion', Op.insert,
-        {'id': 'u-1', 'estado': 'NO_VISITADA', 'sync_version': 1},
+    // El colportor corrige el estado de la misma ubicación toda la tarde. Las
+    // 50 ediciones se stagean sobre la misma fila local, con la misma
+    // sync_version esperada: mandadas aparte, la segunda ya volvería
+    // `conflict` (§5.4) y el LWW la pisaría con la primera.
+    await motor.stage(
+        'ubicacion', Op.insert, {'id': 'u-1', 'estado': 'NO_VISITADA'},
         clientOpId: 'op-0');
     for (var i = 1; i <= 50; i++) {
-      await motor.stage('ubicacion', Op.update,
-          {'id': 'u-1', 'estado': 'INTENTO_$i', 'sync_version': i},
-          clientOpId: 'op-$i', syncVersion: i);
+      await motor.stage(
+          'ubicacion', Op.update, {'id': 'u-1', 'estado': 'INTENTO_$i'},
+          clientOpId: 'op-$i', syncVersion: 0);
     }
     await motor.syncNow();
 
     final bytes = _bytesEnElCable(transport);
-    final ultimoSolo =
-        batchBytes(PushBatch([transport.batches.last.jobs.last]));
+    print('  51 ediciones de una fila: ${bytes}B en el cable');
 
-    print('  51 ediciones de una fila: ${bytes}B en el cable; '
-        'solo la última serían ~${ultimoSolo}B '
-        '(${(bytes / ultimoSolo).toStringAsFixed(0)}× más)');
-
-    // Documenta el costo, no lo arregla: compactar la outbox cambia lo que el
-    // servidor ve y eso es una decisión del contrato, no del motor.
-    expect(transport.batches.single.length, 51,
-        reason: 'hoy no se compacta nada');
+    // Lo que todavía no salió se funde: sube una sola alta, con la fila final.
+    final [lote] = transport.batches;
+    final [job] = lote.jobs;
+    expect(job.op, Op.insert);
+    expect(job.payload['estado'], 'INTENTO_50');
     await motor.dispose();
   });
 

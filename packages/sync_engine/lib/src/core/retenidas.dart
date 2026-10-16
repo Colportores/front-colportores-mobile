@@ -78,6 +78,7 @@ class FilasRetenidas {
 /// La PK de la fila que escribe [job], según su `SyncSpec`, o `null` si el
 /// payload no la trae (el servidor lo rechaza con `PK_FALTANTE`).
 String? pkDe(SpecRegistry specs, SyncJob job) {
+  if (job.rowPk case final pk?) return pk;
   final valor = job.payload[specs.of(job.entity).pk];
   return valor == null ? null : '$valor';
 }

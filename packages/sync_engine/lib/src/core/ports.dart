@@ -89,12 +89,31 @@ abstract interface class JobStorePort {
   /// barata cuando no hay ninguno.
   Future<List<QueuedJob>> listHeld();
 
-  /// Reemplaza el payload de un job en `BLOCKED` o `WAITING` por [payload].
+  /// Reemplaza el payload de un job sin mandar (`PENDING`, `BLOCKED` o
+  /// `WAITING`) por [payload]. Lanza si el job está en otro estado.
   ///
-  /// Es la compactación de §2.2: el servidor no tiene esa escritura, así que la
-  /// fila que la app escribió después la reemplaza entera, sin un job más. No
+  /// Es la compactación: el servidor no tiene esa escritura, así que la fila
+  /// que la app escribió después la reemplaza entera, sin un job más. No
   /// cambia el estado: eso lo hace [release].
   Future<void> replacePayload(String jobId, Map<String, Object?> payload);
+
+  /// Los jobs sin mandar (`PENDING`, `BLOCKED` o `WAITING`) de la fila
+  /// [rowPk] de [entity] (`SyncJob.rowPk`), en orden de creación.
+  ///
+  /// Lo que está `IN_FLIGHT` no sale: un ciclo lo tiene en la mano y ya no se
+  /// puede cambiar lo que viaja. Se llama en cada `stage()` de un `update`, así
+  /// que tiene que ir por un índice, no recorrer la cola.
+  Future<List<QueuedJob>> unsentFor(String entity, String rowPk);
+
+  /// Le cambia la `sync_version` esperada (§5.4) a los jobs todavía no
+  /// aplicados (`PENDING`, `IN_FLIGHT`, `BLOCKED` o `WAITING`) que **no son
+  /// altas** de cada fila de [versionPorFila] (`rowPk` → versión) de [entity].
+  ///
+  /// Es lo que sigue a un `accepted`: el servidor ya tiene la versión nueva, y
+  /// lo que de esa fila espera en la cola tiene que esperar esa y no la de
+  /// antes. Incluye lo que está `IN_FLIGHT`: si ese viaje falla, vuelve a la
+  /// cola con la versión buena.
+  Future<void> rebaseVersions(String entity, Map<String, int> versionPorFila);
 
   /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
   /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
@@ -179,6 +198,18 @@ abstract interface class LocalStorePort {
 
   /// El watermark guardado para [scope], o `null` si nunca se pulleó.
   Future<String?> watermarkOf(String scope);
+
+  /// Le pone a cada fila de [entity] la `sync_version` que quedó en el
+  /// servidor al aplicar su escritura (§5.4). [versionPorFila] va del valor de
+  /// la columna [pkColumn] a la versión. Una fila que no está en el teléfono se
+  /// saltea.
+  ///
+  /// Sin esto la fila local se queda con la versión de antes, y su próximo
+  /// `update` viaja esperando una versión que el servidor ya no tiene: vuelve
+  /// `conflict` y el LWW pisa la edición con la fila vieja del servidor. Se
+  /// llama una vez por entidad y por lote, no por fila.
+  Future<void> applyVersions(String entity,
+      {required String pkColumn, required Map<String, int> versionPorFila});
 }
 
 /// El `appDataFolder` de Google Drive (ADR-003). Va directo, sin BFF (§6).

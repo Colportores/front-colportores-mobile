@@ -38,6 +38,19 @@ SyncJob _job(String opId, {String entity = 'venta', int minuto = 0}) => SyncJob(
       createdAt: _t0.add(Duration(minutes: minuto)),
     );
 
+/// Una escritura de la fila [fila], como la encola el motor (con `rowPk`).
+SyncJob _deFila(String opId, String fila,
+        {Op op = Op.update, int? version = 1, int minuto = 0}) =>
+    SyncJob(
+      clientOpId: opId,
+      entity: 'ubicacion',
+      op: op,
+      payload: {'id': fila},
+      syncVersion: op == Op.insert ? null : version,
+      createdAt: _t0.add(Duration(minutes: minuto)),
+      rowPk: fila,
+    );
+
 /// Lo que el motor da por sentado de un [JobStorePort].
 void runJobStoreContract(String nombre, JobStorePort Function() crear) {
   group('$nombre · contrato de JobStorePort', () {
@@ -264,6 +277,92 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
         expect(estado.invalid, 1,
             reason: 'un INVALID vuelve a la cola solo con requeue(), nunca '
                 'solo (§5.1)');
+      });
+    });
+
+    // §5.4: las escrituras de una fila, para fundirlas y para que esperen la
+    // versión que de verdad tiene el servidor.
+    group('escrituras de una fila', () {
+      test('unsentFor trae lo sin mandar de esa fila, en orden de creación',
+          () async {
+        final cola = crear();
+        final enVuelo = await cola.append(_deFila('op-1', 'u-1'));
+        await cola.claimPending(limit: 1);
+        final a = await cola.append(_deFila('op-2', 'u-1', minuto: 2));
+        final b = await cola.append(_deFila('op-3', 'u-1', minuto: 1));
+        await cola.append(_deFila('op-4', 'u-2', minuto: 3));
+        await cola.append(_job('op-5', minuto: 4));
+
+        final deLaFila = await cola.unsentFor('ubicacion', 'u-1');
+
+        expect([for (final q in deLaFila) q.id], [b, a],
+            reason: 'ni lo que está en vuelo ($enVuelo) ni otras filas');
+      });
+
+      test('unsentFor incluye lo que espera, y no lo que ya terminó', () async {
+        final cola = crear();
+        final bloqueado = await cola.append(_deFila('op-1', 'u-1'));
+        final hecho = await cola.append(_deFila('op-2', 'u-1', minuto: 1));
+        final invalido = await cola.append(_deFila('op-3', 'u-1', minuto: 2));
+        await cola.claimPending(limit: 3);
+        await cola.markBlocked(bloqueado, code: '23505');
+        await cola.markDone([hecho], at: _t0);
+        await cola.markInvalid(invalido, code: 'X');
+
+        expect([for (final q in await cola.unsentFor('ubicacion', 'u-1')) q.id],
+            [bloqueado]);
+      });
+
+      test('replacePayload también vale sobre lo PENDING', () async {
+        final cola = crear();
+        final id = await cola.append(_deFila('op-1', 'u-1'));
+
+        await cola.replacePayload(id, {'id': 'u-1', 'calle': 'nueva'});
+
+        final [q] = await cola.claimPending(limit: 1);
+        expect(q.job.payload, {'id': 'u-1', 'calle': 'nueva'});
+        expect(q.job.rowPk, 'u-1');
+      });
+
+      test('replacePayload no toca lo que ya salió', () async {
+        final cola = crear();
+        final id = await cola.append(_deFila('op-1', 'u-1'));
+        await cola.claimPending(limit: 1);
+
+        expect(() => cola.replacePayload(id, {'id': 'u-1'}), throwsA(anything));
+      });
+
+      test(
+          'rebaseVersions cambia la versión esperada de lo no aplicado, en '
+          'vuelo incluido, y no de las altas', () async {
+        final cola = crear();
+        final enVuelo = await cola.append(_deFila('op-1', 'u-1'));
+        await cola.claimPending(limit: 1);
+        final pendiente = await cola.append(_deFila('op-2', 'u-1', minuto: 1));
+        final alta =
+            await cola.append(_deFila('op-3', 'u-2', op: Op.insert, minuto: 2));
+        final otra = await cola.append(_deFila('op-4', 'u-3', minuto: 3));
+
+        await cola.rebaseVersions('ubicacion', {'u-1': 7, 'u-2': 7});
+        await cola.markPending([enVuelo]);
+
+        final versiones = {
+          for (final q in await cola.claimPending(limit: 10))
+            q.id: q.job.syncVersion
+        };
+        expect(versiones, {enVuelo: 7, pendiente: 7, alta: null, otra: 1});
+      });
+
+      test('rebaseVersions no toca lo que ya terminó', () async {
+        final cola = crear();
+        final id = await cola.append(_deFila('op-1', 'u-1'));
+        await cola.claimPending(limit: 1);
+        await cola.markInvalid(id, code: 'X');
+
+        await cola.rebaseVersions('ubicacion', {'u-1': 7});
+
+        final [q] = await cola.listInvalid();
+        expect(q.job.syncVersion, 1);
       });
     });
 
