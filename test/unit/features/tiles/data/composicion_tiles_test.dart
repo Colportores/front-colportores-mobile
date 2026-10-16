@@ -10,6 +10,9 @@ import 'dart:math';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/tiles/data/composicion_tiles.dart';
+import 'package:colportores_mobile/features/tiles/data/datasources/descargas_pendientes_json.dart';
+import 'package:colportores_mobile/features/tiles/data/models/descarga_pendiente_model.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -35,6 +38,9 @@ final class _Bucket {
   final archivos = <String, List<int>>{};
   final pedidos = <http.BaseRequest>[];
 
+  /// El archivo de Montevideo que nombra el catálogo (cambia cuando se publica otra versión).
+  String archivoMvd = 'ciudad-mvd-3f9c1a2b7d44.pmtiles';
+
   /// Cuántos bytes manda el próximo pedido de ese archivo antes de que se corte la conexión.
   final cortarEn = <String, int>{};
 
@@ -50,7 +56,7 @@ final class _Bucket {
   };
 
   String get catalogo {
-    final mvd = _parte('ciudad-mvd-3f9c1a2b7d44.pmtiles');
+    final mvd = _parte(archivoMvd);
     final salto1 = _parte('ciudad-salto-9a1b2c3d4e5f-p1.pmtiles');
     final salto2 = _parte('ciudad-salto-0f1e2d3c4b5a-p2.pmtiles');
     return jsonEncode({
@@ -251,9 +257,12 @@ void main() {
       expect(p.dirname(archivo.path), c.directorio.path);
       expect(archivo.path, endsWith('ciudad-montevideo-p1-${mvd.partes.single.huella}.pmtiles'));
       expect(await archivo.readAsBytes(), bucket.archivos['ciudad-mvd-3f9c1a2b7d44.pmtiles']);
+      // Lo anotado se olvida sin esperar: se lee antes de listar para no ver el `.tmp` de esa escritura.
+      expect((await c.repository.descargasPendientes()).getOrElse(() => fail('Left')), isEmpty);
       expect(c.directorio.listSync().map((e) => p.basename(e.path)).toSet(), {
         p.basename(archivo.path),
         'registro.json',
+        'descargas_pendientes.json',
       });
       expect((await c.repository.descargados()).getOrElse(() => fail('Left')), [descargado]);
     });
@@ -419,6 +428,182 @@ void main() {
 
       expect(viejo.existsSync(), isFalse);
       expect(reciente.existsSync(), isTrue);
+    });
+  });
+
+  group('la descarga sigue después de cerrar la app (#300)', () {
+    const archivoMvd = 'ciudad-mvd-3f9c1a2b7d44.pmtiles';
+
+    File manifiesto(ComposicionTiles c) =>
+        File(p.join(c.directorio.path, DescargasPendientesJson.nombreArchivo));
+
+    /// Espera a que lo anotado haya llegado al disco (las lecturas hacen cola con las escrituras).
+    Future<List<DescargaPendiente>> anotadas(ComposicionTiles c) async =>
+        (await c.repository.descargasPendientes()).getOrElse(() => fail('Left'));
+
+    /// Los `Range` que pidió la app para bajar [archivo] (no la prueba del mapa ni el catálogo).
+    List<String?> rangos(String archivo) => [
+      for (final pedido in bucket.pedidos)
+        if (pedido.url.path.endsWith(archivo)) pedido.headers['range'],
+    ];
+
+    test('dado que se cerró con la descarga cortada a medias, al abrirla sigue desde el byte que '
+        'quedó, sobre el mismo archivo', () async {
+      final primera = await abrir();
+      final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+      bucket.cortarEn[archivoMvd] = 2000;
+      await primera.descargador.descargar(mvd, permitirDatosMoviles: true, esperarConexion: true);
+      await primera.descargador.esperar(mvd.id);
+      expect(primera.descargador.estadoDe(mvd.id), isA<DescargaPausada>());
+      expect((await anotadas(primera)).single.paquete, mvd);
+      expect(manifiesto(primera).existsSync(), isTrue);
+      await primera.descargador.cerrar();
+      bucket.pedidos.clear();
+
+      final segunda = await abrir();
+      await segunda.descargador.esperar(mvd.id);
+
+      expect(segunda.descargador.estadoDe(mvd.id), isA<DescargaCompletada>());
+      expect(rangos(archivoMvd), ['bytes=2000-']);
+      final descargados = (await segunda.repository.descargados()).getOrElse(() => fail('Left'));
+      expect(descargados.single.paquete, mvd);
+      expect(
+        await File(descargados.single.rutas.single).readAsBytes(),
+        bucket.archivos[archivoMvd],
+      );
+      expect(await anotadas(segunda), isEmpty);
+    });
+
+    test('dado que el pedido quedó en cola sin señal y nunca arrancó, al abrir la app con señal '
+        'arranca solo', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+      final primera = await abrir();
+      final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+      await primera.descargador.descargar(mvd, permitirDatosMoviles: true, esperarConexion: true);
+      expect((await anotadas(primera)).single.paquete, mvd);
+      expect(rangos(archivoMvd), isEmpty);
+      await primera.descargador.cerrar();
+      conectividad.tipo = TipoConexion.wifi;
+
+      final segunda = await abrir();
+      await segunda.descargador.esperar(mvd.id);
+
+      expect(segunda.descargador.estadoDe(mvd.id), isA<DescargaCompletada>());
+      expect(rangos(archivoMvd), [null]);
+      expect(await anotadas(segunda), isEmpty);
+    });
+
+    test('dado que se abre otra vez sin señal, sigue en cola y arranca con la primera conexión que '
+        'vuelva', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+      final primera = await abrir();
+      final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+      await primera.descargador.descargar(mvd, permitirDatosMoviles: true, esperarConexion: true);
+      await anotadas(primera);
+      await primera.descargador.cerrar();
+
+      final segunda = await abrir();
+
+      expect(segunda.descargador.estadoDe(mvd.id), isA<DescargaPausada>());
+      expect(
+        segunda.descargador.paqueteEnMarchaQueCubre(const AmbitoTrabajo(ciudadId: 'c-mvd')),
+        mvd,
+      );
+      expect(rangos(archivoMvd), isEmpty);
+      conectividad.cambiarA(TipoConexion.datosMoviles);
+      await segunda.descargador.esperar(mvd.id);
+
+      expect(segunda.descargador.estadoDe(mvd.id), isA<DescargaCompletada>());
+    });
+
+    test('dado que el catálogo ya trae otra versión, termina el archivo que empezó y la versión '
+        'nueva se baja después', () async {
+      final primera = await abrir();
+      final viejo = await delCatalogo(primera, 'ciudad-montevideo');
+      bucket.cortarEn[archivoMvd] = 2000;
+      await primera.descargador.descargar(viejo, esperarConexion: true);
+      await primera.descargador.esperar(viejo.id);
+      await anotadas(primera);
+      await primera.descargador.cerrar();
+      // Se publica otra versión; el archivo anterior sigue 7 días en el bucket.
+      const archivoNuevo = 'ciudad-mvd-aaaaaaaaaaaa.pmtiles';
+      bucket
+        ..archivos[archivoNuevo] = bytesDePrueba(6000, semilla: 9)
+        ..archivoMvd = archivoNuevo
+        ..pedidos.clear();
+
+      final segunda = await abrir();
+      final nuevo = await delCatalogo(segunda, 'ciudad-montevideo');
+      await segunda.descargador.esperar(viejo.id);
+
+      expect(nuevo.version, isNot(viejo.version));
+      expect(segunda.descargador.estadoDe(viejo.id), isA<DescargaCompletada>());
+      expect(rangos(archivoMvd), ['bytes=2000-']);
+      expect(rangos(archivoNuevo), isEmpty);
+      var descargados = (await segunda.repository.descargados()).getOrElse(() => fail('Left'));
+      expect(descargados.single.paquete, viejo);
+
+      final estado = await bajar(segunda, nuevo);
+
+      expect(estado, isA<DescargaCompletada>());
+      descargados = (await segunda.repository.descargados()).getOrElse(() => fail('Left'));
+      expect(descargados.single.paquete, nuevo);
+    });
+
+    test(
+      'dado que la descarga tiene más de 7 días, al abrir la app se olvida sin bajar nada',
+      () async {
+        final primera = await abrir();
+        final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+        await primera.descargador.cerrar();
+        final vieja = DescargaPendiente(
+          paquete: mvd,
+          anotadaEn: DateTime.now().subtract(const Duration(days: 8)),
+        );
+        manifiesto(primera).writeAsStringSync(
+          jsonEncode({
+            'version': 1,
+            'descargas': [DescargaPendienteModel.aJson(vieja)],
+          }),
+        );
+        bucket.pedidos.clear();
+
+        final segunda = await abrir();
+
+        expect(await anotadas(segunda), isEmpty);
+        expect(segunda.descargador.estadoDe(mvd.id), isNull);
+        expect(rangos(archivoMvd), isEmpty);
+      },
+    );
+
+    test('dado un manifiesto de descargas roto, la app abre igual y no retoma nada', () async {
+      final primera = await abrir();
+      await primera.descargador.cerrar();
+      manifiesto(primera).writeAsStringSync('{"version":1,"desc');
+      bucket.pedidos.clear();
+
+      final segunda = await abrir();
+
+      expect(await anotadas(segunda), isEmpty);
+      expect(bucket.pedidos, isEmpty);
+    });
+
+    test('dado que la elimino antes de cerrar la app, al abrirla no se retoma', () async {
+      final primera = await abrir();
+      final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+      bucket.cortarEn[archivoMvd] = 2000;
+      await primera.descargador.descargar(mvd, esperarConexion: true);
+      await primera.descargador.esperar(mvd.id);
+      await primera.descargador.eliminar(mvd.id);
+      await primera.descargador.cerrar();
+      bucket.pedidos.clear();
+
+      final segunda = await abrir();
+
+      expect(await anotadas(segunda), isEmpty);
+      expect(segunda.descargador.estadoDe(mvd.id), isNull);
+      expect(rangos(archivoMvd), isEmpty);
+      expect(segunda.directorio.listSync().where((e) => e.path.endsWith('.part')), isEmpty);
     });
   });
 

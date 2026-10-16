@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.
 import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_base_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/repositories/paquetes_tiles_repository.dart';
@@ -38,6 +39,17 @@ final class _RepositorioQueLanza implements PaquetesTilesRepository {
 
   @override
   Future<Either<Failure, Unit>> quitar(String paqueteId) async => const Right(unit);
+
+  @override
+  Future<Either<Failure, List<DescargaPendiente>>> descargasPendientes() async => const Right([]);
+
+  @override
+  Future<Either<Failure, Unit>> anotarDescargaPendiente(DescargaPendiente pendiente) async =>
+      const Right(unit);
+
+  @override
+  Future<Either<Failure, Unit>> olvidarDescargaPendiente(String paqueteId) async =>
+      const Right(unit);
 
   @override
   Future<Either<Failure, Unit>> reconciliar() async => const Right(unit);
