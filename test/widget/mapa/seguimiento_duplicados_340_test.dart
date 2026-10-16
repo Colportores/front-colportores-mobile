@@ -17,6 +17,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/posibles_duplicados_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/uniones_pendientes_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/textos_posibles_duplicados.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -25,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_qa_arnes.dart' show cargarFuentesReales;
 import '../../helpers/duplicados_falsos.dart';
+import '../../helpers/qa_hojas_teclado_324_arnes.dart' show escucharAnuncios;
 
 const _nbsp = ' ';
 const _ocho = Duration(seconds: 8);
@@ -491,17 +493,20 @@ void main() {
 
     _prueba('dado el aviso de la Lista, un lector de pantalla lo anuncia como botón, lo avisa al '
         'aparecer y se toca con 48 dp', (tester) async {
+      final anuncios = escucharAnuncios(tester);
       final datos = _datosDosPares();
       await _montarLista(tester, datos);
       await _entrar(tester);
       await _unir(tester, _parItalia);
       datos.falloAlUnir = const FailureInesperado();
       await _salir(tester);
+      expect(anuncios, ['No pudimos unir Av. Italia 1234. Revisar'], reason: 'una sola vez');
 
       expect(find.bySemanticsLabel('No pudimos unir Av. Italia 1234. Revisar'), findsOneWidget);
       expect(
         tester.getSemantics(find.bySemanticsLabel('No pudimos unir Av. Italia 1234. Revisar')),
-        isSemantics(isButton: true, isLiveRegion: true),
+        isSemantics(isButton: true, isLiveRegion: false),
+        reason: 'se anuncia una vez desde la Lista; como región viva se oiría dos veces',
       );
       expect(tester.getSize(_franjaFalla).height, greaterThanOrEqualTo(48));
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -959,12 +964,8 @@ void main() {
         final lista = tester.getRect(find.byType(ListView).first);
         expect(lista.height, greaterThanOrEqualTo(568 / 3), reason: 'lista en $lista');
         expect(tester.getRect(_par(_parItalia)).top, lessThan(568));
-        // Los dos botones del aviso se alcanzan.
-        await tester.ensureVisible(find.byKey(const Key('duplicados_reintentar_union')));
-        await tester.pump();
+        // Los dos botones del aviso están a la vista sin desplazar nada.
         expect(find.byKey(const Key('duplicados_reintentar_union')).hitTestable(), findsOneWidget);
-        await tester.ensureVisible(find.byKey(const Key('duplicados_descartar_falla')));
-        await tester.pump();
         expect(find.byKey(const Key('duplicados_descartar_falla')).hitTestable(), findsOneWidget);
       });
     }
@@ -996,6 +997,280 @@ void main() {
 
       expect(conTres, conDos, reason: 'el texto del aviso no pasa del 200 %');
     });
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Revisión r2 de #357 · B1: lo que se decide pesa más que una unión que falló
+  // ----------------------------------------------------------------------------------------------
+  group('Revisión r2 de #357 · decidir un par con falla', () {
+    /// Italia y Artigas fallaron con la pantalla abierta.
+    Future<DuplicadosEnMemoria> dosFallas(WidgetTester tester) async {
+      final datos = _datosDosPares();
+      await _montarPantalla(tester, datos);
+      datos.falloAlUnir = const FailureInesperado();
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      await _unir(tester, _parArtigas);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      expect(_avisoRojo, findsOneWidget);
+      return datos;
+    }
+
+    final reintentar = find.byKey(const Key('duplicados_reintentar_union'));
+    final ignorar = find.byKey(const Key('comparar_ignorar'));
+
+    _prueba(
+      'dado la falla de un par, cuando lo ignoro, el aviso rojo se va, no ofrece "Reintentar" '
+      'y la unión no se hace',
+      (tester) async {
+        final datos = _datosDosPares();
+        await _montarPantalla(tester, datos);
+        datos.falloAlUnir = const FailureInesperado();
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        expect(_avisoRojo, findsOneWidget);
+        expect(reintentar, findsOneWidget);
+        datos.falloAlUnir = null;
+
+        await _tocar(tester, _revisar(_parItalia));
+        await _tocar(tester, ignorar);
+        await _transicion(tester);
+
+        expect(_avisoRojo, findsNothing, reason: 'ya no hay nada que reintentar');
+        expect(reintentar, findsNothing);
+        expect(_par(_parItalia), findsNothing, reason: 'el par se ignoró');
+        expect(
+          datos.uniones,
+          hasLength(1),
+          reason: 'solo el intento que falló: B no se da de baja',
+        );
+        expect(
+          ProviderScope.containerOf(tester.element(_pagina)).read(unionesPendientesProvider).fallas,
+          isEmpty,
+          reason: 'la falla se olvida, no solo se esconde',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    _prueba('dado dos fallas, cuando ignoro el par de una, el aviso queda con la otra y '
+        '"Reintentar" une solo esa', (tester) async {
+      final datos = await dosFallas(tester);
+      expect(
+        _texto('No se pudieron marcar 2 pares como duplicados'),
+        findsOneWidget,
+        reason: 'dos fallas antes de ignorar',
+      );
+      datos.falloAlUnir = null;
+
+      await _tocar(tester, _revisar(_parItalia));
+      await _tocar(tester, ignorar);
+      await _transicion(tester);
+
+      expect(_avisoRojo, findsOneWidget);
+      expect(_texto('No se pudo marcar como duplicado. Probá de nuevo.'), findsOneWidget);
+      expect(_texto('No se pudieron marcar 2 pares'), findsNothing);
+
+      await _tocar(tester, reintentar);
+      await _asentar(tester);
+
+      expect(
+        datos.uniones.map((u) => u.conservadaId),
+        ['ub-a', 'ub-c', 'ub-c'],
+        reason:
+            'los dos intentos que fallaron y el reintento de Artigas; Italia no se vuelve a unir',
+      );
+      expect(_avisoRojo, findsNothing);
+    });
+
+    _prueba('dado la falla de un par, cuando lo decido y vuelvo a entrar, no queda ningún aviso', (
+      tester,
+    ) async {
+      final datos = _datosDosPares();
+      await _montarPantalla(tester, datos);
+      datos.falloAlUnir = const FailureInesperado();
+      await _unir(tester, _parItalia);
+      await tester.pump(_ocho);
+      await _asentar(tester);
+      datos.falloAlUnir = null;
+      await _tocar(tester, _revisar(_parItalia));
+      await _tocar(tester, ignorar);
+      await _transicion(tester);
+
+      await tester.tap(find.byKey(const Key('duplicados_volver')));
+      await _transicion(tester);
+      await tester.tap(find.byKey(const Key('abrir')));
+      await _transicion(tester);
+
+      expect(_avisoRojo, findsNothing);
+      expect(_par(_parArtigas), findsOneWidget);
+    });
+
+    _prueba(
+      'dado dos fallas y que uno de los pares dejó de ser un par sin decidirlo acá, "Reintentar" '
+      'prueba solo el otro',
+      (tester) async {
+        final datos = await dosFallas(tester);
+        datos.falloAlUnir = null;
+
+        datos.darDeBaja('ub-b');
+        await _asentar(tester);
+
+        expect(_avisoRojo, findsOneWidget);
+        expect(_texto('No se pudo marcar como duplicado. Probá de nuevo.'), findsOneWidget);
+        await _tocar(tester, reintentar);
+        await _asentar(tester);
+
+        expect(
+          datos.uniones.map((u) => u.conservadaId),
+          ['ub-a', 'ub-c', 'ub-c'],
+          reason:
+              'los dos intentos que fallaron y el reintento de Artigas; Italia no se vuelve a unir',
+        );
+        expect(_avisoRojo, findsNothing);
+      },
+    );
+
+    _prueba(
+      'dado dos fallas donde una no se puede reintentar, "Reintentar" se ve y se va cuando solo '
+      'queda la que no',
+      (tester) async {
+        final datos = _datosDosPares();
+        await _montarPantalla(tester, datos);
+        datos.falloAlUnir = const FailureConservadaDeBaja();
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        expect(
+          reintentar,
+          findsNothing,
+          reason: 'sola, la que no se puede reintentar no lo ofrece',
+        );
+        datos.falloAlUnir = const FailureInesperado();
+        await _unir(tester, _parArtigas);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+
+        expect(_avisoRojo, findsOneWidget);
+        expect(reintentar, findsOneWidget, reason: 'una de las dos se puede reintentar');
+        expect(find.byKey(const Key('duplicados_descartar_falla')), findsOneWidget);
+
+        datos.falloAlUnir = null;
+        await _tocar(tester, _revisar(_parArtigas));
+        await _tocar(tester, ignorar);
+        await _transicion(tester);
+
+        expect(_avisoRojo, findsOneWidget, reason: 'la de Italia sigue avisando algo cierto');
+        expect(reintentar, findsNothing);
+      },
+    );
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Re-QA de #357 · P1: «Reintentar» y «Entendido» siempre a la vista
+  // ----------------------------------------------------------------------------------------------
+  group('Re-QA de #357 · P1 los botones del aviso rojo no se desplazan', () {
+    final reintentar = find.byKey(const Key('duplicados_reintentar_union'));
+    final entendido = find.byKey(const Key('duplicados_descartar_falla'));
+
+    for (final escala in [2.0, 3.0]) {
+      _prueba(
+        'dado dos fallas a 320×568 con el texto al ${(escala * 100).toInt()} %, "Reintentar" y '
+        '"Entendido" están enteros dentro de la pantalla sin desplazar nada',
+        (tester) async {
+          final datos = _datosDosPares();
+          await _montarPantalla(tester, datos, escala: escala, tamano: const Size(320, 568));
+          datos.falloAlUnir = const FailureInesperado();
+          await _unir(tester, _parItalia);
+          await tester.pump(_ocho);
+          await _asentar(tester);
+          await _unir(tester, _parArtigas);
+          await tester.pump(_ocho);
+          await _asentar(tester);
+
+          expect(tester.takeException(), isNull);
+          expect(_texto('No se pudieron marcar 2 pares'), findsOneWidget);
+          const pantalla = Rect.fromLTWH(0, 0, 320, 568);
+          for (final boton in [reintentar, entendido]) {
+            expect(boton.hitTestable(), findsOneWidget);
+            final r = tester.getRect(boton);
+            expect(
+              pantalla.contains(r.topLeft) && pantalla.contains(r.bottomRight),
+              isTrue,
+              reason: 'el botón $r entero dentro de la pantalla',
+            );
+            expect(r.height, greaterThanOrEqualTo(48));
+          }
+          // No son parte de lo que se desplaza: el desplazamiento del aviso es solo el del texto.
+          final desplazamientoDelAviso = find.descendant(
+            of: _avisoRojo,
+            matching: find.byType(SingleChildScrollView),
+          );
+          expect(desplazamientoDelAviso, findsOneWidget);
+          expect(find.descendant(of: desplazamientoDelAviso, matching: reintentar), findsNothing);
+          expect(find.descendant(of: desplazamientoDelAviso, matching: entendido), findsNothing);
+          expect(
+            tester.getSize(_avisoRojo).height,
+            lessThanOrEqualTo(568 * 0.5),
+            reason: 'el aviso no pasa de la mitad de la pantalla',
+          );
+        },
+      );
+    }
+
+    _prueba(
+      'dado el texto del aviso que no entra, se desplaza el texto y los botones no se mueven',
+      (tester) async {
+        final datos = _datosDosPares();
+        await _montarPantalla(tester, datos, escala: 2, tamano: const Size(320, 568));
+        datos.falloAlUnir = const FailureInesperado();
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        await _unir(tester, _parArtigas);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+        final botonesAntes = tester.getRect(reintentar);
+        final texto = _texto('No se pudieron marcar 2 pares');
+        final textoAntes = tester.getTopLeft(texto);
+
+        await tester.drag(
+          find.descendant(of: _avisoRojo, matching: find.byType(SingleChildScrollView)),
+          const Offset(0, -80),
+        );
+        await _asentar(tester);
+
+        expect(tester.getRect(reintentar), botonesAntes);
+        expect(tester.getTopLeft(texto).dy, lessThan(textoAntes.dy), reason: 'el texto subió');
+        expect(reintentar.hitTestable(), findsOneWidget);
+      },
+    );
+
+    _prueba(
+      'dado una sola falla a 390×844 sin texto grande, el aviso no recorta nada y no tiene que '
+      'desplazarse',
+      (tester) async {
+        final datos = _datosDosPares();
+        await _montarPantalla(tester, datos);
+        datos.falloAlUnir = const FailureInesperado();
+        await _unir(tester, _parItalia);
+        await tester.pump(_ocho);
+        await _asentar(tester);
+
+        final scroll = find.descendant(
+          of: _avisoRojo,
+          matching: find.byType(SingleChildScrollView),
+        );
+        final visible = tester.getSize(scroll).height;
+        final contenido = tester.getSize(
+          find.descendant(of: scroll, matching: find.byType(Row)).first,
+        );
+        expect(contenido.height, lessThanOrEqualTo(visible + 0.5), reason: 'el texto entra entero');
+      },
+    );
   });
 
   // ----------------------------------------------------------------------------------------------
