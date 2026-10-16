@@ -1,6 +1,7 @@
 import 'package:path/path.dart' as p;
 
 import '../../domain/entities/paquete_tiles.dart';
+import 'paquete_tiles_model.dart';
 
 /// [PaqueteDescargado] como lo guarda el manifiesto `registro.json`: el paquete del catálogo con el
 /// que se descargó y los nombres de sus archivos, sin la carpeta (la ruta absoluta de la app puede
@@ -9,23 +10,8 @@ import '../../domain/entities/paquete_tiles.dart';
 /// Un registro que no se puede leer lanza [FormatException]: quien lee descarta esa entrada.
 abstract final class PaqueteDescargadoModel {
   static Map<String, dynamic> aJson(PaqueteDescargado descargado) {
-    final paquete = descargado.paquete;
     return {
-      'paquete': {
-        'id': paquete.id,
-        'nivel': paquete.nivel.name,
-        'ambito_id': paquete.ambitoId,
-        'nombre': paquete.nombre,
-        'version': paquete.version,
-        'partes': [
-          for (final parte in paquete.partes)
-            {
-              'origen': parte.origen.toString(),
-              'tamano_bytes': parte.tamanoBytes,
-              'sha256': parte.sha256,
-            },
-        ],
-      },
+      'paquete': PaqueteTilesModel.aJson(descargado.paquete),
       'archivos': [for (final ruta in descargado.rutas) p.basename(ruta)],
     };
   }
@@ -42,37 +28,10 @@ abstract final class PaqueteDescargadoModel {
     if (partes is! List<dynamic> || partes.isEmpty || partes.length != archivos.length) {
       throw const FormatException('registro con partes que no coinciden con los archivos');
     }
-    final nivel = NivelCobertura.values.asNameMap()[paquete['nivel']];
-    final id = paquete['id'];
-    final version = paquete['version'];
-    final ambito = paquete['ambito_id'];
-    final nombre = paquete['nombre'];
-    if (nivel == null || id is! String || version is! String) {
-      throw const FormatException('registro con campos inválidos');
-    }
     return PaqueteDescargado(
-      paquete: PaqueteTiles(
-        id: id,
-        nivel: nivel,
-        ambitoId: ambito is String ? ambito : null,
-        nombre: nombre is String ? nombre : null,
-        version: version,
-        partes: [for (final parte in partes) _parte(parte)],
-      ),
+      paquete: PaqueteTilesModel.desdeJson(paquete),
       rutas: [for (final archivo in archivos) p.join(directorio, _nombre(archivo))],
     );
-  }
-
-  static ParteTiles _parte(Object? json) {
-    if (json is! Map<String, dynamic>) throw const FormatException('parte inválida');
-    final origen = json['origen'];
-    final tamano = json['tamano_bytes'];
-    final sha = json['sha256'];
-    final uri = origen is String ? Uri.tryParse(origen) : null;
-    if (uri == null || tamano is! int || sha is! String) {
-      throw const FormatException('parte con campos inválidos');
-    }
-    return ParteTiles(origen: uri, tamanoBytes: tamano, sha256: sha);
   }
 
   /// El nombre de un archivo del directorio: nunca una ruta, así un manifiesto alterado no saca a

@@ -1,3 +1,4 @@
+import '../../../domain/entities/descarga_pendiente.dart';
 import '../../../domain/entities/paquete_tiles.dart';
 import '../../../domain/services/puertos_descarga.dart';
 import '../paquetes_tiles_data_sources.dart';
@@ -37,6 +38,35 @@ final class RegistroPaquetesDescargadosEnMemoria
   Future<void> guardar(PaqueteDescargado descargado) async {
     _quizasFallar();
     _porId[descargado.id] = descargado;
+  }
+
+  @override
+  Future<void> quitar(String paqueteId) async {
+    _quizasFallar();
+    _porId.remove(paqueteId);
+  }
+
+  void _quizasFallar() {
+    if (fallarCon case final error?) throw error;
+  }
+}
+
+/// Descargas pendientes en memoria, en orden de anotación. [fallarCon] hace que todas las
+/// operaciones lancen.
+final class DescargasPendientesEnMemoria implements DescargasPendientesLocalDataSource {
+  final _porId = <String, DescargaPendiente>{};
+  Object? fallarCon;
+
+  @override
+  Future<List<DescargaPendiente>> leer() async {
+    _quizasFallar();
+    return List.unmodifiable(_porId.values);
+  }
+
+  @override
+  Future<void> guardar(DescargaPendiente pendiente) async {
+    _quizasFallar();
+    _porId[pendiente.id] = pendiente;
   }
 
   @override

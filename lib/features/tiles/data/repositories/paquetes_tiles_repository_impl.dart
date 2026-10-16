@@ -5,12 +5,14 @@ import 'package:path/path.dart' as p;
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/descarga_pendiente.dart';
 import '../../domain/entities/paquete_tiles.dart';
 import '../../domain/repositories/paquetes_tiles_repository.dart';
 import '../../domain/services/puertos_descarga.dart';
 import '../datasources/paquetes_tiles_data_sources.dart';
 
-/// [PaquetesTilesRepository] sobre el catálogo remoto y el registro local de descargados.
+/// [PaquetesTilesRepository] sobre el catálogo remoto, el registro local de descargados y el de
+/// descargas pendientes.
 ///
 /// Un paquete registrado al que le falta un archivo (lo borró el sistema, por ejemplo) no se
 /// informa: el mapa no lo podría abrir. Los logs `[MAP]` llevan solo ids de paquete.
@@ -18,6 +20,7 @@ final class PaquetesTilesRepositoryImpl implements PaquetesTilesRepository {
   PaquetesTilesRepositoryImpl({
     required this._catalogo,
     required this._registro,
+    required this._pendientes,
     required this._archivos,
     required this._checksum,
     DateTime Function()? ahora,
@@ -35,6 +38,7 @@ final class PaquetesTilesRepositoryImpl implements PaquetesTilesRepository {
 
   final CatalogoPaquetesTilesRemoteDataSource _catalogo;
   final RegistroPaquetesDescargadosLocalDataSource _registro;
+  final DescargasPendientesLocalDataSource _pendientes;
   final ArchivosTiles _archivos;
   final CalculadorChecksum _checksum;
   final DateTime Function() _ahora;
@@ -140,14 +144,59 @@ final class PaquetesTilesRepositoryImpl implements PaquetesTilesRepository {
   }
 
   @override
+  Future<Either<Failure, List<DescargaPendiente>>> descargasPendientes() async {
+    try {
+      final ahora = _ahora();
+      final todas = await _pendientes.leer();
+      return Right(todas.where((pendiente) => !pendiente.vencida(ahora)).toList());
+    } on Object catch (e, st) {
+      _logger.error(LogModulo.map, 'pendientes', 'no se pudo leer las pendientes', const {}, e, st);
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Unit>> anotarDescargaPendiente(DescargaPendiente pendiente) {
+    return _escribirPendiente('anotar', pendiente.id, () => _pendientes.guardar(pendiente));
+  }
+
+  @override
+  Future<Either<Failure, Unit>> olvidarDescargaPendiente(String paqueteId) {
+    return _escribirPendiente('olvidar', paqueteId, () => _pendientes.quitar(paqueteId));
+  }
+
+  Future<Either<Failure, Unit>> _escribirPendiente(
+    String op,
+    String paqueteId,
+    Future<void> Function() escritura,
+  ) async {
+    try {
+      await escritura();
+    } on Object catch (e, st) {
+      _logger.error(
+        LogModulo.map,
+        op,
+        'no se pudo escribir las pendientes',
+        {'paquete': paqueteId},
+        e,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+    return const Right(unit);
+  }
+
+  @override
   Future<Either<Failure, Unit>> reconciliar() async {
     try {
       final registrados = await _registro.leer();
       final enUso = <String>{};
+      final intactos = <PaqueteDescargado>[];
       var cambio = false;
       for (final registrado in registrados) {
         if (await _intacto(registrado)) {
           enUso.addAll(registrado.rutas.map(p.basename));
+          intactos.add(registrado);
         } else {
           _logger.warn(LogModulo.map, 'reconciliar', 'paquete no válido: se trata como no bajado', {
             'paquete': registrado.id,
@@ -156,6 +205,7 @@ final class PaquetesTilesRepositoryImpl implements PaquetesTilesRepository {
           cambio = true;
         }
       }
+      enUso.addAll(await _limpiarPendientes(intactos));
       final ahora = _ahora();
       for (final archivo in await _archivos.listar()) {
         if (enUso.contains(archivo.nombre)) continue;
@@ -169,6 +219,40 @@ final class PaquetesTilesRepositoryImpl implements PaquetesTilesRepository {
       _logger.error(LogModulo.map, 'reconciliar', 'no se pudo reconciliar', const {}, e, st);
       return Left(FailureInesperado(causa: e));
     }
+  }
+
+  /// Olvida las descargas pendientes que ya no valen: las de más de [DescargaPendiente.vigencia]
+  /// días y las de un paquete que ya está descargado con esa misma versión (la app se cerró entre
+  /// registrarlo y olvidar la descarga: retomarla bajaría todo de nuevo). Devuelve los nombres de
+  /// los `.part` de las que siguen vigentes, para que la limpieza no se los lleve. Si no se puede
+  /// leer o escribir, no hay nada que proteger: queda el log y la limpieza sigue.
+  Future<Set<String>> _limpiarPendientes(List<PaqueteDescargado> descargados) async {
+    final parciales = <String>{};
+    try {
+      final ahora = _ahora();
+      for (final pendiente in await _pendientes.leer()) {
+        final yaDescargada = descargados.any(
+          (d) => d.id == pendiente.id && d.paquete.version == pendiente.paquete.version,
+        );
+        if (pendiente.vencida(ahora) || yaDescargada) {
+          await _pendientes.quitar(pendiente.id);
+          continue;
+        }
+        for (var i = 0; i < pendiente.paquete.partes.length; i++) {
+          parciales.add('${pendiente.paquete.claveDeParte(i)}${ArchivoTiles.extensionParcial}');
+        }
+      }
+    } on Object catch (e, st) {
+      _logger.error(
+        LogModulo.map,
+        'reconciliar',
+        'no se pudo limpiar las pendientes',
+        const {},
+        e,
+        st,
+      );
+    }
+    return parciales;
   }
 
   Future<Either<Failure, Unit>> _escribir(

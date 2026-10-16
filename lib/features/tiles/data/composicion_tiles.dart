@@ -9,6 +9,7 @@ import '../domain/repositories/paquetes_tiles_repository.dart';
 import '../domain/services/descargador_paquetes_tiles.dart';
 import '../domain/services/puertos_descarga.dart';
 import 'datasources/catalogo_paquetes_tiles_http.dart';
+import 'datasources/descargas_pendientes_json.dart';
 import 'datasources/fakes/paquetes_tiles_en_memoria.dart';
 import 'datasources/paquetes_tiles_data_sources.dart';
 import 'datasources/registro_paquetes_descargados_json.dart';
@@ -42,12 +43,14 @@ final class ComposicionTiles {
   /// La carpeta de los `.pmtiles`, los `.part` y el manifiesto.
   final Directory directorio;
 
-  /// Termina cuando la limpieza de arranque (`PaquetesTilesRepository.reconciliar`) terminó. La
-  /// app no la espera: corre en segundo plano.
+  /// Termina cuando la limpieza de arranque (`PaquetesTilesRepository.reconciliar`) terminó y las
+  /// descargas que quedaron pendientes de la sesión anterior arrancaron o quedaron en cola
+  /// (`DescargadorPaquetesTiles.retomarPendientes`). La app no la espera: corre en segundo plano.
   final Future<void> reconciliacion;
 
-  /// Crea la carpeta de los paquetes, la saca de la copia de seguridad, arma todo y lanza la
-  /// reconciliación de lo que quedó en disco de la sesión anterior.
+  /// Crea la carpeta de los paquetes, la saca de la copia de seguridad, arma todo, lanza la
+  /// reconciliación de lo que quedó en disco de la sesión anterior y, hecha, retoma las descargas
+  /// que quedaron a medias o en cola (HU-SYNC-010, «La descarga sigue después de cerrar la app»).
   ///
   /// [supabaseUrl] es la del proyecto; el catálogo sale de su bucket público `mapas`. Sin ella (la
   /// app sin Supabase: tests, demo) el catálogo está vacío y no hay nada para descargar.
@@ -75,6 +78,7 @@ final class ComposicionTiles {
     final repository = PaquetesTilesRepositoryImpl(
       catalogo: catalogo,
       registro: RegistroPaquetesDescargadosJson(directorio),
+      pendientes: DescargasPendientesJson(directorio),
       archivos: archivos,
       checksum: checksum,
     );
@@ -91,7 +95,9 @@ final class ComposicionTiles {
       descargador: descargador,
       sonda: SondaArchivoTilesHttp(cliente: web),
       directorio: directorio,
-      reconciliacion: repository.reconciliar().then((_) {}),
+      // Primero la limpieza (olvida las descargas de más de 7 días y no toca el `.part` de las
+      // vigentes); después se retoma lo que sigue vigente.
+      reconciliacion: repository.reconciliar().then((_) => descargador.retomarPendientes()),
     );
   }
 }
