@@ -459,8 +459,9 @@ class _ZonaMapa extends StatelessWidget {
   final ParametrosModificar parametros;
   final ModificarUbicacionState estado;
 
-  /// Con el teclado abierto el mapa queda muy chico: el botón «Mover el punto» se oculta para no
-  /// tapar el pin. El colportor está escribiendo, no moviendo el punto.
+  /// Con el teclado abierto el mapa queda muy chico: el botón «Mover el punto» y el título «EDITAR
+  /// UBICACIÓN» se ocultan para no tapar el pin ni quedar a medio tapar bajo la hoja. El colportor
+  /// está escribiendo, no moviendo el punto.
   final bool tecladoAbierto;
   final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMoverCentro;
@@ -498,7 +499,12 @@ class _ZonaMapa extends StatelessWidget {
             ),
             LayoutId(
               id: _Parte.rotulos,
-              child: _Rotulos(arriba: arriba, mover: mover, metros: metros),
+              child: _Rotulos(
+                arriba: arriba,
+                mover: mover,
+                metros: metros,
+                tecladoAbierto: tecladoAbierto,
+              ),
             ),
           ],
         ),
@@ -539,15 +545,29 @@ enum _Parte { mapa, rotulos }
 /// Los rótulos de arriba («EDITAR UBICACIÓN» o «MOVER EL PUNTO» y, ya moviendo, «Moviste el punto N
 /// m»): uno bajo el otro, a la altura del canvas. Escalan con el texto; si no entran en una línea
 /// pasan a dos.
+///
+/// Con el teclado abierto «EDITAR UBICACIÓN» no se dibuja, igual que «Mover el punto» (#345): la
+/// hoja de abajo crece hasta el 80 % del cuerpo y, con el texto a 2× o 3× en un 360×640, le deja a
+/// la zona del mapa tan poco que el rótulo, partido en dos renglones, quedaba a medio tapar. El
+/// colportor está escribiendo, no mirando el título; al bajar el teclado vuelve.
 class _Rotulos extends StatelessWidget {
-  const _Rotulos({required this.arriba, required this.mover, required this.metros});
+  const _Rotulos({
+    required this.arriba,
+    required this.mover,
+    required this.metros,
+    required this.tecladoAbierto,
+  });
 
   final double arriba;
   final bool mover;
   final double metros;
+  final bool tecladoAbierto;
 
   @override
   Widget build(BuildContext context) {
+    // En «Mover el punto» no hay campos de texto (no hay teclado) y los rótulos son la guía del
+    // ajuste: siempre se dibujan.
+    if (tecladoAbierto && !mover) return const SizedBox.shrink();
     final movido = metros >= MapaModificar.metrosParaFantasma;
     // Con el teclado abierto y el texto grande, la hoja de abajo puede llevarse el 80 % del cuerpo y
     // a la zona del mapa no le queda lugar para todos los rótulos (320×568 al 200 %: 54 dp): se

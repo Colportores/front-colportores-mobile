@@ -24,9 +24,6 @@ import '../helpers/alta_ubicacion_qa_317_arnes.dart' as a;
 import '../helpers/modificar_ubicacion_qa_307_arnes.dart' as m;
 import '../helpers/qa_hojas_teclado_324_arnes.dart';
 
-/// Con `--dart-define=QA_VER_HALLAZGOS=true` los tests que documentan un hallazgo corren (y fallan).
-const _verHallazgos = bool.fromEnvironment('QA_VER_HALLAZGOS');
-
 /// La barra de estado de los tests (en dp).
 const _barra = 24.0;
 
@@ -301,31 +298,32 @@ void main() {
     }
   });
 
-  group('QA #324 · 07 · el rótulo «EDITAR UBICACIÓN» sigue entero sobre la hoja con el teclado', () {
-    for (final t in telefonos) {
-      for (final escala in [1.0, 2.0, 3.0]) {
-        final hallazgo = t.tamano.width == 360 && escala >= 2
-            ? 'la hoja al 80 % corta el rótulo flotante «EDITAR UBICACIÓN» (captura 07_editar_360×640_2×)'
-            : null;
-        testWidgets(
-          '07·01 Editar datos · ${t.nombre} · ${veces(escala)}${hallazgo == null ? '' : ' · QA #324: $hallazgo'}',
-          (tester) async {
+  // Hallazgo 3 del QA de #342, resuelto en #345: con el teclado abierto el rótulo flotante no se dibuja
+  // (como «Mover el punto»); sin teclado está entero sobre la hoja. El detalle de los casos límite va en
+  // `test/widget/mapa/modificar_ubicacion_rotulo_teclado_345_test.dart`.
+  group(
+    'QA #324 · 07 · el rótulo «EDITAR UBICACIÓN» no queda a medio tapar por la hoja con el teclado',
+    () {
+      for (final t in telefonos) {
+        for (final escala in [1.0, 2.0, 3.0]) {
+          testWidgets('07·01 Editar datos · ${t.nombre} · ${veces(escala)}', (tester) async {
             await abrirEdicionQa(tester, tamano: t.tamano, escala: escala);
+            final antes = tester.getRect(find.text('EDITAR UBICACIÓN'));
+            expect(antes.bottom, lessThanOrEqualTo(tester.getRect(_edicion.hoja).top + .5));
+
             await m.abrirTeclado(tester, alto: t.teclado);
             await _tocarCampo(tester, m.campoNumero, m.asentar);
-            final rotulo = tester.getRect(find.text('EDITAR UBICACIÓN'));
-            final hoja = tester.getRect(_edicion.hoja);
-            expect(
-              rotulo.bottom,
-              lessThanOrEqualTo(hoja.top + .5),
-              reason: 'rótulo $rotulo, hoja $hoja',
-            );
-          },
-          skip: hallazgo != null && !_verHallazgos, // skip: QA #324 — ver el título del test
-        );
+            expect(find.text('EDITAR UBICACIÓN'), findsNothing, reason: 'con el teclado se oculta');
+            expect(tester.takeException(), isNull);
+
+            await m.cerrarTeclado(tester);
+            final despues = tester.getRect(find.text('EDITAR UBICACIÓN'));
+            expect(despues.bottom, lessThanOrEqualTo(tester.getRect(_edicion.hoja).top + .5));
+          });
+        }
       }
-    }
-  });
+    },
+  );
 
   group('QA #324 · 07 · los otros artboards no se rompen con la hoja que crece', () {
     for (final escala in [1.0, 2.0, 3.0]) {
