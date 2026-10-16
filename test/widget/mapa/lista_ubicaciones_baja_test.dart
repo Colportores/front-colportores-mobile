@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_r
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_reactivar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/lista_ubicaciones_falsos.dart';
@@ -43,9 +44,20 @@ Future<RepoListaFalso> _montarConBajas(
   RepoListaFalso? repo,
   double escala = 1,
   Size tamano = const Size(390, 844),
+  ValueNotifier<bool>? activaCambiante,
+  ValueNotifier<bool>? montadaCambiante,
+  ValueChanged<String>? alAbrir,
 }) async {
   final r = repo ?? RepoListaFalso(filas ?? [_activa(), _baja()]);
-  await montarLista(tester, repo: r, escala: escala, tamano: tamano);
+  await montarLista(
+    tester,
+    repo: r,
+    escala: escala,
+    tamano: tamano,
+    activaCambiante: activaCambiante,
+    montadaCambiante: montadaCambiante,
+    alAbrir: alAbrir,
+  );
   await abrirHojaFiltros(tester);
   await tester.ensureVisible(find.byKey(const Key('hoja_filtros_bajas')));
   await tester.tap(find.byKey(const Key('hoja_filtros_bajas')));
@@ -76,6 +88,21 @@ Finder get _botonReactivando => find.widgetWithText(FilledButton, TextosReactiva
 Finder get _cancelar => find.widgetWithText(TextButton, TextosReactivar.cancelar);
 Finder get _aviso => find.text('Av. Italia 1240 reactivada. Vuelve a aparecer en el mapa.');
 Finder get _deshacer => find.text('Deshacer');
+Finder get _noSePuede => find.text(TextosReactivar.noSePuede);
+Finder get _abrirExistente => find.widgetWithText(FilledButton, TextosReactivar.abrirExistente);
+Finder get _entendido => find.widgetWithText(FilledButton, TextosReactivar.entendido);
+Finder get _avisoDeshecha => find.text('Volvió a quedar de baja.');
+
+/// La baja de Av. Italia 1240 choca con la casa activa de Rivadavia 100 (D1).
+const _chocaConRivadavia = FailureReactivacionChocaConActiva(
+  existenteId: 'casa-1',
+  direccion: 'Rivadavia 100',
+);
+const _textoUnion = 'Esta ubicación se unió a otra y no se puede reactivar. Seguí usando la otra.';
+const _textoChoque =
+    'No puede haber dos ubicaciones con la misma dirección a menos de 100 m, y Rivadavia 100 ya '
+    'está activa. Si es la misma, seguí usando esa; si es otra puerta, abrila y agregala como '
+    'espacio.';
 
 bool _habilitado(WidgetTester tester, Finder boton) =>
     tester.widget<ButtonStyleButton>(boton).onPressed != null;
@@ -111,14 +138,17 @@ void main() {
       expect(find.text('Casa · baja el 12/09'), findsOneWidget);
     });
 
-    testWidgets('dado una baja de una unión de duplicados, entonces el código interno no se ve', (
-      tester,
-    ) async {
-      await _montarConBajas(tester, filas: [_baja(motivo: 'duplicado_de_ub-9')]);
+    testWidgets(
+      'dado una baja de una unión de duplicados, entonces dice «Unida a otra ubicación» en '
+      'el lugar del motivo y el código interno no se ve',
+      (tester) async {
+        await _montarConBajas(tester, filas: [_baja(motivo: 'duplicado_de_ub-9')]);
 
-      expect(find.text('Casa · baja el 12/09'), findsOneWidget);
-      expect(find.textContaining('duplicado_de'), findsNothing);
-    });
+        expect(find.text('Casa · baja el 12/09 · Unida a otra ubicación'), findsOneWidget);
+        expect(find.textContaining('duplicado_de'), findsNothing);
+        expect(find.textContaining('ub-9'), findsNothing);
+      },
+    );
 
     testWidgets(
       'dado un lector de pantalla, entonces la baja se anuncia como tocable para reactivar',
@@ -543,18 +573,490 @@ void main() {
       },
     );
 
-    testWidgets('dado que la pestaña se va antes de tocar «Deshacer», entonces el aviso se cierra '
-        'solo y nada revienta', (tester) async {
-      await _montarConBajas(tester);
+    testWidgets(
+      'dado que la pestaña se va (activa en false) antes de tocar «Deshacer», entonces el '
+      'aviso sigue (es de la ventana, no de la pestaña) y «Deshacer» da de baja una sola vez sin '
+      'reventar',
+      (tester) async {
+        final activa = ValueNotifier(true);
+        addTearDown(activa.dispose);
+        final repo = await _montarConBajas(tester, activaCambiante: activa);
+        await _abrirReactivar(tester);
+        await _tocar(tester, _botonReactivar);
+        expect(_aviso, findsOneWidget);
+
+        activa.value = false;
+        await asentarLista(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(_aviso, findsOneWidget, reason: 'irse de la pestaña no cierra el aviso');
+        expect(_deshacer, findsOneWidget);
+
+        await _tocar(tester, _deshacer);
+
+        expect(tester.takeException(), isNull);
+        expect(repo.cambiosDeBaja.where((c) => c.baja), hasLength(1));
+        expect(repo.cambiosDeBaja.last.id, 'baja-1');
+        expect(repo.cambiosDeBaja.last.motivo, 'Ya no existe', reason: 'el mismo motivo');
+        expect(_avisoDeshecha, findsOneWidget);
+
+        // Al volver a la pestaña, la ubicación está de baja otra vez.
+        activa.value = true;
+        await asentarLista(tester);
+        expect(find.text('BAJA'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('dado que la pestaña se destruye (la Lista desmontada) antes de tocar «Deshacer», '
+        'entonces «Deshacer» igual da de baja y lo dice, sin tocar un widget muerto', (
+      tester,
+    ) async {
+      final montada = ValueNotifier(true);
+      addTearDown(montada.dispose);
+      final repo = await _montarConBajas(tester, montadaCambiante: montada);
       await _abrirReactivar(tester);
       await _tocar(tester, _botonReactivar);
+      expect(_aviso, findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 10));
+      montada.value = false;
+      await asentarLista(tester);
+
+      expect(find.byType(FilaUbicacionLista), findsNothing, reason: 'la Lista ya no existe');
+      expect(tester.takeException(), isNull);
+      expect(_aviso, findsOneWidget, reason: 'el aviso es del Scaffold, que sigue');
+
+      await _tocar(tester, _deshacer);
+
+      expect(tester.takeException(), isNull);
+      expect(repo.cambiosDeBaja.where((c) => c.baja), hasLength(1));
+      expect(_avisoDeshecha, findsOneWidget);
+    });
+
+    testWidgets('dado que la Lista se desmonta y «Deshacer» falla, entonces dice que no pudo, sin '
+        'reventar', (tester) async {
+      final montada = ValueNotifier(true);
+      addTearDown(montada.dispose);
+      final repo = await _montarConBajas(tester, montadaCambiante: montada);
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+      montada.value = false;
+      await asentarLista(tester);
+      repo.lanzaAlCambiarBaja = StateError('base cerrada');
+
+      await _tocar(tester, _deshacer);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text('No pudimos deshacer. Podés darla de baja de nuevo desde Editar.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('dado que la pestaña se va y nadie toca «Deshacer», entonces el aviso se cierra '
+        'solo a los 8 s, la ubicación sigue activa y al volver está en la lista', (tester) async {
+      final activa = ValueNotifier(true);
+      addTearDown(activa.dispose);
+      final repo = await _montarConBajas(tester, activaCambiante: activa);
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+      activa.value = false;
+      await asentarLista(tester);
+
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(seconds: 3));
       await asentarLista(tester);
 
       expect(tester.takeException(), isNull);
+      expect(_aviso, findsNothing);
       expect(_deshacer, findsNothing);
+      expect(repo.cambiosDeBaja, hasLength(1), reason: 'solo la reactivación');
+
+      activa.value = true;
+      await asentarLista(tester);
+      expect(find.text('BAJA'), findsNothing);
+      expect(_filaBaja, findsOneWidget);
     });
+  });
+
+  group('Baja por unión de duplicados (no se reactiva)', () {
+    Finder filaUnion() => find.byWidgetPredicate(
+      (w) => w is FilaUbicacionLista && w.item.esBaja && w.item.esBajaPorUnion,
+    );
+
+    testWidgets('dado una baja por unión, entonces la fila no es un botón: tocarla no abre la hoja '
+        'y no dice «Tocá para reactivar»', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = await _montarConBajas(tester, filas: [_baja(motivo: 'duplicado_de_ub-9')]);
+
+      final datos = tester.getSemantics(filaUnion()).getSemanticsData();
+      expect(datos.hint, isEmpty);
+      expect(datos.hasAction(SemanticsAction.tap), isFalse);
+      expect(datos.label, contains('Baja'));
+      expect(datos.label, contains('Unida a otra ubicación'));
+      expect(datos.label, isNot(contains('duplicado_de')));
+
+      await tester.tap(_filaBaja, warnIfMissed: false);
+      await asentarLista(tester);
+
+      expect(_botonReactivar, findsNothing);
+      expect(_noSePuede, findsNothing);
+      expect(repo.cambiosDeBaja, isEmpty);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('dado una baja por unión y otra común, entonces solo la común se reactiva', (
+      tester,
+    ) async {
+      final repo = await _montarConBajas(
+        tester,
+        filas: [
+          _baja(id: 'unida', calle: 'Gral. Flores', numero: '1500', motivo: 'duplicado_de_ub-9'),
+          _baja(),
+        ],
+      );
+
+      await tester.tap(find.text('Gral. Flores 1500'), warnIfMissed: false);
+      await asentarLista(tester);
+      expect(_botonReactivar, findsNothing, reason: 'la unida no abre nada');
+
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      expect(repo.cambiosDeBaja.single.id, 'baja-1');
+      expect(find.text('Casa · baja el 12/09 · Unida a otra ubicación'), findsOneWidget);
+    });
+
+    testWidgets('dado un texto libre parecido («duplicado de la casa de al lado»), entonces es una '
+        'baja común: se muestra tal cual y se reactiva', (tester) async {
+      final repo = await _montarConBajas(
+        tester,
+        filas: [_baja(motivo: 'duplicado de la casa de al lado')],
+      );
+
+      expect(find.text('Casa · baja el 12/09 · duplicado de la casa de al lado'), findsOneWidget);
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      expect(repo.cambiosDeBaja.single.id, 'baja-1');
+      expect(_aviso, findsOneWidget);
+    });
+
+    testWidgets('dado una lista larga con una unión en el medio, entonces las demás bajas se '
+        'reactivan y la unida sigue sin tocarse', (tester) async {
+      final filas = [
+        for (var i = 0; i < 30; i++)
+          _baja(
+            id: 'baja-$i',
+            calle: 'Calle $i',
+            numero: '${100 + i}',
+            motivo: i == 15 ? 'duplicado_de_ub-9' : 'Ya no existe',
+          ),
+      ];
+      final repo = await _montarConBajas(tester, filas: filas);
+      final lista = find.descendant(
+        of: find.byKey(const Key('lista_filas')),
+        matching: find.byType(Scrollable),
+      );
+
+      await tester.scrollUntilVisible(find.text('Calle 15 115'), 200, scrollable: lista);
+      await tester.tap(find.text('Calle 15 115'), warnIfMissed: false);
+      await asentarLista(tester);
+      expect(_botonReactivar, findsNothing);
+
+      await tester.scrollUntilVisible(find.text('Calle 16 116'), 200, scrollable: lista);
+      await _tocar(tester, find.text('Calle 16 116'));
+      await _tocar(tester, _botonReactivar);
+
+      expect(repo.cambiosDeBaja.single.id, 'baja-16');
+    });
+
+    testWidgets('dado texto a 200 % en 360×640, entonces la fila de la unión no desborda y cumple '
+        'las guías de accesibilidad', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _montarConBajas(
+        tester,
+        filas: [_baja(motivo: 'duplicado_de_ub-9')],
+        escala: 2.0,
+        tamano: const Size(360, 640),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('Unida a otra ubicación'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+  });
+
+  group('09·03 · Reactivar choca con otra casa activa (D1)', () {
+    testWidgets(
+      'dado que choca, entonces la hoja pasa a «No se puede reactivar» con el texto de la '
+      'HU y la dirección de la otra, y solo ofrece «Entendido» (la Lista no tiene a dónde '
+      'abrirla)',
+      (tester) async {
+        final repo = await _montarConBajas(tester);
+        repo.fallaAlCambiarBaja = _chocaConRivadavia;
+        await _abrirReactivar(tester);
+
+        await _tocar(tester, _botonReactivar);
+
+        expect(_noSePuede, findsOneWidget);
+        expect(find.text(_textoChoque), findsOneWidget);
+        expect(_entendido, findsOneWidget);
+        expect(_abrirExistente, findsNothing);
+        expect(_botonReactivar, findsNothing);
+        expect(_botonReactivando, findsNothing);
+        expect(_cancelar, findsNothing);
+        expect(_aviso, findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('dado que choca y la Lista sabe abrir una ubicación, entonces ofrece «Abrir la '
+        'existente» y «Cancelar», y «Abrir la existente» abre la otra casa', (tester) async {
+      final abiertas = <String>[];
+      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      expect(_abrirExistente, findsOneWidget);
+      expect(_cancelar, findsOneWidget);
+      expect(_entendido, findsNothing);
+
+      await _tocar(tester, _abrirExistente);
+
+      expect(abiertas, ['casa-1']);
+      expect(_noSePuede, findsNothing, reason: 'la hoja se cerró');
+      expect(_aviso, findsNothing);
+      expect(find.text('BAJA'), findsOneWidget, reason: 'la baja sigue de baja');
+    });
+
+    testWidgets('dado dos toques seguidos en «Abrir la existente», entonces se abre una sola vez', (
+      tester,
+    ) async {
+      final abiertas = <String>[];
+      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      await tester.tap(_abrirExistente);
+      await tester.tap(_abrirExistente, warnIfMissed: false);
+      await asentarLista(tester);
+
+      expect(abiertas, ['casa-1']);
+    });
+
+    testWidgets('dado «Cancelar» en la hoja bloqueada, entonces cierra sin abrir nada', (
+      tester,
+    ) async {
+      final abiertas = <String>[];
+      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      await _tocar(tester, _cancelar);
+
+      expect(_noSePuede, findsNothing);
+      expect(abiertas, isEmpty);
+      expect(find.text('BAJA'), findsOneWidget);
+    });
+
+    testWidgets('dado «Entendido», entonces cierra; al volver a entrar la hoja empieza de cero y, '
+        'si la otra ya no está activa, reactiva', (tester) async {
+      final repo = await _montarConBajas(tester);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      await _tocar(tester, _entendido);
+
+      expect(_noSePuede, findsNothing);
+      expect(find.text('BAJA'), findsOneWidget);
+      expect(repo.cambiosDeBaja, hasLength(1));
+
+      repo.fallaAlCambiarBaja = null;
+      await _abrirReactivar(tester);
+      expect(_botonReactivar, findsOneWidget, reason: 'empieza de cero, sin el aviso anterior');
+      expect(_noSePuede, findsNothing);
+      await _tocar(tester, _botonReactivar);
+
+      expect(repo.cambiosDeBaja, hasLength(2));
+      expect(_aviso, findsOneWidget);
+      expect(find.text('BAJA'), findsNothing);
+    });
+
+    testWidgets('dado que choca otra vez al reintentar, entonces vuelve a decir «No se puede '
+        'reactivar» y no escribe nada', (tester) async {
+      final repo = await _montarConBajas(tester);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+      await _tocar(tester, _entendido);
+
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      expect(_noSePuede, findsOneWidget);
+      expect(find.text('BAJA'), findsOneWidget);
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('dado dos toques seguidos en «Reactivar» mientras la comprobación está en curso, '
+        'entonces se pregunta una sola vez', (tester) async {
+      final repo = await _montarConBajas(tester);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      repo.bloqueoCambioDeBaja = Completer<void>();
+      await _abrirReactivar(tester);
+
+      await tester.tap(_botonReactivar);
+      await tester.pump();
+      await tester.tap(_botonReactivando, warnIfMissed: false);
+      await tester.pump();
+      expect(repo.cambiosDeBaja, hasLength(1));
+      repo.bloqueoCambioDeBaja!.complete();
+      await asentarLista(tester);
+
+      expect(repo.cambiosDeBaja, hasLength(1));
+      expect(_noSePuede, findsOneWidget);
+    });
+
+    testWidgets('dado que la baja se unió a otra que sigue activa mientras la hoja estaba abierta '
+        '(una carrera: la Lista no deja tocar una unión), entonces dice «No se puede reactivar» con '
+        'el texto de la unión y «Abrir la existente» abre la conservada', (tester) async {
+      final abiertas = <String>[];
+      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion(conservadaId: 'casa-1');
+      await _abrirReactivar(tester);
+
+      await _tocar(tester, _botonReactivar);
+
+      expect(_noSePuede, findsOneWidget);
+      expect(find.text(_textoUnion), findsOneWidget);
+      expect(_abrirExistente, findsOneWidget);
+      expect(_cancelar, findsOneWidget);
+      expect(_entendido, findsNothing);
+      expect(_botonReactivar, findsNothing, reason: 'reintentar nunca va a funcionar');
+      expect(_aviso, findsNothing);
+
+      await _tocar(tester, _abrirExistente);
+
+      expect(abiertas, ['casa-1']);
+      expect(_noSePuede, findsNothing);
+      expect(find.text('BAJA'), findsOneWidget, reason: 'la baja sigue de baja');
+      expect(repo.cambiosDeBaja, hasLength(1));
+    });
+
+    testWidgets(
+      'dado que la baja se unió a otra que ya no está activa (o la Lista no sabe abrirla), '
+      'entonces solo ofrece «Entendido»',
+      (tester) async {
+        final repo = await _montarConBajas(tester, alAbrir: (_) {});
+        repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion();
+        await _abrirReactivar(tester);
+
+        await _tocar(tester, _botonReactivar);
+
+        expect(_noSePuede, findsOneWidget);
+        expect(find.text(_textoUnion), findsOneWidget);
+        expect(_abrirExistente, findsNothing);
+        expect(_cancelar, findsNothing);
+        expect(_entendido, findsOneWidget);
+        expect(_botonReactivar, findsNothing);
+
+        await _tocar(tester, _entendido);
+
+        expect(_noSePuede, findsNothing);
+        expect(find.text('BAJA'), findsOneWidget);
+        expect(_aviso, findsNothing);
+      },
+    );
+
+    testWidgets('dado que la baja se unió a una activa pero la Lista no tiene a dónde abrirla, '
+        'entonces solo ofrece «Entendido»', (tester) async {
+      final repo = await _montarConBajas(tester);
+      repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion(conservadaId: 'casa-1');
+      await _abrirReactivar(tester);
+
+      await _tocar(tester, _botonReactivar);
+
+      expect(_abrirExistente, findsNothing);
+      expect(_entendido, findsOneWidget);
+    });
+
+    testWidgets(
+      'dado una dirección larguísima y texto a 200 % en 360×640, entonces el texto entero '
+      'se lee, nada desborda y los botones se alcanzan',
+      (tester) async {
+        final repo = await _montarConBajas(
+          tester,
+          escala: 2.0,
+          tamano: const Size(360, 640),
+          alAbrir: (_) {},
+        );
+        const larga = 'Avenida General Don José Gervasio Artigas y Pablo de María 12345 bis';
+        repo.fallaAlCambiarBaja = const FailureReactivacionChocaConActiva(
+          existenteId: 'casa-1',
+          direccion: larga,
+        );
+        await _abrirReactivar(tester);
+        await _tocar(tester, _botonReactivar);
+
+        expect(tester.takeException(), isNull);
+        expect(_noSePuede, findsOneWidget);
+        expect(find.textContaining(larga), findsOneWidget);
+        await tester.ensureVisible(_abrirExistente);
+        expect(_abrirExistente, findsOneWidget);
+        await tester.ensureVisible(_cancelar);
+        expect(_cancelar, findsOneWidget);
+      },
+    );
+
+    testWidgets('dado que choca, entonces el título se anuncia como encabezado y el aviso lleva la '
+        'dirección de la otra', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = await _montarConBajas(tester);
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+
+      expect(find.bySemanticsLabel(TextosReactivar.noSePuede), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Rivadavia 100')), findsWidgets);
+      handle.dispose();
+    });
+
+    for (final (nombre, tamano, escala, conAbrir) in <(String, Size, double, bool)>[
+      ('360×640 con «Entendido»', const Size(360, 640), 1.0, false),
+      ('412×915 con «Abrir la existente»', const Size(412, 915), 1.0, true),
+      ('360×640 con texto a 200 % y «Abrir la existente»', const Size(360, 640), 2.0, true),
+    ]) {
+      testWidgets('«No se puede reactivar» cumple las guías de accesibilidad en $nombre', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        final repo = await _montarConBajas(
+          tester,
+          tamano: tamano,
+          escala: escala,
+          alAbrir: conAbrir ? (_) {} : null,
+        );
+        repo.fallaAlCambiarBaja = _chocaConRivadavia;
+        await _abrirReactivar(tester);
+        await _tocar(tester, _botonReactivar);
+
+        expect(tester.takeException(), isNull);
+        expect(_noSePuede, findsOneWidget);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        handle.dispose();
+      });
+    }
   });
 
   group('Datos límite, texto a 200 % y accesibilidad', () {
