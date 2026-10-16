@@ -73,12 +73,15 @@ List<String> _escucharAnuncios(WidgetTester tester) {
 }
 
 /// Cuántos nodos de semántica leen [texto] (en la etiqueta, la pista o el valor): cada uno es una lectura
-/// del lector de pantalla.
+/// del lector de pantalla. Un nodo que se funde en su padre ya va dentro de la etiqueta del padre: no
+/// cuenta aparte.
 int _lecturasDe(WidgetTester tester, String texto) {
   var lecturas = 0;
   void visitar(SemanticsNode nodo) {
     final d = nodo.getSemanticsData();
-    if ([d.label, d.hint, d.value].any((t) => t.contains(texto))) lecturas++;
+    if (!nodo.isMergedIntoParent && [d.label, d.hint, d.value].any((t) => t.contains(texto))) {
+      lecturas++;
+    }
     nodo.visitChildren((hijo) {
       visitar(hijo);
       return true;
@@ -466,29 +469,64 @@ void main() {
       expect(anuncios, isEmpty);
     });
 
-    testWidgets('el motivo es la pista del botón apagado para el lector de pantalla', (
-      tester,
-    ) async {
-      final semantica = tester.ensureSemantics();
-      await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+    testWidgets(
+      'el motivo va en la etiqueta del botón apagado, sin pista, para el lector de pantalla',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
 
-      // El nodo del botón junta lo suyo con lo del texto: `getSemanticsData` da lo juntado.
-      SemanticsData datos() => tester.getSemantics(botonRegistrarFijo).getSemanticsData();
-      final apagado = datos();
-      expect(apagado.label, contains(TextosAlta.registrar));
-      expect(apagado.hint, TextosAlta.elegiElTipo);
+        // El nodo del botón junta lo suyo con lo del texto: `getSemanticsData` da lo juntado.
+        SemanticsData datos() => tester.getSemantics(botonRegistrarFijo).getSemanticsData();
+        final apagado = datos();
+        expect(apagado.label, '${TextosAlta.registrar}. ${TextosAlta.elegiElTipo}');
+        expect(apagado.hint, isEmpty, reason: 'las pistas se pueden apagar en VoiceOver (#355)');
 
-      await tester.ensureVisible(find.text('Casa'));
-      await tester.pump();
-      await tester.tap(find.text('Casa'));
-      await asentar(tester);
-      expect(datos().hint, isEmpty, reason: 'habilitado no hay pista');
-      semantica.dispose();
-    });
+        await tester.ensureVisible(find.text('Casa'));
+        await tester.pump();
+        await tester.tap(find.text('Casa'));
+        await asentar(tester);
+        expect(datos().hint, isEmpty, reason: 'habilitado no hay pista');
+        expect(datos().label, TextosAlta.registrar, reason: 'habilitado, solo el nombre');
+        semantica.dispose();
+      },
+    );
+
+    // Decisión del 16/10 en #355: una sola forma para Android y para iOS, sin rama por plataforma.
+    testWidgets(
+      '«Registrar» apagado dice "Registrar. Elegí el tipo de ubicación para registrar." en la '
+      'etiqueta y sin pista, igual en Android e iOS',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsPreciso);
+
+        final nodo = tester.getSemantics(botonRegistrarFijo);
+        expect(
+          nodo,
+          isSemantics(
+            label: 'Registrar. Elegí el tipo de ubicación para registrar.',
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: false,
+          ),
+        );
+        expect(
+          nodo.getSemanticsData().hint,
+          isEmpty,
+          reason: 'sin pista: con «Hablar pistas» apagado no se leería',
+        );
+        expect(
+          find.text(TextosAlta.elegiElTipo),
+          findsOneWidget,
+          reason: 'el motivo se sigue viendo',
+        );
+        semantica.dispose();
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
+    );
   });
 
-  // #345 (M3 de la revisión de #342): el motivo de «Registrar» apagado es la pista del botón y, además,
-  // un texto visible debajo. El lector de pantalla tiene que leerlo una sola vez.
+  // #345 (M3 de la revisión de #342): el motivo de «Registrar» apagado va en la etiqueta del botón y,
+  // además, es un texto visible debajo. El lector de pantalla tiene que leerlo una sola vez.
   group('#345 · 03 · el motivo de «Registrar» apagado se lee una sola vez', () {
     for (final (estado, motivo, tamano, escala, teclado)
         in <(EstadoAlta, String, Size, double, double)>[
@@ -503,19 +541,21 @@ void main() {
         ]) {
       testWidgets(
         '${estado.rotulo} · ${tamano.width.round()}×${tamano.height.round()} · texto ${_x(escala)}'
-        '${teclado > 0 ? ' · con teclado' : ''}: el motivo se ve y el lector lo lee una vez, como la '
-        'pista del botón',
+        '${teclado > 0 ? ' · con teclado' : ''}: el motivo se ve y el lector lo lee una vez, en la '
+        'etiqueta del botón',
         (tester) async {
           final semantica = tester.ensureSemantics();
           await abrirEn(tester, estado, tamano: tamano, escala: escala, teclado: teclado);
 
           expect(find.text(motivo), findsOneWidget, reason: 'el motivo se sigue viendo');
           expect(_lecturasDe(tester, motivo), 1, reason: 'una sola lectura');
+          final boton = tester.getSemantics(botonRegistrarFijo).getSemanticsData();
           expect(
-            tester.getSemantics(botonRegistrarFijo).getSemanticsData().hint,
-            motivo,
-            reason: 'la lectura es la pista de «Registrar»',
+            boton.label,
+            '${TextosAlta.registrar}. $motivo',
+            reason: 'la lectura es la etiqueta de «Registrar»: su nombre y el motivo',
           );
+          expect(boton.hint, isEmpty, reason: 'sin pista: el lector puede no hablarla');
           expect(
             find.bySemanticsLabel(motivo),
             findsNothing,
