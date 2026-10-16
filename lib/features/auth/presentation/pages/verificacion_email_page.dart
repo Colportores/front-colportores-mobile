@@ -742,6 +742,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         OutlinedButton.icon(
           key: const Key('verificacion_email_reenviar'),
           onPressed: null,
+          style: _estiloReenviar(context),
           icon: const Icon(Icons.lock_outline),
           label: Text(etiquetaReenviar),
         )
@@ -758,7 +759,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           onPressed: reenviar,
           // 12-A03 y 12-A01b: con la cuenta corriendo el botón se rellena con lo transcurrido y el
           // rótulo va en JetBrains Mono (#335).
-          style: conCuentaRegresiva ? _estiloConCuenta(context) : null,
+          style: conCuentaRegresiva ? _estiloConCuenta(context) : _estiloReenviar(context),
           child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         ),
       // El canvas no dibuja la cuenta del botón primario de 12-A04 y 12-A04b (el enlace expiró).
@@ -787,13 +788,27 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     ];
   }
 
+  /// Texto a partir de ~143 %: la etiqueta de un botón pasa a dos líneas.
+  bool _textoGrande(BuildContext context) => MediaQuery.textScalerOf(context).scale(14) > 20;
+
   /// Con texto grande la etiqueta pasa a dos líneas y los extremos de píldora la recortan: ahí el
   /// radio baja y el relleno lateral sube.
   ButtonStyle? _estiloYaVerifique(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return null;
+    if (!_textoGrande(context)) return null;
     return FilledButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
+  }
+
+  /// La forma del botón «Reenviar» con texto grande: la misma que «Ya verifiqué mi email» (radio 16
+  /// y no píldora). Vale en todos sus estados (sin cuenta, con cuenta y con el candado puesto) para
+  /// que no cambie de forma al empezar ni al terminar la espera.
+  ButtonStyle? _estiloReenviar(BuildContext context) {
+    if (!_textoGrande(context)) return null;
+    return OutlinedButton.styleFrom(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     );
   }
 
@@ -819,7 +834,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   /// cada segundo.
   ButtonStyle _estiloConCuenta(BuildContext context) {
     final colores = Theme.of(context).extension<ColoresColportaje>()!;
-    final textoGrande = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final textoGrande = _textoGrande(context);
     final forma = textoGrande
         ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
         : const StadiumBorder();
@@ -831,6 +846,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     final transcurrido = 1 - _segundosRestantes / _cooldown.inSeconds;
 
     return OutlinedButton.styleFrom(
+      // Sin fondo propio, como el canvas (A02, A03, A01b): lo que no se rellenó es el crema de la
+      // pantalla; el tema le pone `surfaceContainerHighest` (blanco) también apagado.
+      disabledBackgroundColor: Colors.transparent,
       disabledForegroundColor: colores.gris,
       shape: forma,
       padding: EdgeInsets.symmetric(horizontal: textoGrande ? 16 : 0, vertical: 14),

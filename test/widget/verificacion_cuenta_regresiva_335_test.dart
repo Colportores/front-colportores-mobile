@@ -161,6 +161,43 @@ Color _colorDelRelleno(WidgetTester tester) => tester
     .widget<ColoredBox>(find.descendant(of: _relleno, matching: find.byType(ColoredBox)))
     .color;
 
+/// Lo que se ve detrás del rótulo donde el relleno todavía no llegó: el fondo del botón (si lo tiene)
+/// sobre el crema de la pantalla.
+Color _fondoSinRellenar(WidgetTester tester) {
+  final crema = Theme.of(tester.element(_boton)).scaffoldBackgroundColor;
+  final propio = tester.widget<Material>(_visual).color ?? Colors.transparent;
+  return Color.alphaBlend(propio, crema);
+}
+
+/// La forma del botón «Reenviar»: `'píldora'` o el radio de las esquinas del rectángulo.
+Object _forma(WidgetTester tester) => switch (tester.widget<Material>(_visual).shape) {
+  StadiumBorder() => 'píldora',
+  RoundedRectangleBorder(:final borderRadius) => borderRadius,
+  final otra => otra!.runtimeType,
+};
+
+/// Que el recorte del relleno sigue la forma del botón, con [radio] de esquina (lo que no entra en
+/// la forma no se pinta): la esquina de arriba a la izquierda queda afuera y el medio del borde
+/// izquierdo, adentro.
+void _recorteSigueLaForma(WidgetTester tester, {required double radio}) {
+  final recorte = find.descendant(of: _boton, matching: find.byType(ClipPath));
+  expect(recorte, findsOneWidget);
+  final tam = tester.getSize(recorte);
+  final camino = tester.widget<ClipPath>(recorte).clipper!.getClip(tam);
+  expect(camino.contains(const Offset(1, 1)), isFalse, reason: 'la esquina queda afuera');
+  expect(
+    camino.contains(Offset(0.5, tam.height / 2)),
+    isTrue,
+    reason: 'el medio del borde, adentro',
+  );
+  expect(camino.contains(Offset(radio, tam.height / 2)), isTrue);
+  expect(
+    camino.contains(Offset(tam.width - 1, 1)),
+    isFalse,
+    reason: 'la esquina de arriba a la derecha, afuera',
+  );
+}
+
 double _contraste(Color a, Color b) {
   final claro = a.computeLuminance() > b.computeLuminance() ? a : b;
   final oscuro = identical(claro, a) ? b : a;
@@ -256,9 +293,8 @@ void main() {
         expect(_transcurrido(tester), greaterThan(anterior));
         anterior = _transcurrido(tester);
         final rotulo = _estiloDelRotulo(tester, 'Reenviar en ${60 - s}s').color!;
-        final fondo = Theme.of(tester.element(_boton)).scaffoldBackgroundColor;
         expect(_contraste(rotulo, _colorDelRelleno(tester)), greaterThanOrEqualTo(4.5));
-        expect(_contraste(rotulo, fondo), greaterThanOrEqualTo(4.5));
+        expect(_contraste(rotulo, _fondoSinRellenar(tester)), greaterThanOrEqualTo(4.5));
       }
       expect(anterior, closeTo(59 / 60, 1e-9));
       await _cerrarApp(tester);
@@ -739,8 +775,35 @@ void main() {
       });
     }
 
-    testWidgets('con el texto al doble la forma deja de ser píldora (el rótulo no se recorta) y el '
-        'relleno la sigue por dentro', (tester) async {
+    testWidgets('con el texto normal la forma es píldora, antes, durante y después de la cuenta, y '
+        'el recorte del relleno la sigue', (tester) async {
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+      );
+      expect(_forma(tester), 'píldora');
+
+      await _tocarReenviar(tester);
+      expect(_forma(tester), 'píldora');
+      await reloj.pasar(tester, 18);
+      expect(_forma(tester), 'píldora');
+      _recorteSigueLaForma(
+        tester,
+        radio:
+            tester.getSize(find.descendant(of: _boton, matching: find.byType(ClipPath))).height / 2,
+      );
+      await _capturar(tester, 'a03_390x844_x1.0_pantalla');
+
+      await reloj.pasar(tester, 42);
+      expect(_forma(tester), 'píldora');
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('con el texto al doble la forma es la de «Ya verifiqué mi email» (radio 16) antes, '
+        'durante y después de la cuenta, y el recorte del relleno la sigue', (tester) async {
       final reloj = _Reloj(_base);
       await _montar(
         tester,
@@ -750,18 +813,55 @@ void main() {
         tam: const Size(360, 640),
         escala: 2,
       );
-      await _tocarReenviar(tester);
-      await reloj.pasar(tester, 18);
-
-      expect(tester.widget<Material>(_visual).shape, isA<RoundedRectangleBorder>());
-      final recorte = tester.widget<ClipPath>(
-        find.descendant(of: _boton, matching: find.byType(ClipPath)),
+      final radio16 = BorderRadius.circular(16);
+      final yaVerifique = find.descendant(
+        of: find.byKey(const Key('verificacion_email_ya_verifique')),
+        matching: find.byType(Material),
       );
-      expect((recorte.clipper! as ShapeBorderClipper).shape, isA<RoundedRectangleBorder>());
+      expect(tester.widget<Material>(yaVerifique.first).shape, isA<RoundedRectangleBorder>());
+      expect(
+        (tester.widget<Material>(yaVerifique.first).shape! as RoundedRectangleBorder).borderRadius,
+        radio16,
+      );
+      expect(_forma(tester), radio16);
+
+      await _tocarReenviar(tester);
+      expect(_forma(tester), radio16);
+      await reloj.pasar(tester, 18);
+      expect(_forma(tester), radio16);
+      _recorteSigueLaForma(tester, radio: 14.5);
+
+      await reloj.pasar(tester, 42);
+      expect(_forma(tester), radio16, reason: 'no vuelve a píldora al terminar la espera');
       await _cerrarApp(tester);
     });
 
-    testWidgets('con el texto normal la forma es píldora, como el canvas', (tester) async {
+    for (final (escala, tam, radio) in [
+      (1.0, const Size(390, 844), 'píldora'),
+      (2.0, const Size(360, 640), BorderRadius.circular(16)),
+    ]) {
+      testWidgets('con el candado puesto (12-A06) la forma es la misma que sin él, a ×$escala', (
+        tester,
+      ) async {
+        final reloj = _Reloj(_base);
+        await _montar(
+          tester,
+          remote: _remotoSano(),
+          bloqueos: BloqueoReenvioVerificacionEnMemoria({
+            _lucia: _base.add(const Duration(minutes: 30)),
+          }),
+          ahora: reloj.leer,
+          tam: tam,
+          escala: escala,
+        );
+
+        expect(_forma(tester), radio);
+        await _cerrarApp(tester);
+      });
+    }
+
+    testWidgets('el botón apagado no tiene fondo propio: lo que no se rellenó es el crema de la '
+        'pantalla, como el canvas', (tester) async {
       final reloj = _Reloj(_base);
       await _montar(
         tester,
@@ -771,10 +871,12 @@ void main() {
       );
       await _tocarReenviar(tester);
 
-      expect(tester.widget<Material>(_visual).shape, isA<StadiumBorder>());
-      await _capturar(tester, 'a02_390x844_x1.0');
-      await reloj.pasar(tester, 18);
-      await _capturar(tester, 'a03_390x844_x1.0_pantalla');
+      for (final s in [0, 18, 59]) {
+        if (s > 0) await reloj.pasar(tester, s == 18 ? 18 : 41);
+        final propio = tester.widget<Material>(_visual).color;
+        expect(propio == null || propio.a == 0, isTrue, reason: 'a los $s s: $propio');
+        expect(_fondoSinRellenar(tester), Theme.of(tester.element(_boton)).scaffoldBackgroundColor);
+      }
       await _cerrarApp(tester);
     });
   });
