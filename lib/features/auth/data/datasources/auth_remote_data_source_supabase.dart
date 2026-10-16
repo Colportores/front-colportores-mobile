@@ -388,6 +388,15 @@ final class AuthRemoteDataSourceSupabase
         return const EmailNoConfirmadoException();
       case 'weak_password':
         return const PasswordDebilException();
+      case 'email_address_invalid':
+        // Sin la dirección: el log no lleva datos del usuario. Sirve para saber si el proyecto
+        // real tiene activa la validación de direcciones del servidor.
+        _log.warn(
+          LogModulo.auth,
+          'EMAIL_RECHAZADO',
+          'el servidor no manda correos a esa dirección',
+        );
+        return const EmailInvalidoException();
       case 'over_email_send_rate_limit' || 'over_request_rate_limit':
         _log.warn(LogModulo.auth, 'RATE_LIMIT', 'límite de intentos/emails de Supabase alcanzado');
         return ServidorException(status: status, mensaje: _mensajeDemasiadosIntentos);

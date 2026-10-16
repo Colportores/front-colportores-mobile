@@ -10,6 +10,8 @@ import 'package:colportores_mobile/features/auth/domain/usecases/bloqueo_reenvio
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/casos_email.dart';
+
 /// Guarda lo que le piden como lo guardaría el teléfono (siempre en UTC).
 final class _ReenviosFalsos implements BloqueoReenvioVerificacionRepository {
   _ReenviosFalsos([this.guardado = ReenviosGuardados.vacio]);
@@ -75,6 +77,16 @@ void main() {
 
     test('una dirección en blanco queda vacía', () {
       expect(correoParaBloqueo('   '), '');
+    });
+
+    test('la misma dirección con un carácter invisible pegado es la misma para el candado', () {
+      // Es la que manda el reenvío (`ValidadorEmail.normalizar`): si el candado la contara
+      // distinta, quien pegó el correo desde WhatsApp esquivaría el límite de una hora (#353).
+      for (final c in invisiblesDeFormato) {
+        for (final email in [...emailsConInvisibleEnElMedio(c), ...emailsConInvisibleAlBorde(c)]) {
+          expect(correoParaBloqueo(email), emailLimpio, reason: email.runes.toString());
+        }
+      }
     });
   });
 

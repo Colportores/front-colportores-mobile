@@ -44,7 +44,7 @@ final class SolicitarRecuperacionPasswordUseCase
 
   @override
   Future<Either<Failure, Unit>> call(SolicitarRecuperacionPasswordParams params) async {
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
 
     if (email.isEmpty) {
       return const Left(FailureValidacion(campos: {'email': 'Ingresá tu email'}));

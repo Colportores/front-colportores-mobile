@@ -1007,6 +1007,51 @@ void main() {
     });
   });
 
+  group('AuthRepositoryImpl — el servidor no manda correos a la dirección (#353)', () {
+    // 400 `email_address_invalid`: llega al campo del email con un aviso que dice qué hacer, igual
+    // en las cuatro pantallas, y no es un error general ni una falla del servidor.
+    const aviso = FailureValidacion(
+      campos: {'email': 'Revisá el email: no podemos mandar correos a esa dirección.'},
+    );
+
+    test('al registrar, devuelve FailureValidacion en el campo email', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaEnRegistrar(const EmailInvalidoException()),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia@gmial.com',
+        password: 'Secreto123',
+      );
+
+      expect(resultado, const Left<Failure, ResultadoRegistro>(aviso));
+    });
+
+    test('al reenviar la verificación, devuelve FailureValidacion en el campo email', () async {
+      remote.fallaAlReenviar = const EmailInvalidoException();
+
+      final resultado = await repository.reenviarVerificacion(email: 'lucia@gmial.com');
+
+      expect(resultado, const Left<Failure, Unit>(aviso));
+    });
+
+    test(
+      'al pedir la recuperación, también la muestra (no es el rate limit: no se enmascara)',
+      () async {
+        remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+
+        final resultado = await repository.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+        expect(resultado, const Left<Failure, Unit>(aviso));
+      },
+    );
+  });
+
   group('AuthRepositoryImpl.erroresVerificacionEmail', () {
     test('reenvía lo que emite el remoto', () async {
       final futuro = repository.erroresVerificacionEmail.first;

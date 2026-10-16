@@ -9,6 +9,7 @@
 // El aviso a texto grande en un teléfono chico, en `email_formato_353_geometria_test.dart`.
 import 'dart:ui' show Size;
 
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/acceso_qa_arnes.dart' show guiasDeAccesibilidad;
@@ -79,6 +80,29 @@ void main() {
         expect(armada.salidas(), 1);
       });
 
+      testWidgets('si el servidor no manda correos a esa dirección (400 email_address_invalid), el '
+          'campo dice qué hacer, el botón sigue habilitado y corregirla permite pedirlo de nuevo', (
+        tester,
+      ) async {
+        final armada = await pantalla.armar(tester);
+        armada.fallarCon(const EmailInvalidoException());
+
+        await armada.enviar('lucia@gmial.com');
+
+        expect(find.text(avisoDireccionRechazada), findsOneWidget);
+        expect(find.text(avisoCaracterNoPermitido), findsNothing);
+        expect(find.text(pantalla.textoIncompleto), findsNothing);
+        expect(find.textContaining('email_address_invalid'), findsNothing);
+        expect(armada.botonHabilitado(), isTrue);
+        final antes = armada.salidas();
+
+        armada.fallarCon(null);
+        await armada.enviar('lucia@gmail.com');
+
+        expect(find.text(avisoDireccionRechazada), findsNothing);
+        expect(armada.salidas(), antes + 1, reason: 'el email corregido sale al servidor');
+      });
+
       testWidgets('con el aviso a la vista, a 390×844, la pantalla cumple las guías de '
           'accesibilidad', (tester) async {
         final semantica = tester.ensureSemantics();
@@ -87,6 +111,19 @@ void main() {
         await armada.enviar('lucía@correo.com');
 
         expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+        await guiasDeAccesibilidad(tester);
+        semantica.dispose();
+      });
+
+      testWidgets('con el aviso de la dirección rechazada a la vista, a 390×844, la pantalla '
+          'cumple las guías de accesibilidad', (tester) async {
+        final semantica = tester.ensureSemantics();
+        final armada = await pantalla.armar(tester, tamano: const Size(390, 844));
+        armada.fallarCon(const EmailInvalidoException());
+
+        await armada.enviar('lucia@gmial.com');
+
+        expect(find.text(avisoDireccionRechazada), findsOneWidget);
         await guiasDeAccesibilidad(tester);
         semantica.dispose();
       });

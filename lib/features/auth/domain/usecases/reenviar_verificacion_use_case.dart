@@ -33,7 +33,7 @@ final class ReenviarVerificacionUseCase implements UseCase<Unit, ReenviarVerific
 
   @override
   Future<Either<Failure, Unit>> call(ReenviarVerificacionParams params) async {
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
 
     if (email.isEmpty) {
       return const Left(FailureValidacion(campos: {'email': 'Ingresá tu email'}));

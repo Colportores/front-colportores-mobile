@@ -801,6 +801,90 @@ void main() {
     });
   });
 
+  group('AuthRemoteDataSourceSupabase — 400 email_address_invalid (#353)', () {
+    // El servidor frena la dirección al mandar el correo (dominio de prueba, mal tipeado, `lucia.@…`)
+    // si el proyecto tiene activa la validación de direcciones: en todas las operaciones que mandan
+    // un correo llega el mismo error tipado, no el genérico con el código.
+    const direccionRechazada = AuthApiException(
+      'Email address "lucia@gmial.com" is invalid',
+      statusCode: '400',
+      code: 'email_address_invalid',
+    );
+
+    test('al registrar, lanza EmailInvalidoException', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia@gmial.com',
+          password: 'secreto123',
+        ),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al reenviar la verificación, lanza EmailInvalidoException', () {
+      when(
+        () => auth.resend(
+          email: any(named: 'email'),
+          type: any(named: 'type'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().reenviarVerificacion('lucia@gmial.com'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al pedir la recuperación, lanza EmailInvalidoException', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('lucia@gmial.com'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al iniciar sesión, lanza EmailInvalidoException', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'lucia@gmial.com', password: 'secreto123'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('sin el código (un 400 con otro texto), sigue siendo un error del servidor', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(const AuthApiException('Bad request', statusCode: '400'));
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('lucia@gmial.com'),
+        throwsA(isA<ServidorException>()),
+      );
+    });
+  });
+
   group('AuthRemoteDataSourceSupabase.erroresVerificacionEmail', () {
     test('dado un error otp_expired en el stream, emite el evento', () async {
       final futuro = dataSource().erroresVerificacionEmail.first;

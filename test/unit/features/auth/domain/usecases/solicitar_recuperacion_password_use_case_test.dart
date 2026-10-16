@@ -49,6 +49,32 @@ void main() {
         });
       }
 
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              when(
+                () => repository.solicitarRecuperacionPassword(email: any(named: 'email')),
+              ).thenAnswer((_) async => const Right(unit));
+
+              for (final email in emails) {
+                final resultado = await useCase(SolicitarRecuperacionPasswordParams(email: email));
+
+                expect(resultado, const Right<Failure, Unit>(unit), reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.solicitarRecuperacionPassword(email: emailLimpio),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
+
       test('cuando el repositorio falla (p. ej. sin conexión), propaga el Failure sin '
           'transformarlo', () async {
         when(
@@ -64,6 +90,18 @@ void main() {
     });
 
     group('dado que el email es inválido', () {
+      test('cuando son solo invisibles, pide el email y no toca el repositorio', () async {
+        final resultado = await useCase(
+          SolicitarRecuperacionPasswordParams(email: String.fromCharCodes(invisiblesDeFormato)),
+        );
+
+        expect(
+          resultado,
+          const Left<Failure, Unit>(FailureValidacion(campos: {'email': 'Ingresá tu email'})),
+        );
+        verifyNever(() => repository.solicitarRecuperacionPassword(email: any(named: 'email')));
+      });
+
       test('cuando está vacío, retorna FailureValidacion sin tocar el repositorio', () async {
         final resultado = await useCase(const SolicitarRecuperacionPasswordParams(email: '   '));
 

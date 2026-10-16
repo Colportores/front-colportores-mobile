@@ -44,7 +44,7 @@ final class IniciarSesionUseCase implements UseCase<Sesion, IniciarSesionParams>
 
   @override
   Future<Either<Failure, Sesion>> call(IniciarSesionParams params) async {
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
     final errores = <String, String>{};
 
     if (email.isEmpty) {

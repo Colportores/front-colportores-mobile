@@ -2,6 +2,7 @@
 // registro, reenvío de la verificación y recuperación de contraseña) montadas igual, para mandarles
 // un email y ver qué dicen y si algo salió al servidor.
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/registro_page.dart';
@@ -20,7 +21,12 @@ const textoIncompletoDeLasTres = 'El email no es válido';
 
 /// Una pantalla armada para el test: cómo mandarle un email y cuántas veces salió al servidor.
 final class ArmadaEmail {
-  const ArmadaEmail({required this.enviar, required this.salidas, required this.botonHabilitado});
+  const ArmadaEmail({
+    required this.enviar,
+    required this.salidas,
+    required this.botonHabilitado,
+    required this.fallarCon,
+  });
 
   /// Escribe [email] en el campo y toca el botón de la pantalla.
   final Future<void> Function(String email) enviar;
@@ -30,6 +36,9 @@ final class ArmadaEmail {
 
   /// Si el botón de la pantalla sigue habilitado (un aviso de campo no lo apaga).
   final bool Function() botonHabilitado;
+
+  /// Hace que el servidor conteste con [falla] a lo que la pantalla le pide (`null`: contesta bien).
+  final void Function(AuthRemoteException? falla) fallarCon;
 }
 
 final class PantallaEmail {
@@ -59,6 +68,7 @@ Future<ArmadaEmail> _armarLogin(WidgetTester tester, {Size? tamano, double escal
     },
     salidas: () => remoto.llamadasIniciarSesion,
     botonHabilitado: () => boton().onPressed != null,
+    fallarCon: (falla) => remoto.falla = falla,
   );
 }
 
@@ -106,6 +116,7 @@ Future<ArmadaEmail> _armarRegistro(WidgetTester tester, {Size? tamano, double es
       final boton = find.byKey(const Key('registro_continuar'));
       return boton.evaluate().isEmpty || tester.widget<FilledButton>(boton).onPressed != null;
     },
+    fallarCon: (falla) => remoto.falla = falla,
   );
 }
 
@@ -150,6 +161,7 @@ Future<ArmadaEmail> _armarVerificacion(
     },
     salidas: () => remoto.reenviosPorEmail.values.fold(0, (a, b) => a + b),
     botonHabilitado: () => tester.widget<FilledButton>(find.byKey(boton)).onPressed != null,
+    fallarCon: (falla) => remoto.fallaAlReenviar = falla,
   );
 }
 
@@ -168,6 +180,7 @@ Future<ArmadaEmail> _armarRecuperacion(
     },
     salidas: () => remoto.solicitudesRecuperacionPorEmail.values.fold(0, (a, b) => a + b),
     botonHabilitado: () => habilitadoQa(tester, enviarQa),
+    fallarCon: (falla) => remoto.fallaAlSolicitarRecuperacion = falla,
   );
 }
 

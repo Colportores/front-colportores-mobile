@@ -76,7 +76,7 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
   Future<Either<Failure, ResultadoRegistro>> call(RegistrarUsuarioParams params) async {
     final nombre = params.nombre.trim();
     final apellido = params.apellido.trim();
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
     final cedula = params.cedula.trim();
     final cedulaNormalizada = cedula.replaceAll(RegExp(r'[.\-]'), '');
     final errores = <String, String>{};

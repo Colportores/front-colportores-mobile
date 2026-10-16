@@ -10,6 +10,7 @@ import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/services/validador_email.dart';
 import '../datasources/auth_local_data_source.dart';
 import '../datasources/auth_remote_data_source.dart';
 import '../models/sesion_model.dart';
@@ -447,6 +448,9 @@ final class AuthRepositoryImpl implements AuthRepository {
     EmailNoConfirmadoException() => const FailureEmailNoVerificado(),
     SinConexionException() => const FailureSinConexion(),
     SesionRevocadaException() => const FailureSesionRevocada(),
+    EmailInvalidoException() => const FailureValidacion(
+      campos: {'email': ValidadorEmail.avisoDireccionRechazada},
+    ),
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
     ),

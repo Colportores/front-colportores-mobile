@@ -109,6 +109,46 @@ void main() {
         });
       }
 
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
+
+              for (final email in emails) {
+                final resultado = await useCase(
+                  RegistrarUsuarioParams(
+                    nombre: datosValidos.nombre,
+                    apellido: datosValidos.apellido,
+                    cedula: datosValidos.cedula,
+                    email: email,
+                    password: datosValidos.password,
+                    aceptaTerminos: true,
+                    aceptaTradeOffE2E: true,
+                  ),
+                );
+
+                expect(resultado.isRight(), isTrue, reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.registrar(
+                  nombre: datosValidos.nombre,
+                  apellido: datosValidos.apellido,
+                  cedula: '12345678',
+                  email: emailLimpio,
+                  password: datosValidos.password,
+                ),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
+
       test('una mayúscula con tilde o Ñ cumple la política («Ñandú2026», «Élan2026»)', () async {
         for (final password in ['Ñandú2026', 'Élan2026']) {
           stubRepositorio(Right(ResultadoRegistro(sesion: sesion, email: sesion.email)));
@@ -155,6 +195,22 @@ void main() {
         );
         return (failure as FailureValidacion).campos;
       }
+
+      test('cuando el email son solo invisibles, marca el campo email como vacío', () async {
+        final campos = await camposInvalidos(
+          RegistrarUsuarioParams(
+            nombre: datosValidos.nombre,
+            apellido: datosValidos.apellido,
+            cedula: datosValidos.cedula,
+            email: String.fromCharCodes(invisiblesDeFormato),
+            password: datosValidos.password,
+            aceptaTerminos: true,
+            aceptaTradeOffE2E: true,
+          ),
+        );
+
+        expect(campos, {'email': 'Ingresá tu email'});
+      });
 
       test('cuando el nombre está vacío, marca el campo nombre', () async {
         final campos = await camposInvalidos(

@@ -67,6 +67,37 @@ void main() {
         });
       }
 
+      for (final c in invisiblesDeFormato) {
+        for (final (lugar, emails) in [
+          ('en el medio', emailsConInvisibleEnElMedio(c)),
+          ('al borde', emailsConInvisibleAlBorde(c)),
+        ]) {
+          test(
+            'cuando el email trae ${codigoUnicode(c)} $lugar, llega limpio al repositorio',
+            () async {
+              when(
+                () => repository.iniciarSesion(
+                  email: any(named: 'email'),
+                  password: any(named: 'password'),
+                ),
+              ).thenAnswer((_) async => Right(sesion));
+
+              for (final email in emails) {
+                final resultado = await useCase(
+                  IniciarSesionParams(email: email, password: 'secreto123'),
+                );
+
+                expect(resultado, Right<Failure, Sesion>(sesion), reason: email.runes.toString());
+              }
+
+              verify(
+                () => repository.iniciarSesion(email: emailLimpio, password: 'secreto123'),
+              ).called(emails.length);
+            },
+          );
+        }
+      }
+
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
         when(
           () => repository.iniciarSesion(
@@ -84,6 +115,24 @@ void main() {
     });
 
     group('dado que los datos son inválidos', () {
+      test('cuando el email son solo invisibles, pide el email y no toca el repositorio', () async {
+        final resultado = await useCase(
+          IniciarSesionParams(
+            email: String.fromCharCodes(invisiblesDeFormato),
+            password: 'secreto123',
+          ),
+        );
+
+        final failure = resultado.swap().getOrElse(() => throw StateError('esperaba Left'));
+        expect((failure as FailureValidacion).campos, {'email': 'Ingresá tu email'});
+        verifyNever(
+          () => repository.iniciarSesion(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          ),
+        );
+      });
+
       test(
         'cuando el email está vacío, retorna FailureValidacion sin tocar el repositorio',
         () async {

@@ -161,10 +161,11 @@ void main() {
       ('lucia@correo', 'El email no es válido'),
       ('lu cia@correo.com', avisoCaracterNoPermitido),
       ('😀@😀.com', avisoCaracterNoPermitido),
-      ('${'a' * 300}@correo.com', null),
+      // Más largo que cualquier dirección (254): no sale al servidor y no rompe la pantalla.
+      ('${'a' * 300}@correo.com', 'El email no es válido'),
     ]) {
       testWidgets('"${entrada.length > 20 ? '${entrada.substring(0, 20)}…' : entrada}": '
-          '${mensaje ?? 'no rompe la pantalla'}', (tester) async {
+          '$mensaje', (tester) async {
         _pantalla(tester, const Size(390, 844));
         final remote = _remoto();
         await _montar(
@@ -177,13 +178,11 @@ void main() {
         await reenviarCon(tester, entrada);
 
         expect(tester.takeException(), isNull);
-        if (mensaje != null) {
-          expect(find.text(mensaje), findsOneWidget);
-          expect(remote.reenviosPorEmail, isEmpty);
-          // Lo tipeado no se pierde tras el error.
-          final campo = tester.widget<TextField>(find.byKey(const Key('verificacion_email_campo')));
-          expect(campo.controller!.text, entrada);
-        }
+        expect(find.text(mensaje), findsOneWidget);
+        expect(remote.reenviosPorEmail, isEmpty);
+        // Lo tipeado no se pierde tras el error.
+        final campo = tester.widget<TextField>(find.byKey(const Key('verificacion_email_campo')));
+        expect(campo.controller!.text, entrada);
       });
     }
 
@@ -203,6 +202,26 @@ void main() {
 
       expect(remote.reenviosPorEmail.keys, ['lucia.silva@correo.com']);
     });
+
+    testWidgets(
+      'un correo pegado con un carácter invisible en el medio (U+200B, U+200E) se reenvía '
+      'limpio, sin avisar de lo que no se ve',
+      (tester) async {
+        _pantalla(tester, const Size(390, 844));
+        final remote = _remoto();
+        await _montar(
+          tester,
+          remote,
+          email: '',
+          password: null,
+          estado: EstadoVerificacionEmail.expirado,
+        );
+        await reenviarCon(tester, 'lu\u200Bcia.\u200Esilva@correo.com\u200B');
+
+        expect(find.text(avisoCaracterNoPermitido), findsNothing);
+        expect(remote.reenviosPorEmail.keys, ['lucia.silva@correo.com']);
+      },
+    );
 
     testWidgets('el aviso del campo se va cuando el usuario empieza a corregir', (tester) async {
       _pantalla(tester, const Size(390, 844));

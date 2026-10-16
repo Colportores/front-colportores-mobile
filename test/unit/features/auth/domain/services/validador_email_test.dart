@@ -104,5 +104,65 @@ void main() {
         expect(ValidadorEmail.problema(''), ProblemaEmail.incompleto);
       });
     });
+
+    test('el aviso de la dirección que el servidor rechaza es el literal de la decisión', () {
+      expect(ValidadorEmail.avisoDireccionRechazada, avisoDireccionRechazada);
+    });
+  });
+
+  group('ValidadorEmail.normalizar (#353, decisión del 16/10 sobre el PR #354)', () {
+    test('recorta los espacios y pasa a minúsculas', () {
+      expect(ValidadorEmail.normalizar('  Ana@Example.COM '), 'ana@example.com');
+      expect(ValidadorEmail.normalizar('\tLUCIA@correo.com\n'), emailLimpio);
+    });
+
+    test('un email limpio queda igual, con todos los caracteres que acepta el servidor', () {
+      for (final email in [emailLimpio, ...emailsValidosRaros]) {
+        expect(ValidadorEmail.normalizar(email), email.toLowerCase());
+      }
+    });
+
+    for (final c in invisiblesDeFormato) {
+      group('dado el carácter invisible ${codigoUnicode(c)}', () {
+        test('cuando está en el medio, lo borra', () {
+          for (final email in emailsConInvisibleEnElMedio(c)) {
+            expect(ValidadorEmail.normalizar(email), emailLimpio, reason: email.runes.toString());
+          }
+        });
+
+        test('cuando está al borde (con o sin espacios alrededor), lo borra', () {
+          for (final email in emailsConInvisibleAlBorde(c)) {
+            expect(ValidadorEmail.normalizar(email), emailLimpio, reason: email.runes.toString());
+          }
+        });
+
+        test('el email que queda pasa el validador (no se avisa de lo que la persona no ve)', () {
+          for (final email in [
+            ...emailsConInvisibleEnElMedio(c),
+            ...emailsConInvisibleAlBorde(c),
+          ]) {
+            expect(ValidadorEmail.problema(ValidadorEmail.normalizar(email)), isNull);
+          }
+        });
+      });
+    }
+
+    test('un email que solo tiene invisibles y espacios queda vacío', () {
+      final todos = String.fromCharCodes(invisiblesDeFormato);
+
+      expect(ValidadorEmail.normalizar(todos), isEmpty);
+      expect(ValidadorEmail.normalizar(' $todos '), isEmpty);
+    });
+
+    test('no borra lo que sí se ve: la tilde, la ñ, el espacio del medio y la coma siguen', () {
+      for (final email in ['lucía@correo.com', 'muñoz@correo.com', 'lu cia@correo.com']) {
+        expect(ValidadorEmail.normalizar(email), email);
+      }
+      expect(ValidadorEmail.normalizar('lucia,@correo.com'), 'lucia,@correo.com');
+      expect(
+        ValidadorEmail.problema(ValidadorEmail.normalizar('lu\u200Bcía@correo.com')),
+        ProblemaEmail.caracterNoPermitido,
+      );
+    });
   });
 }
