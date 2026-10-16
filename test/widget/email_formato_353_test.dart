@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/acceso_qa_arnes.dart' show guiasDeAccesibilidad;
 import '../helpers/casos_email.dart';
 import '../helpers/email_formato_353_arnes.dart';
+import '../helpers/qa_vista14_351_arnes.dart'
+    show avisoGeneralQa, habilitadoQa, mensajeNeutroQa, reenviarQa;
 
 /// Del QA del PR #351 y de la decisión del 10/10 (los demás casos, en los tests de dominio).
 const _conCaracterQueNoVa = [
@@ -80,28 +82,54 @@ void main() {
         expect(armada.salidas(), 1);
       });
 
-      testWidgets('si el servidor no manda correos a esa dirección (400 email_address_invalid), el '
-          'campo dice qué hacer, el botón sigue habilitado y corregirla permite pedirlo de nuevo', (
-        tester,
-      ) async {
-        final armada = await pantalla.armar(tester);
-        armada.fallarCon(const EmailInvalidoException());
+      if (pantalla.rechazoDelServidorSeVe) {
+        testWidgets(
+          'si el servidor no manda correos a esa dirección (400 email_address_invalid), el '
+          'campo dice qué hacer, el botón sigue habilitado y corregirla permite pedirlo de nuevo',
+          (tester) async {
+            final armada = await pantalla.armar(tester);
+            armada.fallarCon(const EmailInvalidoException());
 
-        await armada.enviar('lucia@gmial.com');
+            await armada.enviar('lucia@gmial.com');
 
-        expect(find.text(avisoDireccionRechazada), findsOneWidget);
-        expect(find.text(avisoCaracterNoPermitido), findsNothing);
-        expect(find.text(pantalla.textoIncompleto), findsNothing);
-        expect(find.textContaining('email_address_invalid'), findsNothing);
-        expect(armada.botonHabilitado(), isTrue);
-        final antes = armada.salidas();
+            expect(find.text(avisoDireccionRechazada), findsOneWidget);
+            expect(find.text(avisoCaracterNoPermitido), findsNothing);
+            expect(find.text(pantalla.textoIncompleto), findsNothing);
+            expect(find.textContaining('email_address_invalid'), findsNothing);
+            expect(armada.botonHabilitado(), isTrue);
+            final antes = armada.salidas();
 
-        armada.fallarCon(null);
-        await armada.enviar('lucia@gmail.com');
+            armada.fallarCon(null);
+            await armada.enviar('lucia@gmail.com');
 
-        expect(find.text(avisoDireccionRechazada), findsNothing);
-        expect(armada.salidas(), antes + 1, reason: 'el email corregido sale al servidor');
-      });
+            expect(find.text(avisoDireccionRechazada), findsNothing);
+            expect(armada.salidas(), antes + 1, reason: 'el email corregido sale al servidor');
+          },
+        );
+      } else {
+        // HU-AUTH-004 «nunca debe revelar si el email existe» (#363): el servidor rechaza una
+        // dirección solo cuando la cuenta existe, así que la pantalla no lo muestra: hace lo mismo
+        // que con un email que no existe (el mensaje genérico y la espera para pedir otro enlace).
+        testWidgets(
+          'si el servidor no manda correos a esa dirección (400 email_address_invalid), no '
+          'se nota: dice el mensaje genérico y la espera, como con un email que no existe',
+          (tester) async {
+            final armada = await pantalla.armar(tester);
+            armada.fallarCon(const EmailInvalidoException());
+
+            await armada.enviar('lucia@gmial.com');
+
+            expect(find.text(mensajeNeutroQa), findsOneWidget);
+            expect(find.text(avisoDireccionRechazada), findsNothing);
+            expect(find.text(avisoCaracterNoPermitido), findsNothing);
+            expect(find.text(pantalla.textoIncompleto), findsNothing);
+            expect(find.textContaining('email_address_invalid'), findsNothing);
+            expect(avisoGeneralQa, findsNothing);
+            expect(find.textContaining('Reenviar en'), findsOneWidget);
+            expect(habilitadoQa(tester, reenviarQa), isFalse, reason: 'la espera de 60 s corre');
+          },
+        );
+      }
 
       testWidgets('con el aviso a la vista, a 390×844, la pantalla cumple las guías de '
           'accesibilidad', (tester) async {
@@ -115,18 +143,20 @@ void main() {
         semantica.dispose();
       });
 
-      testWidgets('con el aviso de la dirección rechazada a la vista, a 390×844, la pantalla '
-          'cumple las guías de accesibilidad', (tester) async {
-        final semantica = tester.ensureSemantics();
-        final armada = await pantalla.armar(tester, tamano: const Size(390, 844));
-        armada.fallarCon(const EmailInvalidoException());
+      if (pantalla.rechazoDelServidorSeVe) {
+        testWidgets('con el aviso de la dirección rechazada a la vista, a 390×844, la pantalla '
+            'cumple las guías de accesibilidad', (tester) async {
+          final semantica = tester.ensureSemantics();
+          final armada = await pantalla.armar(tester, tamano: const Size(390, 844));
+          armada.fallarCon(const EmailInvalidoException());
 
-        await armada.enviar('lucia@gmial.com');
+          await armada.enviar('lucia@gmial.com');
 
-        expect(find.text(avisoDireccionRechazada), findsOneWidget);
-        await guiasDeAccesibilidad(tester);
-        semantica.dispose();
-      });
+          expect(find.text(avisoDireccionRechazada), findsOneWidget);
+          await guiasDeAccesibilidad(tester);
+          semantica.dispose();
+        });
+      }
     });
   }
 }

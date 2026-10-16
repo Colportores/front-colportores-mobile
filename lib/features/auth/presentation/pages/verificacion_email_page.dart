@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/reenvios_guardados.dart';
+import '../../domain/services/validador_email.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../providers/auth_providers.dart';
 import '../providers/enlace_verificacion_usado_providers.dart';
@@ -428,7 +429,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           }
           _sincronizarEspera();
         case FailureValidacion(:final campos):
-          _errorEmail = campos['email'];
+          if (_emailConocido) {
+            // El campo del email no se dibuja con el correo conocido (viene del alta o del ingreso
+            // y no se edita): el rechazo del servidor va al aviso general, con qué hacer (#363).
+            // Dejarlo en `_errorEmail` no mostraba nada.
+            _errorGeneral = ValidadorEmail.avisoDireccionRechazadaSinCampo;
+            _errorSinConexion = false;
+          } else {
+            _errorEmail = campos['email'];
+          }
         case FailureServidor(status: 429):
           // Bloquea la dirección a la que se pidió el reenvío, no la que se vea cuando conteste.
           _reenvios = _reenvios.conBloqueo(correoParaBloqueo(email), venceBloqueo!);

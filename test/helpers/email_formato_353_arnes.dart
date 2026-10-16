@@ -42,9 +42,19 @@ final class ArmadaEmail {
 }
 
 final class PantallaEmail {
-  const PantallaEmail(this.nombre, this.textoIncompleto, this.armar);
+  const PantallaEmail(
+    this.nombre,
+    this.textoIncompleto,
+    this.armar, {
+    this.rechazoDelServidorSeVe = true,
+  });
 
   final String nombre;
+
+  /// Si la pantalla muestra el rechazo del servidor a la dirección (400 `email_address_invalid`):
+  /// el login, el registro y el reenvío de la verificación sí; la recuperación de contraseña no
+  /// (HU-AUTH-004 «nunca debe revelar si el email existe», #363): lo trata como un envío que salió.
+  final bool rechazoDelServidorSeVe;
 
   /// El texto de esta pantalla para un email incompleto (el que no cambia con #353).
   final String textoIncompleto;
@@ -165,6 +175,38 @@ Future<ArmadaEmail> _armarVerificacion(
   );
 }
 
+/// «Verificá tu cuenta» con el correo del alta ya conocido (en la tarjeta, sin campo) y un servidor
+/// que rechaza la dirección al reenviar (400 `email_address_invalid`, #363). El botón de reenviar es
+/// `verificacion_email_reenviar`.
+Future<AuthRemoteDataSourceEnMemoria> montarVerificacionConCorreoConocido(
+  WidgetTester tester, {
+  required Size tamano,
+  double escala = 1,
+}) async {
+  fijarPantalla(tester, tamano);
+  final remoto = AuthRemoteDataSourceEnMemoria(credenciales: const {})
+    ..fallaAlReenviar = const EmailInvalidoException();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+        authRemoteDataSourceProvider.overrideWithValue(remoto),
+        authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      ],
+      child: MaterialApp(
+        theme: temaClaro(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+          child: child!,
+        ),
+        home: const VerificacionEmailPage(email: 'lucia.silva@correo.com', password: 'Secreto123'),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return remoto;
+}
+
 Future<ArmadaEmail> _armarRecuperacion(
   WidgetTester tester, {
   Size? tamano,
@@ -188,5 +230,10 @@ final pantallasEmail = <PantallaEmail>[
   const PantallaEmail('Login', textoIncompletoDeLasTres, _armarLogin),
   const PantallaEmail('Registro', textoIncompletoDeLasTres, _armarRegistro),
   const PantallaEmail('Reenvío de la verificación', textoIncompletoDeLasTres, _armarVerificacion),
-  const PantallaEmail('Recuperación de contraseña', incompletoQa, _armarRecuperacion),
+  const PantallaEmail(
+    'Recuperación de contraseña',
+    incompletoQa,
+    _armarRecuperacion,
+    rechazoDelServidorSeVe: false,
+  ),
 ];
