@@ -596,34 +596,30 @@ void main() {
     });
 
     test(
-      'conflict 23505 ubicacion_direccion_unica → la fila queda y el job no '
-      'se cierra',
+      'conflict 23505 ubicacion_direccion_unica → BLOCKED: la fila queda y el '
+      'job no se cierra',
       () async {
         final j = await correr({
           'outcome': 'conflict',
           'code': '23505',
           'constraint': 'ubicacion_direccion_unica',
         });
-        expect(j.state, isNot(JobState.done));
+        expect(j.state, JobState.blocked);
+        expect(j.code, '23505');
       },
-      skip:
-          'Falta en el núcleo (#178): hoy todo conflict sin server_row '
-          'termina DONE y el alta no se vuelve a subir.',
     );
 
     test(
-      'conflict ESPERA_ALTA_EN_CONFLICTO → en espera, no DONE',
+      'conflict ESPERA_ALTA_EN_CONFLICTO → WAITING con depends_on, no DONE',
       () async {
         final j = await correr({
           'outcome': 'conflict',
           'code': 'ESPERA_ALTA_EN_CONFLICTO',
           'depends_on': 'ubi-0',
         });
-        expect(j.state, isNot(JobState.done));
+        expect(j.state, JobState.waiting);
+        expect(j.dependsOn, 'ubi-0');
       },
-      skip:
-          'Falta en el núcleo (#178): el estado «en espera» de §5.1 no '
-          'existe en JobState; hoy la venta queda DONE sin haber subido.',
     );
 
     const invalidos = [

@@ -110,15 +110,36 @@ La tabla es la de §6.1. `constraint` y `depends_on` llegan al motor en
 | `accepted` | — | job → `DONE` |
 | `duplicate` | — | job → `DONE`. **Es éxito**: mismo `client_op_id`, o alta sobre una PK que ya existe (§7) |
 | `conflict` | — (con `server_row`) | LWW con `server_row`, después → `DONE`. No es culpa del colportor |
-| `conflict` | `23505` con `constraint` `ubicacion_direccion_unica` | Misma dirección a menos de 100 m (§2.2). **Sin** `server_row`: la fila queda en el teléfono y la app la resuelve en la vista 10 |
-| `conflict` | `ESPERA_ALTA_EN_CONFLICTO` (con `depends_on`) | Cuelga de un alta que volvió en conflicto. **En espera**: se reintenta cuando se resuelve el alta |
+| `conflict` | `23505` con `constraint` `ubicacion_direccion_unica` | Misma dirección a menos de 100 m (§2.2). **Sin** `server_row`: job → `BLOCKED`. La fila queda en el teléfono y la app la resuelve en la vista 10 |
+| `conflict` | `ESPERA_ALTA_EN_CONFLICTO` (con `depends_on`) | Cuelga de un alta que volvió en conflicto: job → `WAITING`, con `dependsOn`. Sin `depends_on`, → `BLOCKED` (si no, nada lo soltaría) |
 | `invalid` | `CG001`, `UB001`, `UB002` | job → `INVALID`, con aviso propio en la app |
 | `invalid` | `42501`, `FILA_INEXISTENTE`, clase `22` o `23`, `ENTIDAD_DESCONOCIDA`, `ENTIDAD_DE_SOLO_LECTURA`, `OP_INVALIDA`, `OP_ID_REQUERIDO`, `PAYLOAD_VACIO`, `PK_FALTANTE` | job → `INVALID`, con el `code` visible en la UI |
 
-> **Pendiente en el núcleo (#178)**: las dos filas de `conflict` sin
-> `server_row` todavía terminan en `DONE`, como el conflicto de siempre. El
-> estado «en espera» de §5.1 no existe en `JobState`. Hasta que entre, el
-> transporte las trae bien pero el motor no las trata como dice la tabla.
+### En espera (§2.2)
+
+Los nombres en el código, acordados en front-colportores-mobile#178:
+`JobState.blocked` para la escritura que el servidor no aplicó por un conflicto
+sin `server_row`, y `JobState.waiting` para lo que cuelga de ella. Ninguno se
+reintenta solo ni es un error: `engine.heldQueue()` los lista para la vista 10,
+y `status` los cuenta aparte (`blocked`, `waiting`).
+
+- **Se resuelve escribiendo la fila de nuevo.** Un `stage()` de `update` sobre
+  una fila con una escritura en espera la reemplaza (fundida: las columnas que
+  no trae se conservan) en vez de encolarse aparte, y la escritura vuelve a
+  `PENDING` con todo lo que colgaba de ella, **al final de la cola, el alta
+  primero**. Así viajan en el mismo lote, que es donde el servidor sabe dejar
+  en espera (contrato 0.9.11).
+- **La baja de una fila que el servidor nunca tuvo** (un `delete`, o un
+  `deleted_at`) descarta el alta sin subir nada. Lo que colgaba vuelve a la
+  cola: si todavía la nombra, el servidor lo rechaza y queda `INVALID`, visible.
+- **El motor aplica la regla del servidor antes de cada lote**
+  (`sync.fila_en_espera`, 0017): un job que nombra una fila que el servidor no
+  tiene —como su PK o en cualquier columna— pasa a `WAITING` sin salir. Es lo
+  que evita que lo que cuelga del alta viaje en otro lote (partido por tamaño,
+  o encolado más tarde, como una venta en la casa en conflicto) y vuelva
+  `INVALID`.
+- La PK de cada entidad es `SyncSpec.push(pk: …)`, la misma columna que
+  `sync.entidad.columna_pk`: `id`, salvo `house_status` (`ubicacion_id`).
 
 `server_row` en el conflicto de LWW no es opcional: sin ella el motor tiene que
 hacer un pull extra solo para resolver un LWW.
