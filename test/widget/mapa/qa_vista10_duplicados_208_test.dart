@@ -179,6 +179,26 @@ Future<void> _montar(
   await _abrirPantalla(tester);
 }
 
+/// Como [_montar], pero la pantalla de atrás es la Lista de ubicaciones (con su franja «N posibles
+/// duplicados · Revisar»), que es de donde se entra a «Posibles duplicados» y a donde se vuelve.
+Future<void> _montarDesdeLaLista(WidgetTester tester, DuplicadosEnMemoria datos) async {
+  tester.view.physicalSize = telefonoChico208;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  addTearDown(datos.cerrar);
+  await cargarFuentes208(tester);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overridesDuplicados(datos, conMapa: true),
+      child: MaterialApp(
+        theme: temaClaro(),
+        home: const Scaffold(body: ListaUbicacionesPage(colportorId: 'col-1')),
+      ),
+    ),
+  );
+  await _asentar(tester);
+}
+
 Future<void> _transicion(WidgetTester tester) async {
   await _asentar(tester);
   await tester.pump(const Duration(seconds: 1));
@@ -331,7 +351,7 @@ void main() {
 
       expect(find.text('3 para revisar'), findsOneWidget);
       expect(find.text('Misma calle y número'), findsNWidgets(2));
-      expect(find.text('A menos de 5 m'), findsOneWidget);
+      expect(find.text('A menos de 5${_nbsp}m'), findsOneWidget);
       expect(find.text('a 12${_nbsp}m'), findsOneWidget);
       expect(find.text('a 3${_nbsp}m'), findsNWidgets(2));
       // Av. Italia: dos casas de la misma dirección.
@@ -380,7 +400,7 @@ void main() {
       await _revisarPar(tester, _parMichigan);
 
       expect(
-        find.textContaining('A menos de 5 m, a 3${_nbsp}m.', findRichText: true),
+        find.textContaining('A menos de 5${_nbsp}m, a 3${_nbsp}m.', findRichText: true),
         findsOneWidget,
       );
       expect(_sonDistintos, findsOneWidget);
@@ -673,32 +693,34 @@ void main() {
       expect(find.byType(PosiblesDuplicadosPage), findsNothing);
     });
 
-    // skip: issue #340 — la unión que falla después de salir de la pantalla no deja rastro: el
-    // provider se descarta con la página, la colportora vio "unidas en una" y al volver no se le avisa.
-    // Decidido (mapa §2): hoy sin aviso; el aviso "No pudimos unir …" en la Lista va al #340.
-    _prueba(
-      'si la unión falla estando yo en otra pantalla, al volver el par sigue y se me avisa',
-      (tester) async {
-        final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
-        await _montar(tester, datos);
-        await _revisarPar(tester, _parItalia);
-        await _tocar(tester, _conservarYUnir);
-        await tester.pump(const Duration(seconds: 1));
-        await _volver(tester);
-        await tester.pump(_ocho);
-        await _asentar(tester);
+    // Era un hallazgo con `skip` (QA F3 de #338): la unión que falla después de salir de la pantalla no
+    // dejaba rastro. Decidido (mapa §2, opción b) y resuelto en #340: el aviso «No pudimos unir …» vive
+    // en la Lista, que es a donde se vuelve; el par sigue en «Posibles duplicados».
+    _prueba('si la unión falla estando yo en otra pantalla, al volver el par sigue y se me avisa', (
+      tester,
+    ) async {
+      final datos = _datosCanvas()..falloAlUnir = const FailureInesperado();
+      await _montarDesdeLaLista(tester, datos);
+      await tester.tap(find.byKey(const Key('lista_aviso_duplicados')));
+      await _transicion(tester);
+      await _revisarPar(tester, _parItalia);
+      await _tocar(tester, _conservarYUnir);
+      await tester.pump(const Duration(seconds: 1));
+      await _volver(tester);
+      await tester.pump(_ocho);
+      await _asentar(tester);
 
-        await _abrirPantalla(tester);
+      expect(
+        find.textContaining('No pudimos unir Av. Italia 1234 · Revisar', findRichText: true),
+        findsOneWidget,
+        reason: 'la colportora vio "unidas en una" y la unión falló: tiene que enterarse',
+      );
 
-        expect(_par(_parItalia), findsOneWidget, reason: 'la unión no se hizo: el par sigue');
-        expect(
-          find.byKey(const Key('duplicados_falla_union')),
-          findsOneWidget,
-          reason: 'la colportora vio "unidas en una" y la unión falló: tiene que enterarse',
-        );
-      },
-      skip: true,
-    );
+      await tester.tap(find.byKey(const Key('lista_aviso_union_fallida')));
+      await _transicion(tester);
+
+      expect(_par(_parItalia), findsOneWidget, reason: 'la unión no se hizo: el par sigue');
+    });
 
     _prueba('"Conservar" B invierte quién queda: la unión va de A hacia B', (tester) async {
       final datos = _datosCanvas();

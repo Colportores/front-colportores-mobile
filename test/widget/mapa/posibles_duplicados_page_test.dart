@@ -230,7 +230,7 @@ void main() {
       }
       expect(find.text('Revisar'), findsNWidgets(3));
       expect(find.text('Misma calle y número'), findsNWidgets(2));
-      expect(find.text('A menos de 5 m'), findsOneWidget);
+      expect(find.text('A menos de 5${_nbsp}m'), findsOneWidget);
       expect(find.text('a 12${_nbsp}m'), findsOneWidget);
       expect(find.text('a 150${_nbsp}m'), findsOneWidget);
       expect(find.text('a 3${_nbsp}m'), findsOneWidget);
@@ -304,7 +304,7 @@ void main() {
       expect(find.text('No hay posibles duplicados'), findsOneWidget);
       expect(
         find.text(
-          'Cuando dos de tus ubicaciones tengan la misma calle y número, o estén a menos de 5 m, '
+          'Cuando dos de tus ubicaciones tengan la misma calle y número, o estén a menos de 5${_nbsp}m, '
           'aparecen acá.',
         ),
         findsOneWidget,
