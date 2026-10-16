@@ -1,0 +1,8 @@
+# Quién revisa qué. El reparto es el de ADR-017.
+
+# Módulo de sincronización y transporte de datos: el motor, la DB local
+# cifrada y los adaptadores de plataforma.
+/packages/sync_engine/  @BrunoFCapri
+/lib/catalogo.dart      @BrunoFCapri
+/lib/datos/             @BrunoFCapri
+/lib/plataforma/        @BrunoFCapri

@@ -1,0 +1,39 @@
+name: sync_engine
+description: >-
+  Motor de sincronización y backup de Colportaje App. Núcleo Dart puro: sin
+  imports de Flutter ni de plugins fuera de lib/src/adapters/ (R-A1).
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  # Lo que exigen los `pubspec.lock` de este repo, que es también
+  # lo que corre en CI. Decir 3.3 era declarar un piso que nadie
+  # verificaba y que el propio lock no soportaba.
+  sdk: '>=3.11.0 <4.0.0'
+
+dependencies:
+  # §8: el paquete PUBLICA una suite de conformidad que corre en el CI de la
+  # app, así que package:test es una dependencia de verdad, no de desarrollo.
+  # Es Dart puro: no arrastra nada de Flutter.
+  test: ^1.25.0
+
+  # SHA-256 para la integridad de la cadena de backups, y gzip para los chunks.
+  # Los dos son Dart puro: la parte no-nativa de ADR-003 se testea en la VM.
+  crypto: ^3.0.0
+  archive: ^3.6.0
+
+  # Cliente HTTP de BffTransport. Dart puro: corre en la VM, así que el
+  # adaptador se testea con MockClient sin levantar el BFF.
+  http: ^1.2.0
+
+  # AES-GCM y PBKDF2 para el backup E2E (ADR-003, RF-AL06). Dart puro, así que
+  # el cifrado se testea en la VM. `cryptography_flutter` es el reemplazo
+  # nativo de la **misma** API: cuando entre, el algoritmo y el formato del
+  # bloque no cambian, solo quién hace las cuentas.
+  cryptography: ^2.7.0
+
+# Las dependencias de los adaptadores (connectivity_plus, workmanager,
+# flutter_secure_storage, cryptography_flutter, googleapis, google_sign_in)
+# entran junto con lib/src/adapters/, no antes.
+dev_dependencies:
+  lints: ^4.0.0
