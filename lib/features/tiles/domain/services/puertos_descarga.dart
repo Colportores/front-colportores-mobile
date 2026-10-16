@@ -54,9 +54,14 @@ abstract interface class SondaArchivoTiles {
   /// Le pide a [origen] su primer byte (`Range: bytes=0-0`) y termina si el servidor contesta bien:
   /// un 206, o un 200 de un servidor que ignora el `Range` (en ese caso el cuerpo no se lee).
   ///
-  /// Lanza [ErrorRedTiles] si no hay red, se corta o el servidor no contesta a tiempo, y
-  /// [ErrorServidorTiles] si responde con error (404, 416, 5xx…).
-  Future<void> probar(Uri origen);
+  /// Lanza [ErrorRedTiles] si no hay red, se corta, el servidor no contesta a tiempo o se canceló
+  /// la prueba, y [ErrorServidorTiles] si responde con error (404, 416, 5xx…).
+  ///
+  /// [cancelacion] es un `Future` que se completa cuando a quien pide ya no le importa la
+  /// respuesta (salió del mapa, se pidió una prueba nueva): el pedido en vuelo se aborta y la
+  /// conexión se cierra, en vez de quedar abierta contra un servidor que no contesta. Completarla
+  /// después de que la prueba terminó no hace nada.
+  Future<void> probar(Uri origen, {Future<void>? cancelacion});
 }
 
 /// No hay red o se cortó: la descarga queda en pausa y sigue sola cuando vuelve la conexión.

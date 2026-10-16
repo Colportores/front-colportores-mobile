@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/tiles/data/services/cliente_descarga
 import 'package:colportores_mobile/features/tiles/data/services/sonda_archivo_tiles_http.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
 
@@ -185,6 +186,200 @@ void main() {
         crear((_) async => throw StateError('bug')).probar(origen),
         throwsStateError,
       );
+    });
+  });
+
+  group('el pedido se aborta (no queda una conexión abierta)', () {
+    /// Un servidor que acepta y no contesta, visto desde un cliente que sabe abortar como el real:
+    /// si el pedido es abortable y se aborta, el envío falla con [http.RequestAbortedException].
+    Future<http.StreamedResponse> colgado(http.BaseRequest pedido, List<String> eventos) {
+      final nunca = Completer<http.StreamedResponse>();
+      eventos.add('pedido');
+      if (pedido case http.Abortable(:final abortTrigger?)) {
+        unawaited(
+          abortTrigger.then((_) {
+            eventos.add('abortado');
+            if (!nunca.isCompleted) nunca.completeError(http.RequestAbortedException(pedido.url));
+          }),
+        );
+      }
+      return nunca.future;
+    }
+
+    test('el pedido es abortable', () async {
+      final r = conCuerpo(206);
+
+      await crear((_) async => r.respuesta).probar(origen);
+
+      expect(enviado, isA<http.Abortable>());
+      expect((enviado as http.Abortable).abortTrigger, isNotNull);
+    });
+
+    test('al vencer el tiempo se aborta el pedido que quedó colgado', () async {
+      final eventos = <String>[];
+
+      await expectLater(
+        crear(
+          (pedido) => colgado(pedido, eventos),
+          esperaRespuesta: const Duration(milliseconds: 20),
+        ).probar(origen),
+        throwsA(isA<ErrorRedTiles>().having((e) => e.causa, 'causa', isA<TimeoutException>())),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(eventos, ['pedido', 'abortado']);
+    });
+
+    test('al cancelar la prueba se aborta el pedido y no se espera el tiempo', () async {
+      final eventos = <String>[];
+      final cancelar = Completer<void>();
+      final sonda = crear((pedido) => colgado(pedido, eventos));
+
+      final prueba = expectLater(
+        sonda.probar(origen, cancelacion: cancelar.future),
+        throwsA(
+          isA<ErrorRedTiles>().having((e) => e.causa, 'causa', isA<http.RequestAbortedException>()),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(eventos, ['pedido'], reason: 'sigue esperando: nadie cancela todavía');
+
+      cancelar.complete();
+      await prueba;
+
+      expect(eventos, ['pedido', 'abortado']);
+    });
+
+    test('una cancelación que ya estaba hecha aborta el pedido apenas sale', () async {
+      final eventos = <String>[];
+
+      await expectLater(
+        crear(
+          (pedido) => colgado(pedido, eventos),
+        ).probar(origen, cancelacion: Future<void>.value()),
+        throwsA(isA<ErrorRedTiles>()),
+      );
+
+      expect(eventos, ['pedido', 'abortado']);
+    });
+
+    test('cancelar después de que la prueba terminó no aborta nada', () async {
+      final cancelar = Completer<void>();
+      var abortado = false;
+      final sonda = crear((pedido) async {
+        if (pedido case http.Abortable(:final abortTrigger?)) {
+          unawaited(abortTrigger.then((_) => abortado = true));
+        }
+        return conCuerpo(206).respuesta;
+      });
+
+      await sonda.probar(origen, cancelacion: cancelar.future);
+      cancelar.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(abortado, isFalse);
+    });
+
+    test('una cancelación que falla no rompe la prueba ni queda sin atrapar', () async {
+      final r = conCuerpo(206);
+
+      await crear(
+        (_) async => r.respuesta,
+      ).probar(origen, cancelacion: Future<void>.error(StateError('no debería')));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(r.eventos, ['escuchado', 'soltado']);
+    });
+
+    test('un aborto justo después de la respuesta no deja un error sin manejar', () async {
+      // `package:http` inyecta RequestAbortedException en el cuerpo si se aborta antes de
+      // escucharlo: al soltar la respuesta ese error tiene que tener quien lo atrape.
+      final cancelar = Completer<void>();
+      final sonda = crear((pedido) async {
+        final cuerpo = StreamController<List<int>>(sync: true);
+        cancelar.complete();
+        cuerpo.addError(http.RequestAbortedException(pedido.url));
+        return http.StreamedResponse(cuerpo.stream, 206);
+      });
+
+      await sonda.probar(origen, cancelacion: cancelar.future);
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    group('contra un servidor de verdad (loopback, cliente de dart:io)', () {
+      late ServerSocket servidor;
+      late List<Socket> conexiones;
+      late int cerradas;
+      late Uri archivo;
+
+      setUp(() async {
+        conexiones = [];
+        cerradas = 0;
+        servidor = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        // Acepta, lee el pedido y no contesta nunca. El cierre del lado del cliente se ve como el
+        // fin de la lectura.
+        servidor.listen((conexion) {
+          conexiones.add(conexion);
+          conexion.listen((_) {}, onDone: () => cerradas++, onError: (Object _) => cerradas++);
+        });
+        archivo = Uri.parse('http://127.0.0.1:${servidor.port}/montevideo.pmtiles');
+      });
+
+      tearDown(() async {
+        for (final conexion in conexiones) {
+          conexion.destroy();
+        }
+        await servidor.close();
+      });
+
+      Future<void> esperarCerradas(int cuantas) async {
+        for (var i = 0; i < 100 && cerradas < cuantas; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      }
+
+      test('diez aperturas contra un servidor colgado: las diez conexiones se cierran', () async {
+        final cliente = IOClient(HttpClient());
+        addTearDown(cliente.close);
+        final sonda = SondaArchivoTilesHttp(
+          cliente: cliente,
+          esperaRespuesta: const Duration(milliseconds: 150),
+        );
+
+        for (var i = 0; i < 10; i++) {
+          await expectLater(
+            sonda.probar(archivo),
+            throwsA(isA<ErrorRedTiles>().having((e) => e.causa, 'causa', isA<TimeoutException>())),
+          );
+        }
+        await esperarCerradas(10);
+
+        expect(conexiones, hasLength(10));
+        expect(cerradas, 10, reason: 'sin abortar, el cliente las deja abiertas');
+      });
+
+      test('salir del mapa (cancelar) cierra la conexión sin esperar los 30 s', () async {
+        final cliente = IOClient(HttpClient());
+        addTearDown(cliente.close);
+        final sonda = SondaArchivoTilesHttp(cliente: cliente);
+        final cancelar = Completer<void>();
+
+        final prueba = expectLater(
+          sonda.probar(archivo, cancelacion: cancelar.future),
+          throwsA(isA<ErrorRedTiles>()),
+        );
+        for (var i = 0; i < 100 && conexiones.isEmpty; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(conexiones, hasLength(1));
+        expect(cerradas, 0, reason: 'mientras nadie cancela, la conexión sigue abierta');
+
+        cancelar.complete();
+        await prueba;
+        await esperarCerradas(1);
+
+        expect(cerradas, 1);
+      });
     });
   });
 

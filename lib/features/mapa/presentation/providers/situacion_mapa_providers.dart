@@ -100,10 +100,20 @@ final pruebaDelMapaProvider = FutureProvider.autoDispose.family<PruebaDelMapa?, 
     ),
   );
   if (paquete == null) return null;
+  // Se completa cuando a nadie le importa más lo que contesten los pedidos en vuelo: salió del mapa
+  // o se pidió otra prueba (el provider se descarta), o la prueba ya tiene su respuesta (si una
+  // parte falló, las demás no se siguen esperando). La sonda aborta entonces los pedidos que queden
+  // y cierra las conexiones, en vez de dejarlas abiertas contra un servidor que no contesta.
+  final cancelar = Completer<void>();
+  void cancelarLoQueQuede() {
+    if (!cancelar.isCompleted) cancelar.complete();
+  }
+
+  ref.onDispose(cancelarLoQueQuede);
   try {
     final sonda = ref.read(sondaArchivoTilesProvider);
     await Future.wait([
-      for (final parte in paquete.partes) sonda.probar(parte.origen),
+      for (final parte in paquete.partes) sonda.probar(parte.origen, cancelacion: cancelar.future),
     ], eagerError: true);
     return PruebaDelMapa.respondio;
   } on ErrorRedTiles {
@@ -112,6 +122,8 @@ final pruebaDelMapaProvider = FutureProvider.autoDispose.family<PruebaDelMapa?, 
     return PruebaDelMapa.fallo;
   } on Object {
     return null;
+  } finally {
+    cancelarLoQueQuede();
   }
 });
 

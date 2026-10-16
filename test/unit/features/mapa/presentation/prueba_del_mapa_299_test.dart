@@ -458,4 +458,68 @@ void main() {
       },
     );
   });
+
+  group('los pedidos en vuelo se cancelan cuando nadie espera la respuesta', () {
+    test('cada prueba sale con su cancelación y, si todo contesta, no se cancela nada', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [_montevideoEnPartes]);
+      contenedor = armar(arnes);
+
+      await abrirMapa();
+      expect(prueba(), PruebaDelMapa.respondio);
+
+      expect(arnes.sonda.pruebas, hasLength(2));
+      expect(arnes.sonda.conCancelacion, 2);
+      expect(arnes.sonda.canceladas, 0);
+    });
+
+    test('salir del mapa con la prueba en vuelo la cancela (todas las partes)', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [_montevideoEnPartes]);
+      arnes.sonda.espera = Completer<void>();
+      contenedor = armar(arnes);
+      final abierta = contenedor.listen(situacionMapaProvider(ambitoMontevideo), (_, _) {});
+      await _dejarCorrer();
+      expect(arnes.sonda.enCurso, 2);
+      expect(arnes.sonda.canceladas, 0, reason: 'el mapa sigue abierto: nadie cancela');
+
+      abierta.close();
+      await _dejarCorrer();
+
+      expect(arnes.sonda.canceladas, 2);
+      expect(arnes.sonda.enCurso, 0);
+    });
+
+    test('invalidar la prueba («Reintentar») cancela la vieja y la nueva manda', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [paqueteMontevideo]);
+      arnes.sonda.espera = Completer<void>();
+      contenedor = armar(arnes);
+      await abrirMapa();
+      expect(arnes.sonda.enCurso, 1);
+
+      contenedor.invalidate(pruebaDelMapaProvider(ambitoMontevideo));
+      await _dejarCorrer();
+
+      expect(arnes.sonda.pruebas, hasLength(2));
+      expect(arnes.sonda.canceladas, 1, reason: 'la vieja se aborta; no queda su conexión abierta');
+      expect(arnes.sonda.enCurso, 1, reason: 'solo sigue en vuelo la nueva');
+
+      arnes.sonda.espera!.complete();
+      await _dejarCorrer();
+
+      expect(prueba(), PruebaDelMapa.respondio);
+      expect(situacion().aviso, isNull);
+    });
+
+    test('si una parte falla, las demás no se siguen esperando: se cancelan', () async {
+      arnes = ArnesMapa(conexion: TipoConexion.wifi, catalogo: [_montevideoEnPartes]);
+      arnes.sonda.caidos.add(_montevideoEnPartes.partes[0].origen);
+      arnes.sonda.esperas[_montevideoEnPartes.partes[1].origen] = Completer<void>();
+      contenedor = armar(arnes);
+
+      await abrirMapa();
+
+      expect(situacion().aviso, const AvisoMapaNoCarga());
+      expect(arnes.sonda.canceladas, 1);
+      expect(arnes.sonda.enCurso, 0);
+    });
+  });
 }

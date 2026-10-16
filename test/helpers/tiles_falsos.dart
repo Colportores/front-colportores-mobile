@@ -264,15 +264,38 @@ final class SondaFalsa implements SondaArchivoTiles {
   /// Se lee en cada pedido, así que el test puede cambiarlo entre un intento y otro.
   Completer<void>? espera;
 
+  /// Como [espera], pero solo para ese archivo (tiene prioridad sobre [espera]): un servidor que
+  /// contesta rápido con una parte del mapa y se cuelga en la otra.
+  final esperas = <Uri, Completer<void>>{};
+
   /// Cuántas pruebas hay en curso (empezaron y todavía no contestaron).
   int enCurso = 0;
 
+  /// Cuántas pruebas se abortaron mientras esperaban (la `cancelacion` llegó antes de que
+  /// contestaran): lo que la sonda real hace cerrando la conexión. Cuenta aparte de [pruebas].
+  int canceladas = 0;
+
+  /// Cuántos pedidos llegaron con una `cancelacion` (el provider siempre la manda).
+  int conCancelacion = 0;
+
   @override
-  Future<void> probar(Uri origen) async {
+  Future<void> probar(Uri origen, {Future<void>? cancelacion}) async {
     pruebas.add(origen);
+    if (cancelacion != null) conCancelacion++;
     enCurso++;
     try {
-      await espera?.future;
+      final retenida = esperas[origen] ?? espera;
+      if (retenida != null) {
+        var abortada = false;
+        await Future.any<void>([
+          retenida.future,
+          if (cancelacion != null) cancelacion.then((_) => abortada = true),
+        ]);
+        if (abortada) {
+          canceladas++;
+          throw const ErrorRedTiles();
+        }
+      }
       if (lanza) throw StateError('la sonda falló');
       if (servidorCaido) throw const ErrorRedTiles();
       if (caidos.contains(origen)) throw ErrorServidorTiles(statusError);
