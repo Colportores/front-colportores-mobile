@@ -79,6 +79,9 @@ final class DescargadorPaquetesTiles {
   final DateTime Function() _ahora;
 
   final _descargas = <String, _Descarga>{};
+
+  /// Las escrituras del registro de pendientes que salieron sin esperar y todavía no terminaron.
+  final _escrituras = <Future<void>>{};
   final _cambios = StreamController<EstadoDescarga>.broadcast();
   StreamSubscription<TipoConexion>? _escuchaConectividad;
 
@@ -286,8 +289,8 @@ final class DescargadorPaquetesTiles {
     return const Right(unit);
   }
 
-  /// Corta las descargas en curso (los `.part` quedan para la próxima) y deja de escuchar la
-  /// conectividad.
+  /// Corta las descargas en curso (los `.part` quedan para la próxima), deja de escuchar la
+  /// conectividad y espera a que terminen de escribirse las anotaciones que quedaron en vuelo.
   Future<void> cerrar() async {
     // Antes de cualquier espera: un reintento que vence mientras se cierra no arranca otro intento.
     for (final descarga in _descargas.values) {
@@ -297,6 +300,9 @@ final class DescargadorPaquetesTiles {
     _escuchaConectividad = null;
     for (final descarga in _descargas.values.toList()) {
       await _detener(descarga, MotivoPausa.usuario);
+    }
+    while (_escrituras.isNotEmpty) {
+      await Future.wait(_escrituras.toList());
     }
     await _cambios.close();
   }
@@ -637,11 +643,17 @@ final class DescargadorPaquetesTiles {
       permitirDatosMoviles: d.permitirDatosMoviles,
       pausadaPorElColportor: d.pausadaPorElColportor,
     );
-    unawaited(_sinFallar(_repository.anotarDescargaPendiente(pendiente)));
+    _enSegundoPlano(_repository.anotarDescargaPendiente(pendiente));
   }
 
   void _olvidar(String paqueteId) {
-    unawaited(_sinFallar(_repository.olvidarDescargaPendiente(paqueteId)));
+    _enSegundoPlano(_repository.olvidarDescargaPendiente(paqueteId));
+  }
+
+  void _enSegundoPlano(Future<Object?> escritura) {
+    final segura = _sinFallar(escritura);
+    _escrituras.add(segura);
+    unawaited(segura.whenComplete(() => _escrituras.remove(segura)));
   }
 
   static Future<void> _sinFallar(Future<Object?> escritura) async {

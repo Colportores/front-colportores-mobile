@@ -380,6 +380,9 @@ final class RepositorioTilesEnMemoria implements PaquetesTilesRepository {
 
   /// Cuántas veces se anotó o se actualizó una descarga pendiente.
   int anotaciones = 0;
+
+  /// Si no es null, las anotaciones esperan a que se complete (para probar escrituras en vuelo).
+  Completer<void>? retenerAnotaciones;
   final _avisos = StreamController<void>.broadcast(sync: true);
 
   List<PaqueteDescargado> get registrados => _descargados.values.toList();
@@ -439,6 +442,7 @@ final class RepositorioTilesEnMemoria implements PaquetesTilesRepository {
   Future<Either<Failure, Unit>> anotarDescargaPendiente(DescargaPendiente pendiente) async {
     final fallo = falloPendientes;
     if (fallo != null) return Left(fallo);
+    await retenerAnotaciones?.future;
     anotaciones++;
     _pendientes[pendiente.id] = pendiente;
     return const Right(unit);

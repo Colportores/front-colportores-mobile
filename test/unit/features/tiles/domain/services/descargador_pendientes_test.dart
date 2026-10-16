@@ -174,6 +174,27 @@ void main() {
       expect(repositorio.pendientes, [anotada(paquete, datosMoviles: true)]);
     });
 
+    test('dado que la anotación sigue escribiéndose cuando se cierra la app, cerrar espera a que '
+        'termine de escribirse', () async {
+      conectividad.tipo = TipoConexion.sinConexion;
+      final app = abrirApp();
+      final retenida = repositorio.retenerAnotaciones = Completer<void>();
+
+      await app.descargar(paquete, esperarConexion: true);
+      var cerrado = false;
+      final cierre = app.cerrar().then((_) => cerrado = true);
+      await dejarCorrer();
+
+      expect(cerrado, isFalse);
+      expect(repositorio.pendientes, isEmpty);
+
+      retenida.complete();
+      await cierre;
+
+      expect(cerrado, isTrue);
+      expect(repositorio.pendientes, [anotada(paquete)]);
+    });
+
     test('dado que termina de bajar, la olvida', () async {
       final app = abrirApp();
 
