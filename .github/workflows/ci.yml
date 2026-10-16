@@ -12,12 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Misma versión que dockerfile.dev. Subirlas juntas.
+  # Misma versión que dockerfile.dev. Subirlas juntas. Al pasar a Dart >= 3.13 se borra
+  # tool/riverpod_lint_plugin y analysis_options.yaml declara `riverpod_lint: ^3.1.9` (ver #87).
   FLUTTER_VERSION: "3.44.0"
 
 jobs:
   verificar:
-    name: format · analyze · lint · test · coverage
+    name: format · analyze · test · coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,9 +40,6 @@ jobs:
       - name: dart format (archivos versionados)
         run: git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
 
-      - run: flutter analyze --fatal-infos
-      - run: dart run custom_lint --fatal-infos
-
       # El motor es un paquete aparte con su propia suite (§8 del contrato) y núcleo Dart puro:
       # corre en la VM, sin emulador. `flutter test` solo mira el `test/` de la app, así que sin
       # este paso sus tests no los ejecuta nadie — y ahí vive la lógica de la cola, los lotes, los
@@ -53,13 +51,16 @@ jobs:
           dart analyze
           dart test
 
+      # `dart analyze` y no `flutter analyze`: este último no muestra los diagnósticos de plugins,
+      # y las reglas de Riverpod vienen del plugin (analysis_options.yaml → plugins).
+      - run: dart analyze --fatal-infos
       - run: flutter test --coverage
 
       - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)
         run: bash scripts/coverage_check.sh
 
       # Variables de repo (no secrets: la anon key es pública). Sin ellas el paso se omite.
-      - name: Proveedores de Supabase Auth (email + google, sin apple)
+      - name: Proveedores de Supabase Auth (solo email, sin apple)
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
@@ -83,7 +84,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          # `maplibre_gl` (el mapa, #286) compila su parte de Android con Java 21.
+          java-version: "21"
 
       - uses: subosito/flutter-action@v2
         with:

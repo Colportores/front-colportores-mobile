@@ -1,0 +1,297 @@
+// Cubre el listener de deep link de verificación de email en la raíz de la app (lib/app.dart):
+// `erroresVerificacionEmailProvider` (enlace con `otp_expired`) lleva a VerificacionEmailPage: con
+// sesión activa, «ya verificado»; sin sesión ni pantalla de espera, el texto genérico (los tres
+// casos de HU-AUTH-002 están en `enlace_verificacion_usado_test.dart`).
+import 'dart:async';
+
+import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/db_local_repository_en_memoria.dart';
+
+/// El `ProviderScope` va como argumento directo de `pumpWidget`: si lo arma un helper que
+/// devuelve el widget, riverpod_lint lo toma por un scope anidado
+/// (`scoped_providers_should_specify_dependencies`), y acá es la raíz.
+Future<void> _montarApp(
+  WidgetTester tester, {
+  required AuthRemoteDataSourceEnMemoria remote,
+  AuthLocalDataSource? local,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      // HU-AUTH-009 (#27): la DB local se prepara antes de la pantalla principal; acá ya está.
+      dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+      authRemoteDataSourceProvider.overrideWithValue(remote),
+      authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
+    ],
+    child: const ColportoresApp(),
+  ),
+);
+
+/// Local que no resuelve `leerSesion()` hasta que se llama a [resolver] — simula el arranque en
+/// frío, donde `sesionActual()` (I/O real) todavía no terminó cuando el deep link de error llega.
+class _LocalConDemora implements AuthLocalDataSource {
+  _LocalConDemora(this._sesion);
+
+  final SesionModel? _sesion;
+  final _completer = Completer<void>();
+
+  @override
+  Future<SesionModel?> leerSesion() async {
+    await _completer.future;
+    return _sesion;
+  }
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) async {}
+
+  @override
+  Future<void> borrarSesion() async {}
+
+  void resolver() => _completer.complete();
+}
+
+void main() {
+  group('ColportoresApp — deep link de verificación con error', () {
+    testWidgets('sin sesión activa ni pantalla de espera: navega al texto genérico', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+      await _montarApp(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+
+      remote.simularEnlaceVerificacionInvalido();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_mensaje')), findsOneWidget);
+      expect(find.textContaining('Este enlace ya no sirve'), findsOneWidget);
+      expect(find.text('El enlace expiró'), findsNothing);
+    });
+
+    testWidgets('con sesión activa: «Tu email ya está verificado» y después vuelve a la app', (
+      tester,
+    ) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {'ana@example.com': 'secreto123'},
+      );
+      await _montarApp(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(find.byKey(const Key('login_enviar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+
+      // Empuja una ruta arriba de "/" (InicioPage): al salir de «ya verificado» la pila queda en
+      // la raíz.
+      final elemento = tester.element(find.byKey(const Key('inicio_principal')));
+      unawaited(
+        Navigator.of(elemento).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('otra pantalla', key: Key('otra_pantalla'))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('otra_pantalla')), findsOneWidget);
+
+      remote.simularEnlaceVerificacionInvalido();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('otra_pantalla')), findsNothing);
+      expect(find.text('Tu email ya está verificado'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('verificacion_email_ir_login')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+    });
+
+    testWidgets(
+      'sesión persistida pero todavía resolviendo (arranque en frío): espera y no navega',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+        final local = _LocalConDemora(
+          SesionModel(
+            usuarioId: '01920000-0000-7000-8000-000000000001',
+            email: 'ana@example.com',
+            accessToken: 'jwt',
+            expiraEn: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          ),
+        );
+
+        await _montarApp(tester, remote: remote, local: local);
+        await tester.pump();
+
+        // sesionProvider sigue en AsyncLoading (leerSesion no resolvió): se ve el spinner de
+        // `home:`, no el login ni la pantalla de verificación.
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        // El deep link de error llega ANTES de que la sesión persistida termine de leerse — el
+        // caso típico del arranque en frío desde el enlace viejo del mail.
+        remote.simularEnlaceVerificacionInvalido();
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('verificacion_email_titulo')),
+          findsNothing,
+          reason: 'todavía no se supo si hay sesión: no debería haber navegado',
+        );
+
+        local.resolver();
+        await tester.pumpAndSettle();
+
+        // Había sesión: el enlace ya estaba usado, la cuenta ya está verificada.
+        expect(find.text('Tu email ya está verificado'), findsOneWidget);
+        expect(find.text('El enlace expiró'), findsNothing);
+      },
+    );
+  });
+
+  group('ColportoresApp — deep link de verificación exitosa (issue #84)', () {
+    testWidgets('enlace válido: navega a la pantalla en estado "verificado"', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        requiereVerificacionAlRegistrar: true,
+      );
+      await remote.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia.silva@correo.com',
+        password: 'Secreto123',
+      );
+
+      await _montarApp(tester, remote: remote);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+
+      remote.simularEnlaceVerificacionExitoso('lucia.silva@correo.com');
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
+      expect(find.text('Email verificado'), findsOneWidget);
+      expect(
+        find.text('Email verificado. Esperá la asignación de tu coordinador.'),
+        findsOneWidget,
+        reason: 'texto literal del criterio de aceptación de HU-AUTH-002',
+      );
+    });
+
+    testWidgets('arranque en frío (sesión local todavía resolviendo): igual navega — no espera a '
+        '`sesionProvider` como el caso de error, el evento en sí ya prueba que la sesión se acaba '
+        'de crear', (tester) async {
+      final remote = AuthRemoteDataSourceEnMemoria(
+        credenciales: const {},
+        requiereVerificacionAlRegistrar: true,
+      );
+      await remote.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia.silva@correo.com',
+        password: 'Secreto123',
+      );
+      final local = _LocalConDemora(null);
+
+      await _montarApp(tester, remote: remote, local: local);
+      await tester.pump();
+
+      // sesionProvider sigue en AsyncLoading (leerSesion no resolvió): se ve el spinner de
+      // `home:`. A propósito no se resuelve en todo el test — sin `pumpAndSettle`, que
+      // colgaría esperando a que termine una animación indeterminada.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      remote.simularEnlaceVerificacionExitoso('lucia.silva@correo.com');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('verificacion_email_titulo')), findsOneWidget);
+      expect(
+        find.text('Email verificado. Esperá la asignación de tu coordinador.'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('ColportoresApp — bloqueo de acceso hasta verificar (HU-AUTH-002)', () {
+    testWidgets(
+      'cuenta sin verificar: el login rechaza con el mensaje inline y no entra a Inicio',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await remote.registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia.silva@correo.com',
+          password: 'Secreto123',
+        );
+
+        await _montarApp(tester, remote: remote);
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
+        await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+
+        // Bloqueado: ni entra a Inicio ni queda "logueado a medias" en ninguna otra pantalla.
+        expect(find.byKey(const Key('inicio_principal')), findsNothing);
+        expect(find.byKey(const Key('login_error_general')), findsOneWidget);
+        expect(
+          find.textContaining('verificar tu correo'),
+          findsOneWidget,
+          reason: 'mensaje inline de "email sin confirmar", igual que devuelve Supabase',
+        );
+        // Sigue en el login: el intento no dejó una sesión a medio abrir.
+        expect(find.byKey(const Key('login_enviar')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una vez verificada la cuenta, el mismo login que antes fue rechazado ahora entra',
+      (tester) async {
+        final remote = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {},
+          requiereVerificacionAlRegistrar: true,
+        );
+        await remote.registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia.silva@correo.com',
+          password: 'Secreto123',
+        );
+
+        await _montarApp(tester, remote: remote);
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byKey(const Key('login_email')), 'lucia.silva@correo.com');
+        await tester.enterText(find.byKey(const Key('login_password')), 'Secreto123');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('inicio_principal')), findsNothing);
+
+        remote.confirmarEmail('lucia.silva@correo.com');
+        await tester.tap(find.byKey(const Key('login_enviar')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
+      },
+    );
+  });
+}

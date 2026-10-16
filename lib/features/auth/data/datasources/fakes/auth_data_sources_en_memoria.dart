@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import '../../../domain/entities/motivo_expiracion.dart';
+import '../../../domain/entities/politica_sesion.dart';
 import '../../../domain/entities/usuario.dart';
 import '../../models/sesion_model.dart';
 import '../auth_local_data_source.dart';
@@ -12,7 +16,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   AuthRemoteDataSourceEnMemoria({
     required Map<String, String> credenciales,
     this.simularSinConexion = false,
-    this.cuentasPendientes = const {},
     this.requiereVerificacionAlRegistrar = false,
     DateTime Function()? ahora,
   }) : _credenciales = Map.of(credenciales),
@@ -25,7 +28,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// Mutable a propósito: `registrar` agrega credenciales nuevas para que la demo pueda
   /// registrarse y loguearse a continuación.
   final Map<String, String> _credenciales;
-  final Set<String> cuentasPendientes;
   final DateTime Function() _ahora;
 
   /// Si es `true`, `registrar` crea la cuenta pero devuelve `null` en vez de sesión — simula
@@ -47,27 +49,62 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// email — [confirmarEmail] las saca de acá.
   final Set<String> _pendientesDeVerificar = {};
 
-  static const String _mensajeEmailNoConfirmado =
-      'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.';
+  /// Cuántas veces se llamó a [iniciarSesion] — para probar que un enlace no dispara dos logins.
+  int llamadasIniciarSesion = 0;
+
+  /// Si no es `null`, [iniciarSesion] no sigue hasta que el test lo complete (ventana de carrera).
+  Completer<void>? demoraIniciarSesion;
 
   @override
   Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    llamadasIniciarSesion++;
+    await demoraIniciarSesion?.future;
     if (simularSinConexion) throw const SinConexionException();
-    if (cuentasPendientes.contains(email)) throw const CuentaPendienteException();
     if (_credenciales[email] != password) throw const CredencialesInvalidasException();
     // El orden importa: como en Supabase real, una contraseña incorrecta da credenciales
     // inválidas primero — recién con la contraseña bien se ve si falta confirmar el email.
     if (_pendientesDeVerificar.contains(email)) {
-      throw const ServidorException(mensaje: _mensajeEmailNoConfirmado);
+      throw const EmailNoConfirmadoException();
     }
 
-    return SesionModel(
+    final sesion = SesionModel(
       usuarioId: _uuidDesde(email),
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
+    // Como el cliente de Supabase: la sesión del login pasa a ser la suya.
+    if (enElCliente != null) enElCliente = sesion;
+    return sesion;
   }
+
+  /// Cuántas veces se solicitó recuperación de contraseña (HU-AUTH-004), por email. Se registra
+  /// igual exista o no la cuenta —anti-enumeración—: el fake no puede filtrar esa diferencia.
+  final Map<String, int> solicitudesRecuperacionPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [solicitarRecuperacionPassword] lo lanza en vez de
+  /// registrar la solicitud — para simular un rate limit u otro error de Supabase.
+  AuthRemoteException? fallaAlSolicitarRecuperacion;
+
+  /// Si no es `null`, [solicitarRecuperacionPassword] no sigue hasta que el test lo complete — para
+  /// ver el estado «Enviando…» y probar el doble toque con la solicitud en vuelo.
+  Completer<void>? demoraRecuperacion;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async {
+    await demoraRecuperacion?.future;
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlSolicitarRecuperacion != null) throw fallaAlSolicitarRecuperacion!;
+    solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
+  /// Cuántas veces se llamó a [registrar] — para probar la guarda de doble tap de RegistroPage.
+  int llamadasRegistrar = 0;
+
+  /// Si no es `null`, [registrar] no sigue hasta que el test lo complete — para que un segundo
+  /// toque ocurra mientras el primero todavía está en vuelo (sin esto el fake resuelve
+  /// instantáneo y no hay ventana de carrera real que probar).
+  Completer<void>? demoraRegistrar;
 
   @override
   Future<SesionModel?> registrar({
@@ -77,6 +114,8 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required String email,
     required String password,
   }) async {
+    llamadasRegistrar++;
+    await demoraRegistrar?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
 
@@ -99,30 +138,64 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       usuarioId: usuarioId,
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
   }
 
-  /// Cuenta fija con la que "entra" Google en la demo (no hay navegador ni deep link acá).
-  static const String emailGoogle = 'google@colportores.app';
+  /// Si es `true`, [renovarSesion] lanza [SesionRevocadaException] (el servidor ya no acepta la
+  /// sesión, HU-AUTH-007).
+  bool sesionRevocadaEnElServidor = false;
 
-  int llamadasIniciarSesionConGoogle = 0;
+  /// Si está, [renovarSesion] espera a que el test la complete.
+  Completer<void>? demoraAlRenovar;
+
+  int llamadasRenovarSesion = 0;
+  int _renovaciones = 0;
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() async {
+  Future<SesionModel> renovarSesion() async {
+    llamadasRenovarSesion++;
+    await demoraAlRenovar?.future;
     if (simularSinConexion) throw const SinConexionException();
-    llamadasIniciarSesionConGoogle++;
+    if (sesionRevocadaEnElServidor) throw const SesionRevocadaException();
+    _renovaciones++;
     return SesionModel(
-      usuarioId: _uuidDesde(emailGoogle),
-      email: emailGoogle,
-      accessToken: 'token-google-en-memoria',
-      expiraEn: _ahora().add(const Duration(hours: 1)),
+      usuarioId: _uuidDesde('demo@colportores.app'),
+      email: 'demo@colportores.app',
+      accessToken: 'token-renovado-$_renovaciones',
+      expiraEn: PoliticaSesion.expiraEn(_ahora()),
     );
+  }
+
+  final _expiraciones = StreamController<MotivoExpiracion>.broadcast();
+
+  @override
+  Stream<MotivoExpiracion> get expiraciones => _expiraciones.stream;
+
+  /// Simula que el proveedor terminó la sesión por su cuenta (HU-AUTH-007).
+  void simularExpiracion(MotivoExpiracion motivo) => _expiraciones.add(motivo);
+
+  /// Simula que al arrancar se descartó una sesión guardada por 30 días sin uso.
+  bool vencidaPorInactividadAlArrancar = false;
+
+  @override
+  bool tomarVencimientoPorInactividad() {
+    final vencio = vencidaPorInactividadAlArrancar;
+    vencidaPorInactividadAlArrancar = false;
+    return vencio;
   }
 
   /// El fake no persiste nada entre reinicios: la sesión "recordada" es siempre `null`.
   @override
   Future<SesionModel?> obtenerSesionActual() async => null;
+
+  /// La sesión del cliente del proveedor, que renueva el JWT por su cuenta. Por defecto `null`
+  /// (se usa la guardada); un test la pone para simular ese refresh, y desde ahí cada
+  /// [iniciarSesion] la reemplaza, como en el cliente real.
+  SesionModel? enElCliente;
+
+  @override
+  SesionModel? sesionEnElCliente() => enElCliente;
 
   @override
   Future<void> cerrarSesion(String accessToken) async {
@@ -130,10 +203,71 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     llamadasCerrarSesion++;
   }
 
+  /// Tokens revocados con [revocarSesion], en orden. El scope no se registra porque el puerto lo
+  /// fija: siempre es solo esa sesión (el adaptador de Supabase pasa `SignOutScope.local`).
+  final List<String> revocaciones = [];
+
+  /// Si no es `null`, [revocarSesion] lo lanza (sin registrar la revocación): se cortó la red
+  /// justo ahí, o algo inesperado, sin que falle el resto.
+  Exception? fallaAlRevocar;
+
+  /// JWT que el servidor ya no acepta (vencidos): [revocarSesion] los rechaza como Supabase
+  /// (`/logout` con un JWT vencido responde 403 `bad_jwt`).
+  final Set<String> tokensVencidos = {};
+
+  @override
+  Future<void> revocarSesion(String accessToken) async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlRevocar case final falla?) throw falla;
+    if (tokensVencidos.contains(accessToken)) {
+      throw const ServidorException(status: 403, mensaje: 'bad_jwt');
+    }
+    revocaciones.add(accessToken);
+  }
+
   /// Simula que el usuario tocó el link de verificación del correo: [iniciarSesion] deja de
   /// lanzar el "falta confirmar" para esta cuenta. Sin efecto si no se registró con
   /// `requiereVerificacionAlRegistrar`.
   void confirmarEmail(String email) => _pendientesDeVerificar.remove(email);
+
+  /// Cuántas veces se reenvió el email de verificación (HU-AUTH-002), por email.
+  final Map<String, int> reenviosPorEmail = {};
+
+  /// Si no es `null`, toda llamada a [reenviarVerificacion] lo lanza en vez de reenviar — para
+  /// simular el rate limit de Supabase (~2 emails/hora sin SMTP propio).
+  AuthRemoteException? fallaAlReenviar;
+
+  /// Si no es `null`, [reenviarVerificacion] no sigue hasta que el test lo complete — para probar
+  /// qué pasa con el reenvío en vuelo (doble toque, cambiar la dirección, salir de la pantalla).
+  Completer<void>? demoraReenvio;
+
+  @override
+  Future<void> reenviarVerificacion(String email) async {
+    await demoraReenvio?.future;
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlReenviar != null) throw fallaAlReenviar!;
+    reenviosPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
+  }
+
+  final _erroresVerificacionController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => _erroresVerificacionController.stream;
+
+  /// Simula que el deep link de verificación volvió con un enlace vencido o ya usado.
+  void simularEnlaceVerificacionInvalido() => _erroresVerificacionController.add(null);
+
+  final _verificacionExitosaController = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get verificacionesExitosas => _verificacionExitosaController.stream;
+
+  /// Simula que el deep link de verificación volvió válido (issue #84): confirma el email —igual
+  /// que [confirmarEmail]— y emite el evento de éxito.
+  void simularEnlaceVerificacionExitoso(String email) {
+    confirmarEmail(email);
+    _verificacionExitosaController.add(null);
+  }
 
   /// UUID determinístico (con forma de v7) a partir del email, solo para el fake.
   static String _uuidDesde(String email) {

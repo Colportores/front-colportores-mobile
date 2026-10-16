@@ -1,0 +1,19 @@
+# Envoltorio de riverpod_lint para el analysis server de Dart 3.12 (issue #87, opción (a) de #6).
+#
+# El plugin manager de Dart 3.12 resuelve `analysis_server_plugin: ^0.3.8` y pub elige la última.
+# Desde la 0.3.16 el plugin espera `analysis.setAnalysisRoots`, pero el server de 3.12 manda el
+# viejo `analysis.setContextRoots`: el plugin contesta UNKNOWN_REQUEST y `dart analyze` se cuelga.
+# La 0.3.15 es la última con el protocolo viejo. riverpod_lint 3.1.8 es la última para Dart 3.12.
+#
+# Al subir a Dart >= 3.13 se borra este paquete y `analysis_options.yaml` declara directamente
+# `plugins: riverpod_lint: ^3.1.9` (verificado con Flutter 3.47.5 en el spike de #6).
+name: riverpod_lint_plugin
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  analysis_server_plugin: 0.3.15 # protocolo de plugins de Dart 3.12; 0.3.16+ cuelga dart analyze
+  riverpod_lint: 3.1.8

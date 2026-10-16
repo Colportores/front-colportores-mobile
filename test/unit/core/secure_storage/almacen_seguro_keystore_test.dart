@@ -21,10 +21,10 @@ void main() {
   group('AlmacenSeguroKeystore', () {
     group('dado que el Keystore responde', () {
       test('cuando lee, usa el id documentado de la clave y devuelve el valor', () async {
-        when(() => plugin.read(key: any(named: 'key'))).thenAnswer((_) async => 'sal');
+        when(() => plugin.read(key: any(named: 'key'))).thenAnswer((_) async => 'dek');
 
-        expect(await almacen.leer(ClaveSegura.salDb), 'sal');
-        verify(() => plugin.read(key: 'db_salt')).called(1);
+        expect(await almacen.leer(ClaveSegura.dekDb), 'dek');
+        verify(() => plugin.read(key: 'db_dek')).called(1);
       });
 
       test('cuando la clave no existe, devuelve null', () async {
@@ -49,9 +49,9 @@ void main() {
       test('cuando borra, borra solo esa clave', () async {
         when(() => plugin.delete(key: any(named: 'key'))).thenAnswer((_) async {});
 
-        await almacen.borrar(ClaveSegura.salDb);
+        await almacen.borrar(ClaveSegura.dekDb);
 
-        verify(() => plugin.delete(key: 'db_salt')).called(1);
+        verify(() => plugin.delete(key: 'db_dek')).called(1);
       });
 
       test('cuando borra todo, delega en deleteAll', () async {
@@ -69,11 +69,11 @@ void main() {
         when(() => plugin.read(key: any(named: 'key'))).thenThrow(dePlataforma);
 
         await expectLater(
-          almacen.leer(ClaveSegura.salDb),
+          almacen.leer(ClaveSegura.dekDb),
           throwsA(
             isA<AlmacenSeguroException>()
                 .having((e) => e.operacion, 'operacion', 'leer')
-                .having((e) => e.clave, 'clave', ClaveSegura.salDb)
+                .having((e) => e.clave, 'clave', ClaveSegura.dekDb)
                 .having((e) => e.causa, 'causa', dePlataforma),
           ),
         );
@@ -101,7 +101,7 @@ void main() {
         ).thenThrow(MissingPluginException('sin implementación'));
 
         await expectLater(
-          almacen.escribir(ClaveSegura.salDb, 'sal'),
+          almacen.escribir(ClaveSegura.dekDb, 'dek'),
           throwsA(isA<AlmacenSeguroException>()),
         );
       });
@@ -109,27 +109,32 @@ void main() {
       test('cuando es un Error del programa, lo deja pasar sin disfrazarlo', () async {
         when(() => plugin.read(key: any(named: 'key'))).thenThrow(StateError('bug'));
 
-        await expectLater(almacen.leer(ClaveSegura.salDb), throwsA(isA<StateError>()));
+        await expectLater(almacen.leer(ClaveSegura.dekDb), throwsA(isA<StateError>()));
       });
     });
 
     group('dado que no se le inyecta plugin', () {
-      // Fija los valores que enumera la doc del adaptador. Son decisiones abiertas (S10): si
-      // alguien las cambia, este test lo obliga a actualizar la doc junto con el código.
+      // Fija las opciones de plataforma de ADR-006 que enumera la doc del adaptador: si alguien
+      // las cambia, este test lo obliga a actualizar la doc (y el ADR) junto con el código.
       late AlmacenSeguroKeystore porDefecto;
 
       setUp(() => porDefecto = AlmacenSeguroKeystore());
 
-      test('cuando arma las opciones de Android, deja resetOnError en true', () {
-        expect(porDefecto.opcionesAndroid.toMap()['resetOnError'], 'true');
+      test('cuando arma las opciones de Android, deja resetOnError en false: la app decide cuándo '
+          'borrar, no el plugin (ADR-006)', () {
+        expect(porDefecto.opcionesAndroid.toMap()['resetOnError'], 'false');
       });
 
       test('cuando arma las opciones de Android, deja encryptedSharedPreferences en false', () {
         expect(porDefecto.opcionesAndroid.toMap()['encryptedSharedPreferences'], 'false');
       });
 
-      test('cuando arma las opciones de iOS, deja accessibility en unlocked', () {
-        expect(porDefecto.opcionesIos.accessibility, KeychainAccessibility.unlocked);
+      test('cuando arma las opciones de iOS, usa first_unlock_this_device: la DEK se lee con el '
+          'equipo bloqueado y no viaja a otro equipo (ADR-006)', () {
+        expect(
+          porDefecto.opcionesIos.accessibility,
+          KeychainAccessibility.first_unlock_this_device,
+        );
       });
 
       test('cuando arma las opciones de iOS, no sincroniza por iCloud Keychain', () {

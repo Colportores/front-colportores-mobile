@@ -24,24 +24,39 @@ DatabaseHelper databaseHelper(Ref ref) {
 /// o se cierra (un `AppDatabase` cerrado nunca queda cacheado en un consumidor). Misma forma que
 /// `SesionNotifier`: el estado sigue a la sesión.
 ///
-/// [abrir] lo llama el flujo de login de HU-AUTH-009 (#27) con la clave derivada; [cerrar] lo
+/// [abrir] lo llama el flujo de HU-AUTH-009 (`InicializarDbLocalUseCase`) con la DEK; [cerrar] lo
 /// llama `SesionNotifier.cerrarSesion`.
 @Riverpod(keepAlive: true)
 class DbLocalNotifier extends _$DbLocalNotifier {
+  /// Si [abrir] llegó a pedirle algo al helper. Se marca **antes** del primer `await`: mirar
+  /// `state` no sirve, porque recién se asigna cuando la apertura ya terminó, y un [cerrar] con una
+  /// apertura en vuelo se iría sin cerrar nada (la DB quedaría abierta después del logout).
+  bool _helperEnUso = false;
+
   @override
   AppDatabase? build() => null;
 
-  /// Abre la DB con [clave] (ver `DatabaseHelper.abrir` para los errores) y la publica.
+  /// Abre la DB con la DEK [clave] (ver `DatabaseHelper.abrir` para los errores) y la publica.
   Future<AppDatabase> abrir(ClaveDb clave) async {
-    final db = await ref.read(databaseHelperProvider).abrir(clave);
+    final helper = ref.read(databaseHelperProvider);
+    _helperEnUso = true;
+    final db = await helper.abrir(clave);
     state = db;
     return db;
   }
 
-  /// Cierra la DB y destruye la clave. Si nunca se abrió, no toca el helper: así el cierre de
-  /// sesión funciona igual en entornos donde la DB no se cableó (tests de widgets, Sprint 2).
+  /// Cierra la DB y destruye la clave. Si hay una apertura en vuelo, `DatabaseHelper.cerrar`
+  /// espera a que termine y cierra lo que abrió.
+  ///
+  /// Mientras tanto la continuación de [abrir] puede publicar la DB recién abierta; el `finally`
+  /// de acá la vuelve a `null` al final, así que el estado que queda es el del cierre.
+  ///
+  /// Si [abrir] nunca se llamó, no toca el helper: así el cierre de sesión funciona igual en
+  /// entornos donde la DB no se cableó (tests de widgets, Sprint 2). Una vez usado, siempre se le
+  /// delega: `DatabaseHelper.cerrar` ya es no-op sin DB abierta.
   Future<void> cerrar() async {
-    if (state == null) return;
+    ref.read(cierresDbLocalProvider)._registrar();
+    if (!_helperEnUso) return;
     try {
       await ref.read(databaseHelperProvider).cerrar();
     } finally {
@@ -49,3 +64,26 @@ class DbLocalNotifier extends _$DbLocalNotifier {
     }
   }
 }
+
+/// Cuántas veces se pidió cerrar la DB local ([DbLocalNotifier.cerrar]), haya habido algo para
+/// cerrar o no.
+///
+/// Es la señal con la que el flujo de HU-AUTH-009 detecta un cierre de sesión que llegó mientras
+/// preparaba la DEK (Argon2id tarda de 1 a 2 s), **antes** de pedir la apertura: ese cierre no
+/// tiene nada que cerrar y sale enseguida, y una apertura que llegue después dejaría la DB abierta
+/// sin sesión (revisión del PR #44). Se cuenta en la primera línea de [DbLocalNotifier.cerrar],
+/// antes de cualquier `await` y sin condiciones.
+///
+/// Vive fuera del notifier para que la API pública de este siga siendo solo su `state`, la DB
+/// (regla `avoid_public_notifier_properties` de riverpod_lint). Se lee en forma sincrónica.
+final class CierresDbLocal {
+  int _pedidos = 0;
+
+  /// Pedidos de cierre hasta ahora.
+  int get pedidos => _pedidos;
+
+  void _registrar() => _pedidos++;
+}
+
+@Riverpod(keepAlive: true)
+CierresDbLocal cierresDbLocal(Ref ref) => CierresDbLocal();

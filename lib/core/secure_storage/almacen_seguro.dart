@@ -4,15 +4,82 @@
 /// completo de lo que la app guarda en Keystore/Keychain se lee de un solo lugar.
 ///
 /// El [id] es el nombre real con el que el secreto queda escrito en el dispositivo. **Cambiarlo
-/// deja huérfano lo ya guardado** en los equipos que lo tienen: para la sal eso significa una DB
-/// local que ya no se puede abrir.
+/// deja huérfano lo ya guardado** en los equipos que lo tienen: para la DEK eso significa una DB
+/// local que ya no se abre sola (queda la recuperación con la contraseña, ADR-006).
 enum ClaveSegura {
-  /// Sal aleatoria de 256 bits con la que se deriva la clave de la DB local
-  /// ([ADR-003], R-AU03). No es la clave: es el ingrediente público de la derivación.
-  salDb('db_salt'),
+  /// DEK de la DB local: la clave aleatoria de 256 bits con la que SQLCipher cifra el archivo
+  /// (ADR-006), en base64. Es la copia envuelta por el almacén del equipo —Keystore en Android,
+  /// Keychain en iOS—, la que deja abrir la DB sin pedir la contraseña. La otra copia, envuelta con
+  /// la contraseña, vive fuera de este almacén (`ArchivoEnvoltorioDek`).
+  dekDb('db_dek'),
 
   /// Marca de que la DB local ya se creó y migró en este dispositivo (HU-AUTH-009).
-  dbInicializada('db_initialized');
+  dbInicializada('db_initialized'),
+
+  /// El usuario aceptó seguir con un Keystore por software (Supuesto S10, HU-AUTH-009): la
+  /// elección queda registrada acá.
+  consentimientoAlmacenSoftware('keystore_software_aceptado'),
+
+  /// Último estado de cuenta que informó el backend, con el usuario (`<uuid>:<estado>`,
+  /// HU-AUTH-008). No es secreto: vive acá para no sumar otro almacenamiento, y así el borrado de
+  /// datos locales (HU-AUTH-010) también lo borra.
+  estadoCuenta('account_state'),
+
+  /// Sesión de Supabase Auth (JWT de acceso + refresh token) tal como la serializa
+  /// `supabase_flutter` (HU-AUTH-007, `AlmacenSesionSupabase`).
+  sesionAuth('auth_session'),
+
+  /// Marca de que la sesión ya se migró desde SharedPreferences: una copia vieja que haya quedado
+  /// ahí no se vuelve a migrar (p. ej. después de un logout).
+  sesionMigrada('auth_session_migrated'),
+
+  /// El instante más alto que vio la app (ISO 8601, UTC): la ventana de la sesión no se mide con
+  /// un reloj que vuelve atrás (HU-AUTH-007, `RelojSesionEnAlmacen`).
+  relojSesion('session_clock'),
+
+  /// Intentos fallidos de contraseña en la confirmación final del borrado de datos locales
+  /// (HU-AUTH-010, vista 19) y lo que falta de la espera, como `<fallidos>|<milisegundos o vacío>`.
+  /// No es secreto: vive acá para que cerrar la app no reinicie la espera.
+  intentosBorrado('wipe_attempts'),
+
+  /// El correo de la última cuenta que estuvo adentro y nada más (decisión de Cristian, 01/10):
+  /// precarga «Sesión vencida» tras un arranque en frío (HU-AUTH-007, vista 17). Se borra al
+  /// cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010, vista 19).
+  ultimoCorreo('last_account_email'),
+
+  /// Por qué terminó la última sesión sin que la persona lo pidiera (venció por 30 días sin uso o
+  /// la cerró el servidor) y cuándo, como `<motivo>|<fecha ISO 8601 UTC>` y nada más (decisión de
+  /// Cristian, 07/10, front-colportores-mobile#302): el aviso de «Sesión vencida» vale en cada
+  /// arranque sin sesión hasta que la persona entra (HU-AUTH-007, vista 17). Se borra al entrar,
+  /// con el correo al cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010).
+  cierreForzado('last_forced_close'),
+
+  /// Cuándo salió el último enlace de recuperación de contraseña pedido desde este teléfono (ISO
+  /// 8601, UTC) y nada más (decisión de Cristian, 02/10, front-colportores-mobile#223; seguimiento
+  /// #281): la espera de 60 s de «Olvidé mi contraseña» no se reinicia al salir y volver a entrar.
+  /// Es por teléfono, no por correo (no revela si un correo existe) y no es secreto: vive acá para
+  /// no sumar otro almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo
+  /// borra.
+  ultimoEnvioRecuperacion('last_recovery_request'),
+
+  /// Los correos a los que el servidor rechazó el reenvío del email de verificación por límite de
+  /// intentos y hasta cuándo no se les vuelve a ofrecer (HU-AUTH-002, vista 12-A06; decisión de
+  /// Cristian, 30/09, front-colportores-mobile#221 y #239; seguimiento #249), y la espera de 60 s
+  /// desde el último correo que salió a cada dirección (#325): un JSON
+  /// `{"<correo en minúsculas>": {"bloqueo": "<vencimiento ISO 8601 UTC>", "espera": "<ídem>"}}`,
+  /// cada campo opcional y solo lo vigente (se poda al leer y al guardar, y la clave se borra
+  /// cuando no queda nada). El candado es por dirección (otra dirección no queda bloqueada) y
+  /// sobrevive a reiniciar la app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`,
+  /// para no sumar otro almacenamiento; se borra con el borrado de datos locales (HU-AUTH-010) y
+  /// con «Cerrar sesión» a propósito.
+  bloqueoReenvioVerificacion('verification_resend_locks'),
+
+  /// La zona de cada inscripción del colportor la última vez que se le avisó de su zona (HU-CAM-006,
+  /// #251): un JSON `{"<id de la inscripción>": "<id de la zona>" | null}`, solo ids (UUID), sin
+  /// nombres. Hace que «Te asignaron la zona…» y «Ya no tenés zona…» se avisen una sola vez. No es
+  /// secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro almacenamiento, y así el borrado
+  /// de datos locales (HU-AUTH-010) también lo borra.
+  zonasAvisadas('zones_notified');
 
   const ClaveSegura(this.id);
 
@@ -22,11 +89,9 @@ enum ClaveSegura {
 
 /// Almacén seguro del dispositivo: Android Keystore / iOS Keychain (§8.2.1).
 ///
-/// Es el **único** lugar donde la app guarda material secreto, y todo lo que guarda está
-/// inventariado en [ClaveSegura]: hoy la sal con la que se deriva la clave de la DB y la marca de
-/// inicialización; la sesión de auth (el JWT) también va a vivir acá cuando `AuthLocalDataSource`
-/// tenga implementación real. Lo que **nunca** guarda es la clave de la DB: se deriva de la sal y
-/// no toca el disco (ADR-003).
+/// Es el **único** lugar donde la app guarda material secreto en el equipo, y todo lo que guarda
+/// está inventariado en [ClaveSegura]: la DEK de la DB local, la marca de inicialización, el
+/// consentimiento de S10 y la sesión de auth (el JWT y el refresh token, HU-AUTH-007).
 ///
 /// Puerto en Dart puro; la implementación que conoce el plugin es `AlmacenSeguroKeystore` y la de
 /// tests es `AlmacenSeguroEnMemoria`. Igual que los data sources de auth, **el almacén lanza
@@ -41,17 +106,18 @@ abstract interface class AlmacenSeguro {
   /// Borra [clave]. Si no existía, no hace nada.
   Future<void> borrar(ClaveSegura clave);
 
-  /// Borra **todo** lo que este almacén custodia para la app —cada [ClaveSegura], no solo la sal:
-  /// también la marca de inicialización y, cuando esté, la sesión de auth— (HU-AUTH-010, derecho
-  /// al borrado). Para borrar un solo secreto está [borrar].
+  /// Borra **todo** lo que este almacén custodia para la app —cada [ClaveSegura], no solo la DEK:
+  /// también la marca de inicialización y, cuando esté, la sesión de auth—. Lo usan el derecho al
+  /// borrado (HU-AUTH-010) y la recuperación guiada de ADR-006, que limpia el almacén antes de
+  /// reescribirlo. Para borrar un solo secreto está [borrar].
   Future<void> borrarTodo();
 }
 
 /// Falla del almacén seguro del dispositivo: Keystore/Keychain ausente, bloqueado o roto.
 ///
-/// No distingue todavía entre "este dispositivo no tiene almacenamiento seguro robusto" y "falló
-/// una escritura puntual". Esa clasificación —y qué hace la app con cada una— es el Supuesto S10,
-/// que se cierra en HU-AUTH-009 junto con el flujo de consentimiento explícito.
+/// Con `resetOnError: false` (ADR-006) el plugin ya no borra nada por su cuenta: la falla llega
+/// hasta acá y es la app la que decide qué hacer (recuperar con la contraseña, o preguntar antes
+/// de empezar de nuevo).
 ///
 /// [toString] nunca incluye el valor guardado: solo la operación y el nombre de la clave.
 final class AlmacenSeguroException implements Exception {
