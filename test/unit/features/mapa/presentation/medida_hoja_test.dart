@@ -156,6 +156,82 @@ void main() {
     });
   });
 
+  // #345 (M4 de la revisión de #342): las comparaciones entre alturas toleran .01 dp. `contenido` y lo
+  // que se le compara son el mismo número por dos caminos y, con alturas fraccionarias, un `<=` entre
+  // dos sumas iguales se da vuelta por el último decimal.
+  group('tolerancia de .01 dp en las comparaciones (#345)', () {
+    LugarDeLaAccion lugar({
+      required double contenido,
+      required bool teclado,
+      double boton = 52,
+      double motivo = 18,
+      double? campo = 48,
+    }) => lugarDeLaAccion(
+      contenido: contenido,
+      tecladoAbierto: teclado,
+      boton: boton,
+      motivo: motivo,
+      campo: campo,
+    );
+
+    test('la tolerancia es de .01 dp', () {
+      expect(toleranciaDeMedida, .01);
+    });
+
+    test('con teclado, un contenido que es la suma de otro modo y difiere en el último decimal '
+        'deja la acción fija con el motivo abajo', () {
+      // 14 + 54,4 + 8 + 27 + 72,2 + 28 da 203,60000000000002 en dobles y el contenido, 203,6.
+      expect(14 + 54.4 + (8 + 27.0) + (72.2 + 28) > 203.6, isTrue, reason: 'el caso es real');
+      expect(
+        lugar(contenido: 203.6, teclado: true, boton: 54.4, motivo: 27, campo: 72.2),
+        LugarDeLaAccion.fijaConMotivoAbajo,
+      );
+    });
+
+    test('con teclado: el motivo abajo se pierde recién con más de .01 dp de falta', () {
+      // 14 + 52 + 8 + 18 de lo fijo y 48 + 28 del campo = 168.
+      expect(lugar(contenido: 168 - .005, teclado: true), LugarDeLaAccion.fijaConMotivoAbajo);
+      expect(lugar(contenido: 168 - .02, teclado: true), LugarDeLaAccion.fijaConMotivoArriba);
+    });
+
+    test('con teclado: la acción fija con el motivo arriba se pierde recién con más de .01 dp de '
+        'falta', () {
+      // 14 + 52 + 48 + 28 = 142.
+      expect(lugar(contenido: 142 - .005, teclado: true), LugarDeLaAccion.fijaConMotivoArriba);
+      expect(lugar(contenido: 142 - .02, teclado: true), LugarDeLaAccion.alFinalDeLoQueSeDesplaza);
+    });
+
+    test('sin teclado: lo fijo en dos tercios exactos sigue siendo "entra"', () {
+      // Lo fijo es 92 y dos tercios de 138 son 92.
+      expect(
+        lugar(contenido: 138 - .005, teclado: false, campo: 40),
+        LugarDeLaAccion.fijaConMotivoAbajo,
+      );
+      expect(
+        lugar(contenido: 138 - .03, teclado: false, campo: 40),
+        LugarDeLaAccion.fijaConMotivoArriba,
+      );
+    });
+
+    test('sin teclado: al campo le falta recién más de .01 dp para que el motivo vaya arriba', () {
+      // Lo fijo es 92: con 150 de contenido quedan 58 para lo que se desplaza.
+      expect(
+        lugar(contenido: 150 - .005, teclado: false, campo: 58),
+        LugarDeLaAccion.fijaConMotivoAbajo,
+      );
+      expect(
+        lugar(contenido: 150 - .02, teclado: false, campo: 58),
+        LugarDeLaAccion.fijaConMotivoArriba,
+      );
+    });
+
+    test('el tope pide el motivo debajo si al mapa le falta solo .005 dp de su reserva', () {
+      // Con el motivo pide 214 y el mapa conserva sus 88 dp con 302 de cuerpo.
+      expect(tope(302 - .005), closeTo(214, .001));
+      expect(tope(302 - .02), closeTo(46 + 14 + 52 + 48 + 28, .001));
+    });
+  });
+
   group('NecesidadHoja', () {
     test('es igual con medio punto de diferencia o menos', () {
       expect(

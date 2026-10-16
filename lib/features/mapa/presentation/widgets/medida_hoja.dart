@@ -38,6 +38,14 @@ const double fraccionConTeclado = .80;
 /// campo (campo menos 28 dp), así que el campo más este relleno da siempre lo que el cursor pide.
 const double rellenoDelCampo = 28;
 
+/// La tolerancia, en dp, de las comparaciones entre alturas de esta medida (#345). `contenido` (lo que
+/// le queda a lo de adentro de la hoja) sale de restarle el borde y el asa al tope, y lo que se le
+/// compara es una suma de otras medidas: son el mismo número por dos caminos, y con alturas
+/// fraccionarias (texto a 1,15× o 1,3×, una barra de abajo que no es entera) un `<=` entre dos sumas
+/// iguales puede darse vuelta por el último decimal y mandar la acción a otro lugar de la hoja. Un
+/// centésimo de dp no se ve y alcanza para el error de los dobles.
+const double toleranciaDeMedida = .01;
+
 /// Lo que la zona del mapa conserva como mínimo cuando la hoja crece para dejar el motivo debajo de la
 /// acción: «Cerrar» entero (48 dp, a 8 dp del borde de arriba, bajo la barra de estado) y el pin (44 dp
 /// de alto con la punta en el centro del mapa, así que el mapa mide al menos 88 dp).
@@ -101,7 +109,7 @@ double topeDeLaHoja({
       cromo + separacionDelBoton + necesidad.boton + necesidad.campo + rellenoDelCampo;
   final conMotivo = sinMotivo + necesidad.motivo;
   final conElMapa = math.min(maximo, cuerpo - reservaDelMapa(barraDeArriba));
-  final pide = conMotivo <= conElMapa ? conMotivo : sinMotivo;
+  final pide = conMotivo <= conElMapa + toleranciaDeMedida ? conMotivo : sinMotivo;
   return math.max(base, math.min(pide, maximo));
 }
 
@@ -123,15 +131,19 @@ LugarDeLaAccion lugarDeLaAccion({
   final fijoConMotivo = separacionDelBoton + boton + (hayMotivo ? separacionDelMotivo + motivo : 0);
   if (tecladoAbierto) {
     final campoEntero = (campo ?? 0) + (campo == null ? 0 : rellenoDelCampo);
-    if (fijoConMotivo + campoEntero <= contenido) return LugarDeLaAccion.fijaConMotivoAbajo;
-    if (separacionDelBoton + boton + campoEntero <= contenido) {
+    if (fijoConMotivo + campoEntero <= contenido + toleranciaDeMedida) {
+      return LugarDeLaAccion.fijaConMotivoAbajo;
+    }
+    if (separacionDelBoton + boton + campoEntero <= contenido + toleranciaDeMedida) {
       return LugarDeLaAccion.fijaConMotivoArriba;
     }
     return LugarDeLaAccion.alFinalDeLoQueSeDesplaza;
   }
   if (!hayMotivo) return LugarDeLaAccion.fijaConMotivoAbajo;
-  if (fijoConMotivo > contenido * (2 / 3)) return LugarDeLaAccion.fijaConMotivoArriba;
-  final cabeElCampo = campo == null || contenido - fijoConMotivo >= campo;
+  if (fijoConMotivo > contenido * (2 / 3) + toleranciaDeMedida) {
+    return LugarDeLaAccion.fijaConMotivoArriba;
+  }
+  final cabeElCampo = campo == null || contenido - fijoConMotivo >= campo - toleranciaDeMedida;
   return cabeElCampo ? LugarDeLaAccion.fijaConMotivoAbajo : LugarDeLaAccion.fijaConMotivoArriba;
 }
 

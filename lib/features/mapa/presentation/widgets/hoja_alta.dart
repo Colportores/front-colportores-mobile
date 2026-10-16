@@ -89,8 +89,9 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 ///   entra y, si no, al final de lo que se desplaza. Si ni así entra el campo entero sobre el botón,
 ///   el botón pasa al final de lo que se desplaza (arriba de él, el motivo): nada desborda.
 /// - Tocar «Registrar» apagado no hace nada más que decir por qué: lleva el motivo a la vista, lo
-///   anuncia una vez y no cierra el teclado ni mueve el foco. El motivo también es la pista
-///   (`hint`) del botón para el lector de pantalla.
+///   anuncia una vez y no cierra el teclado ni mueve el foco. Para el lector de pantalla el motivo
+///   va en la etiqueta del botón apagado («Registrar. Elegí el tipo de ubicación para registrar.»),
+///   sin pista (`hint`): las pistas se pueden apagar en VoiceOver y la etiqueta siempre se lee.
 class HojaAlta extends ConsumerStatefulWidget {
   const HojaAlta({
     super.key,
@@ -259,9 +260,21 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   ) {
     final motivoAbajo = lugar == LugarDeLaAccion.fijaConMotivoAbajo;
     final botonFijo = lugar != LugarDeLaAccion.alFinalDeLoQueSeDesplaza;
+    // El motivo se ve siempre, pero el lector de pantalla lo lee una sola vez: con «Registrar» apagado
+    // ya va en la etiqueta del botón (ver [_botonRegistrar]) y el texto de al lado queda fuera de la
+    // semántica (#345). Apagado y motivo van juntos: `_porQueNo` solo da un motivo si no se puede
+    // registrar.
     final textoMotivo = motivo == null
         ? null
-        : Text(motivo, key: _claveMotivo, textAlign: TextAlign.center, style: estiloMotivo);
+        : ExcludeSemantics(
+            excluding: !estado.puedeRegistrar,
+            child: Text(
+              motivo,
+              key: _claveMotivo,
+              textAlign: TextAlign.center,
+              style: estiloMotivo,
+            ),
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -390,31 +403,33 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   }
 
   /// «Registrar». Apagado no hace nada, pero se puede tocar: lleva el motivo a la vista y lo anuncia
-  /// (ver [_explicarElMotivo]). Para el lector de pantalla el motivo es la pista del botón. El toque
-  /// cae dentro de la región de los campos de texto: no les quita el foco ni cierra el teclado.
+  /// (ver [_explicarElMotivo]). Para el lector de pantalla el motivo va en la etiqueta del botón
+  /// apagado, detrás de su nombre visible («Registrar. Elegí el tipo de ubicación para registrar.»),
+  /// y sin pista: es igual en Android y en iOS, y no depende de que el lector hable las pistas
+  /// (decisión del 16/10 en #355). El toque cae dentro de la región de los campos de texto: no les
+  /// quita el foco ni cierra el teclado.
   Widget _botonRegistrar(AltaUbicacionState estado, String? motivo) {
     final theme = Theme.of(context);
     final apagado = !estado.puedeRegistrar;
+    final nombre = estado.guardando ? TextosAlta.registrando : TextosAlta.registrar;
     return MergeSemantics(
-      child: Semantics(
-        hint: apagado ? motivo : null,
-        child: TextFieldTapRegion(
-          child: GestureDetector(
-            excludeFromSemantics: true,
-            onTap: apagado && motivo != null ? () => _explicarElMotivo(motivo) : null,
-            child: FilledButton(
-              key: _claveBoton,
-              onPressed: estado.puedeRegistrar ? widget.alRegistrar : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                disabledBackgroundColor: ColoresAlta.grisFondo,
-                disabledForegroundColor: ColoresAlta.gris,
-                minimumSize: const Size.fromHeight(_alturaMinimaBoton),
-              ),
-              child: Text(
-                estado.guardando ? TextosAlta.registrando : TextosAlta.registrar,
-                textAlign: TextAlign.center,
-              ),
+      child: TextFieldTapRegion(
+        child: GestureDetector(
+          excludeFromSemantics: true,
+          onTap: apagado && motivo != null ? () => _explicarElMotivo(motivo) : null,
+          child: FilledButton(
+            key: _claveBoton,
+            onPressed: estado.puedeRegistrar ? widget.alRegistrar : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              disabledBackgroundColor: ColoresAlta.grisFondo,
+              disabledForegroundColor: ColoresAlta.gris,
+              minimumSize: const Size.fromHeight(_alturaMinimaBoton),
+            ),
+            child: Text(
+              nombre,
+              textAlign: TextAlign.center,
+              semanticsLabel: apagado && motivo != null ? '$nombre. $motivo' : null,
             ),
           ),
         ),
