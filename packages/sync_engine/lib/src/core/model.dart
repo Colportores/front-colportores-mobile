@@ -247,6 +247,8 @@ class PullDelta {
     required this.watermark,
     required this.hasMore,
     required this.rows,
+    this.outOfArea = const {},
+    this.areaReset = const {},
   });
 
   final DateTime serverTime;
@@ -263,6 +265,45 @@ class PullDelta {
   /// Entidad → filas. Una entidad ausente significa "sin cambios": el motor no
   /// borra nada por ausencia.
   final Map<String, List<Map<String, Object?>>> rows;
+
+  /// Entidad → ids de las filas que salieron del área del colportor en este
+  /// tramo (§2.1, `out_of_area` de backend 0016): otro las movió adonde él no
+  /// trabaja. **No se borran**: la app las marca «fuera del área».
+  final Map<String, List<String>> outOfArea;
+
+  /// Las entidades que este pull arrancó de cero porque cambió el área (§2.1,
+  /// `area_reset` de backend 0016): le asignaron o cambiaron la zona, o empezó
+  /// o terminó una campaña. Lo que el teléfono tenía de ellas y no vuelva a
+  /// bajar hasta el final de la descarga (`hasMore` en `false`) quedó fuera
+  /// del área nueva. El motor lo deduce; el servidor no guarda el área vieja
+  /// (decisión de Cristian, 02/10, backend-supabase#37).
+  final Set<String> areaReset;
+}
+
+/// Lo que acompaña a las filas de una página del pull, para que el store lleve
+/// la cuenta de qué quedó fuera del área (§2.1).
+class PullNotices {
+  const PullNotices({
+    this.outOfArea = const {},
+    this.areaReset = const {},
+    this.complete = true,
+  });
+
+  /// Sin avisos y con la descarga terminada.
+  static const none = PullNotices();
+
+  /// Ver [PullDelta.outOfArea].
+  final Map<String, List<String>> outOfArea;
+
+  /// Ver [PullDelta.areaReset]. Llega en la primera página de la descarga que
+  /// arranca de cero.
+  final Set<String> areaReset;
+
+  /// Es la última página (`hasMore` en `false`): lo que estaba a la espera de
+  /// volver a bajar desde un [areaReset] y no bajó, quedó fuera del área.
+  final bool complete;
+
+  bool get isEmpty => outOfArea.isEmpty && areaReset.isEmpty;
 }
 
 /// La única clasificación que el motor hace de un error (§5.1).

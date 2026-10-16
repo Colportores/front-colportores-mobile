@@ -945,30 +945,22 @@ class SyncEngine {
   /// [LocalStorePort.applyDelta], que es una transacción: si aplicar falla, el
   /// próximo pull vuelve a traer lo mismo.
   Future<int> _pull(String scope, List<String> entities) async {
-    if (entities.isEmpty) return 0;
-    var traidas = 0;
-    var watermark = await _store.watermarkOf(scope);
-
-    while (true) {
-      final delta =
-          await _transport.pull(entities: entities, watermark: watermark);
-      final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
-      if (filas > 0) {
-        await _store.applyDelta(delta.rows,
-            scope: scope, watermark: delta.watermark);
-        traidas += filas;
-      }
-      // Si el watermark no avanzó, la próxima request es idéntica a esta: un
-      // `has_more` que nunca baja es un bug del servidor, y un cliente que le
-      // cree se queda pidiendo la misma página hasta quemarle los datos al
-      // colportor.
-      if (delta.watermark == watermark) return traidas;
-      watermark = delta.watermark;
-      if (!delta.hasMore) return traidas;
-    }
+    final contador = <String, int>{};
+    await _pullInto(scope, entities, contador);
+    return contador.values.fold<int>(0, (n, c) => n + c);
   }
 
-  /// Como [_pull], pero acumulando el conteo por entidad para el reporte de §7.
+  /// Baja el delta hasta agotarlo, acumulando cuántas filas trajo cada entidad
+  /// (el reporte de §7 lo usa).
+  ///
+  /// **Una página sin filas también se aplica** si trae avisos de área (§2.1)
+  /// o un watermark nuevo: puede ser la última de una descarga que arrancó de
+  /// cero, que es cuando se sabe qué quedó afuera. Solo se saltea la página que
+  /// no cambia nada.
+  ///
+  /// Las filas con escrituras locales todavía sin aplicar no se pisan (ver
+  /// [JobStorePort.withUnapplied]): sube la escritura, y si choca, el LWW de
+  /// §5.4 aplica la fila del servidor.
   Future<void> _pullInto(
     String scope,
     List<String> entities,
@@ -980,19 +972,54 @@ class SyncEngine {
     while (true) {
       final delta =
           await _transport.pull(entities: entities, watermark: watermark);
-      final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
-      if (filas > 0) {
-        await _store.applyDelta(delta.rows,
-            scope: scope, watermark: delta.watermark);
-        for (final MapEntry(key: entidad, value: lista) in delta.rows.entries) {
-          contador[entidad] = (contador[entidad] ?? 0) + lista.length;
-        }
+      final filas = await _sinLoQueNoSubio(delta.rows);
+      final avisos = PullNotices(
+        outOfArea: delta.outOfArea,
+        areaReset: delta.areaReset,
+        complete: !delta.hasMore,
+      );
+      if (delta.rows.values.any((l) => l.isNotEmpty) ||
+          !avisos.isEmpty ||
+          delta.watermark != watermark) {
+        await _store.applyDelta(filas,
+            scope: scope, watermark: delta.watermark, notices: avisos);
       }
-      // Ver [_pull]: sin watermark nuevo no hay página nueva que pedir.
+      for (final MapEntry(key: entidad, value: lista) in filas.entries) {
+        contador[entidad] = (contador[entidad] ?? 0) + lista.length;
+      }
+      // Si el watermark no avanzó, la próxima request es idéntica a esta: un
+      // `has_more` que nunca baja es un bug del servidor, y un cliente que le
+      // cree se queda pidiendo la misma página hasta quemarle los datos al
+      // colportor.
       if (delta.watermark == watermark) return;
       watermark = delta.watermark;
       if (!delta.hasMore) return;
     }
+  }
+
+  /// [rows] sin las filas de entidades `push` que tienen escrituras locales
+  /// todavía sin aplicar en el servidor.
+  Future<Map<String, List<Map<String, Object?>>>> _sinLoQueNoSubio(
+      Map<String, List<Map<String, Object?>>> rows) async {
+    final salida = <String, List<Map<String, Object?>>>{};
+    for (final MapEntry(key: entidad, value: lista) in rows.entries) {
+      final spec = _specs.of(entidad);
+      if (spec.policy != SyncPolicy.push || lista.isEmpty) {
+        salida[entidad] = lista;
+        continue;
+      }
+      final ocupadas = await _jobs.withUnapplied(entidad, [
+        for (final f in lista)
+          if (f[spec.pk] case final pk?) '$pk'
+      ]);
+      salida[entidad] = ocupadas.isEmpty
+          ? lista
+          : [
+              for (final f in lista)
+                if (!ocupadas.contains('${f[spec.pk]}')) f
+            ];
+    }
+    return salida;
   }
 
   /// Lleva la cuenta de si la sesión sirve, para que un refresh roto no sea

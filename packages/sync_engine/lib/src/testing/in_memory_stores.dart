@@ -141,6 +141,19 @@ class InMemoryJobStore implements JobStorePort {
       ]);
 
   @override
+  Future<Set<String>> withUnapplied(
+      String entity, Iterable<String> rowPks) async => {
+        for (final pk in rowPks)
+          if ((_porFila[(entity, pk)] ?? const <String>[]).any((id) {
+            final estado = _jobs[id]?.state;
+            return estado != null &&
+                estado != JobState.done &&
+                estado != JobState.invalid;
+          }))
+            pk
+      };
+
+  @override
   Future<void> rebaseVersions(
       String entity, Map<String, int> versionPorFila) async {
     for (final MapEntry(key: pk, value: version) in versionPorFila.entries) {
@@ -314,18 +327,51 @@ class InMemoryLocalStore implements LocalStorePort {
   /// se nota acá.
   int applies = 0;
 
+  /// Entidad → ids de las filas marcadas «fuera del área» (§2.1).
+  final Map<String, Set<String>> fueraDelArea = {};
+
+  /// Entidad → ids que esperan volver a bajar desde un `areaReset`.
+  final Map<String, Set<String>> aLaEspera = {};
+
+  /// Los avisos de cada página, en orden, para que los tests vean qué llegó.
+  final List<PullNotices> avisos = [];
+
   @override
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> delta, {
     required String scope,
     required String watermark,
+    PullNotices notices = PullNotices.none,
   }) async {
     if (failOnApply) {
       throw StateError('la transacción local falló');
     }
+    // A diferencia del de Drift, este no sabe qué filas tienen escrituras sin
+    // aplicar: todas las que tiene quedan a la espera.
+    for (final entidad in notices.areaReset) {
+      (aLaEspera[entidad] ??= {}).addAll([
+        for (final f in rows[entidad] ?? const <Map<String, Object?>>[])
+          '${f['id']}'
+      ]);
+    }
     for (final MapEntry(key: entity, value: filas) in delta.entries) {
       (rows[entity] ??= []).addAll(filas);
+      for (final f in filas) {
+        aLaEspera[entity]?.remove('${f['id']}');
+        fueraDelArea[entity]?.remove('${f['id']}');
+      }
     }
+    for (final MapEntry(key: entidad, value: ids)
+        in notices.outOfArea.entries) {
+      (fueraDelArea[entidad] ??= {}).addAll(ids);
+    }
+    if (notices.complete) {
+      for (final MapEntry(key: entidad, value: ids) in aLaEspera.entries) {
+        (fueraDelArea[entidad] ??= {}).addAll(ids);
+      }
+      aLaEspera.clear();
+    }
+    if (!notices.isEmpty) avisos.add(notices);
     watermarks[scope] = watermark;
     applies++;
   }

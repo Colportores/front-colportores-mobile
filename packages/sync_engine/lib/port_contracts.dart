@@ -353,6 +353,28 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
         expect(versiones, {enVuelo: 7, pendiente: 7, alta: null, otra: 1});
       });
 
+      test('withUnapplied dice qué filas tienen escrituras sin aplicar',
+          () async {
+        final cola = crear();
+        await cola.append(_deFila('op-1', 'u-1'));
+        final enVuelo = await cola.append(_deFila('op-2', 'u-2', minuto: 1));
+        final hecho = await cola.append(_deFila('op-3', 'u-3', minuto: 2));
+        final invalido = await cola.append(_deFila('op-4', 'u-4', minuto: 3));
+        await cola.claimPending(limit: 10);
+        await cola.markPending([
+          for (final q in await cola.unsentFor('ubicacion', 'u-1')) q.id
+        ]);
+        await cola.markDone([hecho], at: _t0);
+        await cola.markInvalid(invalido, code: 'X');
+
+        expect(
+            await cola.withUnapplied(
+                'ubicacion', ['u-1', 'u-2', 'u-3', 'u-4', 'u-5']),
+            {'u-1', 'u-2'},
+            reason: 'PENDING y IN_FLIGHT ($enVuelo) sí; DONE, INVALID y una '
+                'fila sin jobs, no');
+      });
+
       test('rebaseVersions no toca lo que ya terminó', () async {
         final cola = crear();
         final id = await cola.append(_deFila('op-1', 'u-1'));

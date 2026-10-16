@@ -115,6 +115,15 @@ abstract interface class JobStorePort {
   /// cola con la versión buena.
   Future<void> rebaseVersions(String entity, Map<String, int> versionPorFila);
 
+  /// De [rowPks], las filas de [entity] con alguna escritura todavía no
+  /// aplicada en el servidor (`PENDING`, `IN_FLIGHT`, `BLOCKED` o `WAITING`).
+  ///
+  /// El pull no las pisa: la fila local tiene lo que el colportor escribió y
+  /// el servidor todavía no vio. Si el pull la aplicara, la pantalla volvería
+  /// atrás hasta el próximo push, y la versión nueva haría chocar a la
+  /// escritura que espera (§5.4).
+  Future<Set<String>> withUnapplied(String entity, Iterable<String> rowPks);
+
   /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
   /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
   ///
@@ -190,10 +199,19 @@ abstract interface class LocalStorePort {
   /// Es indivisible a propósito: si aplicar falla, el watermark no avanza y el
   /// próximo pull vuelve a traer lo mismo. Dos métodos separados dejarían la
   /// puerta abierta a avanzar el watermark sobre datos que no se escribieron.
+  ///
+  /// [notices] son los avisos de área de esa página del pull (§2.1), en la
+  /// misma transacción. **Nada se borra por un aviso**: las filas fuera del
+  /// área se marcan, y una que vuelve a bajar deja de estarlo. Con un
+  /// `areaReset`, lo que el teléfono tenía de esa entidad queda a la espera de
+  /// volver a bajar; lo que no bajó cuando llega la página `complete`, quedó
+  /// fuera del área. Lo que tiene escrituras locales sin aplicar no cuenta: el
+  /// servidor no lo tiene todavía, no salió de ningún lado.
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
     required String watermark,
+    PullNotices notices = PullNotices.none,
   });
 
   /// El watermark guardado para [scope], o `null` si nunca se pulleó.

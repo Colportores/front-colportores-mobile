@@ -226,6 +226,8 @@ Map<String, Object?> pullResponseToJson(PullDelta delta) => {
       'watermark': delta.watermark,
       'has_more': delta.hasMore,
       'rows': delta.rows,
+      if (delta.outOfArea.isNotEmpty) 'out_of_area': delta.outOfArea,
+      if (delta.areaReset.isNotEmpty) 'area_reset': delta.areaReset.toList(),
     };
 
 PullDelta pullResponseFromJson(
@@ -247,6 +249,16 @@ PullDelta pullResponseFromJson(
     watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
     hasMore: json['has_more'] == true,
     rows: filas,
+    // Las dos claves son aditivas (backend 0016): sin avisos no vienen, y un
+    // servidor anterior no las manda.
+    outOfArea: {
+      for (final MapEntry(key: entidad, value: ids)
+          in (json['out_of_area'] as Map? ?? const {}).entries)
+        '$entidad': [for (final id in ids as List) '$id'],
+    },
+    areaReset: {
+      for (final entidad in json['area_reset'] as List? ?? const []) '$entidad',
+    },
   );
 }
 
