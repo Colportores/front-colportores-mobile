@@ -336,7 +336,9 @@ void main() {
   });
 
   // 12-A04: el canvas dibuja el botón primario («Reenviar email de verificación») y no dibuja su cuenta
-  // regresiva. Ahí queda la barra de 3 px de #325, a la espera de la decisión de P1 (ver el PR).
+  // regresiva. Decisión del 16/10 (agente de decisiones, P1 de #335): queda la barra de 3 px, que
+  // avanza con lo transcurrido como el relleno de A03, con el rótulo en JetBrains Mono y a 4,5:1
+  // sobre el botón apagado.
   group('12-A04 · enlace expirado: la cuenta del botón primario', () {
     testWidgets(
       'dado el enlace expirado con el correo conocido, el botón primario sigue lleno y la '
@@ -360,9 +362,8 @@ void main() {
 
         expect(find.text('Reenviar en 42s'), findsOneWidget);
         expect(_habilitado(tester), isFalse);
-        expect(tester.widget<LinearProgressIndicator>(_barra).value, closeTo(0.7, 1e-9));
+        expect(tester.widget<LinearProgressIndicator>(_barra).value, closeTo(0.3, 1e-9));
         expect(_relleno, findsNothing);
-        expect(_estiloDelRotulo(tester, 'Reenviar en 42s').fontFamily, isNot('JetBrainsMono'));
 
         await reloj.pasar(tester, 42);
         expect(find.text('Reenviar email de verificación'), findsOneWidget);
@@ -393,6 +394,135 @@ void main() {
       expect(find.text('Reenviar en 30s'), findsOneWidget);
       expect(tester.widget<LinearProgressIndicator>(_barra).value, closeTo(0.5, 1e-9));
       expect(_relleno, findsNothing);
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('la barra avanza con lo transcurrido, de 0 a 59/60, sin saltos ni retrocesos', (
+      tester,
+    ) async {
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        password: null,
+        estado: EstadoVerificacionEmail.expirado,
+      );
+      await _tocarReenviar(tester);
+      var anterior = -1.0;
+
+      for (var s = 0; s < 60; s++) {
+        if (s > 0) await reloj.pasar(tester, 1);
+        final valor = tester.widget<LinearProgressIndicator>(_barra).value!;
+        expect(valor, closeTo(s / 60, 1e-9), reason: 'a los $s s');
+        expect(valor, greaterThan(anterior));
+        anterior = valor;
+      }
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('el rótulo de la cuenta va en JetBrains Mono, de 60 s a 1 s, y fuera de ella en '
+        'Inter', (tester) async {
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        password: null,
+        estado: EstadoVerificacionEmail.expirado,
+      );
+      expect(_estiloDelRotulo(tester, 'Reenviar email de verificación').fontFamily, 'Inter');
+      await _tocarReenviar(tester);
+
+      for (var s = 0; s < 60; s++) {
+        if (s > 0) await reloj.pasar(tester, 1);
+        expect(
+          _estiloDelRotulo(tester, 'Reenviar en ${60 - s}s').fontFamily,
+          'JetBrainsMono',
+          reason: 'a los $s s',
+        );
+      }
+      await reloj.pasar(tester, 1);
+      expect(_estiloDelRotulo(tester, 'Reenviar email de verificación').fontFamily, 'Inter');
+      await _cerrarApp(tester);
+    });
+
+    for (final correoConocido in [true, false]) {
+      final artboard = correoConocido ? '12-A04' : '12-A04b';
+      testWidgets('el rótulo apagado de $artboard llega a 4,5:1 sobre el botón, a lo largo de la '
+          'cuenta', (tester) async {
+        final reloj = _Reloj(_base);
+        await _montar(
+          tester,
+          remote: _remotoSano(),
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+          ahora: reloj.leer,
+          email: correoConocido ? _lucia : '',
+          password: null,
+          estado: EstadoVerificacionEmail.expirado,
+        );
+        if (!correoConocido) {
+          await tester.enterText(find.byKey(const Key('verificacion_email_campo')), _lucia);
+          await tester.pump();
+        }
+        await _tocarReenviar(tester);
+
+        for (var s = 0; s < 60; s += 15) {
+          if (s > 0) await reloj.pasar(tester, 15);
+          final rotulo = _estiloDelRotulo(tester, 'Reenviar en ${60 - s}s').color!;
+          final fondo = tester.widget<Material>(_visual).color!;
+          expect(fondo.a, 1, reason: 'opaco: el contraste no depende de lo que haya debajo');
+          expect(_contraste(rotulo, fondo), greaterThanOrEqualTo(4.5), reason: 'a los $s s');
+        }
+        await _cerrarApp(tester);
+      });
+    }
+
+    testWidgets('el botón sigue viéndose apagado: no es el azul del botón activo', (tester) async {
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        password: null,
+        estado: EstadoVerificacionEmail.expirado,
+      );
+      final activo = tester.widget<Material>(_visual).color!;
+      await _tocarReenviar(tester);
+
+      final apagado = tester.widget<Material>(_visual).color!;
+      expect(apagado, isNot(activo));
+      expect(apagado, ColoresColportaje.unica.gris);
+      await _capturar(tester, 'a04_390x844_x1.0');
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('a 360×640 con el texto al doble la cuenta entra en el botón primario sin '
+        'desbordar', (tester) async {
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        password: null,
+        estado: EstadoVerificacionEmail.expirado,
+        tam: const Size(360, 640),
+        escala: 2,
+      );
+      await _tocarReenviar(tester);
+      await reloj.pasar(tester, 18);
+
+      expect(tester.takeException(), isNull);
+      final boton = tester.getRect(_visual);
+      final rotulo = tester.getRect(find.text('Reenviar en 42s'));
+      expect(rotulo.left, greaterThanOrEqualTo(boton.left));
+      expect(rotulo.right, lessThanOrEqualTo(boton.right));
+      expect(boton.right, lessThanOrEqualTo(360));
+      await _capturar(tester, 'a04_360x640_x2.0');
       await _cerrarApp(tester);
     });
   });

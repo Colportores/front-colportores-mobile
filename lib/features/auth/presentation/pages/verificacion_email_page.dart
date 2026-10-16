@@ -749,7 +749,8 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         FilledButton(
           key: const Key('verificacion_email_reenviar'),
           onPressed: reenviar,
-          child: Text(etiquetaReenviar),
+          style: conCuentaRegresiva ? _estiloPrimarioConCuenta(context) : null,
+          child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         )
       else
         OutlinedButton(
@@ -760,13 +761,15 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           style: conCuentaRegresiva ? _estiloConCuenta(context) : null,
           child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         ),
-      // El canvas no dibuja la cuenta regresiva del botón primario de 12-A04b (el enlace expiró y no
-      // se conoce el correo): ahí queda la barra de 3 px, a la espera de la decisión de #335.
+      // El canvas no dibuja la cuenta del botón primario de 12-A04 y 12-A04b (el enlace expiró).
+      // Decisión del 16/10 sobre #335 (https://github.com/Colportores/front-colportores-mobile/pull/377#issuecomment-6225734275):
+      // queda la barra de 3 px, que avanza con lo transcurrido como el relleno de 12-A03, con el
+      // rótulo en JetBrains Mono y legible (4,5:1) sobre el botón apagado.
       if (conCuentaRegresiva && expirado && widget.password == null)
         ExcludeSemantics(
           child: LinearProgressIndicator(
             key: const Key('verificacion_email_barra'),
-            value: _segundosRestantes / _cooldown.inSeconds,
+            value: 1 - _segundosRestantes / _cooldown.inSeconds,
             minHeight: 3,
             borderRadius: BorderRadius.circular(2),
           ),
@@ -797,6 +800,17 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
   /// Rótulo de la cuenta regresiva: JetBrains Mono como en el canvas (12-A03), para que el número no
   /// haga bailar el ancho del texto al bajar cada segundo.
   static const _rotuloConCuenta = TextStyle(fontFamily: 'JetBrainsMono');
+
+  /// Estilo del botón primario apagado mientras corre la cuenta (12-A04 y 12-A04b). El apagado del
+  /// tema (primario al 50 % con el rótulo al 38 % de Material) no llega a 4,5:1: acá el fondo es el
+  /// `gris` de la paleta (más apagado que el azul del botón activo) y el rótulo, `onPrimary`.
+  ButtonStyle _estiloPrimarioConCuenta(BuildContext context) {
+    final tema = Theme.of(context);
+    return FilledButton.styleFrom(
+      disabledBackgroundColor: tema.extension<ColoresColportaje>()!.gris,
+      disabledForegroundColor: tema.colorScheme.onPrimary,
+    );
+  }
 
   /// Estilo del botón apagado mientras corre la cuenta (12-A03 y 12-A01b): el mismo borde y forma del
   /// botón secundario, con el rótulo en `gris` (con el 38 % de opacidad de Material no llega a AA) y
