@@ -141,6 +141,7 @@ Future<void> main() async {
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
+          sondaArchivoTilesProvider.overrideWithValue(tiles.sonda),
         ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de

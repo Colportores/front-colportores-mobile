@@ -17,6 +17,7 @@ import 'services/almacenamiento_tiles_canal.dart';
 import 'services/archivos_tiles_io.dart';
 import 'services/calculador_checksum_sha256.dart';
 import 'services/cliente_descarga_rango_http.dart';
+import 'services/sonda_archivo_tiles_http.dart';
 
 /// Arma el repositorio y el descargador de paquetes de mapas con los adaptadores reales
 /// (`main.dart` los pone en los providers de `tiles_providers.dart`).
@@ -27,12 +28,16 @@ final class ComposicionTiles {
   ComposicionTiles._({
     required this.repository,
     required this.descargador,
+    required this.sonda,
     required this.directorio,
     required this.reconciliacion,
   });
 
   final PaquetesTilesRepository repository;
   final DescargadorPaquetesTiles descargador;
+
+  /// La prueba del archivo del mapa en línea (#299): le pide 1 byte al `.pmtiles` del bucket.
+  final SondaArchivoTiles sonda;
 
   /// La carpeta de los `.pmtiles`, los `.part` y el manifiesto.
   final Directory directorio;
@@ -84,6 +89,7 @@ final class ComposicionTiles {
     return ComposicionTiles._(
       repository: repository,
       descargador: descargador,
+      sonda: SondaArchivoTilesHttp(cliente: web),
       directorio: directorio,
       reconciliacion: repository.reconciliar().then((_) {}),
     );

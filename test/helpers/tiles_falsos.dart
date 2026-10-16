@@ -244,6 +244,44 @@ final class ServidorFalso implements ClienteDescargaRango {
   }
 }
 
+/// La sonda del archivo del mapa en línea (#299): contesta bien salvo lo que el test le indique.
+/// Anota cada archivo que se prueba, en orden, sin tocar la red.
+final class SondaFalsa implements SondaArchivoTiles {
+  /// Qué archivo se probó, en orden (una entrada por pedido, aunque falle).
+  final pruebas = <Uri>[];
+
+  /// Los archivos que el servidor ya no tiene o no entrega: fallan con [statusError].
+  final caidos = <Uri>{};
+  int statusError = 404;
+
+  /// Ningún archivo contesta: el servidor está caído o no hay red hasta él ([ErrorRedTiles]).
+  bool servidorCaido = false;
+
+  /// Un error de programación, no de red: la prueba no puede afirmar nada.
+  bool lanza = false;
+
+  /// Si no es null, `probar` espera a que se complete antes de contestar: el servidor que tarda.
+  /// Se lee en cada pedido, así que el test puede cambiarlo entre un intento y otro.
+  Completer<void>? espera;
+
+  /// Cuántas pruebas hay en curso (empezaron y todavía no contestaron).
+  int enCurso = 0;
+
+  @override
+  Future<void> probar(Uri origen) async {
+    pruebas.add(origen);
+    enCurso++;
+    try {
+      await espera?.future;
+      if (lanza) throw StateError('la sonda falló');
+      if (servidorCaido) throw const ErrorRedTiles();
+      if (caidos.contains(origen)) throw ErrorServidorTiles(statusError);
+    } finally {
+      enCurso--;
+    }
+  }
+}
+
 /// Un cuerpo cuya suscripción se cancela con un `Future` de la zona actual (ver
 /// [ServidorFalso.cancelaEnLaZonaActual]); ignora lo que tarde el cancelado del cuerpo de origen.
 final class _CuerpoQueCancelaEnLaZona extends Stream<List<int>> {

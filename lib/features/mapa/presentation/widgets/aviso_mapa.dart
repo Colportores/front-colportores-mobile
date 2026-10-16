@@ -148,9 +148,15 @@ class _AvisoMapaConectadoState extends ConsumerState<AvisoMapaConectado> {
     if (_reintentando) return;
     setState(() => _reintentando = true);
     try {
+      // Vuelve a preguntar el catálogo y a probar el archivo del mapa (#299): si el aviso salió
+      // porque el archivo no contestó, el catálogo igual da lo mismo y solo la prueba lo corrige.
       final consulta = paqueteDelAmbitoProvider(widget.ambito);
-      ref.invalidate(consulta);
+      final prueba = pruebaDelMapaProvider(widget.ambito);
+      ref
+        ..invalidate(consulta)
+        ..invalidate(prueba);
       await ref.read(consulta.future);
+      await ref.read(prueba.future);
     } on Object {
       // El proveedor ya convierte sus fallos en un valor; si igual llega un error, el aviso sigue.
     } finally {

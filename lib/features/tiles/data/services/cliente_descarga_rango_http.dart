@@ -21,9 +21,13 @@ import 'falla_de_red.dart';
 final class ClienteDescargaRangoHttp implements ClienteDescargaRango {
   ClienteDescargaRangoHttp({
     required this._cliente,
-    this.esperaRespuesta = const Duration(seconds: 30),
+    this.esperaRespuesta = esperaRespuestaPorDefecto,
     this.esperaPedazo = const Duration(seconds: 30),
   });
+
+  /// Cuánto se espera por defecto la respuesta del servidor. La prueba del mapa en línea
+  /// (`SondaArchivoTilesHttp`, #299) espera lo mismo.
+  static const esperaRespuestaPorDefecto = Duration(seconds: 30);
 
   final http.Client _cliente;
 

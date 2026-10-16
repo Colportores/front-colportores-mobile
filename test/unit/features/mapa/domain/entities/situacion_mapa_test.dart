@@ -33,10 +33,12 @@ void main() {
     TipoConexion? conexion,
     List<String>? rutas = const [],
     PaqueteDelAmbito? consulta,
+    PruebaDelMapa? prueba,
   }) => ResolutorSituacionMapa.resolver(
     conexion: conexion,
     rutasDescargadas: rutas,
     consulta: consulta,
+    prueba: prueba,
   );
 
   group('con el mapa de la ciudad descargado', () {
@@ -143,6 +145,103 @@ void main() {
         },
       );
     }
+  });
+
+  // «Mapa caído» (#299): al abrir el mapa con conexión se le pide 1 byte al archivo de la ciudad. Si
+  // no contesta, el mismo aviso de «No pudimos cargar el mapa de esta ciudad».
+  group('la prueba del archivo del mapa en línea', () {
+    for (final conexion in [TipoConexion.wifi, TipoConexion.datosMoviles]) {
+      test('con ${conexion.name}, si el archivo no contestó: color liso y «No pudimos cargar»', () {
+        final situacion = resolver(
+          conexion: conexion,
+          consulta: PaqueteHallado(_paquete()),
+          prueba: PruebaDelMapa.fallo,
+        );
+
+        expect(situacion.fuente, const FuenteMapa.sinTiles());
+        expect(situacion.aviso, const AvisoMapaNoCarga());
+      });
+    }
+
+    test('con datos móviles, el aviso de la falla reemplaza al de descargar (bajarlo del mismo '
+        'servidor tampoco anda)', () {
+      final situacion = resolver(
+        conexion: TipoConexion.datosMoviles,
+        consulta: PaqueteHallado(_paquete()),
+        prueba: PruebaDelMapa.fallo,
+      );
+
+      expect(situacion.aviso, isNot(isA<AvisoDatosMoviles>()));
+    });
+
+    test('si el archivo contestó, queda como sin prueba: el mapa en línea y, con datos móviles, '
+        'el aviso de descargar', () {
+      final paquete = _paquete();
+      for (final prueba in <PruebaDelMapa?>[PruebaDelMapa.respondio, null]) {
+        final conWifi = resolver(
+          conexion: TipoConexion.wifi,
+          consulta: PaqueteHallado(paquete),
+          prueba: prueba,
+        );
+        final conDatos = resolver(
+          conexion: TipoConexion.datosMoviles,
+          consulta: PaqueteHallado(paquete),
+          prueba: prueba,
+        );
+
+        expect(conWifi.fuente.tipo, FuenteTiles.servidorOnline, reason: '$prueba');
+        expect(conWifi.aviso, isNull, reason: '$prueba');
+        expect(conDatos.fuente.tipo, FuenteTiles.servidorOnline, reason: '$prueba');
+        expect(conDatos.aviso, AvisoDatosMoviles(paquete), reason: '$prueba');
+      }
+    });
+
+    test('con el mapa en el teléfono no se prueba nada: el fallo viejo no importa', () {
+      final situacion = resolver(
+        conexion: TipoConexion.wifi,
+        rutas: _descargado,
+        consulta: PaqueteHallado(_paquete()),
+        prueba: PruebaDelMapa.fallo,
+      );
+
+      expect(situacion.fuente.tipo, FuenteTiles.pmtilesOffline);
+      expect(situacion.aviso, isNull);
+    });
+
+    test('sin conexión vale el aviso de sin conexión, no el de la prueba', () {
+      final situacion = resolver(
+        conexion: TipoConexion.sinConexion,
+        consulta: PaqueteHallado(_paquete()),
+        prueba: PruebaDelMapa.fallo,
+      );
+
+      expect(situacion.aviso, const AvisoSinConexion());
+    });
+
+    test('sin paquete en el catálogo la prueba no inventa un aviso', () {
+      for (final consulta in <PaqueteDelAmbito?>[
+        null,
+        const PaqueteSinAmbito(),
+        const PaqueteSinRed(),
+        const PaqueteYaDescargado(),
+      ]) {
+        expect(
+          resolver(conexion: TipoConexion.wifi, consulta: consulta, prueba: PruebaDelMapa.fallo),
+          const SituacionMapa.sinDatos(),
+          reason: '$consulta',
+        );
+      }
+    });
+
+    test('un paquete en dos partes con la prueba caída también es «No pudimos cargar»', () {
+      final situacion = resolver(
+        conexion: TipoConexion.wifi,
+        consulta: PaqueteHallado(_paquete(bytes: 88400000, enPartes: true)),
+        prueba: PruebaDelMapa.fallo,
+      );
+
+      expect(situacion.aviso, const AvisoMapaNoCarga());
+    });
   });
 
   group('sin saber todavía: no se afirma nada', () {
