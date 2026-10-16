@@ -79,6 +79,16 @@ final class UnionesPendientesState extends Equatable {
   /// La última que falló, si hay alguna.
   FallaUnion? get falla => fallas.lastOrNull;
 
+  /// Las fallas que siguen valiendo para quien mira la lista de [pares] (las claves de los pares que
+  /// siguen para revisar; `null` si todavía no se leyeron). Una falla que se puede reintentar deja de
+  /// valer cuando su par ya no está: se decidió («Ignorar», «Son distintos»), se unió por otro lado o
+  /// dejó de ser un par; reintentarla uniría dos ubicaciones contra lo que se decidió. La que no se
+  /// puede reintentar («la que ibas a conservar ya es baja») se queda: avisa algo cierto.
+  List<FallaUnion> fallasVigentes(Set<String>? pares) => [
+    for (final falla in fallas)
+      if (!falla.sePuedeReintentar || pares == null || pares.contains(falla.union.clavePar)) falla,
+  ];
+
   /// Si la lista de pares no tiene que mostrar [par]: es uno de [ocultas] o contiene a una de
   /// [duplicadasEnCurso].
   bool oculta(ParDuplicado par) =>
@@ -171,6 +181,11 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
   /// Cada unión definitiva espera a la anterior: dos a la vez sobre la misma base no se pisan.
   Future<void> _cola = Future<void>.value();
 
+  /// Los reintentos que todavía no terminaron (ya salieron de [UnionesPendientesState.fallas]) y los
+  /// que una unión pedida después reemplazó: si uno de estos vuelve a fallar, no deja su falla.
+  final _reintentosEnVuelo = <UnionPendiente>{};
+  final _reintentosReemplazados = <UnionPendiente>{};
+
   @override
   UnionesPendientesState build() {
     _unir = ref.watch(unirDuplicadosUseCaseProvider);
@@ -192,6 +207,9 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       _confirmar(actual);
     }
     _pendiente = union;
+    // Un reintento que todavía corre y toca la misma ubicación que la unión nueva queda reemplazado,
+    // igual que su falla si ya estuviera en la lista: si vuelve a fallar no deja el aviso.
+    _reintentosReemplazados.addAll(_reintentosEnVuelo.where((v) => _seCruzaCon(v, union)));
     state = UnionesPendientesState(
       pendiente: union,
       ocultas: {...state.ocultas, union.clavePar},
@@ -236,22 +254,54 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
   /// en el orden en que fallaron. Las que vuelven a fallar quedan de nuevo en
   /// [UnionesPendientesState.fallas]; las que no se pueden reintentar (la que se iba a conservar ya
   /// es baja) se quedan hasta que se descartan.
-  void reintentar() {
+  ///
+  /// [paresVigentes] son las claves de los pares que siguen para revisar (`null` si no se sabe): una
+  /// falla cuyo par ya no está —se decidió, se unió por otro lado, dejó de ser un par— no se reintenta
+  /// y se suelta ([UnionesPendientesState.fallasVigentes]).
+  void reintentar({Set<String>? paresVigentes}) {
+    final vigentes = state.fallasVigentes(paresVigentes);
     final aReintentar = [
-      for (final falla in state.fallas)
+      for (final falla in vigentes)
         if (falla.sePuedeReintentar) falla.union,
     ];
-    if (aReintentar.isEmpty) return;
+    if (aReintentar.isEmpty) {
+      // Nada que correr, pero las que ya no valen se sueltan.
+      if (vigentes.length != state.fallas.length) {
+        state = UnionesPendientesState(
+          pendiente: state.pendiente,
+          ocultas: state.ocultas,
+          duplicadasEnCurso: state.duplicadasEnCurso,
+          fallas: vigentes,
+        );
+      }
+      return;
+    }
+    _reintentosEnVuelo.addAll(aReintentar);
     state = UnionesPendientesState(
       pendiente: state.pendiente,
       ocultas: {...state.ocultas, for (final u in aReintentar) u.clavePar},
       duplicadasEnCurso: {...state.duplicadasEnCurso, for (final u in aReintentar) u.duplicadaId},
       fallas: [
-        for (final falla in state.fallas)
+        for (final falla in vigentes)
           if (!falla.sePuedeReintentar) falla,
       ],
     );
     aReintentar.forEach(_confirmar);
+  }
+
+  /// La colportora decidió el par [clavePar] («Ignorar», «Son distintos»): su falla ya no tiene
+  /// sentido, y «Reintentar» uniría lo que acaba de decidir que no.
+  void olvidarFalla(String clavePar) {
+    if (!ref.mounted || !state.fallas.any((f) => f.union.clavePar == clavePar)) return;
+    state = UnionesPendientesState(
+      pendiente: state.pendiente,
+      ocultas: state.ocultas,
+      duplicadasEnCurso: state.duplicadasEnCurso,
+      fallas: [
+        for (final f in state.fallas)
+          if (f.union.clavePar != clavePar) f,
+      ],
+    );
   }
 
   /// Cierra el aviso de las fallas sin reintentar.
@@ -301,9 +351,12 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     } on Object catch (e) {
       falla = FailureInesperado(causa: e);
     }
+    _reintentosEnVuelo.remove(union);
+    final reemplazada = _reintentosReemplazados.remove(union);
     if (falla == null) return;
     final fallaDeLaUnion = FallaUnion(union: union, falla: falla);
     if (!ref.mounted) {
+      if (reemplazada) return;
       // La pantalla ya se fue, pero la colportora vio «quedaron unidas en una»: la Lista le dice que
       // no pasó (el repositorio dejó el log).
       _fueraDePantalla.registrar(fallaDeLaUnion);
@@ -316,7 +369,7 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       fallas: [
         for (final f in state.fallas)
           if (f.union.clavePar != union.clavePar) f,
-        fallaDeLaUnion,
+        if (!reemplazada) fallaDeLaUnion,
       ],
     );
   }

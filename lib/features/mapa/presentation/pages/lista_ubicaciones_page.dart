@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
@@ -338,6 +339,21 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final sinUbicaciones = lista?.sinUbicaciones ?? false;
     // Sin pares para revisar la Lista queda como siempre: la franja no ocupa ni un lugar entre las filas.
     final hayDuplicados = ref.watch(cantidadParesParaRevisarProvider(widget.colportorId)) > 0;
+    // Una unión que falló cuando ya se había salido de «Posibles duplicados»: se anuncia aunque la Lista
+    // esté bajada y la franja (primer ítem del desplazamiento) no esté construida (WCAG 4.1.3). La
+    // franja no se anuncia sola mientras muestra una falla (`liveRegion` apagado en `_AvisoDuplicados`),
+    // así que sea cual sea el desplazamiento se oye una sola vez.
+    ref.listen(avisoUnionFallidaProvider(widget.colportorId), (anterior, nuevo) {
+      final llegoUna = nuevo.any((f) => !(anterior?.contains(f) ?? false));
+      if (!llegoUna) return;
+      unawaited(
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          _AvisoDuplicados.etiquetaDeFallas(nuevo),
+          Directionality.of(context),
+        ),
+      );
+    });
 
     return Stack(
       children: [
@@ -1016,6 +1032,12 @@ class _AvisoDuplicados extends ConsumerWidget {
   final String colportorId;
   final VoidCallback alRevisar;
 
+  /// Lo que el lector de pantalla dice de la franja cuando hay [fallas]: «No pudimos unir Av. Italia
+  /// 1234. Revisar».
+  static String etiquetaDeFallas(List<FallaUnion> fallas) =>
+      '${TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])}. '
+      '${TextosPosiblesDuplicados.revisar}';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
@@ -1029,7 +1051,9 @@ class _AvisoDuplicados extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Semantics(
         button: true,
-        liveRegion: true,
+        // Con una falla no es región viva: la Lista la anuncia ella (`ref.listen` de arriba), esté o no
+        // construida la franja, y así no se oye dos veces.
+        liveRegion: !hayFallas,
         label: '$texto. ${TextosPosiblesDuplicados.revisar}',
         // La acción de tocar: sin ella el doble toque de TalkBack/VoiceOver no abre «Posibles
         // duplicados» (QA de #357).

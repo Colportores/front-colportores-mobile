@@ -147,6 +147,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     final lectura = ref.watch(paresParaRevisarProvider(widget.colportorId));
     final uniones = ref.watch(unionesPendientesProvider);
     final pares = lectura.value;
+    // Las claves de los pares que siguen para revisar: una falla cuyo par ya no está (se decidió,
+    // se unió por otro lado, dejó de ser un par) no se avisa ni se reintenta.
+    final clavesDePares = pares == null ? null : {for (final p in pares) p.par.clave};
+    final fallas = uniones.fallasVigentes(clavesDePares);
     final visibles = pares == null
         ? const <ParaRevisar>[]
         : [
@@ -162,9 +166,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const _Barra(),
-              if (uniones.fallas.isNotEmpty)
+              if (fallas.isNotEmpty)
                 _AvisoFalla(
-                  fallas: uniones.fallas,
+                  fallas: fallas,
+                  paresVigentes: clavesDePares,
                   alturaMaxima: restricciones.maxHeight * _fraccionMaximaDelAviso,
                 ),
               Expanded(
@@ -347,11 +352,19 @@ class _TarjetaPar extends StatelessWidget {
 /// prueba todas las que se pueden reintentar y las que vuelven a fallar quedan con su cuenta.
 ///
 /// El texto no pasa del 200 % ([escalaMaximaDelAviso]): este aviso comparte la pantalla con la lista y,
-/// a 320×568, más grande no deja lugar. Si aun así no entra en [alturaMaxima], se desplaza.
+/// a 320×568, más grande no deja lugar. Si aun así no entra en [alturaMaxima], se desplaza solo el
+/// texto: «Reintentar» y «Entendido» quedan siempre enteros a la vista.
 class _AvisoFalla extends ConsumerWidget {
-  const _AvisoFalla({required this.fallas, required this.alturaMaxima});
+  const _AvisoFalla({
+    required this.fallas,
+    required this.paresVigentes,
+    required this.alturaMaxima,
+  });
 
   final List<FallaUnion> fallas;
+
+  /// Las claves de los pares que siguen para revisar (`null` mientras no se leyeron).
+  final Set<String>? paresVigentes;
   final double alturaMaxima;
 
   /// El tamaño más grande del texto del aviso: el 200 % de WCAG 1.4.4, que a 320×568 deja la lista a la
@@ -366,34 +379,28 @@ class _AvisoFalla extends ConsumerWidget {
       data: mediaQuery.copyWith(
         textScaler: mediaQuery.textScaler.clamp(maxScaleFactor: escalaMaximaDelAviso),
       ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: alturaMaxima),
-        child: SingleChildScrollView(
-          // La lista de abajo es la que usa el controlador principal de la pantalla.
-          primary: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: AvisoAlta(
-              key: const Key('duplicados_falla_union'),
-              color: ColoresAlta.rojo,
-              glyph: '!',
-              texto: TextosPosiblesDuplicados.falloUniones([for (final f in fallas) f.falla]),
-              acciones: Wrap(
-                children: [
-                  if (fallas.any((f) => f.sePuedeReintentar))
-                    EnlaceAlta(
-                      key: const Key('duplicados_reintentar_union'),
-                      texto: TextosPosiblesDuplicados.reintentar,
-                      alPresionar: notificador.reintentar,
-                    ),
-                  EnlaceAlta(
-                    key: const Key('duplicados_descartar_falla'),
-                    texto: TextosPosiblesDuplicados.entendido,
-                    alPresionar: notificador.descartarFalla,
-                  ),
-                ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: AvisoAlta(
+          key: const Key('duplicados_falla_union'),
+          color: ColoresAlta.rojo,
+          glyph: '!',
+          texto: TextosPosiblesDuplicados.falloUniones([for (final f in fallas) f.falla]),
+          alturaMaxima: alturaMaxima - 12,
+          acciones: Wrap(
+            children: [
+              if (fallas.any((f) => f.sePuedeReintentar))
+                EnlaceAlta(
+                  key: const Key('duplicados_reintentar_union'),
+                  texto: TextosPosiblesDuplicados.reintentar,
+                  alPresionar: () => notificador.reintentar(paresVigentes: paresVigentes),
+                ),
+              EnlaceAlta(
+                key: const Key('duplicados_descartar_falla'),
+                texto: TextosPosiblesDuplicados.entendido,
+                alPresionar: notificador.descartarFalla,
               ),
-            ),
+            ],
           ),
         ),
       ),

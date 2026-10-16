@@ -129,6 +129,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
   Future<void> _decidir(DecisionParDuplicado decision) async {
     if (_guardando || _cerrando) return;
     final decidir = ref.read(decidirParDuplicadoUseCaseProvider);
+    final uniones = ref.read(unionesPendientesProvider.notifier);
+    final clavePar = _par.par.clave;
     setState(() {
       _guardando = true;
       _falla = null;
@@ -139,6 +141,10 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
       falla = resultado.fold((f) => f, (_) => null);
     } on Object catch (e) {
       falla = FailureInesperado(causa: e);
+    }
+    if (falla == null) {
+      // Lo que se decidió pesa más que una unión que falló antes: «Reintentar» no la une.
+      uniones.olvidarFalla(clavePar);
     }
     if (!mounted) return;
     if (falla == null) {
