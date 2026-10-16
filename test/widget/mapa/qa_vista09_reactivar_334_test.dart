@@ -842,8 +842,7 @@ void main() {
         );
         expect((contenedor.decoration! as BoxDecoration).color, const Color(0xFFE6EEF8));
       },
-      skip: true,
-    ); // skip: QA #334 — 09·03: la fila de la baja que se reactiva no se resalta (canvas).
+    );
   });
 
   group('QA 09·03/04 · privacidad', () {

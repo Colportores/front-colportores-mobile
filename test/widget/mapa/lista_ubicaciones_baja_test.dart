@@ -10,10 +10,11 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_r
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_reactivar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/lista_ubicaciones_falsos.dart';
+import '../../helpers/qa_baja_205_arnes.dart' show cargarFuentes205;
 import 'lista_ubicaciones_arnes.dart';
 
 final _bajaEl12DeSetiembre = DateTime.utc(2026, 9, 12, 15);
@@ -679,6 +680,207 @@ void main() {
     });
   });
 
+  group('09·03 · La fila de la baja se resalta mientras la hoja está abierta', () {
+    Finder filaDe(String id) =>
+        find.byWidgetPredicate((w) => w is FilaUbicacionLista && w.item.ubicacion.id == id);
+
+    /// Las filas que se pintan como seleccionadas ahora.
+    Finder seleccionadas() =>
+        find.byWidgetPredicate((w) => w is FilaUbicacionLista && w.seleccionada);
+
+    BoxDecoration decoracionDe(WidgetTester tester, String id) {
+      final contenedor = tester.widget<Container>(
+        find.descendant(of: filaDe(id), matching: find.byType(Container)).first,
+      );
+      return contenedor.decoration! as BoxDecoration;
+    }
+
+    Border bordeDe(WidgetTester tester, String id) => decoracionDe(tester, id).border! as Border;
+
+    List<UbicacionConResumen> dosBajas() => [
+      _activa(),
+      _baja(),
+      _baja(id: 'baja-2', calle: 'Rivadavia', numero: '300'),
+    ];
+
+    testWidgets(
+      'dado un toque en la baja, entonces su fila va con fondo azul claro y barra azul de '
+      '3 px, y las demás filas no cambian',
+      (tester) async {
+        await _montarConBajas(tester, filas: dosBajas());
+        expect(decoracionDe(tester, 'baja-1').color, ColoresLista.filaBaja);
+        expect(seleccionadas(), findsNothing);
+
+        await _abrirReactivar(tester);
+
+        expect(decoracionDe(tester, 'baja-1').color, ColoresLista.azulFondo);
+        expect(bordeDe(tester, 'baja-1').left.width, 3);
+        expect(bordeDe(tester, 'baja-1').left.color, ColoresLista.azul);
+        expect(seleccionadas(), findsOneWidget);
+        expect(decoracionDe(tester, 'baja-2').color, ColoresLista.filaBaja);
+        expect(bordeDe(tester, 'baja-2').left, BorderSide.none);
+        expect(decoracionDe(tester, 'casa-1').color, Colors.white);
+      },
+    );
+
+    testWidgets('dado la barra azul, entonces el contenido de la fila no se corre', (tester) async {
+      await _montarConBajas(tester, filas: dosBajas());
+      final direccion = find.descendant(
+        of: filaDe('baja-1'),
+        matching: find.text('Av. Italia 1240'),
+      );
+      final antes = tester.getTopLeft(direccion);
+
+      await _abrirReactivar(tester);
+
+      expect(tester.getTopLeft(direccion).dx, antes.dx);
+    });
+
+    testWidgets('dado «Cancelar», entonces la fila vuelve a verse como cualquier baja', (
+      tester,
+    ) async {
+      await _montarConBajas(tester, filas: dosBajas());
+      await _abrirReactivar(tester);
+      expect(seleccionadas(), findsOneWidget);
+
+      await _tocar(tester, _cancelar);
+
+      expect(seleccionadas(), findsNothing);
+      expect(decoracionDe(tester, 'baja-1').color, ColoresLista.filaBaja);
+      expect(bordeDe(tester, 'baja-1').left, BorderSide.none);
+    });
+
+    testWidgets('dado que se cierra una y se abre la otra baja, entonces se resalta solo la que '
+        'tiene la hoja abierta', (tester) async {
+      await _montarConBajas(tester, filas: dosBajas());
+      await _abrirReactivar(tester);
+      await _tocar(tester, _cancelar);
+
+      await _tocar(tester, find.text('Rivadavia 300'));
+
+      expect(seleccionadas(), findsOneWidget);
+      expect(decoracionDe(tester, 'baja-2').color, ColoresLista.azulFondo);
+      expect(decoracionDe(tester, 'baja-1').color, ColoresLista.filaBaja);
+    });
+
+    testWidgets('dado «Reactivar», entonces al cerrarse la hoja no queda ninguna fila resaltada', (
+      tester,
+    ) async {
+      await _montarConBajas(tester, filas: dosBajas());
+      await _abrirReactivar(tester);
+
+      await _tocar(tester, _botonReactivar);
+
+      expect(seleccionadas(), findsNothing);
+      expect(_aviso, findsOneWidget);
+    });
+
+    testWidgets('dado que reactivar falla, entonces la fila sigue resaltada mientras la hoja sigue '
+        'abierta y se apaga al cerrarla', (tester) async {
+      final repo = await _montarConBajas(tester, filas: dosBajas());
+      repo.fallaAlCambiarBaja = const FailureInesperado();
+      await _abrirReactivar(tester);
+
+      await _tocar(tester, _botonReactivar);
+
+      expect(_botonReactivar, findsOneWidget, reason: 'la hoja sigue abierta');
+      expect(seleccionadas(), findsOneWidget);
+
+      await _tocar(tester, _cancelar);
+
+      expect(seleccionadas(), findsNothing);
+    });
+
+    testWidgets('dado el choque con otra casa (D1), entonces sigue resaltada hasta «Entendido»', (
+      tester,
+    ) async {
+      final repo = await _montarConBajas(tester, filas: dosBajas());
+      repo.fallaAlCambiarBaja = _chocaConRivadavia;
+      await _abrirReactivar(tester);
+      await _tocar(tester, _botonReactivar);
+      expect(_noSePuede, findsOneWidget);
+      expect(seleccionadas(), findsOneWidget);
+
+      await _tocar(tester, _entendido);
+
+      expect(_noSePuede, findsNothing);
+      expect(seleccionadas(), findsNothing);
+    });
+
+    testWidgets(
+      'dado dos toques en la fila antes de que abra la hoja, entonces se resalta una sola '
+      'fila y al cerrar no queda ninguna',
+      (tester) async {
+        await _montarConBajas(tester, filas: dosBajas());
+
+        await tester.tap(_filaBaja);
+        await tester.tap(_filaBaja, warnIfMissed: false);
+        await asentarLista(tester);
+
+        expect(seleccionadas(), findsOneWidget);
+        await _tocar(tester, _cancelar);
+        expect(seleccionadas(), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dado texto a 200 % en 360×640, entonces la fila resaltada no desborda (a 320×568 lo '
+      'cubre la matriz del QA, con fuentes reales)',
+      (tester) async {
+        await _montarConBajas(tester, filas: dosBajas(), escala: 2.0, tamano: const Size(360, 640));
+
+        await _abrirReactivar(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(seleccionadas(), findsOneWidget);
+      },
+    );
+
+    testWidgets('dado una fila seleccionada y un lector de pantalla, entonces el nodo se anuncia '
+        'como seleccionado; sin seleccionar, no', (tester) async {
+      final handle = tester.ensureSemantics();
+      final item = _baja();
+      Future<void> montar({required bool seleccionada}) => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FilaUbicacionLista(
+              item: ItemListaUbicacion(
+                ubicacion: item.ubicacion,
+                cantidadEspacios: 1,
+                motivoBaja: item.motivoBaja,
+              ),
+              lista: const ListaUbicaciones(
+                items: [],
+                total: 1,
+                porTipo: {},
+                porEstado: {},
+                totalGeneral: 1,
+                totalBajas: 1,
+                estadosConocidos: false,
+                hayMas: false,
+                ordenAplicado: OrdenListaUbicaciones.recientes,
+                sinUbicaciones: false,
+              ),
+              ahora: ahoraLista,
+              alReactivar: () {},
+              seleccionada: seleccionada,
+            ),
+          ),
+        ),
+      );
+      SemanticsNode nodo() => tester.getSemantics(find.byType(FilaUbicacionLista));
+
+      await montar(seleccionada: true);
+      // ignore: deprecated_member_use
+      expect(nodo().hasFlag(SemanticsFlag.isSelected), isTrue);
+
+      await montar(seleccionada: false);
+      // ignore: deprecated_member_use
+      expect(nodo().hasFlag(SemanticsFlag.isSelected), isFalse);
+      handle.dispose();
+    });
+  });
+
   group('Baja por unión de duplicados (no se reactiva)', () {
     Finder filaUnion() => find.byWidgetPredicate(
       (w) => w is FilaUbicacionLista && w.item.esBaja && w.item.esBajaPorUnion,
@@ -788,6 +990,44 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       handle.dispose();
     });
+
+    testWidgets(
+      'dado texto a 200 % en 320×568 con las fuentes reales, entonces la fila de la unión '
+      'muestra «Unida a otra ubicación» entera, sin puntos suspensivos',
+      (tester) async {
+        await cargarFuentes205(tester);
+        await _montarConBajas(
+          tester,
+          filas: [_baja(motivo: 'duplicado_de_ub-9')],
+          escala: 2.0,
+          tamano: const Size(320, 568),
+        );
+
+        final meta = find.text('Casa · baja el 12/09 · Unida a otra ubicación');
+        expect(meta, findsOneWidget);
+        expect(tester.widget<Text>(meta).maxLines, isNull);
+        expect(tester.renderObject<RenderParagraph>(meta).didExceedMaxLines, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'dado una baja común con un motivo largo, entonces la fila sigue en 2 renglones como '
+      'máximo (el motivo entero se lee en la hoja)',
+      (tester) async {
+        final largo = 'Se mudaron a otro departamento y la casa quedó cerrada con candado ' * 2;
+        await _montarConBajas(
+          tester,
+          filas: [_baja(motivo: largo.substring(0, 120))],
+          escala: 2.0,
+          tamano: const Size(360, 640),
+        );
+
+        final meta = find.textContaining('Casa · baja el 12/09 · Se mudaron');
+        expect(tester.widget<Text>(meta).maxLines, 2);
+        expect(tester.widget<Text>(meta).overflow, TextOverflow.ellipsis);
+      },
+    );
   });
 
   group('09·03 · Reactivar choca con otra casa activa (D1)', () {

@@ -94,6 +94,9 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   /// Una sola hoja de filtros y una sola alta a la vez: un segundo toque no abre otra encima.
   var _abriendoHoja = false;
+
+  /// La baja sobre la que está abierta la hoja de «Reactivar»: su fila va resaltada (vista 09·03).
+  String? _reactivandoId;
   var _abriendoAlta = false;
   var _abriendoDuplicados = false;
 
@@ -195,6 +198,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   Future<void> _reactivar(ItemListaUbicacion item) async {
     if (_abriendoHoja) return;
     _abriendoHoja = true;
+    setState(() => _reactivandoId = item.ubicacion.id);
     SalidaHojaReactivar? salida;
     try {
       salida = await mostrarHojaReactivar(
@@ -205,6 +209,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       );
     } finally {
       _abriendoHoja = false;
+      if (mounted) setState(() => _reactivandoId = null);
     }
     if (!mounted) return;
     switch (salida) {
@@ -411,6 +416,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                       ),
                 alAbrirUbicacion: widget.alAbrirUbicacion,
                 alReactivar: (item) => unawaited(_reactivar(item)),
+                reactivandoId: _reactivandoId,
                 alRegistrar: () => unawaited(_registrar()),
                 notificador: _notificador,
                 desplazamiento: _desplazamiento,
@@ -747,6 +753,7 @@ class _Cuerpo extends StatelessWidget {
     required this.ahora,
     required this.alAbrirUbicacion,
     required this.alReactivar,
+    required this.reactivandoId,
     required this.alRegistrar,
     required this.notificador,
     required this.desplazamiento,
@@ -761,6 +768,9 @@ class _Cuerpo extends StatelessWidget {
   final Widget? avisoDuplicados;
   final ValueChanged<String>? alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
+
+  /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
+  final String? reactivandoId;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
   final ScrollController desplazamiento;
@@ -920,6 +930,7 @@ class _Cuerpo extends StatelessWidget {
           // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
           // se toca (HU-UBI-005, «Reactivar»).
           alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,
+          seleccionada: id == reactivandoId,
         );
       },
     );

@@ -185,7 +185,9 @@ class _CirculoPunteado extends CustomPainter {
 
 /// Una fila de la lista (canvas, 05B): la insignia del estado, la dirección, la segunda línea y a
 /// la derecha la distancia o la última actualización. Una baja lleva «BAJA», el círculo punteado y
-/// fondo tostado, sin flecha; solo se toca si la pantalla ofrece [alReactivar] (vista 09·03).
+/// fondo tostado, sin flecha; solo se toca si la pantalla ofrece [alReactivar] (vista 09·03). Con
+/// [seleccionada] (la hoja de «Reactivar» abierta sobre ella) va resaltada: fondo azul claro y barra
+/// azul de 3 px a la izquierda.
 class FilaUbicacionLista extends StatelessWidget {
   const FilaUbicacionLista({
     super.key,
@@ -195,6 +197,7 @@ class FilaUbicacionLista extends StatelessWidget {
     this.alTocar,
     this.alReactivar,
     this.conFlecha = true,
+    this.seleccionada = false,
   });
 
   final ItemListaUbicacion item;
@@ -211,6 +214,10 @@ class FilaUbicacionLista extends StatelessWidget {
   /// Qué pasa al tocar una **baja**: abre «Reactivar» (vista 09·03), su única acción. `null`: la baja
   /// no se puede tocar (el mapa, vista 06, la lista sin elegirla).
   final VoidCallback? alReactivar;
+
+  /// La baja sobre la que está abierta la hoja de «Reactivar» (canvas 09·03): se ve cuál se está por
+  /// reactivar.
+  final bool seleccionada;
 
   @override
   Widget build(BuildContext context) {
@@ -266,9 +273,10 @@ class FilaUbicacionLista extends StatelessWidget {
               Text(
                 FormatoListaUbicaciones.meta(item, ahora),
                 // El motivo de una baja es texto libre (hasta 4 renglones pegados): la fila no crece
-                // con él. Entero se lee en la hoja de reactivar.
-                maxLines: esBaja ? 2 : null,
-                overflow: esBaja ? TextOverflow.ellipsis : null,
+                // con él. Entero se lee en la hoja de reactivar. La unión no tiene hoja donde leerla y
+                // su texto es fijo («Unida a otra ubicación»): se muestra entera.
+                maxLines: esBaja && !item.esBajaPorUnion ? 2 : null,
+                overflow: esBaja && !item.esBajaPorUnion ? TextOverflow.ellipsis : null,
                 style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: colores.gris),
               ),
               if (apilada) ...[const SizedBox(height: 3), textoDerecha],
@@ -286,12 +294,22 @@ class FilaUbicacionLista extends StatelessWidget {
       ],
     );
 
+    // La barra azul de la fila seleccionada ocupa 3 px: el relleno de la izquierda baja otro tanto y
+    // el contenido no se corre.
+    const barra = 3.0;
     final fila = Container(
       constraints: const BoxConstraints(minHeight: 64),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: EdgeInsets.fromLTRB(seleccionada ? 20 - barra : 20, 8, 20, 8),
       decoration: BoxDecoration(
-        color: esBaja ? ColoresLista.filaBaja : Colors.white,
-        border: Border(bottom: BorderSide(color: colores.borde)),
+        color: seleccionada
+            ? ColoresLista.azulFondo
+            : (esBaja ? ColoresLista.filaBaja : Colors.white),
+        border: Border(
+          left: seleccionada
+              ? const BorderSide(color: ColoresLista.azul, width: barra)
+              : BorderSide.none,
+          bottom: BorderSide(color: colores.borde),
+        ),
       ),
       child: cuerpo,
     );
@@ -299,6 +317,7 @@ class FilaUbicacionLista extends StatelessWidget {
     return Semantics(
       container: true,
       button: tocable,
+      selected: seleccionada,
       enabled: !esBaja || reactivable,
       label: FormatoListaUbicaciones.etiquetaFila(item, lista, ahora),
       hint: reactivable ? 'Tocá para reactivar' : null,
