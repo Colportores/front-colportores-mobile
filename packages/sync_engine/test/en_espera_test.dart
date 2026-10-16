@@ -322,18 +322,25 @@ void main() {
         'y no pisa la corrección', () async {
       final (:motor, :servidor, :cola) = _armar();
       servidor.filas['ubi-a'] = {'id': 'ubi-a', 'calle': 'Rivera 1'};
-      // El alta y una corrección del número, en el mismo lote: el servidor
-      // bloquea el alta y deja la corrección esperándola.
       await motor.stage('ubicacion', Op.insert, {
         'id': 'ubi-b',
         'calle': 'Rivera 1',
         'numero': '1',
       }, clientOpId: 'op-alta-b');
-      await motor.stage('ubicacion', Op.update, {
-        'id': 'ubi-b',
-        'calle': 'Rivera 1',
-        'numero': '2',
-      }, clientOpId: 'op-numero');
+      await motor.syncNow();
+      // Una corrección del número que llegó a la cola mientras el alta viajaba
+      // (ya no se podía fundir en ella): el ciclo siguiente la retiene, porque
+      // nombra una fila que el servidor no tiene.
+      await cola.append(
+        SyncJob(
+          clientOpId: 'op-numero',
+          entity: 'ubicacion',
+          op: Op.update,
+          payload: {'id': 'ubi-b', 'calle': 'Rivera 1', 'numero': '2'},
+          createdAt: DateTime.utc(2026, 10, 16, 10),
+          rowPk: 'ubi-b',
+        ),
+      );
       await motor.syncNow();
       expect(_estado(cola, 'op-numero'), JobState.waiting);
 
