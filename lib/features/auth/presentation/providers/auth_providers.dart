@@ -94,6 +94,11 @@ RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
 ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
     ObtenerSesionActualUseCase(ref.watch(authRepositoryProvider), ref.watch(relojSesionProvider));
 
+/// La revisión al volver al frente con la sesión abierta (#347): dice si venció, sin descartarla.
+@Riverpod(keepAlive: true)
+RevisarVigenciaSesionUseCase revisarVigenciaSesionUseCase(Ref ref) =>
+    RevisarVigenciaSesionUseCase(ref.watch(authRepositoryProvider), ref.watch(relojSesionProvider));
+
 /// Reloj de la ventana de la sesión (HU-AUTH-007). En el equipo, `main.dart` lo sobreescribe con
 /// el que recuerda en el almacén seguro el instante más alto visto (la misma instancia que usa
 /// `AlmacenSesionSupabase`); por defecto (tests), en memoria.

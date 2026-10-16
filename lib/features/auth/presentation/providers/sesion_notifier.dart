@@ -166,7 +166,8 @@ class SesionNotifier extends _$SesionNotifier {
       MotivoExpiracion.inactividad => const FailureSesionExpiradaPorInactividad(),
       MotivoExpiracion.revocada => const FailureSesionRevocada(),
     };
-    final habiaSesion = state.value != null;
+    final sesion = state.value;
+    final habiaSesion = sesion != null;
     _log.warn(LogModulo.auth, 'SESION_FIN_FORZADO', 'la sesión terminó sin logout', {
       'motivo': motivo.name,
       'habia_sesion': habiaSesion,
@@ -189,9 +190,30 @@ class SesionNotifier extends _$SesionNotifier {
     // Antes de soltar la sesión: si la app se corta en el medio, el próximo arranque todavía sabe
     // por qué (decisión de Cristian, 07/10, #302). Nunca lanza.
     await _guardarCierre(motivo);
-    if (!habiaSesion) return;
+    if (sesion == null) return;
+    // Desde acá, cada espera puede dejar atrás a la sesión que terminó (#347): otro fin de sesión
+    // casi junto ya la cerró, o la persona ya volvió a entrar. Cerrar igual sería cerrar la sesión
+    // nueva, viva, sin decir nada: se sigue solo si la que está es la misma.
+    if (!_sigueAbierta(sesion, motivo)) return;
     await ref.read(expirarSesionUseCaseProvider)(motivo);
+    if (!_sigueAbierta(sesion, motivo)) return;
     await _cerrarDbYSesion();
+  }
+
+  /// `true` si [sesion] sigue siendo la sesión de la app: la misma instancia, no una igual. Entrar
+  /// de nuevo (aunque sea con la misma cuenta) publica una sesión nueva, y un fin de sesión que
+  /// quedó esperando no le corresponde (#347). Si ya no lo es, lo deja en el registro.
+  bool _sigueAbierta(Sesion sesion, MotivoExpiracion motivo) {
+    if (ref.mounted && identical(state.value, sesion)) return true;
+    if (ref.mounted) {
+      _log.info(
+        LogModulo.auth,
+        'SESION_FIN_FORZADO_OBSOLETO',
+        'la sesión ya no es la que terminó',
+        {'motivo': motivo.name, 'hay_sesion_nueva': state.value != null},
+      );
+    }
+    return false;
   }
 
   /// Devuelve el [Failure] si falló (para que el formulario lo muestre) o `null` si entró.
@@ -354,11 +376,15 @@ class SesionNotifier extends _$SesionNotifier {
   /// la app estaba en segundo plano, se cierra como [MotivoExpiracion.inactividad], conservando la
   /// DB. La raíz de la app lo llama en cada `resumed`.
   Future<void> revisarVigencia() async {
-    if (state.value == null) return;
-    final resultado = await ref.read(obtenerSesionActualUseCaseProvider)(const NoParams());
-    // La sesión pudo terminar mientras se leía (por el stream, o porque la persona cerró): avisar
-    // ahora de un segundo motivo taparía el verdadero, o dejaría el aviso tras un cierre a propósito.
-    if (!ref.mounted || state.value == null) return;
+    final sesion = state.value;
+    if (sesion == null) return;
+    // Sin descartar: si venció, la sesión se descarta recién en `_alExpirar`, después de comprobar
+    // que sigue siendo esta. Descartarla en la lectura borraría la sesión nueva del teléfono.
+    final resultado = await ref.read(revisarVigenciaSesionUseCaseProvider)(const NoParams());
+    // La sesión pudo terminar mientras se leía (por el stream, o porque la persona cerró) y hasta
+    // haber una nueva (#347): avisar ahora de un segundo motivo taparía el verdadero, dejaría el
+    // aviso tras un cierre a propósito o cerraría la sesión a la que la persona acaba de entrar.
+    if (!ref.mounted || !identical(state.value, sesion)) return;
     if (resultado case Left(value: FailureSesionExpiradaPorInactividad())) {
       await _alExpirar(MotivoExpiracion.inactividad);
     }
