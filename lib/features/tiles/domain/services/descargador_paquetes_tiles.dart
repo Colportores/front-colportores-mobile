@@ -110,19 +110,29 @@ final class DescargadorPaquetesTiles {
   /// saber en qué está el mapa de un lugar sin pedirle el catálogo a la red: una descarga que se
   /// retomó al abrir la app sin conexión está en cola, y el catálogo no se puede leer.
   ///
-  /// También cuenta la que la app retomó sola y falló de forma terminal (un 404, un archivo que no
-  /// valida, falta de lugar): ya no se retoma en cada arranque, pero la tarjeta muestra su falla
-  /// hasta que el colportor vuelva a pedir el mapa, aunque la falla haya llegado antes de que
-  /// existiera la vista.
+  /// Si no hay ninguna en marcha, cuenta la que la app retomó sola y falló de forma terminal (un
+  /// 404, un archivo que no valida, falta de lugar; el de nivel más chico si hay varias): ya no se
+  /// retoma en cada arranque, pero la tarjeta muestra su falla hasta que el colportor vuelva a pedir
+  /// el mapa, aunque la falla haya llegado antes de que existiera la vista. Lo que baja manda sobre
+  /// lo que falló: con dos pendientes del mismo lugar (la zona con un 404 y la ciudad bajando) la
+  /// tarjeta no muestra la falla ni habilita «Descargar mapa» mientras el mapa se descarga.
   PaqueteTiles? paqueteEnMarchaQueCubre(AmbitoTrabajo ambito) {
-    PaqueteTiles? elegido;
+    PaqueteTiles? enMarcha;
+    PaqueteTiles? fallida;
     for (final descarga in _descargas.values) {
       final paquete = descarga.paquete;
-      if (!(descarga.enMarcha || descarga.fallidaAlRetomar) || !paquete.cubre(ambito)) continue;
-      if (elegido == null || paquete.nivel.index < elegido.nivel.index) elegido = paquete;
+      if (!paquete.cubre(ambito)) continue;
+      if (descarga.enMarcha) {
+        enMarcha = _delNivelMasChico(enMarcha, paquete);
+      } else if (descarga.fallidaAlRetomar) {
+        fallida = _delNivelMasChico(fallida, paquete);
+      }
     }
-    return elegido;
+    return enMarcha ?? fallida;
   }
+
+  static PaqueteTiles _delNivelMasChico(PaqueteTiles? actual, PaqueteTiles otro) =>
+      actual == null || otro.nivel.index < actual.nivel.index ? otro : actual;
 
   /// Termina cuando termina el intento en curso de [paqueteId] (completo, en pausa o fallido).
   Future<void> esperar(String paqueteId) async {

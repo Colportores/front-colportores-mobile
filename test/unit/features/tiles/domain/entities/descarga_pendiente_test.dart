@@ -65,6 +65,42 @@ void main() {
       expect(corregida.pausadaPorElColportor, isTrue);
     });
 
+    // El reloj adelantado que se corrigió casi nunca es un mes: suele ser una hora de más (huso mal
+    // puesto) o un día. Cualquier adelanto, por chico que sea, se lleva a ahora: tolerar «hasta un
+    // día» estiraría los 7 días de la descarga en ese tiempo.
+    for (final adelanto in const [
+      Duration(seconds: 1),
+      Duration(minutes: 1),
+      Duration(hours: 3),
+      Duration(hours: 23, minutes: 59, seconds: 59),
+      Duration(days: 1),
+    ]) {
+      test('con la fecha adelantada $adelanto la lleva a ahora y conserva todo lo demás', () {
+        final ahora = pedida;
+        final descarga = anotada(pedida.add(adelanto));
+
+        final corregida = descarga.sinFechaFutura(ahora);
+
+        expect(identical(corregida, descarga), isFalse);
+        expect(corregida, anotada(ahora));
+        expect(corregida.anotadaEn, ahora);
+        expect(corregida.permitirDatosMoviles, isTrue);
+        expect(corregida.pausadaPorElColportor, isTrue);
+      });
+
+      test('con la fecha adelantada $adelanto los 7 días cuentan desde ahora, no desde el '
+          'adelanto', () {
+        final ahora = pedida;
+        final corregida = anotada(pedida.add(adelanto)).sinFechaFutura(ahora);
+
+        expect(corregida.vencida(ahora.add(DescargaPendiente.vigencia)), isTrue);
+        expect(
+          corregida.vencida(ahora.add(DescargaPendiente.vigencia - const Duration(seconds: 1))),
+          isFalse,
+        );
+      });
+    }
+
     test('desde la fecha corregida los 7 días cuentan desde ahora', () {
       final ahora = pedida;
       final corregida = anotada(pedida.add(const Duration(days: 30))).sinFechaFutura(ahora);
