@@ -256,7 +256,9 @@ final class EstadoSolicitudMapa extends Equatable {
 ///
 /// Arranca desde lo que el descargador ya tiene en marcha para el ámbito: una descarga que se
 /// retomó al abrir la app (HU-SYNC-010, «La descarga sigue después de cerrar la app») está en cola
-/// o bajando antes de que exista la vista, y sin conexión el catálogo no dice qué paquete era.
+/// o bajando antes de que exista la vista, y sin conexión el catálogo no dice qué paquete era. Si
+/// esa retoma falló de forma terminal (un 404, un archivo que no valida, falta de lugar), la
+/// tarjeta muestra la falla de siempre hasta que el colportor vuelva a tocar «Descargar mapa».
 final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
   SolicitudMapaNotifier(this.ambito);
 

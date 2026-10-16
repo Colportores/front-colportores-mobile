@@ -37,10 +37,15 @@ final class EspacioFalso implements MedidorEspacioDisco {
   /// Las lecturas después de la primera lanzan (la plataforma no contesta).
   bool lanzaDespuesDeLaPrimera = false;
 
+  /// Si no es null, `bytesLibres` espera a que se complete antes de contestar: la descarga queda
+  /// «preparándose» (para probar lo que pasa mientras todavía no arrancó).
+  Completer<void>? retener;
+
   int _lecturas = 0;
 
   @override
   Future<int> bytesLibres() async {
+    await retener?.future;
     if (_lecturas++ == 0) return libres;
     if (lanzaDespuesDeLaPrimera) throw StateError('la plataforma no contesta');
     return libresDespuesDeLaPrimera ?? libres;

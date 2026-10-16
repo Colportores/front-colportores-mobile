@@ -576,6 +576,36 @@ void main() {
       },
     );
 
+    test('dado una descarga anotada de un paquete que ya está descargado con esa versión, al abrir '
+        'la app no se baja de nuevo: primero se reconcilia y recién después se retoma', () async {
+      final primera = await abrir();
+      final mvd = await delCatalogo(primera, 'ciudad-montevideo');
+      expect(await bajar(primera, mvd), isA<DescargaCompletada>());
+      await anotadas(primera); // que la escritura de «olvidar» salga antes de pisar el manifiesto
+      manifiesto(primera).writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          'descargas': [
+            DescargaPendienteModel.aJson(
+              DescargaPendiente(
+                paquete: mvd,
+                anotadaEn: DateTime.now(),
+                permitirDatosMoviles: true,
+              ),
+            ),
+          ],
+        }),
+      );
+      await primera.descargador.cerrar();
+      bucket.pedidos.clear();
+
+      final segunda = await abrir();
+      await segunda.descargador.esperar(mvd.id);
+
+      expect(rangos(archivoMvd), isEmpty);
+      expect(await anotadas(segunda), isEmpty);
+    });
+
     test('dado un manifiesto de descargas roto, la app abre igual y no retoma nada', () async {
       final primera = await abrir();
       await primera.descargador.cerrar();

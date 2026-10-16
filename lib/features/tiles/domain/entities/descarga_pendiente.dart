@@ -38,8 +38,22 @@ final class DescargaPendiente extends Equatable {
 
   String get id => paquete.id;
 
-  /// `true` si ya pasaron los [vigencia] días desde [anotadaEn].
+  /// `true` si ya pasaron los [vigencia] días desde [anotadaEn]. Una fecha futura (el reloj del
+  /// teléfono estaba adelantado al pedirla y se corrigió) cuenta como [ahora]: no vence.
   bool vencida(DateTime ahora) => ahora.difference(anotadaEn) >= vigencia;
+
+  /// Esta misma descarga con [anotadaEn] no posterior a [ahora]: si el reloj estaba adelantado, los
+  /// días se cuentan desde hoy y no desde un día que el reloj todavía no alcanzó. Devuelve la misma
+  /// instancia si no hace falta cambiar nada.
+  DescargaPendiente sinFechaFutura(DateTime ahora) {
+    if (!anotadaEn.isAfter(ahora)) return this;
+    return DescargaPendiente(
+      paquete: paquete,
+      anotadaEn: ahora,
+      permitirDatosMoviles: permitirDatosMoviles,
+      pausadaPorElColportor: pausadaPorElColportor,
+    );
+  }
 
   @override
   List<Object?> get props => [paquete, anotadaEn, permitirDatosMoviles, pausadaPorElColportor];

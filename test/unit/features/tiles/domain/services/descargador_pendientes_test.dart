@@ -734,6 +734,123 @@ void main() {
     });
 
     test(
+      'dado un error del servidor (503) al abrir la app con la descarga a medias y que se cierra '
+      'otra vez, al abrirla con el servidor andando sigue desde el mismo byte y la deja '
+      'disponible',
+      () async {
+        servidor.retenerDespuesDe = 2000;
+        final antes = abrirApp();
+        await antes.descargar(paquete, esperarConexion: true);
+        await dejarCorrer();
+        await cerrarApp(antes);
+        servidor.statusError = 503;
+        final primera = abrirApp();
+
+        await primera.retomarPendientes();
+        await dejarCorrer();
+
+        expect(
+          primera.estadoDe(paquete.id),
+          DescargaPausada(
+            paquete.id,
+            motivo: MotivoPausa.sinConexion,
+            recibidos: 2000,
+            total: 5500,
+          ),
+        );
+        expect(repositorio.pendientes, [anotada(paquete)]);
+        expect(archivos.contenido[parcial], bytes.sublist(0, 2000));
+        await cerrarApp(primera);
+        servidor.statusError = null;
+
+        final segunda = abrirApp();
+        await segunda.retomarPendientes();
+        await terminar(segunda, paquete);
+
+        expect(servidor.pedidos, [0, 2000, 2000]);
+        expect(segunda.estadoDe(paquete.id), isA<DescargaCompletada>());
+        expect(archivos.contenido[rutaFinalDe(paquete, 0)], bytes);
+        expect(repositorio.registrados, [descargadoDe(paquete)]);
+        expect(repositorio.pendientes, isEmpty);
+      },
+    );
+
+    test('dado que elimino un paquete mientras la retoma todavía no llegó a él, no lo baja ni lo '
+        'vuelve a anotar', () async {
+      final bytesOtro = bytesDePrueba(3000, semilla: 9);
+      final otro = paqueteDe(
+        bytesOtro,
+        id: 'ciudad-mvd',
+        nivel: NivelCobertura.ciudad,
+        ambitoId: 'c-1',
+      );
+      servidor.archivos[otro.origen] = bytesOtro;
+      await repositorio.anotarDescargaPendiente(anotada(paquete));
+      await repositorio.anotarDescargaPendiente(anotada(otro));
+      final app = abrirApp();
+      final retenida = espacio.retener = Completer<void>();
+
+      final retoma = app.retomarPendientes();
+      await dejarCorrer();
+      final eliminado = await app.eliminar(otro.id);
+      retenida.complete();
+      await retoma;
+      await terminar(app, paquete);
+
+      expect(eliminado.isRight(), isTrue);
+      expect(app.estadoDe(otro.id), isNull);
+      expect(servidor.origenes, [paquete.origen]);
+      expect(repositorio.registrados, [descargadoDe(paquete)]);
+      expect(repositorio.pendientes, isEmpty);
+    });
+
+    test(
+      'dado que la anotación tiene fecha futura (el reloj del teléfono estaba adelantado), se '
+      'retoma y se vuelve a anotar con la fecha de hoy: los 7 días cuentan desde ahora',
+      () async {
+        final futura = desde.add(const Duration(days: 30));
+        await repositorio.anotarDescargaPendiente(anotada(paquete, cuando: futura));
+        servidor.retenerDespuesDe = 2000;
+        final app = abrirApp();
+
+        await app.retomarPendientes();
+        await dejarCorrer();
+
+        expect(servidor.pedidos, [0]);
+        final corregida = repositorio.pendientes.single;
+        expect(corregida, anotada(paquete, cuando: desde));
+        expect(corregida.vencida(desde.add(const Duration(days: 7))), isTrue);
+        expect(corregida.vencida(desde.add(const Duration(days: 7, seconds: -1))), isFalse);
+        await app.pausar(paquete.id);
+      },
+    );
+
+    test('dado que la que pausó el colportor tiene fecha futura, tampoco se retoma pero se '
+        'corrige la fecha', () async {
+      final futura = desde.add(const Duration(days: 30));
+      await repositorio.anotarDescargaPendiente(anotada(paquete, pausada: true, cuando: futura));
+      final app = abrirApp();
+
+      await app.retomarPendientes();
+      await dejarCorrer();
+
+      expect(servidor.pedidos, isEmpty);
+      expect(app.estadoDe(paquete.id), isNull);
+      expect(repositorio.pendientes, [anotada(paquete, pausada: true, cuando: desde)]);
+    });
+
+    test('dado que la anotación es de hoy, la retoma no la reescribe sin necesidad', () async {
+      await repositorio.anotarDescargaPendiente(anotada(paquete, pausada: true));
+      final app = abrirApp();
+      final antes = repositorio.anotaciones;
+
+      await app.retomarPendientes();
+      await dejarCorrer();
+
+      expect(repositorio.anotaciones, antes);
+    });
+
+    test(
       'dado que se retoma, avisa que está bajando sin esperar los encabezados del servidor',
       () async {
         await repositorio.anotarDescargaPendiente(anotada(paquete));
@@ -771,6 +888,54 @@ void main() {
         expect(app.paqueteDe(paquete.id), paquete);
       },
     );
+
+    test('dado que la retoma falló de forma terminal (el servidor ya no tiene el archivo), sigue '
+        'contando para la tarjeta hasta que el colportor la pide de nuevo', () async {
+      servidor.archivos.remove(paquete.origen);
+      await repositorio.anotarDescargaPendiente(anotada(paquete));
+
+      final app = abrirApp();
+      await app.retomarPendientes();
+      await terminar(app, paquete);
+
+      expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+      expect(repositorio.pendientes, isEmpty);
+      expect(app.paqueteEnMarchaQueCubre(ambito), paquete);
+      expect(app.paqueteEnMarchaQueCubre(otroAmbito), isNull);
+
+      servidor.archivos[paquete.origen] = bytes;
+      servidor.retenerDespuesDe = 2000;
+      await app.descargar(paquete, esperarConexion: true);
+      await dejarCorrer();
+
+      expect(app.paqueteEnMarchaQueCubre(ambito), paquete, reason: 'ahora está bajando');
+      await app.pausar(paquete.id);
+      expect(app.paqueteEnMarchaQueCubre(ambito), isNull);
+    });
+
+    test('dado que la retoma falló por falta de lugar, sigue contando para la tarjeta', () async {
+      await repositorio.anotarDescargaPendiente(anotada(paquete));
+      espacio.libres = 100;
+
+      final app = abrirApp();
+      await app.retomarPendientes();
+      await dejarCorrer();
+
+      expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+      expect(app.paqueteEnMarchaQueCubre(ambito), paquete);
+    });
+
+    test('dado que la falla fue tras el toque del colportor, no cuenta: esa la ve la tarjeta en '
+        'el momento', () async {
+      servidor.archivos.remove(paquete.origen);
+      final app = abrirApp();
+
+      await app.descargar(paquete, esperarConexion: true);
+      await terminar(app, paquete);
+
+      expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+      expect(app.paqueteEnMarchaQueCubre(ambito), isNull);
+    });
 
     test('dado que terminó de bajar, ya no está en marcha', () async {
       await repositorio.anotarDescargaPendiente(anotada(paquete));

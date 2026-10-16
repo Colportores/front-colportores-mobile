@@ -82,6 +82,10 @@ final class DescargadorPaquetesTiles {
 
   /// Las escrituras del registro de pendientes que salieron sin esperar y todavía no terminaron.
   final _escrituras = <Future<void>>{};
+
+  /// Los paquetes que el colportor eliminó en esta sesión: [retomarPendientes] no los vuelve a bajar
+  /// aunque ya los hubiera leído de lo anotado.
+  final _eliminados = <String>{};
   final _cambios = StreamController<EstadoDescarga>.broadcast();
   StreamSubscription<TipoConexion>? _escuchaConectividad;
 
@@ -105,11 +109,16 @@ final class DescargadorPaquetesTiles {
   /// conexión) y cubre [ambito]; el de nivel más chico si hay varias. `null` si ninguna. Sirve para
   /// saber en qué está el mapa de un lugar sin pedirle el catálogo a la red: una descarga que se
   /// retomó al abrir la app sin conexión está en cola, y el catálogo no se puede leer.
+  ///
+  /// También cuenta la que la app retomó sola y falló de forma terminal (un 404, un archivo que no
+  /// valida, falta de lugar): ya no se retoma en cada arranque, pero la tarjeta muestra su falla
+  /// hasta que el colportor vuelva a pedir el mapa, aunque la falla haya llegado antes de que
+  /// existiera la vista.
   PaqueteTiles? paqueteEnMarchaQueCubre(AmbitoTrabajo ambito) {
     PaqueteTiles? elegido;
     for (final descarga in _descargas.values) {
       final paquete = descarga.paquete;
-      if (!descarga.enMarcha || !paquete.cubre(ambito)) continue;
+      if (!(descarga.enMarcha || descarga.fallidaAlRetomar) || !paquete.cubre(ambito)) continue;
       if (elegido == null || paquete.nivel.index < elegido.nivel.index) elegido = paquete;
     }
     return elegido;
@@ -156,15 +165,29 @@ final class DescargadorPaquetesTiles {
   /// Cada una sigue sobre el paquete con que empezó, aunque el catálogo ya traiga otra versión, y
   /// desde lo que ya está en su `.part`. Queda en cola hasta la primera conexión permitida, con el
   /// permiso de datos móviles que tenía. No retoma la que el colportor pausó a mano, ni la que ya
-  /// se pidió de nuevo en esta sesión. Termina cuando todas arrancaron o quedaron en cola, no
-  /// cuando terminan de bajar. Nunca lanza: si no puede leer lo anotado, no retoma nada.
+  /// se pidió de nuevo (o se eliminó) en esta sesión. Termina cuando todas arrancaron o quedaron en
+  /// cola, no cuando terminan de bajar. Nunca lanza: si no puede leer lo anotado, no retoma nada.
+  ///
+  /// Un error del servidor (5xx) al retomar cuenta como un corte: sigue en cola y anotada, y se
+  /// reintenta con la espera creciente de siempre y en el próximo arranque, dentro de los
+  /// [DescargaPendiente.vigencia] días. Una falla que se repetiría (un 404, un archivo que no
+  /// valida, falta de lugar) se olvida, pero [paqueteEnMarchaQueCubre] la sigue contando para que la
+  /// tarjeta la muestre.
+  ///
+  /// Una anotación con fecha futura (el reloj del teléfono estaba adelantado y se corrigió) se
+  /// corrige a hoy y se vuelve a anotar: la cuenta de los días no espera a que el reloj la alcance.
   Future<void> retomarPendientes() async {
     try {
       final pendientes = (await _repository.descargasPendientes()).getOrElse(() => const []);
-      for (final pendiente in pendientes) {
+      for (final leida in pendientes) {
         if (_cambios.isClosed) return;
-        if (pendiente.pausadaPorElColportor || pendiente.vencida(_ahora())) continue;
-        if (_descargas.containsKey(pendiente.id)) continue;
+        if (_descargas.containsKey(leida.id) || _eliminados.contains(leida.id)) continue;
+        final ahora = _ahora();
+        final pendiente = leida.sinFechaFutura(ahora);
+        if (!identical(pendiente, leida)) {
+          _enSegundoPlano(_repository.anotarDescargaPendiente(pendiente));
+        }
+        if (pendiente.pausadaPorElColportor || pendiente.vencida(ahora)) continue;
         final descarga = _Descarga(pendiente.paquete)
           ..permitirDatosMoviles = pendiente.permitirDatosMoviles
           ..esperarConexion = true
@@ -205,6 +228,7 @@ final class DescargadorPaquetesTiles {
       ..esperarConexion = esperarConexion || (enCola && descarga.esperarConexion)
       ..pausaPedida = null
       ..pausadaPorElColportor = false
+      ..retomadaSola = !nuevoPedido
       ..intento = intento;
     // La cuenta de los 7 días arranca con el pedido del colportor; un reintento o una conexión que
     // vuelve no la renuevan.
@@ -268,6 +292,7 @@ final class DescargadorPaquetesTiles {
   /// descarga si estaba en curso, lo saca del repositorio (el mapa deja de usarlo) y borra todos
   /// sus `.part` y `.pmtiles`, de cualquier versión. Si falla a mitad, se puede repetir.
   Future<Either<Failure, Unit>> eliminar(String paqueteId) async {
+    _eliminados.add(paqueteId);
     final descarga = _descargas.remove(paqueteId);
     if (descarga != null) await _detener(descarga, MotivoPausa.usuario);
     final quitado = await _repository.quitar(paqueteId);
@@ -419,6 +444,14 @@ final class DescargadorPaquetesTiles {
     try {
       respuesta = await _pedir(d, indice, parcial);
     } on ErrorRedTiles {
+      _emitirPausa(d, d.pausaPedida ?? MotivoPausa.sinConexion);
+      _reintentarMasTarde(d);
+      return false;
+    } on ErrorServidorTiles catch (e) {
+      // Un error del servidor en lo que la app retoma sola (al abrir, al volver la conexión o en un
+      // reintento) pasa solo, como un corte: sigue en cola, anotada y con la espera creciente. Si
+      // lo pidió el colportor, o no es un error del servidor, falla como siempre.
+      if (!d.retomadaSola || e.status < 500) rethrow;
       _emitirPausa(d, d.pausaPedida ?? MotivoPausa.sinConexion);
       _reintentarMasTarde(d);
       return false;
@@ -698,6 +731,10 @@ final class _Descarga {
   /// El colportor la pausó él (`pausar`): se anota así y al abrir la app no se retoma sola.
   bool pausadaPorElColportor = false;
 
+  /// El intento actual lo arrancó la app sola (la retoma al abrir, la conexión que volvió o un
+  /// reintento) y no un pedido del colportor.
+  bool retomadaSola = false;
+
   /// Cuándo se pidió (la cuenta de los 7 días de `DescargaPendiente.vigencia`); `null` hasta que
   /// arranca el primer intento.
   DateTime? anotadaEn;
@@ -734,6 +771,10 @@ final class _Descarga {
     final actual = intento;
     return actual != null && !actual.isCompleted;
   }
+
+  /// La app la retomó sola y falló de forma terminal: ya no queda anotada, pero la tarjeta muestra
+  /// su falla hasta que el colportor vuelva a pedir el mapa.
+  bool get fallidaAlRetomar => retomadaSola && estado is DescargaFallida;
 
   /// Ocupada, o en cola esperando la conexión: la que el colportor ve como «se descarga sola».
   bool get enMarcha =>

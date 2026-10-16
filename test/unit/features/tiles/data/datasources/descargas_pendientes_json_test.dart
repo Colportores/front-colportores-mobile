@@ -90,13 +90,24 @@ void main() {
     expect(await manifiesto().readAsString(), despuesDeQuitar);
   });
 
-  test('no deja un .tmp atrás: la escritura es un rename del archivo temporal', () async {
+  test('no deja un .tmp atrás después de guardar y quitar', () async {
     await pendientes.guardar(descarga('a'));
     await pendientes.quitar('a');
 
     final nombres = directorio.listSync().map((e) => p.basename(e.path)).toList();
 
     expect(nombres, [DescargasPendientesJson.nombreArchivo]);
+  });
+
+  test('si el temporal no se puede escribir, el manifiesto anterior queda intacto: la escritura '
+      'es atómica (temporal + rename) y no pisa el archivo final', () async {
+    await pendientes.guardar(descarga('a'));
+    // El temporal es una carpeta: no se puede abrir como archivo.
+    Directory('${manifiesto().path}.tmp').createSync();
+
+    await expectLater(pendientes.guardar(descarga('b')), throwsA(isA<FileSystemException>()));
+
+    expect((await pendientes.leer()).map((d) => d.id), ['a']);
   });
 
   test('un .tmp que quedó de un corte no afecta la lectura', () async {

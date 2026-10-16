@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
@@ -205,13 +206,14 @@ void main() {
     );
 
     testWidgets(
-      'dado que la descarga retomada falla, entonces el aviso dice qué hacer y el botón vuelve a '
-      'estar habilitado: no queda trabado en «Descargando el mapa…»',
+      'dado que la descarga retomada falla de forma terminal (el servidor ya no tiene el archivo), '
+      'entonces el aviso dice qué hacer y el botón vuelve a estar habilitado: no queda trabado en '
+      '«Descargando el mapa…»',
       (tester) async {
         final arnes = ArnesMapa(conexion: TipoConexion.sinConexion, catalogo: [paqueteMontevideo]);
         await _abrirApp(arnes, _anotada(paqueteMontevideo));
         await montarAviso(tester, conexion: TipoConexion.sinConexion, arnes: arnes);
-        arnes.servidor.statusError = 500;
+        arnes.servidor.archivos.remove(paqueteMontevideo.origen);
 
         arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
         await asentarAviso(tester);
@@ -221,6 +223,104 @@ void main() {
         expect(find.textContaining('Probá de nuevo'), findsWidgets);
         expect(_botonHabilitado(tester, _descargarConPeso), isTrue);
         expect(arnes.repositorio.pendientes, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'dado que el servidor responde con un error (503) cuando vuelve la conexión, entonces la '
+      'tarjeta sigue diciendo que se descarga sola, el botón sigue deshabilitado y la descarga '
+      'queda anotada para el próximo arranque',
+      (tester) async {
+        final arnes = ArnesMapa(conexion: TipoConexion.sinConexion, catalogo: [paqueteMontevideo]);
+        await _abrirApp(arnes, _anotada(paqueteMontevideo));
+        await montarAviso(tester, conexion: TipoConexion.sinConexion, arnes: arnes);
+        arnes.servidor.statusError = 503;
+
+        arnes.conectividad.cambiarA(TipoConexion.datosMoviles);
+        await asentarAviso(tester);
+
+        expect(find.text(_seDescargaSola), findsOneWidget);
+        expect(find.textContaining('Probá de nuevo'), findsNothing);
+        expect(_botonHabilitado(tester, _descargarConPeso), isFalse);
+        expect(arnes.repositorio.pendientes.map((d) => d.id), [paqueteMontevideo.id]);
+        // Sin esperarlo (bajo FakeAsync la cancelación de la escucha no vuelve): lo que importa es
+        // que cancela ya la espera del reintento.
+        unawaited(arnes.cerrar());
+      },
+    );
+
+    testWidgets(
+      'dado que la retoma al abrir la app falló antes de que existiera la vista porque el servidor '
+      'ya no tiene el archivo, entonces al entrar a la vista 06 la tarjeta muestra la falla de '
+      'siempre y «Descargar mapa» está disponible; al tocarlo se limpia y el mapa se descarga',
+      (tester) async {
+        final arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+        arnes.servidor.archivos.remove(paqueteMontevideo.origen);
+        await _abrirApp(arnes, _anotada(paqueteMontevideo));
+        await arnes.descargador.esperar(paqueteMontevideo.id);
+        expect(arnes.descargador.estadoDe(paqueteMontevideo.id), isA<DescargaFallida>());
+        expect(arnes.repositorio.pendientes, isEmpty);
+
+        await montarAviso(tester, conexion: TipoConexion.datosMoviles, arnes: arnes);
+
+        expect(find.textContaining('Probá de nuevo'), findsWidgets);
+        expect(find.text(_seDescargaSola), findsNothing);
+        expect(find.text(_descargandoMapa), findsNothing);
+        expect(_botonHabilitado(tester, _descargarConPeso), isTrue);
+
+        arnes.servidor.archivos[paqueteMontevideo.origen] = bytesDelMapa;
+        await tocarAviso(tester, _descargarConPeso);
+        await asentarAviso(tester);
+
+        expect(arnes.montevideoDescargado, isTrue);
+        expect(find.textContaining('Probá de nuevo'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dado que la retoma al abrir la app falló por falta de lugar antes de que existiera la '
+      'vista, entonces la tarjeta muestra el aviso de espacio y sigue ahí si sale y vuelve a entrar',
+      (tester) async {
+        final arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+        arnes.espacio.libres = 100;
+        await _abrirApp(arnes, _anotada(paqueteMontevideo));
+        expect(arnes.servidor.pedidos, isEmpty);
+
+        final montaje = await montarAviso(
+          tester,
+          conexion: TipoConexion.datosMoviles,
+          arnes: arnes,
+        );
+
+        expect(find.textContaining('Espacio insuficiente'), findsWidgets);
+        expect(find.text(_seDescargaSola), findsNothing);
+        expect(_botonHabilitado(tester, _descargarConPeso), isTrue);
+
+        await salirYReentrarAviso(tester, montaje);
+
+        expect(find.textContaining('Espacio insuficiente'), findsWidgets);
+        expect(_botonHabilitado(tester, _descargarConPeso), isTrue);
+      },
+    );
+
+    testWidgets(
+      'dado que la retoma al abrir la app chocó con un error del servidor (503) antes de que '
+      'existiera la vista, entonces la tarjeta dice que se descarga sola, como con un corte',
+      (tester) async {
+        final arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+        arnes.servidor.statusError = 503;
+        await _abrirApp(arnes, _anotada(paqueteMontevideo));
+        await arnes.descargador.esperar(paqueteMontevideo.id);
+
+        await montarAviso(tester, conexion: TipoConexion.datosMoviles, arnes: arnes);
+
+        expect(find.text(_seDescargaSola), findsOneWidget);
+        expect(find.textContaining('Probá de nuevo'), findsNothing);
+        expect(_botonHabilitado(tester, _descargarConPeso), isFalse);
+        expect(arnes.repositorio.pendientes.map((d) => d.id), [paqueteMontevideo.id]);
+        // Sin esperarlo (bajo FakeAsync la cancelación de la escucha no vuelve): lo que importa es
+        // que cancela ya la espera del reintento.
+        unawaited(arnes.cerrar());
       },
     );
 
