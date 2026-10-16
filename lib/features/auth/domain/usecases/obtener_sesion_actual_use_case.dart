@@ -2,23 +2,56 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/motivo_expiracion.dart';
 import '../entities/sesion.dart';
 import '../repositories/auth_repository.dart';
+import '../services/reloj_sesion.dart';
 
-/// Sesión persistida en el dispositivo, si sigue vigente. Una sesión vencida cuenta como ausente:
-/// la renovación (sliding session, HU-AUTH-006) es responsabilidad del repositorio.
+/// Sesión persistida en el dispositivo, si sigue vigente (HU-AUTH-007). Se usa al arrancar; al
+/// volver a la app con la sesión abierta, [RevisarVigenciaSesionUseCase].
+///
+/// Vigente es "dentro de la ventana deslizante de 30 días", no "con el JWT de acceso sin vencer":
+/// sin red la app sigue trabajando con la sesión, y el JWT se renueva cuando vuelve la red. La
+/// ventana se mide con [RelojSesion], que no vuelve atrás aunque se atrase el reloj del equipo.
+///
+/// Si pasaron 30 días sin actividad de red, la sesión se descarta (los datos locales no se
+/// tocan) y devuelve `Left(FailureSesionExpiradaPorInactividad)`, para que el login diga por qué.
 final class ObtenerSesionActualUseCase implements UseCase<Sesion?, NoParams> {
-  const ObtenerSesionActualUseCase(this._repository, {DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  const ObtenerSesionActualUseCase(this._repository, this._reloj);
 
   final AuthRepository _repository;
-  final DateTime Function() _ahora;
+  final RelojSesion _reloj;
 
   @override
   Future<Either<Failure, Sesion?>> call(NoParams params) async {
     final resultado = await _repository.sesionActual();
-    return resultado.map(
-      (sesion) => sesion != null && sesion.estaVigente(ahora: _ahora()) ? sesion : null,
-    );
+    final sesion = resultado.getOrElse(() => null);
+    if (sesion == null || sesion.estaVigente(ahora: await _reloj.ahora())) return resultado;
+
+    await _repository.expirarSesion(MotivoExpiracion.inactividad);
+    return const Left(FailureSesionExpiradaPorInactividad());
+  }
+}
+
+/// Dice si la sesión guardada sigue vigente, sin descartarla (HU-AUTH-007, #347). Es lo que usa la
+/// app al volver al frente con una sesión abierta: la lectura del reloj puede tardar (Keystore) y
+/// mientras tanto la sesión puede terminar por otro lado y la persona, entrar de nuevo. Descartar
+/// acá, antes de que el que llama mire si la sesión sigue siendo la misma, borraría del teléfono
+/// (y soltaría del cliente) la sesión nueva, viva. Si venció, devuelve
+/// `Left(FailureSesionExpiradaPorInactividad)` y deja que el que llama la cierre
+/// (`ExpirarSesionUseCase`) cuando haya comprobado que sigue siendo la misma.
+final class RevisarVigenciaSesionUseCase implements UseCase<Sesion?, NoParams> {
+  const RevisarVigenciaSesionUseCase(this._repository, this._reloj);
+
+  final AuthRepository _repository;
+  final RelojSesion _reloj;
+
+  @override
+  Future<Either<Failure, Sesion?>> call(NoParams params) async {
+    final resultado = await _repository.sesionActual();
+    final sesion = resultado.getOrElse(() => null);
+    if (sesion == null || sesion.estaVigente(ahora: await _reloj.ahora())) return resultado;
+
+    return const Left(FailureSesionExpiradaPorInactividad());
   }
 }

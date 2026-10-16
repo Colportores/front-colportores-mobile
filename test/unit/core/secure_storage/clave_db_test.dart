@@ -83,4 +83,32 @@ void main() {
       expect(clave.toString(), isNot(contains('7')));
     });
   });
+
+  group('ClaveEnvoltorio', () {
+    // La clave que envuelve la DEK (ADR-006): mismas reglas de custodia, otro tipo.
+    test('dado 32 bytes mutables, cuando se destruye, los pisa y el acceso falla', () {
+      final crudos = _bytes(ClaveDb.bytesEsperados);
+      final clave = ClaveEnvoltorio(crudos)..destruir();
+
+      expect(crudos.every((b) => b == 0), isTrue);
+      expect(clave.destruida, isTrue);
+      expect(() => clave.bytes, throwsA(isA<StateError>()));
+    });
+
+    test('dado otro largo o una vista inmutable, cuando se construye, lanza ArgumentError', () {
+      expect(() => ClaveEnvoltorio(_bytes(16)), throwsA(isA<ArgumentError>()));
+      expect(() => ClaveEnvoltorio(_bytes(32).asUnmodifiableView()), throwsA(isA<ArgumentError>()));
+    });
+
+    test('cuando se imprime, no expone los bytes', () {
+      expect(ClaveEnvoltorio(_bytes(32)).toString(), 'ClaveEnvoltorio(oculta)');
+    });
+  });
+
+  test('CriptoException dice la operación y el motivo, nada más', () {
+    expect(
+      const CriptoException('derivar', 'parámetros fuera de rango').toString(),
+      'CriptoException(derivar: parámetros fuera de rango)',
+    );
+  });
 }

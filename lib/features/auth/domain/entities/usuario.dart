@@ -31,6 +31,12 @@ class Usuario extends Equatable {
 
   final String email;
 
+  /// [props] lleva nombre, apellido, cédula y email; `EquatableConfig.stringify` arranca en
+  /// `true` en debug, así que sin esto cualquier interpolación del objeto o `logger.d(usuario)`
+  /// los imprimiría (convenciones-desarrollo.md §7.5, "sin PII en logs: solo IDs").
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [id, nombre, apellido, cedula, email];
 }

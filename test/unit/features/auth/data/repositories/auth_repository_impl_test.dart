@@ -1,23 +1,42 @@
 // Test de la capa data: Dart puro, con los data sources en memoria.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:dartz/dartz.dart';
+import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/remoto_sin_sesion_deslizante.dart';
 
-/// Remoto roto a propósito: para probar que `registrar` traduce cualquier excepción no tipada a
-/// [FailureInesperado] (no solo las [AuthRemoteException] conocidas).
-final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
+class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
   @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) {
-    throw UnimplementedError();
+  void output(OutputEvent event) => lineas.addAll(event.lines);
+}
+
+/// Remoto roto a propósito: para probar que el repositorio traduce cualquier excepción no
+/// tipada a [FailureInesperado] (no solo las [AuthRemoteException] conocidas), en varios de sus
+/// métodos — [renovarSesion] incluido, a diferencia del resto de los remotos de este archivo que
+/// usan [RemotoSinSesionDeslizante] tal cual (con su [SinConexionException] de relleno).
+final class _RemoteQueLanzaExcepcionGenerica
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    throw Exception('boom');
   }
 
   @override
@@ -32,27 +51,44 @@ final class _RemoteQueLanzaExcepcionGenerica implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() async => throw Exception('boom');
+  Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
 
   @override
-  Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
+  Future<SesionModel> renovarSesion() async => throw Exception('boom');
+
+  @override
+  SesionModel? sesionEnElCliente() => throw Exception('boom');
 
   @override
   Future<void> cerrarSesion(String accessToken) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) async => throw Exception('boom');
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) async => throw Exception('boom');
 }
 
 /// Remoto que "recuerda" una sesión persistida por el proveedor (como supabase_flutter tras
 /// reiniciar la app), o que falla al consultarla.
-final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
+final class _RemoteConSesionRecordada
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteConSesionRecordada({this.recordada, this.falla});
 
   final SesionModel? recordada;
   final AuthRemoteException? falla;
-  final AuthRemoteDataSourceEnMemoria _interno = AuthRemoteDataSourceEnMemoria(
-    credenciales: const {},
-  );
 
   @override
   Future<SesionModel?> obtenerSesionActual() async {
@@ -61,14 +97,13 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
   }
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() {
-    if (falla != null) throw falla!;
-    return _interno.iniciarSesionConGoogle();
-  }
+  SesionModel? sesionEnElCliente() => recordada;
 
   @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
-      throw UnimplementedError();
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    if (falla != null) throw falla!;
+    throw UnimplementedError();
+  }
 
   @override
   Future<SesionModel?> registrar({
@@ -81,11 +116,28 @@ final class _RemoteConSesionRecordada implements AuthRemoteDataSource {
 
   @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 /// Remoto que devuelve una única excepción fija en `registrar` — para probar cómo el repositorio
 /// traduce casos que el fake en memoria no modela (p. ej. contraseña débil).
-final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
+final class _RemoteQueLanzaEnRegistrar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
   _RemoteQueLanzaEnRegistrar(this.excepcion);
 
   final AuthRemoteException excepcion;
@@ -104,13 +156,142 @@ final class _RemoteQueLanzaEnRegistrar implements AuthRemoteDataSource {
   }) async => throw excepcion;
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
+  Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
+
+  @override
+  SesionModel? sesionEnElCliente() => throw UnimplementedError();
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
+}
+
+/// Remoto en memoria cuyo cliente ya renovó el JWT del login (como hace `supabase_flutter` con
+/// `autoRefreshToken`): [sesionEnElCliente] devuelve [vigente], o lanza [falla]. Refrescar por red
+/// ([obtenerSesionActual]) no responde nunca: el logout no puede depender de eso.
+final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements AuthRemoteDataSource {
+  _RemoteConTokenRenovado(this.interno);
+
+  final AuthRemoteDataSourceEnMemoria interno;
+  SesionModel? vigente;
+  AuthRemoteException? falla;
+  int refrescos = 0;
+
+  @override
+  SesionModel? sesionEnElCliente() {
+    if (falla != null) throw falla!;
+    return vigente;
+  }
+
+  @override
+  Future<SesionModel?> obtenerSesionActual() {
+    refrescos++;
+    return Completer<SesionModel?>().future;
+  }
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      interno.iniciarSesion(email: email, password: password);
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => interno.registrar(
+    nombre: nombre,
+    apellido: apellido,
+    cedula: cedula,
+    email: email,
+    password: password,
+  );
+
+  @override
+  Future<void> cerrarSesion(String accessToken) => interno.cerrarSesion(accessToken);
+
+  @override
+  Future<void> revocarSesion(String accessToken) => interno.revocarSesion(accessToken);
+
+  @override
+  Future<void> reenviarVerificacion(String email) => interno.reenviarVerificacion(email);
+
+  @override
+  Stream<void> get erroresVerificacionEmail => interno.erroresVerificacionEmail;
+
+  @override
+  Stream<void> get verificacionesExitosas => interno.verificacionesExitosas;
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) =>
+      interno.solicitarRecuperacionPassword(email);
+}
+
+/// Remoto cuyo [renovarSesion] falla con un error genuino del servidor (ni offline ni
+/// revocada) — para "Escenario: refresh fallido" (HU-AUTH-007, issue #60), distinto de
+/// [SinConexionException] y de [SesionRevocadaException], ya cubiertos aparte.
+final class _RemoteQueFallaAlRenovar
+    with RemotoSinSesionDeslizante
+    implements AuthRemoteDataSource {
+  _RemoteQueFallaAlRenovar(this.interno, this.falla);
+
+  final AuthRemoteDataSourceEnMemoria interno;
+  final AuthRemoteException falla;
+
+  @override
+  Future<SesionModel> renovarSesion() async => throw falla;
+
+  @override
+  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
+      interno.iniciarSesion(email: email, password: password);
+
+  @override
+  Future<SesionModel?> registrar({
+    required String nombre,
+    required String apellido,
+    required String cedula,
+    required String email,
+    required String password,
+  }) => throw UnimplementedError();
 
   @override
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
 
   @override
+  SesionModel? sesionEnElCliente() => throw UnimplementedError();
+
+  @override
   Future<void> cerrarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> revocarSesion(String accessToken) => throw UnimplementedError();
+
+  @override
+  Future<void> reenviarVerificacion(String email) => throw UnimplementedError();
+
+  @override
+  Stream<void> get erroresVerificacionEmail => const Stream.empty();
+
+  @override
+  Stream<void> get verificacionesExitosas => const Stream.empty();
+
+  @override
+  Future<void> solicitarRecuperacionPassword(String email) => throw UnimplementedError();
 }
 
 void main() {
@@ -121,7 +302,6 @@ void main() {
   setUp(() {
     remote = AuthRemoteDataSourceEnMemoria(
       credenciales: const {'ana@example.com': 'secreto123'},
-      cuentasPendientes: const {'pendiente@example.com'},
       ahora: () => DateTime.utc(2026, 9, 1, 12),
     );
     local = AuthLocalDataSourceEnMemoria();
@@ -157,17 +337,6 @@ void main() {
       });
     });
 
-    group('dado que la cuenta está pendiente de aprobación', () {
-      test('cuando inicia sesión, devuelve FailureCuentaPendiente', () async {
-        final resultado = await repository.iniciarSesion(
-          email: 'pendiente@example.com',
-          password: 'loquesea1',
-        );
-
-        expect(resultado, const Left<Failure, Sesion>(FailureCuentaPendiente()));
-      });
-    });
-
     group('dado que no hay conexión', () {
       test('cuando inicia sesión, devuelve FailureSinConexion', () async {
         remote.simularSinConexion = true;
@@ -179,6 +348,109 @@ void main() {
 
         expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
       });
+    });
+
+    group('dado que el data source falla de otra forma', () {
+      test('cuando lanza algo no tipado, devuelve FailureInesperado y no persiste', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteQueLanzaExcepcionGenerica(),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+        expect(await local.leerSesion(), isNull);
+      });
+
+      test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
+      });
+    });
+  });
+
+  group('AuthRepositoryImpl.solicitarRecuperacionPassword', () {
+    test('dado un email registrado, cuando solicita, devuelve Right(unit)', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(remote.solicitudesRecuperacionPorEmail['ana@example.com'], 1);
+    });
+
+    test('dado un email no registrado, cuando solicita, devuelve Right(unit) igual — '
+        'anti-enumeración', () async {
+      final resultado = await repository.solicitarRecuperacionPassword(
+        email: 'noexiste@example.com',
+      );
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor rechaza por rate limit (429), devuelve Right(unit) igual — no '
+        'revela el límite', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 429,
+        mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
+        'devuelve la falla visible en vez de enmascararla', () async {
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(
+        resultado,
+        const Left<Failure, Unit>(
+          FailureServidor(
+            status: 500,
+            mensaje: 'No se pudo completar la operación (unexpected_failure).',
+          ),
+        ),
+      );
+    });
+
+    test('dado que no hay conexión, devuelve FailureSinConexion', () async {
+      remote.simularSinConexion = true;
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
+    });
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.solicitarRecuperacionPassword(email: 'ana@example.com');
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
     });
   });
 
@@ -313,14 +585,7 @@ void main() {
           email: 'bruno@example.com',
           password: 'Secreto123',
         );
-        expect(
-          antes,
-          const Left<Failure, Sesion>(
-            FailureServidor(
-              mensaje: 'Tenés que verificar tu correo antes de entrar. Revisá tu bandeja.',
-            ),
-          ),
-        );
+        expect(antes, const Left<Failure, Sesion>(FailureEmailNoVerificado()));
 
         remotePendiente.confirmarEmail('bruno@example.com');
 
@@ -357,6 +622,34 @@ void main() {
       });
     });
 
+    group('dado que el servidor rechaza la contraseña por larga (72 bytes)', () {
+      test(
+        'cuando registra, devuelve FailureValidacion con el texto del tope en password',
+        () async {
+          final repositorioRoto = AuthRepositoryImpl(
+            _RemoteQueLanzaEnRegistrar(const PasswordDemasiadoLargaException()),
+            local,
+            logger: loggerMudo(),
+          );
+
+          final resultado = await repositorioRoto.registrar(
+            nombre: 'Bruno',
+            apellido: 'Díaz',
+            cedula: '12345678',
+            email: 'bruno@example.com',
+            password: 'Aa1${'x' * 80}',
+          );
+
+          expect(
+            resultado,
+            const Left<Failure, ResultadoRegistro>(
+              FailureValidacion(campos: {'password': 'Es demasiado larga. Acortala.'}),
+            ),
+          );
+        },
+      );
+    });
+
     group('dado un error inesperado del data source', () {
       test('cuando registra, devuelve FailureInesperado en vez de dejarla escapar', () async {
         final repositorioRoto = AuthRepositoryImpl(
@@ -378,51 +671,28 @@ void main() {
         expect(failure, isA<FailureInesperado>());
       });
     });
-  });
 
-  group('AuthRepositoryImpl.iniciarSesionConGoogle', () {
-    test('cuando el proveedor entra, devuelve la Sesion y la persiste localmente', () async {
-      final resultado = await repository.iniciarSesionConGoogle();
+    // "Edge - fallo intermitente del backend" (HU-AUTH-001, issue #90): el repositorio solo
+    // propaga el status — el mensaje accionable de la HU lo arma RegistroPage (mismo patrón que
+    // "sin conexión"), no el repositorio.
+    group('dado que el servidor responde con un 5xx', () {
+      test('cuando registra, devuelve FailureServidor con ese status', () async {
+        final repositorioRoto = AuthRepositoryImpl(
+          _RemoteQueLanzaEnRegistrar(const ServidorException(status: 503)),
+          local,
+          logger: loggerMudo(),
+        );
 
-      expect(resultado.isRight(), isTrue);
-      final sesion = resultado.getOrElse(() => throw StateError('Left'));
-      expect(sesion, isA<Sesion>().having((s) => s.runtimeType, 'tipo', Sesion));
-      expect(sesion.email, AuthRemoteDataSourceEnMemoria.emailGoogle);
-      expect(remote.llamadasIniciarSesionConGoogle, 1);
-      expect(await local.leerSesion(), SesionModel.fromEntity(sesion));
-    });
+        final resultado = await repositorioRoto.registrar(
+          nombre: 'Bruno',
+          apellido: 'Díaz',
+          cedula: '12345678',
+          email: 'bruno@example.com',
+          password: 'Secreto123',
+        );
 
-    test('cuando no hay conexión, devuelve FailureSinConexion y no persiste nada', () async {
-      remote.simularSinConexion = true;
-
-      final resultado = await repository.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
-      expect(await local.leerSesion(), isNull);
-    });
-
-    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteQueLanzaExcepcionGenerica(),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
-    });
-
-    test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
+        expect(resultado, const Left<Failure, ResultadoRegistro>(FailureServidor(status: 503)));
+      });
     });
   });
 
@@ -495,18 +765,531 @@ void main() {
     test('cuando hay conexión, cierra remoto y borra la sesión local', () async {
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.completo),
+      );
       expect(remote.llamadasCerrarSesion, 1);
       expect(await local.leerSesion(), isNull);
     });
 
-    test('cuando no hay conexión, igual borra la sesión local', () async {
+    test('cuando no hay conexión, borra la sesión local y deja la revocación pendiente', () async {
       remote.simularSinConexion = true;
 
       final resultado = await repository.cerrarSesion();
 
-      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(
+        resultado,
+        const Right<Failure, ResultadoCierreSesion>(ResultadoCierreSesion.revocacionPendiente),
+      );
       expect(await local.leerSesion(), isNull);
     });
+
+    test(
+      'dado una revocación pendiente, cuando vuelve la red, la reintenta una sola vez',
+      () async {
+        remote.simularSinConexion = true;
+        await repository.cerrarSesion();
+
+        expect(
+          await repository.reintentarRevocacionPendiente(),
+          const Left<Failure, Unit>(FailureSinConexion()),
+          reason: 'sin red sigue pendiente',
+        );
+
+        remote.simularSinConexion = false;
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+        expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+
+        expect(remote.revocaciones, hasLength(1), reason: 'una sola revocación, por el token');
+      },
+    );
+
+    test('sin revocación pendiente, reintentar no llama al remoto', () async {
+      expect(await repository.reintentarRevocacionPendiente(), const Right<Failure, Unit>(unit));
+      expect(remote.revocaciones, isEmpty);
+    });
+
+    group('con el JWT del login ya renovado por el cliente (#102)', () {
+      late _RemoteConTokenRenovado renovado;
+      late AuthRepositoryImpl conRenovado;
+      late SesionModel delLogin;
+
+      setUp(() async {
+        renovado = _RemoteConTokenRenovado(remote);
+        conRenovado = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await conRenovado.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        delLogin = (await local.leerSesion())!;
+        renovado.vigente = SesionModel(
+          usuarioId: delLogin.usuarioId,
+          email: delLogin.email,
+          accessToken: 'token-renovado',
+          expiraEn: DateTime.utc(2026, 9, 1, 13),
+        );
+      });
+
+      Future<void> cerrarSinRedYVolverLaRed() async {
+        remote.simularSinConexion = true;
+        await conRenovado.cerrarSesion();
+        remote.simularSinConexion = false;
+        await conRenovado.reintentarRevocacionPendiente();
+      }
+
+      test(
+        'dado un logout sin red, la revocación pendiente usa el token vigente, no el del login',
+        () async {
+          await cerrarSinRedYVolverLaRed();
+
+          expect(remote.revocaciones, ['token-renovado']);
+        },
+      );
+
+      test('dado un remoto que no responde al refrescar, el logout no lo espera: lee el token del '
+          'cliente sin tocar la red (revisión de #107)', () async {
+        remote.simularSinConexion = true;
+
+        final resultado = await conRenovado.cerrarSesion().timeout(const Duration(seconds: 1));
+
+        expect(resultado.isRight(), isTrue);
+        expect(renovado.refrescos, 0);
+      });
+
+      test('dado que el cliente no puede dar su sesión, usa el token guardado', () async {
+        renovado.falla = const SinConexionException();
+
+        await cerrarSinRedYVolverLaRed();
+
+        expect(remote.revocaciones, [delLogin.accessToken]);
+      });
+
+      test(
+        'dado que el cliente tiene la sesión de otro usuario, no la toca: usa la guardada',
+        () async {
+          renovado.vigente = SesionModel(
+            usuarioId: 'otro',
+            email: 'otro@example.com',
+            accessToken: 'token-de-otro',
+            expiraEn: DateTime.utc(2026, 9, 1, 13),
+          );
+
+          await cerrarSinRedYVolverLaRed();
+
+          expect(remote.revocaciones, [delLogin.accessToken]);
+        },
+      );
+    });
   });
+
+  group('AuthRepositoryImpl.confirmarPassword (HU-AUTH-009, revisión del PR #130, N3)', () {
+    late String idDeAna;
+    late Sesion restaurada;
+
+    setUp(() async {
+      idDeAna = (await remote.iniciarSesion(
+        email: 'ana@example.com',
+        password: 'secreto123',
+      )).usuarioId;
+      // La del arranque: su JWT ya venció, el servidor lo rechaza.
+      restaurada = Sesion(
+        usuarioId: idDeAna,
+        email: 'ana@example.com',
+        accessToken: 'token-del-arranque',
+        expiraEn: DateTime.utc(2026, 9, 30),
+      );
+      remote.tokensVencidos.add('token-del-arranque');
+    });
+
+    /// El cliente del proveedor renovó el JWT de esa misma sesión mientras tanto.
+    void clienteRenovado() => remote.enElCliente = SesionModel(
+      usuarioId: idDeAna,
+      email: 'ana@example.com',
+      accessToken: 'token-renovado-por-el-cliente',
+      expiraEn: DateTime.utc(2026, 9, 30),
+    );
+
+    test('revoca el token vigente del cliente, tomado antes del login: ni el vencido del arranque '
+        'ni el de la sesión nueva', () async {
+      clienteRenovado();
+
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
+      );
+      await pumpEventQueue();
+
+      final nueva = resultado.getOrElse(() => throw StateError('debía entrar'));
+      expect(nueva.usuarioId, idDeAna);
+      expect((await local.leerSesion())?.accessToken, nueva.accessToken, reason: 'queda guardada');
+      expect(remote.revocaciones, ['token-renovado-por-el-cliente']);
+      expect(remote.revocaciones, isNot(contains(nueva.accessToken)));
+      expect(remote.llamadasCerrarSesion, 0, reason: 'la sesión nueva del cliente sigue');
+    });
+
+    test(
+      'si el servidor rechaza la revocación (JWT vencido), confirma igual y deja un warn',
+      () async {
+        final salida = _SalidaEnMemoria();
+        final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+        final resultado = await repo.confirmarPassword(sesion: restaurada, password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(resultado.isRight(), isTrue);
+        expect(remote.revocaciones, isEmpty, reason: 'el fake rechaza el token vencido');
+        expect(
+          salida.lineas,
+          anyElement(startsWith('[WARN][AUTH][SESION_REEMPLAZADA_REVOCACION_FAIL]')),
+        );
+      },
+    );
+
+    test('si la revocación lanza algo no tipado, confirma igual', () async {
+      clienteRenovado();
+      remote.fallaAlRevocar = const FormatException('inesperado');
+
+      final resultado = await repository.confirmarPassword(
+        sesion: restaurada,
+        password: 'secreto123',
+      );
+      await pumpEventQueue();
+
+      expect(resultado.isRight(), isTrue);
+      expect(remote.revocaciones, isEmpty);
+    });
+
+    test('con la contraseña incorrecta no entra ni revoca nada', () async {
+      clienteRenovado();
+
+      final resultado = await repository.confirmarPassword(sesion: restaurada, password: 'otra');
+      await pumpEventQueue();
+
+      expect(resultado, const Left<Failure, Sesion>(FailureCredencialesInvalidas()));
+      expect(remote.revocaciones, isEmpty);
+    });
+  });
+
+  group('AuthRepositoryImpl.reenviarVerificacion', () {
+    test('cuando reenvía, delega en el remoto y devuelve Right(unit)', () async {
+      final resultado = await repository.reenviarVerificacion(email: 'ana@example.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+      expect(remote.reenviosPorEmail['ana@example.com'], 1);
+    });
+
+    test(
+      'cuando el remoto rechaza por rate limit, devuelve FailureServidor con ese mensaje',
+      () async {
+        remote.fallaAlReenviar = const ServidorException(
+          mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+        );
+
+        final resultado = await repository.reenviarVerificacion(email: 'ana@example.com');
+
+        expect(
+          resultado,
+          const Left<Failure, Unit>(
+            FailureServidor(mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.'),
+          ),
+        );
+      },
+    );
+
+    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.reenviarVerificacion(email: 'ana@example.com');
+
+      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+  });
+
+  group('AuthRepositoryImpl — el servidor no manda correos a la dirección (#353)', () {
+    // 400 `email_address_invalid`: llega al campo del email con un aviso que dice qué hacer, igual
+    // en las cuatro pantallas, y no es un error general ni una falla del servidor.
+    const aviso = FailureValidacion(
+      campos: {'email': 'Revisá el email: no podemos mandar correos a esa dirección.'},
+    );
+
+    test('al registrar, devuelve FailureValidacion en el campo email', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaEnRegistrar(const EmailInvalidoException()),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia@gmial.com',
+        password: 'Secreto123',
+      );
+
+      expect(resultado, const Left<Failure, ResultadoRegistro>(aviso));
+    });
+
+    test('al reenviar la verificación, devuelve FailureValidacion en el campo email', () async {
+      remote.fallaAlReenviar = const EmailInvalidoException();
+
+      final resultado = await repository.reenviarVerificacion(email: 'lucia@gmial.com');
+
+      expect(resultado, const Left<Failure, Unit>(aviso));
+    });
+
+    // HU-AUTH-004 «nunca debe revelar si el email existe» (#363): el servidor rechaza la dirección
+    // solo al armar el correo, o sea solo si la cuenta existe; mostrarlo la distinguiría de una que
+    // no existe. Vuelve como el éxito de siempre.
+    test('al pedir la recuperación, vuelve como éxito (no revela que la cuenta existe)', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('al pedir la recuperación, el rechazo deja un warn sin el correo', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+      final salida = _SalidaEnMemoria();
+      final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+      await repo.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+      expect(
+        salida.lineas,
+        anyElement(startsWith('[WARN][AUTH][RECUPERACION_EMAIL_RECHAZADO]')),
+        reason: 'queda registrado que el servidor rechazó la dirección',
+      );
+      expect(salida.lineas.join('\n'), isNot(contains('lucia')));
+      expect(salida.lineas.join('\n'), isNot(contains('gmial')));
+    });
+  });
+
+  group('AuthRepositoryImpl.erroresVerificacionEmail', () {
+    test('reenvía lo que emite el remoto', () async {
+      final futuro = repository.erroresVerificacionEmail.first;
+
+      remote.simularEnlaceVerificacionInvalido();
+
+      await expectLater(futuro, completes);
+    });
+  });
+
+  group('AuthRepositoryImpl.verificacionesExitosas', () {
+    test('reenvía lo que emite el remoto', () async {
+      final futuro = repository.verificacionesExitosas.first;
+
+      remote.simularEnlaceVerificacionExitoso('ana@example.com');
+
+      await expectLater(futuro, completes);
+    });
+  });
+
+  group('AuthRepositoryImpl.renovarSesion (HU-AUTH-007)', () {
+    setUp(() => repository.iniciarSesion(email: 'ana@example.com', password: 'secreto123'));
+
+    test('Escenario: Refresh transparente con uso regular — guarda la sesión nueva en lugar de la '
+        'anterior', () async {
+      final resultado = await repository.renovarSesion();
+
+      final nueva = resultado.getOrElse(() => throw StateError('esperaba Right'));
+      expect(nueva.accessToken, 'token-renovado-1');
+      expect((await local.leerSesion())?.accessToken, 'token-renovado-1');
+    });
+
+    test('varias llamadas a la vez comparten un solo refresh', () async {
+      remote.demoraAlRenovar = Completer<void>();
+
+      final a = repository.renovarSesion();
+      final b = repository.renovarSesion();
+      remote.demoraAlRenovar!.complete();
+
+      expect(await a, await b);
+      expect(remote.llamadasRenovarSesion, 1);
+      expect((await repository.renovarSesion()).isRight(), isTrue);
+      expect(remote.llamadasRenovarSesion, 2, reason: 'terminado el anterior, uno nuevo');
+    });
+
+    test(
+      'Escenario: Refresh offline con JWT vigente — sin red se mantiene la sesión anterior',
+      () async {
+        final antes = await local.leerSesion();
+        remote.simularSinConexion = true;
+
+        expect(await repository.renovarSesion(), const Left<Failure, Sesion>(FailureSinConexion()));
+        expect(await local.leerSesion(), antes);
+      },
+    );
+
+    test('Escenario: Edge - backend revocó la sesión — devuelve FailureSesionRevocada', () async {
+      remote.sesionRevocadaEnElServidor = true;
+
+      expect(
+        await repository.renovarSesion(),
+        const Left<Failure, Sesion>(FailureSesionRevocada()),
+      );
+      expect(
+        const FailureSesionRevocada().mensaje,
+        'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la contraseña. Entrá de nuevo.',
+      );
+    });
+
+    test('dado un error inesperado del remoto, devuelve FailureInesperado', () async {
+      final roto = AuthRepositoryImpl(
+        _RemoteQueLanzaExcepcionGenerica(),
+        local,
+        logger: loggerMudo(),
+      );
+
+      expect((await roto.renovarSesion()).fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+
+    test('Escenario: refresh fallido — un error genuino del servidor (ni offline ni revocada) se '
+        'traduce y no toca la sesión guardada', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueFallaAlRenovar(remote, const ServidorException(status: 500)),
+        local,
+        logger: loggerMudo(),
+      );
+      await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      final antes = await local.leerSesion();
+
+      expect(await repo.renovarSesion(), const Left<Failure, Sesion>(FailureServidor(status: 500)));
+      expect(await local.leerSesion(), antes);
+    });
+  });
+
+  group('AuthRepositoryImpl.sesionActual con la sesión deslizante (HU-AUTH-007)', () {
+    test(
+      'dado que al arrancar se descartó la sesión por 30 días sin uso, lo dice una sola vez',
+      () async {
+        remote.vencidaPorInactividadAlArrancar = true;
+
+        expect(
+          await repository.sesionActual(),
+          const Left<Failure, Sesion?>(FailureSesionExpiradaPorInactividad()),
+        );
+        expect(await repository.sesionActual(), const Right<Failure, Sesion?>(null));
+      },
+    );
+
+    test(
+      'dado que el cliente del proveedor ya renovó el JWT, devuelve esa y reemplaza la guardada',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote);
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        final delLogin = (await local.leerSesion())!;
+        renovado.vigente = SesionModel(
+          usuarioId: delLogin.usuarioId,
+          email: delLogin.email,
+          accessToken: 'token-renovado',
+          expiraEn: DateTime.utc(2026, 10, 1, 12),
+        );
+
+        final sesion = (await repo.sesionActual()).getOrElse(() => null);
+
+        expect(sesion?.accessToken, 'token-renovado');
+        expect((await local.leerSesion())?.accessToken, 'token-renovado');
+      },
+    );
+  });
+
+  group('AuthRepositoryImpl.expirarSesion (HU-AUTH-007)', () {
+    test('borra la sesión guardada sin tocar la red', () async {
+      await repository.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+
+      expect(
+        await repository.expirarSesion(MotivoExpiracion.revocada),
+        const Right<Failure, Unit>(unit),
+      );
+      expect(await local.leerSesion(), isNull);
+      expect(remote.llamadasCerrarSesion, 0);
+    });
+
+    test('por inactividad, el próximo arranque no lo vuelve a avisar', () async {
+      remote.vencidaPorInactividadAlArrancar = true;
+
+      await repository.expirarSesion(MotivoExpiracion.inactividad);
+
+      expect(await repository.sesionActual(), const Right<Failure, Sesion?>(null));
+    });
+
+    test(
+      'si el cliente del proveedor todavía la tiene, la suelta sin esperar; sin red no falla',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote);
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await repo.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        renovado.vigente = (await local.leerSesion())!;
+
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.inactividad),
+          const Right<Failure, Unit>(unit),
+        );
+        await pumpEventQueue();
+        expect(remote.llamadasCerrarSesion, 1);
+
+        remote.simularSinConexion = true;
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.inactividad),
+          const Right<Failure, Unit>(unit),
+        );
+        await pumpEventQueue();
+      },
+    );
+
+    test(
+      'dado que el cliente del proveedor falla al consultarlo, igual borra la guardada',
+      () async {
+        final renovado = _RemoteConTokenRenovado(remote)..falla = const SinConexionException();
+        final repo = AuthRepositoryImpl(renovado, local, logger: loggerMudo());
+        await local.guardarSesion(
+          SesionModel(
+            usuarioId: 'u',
+            email: 'ana@example.com',
+            accessToken: 't',
+            expiraEn: DateTime.utc(2026, 10, 1),
+          ),
+        );
+
+        expect(
+          await repo.expirarSesion(MotivoExpiracion.revocada),
+          const Right<Failure, Unit>(unit),
+        );
+        expect(await local.leerSesion(), isNull);
+      },
+    );
+
+    test('dado que no se puede leer la sesión guardada, devuelve FailureInesperado', () async {
+      final repo = AuthRepositoryImpl(remote, _LocalQueNoLee(), logger: loggerMudo());
+
+      expect(
+        (await repo.expirarSesion(MotivoExpiracion.revocada)).fold((f) => f, (_) => null),
+        isA<FailureInesperado>(),
+      );
+    });
+
+    test('las expiraciones del remoto llegan tal cual', () async {
+      final futuro = repository.expiraciones.first;
+
+      remote.simularExpiracion(MotivoExpiracion.revocada);
+
+      expect(await futuro, MotivoExpiracion.revocada);
+    });
+  });
+}
+
+final class _LocalQueNoLee implements AuthLocalDataSource {
+  @override
+  Future<SesionModel?> leerSesion() async => throw StateError('almacén roto');
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) async {}
+
+  @override
+  Future<void> borrarSesion() async {}
 }

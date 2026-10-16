@@ -3,8 +3,10 @@ import 'package:equatable/equatable.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/politica_password.dart';
 import '../entities/resultado_registro.dart';
 import '../repositories/auth_repository.dart';
+import '../services/validador_email.dart';
 
 /// Parámetros de [RegistrarUsuarioUseCase].
 final class RegistrarUsuarioParams extends Equatable {
@@ -15,6 +17,7 @@ final class RegistrarUsuarioParams extends Equatable {
     required this.email,
     required this.password,
     required this.aceptaTerminos,
+    required this.aceptaTradeOffE2E,
   });
 
   final String nombre;
@@ -24,8 +27,27 @@ final class RegistrarUsuarioParams extends Equatable {
   final String password;
   final bool aceptaTerminos;
 
+  /// Segunda casilla obligatoria de HU-AUTH-001 (R-AU05, issue #85): el usuario confirma que
+  /// entendió el trade-off de la DEK envuelta (ADR-006) — sin la contraseña no se puede
+  /// descifrar el backup, aunque conserve el teléfono (el Keystore abre la DB local igual).
+  final bool aceptaTradeOffE2E;
+
+  /// [props] lleva cédula, email y la contraseña en texto plano; `EquatableConfig.stringify`
+  /// arranca en `true` en debug, así que sin esto cualquier interpolación de estos params
+  /// filtraría esos datos (convenciones-desarrollo.md §7.5).
   @override
-  List<Object?> get props => [nombre, apellido, cedula, email, password, aceptaTerminos];
+  bool? get stringify => false;
+
+  @override
+  List<Object?> get props => [
+    nombre,
+    apellido,
+    cedula,
+    email,
+    password,
+    aceptaTerminos,
+    aceptaTradeOffE2E,
+  ];
 }
 
 /// HU-AUTH-001/002 — Registro de cuenta.
@@ -44,8 +66,9 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
 
   final AuthRepository _repository;
 
-  static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
-  static final RegExp _passwordRegExp = RegExp(r'^(?=.*[A-Z])(?=.*\d).{8,}$');
+  /// Lo que dice el campo cuando el email está incompleto o mal armado.
+  static const String _emailIncompleto = 'El email no es válido';
+
   static final RegExp _cedulaFormatoRegExp = RegExp(r'^[\d.\-]+$');
   static final RegExp _cedulaNormalizadaRegExp = RegExp(r'^\d{7,8}$');
 
@@ -53,7 +76,7 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
   Future<Either<Failure, ResultadoRegistro>> call(RegistrarUsuarioParams params) async {
     final nombre = params.nombre.trim();
     final apellido = params.apellido.trim();
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
     final cedula = params.cedula.trim();
     final cedulaNormalizada = cedula.replaceAll(RegExp(r'[.\-]'), '');
     final errores = <String, String>{};
@@ -70,18 +93,22 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
 
     if (email.isEmpty) {
       errores['email'] = 'Ingresá tu email';
-    } else if (!_emailRegExp.hasMatch(email)) {
-      errores['email'] = 'El email no es válido';
+    } else if (ValidadorEmail.mensaje(email, siIncompleto: _emailIncompleto) case final aviso?) {
+      errores['email'] = aviso;
     }
 
-    if (params.password.isEmpty) {
-      errores['password'] = 'Ingresá tu contraseña';
-    } else if (!_passwordRegExp.hasMatch(params.password)) {
-      errores['password'] = 'Usá al menos 8 caracteres, una mayúscula y un número.';
+    if (PoliticaPassword.excedeLargoMaximo(params.password)) {
+      errores['password'] = PoliticaPassword.demasiadoLarga;
+    } else if (PoliticaPassword.validar(params.password) case final error?) {
+      errores['password'] = error;
     }
 
     if (!params.aceptaTerminos) {
       errores['aceptaTerminos'] = 'Tenés que aceptar los términos.';
+    }
+
+    if (!params.aceptaTradeOffE2E) {
+      errores['aceptaTradeOffE2E'] = 'Tenés que aceptar el trade-off de tu contraseña.';
     }
 
     if (errores.isNotEmpty) return Left(FailureValidacion(campos: errores));

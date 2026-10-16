@@ -86,6 +86,6 @@ abstract class CompressingCrypto implements CryptoPort {
 // Funciones de nivel superior: lo que corre en un isolate no puede capturar
 // `this`.
 
-List<int> _gzip(List<int> datos) => GZipEncoder().encode(datos)!;
+List<int> _gzip(List<int> datos) => GZipEncoder().encode(datos);
 
 List<int> _gunzip(List<int> datos) => GZipDecoder().decodeBytes(datos);

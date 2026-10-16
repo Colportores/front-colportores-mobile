@@ -5,6 +5,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/sesion.dart';
 import '../repositories/auth_repository.dart';
+import '../services/validador_email.dart';
 
 /// Parámetros de [IniciarSesionUseCase].
 final class IniciarSesionParams extends Equatable {
@@ -13,6 +14,13 @@ final class IniciarSesionParams extends Equatable {
   final String email;
   final String password;
 
+  /// [props] lleva el email y la contraseña en texto plano; `EquatableConfig.stringify` arranca
+  /// en `true` en debug, así que sin esto cualquier interpolación de estos params (típicamente en
+  /// un log de error o una excepción cuando el login falla) filtraría la contraseña
+  /// (convenciones-desarrollo.md §7.5).
+  @override
+  bool? get stringify => false;
+
   @override
   List<Object?> get props => [email, password];
 }
@@ -20,7 +28,8 @@ final class IniciarSesionParams extends Equatable {
 /// HU-AUTH-003 — Inicio de sesión.
 ///
 /// Plantilla de referencia para los casos de uso del proyecto:
-/// 1. Valida la entrada y devuelve `Left(FailureValidacion)` con el detalle por campo.
+/// 1. Valida la entrada y devuelve `Left(FailureValidacion)` con el detalle por campo (el formato
+///    del email, con [ValidadorEmail]).
 /// 2. Normaliza (email en minúsculas, sin espacios).
 /// 3. Delega en el repositorio; no conoce cómo se autentica ni dónde se guarda la sesión.
 final class IniciarSesionUseCase implements UseCase<Sesion, IniciarSesionParams> {
@@ -29,17 +38,19 @@ final class IniciarSesionUseCase implements UseCase<Sesion, IniciarSesionParams>
   final AuthRepository _repository;
 
   static const int _minPassword = 8;
-  static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
+
+  /// Lo que dice el campo cuando el email está incompleto o mal armado.
+  static const String _emailIncompleto = 'El email no es válido';
 
   @override
   Future<Either<Failure, Sesion>> call(IniciarSesionParams params) async {
-    final email = params.email.trim().toLowerCase();
+    final email = ValidadorEmail.normalizar(params.email);
     final errores = <String, String>{};
 
     if (email.isEmpty) {
       errores['email'] = 'Ingresá tu email';
-    } else if (!_emailRegExp.hasMatch(email)) {
-      errores['email'] = 'El email no es válido';
+    } else if (ValidadorEmail.mensaje(email, siIncompleto: _emailIncompleto) case final aviso?) {
+      errores['email'] = aviso;
     }
 
     if (params.password.isEmpty) {

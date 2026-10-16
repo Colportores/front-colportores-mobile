@@ -1,0 +1,146 @@
+import 'package:equatable/equatable.dart';
+
+import 'consulta_lista_ubicaciones.dart';
+import 'estado_casa.dart';
+import 'ubicacion.dart';
+
+/// Una fila de la lista de ubicaciones.
+final class ItemListaUbicacion extends Equatable {
+  const ItemListaUbicacion({
+    required this.ubicacion,
+    this.distanciaMetros,
+    this.cantidadEspacios = 0,
+    this.estado,
+    this.proximaEntrevista,
+    this.motivoBaja,
+  });
+
+  final Ubicacion ubicacion;
+
+  /// Distancia en metros desde la posición del GPS; `null` si no había posición.
+  final double? distanciaMetros;
+
+  /// Espacios (deptos) sin baja de la ubicación.
+  final int cantidadEspacios;
+
+  /// Estado de la casa (`house_status`); `null` si todavía no se sabe: ver
+  /// `UbicacionConResumen.estado`.
+  final EstadoCasa? estado;
+
+  /// Hora de la entrevista agendada, si el estado es [EstadoCasa.entrevistaAgendada] y se conoce.
+  final DateTime? proximaEntrevista;
+
+  /// El motivo de la baja (`UbicacionConResumen.motivoBaja`), si la fila es una baja y se conoce.
+  final String? motivoBaja;
+
+  /// Está dada de baja (soft delete): la vista la etiqueta "Baja".
+  bool get esBaja => ubicacion.estaBorrada;
+
+  /// Una baja no permite visitas ni ventas (HU-UBI-002, escenario "incluir bajas").
+  bool get esInteractiva => !esBaja;
+
+  @override
+  List<Object?> get props => [
+    ubicacion,
+    distanciaMetros,
+    cantidadEspacios,
+    estado,
+    proximaEntrevista,
+    motivoBaja,
+  ];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
+}
+
+/// Resultado de [ConsultaListaUbicaciones]: la página pedida y los contadores.
+final class ListaUbicaciones extends Equatable {
+  const ListaUbicaciones({
+    required this.items,
+    required this.total,
+    required this.porTipo,
+    required this.porEstado,
+    required this.totalGeneral,
+    required this.totalBajas,
+    required this.estadosConocidos,
+    required this.hayMas,
+    required this.ordenAplicado,
+    required this.sinUbicaciones,
+    this.bajasOcultas = 0,
+  });
+
+  /// Como mucho `consulta.limite` ítems, ya ordenados.
+  final List<ItemListaUbicacion> items;
+
+  /// Cuántas ubicaciones cumplen **todos** los filtros, contando las que no entraron en la
+  /// página ("los contadores indican el total").
+  final int total;
+
+  /// Cuántas habría por tipo si no se filtrara por tipo pero sí por todo lo demás: sirve para el
+  /// número al lado de cada chip de tipo. Están los tres tipos, aunque sea con 0.
+  final Map<TipoUbicacion, int> porTipo;
+
+  /// Lo mismo por estado de la casa: cuántas habría por estado si no se filtrara por estado pero sí
+  /// por todo lo demás («Casa 8» quiere decir 8 casas con cobranza pendiente). Están los ocho
+  /// estados, aunque sea con 0; las de estado desconocido no cuentan en ninguno.
+  final Map<EstadoCasa, int> porEstado;
+
+  /// Cuántas ubicaciones del colportor hay antes de aplicar ningún filtro (el «de 30» de «8 de 30»),
+  /// con las bajas dentro solo si se pidieron.
+  final int totalGeneral;
+
+  /// Cuántas de esas [totalGeneral] están dadas de baja («25 de 33 · 3 bajas»). Es 0 sin
+  /// `incluirBajas`.
+  final int totalBajas;
+
+  /// Al menos una ubicación del colportor trae su estado: la vista ofrece el filtro por estado y
+  /// muestra el estado de cada fila. Sin esto (todavía no hay `house_status` local) se ocultan.
+  final bool estadosConocidos;
+
+  /// Hay más ubicaciones que las devueltas: la vista puede pedir la página siguiente.
+  final bool hayMas;
+
+  /// El orden que se usó: es [OrdenListaUbicaciones.recientes] aunque se haya pedido cercanía si
+  /// no había posición del GPS (la vista lo avisa).
+  final OrdenListaUbicaciones ordenAplicado;
+
+  /// El colportor no tiene **ninguna** ubicación que mostrar, antes de aplicar la búsqueda, la
+  /// ciudad, el radio y el tipo. Solo esto justifica el empty state de la HU con "Registrar tu
+  /// primera ubicación". Sí respeta el toggle de bajas: si todas sus ubicaciones están dadas de
+  /// baja y "Mostrar bajas" está apagado, es `true` (no hay nada que listar).
+  final bool sinUbicaciones;
+
+  /// Cuántas ubicaciones del colportor están dadas de baja y **no** se listan porque «Mostrar
+  /// bajas» está apagado (0 si está prendido). Con [sinUbicaciones] distingue «todavía no
+  /// registraste ubicaciones» de «no tenés ubicaciones activas»: solo hay bajas, y la vista ofrece
+  /// mostrarlas.
+  final int bajasOcultas;
+
+  /// El colportor no tiene ninguna ubicación activa pero sí bajas que «Mostrar bajas» mostraría:
+  /// el vacío no puede decir que no registró ninguna.
+  bool get soloBajas => sinUbicaciones && bajasOcultas > 0;
+
+  /// No hay filas que mostrar (`total == 0`), sea por [sinUbicaciones] o por los filtros.
+  bool get estaVacia => total == 0;
+
+  /// Hay ubicaciones, pero ninguna cumple los filtros: la vista muestra "sin resultados" (con
+  /// limpiar filtros), **no** el empty state de alta.
+  bool get sinResultados => total == 0 && !sinUbicaciones;
+
+  @override
+  List<Object?> get props => [
+    items,
+    total,
+    porTipo,
+    porEstado,
+    totalGeneral,
+    totalBajas,
+    estadosConocidos,
+    hayMas,
+    ordenAplicado,
+    sinUbicaciones,
+    bajasOcultas,
+  ];
+}

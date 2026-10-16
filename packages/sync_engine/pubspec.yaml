@@ -20,7 +20,7 @@ dependencies:
   # SHA-256 para la integridad de la cadena de backups, y gzip para los chunks.
   # Los dos son Dart puro: la parte no-nativa de ADR-003 se testea en la VM.
   crypto: ^3.0.0
-  archive: ^3.6.0
+  archive: ^4.0.9
 
   # Cliente HTTP de BffTransport. Dart puro: corre en la VM, así que el
   # adaptador se testea con MockClient sin levantar el BFF.

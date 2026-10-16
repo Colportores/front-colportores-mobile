@@ -498,7 +498,17 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
 }
 
 /// Lo que el motor da por sentado de un [LocalStorePort].
-void runLocalStoreContract(String nombre, LocalStorePort Function() crear) {
+///
+/// [fila] es la que se aplica en el delta de prueba: una entidad que la
+/// implementación acepte, con su fila. Una DB real no tiene tablas genéricas.
+void runLocalStoreContract(
+  String nombre,
+  LocalStorePort Function() crear, {
+  ({String entidad, Map<String, Object?> fila}) fila = (
+    entidad: 'producto',
+    fila: const {'id': 'p-1', 'sync_version': 1},
+  ),
+}) {
   group('$nombre · contrato de LocalStorePort', () {
     late LocalStorePort store;
     setUp(() => store = crear());
@@ -509,9 +519,7 @@ void runLocalStoreContract(String nombre, LocalStorePort Function() crear) {
 
     test('applyDelta guarda el watermark del scope', () async {
       await store.applyDelta({
-        'producto': [
-          {'id': 'p-1', 'sync_version': 1}
-        ],
+        fila.entidad: [fila.fila],
       }, scope: 'replica', watermark: 'w-1');
 
       expect(await store.watermarkOf('replica'), 'w-1');

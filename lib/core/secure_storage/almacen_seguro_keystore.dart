@@ -3,48 +3,44 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'almacen_seguro.dart';
 
-/// [AlmacenSeguro] sobre `flutter_secure_storage` (ADR-007): Android Keystore e iOS Keychain.
+/// [AlmacenSeguro] sobre `flutter_secure_storage` 10.x (ADR-006): Android Keystore e iOS Keychain.
 ///
 /// Es el **único** archivo del proyecto que conoce el plugin — misma regla que el anillo de
 /// adaptadores del contrato de sync (R-A1). Traduce toda `Exception` de la plataforma a
 /// [AlmacenSeguroException] para que el puerto tenga un solo modo de falla.
 ///
-/// ## Opciones de plataforma
+/// ## Opciones de plataforma (ADR-006)
 ///
-/// Se usan **las que trae el plugin**, y se pueden inyectar por constructor. Tres de ellas son
-/// decisiones de seguridad todavía abiertas, y se resuelven en HU-AUTH-009 (#27) antes de que la
-/// app guarde una sal real:
+/// - **Android: `resetOnError: false`.** Con el default (`true`) el plugin borra todo ante un error
+///   del Keystore, y sin la DEK la DB local queda imposible de abrir para siempre. Con `false` la
+///   falla llega a la app, que decide: con envoltorio por contraseña recupera la DEK y reconstruye
+///   el almacén; sin él, pregunta antes de empezar de nuevo. **Nunca se borra sin ese sí.**
+/// - **iOS: `accessibility: first_unlock_this_device`** (`kSecAttrAccessibleAfterFirstUnlock…
+///   ThisDeviceOnly`). La DEK se lee desde el primer desbloqueo después de prender el equipo,
+///   aunque después se bloquee: así andan el backup nocturno y el sync en segundo plano. Con
+///   `_ThisDeviceOnly` no viaja en backups de iCloud ni de Finder, ni a otro iPhone.
+/// - `synchronizable` queda en `false` (el default): la DEK es **distinta por dispositivo**
+///   (HU-AUTH-009), así que no puede sincronizar por iCloud Keychain.
+/// - `encryptedSharedPreferences` queda en `false`: está deprecado en la 10.x y ADR-006 lo descarta
+///   como almacén alternativo para S10 (los equipos con Keystore por software siguen con este
+///   mismo almacén, con consentimiento).
 ///
-/// - `AndroidOptions.resetOnError` viene en `true`: ante un error del Keystore el plugin **borra
-///   los datos de forma permanente**. Aplicado a la sal eso convierte un fallo transitorio en la
-///   pérdida definitiva de la DB local, mientras que HU-AUTH-009 pide reportar el error al
-///   usuario. Hay que decidirlo (Supuesto S10) — acá no se elige por nadie.
-/// - `AndroidOptions.encryptedSharedPreferences` viene en `false`. HU-AUTH-009 lo nombra como el
-///   almacenamiento alternativo para dispositivos sin Keystore de hardware, pero solo después de
-///   que el usuario dé consentimiento explícito — o sea que prenderlo de entrada se saltearía el
-///   consentimiento. Mismo Supuesto S10.
-/// - `IOSOptions.accessibility` viene en `unlocked` (`kSecAttrAccessibleWhenUnlocked`): la sal no
-///   se puede leer con el dispositivo bloqueado. El backup nocturno y el sync en background
-///   (ADR-003, ADR-017) sí corren con el equipo bloqueado, así que el nivel de accesibilidad se
-///   define cuando se diseñe ese flujo.
-///
-/// `synchronizable` sí queda en `false` (el default del plugin) y no hay motivo para moverlo: la
-/// sal **debe ser distinta por dispositivo** (HU-AUTH-009), o sea que no puede sincronizar por
-/// iCloud Keychain.
-///
-/// Los cuatro valores de arriba los fija un test contra [opcionesAndroid] y [opcionesIos]: quien
-/// resuelva S10 tiene que actualizar esta doc junto con el código, no puede cambiar uno solo.
+/// Los valores de arriba los fija un test contra [opcionesAndroid] y [opcionesIos]: quien los
+/// cambie tiene que actualizar esta doc (y ADR-006) junto con el código.
 ///
 /// ## Android: Auto Backup deshabilitado
 ///
 /// En Android el plugin guarda el ciphertext en SharedPreferences y la clave que lo envuelve en
 /// el Keystore. Auto Backup respalda lo primero y no lo segundo, así que tras un restore en otro
-/// equipo `read` falla y —con `resetOnError` en `true`— devuelve `null` como si la sal nunca
-/// hubiera existido. Por eso el manifest lleva `android:allowBackup="false"` y
+/// equipo `read` fallaría. Por eso el manifest lleva `android:allowBackup="false"` y
 /// `android:dataExtractionRules` (README del plugin, "Disabling Auto Backup"); no quitarlos.
 final class AlmacenSeguroKeystore implements AlmacenSeguro {
-  AlmacenSeguroKeystore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+  AlmacenSeguroKeystore({FlutterSecureStorage? storage}) : _storage = storage ?? _porDefecto;
+
+  static const FlutterSecureStorage _porDefecto = FlutterSecureStorage(
+    aOptions: AndroidOptions(resetOnError: false),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+  );
 
   final FlutterSecureStorage _storage;
 

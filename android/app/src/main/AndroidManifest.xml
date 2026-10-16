@@ -1,4 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Red. Flutter la declara solo en los manifiestos de debug y profile (para el hot reload);
+         sin esta línea una build de release no sale a internet: ni Supabase, ni los mosaicos del
+         mapa del alta de ubicación, ni la dirección del punto. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- GPS del alta de ubicación (HU-UBI-001). Solo mientras la app está abierta: no hay
+         ubicación en segundo plano. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
          1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin
             guarda el ciphertext en SharedPreferences —que Auto Backup sube a Drive— y la clave
@@ -17,10 +27,14 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- Solo vertical (decisión de Cristian del 07/10, #301): la misma regla que Info.plist y
+             que SystemChrome.setPreferredOrientations en main.dart. Android 16 la ignora en
+             pantallas de 600 dp o más (tablets); los teléfonos la respetan. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:screenOrientation="portrait"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -38,10 +52,11 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Deep link de vuelta del OAuth por navegador (Google, HU-AUTH-003). Lo captura
-                 app_links (viene con supabase_flutter) y supabase_flutter completa la sesión.
-                 La MISMA URL —io.supabase.colportores://login-callback/— tiene que estar en
-                 ConfigSupabase.redirectOAuth y en el dashboard de Supabase:
+            <!-- Deep link de los enlaces del correo (verificación de email, HU-AUTH-002, y
+                 recuperación de contraseña, HU-AUTH-004/005). Lo captura app_links (viene con
+                 supabase_flutter) y supabase_flutter completa la sesión. La MISMA URL
+                 —io.supabase.colportores://login-callback/— tiene que estar en
+                 ConfigSupabase.redirectBase y en el dashboard de Supabase:
                  Authentication → URL Configuration → Redirect URLs. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

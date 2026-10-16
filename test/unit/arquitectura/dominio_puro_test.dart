@@ -1,10 +1,16 @@
 // Conformidad con ADR-009: el dominio es Dart puro.
 //
-// Escanea los imports de lib/features/*/domain/** y lib/core/{error,usecases}: si alguno trae
-// Flutter, Riverpod, Drift o Supabase, el test falla. La regla deja de depender del review.
+// Escanea los imports de lib/features/*/domain/** y lib/core/{domain,error,usecases}: si alguno
+// trae Flutter, Riverpod, Drift o Supabase, el test falla. La regla deja de depender del review.
+//
+// La lectura del árbol usa `leerArbolDartResiliente` (test/helpers/lectura_resiliente_arbol.dart,
+// issue #83): un solo recorrido con `dir.list(recursive: true)`, con reintento ante una carrera
+// entre listar y leer. Antes usaba `listSync` + una foto del árbol y fallaba de forma intermitente.
 import 'dart:io';
 
 import 'package:test/test.dart';
+
+import '../../helpers/lectura_resiliente_arbol.dart';
 
 const _prohibidos = [
   'package:flutter/',
@@ -17,11 +23,6 @@ const _prohibidos = [
   'package:http/',
 ];
 
-Iterable<File> _dartsEn(Directory dir) => dir
-    .listSync(recursive: true)
-    .whereType<File>()
-    .where((f) => f.path.endsWith('.dart') && !f.path.endsWith('.g.dart'));
-
 Iterable<Directory> _directoriosDeDominio() sync* {
   final features = Directory('lib/features');
   if (features.existsSync()) {
@@ -30,7 +31,7 @@ Iterable<Directory> _directoriosDeDominio() sync* {
       if (domain.existsSync()) yield domain;
     }
   }
-  for (final core in ['lib/core/error', 'lib/core/usecases']) {
+  for (final core in ['lib/core/domain', 'lib/core/error', 'lib/core/usecases']) {
     final dir = Directory(core);
     if (dir.existsSync()) yield dir;
   }
@@ -43,12 +44,13 @@ void main() {
     });
 
     for (final dir in _directoriosDeDominio()) {
-      test('${dir.path} no importa Flutter, Riverpod, Drift, Supabase ni HTTP', () {
+      test('${dir.path} no importa Flutter, Riverpod, Drift, Supabase ni HTTP', () async {
+        final archivos = await leerArbolDartResiliente(dir);
+
         final violaciones = <String>[];
-        for (final archivo in _dartsEn(dir)) {
-          final lineas = archivo.readAsLinesSync();
-          for (var i = 0; i < lineas.length; i++) {
-            final linea = lineas[i].trim();
+        for (final archivo in archivos) {
+          for (var i = 0; i < archivo.lineas.length; i++) {
+            final linea = archivo.lineas[i].trim();
             if (!linea.startsWith('import ') && !linea.startsWith('export ')) continue;
             for (final prohibido in _prohibidos) {
               if (linea.contains(prohibido)) {
