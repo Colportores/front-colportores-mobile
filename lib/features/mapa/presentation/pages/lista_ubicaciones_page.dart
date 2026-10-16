@@ -16,6 +16,7 @@ import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
+import '../providers/uniones_pendientes_notifier.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
@@ -298,11 +299,13 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
-  /// Abre «Posibles duplicados» (vista 10). Uno solo a la vez.
+  /// Abre «Posibles duplicados» (vista 10). Uno solo a la vez. Con «Revisar» la colportora ya va a
+  /// ver los pares: el aviso de una unión que falló fuera de la pantalla se da por leído.
   Future<void> _revisarDuplicados() async {
     if (_abriendoDuplicados) return;
     _abriendoDuplicados = true;
     try {
+      ref.read(unionesFallidasFueraDePantallaProvider.notifier).olvidar();
       final personalizado = widget.alRevisarDuplicados;
       if (personalizado != null) {
         await personalizado();
@@ -971,6 +974,10 @@ class _AvisoLectura extends StatelessWidget {
 
 /// «3 posibles duplicados · Revisar»: el aviso de la Lista mientras queden pares para revisar
 /// (HU-UBI-006, canvas de la vista 10). Lleva a «Posibles duplicados». Sin pares no ocupa lugar.
+///
+/// Si una unión falló cuando la colportora ya había salido de la pantalla (vio «quedaron unidas en
+/// una» y no pasó), el aviso dice «No pudimos unir Av. Italia 1234 · Revisar» en su lugar (QA r1 de
+/// #338, F3); con más de una, «No pudimos unir 2 pares · Revisar». Los pares siguen en «Revisar».
 class _AvisoDuplicados extends ConsumerWidget {
   const _AvisoDuplicados({required this.colportorId, required this.alRevisar});
 
@@ -981,7 +988,11 @@ class _AvisoDuplicados extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
     if (cantidad == 0) return const SizedBox.shrink();
-    final texto = TextosPosiblesDuplicados.avisoEnLista(cantidad);
+    final fallas = ref.watch(avisoUnionFallidaProvider(colportorId));
+    final hayFallas = fallas.isNotEmpty;
+    final texto = hayFallas
+        ? TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])
+        : TextosPosiblesDuplicados.avisoEnLista(cantidad);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Semantics(
@@ -993,7 +1004,7 @@ class _AvisoDuplicados extends ConsumerWidget {
             color: const Color(0xFFFBF1DA),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
-              key: const Key('lista_aviso_duplicados'),
+              key: Key(hayFallas ? 'lista_aviso_union_fallida' : 'lista_aviso_duplicados'),
               borderRadius: BorderRadius.circular(12),
               onTap: alRevisar,
               child: ConstrainedBox(

@@ -19,7 +19,8 @@ import '../widgets/textos_posibles_duplicados.dart';
 /// Se entra desde el aviso «N posibles duplicados · Revisar» de la Lista. La lista de pares es la del
 /// teléfono, en vivo: un par que se une, se decide o se corrige sale solo. «Conservar A y unir» deja
 /// la unión esperando 8 s con «Deshacer» (`UnionesPendientesNotifier`); el par esperando no se ve
-/// en la lista, y sale definitivo al cumplirse el tiempo o al salir de la pantalla.
+/// en la lista (ni los otros pares que contienen a la que quedaría de baja), y sale definitivo al
+/// cumplirse el tiempo o al salir de la pantalla.
 class PosiblesDuplicadosPage extends ConsumerStatefulWidget {
   const PosiblesDuplicadosPage({super.key, required this.colportorId});
 
@@ -143,7 +144,7 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
         ? const <ParaRevisar>[]
         : [
             for (final p in pares)
-              if (!uniones.ocultas.contains(p.par.clave)) p,
+              if (!uniones.oculta(p.par)) p,
           ];
 
     return Scaffold(
