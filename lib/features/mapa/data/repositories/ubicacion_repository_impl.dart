@@ -192,14 +192,15 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     CriterioDuplicadoUbicacion? duplicados,
   }) async {
     // El motivo es texto del colportor: a la DB (auditoría local) sí, al log solo que hubo.
-    final conMotivo = baja && MotivosBaja.paraGuardar(motivo) != null;
+    final guardado = MotivosBaja.paraGuardar(motivo, deUnion: conservadaId != null);
+    final conMotivo = baja && guardado != null;
     try {
       final (:ubicacion, :escribio) = await _local.cambiarBaja(
         id,
         baseUpdatedAt: baseUpdatedAt,
         updatedAt: ahora,
         deletedAt: baja ? ahora : null,
-        motivo: baja ? MotivosBaja.paraGuardar(motivo) : null,
+        motivo: baja ? guardado : null,
         conservadaId: conservadaId,
         duplicados: baja ? null : duplicados,
       );

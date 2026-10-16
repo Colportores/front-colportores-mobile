@@ -208,8 +208,9 @@ final class UbicacionConEspaciosException implements Exception {
 final class ReactivacionDeUnionException implements Exception {
   const ReactivacionDeUnionException({this.conservadaId});
 
-  /// La ubicación a la que se unió (la `A` de `duplicado_de_A`), si el motivo la trae. Puede estar
-  /// de baja o no existir: quien la traduce mira si sigue activa.
+  /// La ubicación a la que se unió (la `A` de `duplicado_de_A`), si el motivo la trae; si `A` también
+  /// se unió a otra (B -> A -> C), la que sigue la cadena (C). Puede estar de baja o no existir:
+  /// quien la traduce mira si sigue activa.
   final String? conservadaId;
 
   /// Sin el uuid: la excepción puede terminar en un log.

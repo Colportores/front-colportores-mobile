@@ -190,14 +190,81 @@ void main() {
       expect((f as FailureReactivacionDeUnion).conservadaId, 'ub-a');
     });
 
-    test('dado que A también quedó de baja (se unió a otra), entonces la falla no lleva a nadie: '
-        'no hay a dónde abrir', () async {
+    test(
+      'dado que A también quedó de baja (se unió a C), entonces la falla lleva a C: es la que sigue '
+      'en pie y la que la hoja puede abrir',
+      () async {
+        final base = await unirBEnA();
+        await local.insertar(ubicacion('ub-c', metrosAlNorte: 500, numero: '9'));
+        await local.unirDuplicada('ub-c', 'ub-a', ahora: t1.add(const Duration(hours: 1)));
+        expect((await guardada('ub-a')).auditoria.deletedAt, isNotNull);
+
+        final f = await falla(params(id: 'ub-b', base: base));
+
+        expect(f, const FailureReactivacionDeUnion(conservadaId: 'ub-c'));
+      },
+    );
+
+    test('dado una cadena larga (B a A, A a C, C a D), entonces la falla de B lleva a D', () async {
       final base = await unirBEnA();
       await local.insertar(ubicacion('ub-c', metrosAlNorte: 500, numero: '9'));
+      await local.insertar(ubicacion('ub-d', metrosAlNorte: 900, numero: '7'));
       await local.unirDuplicada('ub-c', 'ub-a', ahora: t1.add(const Duration(hours: 1)));
-      expect((await guardada('ub-a')).auditoria.deletedAt, isNotNull);
+      await local.unirDuplicada('ub-d', 'ub-c', ahora: t1.add(const Duration(hours: 2)));
 
       final f = await falla(params(id: 'ub-b', base: base));
+
+      expect(f, const FailureReactivacionDeUnion(conservadaId: 'ub-d'));
+    });
+
+    test(
+      'dado que al final de la cadena la última también está de baja pero no por una unión, '
+      'entonces la falla lleva a esa (el repositorio no la ofrece) y B sigue sin reactivarse',
+      () async {
+        final base = await unirBEnA();
+        await local.insertar(ubicacion('ub-c', metrosAlNorte: 500, numero: '9'));
+        await local.unirDuplicada('ub-c', 'ub-a', ahora: t1.add(const Duration(hours: 1)));
+        await local.cambiarBaja(
+          'ub-c',
+          baseUpdatedAt: (await guardada('ub-c')).auditoria.updatedAt,
+          updatedAt: t2,
+          deletedAt: t2,
+          motivo: 'Ya no existe',
+        );
+
+        final f = await falla(params(id: 'ub-b', base: base));
+
+        expect(f, const FailureReactivacionDeUnion());
+        expect((await guardada('ub-b')).auditoria.deletedAt, isNotNull);
+      },
+    );
+
+    test(
+      'dado una cadena que da la vuelta (B a A, A a B), entonces no se cuelga: la falla no lleva '
+      'a nadie',
+      () async {
+        await local.insertar(ubicacion('ub-a', deletedAt: t0));
+        await local.insertar(ubicacion('ub-b', deletedAt: t1));
+        await bajaConMotivo('ub-a', t0, 'duplicado_de_ub-b');
+        await bajaConMotivo('ub-b', t1, 'duplicado_de_ub-a');
+
+        final f = await falla(params(id: 'ub-b', base: t0));
+
+        expect(f, const FailureReactivacionDeUnion());
+      },
+    );
+
+    test('dado una cadena más larga que el tope de saltos, entonces no se sigue para siempre y la '
+        'falla no lleva a nadie', () async {
+      // 12 bajas encadenadas: ub-0 a ub-1, ub-1 a ub-2, … y la última, activa, queda fuera del tope.
+      for (var i = 0; i < 12; i++) {
+        final marca = t0.add(Duration(minutes: i));
+        await local.insertar(ubicacion('ub-$i', deletedAt: marca, numero: '$i'));
+        await bajaConMotivo('ub-$i', marca, 'duplicado_de_ub-${i + 1}');
+      }
+      await local.insertar(ubicacion('ub-12', numero: '12', metrosAlNorte: 900));
+
+      final f = await falla(params(id: 'ub-0', base: t0));
 
       expect(f, const FailureReactivacionDeUnion());
     });
@@ -322,6 +389,63 @@ void main() {
         expect((await guardada('ub-1')).auditoria.deletedAt, isNull);
       },
     );
+
+    test(
+      'dado un motivo de «Otro» escrito a mano que empieza con «duplicado_de_», entonces se guarda '
+      'como texto común y la baja se puede reactivar (no se confunde con una unión)',
+      () async {
+        await local.insertar(ubicacion('ub-1'));
+        final baja = DarDeBajaUbicacionUseCase(repositorio, _SinPendientes(), ahora: () => t1);
+
+        await baja(
+          DarDeBajaUbicacionParams(id: 'ub-1', baseUpdatedAt: t0, motivo: '  duplicado_de_vecino '),
+        );
+
+        expect((await auditoria()).single.motivo, 'duplicado de vecino');
+        final r = await reactivada(params(base: t1));
+        expect(r.estaBorrada, isFalse);
+        expect((await guardada('ub-1')).auditoria.deletedAt, isNull);
+      },
+    );
+
+    test('dado la baja de una duplicada con la ubicación que se conserva (el motivo lo arma el '
+        'sistema), entonces el prefijo se guarda tal cual y la baja no se reactiva', () async {
+      await local.insertar(ubicacion('ub-a'));
+      await local.insertar(ubicacion('ub-b', metrosAlNorte: 500, numero: '9'));
+      final baja = DarDeBajaUbicacionUseCase(repositorio, _SinPendientes(), ahora: () => t1);
+
+      await baja(
+        DarDeBajaUbicacionParams(
+          id: 'ub-b',
+          baseUpdatedAt: t0,
+          motivo: 'duplicado_de_ub-a',
+          conservadaId: 'ub-a',
+        ),
+      );
+
+      expect((await auditoria()).single.motivo, 'duplicado_de_ub-a');
+      expect(
+        await falla(params(id: 'ub-b', base: t1)),
+        const FailureReactivacionDeUnion(conservadaId: 'ub-a'),
+      );
+    });
+
+    test('dado el repositorio, cuando da de baja directo con un motivo que empieza con '
+        '«duplicado_de_», entonces también lo guarda como texto común', () async {
+      await local.insertar(ubicacion('ub-1'));
+
+      final r = await repositorio.cambiarBaja(
+        'ub-1',
+        baja: true,
+        baseUpdatedAt: t0,
+        ahora: t1,
+        motivo: 'duplicado_de_ub-9',
+      );
+
+      expect(r.isRight(), isTrue);
+      expect((await auditoria()).single.motivo, 'duplicado de ub-9');
+      expect((await reactivada(params(base: t1))).estaBorrada, isFalse);
+    });
 
     test('dado una baja con motivo común, entonces se reactiva y se encola el update', () async {
       await local.insertar(ubicacion('ub-1', deletedAt: t0));

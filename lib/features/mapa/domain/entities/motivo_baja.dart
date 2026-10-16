@@ -24,21 +24,39 @@ abstract final class MotivosBaja {
   /// ni el uuid.
   static const unidaAOtra = 'Unida a otra ubicación';
 
-  /// El motivo como se guarda: el texto recortado, o `null` si no hay (un motivo vacío no se guarda).
-  static String? paraGuardar(String? motivo) {
+  /// Cómo se guarda lo que escribió el colportor que empieza con [prefijoDuplicado]: el mismo texto
+  /// con espacios en lugar de los guiones bajos del prefijo («duplicado de vecino»). Así un motivo
+  /// escrito a mano nunca se confunde con el de una unión de duplicados (la baja no quedaría sin
+  /// reactivar para siempre).
+  static const _prefijoComoTexto = 'duplicado de ';
+
+  /// El motivo recortado, o `null` si no hay. Sin tocar el prefijo: lo que ya está guardado se lee así.
+  static String? _recortado(String? motivo) {
     final recortado = motivo?.trim();
     return recortado == null || recortado.isEmpty ? null : recortado;
+  }
+
+  /// El motivo como se guarda: el texto recortado, o `null` si no hay (un motivo vacío no se guarda).
+  ///
+  /// Lo que escribió el colportor y empieza con [prefijoDuplicado] se guarda como texto común
+  /// («duplicado de vecino»): solo el sistema arma el motivo de una unión. Con [deUnion] el motivo lo
+  /// armó el sistema al unir duplicados (la baja trae la ubicación que se conserva) y se guarda tal
+  /// cual.
+  static String? paraGuardar(String? motivo, {bool deUnion = false}) {
+    final recortado = _recortado(motivo);
+    if (deUnion || recortado == null || !recortado.startsWith(prefijoDuplicado)) return recortado;
+    return '$_prefijoComoTexto${recortado.substring(prefijoDuplicado.length)}'.trim();
   }
 
   /// Si [guardado] es el motivo de una baja por unión de duplicados (empieza con
   /// [prefijoDuplicado]). Una baja así no se reactiva: la unión es definitiva.
   static bool esUnion(String? guardado) =>
-      paraGuardar(guardado)?.startsWith(prefijoDuplicado) ?? false;
+      _recortado(guardado)?.startsWith(prefijoDuplicado) ?? false;
 
   /// El uuid de la ubicación que se conservó, si [guardado] es el motivo de una unión
   /// (`duplicado_de_<A>` -> `<A>`); `null` si no es una unión o no trae uuid.
   static String? conservadaDe(String? guardado) {
-    final motivo = paraGuardar(guardado);
+    final motivo = _recortado(guardado);
     if (motivo == null || !esUnion(motivo)) return null;
     final id = motivo.substring(prefijoDuplicado.length).trim();
     return id.isEmpty ? null : id;
@@ -47,7 +65,7 @@ abstract final class MotivosBaja {
   /// El motivo como se muestra en la Lista y en la hoja de reactivar: `null` si no hay y
   /// [unidaAOtra] si es el de una unión de duplicados.
   static String? paraMostrar(String? guardado) {
-    final motivo = paraGuardar(guardado);
+    final motivo = _recortado(guardado);
     if (motivo == null) return null;
     return esUnion(motivo) ? unidaAOtra : motivo;
   }

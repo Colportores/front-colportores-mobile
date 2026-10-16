@@ -104,7 +104,7 @@ final class DarDeBajaUbicacionUseCase
           baja: true,
           baseUpdatedAt: params.baseUpdatedAt,
           ahora: _ahora(),
-          motivo: MotivosBaja.paraGuardar(params.motivo),
+          motivo: MotivosBaja.paraGuardar(params.motivo, deUnion: params.conservadaId != null),
           conservadaId: params.conservadaId,
         );
         return baja.map<ResultadoBajaUbicacion>(

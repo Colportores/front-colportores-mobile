@@ -16,6 +16,42 @@ void main() {
       expect(MotivosBaja.paraGuardar(null), isNull);
     });
 
+    test('paraGuardar no deja pasar el prefijo de una unión: lo que escribió el colportor con '
+        '«duplicado_de_» se guarda como texto común y nunca es una unión', () {
+      expect(MotivosBaja.paraGuardar('duplicado_de_vecino'), 'duplicado de vecino');
+      expect(MotivosBaja.paraGuardar('  duplicado_de_vecino  '), 'duplicado de vecino');
+      expect(MotivosBaja.paraGuardar('duplicado_de_'), 'duplicado de');
+      expect(MotivosBaja.paraGuardar('duplicado_de_ub-9'), 'duplicado de ub-9');
+      expect(MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_vecino')), isFalse);
+      expect(MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_')), isFalse);
+      expect(MotivosBaja.conservadaDe(MotivosBaja.paraGuardar('duplicado_de_vecino')), isNull);
+      // Lo que no empieza con el prefijo exacto queda como lo escribió.
+      expect(MotivosBaja.paraGuardar('era duplicado_de_otra'), 'era duplicado_de_otra');
+      expect(MotivosBaja.paraGuardar('Duplicado_de_otra'), 'Duplicado_de_otra');
+      expect(MotivosBaja.paraGuardar('duplicado de la casa'), 'duplicado de la casa');
+    });
+
+    test(
+      'paraGuardar con deUnion (el motivo lo armó el sistema al unir) guarda el prefijo tal cual',
+      () {
+        expect(MotivosBaja.paraGuardar('duplicado_de_ub-a', deUnion: true), 'duplicado_de_ub-a');
+        expect(MotivosBaja.paraGuardar('  duplicado_de_ub-a ', deUnion: true), 'duplicado_de_ub-a');
+        expect(
+          MotivosBaja.esUnion(MotivosBaja.paraGuardar('duplicado_de_ub-a', deUnion: true)),
+          isTrue,
+        );
+        expect(MotivosBaja.paraGuardar('  ', deUnion: true), isNull);
+      },
+    );
+
+    test('paraGuardar es idempotente y respeta el largo máximo de «Otro»', () {
+      final largo = 'duplicado_de_${'x' * (MotivosBaja.maximoOtro - 13)}';
+      expect(largo.length, MotivosBaja.maximoOtro);
+      final guardado = MotivosBaja.paraGuardar(largo)!;
+      expect(guardado.length, MotivosBaja.maximoOtro);
+      expect(MotivosBaja.paraGuardar(guardado), guardado);
+    });
+
     test('paraMostrar devuelve el motivo guardado y, para una unión de duplicados, «Unida a otra '
         'ubicación» (nunca el código ni el uuid)', () {
       expect(MotivosBaja.paraMostrar('Ya no existe'), 'Ya no existe');
