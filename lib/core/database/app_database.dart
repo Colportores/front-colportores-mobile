@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../datos/sync_queue_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
@@ -41,6 +42,8 @@ part 'app_database.g.dart';
     ZonaVertices,
     SesionUsuarios,
     AuditLogLocal,
+    SyncQueue,
+    SyncWatermarks,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -60,10 +63,11 @@ class AppDatabase extends _$AppDatabase {
   /// - 5: `campania_ciudad`, `zona` y `zona_vertice`, réplicas del canal de catálogo (#231).
   /// - 6: `sesion_usuario`, copia local del nombre del usuario (#243).
   /// - 7: `audit_log`, la auditoría del dispositivo, solo local (#205: el motivo de la baja).
+  /// - 8: `sync_queue` y `sync_watermark`, la cola y los watermarks del motor de sync (#178).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 7;
+  static const int versionEsquema = 8;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -141,6 +145,16 @@ class AppDatabase extends _$AppDatabase {
     from6To7: (m, esquema) async {
       await m.createTable(esquema.auditLog);
       await m.createIndex(esquema.auditLogEventoUuidIdx);
+    },
+    // Solo crea la cola y los watermarks del motor, vacíos: nada de lo guardado cambia. Lo que se
+    // dio de alta antes de la 8 no se encoló nunca (sin motor, encolar fallaba y el alta no se
+    // guardaba), así que no hay nada que recuperar.
+    from7To8: (m, esquema) async {
+      await m.createTable(esquema.syncQueue);
+      await m.createIndex(esquema.syncQueueEstadoOrden);
+      await m.createIndex(esquema.syncQueueFila);
+      await m.createIndex(esquema.syncQueueDoneAt);
+      await m.createTable(esquema.syncWatermark);
     },
   );
 }

@@ -3,6 +3,7 @@
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
@@ -39,10 +40,12 @@ void main() {
 
   late AppDatabase db;
   late JornadaLocalDataSourceDrift local;
+  late EncoladorSyncEnMemoria encolador;
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
-    local = JornadaLocalDataSourceDrift(db);
+    encolador = EncoladorSyncEnMemoria();
+    local = JornadaLocalDataSourceDrift(db, encolador: encolador);
   });
 
   tearDown(() => db.close());
