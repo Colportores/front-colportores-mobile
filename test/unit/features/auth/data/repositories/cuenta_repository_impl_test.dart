@@ -1,8 +1,12 @@
 // HU-AUTH-008 — repositorio del estado de cuenta, con el remoto y el almacén en memoria.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
+import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
+import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
+import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/core/secure_storage/generacion_datos_locales.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -14,7 +18,9 @@ import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.d
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/almacen_que_se_traba.dart';
 import '../../../../../helpers/logger_mudo.dart';
+import '../../../../../helpers/proveedor_clave_db_falso.dart';
 
 final class _RemotoRoto implements EstadoCuentaRemoteDataSource {
   @override
@@ -349,6 +355,102 @@ void main() {
 
       expect(await consulta, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
       expect(almacen.contenido.containsKey(ClaveSegura.estadoCuenta), isFalse);
+    });
+  });
+
+  group('una respuesta que llega con «Borrar datos locales» a mitad de camino (#350)', () {
+    // Con la custodia de verdad: lo que prueba es que `olvidarDatosDelUsuario` avanza la generación
+    // al empezar (y otra vez al terminar), no que el repositorio compare números.
+    late Directory directorio;
+    late _RemotoManual manual;
+    late AlmacenQueSeTraba almacenTrabable;
+    late CustodiaClaveDb custodia;
+
+    setUp(() async {
+      directorio = await Directory.systemTemp.createTemp('cuenta_repo_350_');
+      manual = _RemotoManual();
+      almacenTrabable = AlmacenQueSeTraba();
+      final generacion = GeneracionDatosLocales();
+      custodia = CustodiaClaveDb(
+        almacenTrabable,
+        ArchivoEnvoltorioDek(directorio: () async => directorio),
+        ProveedorClaveDbFalso(),
+        CriptoSodium(),
+        generacion: generacion,
+        logger: loggerMudo(),
+      );
+      // La sesión sigue puesta de principio a fin: lo único que cambia es la generación.
+      repo = CuentaRepositoryImpl(
+        manual,
+        EstadoCuentaEnAlmacen(almacenTrabable),
+        usuarioEnSesion: () => 'ana',
+        generacion: generacion,
+        logger: loggerMudo(),
+      );
+    });
+
+    tearDown(() async {
+      if (await directorio.exists()) await directorio.delete(recursive: true);
+    });
+
+    bool hayEstado() => almacenTrabable.contenido.containsKey(ClaveSegura.estadoCuenta);
+
+    test('dado que ya se borró el estado de cuenta y falta borrar el resto, cuando llega la '
+        'respuesta, no lo vuelve a escribir y se la devuelve a quien la pidió', () async {
+      final consulta = repo.consultar('ana');
+      await almacenTrabable.escribir(ClaveSegura.estadoCuenta, 'ana:pendienteAsignacion');
+      almacenTrabable.trabarEnBorrar(ClaveSegura.relojSesion);
+      final borrado = custodia.olvidarDatosDelUsuario();
+      await almacenTrabable.llegoAlTrabado;
+      expect(hayEstado(), isFalse, reason: 'el estado de cuenta ya se borró; el borrado sigue');
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+
+      expect(await consulta, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      expect(hayEstado(), isFalse, reason: 'el borrado todavía no terminó');
+      expect(repo.ultimaConsultaExitosa('ana'), isNull);
+      almacenTrabable.soltar();
+      await borrado;
+      expect(hayEstado(), isFalse);
+      expect(await repo.ultimoConocido('ana'), isNull);
+    });
+
+    test('dado que el borrado recién empezó y el estado de cuenta todavía está, cuando llega la '
+        'respuesta, no lo pisa con el estado nuevo', () async {
+      final consulta = repo.consultar('ana');
+      await almacenTrabable.escribir(ClaveSegura.estadoCuenta, 'ana:pendienteAsignacion');
+      almacenTrabable.trabarEnBorrar(ClaveSegura.dbInicializada);
+      final borrado = custodia.olvidarDatosDelUsuario();
+      await almacenTrabable.llegoAlTrabado;
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+      await consulta;
+
+      expect(
+        almacenTrabable.contenido[ClaveSegura.estadoCuenta],
+        'ana:pendienteAsignacion',
+        reason: 'lo que está por borrarse no se reescribe con otra cosa',
+      );
+      expect(repo.ultimaConsultaExitosa('ana'), isNull);
+      almacenTrabable.soltar();
+      await borrado;
+      expect(hayEstado(), isFalse);
+    });
+
+    test('dado un pedido hecho con el borrado a mitad de camino, cuando la respuesta llega después '
+        'de que terminó, no se recuerda', () async {
+      almacenTrabable.trabarEnBorrar(ClaveSegura.relojSesion);
+      final borrado = custodia.olvidarDatosDelUsuario();
+      await almacenTrabable.llegoAlTrabado;
+      final consulta = repo.consultar('ana');
+      almacenTrabable.soltar();
+      await borrado;
+
+      manual.pedidos.single.complete(EstadoCuenta.activa);
+
+      expect(await consulta, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      expect(hayEstado(), isFalse);
+      expect(repo.ultimaConsultaExitosa('ana'), isNull);
     });
   });
 
