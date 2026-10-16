@@ -755,12 +755,17 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         OutlinedButton(
           key: const Key('verificacion_email_reenviar'),
           onPressed: reenviar,
-          child: Text(etiquetaReenviar),
+          // 12-A03 y 12-A01b: con la cuenta corriendo el botón se rellena con lo transcurrido y el
+          // rótulo va en JetBrains Mono (#335).
+          style: conCuentaRegresiva ? _estiloConCuenta(context) : null,
+          child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         ),
-      if (conCuentaRegresiva)
+      // El canvas no dibuja la cuenta regresiva del botón primario de 12-A04b (el enlace expiró y no
+      // se conoce el correo): ahí queda la barra de 3 px, a la espera de la decisión de #335.
+      if (conCuentaRegresiva && expirado && widget.password == null)
         ExcludeSemantics(
           child: LinearProgressIndicator(
-            key: const Key('verificacion_email_progreso'),
+            key: const Key('verificacion_email_barra'),
             value: _segundosRestantes / _cooldown.inSeconds,
             minHeight: 3,
             borderRadius: BorderRadius.circular(2),
@@ -786,6 +791,62 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     return FilledButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
+  }
+
+  /// Rótulo de la cuenta regresiva: JetBrains Mono como en el canvas (12-A03), para que el número no
+  /// haga bailar el ancho del texto al bajar cada segundo.
+  static const _rotuloConCuenta = TextStyle(fontFamily: 'JetBrainsMono');
+
+  /// Estilo del botón apagado mientras corre la cuenta (12-A03 y 12-A01b): el mismo borde y forma del
+  /// botón secundario, con el rótulo en `gris` (con el 38 % de opacidad de Material no llega a AA) y
+  /// un relleno suave que avanza de izquierda a derecha con lo transcurrido de los 60 s. El relleno
+  /// no entra en el árbol de accesibilidad: la cuenta ya la dice el rótulo del botón, y no se anuncia
+  /// cada segundo.
+  ButtonStyle _estiloConCuenta(BuildContext context) {
+    final colores = Theme.of(context).extension<ColoresColportaje>()!;
+    final textoGrande = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final forma = textoGrande
+        ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+        : const StadiumBorder();
+    // El borde de 1,5 dp lo pinta Material detrás del hijo: el relleno entra por dentro y se recorta
+    // con la forma achicada, para no taparlo ni asomar en las esquinas.
+    final formaInterior = textoGrande
+        ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.5))
+        : const StadiumBorder();
+    final transcurrido = 1 - _segundosRestantes / _cooldown.inSeconds;
+
+    return OutlinedButton.styleFrom(
+      disabledForegroundColor: colores.gris,
+      shape: forma,
+      padding: EdgeInsets.symmetric(horizontal: textoGrande ? 16 : 0, vertical: 14),
+    ).copyWith(
+      backgroundBuilder: (context, estados, hijo) => Stack(
+        alignment: Alignment.center,
+        fit: StackFit.passthrough,
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: ExcludeSemantics(
+                child: ClipPath(
+                  clipper: ShapeBorderClipper(shape: formaInterior),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FractionallySizedBox(
+                      key: const Key('verificacion_email_progreso'),
+                      widthFactor: transcurrido,
+                      heightFactor: 1,
+                      child: ColoredBox(color: colores.rellenoSuave),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          hijo!,
+        ],
+      ),
     );
   }
 
