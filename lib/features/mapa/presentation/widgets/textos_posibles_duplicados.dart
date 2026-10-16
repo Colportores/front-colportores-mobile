@@ -12,9 +12,11 @@ abstract final class TextosPosiblesDuplicados {
   static const titulo = 'Posibles duplicados';
   static const etiquetaBarra = 'POSIBLES DUPLICADOS';
   static const volver = 'Volver';
-  // Espacio sin corte entre «5» y «m»: a 360 px con texto grande la «m.» no queda sola en un renglón.
+  // Espacio sin corte entre «5» y «m» en todos los textos que lo llevan: a 360 px con texto grande la
+  // «m» no queda sola en un renglón.
+  static const _cincoMetros = '5${FormatoUbicaciones.espacioDuro}m';
   static const subtitulo =
-      'Son ubicaciones tuyas con la misma calle y número, o a menos de 5${FormatoUbicaciones.espacioDuro}m.';
+      'Son ubicaciones tuyas con la misma calle y número, o a menos de $_cincoMetros.';
   static const revisar = 'Revisar';
 
   /// «3 para revisar».
@@ -24,10 +26,27 @@ abstract final class TextosPosiblesDuplicados {
   static String avisoEnLista(int cantidad) =>
       cantidad == 1 ? '1 posible duplicado' : '$cantidad posibles duplicados';
 
+  /// El aviso de la Lista cuando una unión falló después de salir de la pantalla: «No pudimos unir
+  /// Av. Italia 1234» (el «Revisar» lo agrega el aviso, como en [avisoEnLista]). Si ninguna de las dos
+  /// ubicaciones tiene calle ni número ([direccion] vacía): «No pudimos unir dos ubicaciones sin
+  /// dirección».
+  static String noPudimosUnir(String direccion) => direccion.isEmpty
+      ? 'No pudimos unir dos ubicaciones sin dirección'
+      : 'No pudimos unir $direccion';
+
+  /// Lo mismo con más de una unión fallida: «No pudimos unir 2 pares».
+  static String noPudimosUnirVarios(int cantidad) => 'No pudimos unir $cantidad pares';
+
+  /// El aviso de la Lista para las uniones fallidas de [direcciones] (al menos una): con una dice
+  /// la dirección, con más dice cuántos pares.
+  static String avisoUnionesFallidas(List<String> direcciones) => direcciones.length == 1
+      ? noPudimosUnir(direcciones.single)
+      : noPudimosUnirVarios(direcciones.length);
+
   /// «Misma calle y número» / «A menos de 5 m».
   static String motivo(MotivoDuplicado motivo) => switch (motivo) {
     MotivoDuplicado.mismaDireccion => 'Misma calle y número',
-    MotivoDuplicado.cercania => 'A menos de 5 m',
+    MotivoDuplicado.cercania => 'A menos de $_cincoMetros',
   };
 
   /// «a 12 m».
@@ -74,15 +93,18 @@ abstract final class TextosPosiblesDuplicados {
   // ------------------------------------------------------------ par resuelto (10·03)
   static const deshacer = 'Deshacer';
 
-  /// «Las dos Av. Italia 1234 quedaron unidas en una.»
-  static String unidas(String direccion) => 'Las dos $direccion quedaron unidas en una.';
+  /// «Las dos Av. Italia 1234 quedaron unidas en una.»; sin dirección ([direccion] vacía): «Las dos
+  /// ubicaciones quedaron unidas en una.»
+  static String unidas(String direccion) => direccion.isEmpty
+      ? 'Las dos ubicaciones quedaron unidas en una.'
+      : 'Las dos $direccion quedaron unidas en una.';
 
   // ------------------------------------------------------------ estados que el canvas no dibuja
   static const cargando = 'Buscando posibles duplicados';
   static const vacioTitulo = 'No hay posibles duplicados';
   static const vacioCuerpo =
-      'Cuando dos de tus ubicaciones tengan la misma calle y número, o estén a menos de 5 m, '
-      'aparecen acá.';
+      'Cuando dos de tus ubicaciones tengan la misma calle y número, o estén a menos de '
+      '$_cincoMetros, aparecen acá.';
   static const errorLectura = 'No pudimos revisar tus ubicaciones.';
   static const reintentar = 'Reintentar';
   static const entendido = 'Entendido';
@@ -95,4 +117,13 @@ abstract final class TextosPosiblesDuplicados {
   /// suyo («La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.»).
   static String falloUnion(Failure falla) =>
       falla is FailureConservadaDeBaja ? falla.mensaje : noSePudoUnir;
+
+  /// «No se pudieron marcar 2 pares como duplicados. Probá de nuevo.»
+  static String noSePudieronUnir(int cantidad) =>
+      'No se pudieron marcar $cantidad pares como duplicados. Probá de nuevo.';
+
+  /// El texto del aviso rojo según las fallas que hay: con una, el suyo ([falloUnion]); con dos o más,
+  /// cuántos pares son.
+  static String falloUniones(List<Failure> fallas) =>
+      fallas.length == 1 ? falloUnion(fallas.single) : noSePudieronUnir(fallas.length);
 }

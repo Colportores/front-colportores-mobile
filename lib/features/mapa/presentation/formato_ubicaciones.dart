@@ -41,11 +41,25 @@ abstract final class FormatoUbicaciones {
   /// «Av. Italia 1234»; solo la calle o solo el número si falta uno; «Sin dirección» si no hay
   /// ninguno.
   static String direccion(Ubicacion u) {
+    final propia = direccionPropia(u);
+    return propia.isEmpty ? 'Sin dirección' : propia;
+  }
+
+  /// «Av. Italia 1234»; vacía si no tiene ni calle ni número (para las frases, donde «Sin dirección»
+  /// quedaría con mayúscula en el medio).
+  static String direccionPropia(Ubicacion u) {
     final partes = [
       for (final p in [u.calle, u.numero])
         if (p != null && p.trim().isNotEmpty) p.trim(),
     ];
-    return partes.isEmpty ? 'Sin dirección' : partes.join(' ');
+    return partes.join(' ');
+  }
+
+  /// La dirección que nombran los avisos de una unión: la de la ubicación que se conserva; si no tiene
+  /// calle ni número, la de la otra (para quien las ve es el mismo lugar); si ninguna tiene, vacía.
+  static String direccionDeLaUnion(Ubicacion conservada, Ubicacion otra) {
+    final propia = direccionPropia(conservada);
+    return propia.isNotEmpty ? propia : direccionPropia(otra);
   }
 
   /// «-34.88761, -56.13024» (5 decimales: cerca del metro).

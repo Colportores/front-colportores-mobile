@@ -91,6 +91,40 @@ void main() {
     });
   });
 
+  group('direccionPropia y direccionDeLaUnion (los avisos de una unión)', () {
+    test('la dirección propia es vacía —no «Sin dirección»— si no hay calle ni número', () {
+      expect(FormatoUbicaciones.direccionPropia(_u()), '');
+      expect(FormatoUbicaciones.direccionPropia(_u(calle: '  ', numero: '')), '');
+      expect(
+        FormatoUbicaciones.direccionPropia(_u(calle: ' Av. Italia ', numero: '1234')),
+        'Av. Italia 1234',
+      );
+      expect(FormatoUbicaciones.direccionPropia(_u(numero: '1234')), '1234');
+    });
+
+    test('la de la unión es la de la que se conserva', () {
+      expect(
+        FormatoUbicaciones.direccionDeLaUnion(
+          _u(calle: 'Av. Italia', numero: '1234'),
+          _u(calle: 'Bulevar Artigas', numero: '880'),
+        ),
+        'Av. Italia 1234',
+      );
+    });
+
+    test('si la que se conserva no tiene calle ni número, la de la otra', () {
+      expect(
+        FormatoUbicaciones.direccionDeLaUnion(_u(), _u(calle: 'Bulevar Artigas', numero: '880')),
+        'Bulevar Artigas 880',
+      );
+    });
+
+    test('si ninguna de las dos tiene, vacía', () {
+      expect(FormatoUbicaciones.direccionDeLaUnion(_u(), _u()), '');
+      expect(FormatoUbicaciones.direccionDeLaUnion(_u(calle: ' '), _u(numero: '')), '');
+    });
+  });
+
   test('coordenadas con 5 decimales', () {
     expect(
       FormatoUbicaciones.coordenadas(const Coordenadas(lat: -34.887612, lon: -56.130244)),

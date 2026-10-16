@@ -146,4 +146,88 @@ void main() {
       expect(_aviso, findsOneWidget);
     });
   });
+
+  group('La franja es lo primero de lo que se desplaza (QA de #357)', () {
+    RepoListaFalso muchas() => RepoListaFalso([for (var i = 0; i < 40; i++) filaLista('u$i')]);
+
+    testWidgets('dado 40 filas, cuando bajo la lista, la franja se va con las filas y al subir '
+        'vuelve', (tester) async {
+      await _montar(tester, pares: 3, repo: muchas());
+      expect(_aviso.hitTestable(), findsOneWidget);
+      final arriba = tester.getTopLeft(_aviso).dy;
+
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -500));
+      await _asentar(tester);
+      expect(_aviso.hitTestable(), findsNothing, reason: 'se fue con lo que se desplaza');
+
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, 5000));
+      await _asentar(tester);
+      expect(_aviso.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(_aviso).dy, arriba);
+    });
+
+    testWidgets('dado 40 filas, la primera fila está debajo de la franja y la última se alcanza '
+        'bajando', (tester) async {
+      await _montar(tester, pares: 3, repo: muchas());
+
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('u0'))).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(_aviso).dy),
+      );
+      await tester.drag(find.byKey(const Key('lista_filas')), const Offset(0, -20000));
+      await _asentar(tester);
+      expect(find.byKey(const ValueKey('u39')), findsOneWidget);
+    });
+
+    testWidgets('dado una búsqueda sin resultados, la franja queda arriba del texto de "Sin '
+        'resultados"', (tester) async {
+      await _montar(tester, pares: 3);
+
+      await tester.enterText(find.byKey(const Key('lista_busqueda')), 'zzzz');
+      await tester.pump(const Duration(milliseconds: 300));
+      await _asentar(tester);
+
+      expect(find.text('Sin resultados'), findsOneWidget);
+      expect(_aviso, findsOneWidget);
+      expect(
+        tester.getBottomLeft(_aviso).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('Sin resultados')).dy),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dado una búsqueda sin resultados y sin pares, no hay franja y el texto sigue '
+        'centrado', (tester) async {
+      await _montar(tester, pares: 0);
+
+      await tester.enterText(find.byKey(const Key('lista_busqueda')), 'zzzz');
+      await tester.pump(const Duration(milliseconds: 300));
+      await _asentar(tester);
+
+      expect(find.text('Sin resultados'), findsOneWidget);
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('dado la franja, el lector de pantalla puede tocarla (acción de toque)', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      await _montar(tester, pares: 3);
+
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('3 posibles duplicados. Revisar')),
+        isSemantics(isButton: true, isLiveRegion: true, hasTapAction: true),
+      );
+
+      tester.semantics.tap(find.semantics.byLabel('3 posibles duplicados. Revisar'));
+      await _asentar(tester);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(PosiblesDuplicadosPage), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('duplicados_volver')));
+      await _asentar(tester);
+      await tester.pump(const Duration(seconds: 1));
+      semantica.dispose();
+    });
+  });
 }

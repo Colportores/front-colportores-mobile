@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/duplicados_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/uniones_pendientes_notifier.dart';
 import 'package:fake_async/fake_async.dart';
@@ -29,11 +30,19 @@ final class _Banco {
         ],
       ) {
     contenedor = ProviderContainer(overrides: overridesDuplicados(datos));
-    contenedor.listen(unionesPendientesProvider, (_, _) {});
+    _pantalla = contenedor.listen(unionesPendientesProvider, (_, _) {});
   }
 
   final DuplicadosEnMemoria datos;
   late final ProviderContainer contenedor;
+  late final ProviderSubscription<UnionesPendientesState> _pantalla;
+
+  /// La colportora sale de «Posibles duplicados»: nadie escucha más al notificador (que es
+  /// `autoDispose`) y se descarta; la app y el resto de los providers siguen vivos.
+  void salirDeLaPantalla() => _pantalla.close();
+
+  /// Las uniones que fallaron cuando la pantalla ya no estaba.
+  List<FallaUnion> get fallidasAlSalir => contenedor.read(unionesFallidasFueraDePantallaProvider);
 
   UnionesPendientesState get estado => contenedor.read(unionesPendientesProvider);
   UnionesPendientesNotifier get notificador => contenedor.read(unionesPendientesProvider.notifier);
@@ -422,6 +431,696 @@ void main() {
     );
   });
 
+  group('Seguimiento #340 · M2: unir otro par no borra el aviso de la falla', () {
+    _conReloj('dado el aviso rojo de la unión de A–B, cuando uno otro par, la falla se queda hasta '
+        'que se reintente o se descarte', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(banco.estado.falla?.union, _union('ub-a', 'ub-b'));
+      banco.datos.falloAlUnir = null;
+
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+      reloj.flushMicrotasks();
+      expect(banco.estado.falla?.union, _union('ub-a', 'ub-b'), reason: 'al pedir la otra unión');
+
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(banco.unidas, ['ub-a<-ub-b', 'ub-c<-ub-d']);
+      expect(banco.estado.falla?.union, _union('ub-a', 'ub-b'), reason: 'al cumplirse la otra');
+    });
+
+    _conReloj('dado el aviso rojo de A–B, cuando deshago la unión de otro par, la falla sigue', (
+      banco,
+      reloj,
+    ) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+      banco.notificador.deshacer();
+
+      expect(banco.estado.falla?.union, _union('ub-a', 'ub-b'));
+    });
+
+    _conReloj('dado el aviso rojo de A–B, cuando lo reintento, se va el aviso (corre ya)', (
+      banco,
+      reloj,
+    ) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.datos.falloAlUnir = null;
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+
+      banco.notificador.reintentar();
+
+      expect(banco.estado.falla, isNull);
+      reloj.flushMicrotasks();
+      expect(banco.unidas, ['ub-a<-ub-b', 'ub-a<-ub-b']);
+    });
+
+    _conReloj('dado el aviso rojo de A–B, cuando lo descarto con otra unión en espera, se va y la '
+        'otra sigue esperando', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+
+      banco.notificador.descartarFalla();
+
+      expect(banco.estado.falla, isNull);
+      expect(banco.estado.pendiente, _union('ub-c', 'ub-d'));
+    });
+
+    _conReloj(
+      'dado el aviso rojo de A–B, cuando vuelvo a unir el MISMO par (en cualquier sentido), '
+      'es otro intento y el aviso viejo se va',
+      (banco, reloj) {
+        banco.datos.falloAlUnir = const FailureInesperado();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+        expect(banco.estado.falla, isNotNull);
+
+        banco.notificador.unir(_union('ub-b', 'ub-a'));
+
+        expect(banco.estado.falla, isNull);
+        expect(banco.estado.pendiente, _union('ub-b', 'ub-a'));
+      },
+    );
+
+    _conReloj('dado el aviso rojo de A←B, cuando uno otro par con la misma duplicada B, la falla '
+        'vieja se va: reintentarla chocaría con la nueva', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      banco.notificador.unir(_union('ub-c', 'ub-b'));
+
+      expect(banco.estado.falla, isNull);
+      expect(banco.estado.pendiente, _union('ub-c', 'ub-b'));
+    });
+
+    _conReloj('dado el aviso rojo de A←B, cuando uno otro par que CONSERVA a B, la falla vieja se '
+        'va por lo mismo', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      banco.notificador.unir(_union('ub-b', 'ub-c'));
+
+      expect(banco.estado.falla, isNull);
+    });
+
+    _conReloj('dado el aviso rojo de A←B, cuando uno otro par que conserva a A, la falla sigue: no '
+        'chocan', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      banco.notificador.unir(_union('ub-a', 'ub-c'));
+
+      expect(banco.estado.falla?.union, _union('ub-a', 'ub-b'));
+    });
+
+    _conReloj(
+      'dado el aviso rojo de A–B, cuando otra unión también falla, ninguna pisa a la otra: '
+      'las dos fallas quedan (de la más vieja a la más nueva) y los dos pares vuelven a la lista',
+      (banco, reloj) {
+        banco.datos.falloAlUnir = const FailureInesperado();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+
+        banco.notificador.unir(_union('ub-c', 'ub-d'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+
+        expect(
+          [for (final f in banco.estado.fallas) f.union],
+          [_union('ub-a', 'ub-b'), _union('ub-c', 'ub-d')],
+        );
+        expect(banco.estado.falla?.union, _union('ub-c', 'ub-d'), reason: 'la última que falló');
+        expect(banco.estado.ocultas, isEmpty);
+        expect(banco.estado.duplicadasEnCurso, isEmpty);
+      },
+    );
+  });
+
+  group('Seguimiento #340 · QA P1: varias fallas a la vez, ninguna pisa a otra', () {
+    List<String> pares(_Banco banco) => [for (final f in banco.estado.fallas) f.union.clavePar];
+
+    /// A←B y C←D fallaron (en ese orden) y no queda nada esperando.
+    void dosFallas(_Banco banco, FakeAsync reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(pares(banco), ['ub-a|ub-b', 'ub-c|ub-d']);
+    }
+
+    _conReloj(
+      'dado dos fallas, cuando toco "Reintentar", corren las dos ya, una detrás de la otra, '
+      'y si andan no queda ninguna',
+      (banco, reloj) {
+        dosFallas(banco, reloj);
+        banco.datos.falloAlUnir = null;
+
+        banco.notificador.reintentar();
+
+        expect(banco.estado.fallas, isEmpty, reason: 'se van al reintentar');
+        expect(banco.estado.ocultas, {'ub-a|ub-b', 'ub-c|ub-d'}, reason: 'los pares no reaparecen');
+        reloj.flushMicrotasks();
+        expect(banco.unidas, ['ub-a<-ub-b', 'ub-c<-ub-d', 'ub-a<-ub-b', 'ub-c<-ub-d']);
+        expect(banco.estado.fallas, isEmpty);
+      },
+    );
+
+    _conReloj('dado dos fallas, cuando reintento y las dos vuelven a fallar, quedan las dos y los '
+        'dos pares vuelven a la lista', (banco, reloj) {
+      dosFallas(banco, reloj);
+
+      banco.notificador.reintentar();
+      reloj.flushMicrotasks();
+
+      expect(pares(banco), ['ub-a|ub-b', 'ub-c|ub-d']);
+      expect(banco.estado.ocultas, isEmpty, reason: 'ningún estado de ocupado queda trabado');
+      expect(banco.estado.duplicadasEnCurso, isEmpty);
+      expect(banco.unidas, hasLength(4), reason: 'dos intentos y dos reintentos');
+    });
+
+    _conReloj('dado una falla que no se puede reintentar y otra que sí, "Reintentar" corre solo la '
+        'segunda y la primera se queda hasta que se descarte', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureConservadaDeBaja();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.datos.falloAlUnir = null;
+
+      banco.notificador.reintentar();
+      reloj.flushMicrotasks();
+
+      expect(banco.unidas, [
+        'ub-a<-ub-b',
+        'ub-c<-ub-d',
+        'ub-c<-ub-d',
+      ], reason: 'solo vuelve a correr C←D');
+      expect(pares(banco), ['ub-a|ub-b']);
+      expect(banco.estado.falla?.falla, const FailureConservadaDeBaja());
+
+      banco.notificador.reintentar();
+      reloj.flushMicrotasks();
+      expect(pares(banco), ['ub-a|ub-b'], reason: 'sin nada que reintentar, no cambia nada');
+      banco.notificador.descartarFalla();
+      expect(banco.estado.fallas, isEmpty);
+    });
+
+    _conReloj('dado dos fallas, cuando toco "Entendido", se van las dos', (banco, reloj) {
+      dosFallas(banco, reloj);
+
+      banco.notificador.descartarFalla();
+
+      expect(banco.estado.fallas, isEmpty);
+      expect(banco.estado.falla, isNull);
+    });
+
+    _conReloj('dado dos fallas, cuando pido otra unión que no toca ninguna y la deshago, las dos '
+        'siguen', (banco, reloj) {
+      dosFallas(banco, reloj);
+
+      banco.notificador.unir(_union('ub-e', 'ub-f'));
+      expect(pares(banco), ['ub-a|ub-b', 'ub-c|ub-d'], reason: 'al pedirla');
+      banco.notificador.deshacer();
+
+      expect(pares(banco), ['ub-a|ub-b', 'ub-c|ub-d'], reason: 'al deshacerla');
+    });
+
+    _conReloj(
+      'dado el aviso rojo de A←B, cuando uno C←A (la nueva da de baja a la que la falla iba '
+      'a conservar), la falla se va: reintentarla correría sobre una ubicación ya movida',
+      (banco, reloj) {
+        banco.datos.falloAlUnir = const FailureInesperado();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+        banco.datos.falloAlUnir = null;
+
+        banco.notificador.unir(_union('ub-c', 'ub-a'));
+        expect(banco.estado.fallas, isEmpty, reason: 'al pedir la nueva');
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.fallas, isEmpty);
+        expect(banco.unidas, ['ub-a<-ub-b', 'ub-c<-ub-a']);
+      },
+    );
+
+    _conReloj(
+      'dado dos fallas A←B y C←D, cuando uno C←A, se va solo la de A←B (la que toca) y la de '
+      'C←D se queda: las dos conservan a C y no chocan',
+      (banco, reloj) {
+        dosFallas(banco, reloj);
+        banco.datos.falloAlUnir = null;
+
+        banco.notificador.unir(_union('ub-c', 'ub-a'));
+
+        expect(pares(banco), ['ub-c|ub-d']);
+      },
+    );
+
+    _conReloj(
+      'dado dos fallas, cuando pido el MISMO par de la primera (en el otro sentido), es otro '
+      'intento: esa se va y la otra se queda',
+      (banco, reloj) {
+        dosFallas(banco, reloj);
+
+        banco.notificador.unir(_union('ub-b', 'ub-a'));
+
+        expect(pares(banco), ['ub-c|ub-d']);
+        expect(banco.estado.pendiente, _union('ub-b', 'ub-a'));
+      },
+    );
+
+    _conReloj('dado dos fallas, cuando el mismo par vuelve a fallar, queda una sola por par y la '
+        'que se reintentó va última', (banco, reloj) {
+      dosFallas(banco, reloj);
+
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      expect(pares(banco), ['ub-c|ub-d', 'ub-a|ub-b']);
+    });
+  });
+
+  group('Seguimiento #340 · M3: los pares con la duplicada pendiente se esconden', () {
+    ParDuplicado par(String a, String b) => ParDuplicado(
+      a: ubicacionDuplicable(a),
+      b: ubicacionDuplicable(b),
+      motivo: MotivoDuplicado.mismaDireccion,
+      distanciaMetros: 3,
+      admiteConservarAmbos: true,
+    );
+
+    _conReloj('dado A←B esperando, los pares que contienen a B (B–C) y el propio A–B se esconden; '
+        'A–C no', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+      expect(banco.estado.oculta(par('ub-a', 'ub-b')), isTrue);
+      expect(banco.estado.oculta(par('ub-b', 'ub-c')), isTrue);
+      expect(banco.estado.oculta(par('ub-c', 'ub-b')), isTrue, reason: 'B en cualquier lugar');
+      expect(banco.estado.oculta(par('ub-a', 'ub-c')), isFalse, reason: 'A se queda');
+      expect(banco.estado.oculta(par('ub-c', 'ub-d')), isFalse);
+    });
+
+    _conReloj('dado A←B esperando, cuando toco "Deshacer", B–C vuelve a la lista', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+      banco.notificador.deshacer();
+
+      expect(banco.estado.duplicadasEnCurso, isEmpty);
+      expect(banco.estado.oculta(par('ub-b', 'ub-c')), isFalse);
+    });
+
+    _conReloj('dado A←B ya hecha, B–C sigue escondido mientras la base lo saca', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      expect(banco.unidas, ['ub-a<-ub-b']);
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+      expect(banco.estado.oculta(par('ub-b', 'ub-c')), isTrue);
+    });
+
+    _conReloj('dado A←B que falla, B–C vuelve a la lista junto con A–B', (banco, reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      expect(banco.estado.duplicadasEnCurso, isEmpty);
+      expect(banco.estado.oculta(par('ub-b', 'ub-c')), isFalse);
+      expect(banco.estado.oculta(par('ub-a', 'ub-b')), isFalse);
+    });
+
+    _conReloj('dado A←B que falló, cuando la reintento, B–C se esconde de nuevo mientras corre', (
+      banco,
+      reloj,
+    ) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      banco.notificador.reintentar();
+
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+      expect(banco.estado.oculta(par('ub-b', 'ub-c')), isTrue);
+    });
+
+    _conReloj('dado A←B esperando y otro par C←D, cuando uno el segundo, las dos duplicadas se '
+        'esconden y "Deshacer" solo suelta la última', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+
+      expect(banco.estado.duplicadasEnCurso, {'ub-b', 'ub-d'});
+
+      banco.notificador.deshacer();
+
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+    });
+
+    _conReloj('dado que toco dos veces el mismo par, la duplicada se anota una sola vez', (
+      banco,
+      reloj,
+    ) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+    });
+  });
+
+  group('Seguimiento #340 · QA F3: la unión falla después de salir de la pantalla', () {
+    // `autoDispose` descarta al notificador por el planificador de Riverpod, que no pasa por el reloj
+    // falso: estos tests esperan de verdad el vaciado de la cola de eventos (la espera de 8 s no
+    // corre, porque salir la hace definitiva en el acto).
+    _Banco bancoAbierto() {
+      final banco = _Banco();
+      addTearDown(banco.cerrar);
+      return banco;
+    }
+
+    test(
+      'dado un par esperando, cuando salgo y la unión falla, la falla queda para la Lista',
+      () async {
+        final banco = bancoAbierto();
+        banco.datos.falloAlUnir = const FailureInesperado();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+        banco.salirDeLaPantalla();
+        await pumpEventQueue();
+
+        expect(banco.datos.uniones, hasLength(1), reason: 'al salir la unión se hizo definitiva');
+        expect(banco.fallidasAlSalir, [
+          FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado()),
+        ]);
+      },
+    );
+
+    test('dado un par esperando, cuando salgo y la unión anda, no queda nada que avisar', () async {
+      final banco = bancoAbierto();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+      banco.salirDeLaPantalla();
+      await pumpEventQueue();
+
+      expect(banco.unidas, ['ub-a<-ub-b']);
+      expect(banco.fallidasAlSalir, isEmpty);
+    });
+
+    test(
+      'dado que el puerto lanza al unir y salí, es una falla más: se avisa y nada revienta',
+      () async {
+        final banco = bancoAbierto();
+        banco.datos.lanzaAlUnir = StateError('disco');
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+        banco.salirDeLaPantalla();
+        await pumpEventQueue();
+
+        expect(banco.fallidasAlSalir.single.falla, isA<FailureInesperado>());
+      },
+    );
+
+    test('dado que la falla llega con la pantalla abierta, queda en la pantalla y no va a la '
+        'Lista', () {
+      fakeAsync((reloj) {
+        final banco = _Banco();
+        banco.datos.falloAlUnir = const FailureInesperado();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.falla, isNotNull);
+        expect(banco.fallidasAlSalir, isEmpty);
+        banco.cerrar();
+        reloj.flushMicrotasks();
+      });
+    });
+
+    test('dado que salí con la primera unión todavía corriendo, las dos corren de a una y las dos '
+        'fallas se avisan', () async {
+      final banco = bancoAbierto();
+      final espera = Completer<void>();
+      banco.datos.retenerUniones = espera;
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      banco.notificador.unir(_union('ub-c', 'ub-d')); // la primera se confirma ya
+      await pumpEventQueue();
+
+      banco.salirDeLaPantalla(); // la segunda también se confirma al salir
+      await pumpEventQueue();
+      banco.datos.falloAlUnir = const FailureInesperado();
+      espera.complete();
+      await pumpEventQueue();
+
+      expect(banco.datos.uniones, hasLength(2), reason: 'las dos corrieron, de a una');
+      expect(banco.fallidasAlSalir.map((f) => f.union.clavePar), ['ub-a|ub-b', 'ub-c|ub-d']);
+    });
+
+    test('dado que el mismo par falla dos veces fuera de la pantalla, queda una sola falla, la '
+        'última', () {
+      final contenedor = ProviderContainer();
+      addTearDown(contenedor.dispose);
+      final almacen = contenedor.read(unionesFallidasFueraDePantallaProvider.notifier);
+
+      almacen.registrar(
+        FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado()),
+      );
+      almacen.registrar(
+        FallaUnion(union: _union('ub-c', 'ub-d'), falla: const FailureInesperado()),
+      );
+      almacen.registrar(
+        FallaUnion(union: _union('ub-b', 'ub-a'), falla: const FailureConservadaDeBaja()),
+      );
+
+      final fallidas = contenedor.read(unionesFallidasFueraDePantallaProvider);
+      expect(fallidas.map((f) => f.union), [_union('ub-c', 'ub-d'), _union('ub-b', 'ub-a')]);
+    });
+
+    test('dado que se tocó "Revisar", cuando se olvidan las fallas, la lista queda vacía; y si ya '
+        'estaba vacía no cambia nada', () {
+      final contenedor = ProviderContainer();
+      addTearDown(contenedor.dispose);
+      var cambios = 0;
+      contenedor.listen(unionesFallidasFueraDePantallaProvider, (_, _) => cambios++);
+      final almacen = contenedor.read(unionesFallidasFueraDePantallaProvider.notifier);
+
+      almacen.olvidar();
+      expect(cambios, 0);
+
+      almacen.registrar(
+        FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado()),
+      );
+      almacen.olvidar();
+      almacen.olvidar();
+
+      expect(contenedor.read(unionesFallidasFueraDePantallaProvider), isEmpty);
+      expect(cambios, 2);
+    });
+
+    test('dado que la app se cerró, cuando llega una falla tardía, no se rompe nada', () {
+      final contenedor = ProviderContainer();
+      final almacen = contenedor.read(unionesFallidasFueraDePantallaProvider.notifier);
+      contenedor.dispose();
+
+      expect(() {
+        almacen.registrar(
+          FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado()),
+        );
+        almacen.olvidar();
+      }, returnsNormally);
+    });
+  });
+
+  group('Revisión r2 de #357 · lo que se decide pesa más que una unión que falló', () {
+    List<String> pares(_Banco banco) => [for (final f in banco.estado.fallas) f.union.clavePar];
+
+    /// A←B falló y no queda nada esperando.
+    void fallaDeAB(_Banco banco, FakeAsync reloj) {
+      banco.datos.falloAlUnir = const FailureInesperado();
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(pares(banco), ['ub-a|ub-b']);
+    }
+
+    _conReloj(
+      'dado la falla de A←B, cuando decido ese par ("Ignorar", "Son distintos"), la falla se '
+      'va y "Reintentar" no vuelve a unirlo',
+      (banco, reloj) {
+        fallaDeAB(banco, reloj);
+        banco.datos.falloAlUnir = null;
+
+        banco.notificador.olvidarFalla('ub-a|ub-b');
+        banco.notificador.reintentar();
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.fallas, isEmpty);
+        expect(banco.unidas, ['ub-a<-ub-b'], reason: 'solo el intento que falló, ninguno más');
+      },
+    );
+
+    _conReloj('dado dos fallas, cuando decido el par de una, se va solo esa y la otra se queda', (
+      banco,
+      reloj,
+    ) {
+      fallaDeAB(banco, reloj);
+      banco.notificador.unir(_union('ub-c', 'ub-d'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(pares(banco), ['ub-a|ub-b', 'ub-c|ub-d']);
+
+      banco.notificador.olvidarFalla('ub-c|ub-d');
+
+      expect(pares(banco), ['ub-a|ub-b']);
+    });
+
+    _conReloj('dado un par sin falla, cuando lo decido, no cambia nada', (banco, reloj) {
+      fallaDeAB(banco, reloj);
+      final antes = banco.estado;
+
+      banco.notificador.olvidarFalla('ub-x|ub-y');
+
+      expect(banco.estado, antes);
+    });
+
+    _conReloj(
+      'dado la falla de A←B, cuando el par ya no está para revisar, "Reintentar" no la corre '
+      'y la suelta',
+      (banco, reloj) {
+        fallaDeAB(banco, reloj);
+        banco.datos.falloAlUnir = null;
+
+        banco.notificador.reintentar(paresVigentes: const {'ub-c|ub-d'});
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.fallas, isEmpty);
+        expect(banco.unidas, ['ub-a<-ub-b'], reason: 'no se unió nada más');
+        expect(banco.estado.ocultas, isEmpty);
+      },
+    );
+
+    _conReloj('dado la falla de A←B y su par todavía para revisar, "Reintentar" la corre', (
+      banco,
+      reloj,
+    ) {
+      fallaDeAB(banco, reloj);
+      banco.datos.falloAlUnir = null;
+
+      banco.notificador.reintentar(paresVigentes: const {'ub-a|ub-b'});
+      reloj.flushMicrotasks();
+
+      expect(banco.unidas, ['ub-a<-ub-b', 'ub-a<-ub-b']);
+      expect(banco.estado.fallas, isEmpty);
+    });
+
+    _conReloj(
+      'dado una falla que no se puede reintentar, el par que ya no está no la borra: avisa algo '
+      'cierto',
+      (banco, reloj) {
+        banco.datos.falloAlUnir = const FailureConservadaDeBaja();
+        banco.notificador.unir(_union('ub-a', 'ub-b'));
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.fallasVigentes(const {}).map((f) => f.union.clavePar), ['ub-a|ub-b']);
+        banco.notificador.reintentar(paresVigentes: const {});
+        expect(pares(banco), ['ub-a|ub-b']);
+      },
+    );
+
+    test('las fallas vigentes: sin saber los pares valen todas; con ellos, solo las de pares que '
+        'siguen', () {
+      final estado = UnionesPendientesState(
+        fallas: [
+          FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado()),
+          FallaUnion(union: _union('ub-c', 'ub-d'), falla: const FailureInesperado()),
+        ],
+      );
+
+      expect(estado.fallasVigentes(null), estado.fallas);
+      expect(estado.fallasVigentes({'ub-c|ub-d'}), [estado.fallas.last]);
+      expect(estado.fallasVigentes(const {}), isEmpty);
+    });
+
+    _conReloj(
+      'dado un reintento de A←B en marcha, cuando pido C←A (da de baja a la que el reintento iba a '
+      'conservar) y el reintento vuelve a fallar, no deja su falla',
+      (banco, reloj) {
+        fallaDeAB(banco, reloj);
+
+        banco.notificador.reintentar();
+        expect(banco.estado.fallas, isEmpty, reason: 'al reintentar sale de la lista');
+        banco.notificador.unir(_union('ub-c', 'ub-a'));
+        reloj.flushMicrotasks();
+
+        expect(banco.estado.fallas, isEmpty, reason: 'el reintento reemplazado no deja aviso');
+        expect(banco.estado.ocultas, {'ub-a|ub-c'}, reason: 'solo el par nuevo, que espera');
+        banco.datos.falloAlUnir = null;
+        reloj.elapse(_ocho);
+        reloj.flushMicrotasks();
+        expect(banco.unidas, ['ub-a<-ub-b', 'ub-a<-ub-b', 'ub-c<-ub-a']);
+        expect(banco.estado.fallas, isEmpty);
+      },
+    );
+
+    _conReloj(
+      'dado un reintento de A←B en marcha, cuando pido otro par que no lo toca y el reintento vuelve '
+      'a fallar, la falla queda',
+      (banco, reloj) {
+        fallaDeAB(banco, reloj);
+
+        banco.notificador.reintentar();
+        banco.notificador.unir(_union('ub-c', 'ub-d'));
+        reloj.flushMicrotasks();
+
+        expect(pares(banco), ['ub-a|ub-b']);
+      },
+    );
+
+    _conReloj('dado un reintento reemplazado, cuando el mismo par se pide y falla otra vez, ese '
+        'intento nuevo sí avisa', (banco, reloj) {
+      fallaDeAB(banco, reloj);
+      banco.notificador.reintentar();
+      banco.notificador.unir(_union('ub-c', 'ub-a'));
+      reloj.flushMicrotasks();
+      expect(banco.estado.fallas, isEmpty);
+
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+
+      expect(pares(banco), ['ub-a|ub-c'], reason: 'C←A falló (sigue el fallo global) y avisa');
+    });
+  });
+
   group('Igualdad por valor (Equatable)', () {
     test('dado dos instancias con los mismos datos, son iguales; con otro dato, distintas', () {
       final falla = FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado());
@@ -435,6 +1134,19 @@ void main() {
       );
       expect(const UnionesPendientesState(), const UnionesPendientesState());
       expect(const UnionesPendientesState(), isNot(const UnionesPendientesState(ocultas: {'x'})));
+      expect(
+        const UnionesPendientesState(),
+        isNot(const UnionesPendientesState(duplicadasEnCurso: {'x'})),
+      );
+      expect(
+        UnionesPendientesState(fallas: [falla]),
+        UnionesPendientesState(
+          fallas: [FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado())],
+        ),
+      );
+      expect(const UnionesPendientesState(), isNot(UnionesPendientesState(fallas: [falla])));
+      expect(UnionesPendientesState(fallas: [falla]).falla, falla);
+      expect(const UnionesPendientesState().falla, isNull);
     });
   });
 }

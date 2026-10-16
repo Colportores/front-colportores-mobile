@@ -60,6 +60,7 @@ class AvisoAlta extends StatelessWidget {
     required this.texto,
     this.acciones,
     this.colorInsignia,
+    this.alturaMaxima,
   });
 
   final Color color;
@@ -70,38 +71,63 @@ class AvisoAlta extends StatelessWidget {
   final String texto;
   final Widget? acciones;
 
+  /// Lo más alto que puede ser el cuadro entero (borde incluido). Si el texto no entra, se desplaza
+  /// él solo (la insignia y el texto); el borde y las [acciones] quedan siempre enteros a la vista.
+  /// `null`: el cuadro crece lo que haga falta.
+  ///
+  /// Para el lector de pantalla el texto no se desplaza: el cuadro lo dice entero, de una vez, como
+  /// región viva, y las [acciones] siguen siendo botones aparte.
+  final double? alturaMaxima;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tope = alturaMaxima;
+    final cabecera = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InsigniaCirculo(color: colorInsignia ?? color, glyph: glyph),
+        const SizedBox(width: 10),
+        Expanded(child: Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45))),
+      ],
+    );
+    final cuadro = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (tope == null)
+            cabecera
+          else
+            // `primary: false`: la lista de abajo es la que usa el controlador principal. Sin semántica
+            // propia: un desplazamiento separaría el texto de la región viva (que lo dice por la
+            // etiqueta del cuadro, abajo) y el lector tendría que recorrerlo por partes.
+            Flexible(
+              child: ExcludeSemantics(
+                child: SingleChildScrollView(primary: false, child: cabecera),
+              ),
+            ),
+          if (acciones != null) ...[const SizedBox(height: 12), acciones!],
+        ],
+      ),
+    );
     return Semantics(
       liveRegion: true,
       container: true,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color, width: 1.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                InsigniaCirculo(color: colorInsignia ?? color, glyph: glyph),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
-                ),
-              ],
+      label: tope == null ? null : texto,
+      child: tope == null
+          ? cuadro
+          : ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: tope),
+              child: cuadro,
             ),
-            if (acciones != null) ...[const SizedBox(height: 12), acciones!],
-          ],
-        ),
-      ),
     );
   }
 }

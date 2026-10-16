@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
@@ -16,6 +17,7 @@ import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
+import '../providers/uniones_pendientes_notifier.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
@@ -298,11 +300,13 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
-  /// Abre «Posibles duplicados» (vista 10). Uno solo a la vez.
+  /// Abre «Posibles duplicados» (vista 10). Uno solo a la vez. Con «Revisar» la colportora ya va a
+  /// ver los pares: el aviso de una unión que falló fuera de la pantalla se da por leído.
   Future<void> _revisarDuplicados() async {
     if (_abriendoDuplicados) return;
     _abriendoDuplicados = true;
     try {
+      ref.read(unionesFallidasFueraDePantallaProvider.notifier).olvidar();
       final personalizado = widget.alRevisarDuplicados;
       if (personalizado != null) {
         await personalizado();
@@ -333,6 +337,23 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final lista = estado.lista;
     final sinUbicaciones = lista?.sinUbicaciones ?? false;
+    // Sin pares para revisar la Lista queda como siempre: la franja no ocupa ni un lugar entre las filas.
+    final hayDuplicados = ref.watch(cantidadParesParaRevisarProvider(widget.colportorId)) > 0;
+    // Una unión que falló cuando ya se había salido de «Posibles duplicados»: se anuncia aunque la Lista
+    // esté bajada y la franja (primer ítem del desplazamiento) no esté construida (WCAG 4.1.3). La
+    // franja no se anuncia sola mientras muestra una falla (`liveRegion` apagado en `_AvisoDuplicados`),
+    // así que sea cual sea el desplazamiento se oye una sola vez.
+    ref.listen(avisoUnionFallidaProvider(widget.colportorId), (anterior, nuevo) {
+      final llegoUna = nuevo.any((f) => !(anterior?.contains(f) ?? false));
+      if (!llegoUna) return;
+      unawaited(
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          _AvisoDuplicados.etiquetaDeFallas(nuevo),
+          Directionality.of(context),
+        ),
+      );
+    });
 
     return Stack(
       children: [
@@ -362,15 +383,18 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: _AvisoLectura(alReintentar: _notificador.reintentar),
               ),
-            if (!sinUbicaciones)
-              _AvisoDuplicados(
-                colportorId: widget.colportorId,
-                alRevisar: () => unawaited(_revisarDuplicados()),
-              ),
             Expanded(
               child: _Cuerpo(
                 estado: estado,
                 ahora: ahora,
+                // Lo primero de lo que se desplaza, no del encabezado fijo: a 320×568 con el texto al
+                // 200 % el encabezado ya ocupa casi toda la pantalla y la franja no entra (QA de #357).
+                avisoDuplicados: sinUbicaciones || !hayDuplicados
+                    ? null
+                    : _AvisoDuplicados(
+                        colportorId: widget.colportorId,
+                        alRevisar: () => unawaited(_revisarDuplicados()),
+                      ),
                 alAbrirUbicacion: widget.alAbrirUbicacion,
                 alReactivar: (item) => unawaited(_reactivar(item)),
                 alRegistrar: () => unawaited(_registrar()),
@@ -712,10 +736,15 @@ class _Cuerpo extends StatelessWidget {
     required this.alRegistrar,
     required this.notificador,
     required this.desplazamiento,
+    required this.avisoDuplicados,
   });
 
   final ListaUbicacionesState estado;
   final DateTime ahora;
+
+  /// «3 posibles duplicados · Revisar» (o el de la falla): va arriba de lo que se desplaza. No se
+  /// muestra mientras se lee la lista por primera vez ni cuando esa lectura falla.
+  final Widget? avisoDuplicados;
   final ValueChanged<String>? alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
   final VoidCallback alRegistrar;
@@ -766,6 +795,7 @@ class _Cuerpo extends StatelessWidget {
     }
     if (lista.soloBajas) {
       return _Centrado(
+        aviso: avisoDuplicados,
         children: [
           Semantics(
             header: true,
@@ -825,6 +855,7 @@ class _Cuerpo extends StatelessWidget {
     }
     if (lista.sinResultados) {
       return _Centrado(
+        aviso: avisoDuplicados,
         children: [
           Semantics(
             header: true,
@@ -851,16 +882,20 @@ class _Cuerpo extends StatelessWidget {
       );
     }
     final items = lista.items;
+    final aviso = avisoDuplicados;
+    final delAviso = aviso == null ? 0 : 1;
     return ListView.builder(
       key: const Key('lista_filas'),
       controller: desplazamiento,
       padding: const EdgeInsets.only(bottom: 88),
-      itemCount: items.length + (lista.hayMas ? 1 : 0),
+      itemCount: delAviso + items.length + (lista.hayMas ? 1 : 0),
       itemBuilder: (context, i) {
-        if (i == items.length) {
+        if (aviso != null && i == 0) return aviso;
+        final fila = i - delAviso;
+        if (fila == items.length) {
           return _PieCargandoMas(key: const ValueKey('pie'), alLlegar: notificador.cargarMas);
         }
-        final item = items[i];
+        final item = items[fila];
         final id = item.ubicacion.id;
         return FilaUbicacionLista(
           key: ValueKey(id),
@@ -875,22 +910,35 @@ class _Cuerpo extends StatelessWidget {
   }
 }
 
-/// El texto centrado de los estados sin filas (cargando aparte).
+/// El texto centrado de los estados sin filas (cargando aparte). Con [aviso] (la franja de posibles
+/// duplicados) este va arriba y el texto sigue debajo: todo se desplaza junto.
 class _Centrado extends StatelessWidget {
-  const _Centrado({required this.children});
+  const _Centrado({required this.children, this.aviso});
 
   final List<Widget> children;
+  final Widget? aviso;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(32, 16, 32, 88),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: children,
-        ),
+    final contenido = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: children,
+    );
+    const relleno = EdgeInsets.fromLTRB(32, 16, 32, 88);
+    final conAviso = aviso;
+    if (conAviso == null) {
+      return Center(
+        child: SingleChildScrollView(padding: relleno, child: contenido),
+      );
+    }
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          conAviso,
+          Padding(padding: relleno, child: contenido),
+        ],
       ),
     );
   }
@@ -971,29 +1019,51 @@ class _AvisoLectura extends StatelessWidget {
 
 /// «3 posibles duplicados · Revisar»: el aviso de la Lista mientras queden pares para revisar
 /// (HU-UBI-006, canvas de la vista 10). Lleva a «Posibles duplicados». Sin pares no ocupa lugar.
+///
+/// Si una unión falló cuando la colportora ya había salido de la pantalla (vio «quedaron unidas en
+/// una» y no pasó), el aviso dice «No pudimos unir Av. Italia 1234 · Revisar» en su lugar (QA r1 de
+/// #338, F3); con más de una, «No pudimos unir 2 pares · Revisar». Los pares siguen en «Revisar».
+///
+/// Es lo primero de lo que se desplaza en la Lista (no del encabezado fijo): con el texto agrandado
+/// en un teléfono chico el encabezado ya ocupa casi toda la pantalla.
 class _AvisoDuplicados extends ConsumerWidget {
   const _AvisoDuplicados({required this.colportorId, required this.alRevisar});
 
   final String colportorId;
   final VoidCallback alRevisar;
 
+  /// Lo que el lector de pantalla dice de la franja cuando hay [fallas]: «No pudimos unir Av. Italia
+  /// 1234. Revisar».
+  static String etiquetaDeFallas(List<FallaUnion> fallas) =>
+      '${TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])}. '
+      '${TextosPosiblesDuplicados.revisar}';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
     if (cantidad == 0) return const SizedBox.shrink();
-    final texto = TextosPosiblesDuplicados.avisoEnLista(cantidad);
+    final fallas = ref.watch(avisoUnionFallidaProvider(colportorId));
+    final hayFallas = fallas.isNotEmpty;
+    final texto = hayFallas
+        ? TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])
+        : TextosPosiblesDuplicados.avisoEnLista(cantidad);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Semantics(
         button: true,
-        liveRegion: true,
+        // Con una falla no es región viva: la Lista la anuncia ella (`ref.listen` de arriba), esté o no
+        // construida la franja, y así no se oye dos veces.
+        liveRegion: !hayFallas,
         label: '$texto. ${TextosPosiblesDuplicados.revisar}',
+        // La acción de tocar: sin ella el doble toque de TalkBack/VoiceOver no abre «Posibles
+        // duplicados» (QA de #357).
+        onTap: alRevisar,
         child: ExcludeSemantics(
           child: Material(
             color: const Color(0xFFFBF1DA),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
-              key: const Key('lista_aviso_duplicados'),
+              key: Key(hayFallas ? 'lista_aviso_union_fallida' : 'lista_aviso_duplicados'),
               borderRadius: BorderRadius.circular(12),
               onTap: alRevisar,
               child: ConstrainedBox(
