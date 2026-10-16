@@ -218,6 +218,40 @@ final class _ReenviosQueExplotan implements BloqueoReenvioVerificacionRepository
   Future<void> olvidarTodo() async => throw StateError('el almacén no responde');
 }
 
+/// Reenvíos guardados donde [olvidarTodo] puede quedar esperando a que el test lo suelte: la espera
+/// de una limpieza en medio de un cierre (#349, revisión del PR #368).
+final class _ReenviosConPuerta implements BloqueoReenvioVerificacionRepository {
+  _ReenviosConPuerta(this._real);
+
+  final BloqueoReenvioVerificacionRepository _real;
+  Completer<void>? puerta;
+  bool esperando = false;
+
+  @override
+  Future<ReenviosGuardados> leer({required DateTime ahora}) => _real.leer(ahora: ahora);
+
+  @override
+  Future<void> guardar(String correo, DateTime vence, {required DateTime ahora}) =>
+      _real.guardar(correo, vence, ahora: ahora);
+
+  @override
+  Future<void> guardarEspera(String correo, DateTime vence, {required DateTime ahora}) =>
+      _real.guardarEspera(correo, vence, ahora: ahora);
+
+  @override
+  Future<void> olvidar(String correo) => _real.olvidar(correo);
+
+  @override
+  Future<void> olvidarTodo() async {
+    if (puerta != null) {
+      esperando = true;
+      await puerta!.future;
+      esperando = false;
+    }
+    await _real.olvidarTodo();
+  }
+}
+
 class _SalidaEnMemoria extends LogOutput {
   final lineas = <String>[];
 
@@ -2222,6 +2256,122 @@ void main() {
           expect(container.read(avisoSesionProvider), const FailureSesionExpiradaPorInactividad());
           expect(await cierres.leer(), cierre(MotivoExpiracion.inactividad));
         });
+
+        // Revisión del PR #368: la limpieza de un cierre a propósito tiene esperas (el correo, los
+        // reenvíos guardados). Un fin de sesión que llega en una de ellas pone su aviso y espera al
+        // reloj; si el aviso y el motivo se retiran en momentos distintos, el guardado de ese fin
+        // de sesión llega después y deja el motivo en disco con el aviso ya retirado: el arranque
+        // siguiente avisaría tras un cierre a propósito.
+        group('un fin de sesión que llega en medio de la limpieza del cierre', () {
+          /// Entra con el reloj de la sesión retenible y con el olvido de los reenvíos guardados
+          /// detenido en una puerta.
+          Future<(_RelojPorTurnos, _ReenviosConPuerta)> entrarConLaLimpiezaRetenible() async {
+            final olvido = _ReenviosConPuerta(reenvios);
+            final reloj = _RelojPorTurnos(() => ahora);
+            container.dispose();
+            container = arrancar(reloj: reloj, relojRemoto: () => ahora, reenviosGuardados: olvido);
+            await entrar();
+            olvido.puerta = Completer<void>();
+            return (reloj, olvido);
+          }
+
+          /// Llega un fin de sesión mientras la limpieza espera, y la limpieza sigue.
+          Future<void> llegaUnFinEnMedioDeLaLimpieza(
+            _RelojPorTurnos reloj,
+            _ReenviosConPuerta olvido,
+            Future<Object?> limpieza,
+          ) async {
+            await pumpEventQueue();
+            expect(olvido.esperando, isTrue, reason: 'la limpieza está olvidando los reenvíos');
+            reloj.retener = true;
+            remote.simularExpiracion(MotivoExpiracion.revocada);
+            await pumpEventQueue();
+            expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+            olvido.puerta!.complete();
+            await limpieza;
+            reloj.turnos.single.complete(ahora);
+            await esperarCierreDeSesion();
+          }
+
+          test('«Cerrar sesión»: queda sin aviso, sin saludo y sin motivo guardado', () async {
+            final (reloj, olvido) = await entrarConLaLimpiezaRetenible();
+
+            await llegaUnFinEnMedioDeLaLimpieza(
+              reloj,
+              olvido,
+              container.read(sesionProvider.notifier).cerrarSesion(),
+            );
+
+            expect(container.read(sesionProvider).value, isNull);
+            expect(container.read(avisoSesionProvider), isNull);
+            expect(container.read(reingresoSesionProvider), isNull);
+            expect(await cierres.leer(), isNull, reason: 'el arranque siguiente no avisa');
+          });
+
+          test(
+            '«Borrar datos del teléfono»: queda sin aviso, sin saludo y sin motivo guardado',
+            () async {
+              final (reloj, olvido) = await entrarConLaLimpiezaRetenible();
+
+              await llegaUnFinEnMedioDeLaLimpieza(
+                reloj,
+                olvido,
+                container
+                    .read(sesionProvider.notifier)
+                    .borrarDatosLocales(incluirBackupDrive: false, reintento: true),
+              );
+
+              expect(container.read(sesionProvider).value, isNull);
+              expect(container.read(avisoSesionProvider), isNull);
+              expect(container.read(reingresoSesionProvider), isNull);
+              expect(await cierres.leer(), isNull, reason: 'el arranque siguiente no avisa');
+            },
+          );
+
+          test(
+            '«Cerrar sesión» cuando el use case lanza: queda igual, y el error se propaga',
+            () async {
+              final expiraciones = StreamController<MotivoExpiracion>.broadcast();
+              addTearDown(expiraciones.close);
+              final repo = _MockAuthRepository();
+              when(repo.sesionActual).thenAnswer((_) async => const Right(null));
+              when(repo.reintentarRevocacionPendiente).thenAnswer((_) async => const Right(unit));
+              when(() => repo.expiraciones).thenAnswer((_) => expiraciones.stream);
+              when(repo.cerrarSesion).thenThrow(const _FallaDeAlmacen());
+              final olvido = _ReenviosConPuerta(reenvios);
+              final reloj = _RelojPorTurnos(() => ahora);
+              container.dispose();
+              container = ProviderContainer(
+                overrides: [
+                  authRepositoryProvider.overrideWithValue(repo),
+                  databaseHelperProvider.overrideWithValue(helper),
+                  ultimoCorreoRepositoryProvider.overrideWithValue(correo),
+                  cierreForzadoRepositoryProvider.overrideWithValue(cierres),
+                  bloqueoReenvioVerificacionRepositoryProvider.overrideWithValue(olvido),
+                  relojSesionProvider.overrideWithValue(reloj),
+                ],
+              );
+              await container.read(sesionProvider.future);
+              olvido.puerta = Completer<void>();
+              final cierra = container.read(sesionProvider.notifier).cerrarSesion();
+              final propaga = expectLater(cierra, throwsA(isA<_FallaDeAlmacen>()));
+              await pumpEventQueue();
+              expect(olvido.esperando, isTrue, reason: 'la limpieza está olvidando los reenvíos');
+              reloj.retener = true;
+              expiraciones.add(MotivoExpiracion.revocada);
+              await pumpEventQueue();
+              expect(container.read(avisoSesionProvider), const FailureSesionRevocada());
+              olvido.puerta!.complete();
+              await propaga;
+              reloj.turnos.single.complete(ahora);
+              await esperarCierreDeSesion();
+
+              expect(container.read(avisoSesionProvider), isNull);
+              expect(container.read(reingresoSesionProvider), isNull);
+              expect(await cierres.leer(), isNull, reason: 'el arranque siguiente no avisa');
+            },
+          );
+        });
       });
 
       // #349: sin sesión que cerrar ni saludo previo, el fin de sesión deja el correo de la última
@@ -2279,6 +2429,19 @@ void main() {
               expect(container.read(reingresoSesionProvider), isNull);
             },
           );
+
+          test('la app se cierra mientras se lee el correo: al terminar la lectura no toca nada ni '
+              'falla', () async {
+            final puerta = await loginConElCorreoRetenido();
+            remote.simularExpiracion(MotivoExpiracion.revocada);
+            await pumpEventQueue();
+
+            container.dispose();
+            puerta.complete();
+            await pumpEventQueue();
+
+            container = arrancar();
+          });
 
           test('llega otro fin de sesión mientras se lee el correo: el saludo es el del último '
               'motivo, con el correo', () async {

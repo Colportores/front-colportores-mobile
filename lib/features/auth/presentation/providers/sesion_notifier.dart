@@ -235,10 +235,7 @@ class SesionNotifier extends _$SesionNotifier {
       'motivo': motivo.name,
       'hay_sesion_nueva': haySesionNueva,
     });
-    if (haySesionNueva && generacion == _generacionCierre) {
-      _retirarAvisoDelCierre();
-      unawaited(_borrarCierre());
-    }
+    if (haySesionNueva && generacion == _generacionCierre) unawaited(_retirarCierre());
     return false;
   }
 
@@ -384,9 +381,8 @@ class SesionNotifier extends _$SesionNotifier {
       // Cerrar a propósito: el correo de la última cuenta no se queda en el teléfono.
       if (!conservarCorreo) {
         await ref.read(ultimoCorreoRepositoryProvider).borrar();
-        await _borrarCierre();
         await _olvidarReenvios();
-        _retirarAvisoDelCierre();
+        await _retirarCierre();
       }
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
@@ -437,10 +433,9 @@ class SesionNotifier extends _$SesionNotifier {
     if (resultado.isRight()) {
       _olvidarPassword();
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
-      await _borrarCierre();
       // El borrado de datos ya vació la clave del almacén seguro; esto cubre el repositorio.
       await _olvidarReenvios();
-      _retirarAvisoDelCierre();
+      await _retirarCierre();
       state = const AsyncData(null);
     }
     return resultado;
@@ -475,33 +470,44 @@ class SesionNotifier extends _$SesionNotifier {
   /// (revisión del PR #130). Acá y no en la preparación de la DB, que puede no estar escuchando.
   void _olvidarPassword() => ref.read(passwordParaDbLocalProvider).olvidar();
 
-  /// Borra el correo de la última cuenta y el motivo del último cierre forzado cuando el cierre ya
-  /// está fallando: nada de lo que pase acá puede tapar el error original ni dejar la DB abierta,
-  /// y que falle uno no salta al otro.
+  /// Borra el correo de la última cuenta y el motivo del último cierre forzado (y retira su aviso)
+  /// cuando el cierre ya está fallando: nada de lo que pase acá puede tapar el error original ni
+  /// dejar la DB abierta, y que falle uno no salta al otro.
   Future<void> _borrarRastroDeLaCuenta() async {
     try {
       await ref.read(ultimoCorreoRepositoryProvider).borrar();
     } on Object {
       _log.warn(LogModulo.auth, 'ULTIMO_CORREO_BORRAR', 'no se pudo borrar el último correo');
     }
+    await _olvidarReenvios();
     try {
-      await _borrarCierre();
+      await _retirarCierre();
     } on Object {
       _log.warn(LogModulo.auth, 'CIERRE_FORZADO_BORRAR', 'no se pudo borrar el motivo del cierre');
     }
-    await _olvidarReenvios();
-    _retirarAvisoDelCierre();
   }
 
   /// Retira el aviso de «Sesión vencida» y el saludo del login cuando la persona cierra sesión a
   /// propósito o borra los datos del teléfono (#349): el fin de sesión que los fijó pudo llegar
   /// justo antes y seguir esperando el reloj (Keystore lento) para guardar su motivo, y a esa
   /// altura ya no corresponden (HU-AUTH-007: «Si en el medio la persona cerró sesión a propósito,
-  /// no queda aviso ni motivo»). Va después de los borrados y antes de dejar el aviso propio del
-  /// cierre sin conexión, que no es este.
+  /// no queda aviso ni motivo»). Va antes de dejar el aviso propio del cierre sin conexión, que no
+  /// es este. Se usa a través de [_retirarCierre].
   void _retirarAvisoDelCierre() {
     ref.read(avisoSesionProvider.notifier).descartar();
     ref.read(reingresoSesionProvider.notifier).limpiar();
+  }
+
+  /// Retira todo lo que dejó un fin de sesión: el aviso, el saludo y el motivo guardado. El orden
+  /// es lo que importa: el aviso se retira y la generación sube —lo que invalida el guardado de un
+  /// fin de sesión que sigue esperando al reloj, ver [_guardarCierre]— en el mismo instante, sin
+  /// una espera de por medio. Con una espera (borrar el correo, olvidar los reenvíos) entre una
+  /// cosa y la otra, un fin de sesión que llega ahí deja el motivo en disco aunque el aviso ya se
+  /// haya retirado, y el arranque siguiente avisa tras un cierre a propósito (revisión del PR #368).
+  /// Por eso va **al final** de las limpiezas con espera, y su propia espera es solo el borrado.
+  Future<void> _retirarCierre() {
+    _retirarAvisoDelCierre();
+    return _borrarCierre();
   }
 
   /// Olvida lo que el teléfono recuerda del reenvío del email de verificación (HU-AUTH-002, #325):
