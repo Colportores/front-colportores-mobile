@@ -330,9 +330,32 @@ void main() {
       variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
     );
 
+    // Decisión de Cristian/mapa §2 (16/10, PR #378): mientras busca el GPS todavía no se sabe si hay, así que
+    // el lector no dice «no hay GPS»: dice que está buscando.
     testWidgets(
-      '«Mi ubicación» pasa de la etiqueta con el motivo a «Mi ubicación» cuando llega la lectura '
-      'y no queda el motivo viejo',
+      '«Mi ubicación» buscando el GPS dice «Mi ubicación. No disponible: buscando GPS…», sin pista y '
+      'sin «no hay GPS»',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final gps = GpsFalso()..bloqueo = Completer<void>();
+        await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gps);
+
+        final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
+        expect(nodo.label, 'Mi ubicación. No disponible: buscando GPS…');
+        expect(nodo.hint, isEmpty);
+        expect(nodo.hasAction(SemanticsAction.tap), isFalse, reason: 'apagado no se toca');
+        expect(_lecturasDe(tester, 'buscando GPS'), 1, reason: 'el motivo se lee una sola vez');
+        expect(_lecturasDe(tester, 'no hay GPS'), 0, reason: 'no se afirma lo que no se sabe');
+        gps.bloqueo!.complete();
+        await asentarLista(tester);
+        semantica.dispose();
+      },
+      variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
+    );
+
+    testWidgets(
+      '«Mi ubicación» pasa de «buscando GPS…» a «Mi ubicación» cuando llega la lectura y no queda el '
+      'motivo viejo',
       (tester) async {
         final semantica = tester.ensureSemantics();
         final gps = GpsFalso()..bloqueo = Completer<void>();
@@ -340,7 +363,7 @@ void main() {
 
         expect(
           tester.getSemantics(botonMiUbicacion).label,
-          'Mi ubicación. No disponible: no hay GPS.',
+          'Mi ubicación. No disponible: buscando GPS…',
           reason: 'mientras no hay lectura, el botón está apagado y dice por qué',
         );
 
@@ -352,6 +375,32 @@ void main() {
         expect(nodo.hint, isEmpty);
         expect(nodo.hasAction(SemanticsAction.tap), isTrue);
         expect(_lecturasDe(tester, 'No disponible'), 0);
+        semantica.dispose();
+      },
+    );
+
+    testWidgets(
+      '«Mi ubicación» pasa de «buscando GPS…» a «no hay GPS» cuando la lectura falla y no queda el '
+      'motivo viejo',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final gps = gpsSinPermiso()..bloqueo = Completer<void>();
+        await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gps);
+
+        expect(
+          tester.getSemantics(botonMiUbicacion).label,
+          'Mi ubicación. No disponible: buscando GPS…',
+        );
+
+        gps.bloqueo!.complete();
+        await asentarLista(tester);
+
+        final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
+        expect(nodo.label, 'Mi ubicación. No disponible: no hay GPS.');
+        expect(nodo.hint, isEmpty);
+        expect(nodo.hasAction(SemanticsAction.tap), isFalse);
+        expect(_lecturasDe(tester, 'buscando GPS'), 0);
+        expect(_lecturasDe(tester, 'No disponible'), 1);
         semantica.dispose();
       },
     );
