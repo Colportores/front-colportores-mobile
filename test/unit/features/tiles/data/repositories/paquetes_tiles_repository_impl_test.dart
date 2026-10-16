@@ -3,6 +3,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/tiles/data/datasources/fakes/paquetes_tiles_en_memoria.dart';
 import 'package:colportores_mobile/features/tiles/data/datasources/paquetes_tiles_data_sources.dart';
 import 'package:colportores_mobile/features/tiles/data/repositories/paquetes_tiles_repository_impl.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:dartz/dartz.dart';
 import 'package:test/test.dart';
@@ -13,6 +14,7 @@ import '../../../../../helpers/tiles_falsos.dart';
 void main() {
   late CatalogoPaquetesTilesEnMemoria catalogo;
   late RegistroPaquetesDescargadosEnMemoria registro;
+  late DescargasPendientesEnMemoria pendientes;
   late ArchivosEnMemoria archivos;
   late PaquetesTilesRepositoryImpl repositorio;
   late DateTime ahora;
@@ -24,6 +26,7 @@ void main() {
     return PaquetesTilesRepositoryImpl(
       catalogo: remoto ?? catalogo,
       registro: registro,
+      pendientes: pendientes,
       archivos: archivos,
       checksum: ChecksumFalso(archivos),
       ahora: () => ahora,
@@ -44,6 +47,7 @@ void main() {
     ahora = DateTime(2026, 10, 7, 12);
     catalogo = CatalogoPaquetesTilesEnMemoria([paquete]);
     registro = RegistroPaquetesDescargadosEnMemoria();
+    pendientes = DescargasPendientesEnMemoria();
     archivos = ArchivosEnMemoria()..ahora = ahora;
     repositorio = crear();
   });
@@ -331,6 +335,206 @@ void main() {
       final resultado = await repositorio.reconciliar();
 
       expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+    });
+  });
+
+  group('descargas pendientes (#300)', () {
+    final parcial = '/tiles/${paquete.claveDeParte(0)}.pmtiles.part';
+
+    DescargaPendiente anotada({
+      PaqueteTiles? cual,
+      Duration hace = Duration.zero,
+      bool datos = false,
+    }) => DescargaPendiente(
+      paquete: cual ?? paquete,
+      anotadaEn: ahora.subtract(hace),
+      permitirDatosMoviles: datos,
+    );
+
+    /// Deja un `.part` con [edad] sin tocarse, como el de una descarga cortada.
+    void dejarParcial({Duration edad = const Duration(hours: 1), PaqueteTiles? cual}) {
+      final ruta = '/tiles/${(cual ?? paquete).claveDeParte(0)}.pmtiles.part';
+      archivos.contenido[ruta] = bytes.sublist(0, 4);
+      archivos.modificados[ruta] = ahora.subtract(edad);
+    }
+
+    test(
+      'anotar y leer: devuelve lo anotado, y una anotada de nuevo reemplaza a la anterior',
+      () async {
+        await repositorio.anotarDescargaPendiente(anotada());
+        await repositorio.anotarDescargaPendiente(anotada(datos: true));
+
+        final resultado = await repositorio.descargasPendientes();
+
+        expect(resultado.getOrElse(() => fail('Left')), [anotada(datos: true)]);
+      },
+    );
+
+    test('olvidar saca esa descarga; olvidar una que no está no hace nada', () async {
+      await repositorio.anotarDescargaPendiente(anotada());
+
+      expect(await repositorio.olvidarDescargaPendiente('otra'), const Right<Failure, Unit>(unit));
+      expect((await repositorio.descargasPendientes()).getOrElse(() => fail('Left')), hasLength(1));
+      expect(
+        await repositorio.olvidarDescargaPendiente(paquete.id),
+        const Right<Failure, Unit>(unit),
+      );
+
+      expect((await repositorio.descargasPendientes()).getOrElse(() => fail('Left')), isEmpty);
+    });
+
+    test('las de 7 días o más no se informan', () async {
+      final otro = paqueteDe(bytesDePrueba(10, semilla: 9), id: 'ciudad-mvd');
+      await repositorio.anotarDescargaPendiente(anotada(hace: const Duration(days: 7)));
+      await repositorio.anotarDescargaPendiente(
+        anotada(cual: otro, hace: const Duration(days: 6, hours: 23)),
+      );
+
+      final resultado = await repositorio.descargasPendientes();
+
+      expect(resultado.getOrElse(() => fail('Left')).map((d) => d.id), ['ciudad-mvd']);
+    });
+
+    test(
+      'dado que el manifiesto falla, leer, anotar y olvidar devuelven Left y no lanzan',
+      () async {
+        pendientes.fallarCon = StateError('disco');
+
+        final leer = await repositorio.descargasPendientes();
+        final anotar = await repositorio.anotarDescargaPendiente(anotada());
+        final olvidar = await repositorio.olvidarDescargaPendiente(paquete.id);
+
+        for (final resultado in [leer, anotar, olvidar]) {
+          expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+        }
+      },
+    );
+
+    group('reconciliar', () {
+      test('olvida la descarga a los 7 días, igual que el .part, y no antes', () async {
+        final otro = paqueteDe(bytesDePrueba(10, semilla: 9), id: 'ciudad-mvd');
+        await pendientes.guardar(anotada(hace: PaquetesTilesRepositoryImpl.vigenciaParcial));
+        await pendientes.guardar(
+          anotada(
+            cual: otro,
+            hace: PaquetesTilesRepositoryImpl.vigenciaParcial - const Duration(minutes: 1),
+          ),
+        );
+
+        await repositorio.reconciliar();
+
+        expect((await pendientes.leer()).map((d) => d.id), ['ciudad-mvd']);
+      });
+
+      test('el vencimiento de la descarga es el del .part', () {
+        expect(DescargaPendiente.vigencia, PaquetesTilesRepositoryImpl.vigenciaParcial);
+      });
+
+      test('conserva el .part de una descarga vigente aunque tenga 7 días sin tocarse', () async {
+        await pendientes.guardar(anotada(hace: const Duration(days: 2)));
+        dejarParcial(edad: const Duration(days: 8));
+
+        await repositorio.reconciliar();
+
+        expect(archivos.contenido, contains(parcial));
+        expect(await pendientes.leer(), [anotada(hace: const Duration(days: 2))]);
+      });
+
+      test('borra el .part de una descarga vencida si ya tiene 7 días sin tocarse', () async {
+        await pendientes.guardar(anotada(hace: const Duration(days: 8)));
+        dejarParcial(edad: const Duration(days: 8));
+
+        await repositorio.reconciliar();
+
+        expect(archivos.contenido, isEmpty);
+        expect(await pendientes.leer(), isEmpty);
+      });
+
+      test('conserva el .part de una descarga vencida si se tocó hace poco: lo limpia la vigencia '
+          'del .part, no la de la descarga', () async {
+        await pendientes.guardar(anotada(hace: const Duration(days: 8)));
+        dejarParcial(edad: const Duration(days: 2));
+
+        await repositorio.reconciliar();
+
+        expect(archivos.contenido, contains(parcial));
+        expect(await pendientes.leer(), isEmpty);
+      });
+
+      test('un .part de otro paquete, sin descarga pendiente, sigue la regla de siempre', () async {
+        final otro = paqueteDe(bytesDePrueba(10, semilla: 9), id: 'ciudad-mvd');
+        await pendientes.guardar(anotada());
+        dejarParcial(edad: const Duration(days: 8), cual: otro);
+
+        await repositorio.reconciliar();
+
+        expect(archivos.contenido, isEmpty);
+        expect(await pendientes.leer(), [anotada()]);
+      });
+
+      test('protege el .part de cada parte de un paquete en dos archivos', () async {
+        final partes = [bytesDePrueba(8), bytesDePrueba(6, semilla: 9)];
+        final ciudad = paqueteEnPartes(partes);
+        await pendientes.guardar(anotada(cual: ciudad));
+        for (var i = 0; i < 2; i++) {
+          final ruta = '/tiles/${ciudad.claveDeParte(i)}.pmtiles.part';
+          archivos.contenido[ruta] = partes[i];
+          archivos.modificados[ruta] = ahora.subtract(const Duration(days: 9));
+        }
+
+        await repositorio.reconciliar();
+
+        expect(archivos.contenido, hasLength(2));
+      });
+
+      test('olvida la descarga de un paquete que ya está descargado con esa versión (la app se '
+          'cerró entre registrarlo y olvidarla)', () async {
+        await instalar(descargado, [bytes]);
+        await pendientes.guardar(anotada());
+
+        await repositorio.reconciliar();
+
+        expect(await pendientes.leer(), isEmpty);
+        expect(await registro.leer(), [descargado]);
+        expect(archivos.contenido, contains(descargado.rutas.single));
+      });
+
+      test('conserva la descarga de otra versión del paquete que ya está descargado', () async {
+        final nueva = paqueteDe(bytesDePrueba(10, semilla: 9));
+        await instalar(descargado, [bytes]);
+        await pendientes.guardar(anotada(cual: nueva));
+
+        await repositorio.reconciliar();
+
+        expect((await pendientes.leer()).map((d) => d.paquete.version), [nueva.version]);
+      });
+
+      test('conserva la descarga si el paquete descargado no pasa el chequeo (se trata como no '
+          'bajado)', () async {
+        await instalar(descargado, [bytes.sublist(0, 6)]);
+        await pendientes.guardar(anotada());
+
+        await repositorio.reconciliar();
+
+        expect(await pendientes.leer(), [anotada()]);
+        expect(await registro.leer(), isEmpty);
+      });
+
+      test(
+        'dado que el manifiesto de descargas falla, igual limpia lo demás y devuelve Right',
+        () async {
+          archivos.contenido['/tiles/viejo-p1-aaaaaaaaaaaa.pmtiles'] = [1];
+          archivos.modificados['/tiles/viejo-p1-aaaaaaaaaaaa.pmtiles'] = ahora.subtract(
+            PaquetesTilesRepositoryImpl.gracia,
+          );
+          pendientes.fallarCon = StateError('disco');
+
+          final resultado = await repositorio.reconciliar();
+
+          expect(resultado.isRight(), isTrue);
+          expect(archivos.contenido, isEmpty);
+        },
+      );
     });
   });
 }

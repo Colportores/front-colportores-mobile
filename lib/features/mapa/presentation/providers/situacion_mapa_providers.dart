@@ -7,6 +7,7 @@ import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../tiles/domain/entities/estado_descarga.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
+import '../../../tiles/domain/services/descargador_paquetes_tiles.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../../tiles/domain/usecases/descarga_paquete_tiles_use_cases.dart';
 import '../../../tiles/presentation/providers/tiles_providers.dart';
@@ -252,6 +253,12 @@ final class EstadoSolicitudMapa extends Equatable {
 /// colportor salga y vuelva. Pedir de nuevo un mapa que ya está en cola no lo encola otra vez
 /// (`DescargadorPaquetesTiles` ya deduplica), y mientras está en cola o bajando los botones quedan
 /// deshabilitados.
+///
+/// Arranca desde lo que el descargador ya tiene en marcha para el ámbito: una descarga que se
+/// retomó al abrir la app (HU-SYNC-010, «La descarga sigue después de cerrar la app») está en cola
+/// o bajando antes de que exista la vista, y sin conexión el catálogo no dice qué paquete era. Si
+/// esa retoma falló de forma terminal (un 404, un archivo que no valida, falta de lugar), la
+/// tarjeta muestra la falla de siempre hasta que el colportor vuelva a tocar «Descargar mapa».
 final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
   SolicitudMapaNotifier(this.ambito);
 
@@ -260,6 +267,12 @@ final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
   /// El último paquete que el catálogo trajo para el ámbito: con él se puede encolar la descarga
   /// aunque ahora no haya conexión.
   PaqueteTiles? _paquete;
+
+  /// Las descargas que ya se vieron de este ámbito. Una descarga retomada al abrir la app puede ser
+  /// de una versión que el catálogo ya no trae, o el catálogo puede no haber llegado todavía: se la
+  /// reconoce por lo que el descargador sabe de ella, y se la recuerda para no perder el aviso de
+  /// su final (el descargador la olvida al eliminarla).
+  final _ids = <String>{};
 
   @override
   EstadoSolicitudMapa build() {
@@ -271,13 +284,42 @@ final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
     });
     _paquete = _delCatalogo(ref.read(paqueteDelAmbitoProvider(ambito))) ?? _paquete;
     ref.listen(estadosDescargaTilesProvider, (_, nuevo) {
-      final paquete = _paquete;
-      if (paquete == null) return;
-      if (nuevo case AsyncData(:final value) when value.paqueteId == paquete.id) {
+      if (nuevo case AsyncData(:final value) when _esDeEsteAmbito(value.paqueteId)) {
         state = _segunEstado(state, value);
       }
     });
-    return const EstadoSolicitudMapa();
+    return _delDescargador();
+  }
+
+  /// En qué está la descarga que el descargador ya tiene en marcha para el ámbito, si hay alguna.
+  EstadoSolicitudMapa _delDescargador() {
+    const vacio = EstadoSolicitudMapa();
+    final descargador = _descargador();
+    final paquete = descargador?.paqueteEnMarchaQueCubre(ambito);
+    if (descargador == null || paquete == null) return vacio;
+    _ids.add(paquete.id);
+    if (descargador.estaDescargando(paquete.id)) return vacio.copiar(bajando: true);
+    final estado = descargador.estadoDe(paquete.id);
+    return estado == null ? vacio : _segunEstado(vacio, estado);
+  }
+
+  /// `true` si [paqueteId] es la descarga de este ámbito: la del paquete que trajo el catálogo, o
+  /// una que el descargador tiene y cubre el lugar (la retomada al abrir la app).
+  bool _esDeEsteAmbito(String paqueteId) {
+    if (_ids.contains(paqueteId)) return true;
+    final delCatalogo = _paquete?.id == paqueteId;
+    final delDescargador = _descargador()?.paqueteDe(paqueteId)?.cubre(ambito) ?? false;
+    if (!delCatalogo && !delDescargador) return false;
+    _ids.add(paqueteId);
+    return true;
+  }
+
+  DescargadorPaquetesTiles? _descargador() {
+    try {
+      return ref.read(descargadorPaquetesTilesProvider);
+    } on Object {
+      return null;
+    }
   }
 
   static PaqueteTiles? _delCatalogo(AsyncValue<PaqueteDelAmbito> consulta) => switch (consulta) {
@@ -357,21 +399,11 @@ final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
         : _segunEstado(siguiente, actual);
   }
 
-  bool _estaDescargando(PaqueteTiles paquete) {
-    try {
-      return ref.read(descargadorPaquetesTilesProvider).estaDescargando(paquete.id);
-    } on Object {
-      return false;
-    }
-  }
+  bool _estaDescargando(PaqueteTiles paquete) =>
+      _descargador()?.estaDescargando(paquete.id) ?? false;
 
-  EstadoDescarga? _estadoDelDescargador(PaqueteTiles paquete) {
-    try {
-      return ref.read(descargadorPaquetesTilesProvider).estadoDe(paquete.id);
-    } on Object {
-      return null;
-    }
-  }
+  EstadoDescarga? _estadoDelDescargador(PaqueteTiles paquete) =>
+      _descargador()?.estadoDe(paquete.id);
 }
 
 final solicitudMapaProvider =

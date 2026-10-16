@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/repositories/paquetes_tiles_repository.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -36,10 +37,15 @@ final class EspacioFalso implements MedidorEspacioDisco {
   /// Las lecturas después de la primera lanzan (la plataforma no contesta).
   bool lanzaDespuesDeLaPrimera = false;
 
+  /// Si no es null, `bytesLibres` espera a que se complete antes de contestar: la descarga queda
+  /// «preparándose» (para probar lo que pasa mientras todavía no arrancó).
+  Completer<void>? retener;
+
   int _lecturas = 0;
 
   @override
   Future<int> bytesLibres() async {
+    await retener?.future;
     if (_lecturas++ == 0) return libres;
     if (lanzaDespuesDeLaPrimera) throw StateError('la plataforma no contesta');
     return libresDespuesDeLaPrimera ?? libres;
@@ -369,8 +375,19 @@ final class RepositorioTilesEnMemoria implements PaquetesTilesRepository {
   Failure? falloDescargados;
   Failure? falloRegistrar;
   Failure? falloQuitar;
+  Failure? falloPendientes;
   int reconciliaciones = 0;
   final _descargados = <String, PaqueteDescargado>{};
+  final _pendientes = <String, DescargaPendiente>{};
+
+  /// Las descargas pendientes anotadas, en orden (#300).
+  List<DescargaPendiente> get pendientes => _pendientes.values.toList();
+
+  /// Cuántas veces se anotó o se actualizó una descarga pendiente.
+  int anotaciones = 0;
+
+  /// Si no es null, las anotaciones esperan a que se complete (para probar escrituras en vuelo).
+  Completer<void>? retenerAnotaciones;
   final _avisos = StreamController<void>.broadcast(sync: true);
 
   List<PaqueteDescargado> get registrados => _descargados.values.toList();
@@ -417,6 +434,30 @@ final class RepositorioTilesEnMemoria implements PaquetesTilesRepository {
     if (fallo != null) return Left(fallo);
     _descargados.remove(paqueteId);
     _avisos.add(null);
+    return const Right(unit);
+  }
+
+  @override
+  Future<Either<Failure, List<DescargaPendiente>>> descargasPendientes() async {
+    final fallo = falloPendientes;
+    return fallo == null ? Right(pendientes) : Left(fallo);
+  }
+
+  @override
+  Future<Either<Failure, Unit>> anotarDescargaPendiente(DescargaPendiente pendiente) async {
+    final fallo = falloPendientes;
+    if (fallo != null) return Left(fallo);
+    await retenerAnotaciones?.future;
+    anotaciones++;
+    _pendientes[pendiente.id] = pendiente;
+    return const Right(unit);
+  }
+
+  @override
+  Future<Either<Failure, Unit>> olvidarDescargaPendiente(String paqueteId) async {
+    final fallo = falloPendientes;
+    if (fallo != null) return Left(fallo);
+    _pendientes.remove(paqueteId);
     return const Right(unit);
   }
 

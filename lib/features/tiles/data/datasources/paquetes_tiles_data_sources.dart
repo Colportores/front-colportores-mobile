@@ -1,3 +1,4 @@
+import '../../domain/entities/descarga_pendiente.dart';
 import '../../domain/entities/paquete_tiles.dart';
 
 /// De dónde sale el catálogo de paquetes PMTiles (HU-SYNC-010): el `catalogo.json` del bucket
@@ -17,6 +18,21 @@ abstract interface class RegistroPaquetesDescargadosLocalDataSource {
 
   /// Reemplaza al anterior con el mismo id.
   Future<void> guardar(PaqueteDescargado descargado);
+
+  /// Si no estaba, no hace nada.
+  Future<void> quitar(String paqueteId);
+}
+
+/// Dónde quedan anotadas las descargas que el colportor pidió y todavía no terminaron (HU-SYNC-010,
+/// «La descarga sigue después de cerrar la app», #300): un manifiesto JSON junto a `registro.json`
+/// (`DescargasPendientesJson`). `DescargasPendientesEnMemoria` sirve para los tests y para el modo
+/// demo.
+abstract interface class DescargasPendientesLocalDataSource {
+  /// Todas las anotadas, vencidas o no: decidir cuáles siguen vigentes es del repositorio.
+  Future<List<DescargaPendiente>> leer();
+
+  /// Reemplaza a la anterior con el mismo id.
+  Future<void> guardar(DescargaPendiente pendiente);
 
   /// Si no estaba, no hace nada.
   Future<void> quitar(String paqueteId);

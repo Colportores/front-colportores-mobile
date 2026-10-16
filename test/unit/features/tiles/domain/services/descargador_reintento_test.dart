@@ -8,6 +8,7 @@
 // del `fakeAsync` para que los eventos y los temporizadores corran en esa misma zona.
 import 'dart:async';
 
+import 'package:colportores_mobile/features/tiles/domain/entities/descarga_pendiente.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/estado_descarga.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/descargador_paquetes_tiles.dart';
@@ -73,8 +74,25 @@ final class Entorno {
     dejarCorrer();
   }
 
+  /// La app que se abre con la descarga anotada de la vez anterior: lo que `ComposicionTiles` hace
+  /// al arrancar (HU-SYNC-010, #300).
+  void abrirLaAppConLoAnotado() {
+    Future<void> abrir() async {
+      await repositorio.anotarDescargaPendiente(
+        DescargaPendiente(paquete: paquete, anotadaEn: DateTime.now(), permitirDatosMoviles: true),
+      );
+      await descargador.retomarPendientes();
+    }
+
+    unawaited(abrir());
+    dejarCorrer();
+  }
+
   /// Cuántos pedidos al servidor hubo.
   int get pedidos => servidor.pedidos.length;
+
+  /// Lo que quedó anotado para retomar al abrir la app.
+  List<String> get anotadas => repositorio.pendientes.map((d) => d.id).toList();
 }
 
 /// Un test con su entorno, adentro de un `fakeAsync`; al final cierra el descargador.
@@ -284,6 +302,148 @@ void main() {
       e.pasar(diezMinutos);
       expect(e.servidor.pedidos, [0]);
     });
+  });
+
+  group('un error del servidor en lo que la app retoma sola cuenta como un corte (#300)', () {
+    probar('dado un 503 al abrir la app, la descarga sigue en cola y anotada y reintenta con la '
+        'espera creciente: 30 s, 1 min y 2 min, y al volver el servidor termina', (e) {
+      e.servidor.statusError = 503;
+
+      e.abrirLaAppConLoAnotado();
+
+      expect(e.estado, e.pausadaPorCorte(0));
+      expect(e.pedidos, 1);
+      expect(e.anotadas, [e.paquete.id]);
+      var esperado = 1;
+      for (final espera in const [
+        Duration(seconds: 30),
+        Duration(minutes: 1),
+        Duration(minutes: 2),
+      ]) {
+        e.pasar(espera - unSegundo);
+        expect(e.pedidos, esperado, reason: 'un segundo antes de los $espera');
+        e.pasar(unSegundo);
+        esperado++;
+        expect(e.pedidos, esperado, reason: 'a los $espera');
+        expect(e.estado, e.pausadaPorCorte(0));
+        expect(e.anotadas, [e.paquete.id]);
+      }
+      e.servidor.statusError = null;
+      e.pasar(const Duration(minutes: 5));
+      expect(e.estado, isA<DescargaCompletada>());
+      expect(e.repositorio.registrados, [descargadoDe(e.paquete)]);
+      expect(e.anotadas, isEmpty);
+    });
+
+    for (final status in const [500, 502, 599]) {
+      probar('dado un $status al abrir la app, también sigue en cola y anotada', (e) {
+        e.servidor.statusError = status;
+
+        e.abrirLaAppConLoAnotado();
+
+        expect(e.estado, e.pausadaPorCorte(0));
+        expect(e.anotadas, [e.paquete.id]);
+      });
+    }
+
+    for (final status in const [400, 403, 404]) {
+      probar('dado un $status al abrir la app, que se repetiría, la descarga falla y se olvida: no '
+          'reintenta', (e) {
+        e.servidor.statusError = status;
+
+        e.abrirLaAppConLoAnotado();
+
+        expect(e.estado, isA<DescargaFallida>());
+        expect(e.anotadas, isEmpty);
+        e.pasar(diezMinutos);
+        expect(e.pedidos, 1);
+      });
+    }
+
+    probar('dado un 503 que el colportor ve tras su toque, falla como siempre: sin reintento y sin '
+        'anotar', (e) {
+      e.servidor.statusError = 503;
+
+      e.descargar();
+
+      expect(e.estado, isA<DescargaFallida>());
+      expect(e.anotadas, isEmpty);
+      e.pasar(diezMinutos);
+      expect(e.pedidos, 1);
+    });
+
+    probar(
+      'dado que la descarga esperaba la conexión y vuelve con un 503, sigue en cola, anotada y '
+      'reintenta a los 30 s',
+      (e) {
+        e.conectividad.tipo = TipoConexion.sinConexion;
+        e.descargar(esperarConexion: true);
+        e.servidor.statusError = 503;
+
+        e.conectividad.cambiarA(TipoConexion.wifi);
+        e.dejarCorrer();
+
+        expect(e.estado, e.pausadaPorCorte(0));
+        expect(e.pedidos, 1);
+        expect(e.anotadas, [e.paquete.id]);
+        e.servidor.statusError = null;
+        e.pasar(treintaSegundos);
+        expect(e.estado, isA<DescargaCompletada>());
+        expect(e.anotadas, isEmpty);
+      },
+    );
+
+    probar('dado que se cortó a mitad y el reintento recibe un 503, sigue en cola con lo que ya '
+        'bajó, y el reintento siguiente la completa', (e) {
+      e.servidor.cortarDespuesDe = 3000;
+      e.descargar();
+      expect(e.estado, e.pausadaPorCorte(3000));
+      e.servidor.statusError = 503;
+
+      e.pasar(treintaSegundos);
+
+      expect(e.estado, e.pausadaPorCorte(3000));
+      expect(e.pedidos, 2);
+      expect(e.anotadas, [e.paquete.id]);
+      e.servidor.statusError = null;
+      e.pasar(const Duration(minutes: 1));
+      expect(e.servidor.pedidos, [0, 3000, 3000]);
+      expect(e.estado, isA<DescargaCompletada>());
+      expect(e.archivos.contenido[rutaFinalDe(e.paquete, 0)], e.bytes);
+    });
+
+    probar('dado un 503 al abrir y que el colportor la pide de nuevo, un nuevo 503 es la falla de '
+        'siempre', (e) {
+      e.servidor.statusError = 503;
+      e.abrirLaAppConLoAnotado();
+      expect(e.estado, e.pausadaPorCorte(0));
+
+      e.descargar(esperarConexion: true);
+
+      expect(e.estado, isA<DescargaFallida>());
+      expect(e.anotadas, isEmpty);
+      e.pasar(diezMinutos);
+      expect(e.pedidos, 2);
+    });
+
+    probar(
+      'dado que la retoma falló al abrir con un 404, la tarjeta la sigue contando hasta que el '
+      'colportor la pide de nuevo',
+      (e) {
+        const ambito = AmbitoTrabajo(zonaId: 'z-1');
+        e.servidor.statusError = 404;
+        e.abrirLaAppConLoAnotado();
+        expect(e.estado, isA<DescargaFallida>());
+        expect(e.descargador.paqueteEnMarchaQueCubre(ambito), e.paquete);
+        expect(e.descargador.paqueteEnMarchaQueCubre(const AmbitoTrabajo(zonaId: 'z-9')), isNull);
+
+        e.servidor.statusError = 503;
+        e.descargar(esperarConexion: true);
+
+        expect(e.estado, isA<DescargaFallida>());
+        expect(e.descargador.paqueteEnMarchaQueCubre(ambito), isNull);
+      },
+    );
   });
 
   test('con esperas cortas de verdad el reintento termina de bajar el archivo', () async {
