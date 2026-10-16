@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 
 const _incompleto = 'Revisá el email: parece incompleto.';
@@ -164,9 +165,8 @@ void main() {
 
   group('QA #272 · vista 14 · casos límite de entrada que faltaban', () {
     for (final email in ['lucíá.ñandú@correo.com', 'lucia😀@correo.com']) {
-      testWidgets('«$email» (Ñ, acentos o emoji): no rompe la pantalla y no revela nada', (
-        tester,
-      ) async {
+      testWidgets('«$email» (Ñ, acentos o emoji): no rompe la pantalla, avisa lo del carácter y no '
+          'se manda (#353)', (tester) async {
         final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
         await _montar(tester, remote, tamano: const Size(360, 640));
         await _escribir(tester, email);
@@ -174,11 +174,12 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
-        // O la valida y manda el neutro, o dice «parece incompleto»: nunca otra cosa.
-        expect(
-          find.text(_mensajeNeutro).evaluate().length + find.text(_incompleto).evaluate().length,
-          1,
-        );
+        // Supabase rechaza ese email (400): la pantalla lo avisa en el campo y no manda nada, ni el
+        // neutro ni «parece incompleto».
+        expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+        expect(find.text(_mensajeNeutro), findsNothing);
+        expect(find.text(_incompleto), findsNothing);
+        expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
       });
     }
 

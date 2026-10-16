@@ -6,6 +6,8 @@ import 'package:dartz/dartz.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
+import '../../../../../helpers/casos_email.dart';
+
 class _MockAuthRepository extends Mock implements AuthRepository {}
 
 void main() {
@@ -31,6 +33,19 @@ void main() {
         expect(resultado, const Right<Failure, Unit>(unit));
         verify(() => repository.reenviarVerificacion(email: 'ana@example.com')).called(1);
       });
+
+      for (final email in emailsValidosRaros) {
+        test('cuando el email es «$email» (raro pero válido), llega al repositorio', () async {
+          when(
+            () => repository.reenviarVerificacion(email: any(named: 'email')),
+          ).thenAnswer((_) async => const Right(unit));
+
+          final resultado = await useCase(ReenviarVerificacionParams(email: email));
+
+          expect(resultado, const Right<Failure, Unit>(unit));
+          verify(() => repository.reenviarVerificacion(email: email.toLowerCase())).called(1);
+        });
+      }
 
       test('cuando el repositorio falla, propaga el Failure sin transformarlo', () async {
         when(() => repository.reenviarVerificacion(email: any(named: 'email'))).thenAnswer(
@@ -70,6 +85,29 @@ void main() {
         );
         verifyNever(() => repository.reenviarVerificacion(email: any(named: 'email')));
       });
+
+      Future<void> afirmarEmailInvalido(String email, String texto) async {
+        final resultado = await useCase(ReenviarVerificacionParams(email: email));
+
+        expect(resultado, Left<Failure, Unit>(FailureValidacion(campos: {'email': texto})));
+        verifyNever(() => repository.reenviarVerificacion(email: any(named: 'email')));
+      }
+
+      for (final email in emailsIncompletos) {
+        test(
+          'cuando el email «$email» está incompleto, marca el campo email con el texto de la '
+          'pantalla',
+          () => afirmarEmailInvalido(email, 'El email no es válido'),
+        );
+      }
+
+      for (final email in emailsConCaracterNoPermitido) {
+        test(
+          'cuando el email «$email» lleva un carácter que no va, avisa lo mismo que las otras '
+          'pantallas',
+          () => afirmarEmailInvalido(email, avisoCaracterNoPermitido),
+        );
+      }
     });
   });
 }

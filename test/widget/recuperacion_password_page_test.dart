@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/logger_mudo.dart';
 
@@ -248,7 +249,7 @@ void main() {
       expect(_enviar(tester).onPressed, isNotNull);
     });
 
-    for (final email in ['lucia', 'lucia@', 'lucia@correo', 'lu cia@correo.com']) {
+    for (final email in ['lucia', 'lucia@', 'lucia@correo', 'lucia@correo.com.', 'a@b..co']) {
       testWidgets(
         'A03 email inválido («$email»): «Revisá el email: parece incompleto.», sin enviar y '
         'con el botón habilitado',
@@ -262,6 +263,28 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.text('Revisá el email: parece incompleto.'), findsOneWidget);
+          expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
+          expect(_enviar(tester).onPressed, isNotNull);
+          expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);
+        },
+      );
+    }
+
+    for (final email in ['lu cia@correo.com', 'lucia,@correo.com', 'lucía@correo.com']) {
+      testWidgets(
+        'A03 email con un carácter que no va («$email»): «$avisoCaracterNoPermitido», sin enviar y '
+        'con el botón habilitado (#353)',
+        (tester) async {
+          final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {});
+          await _montarPagina(tester, remote: remote);
+          await tester.pumpAndSettle();
+
+          await _completar(tester, email: email);
+          await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
+          await tester.pumpAndSettle();
+
+          expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
+          expect(find.text('Revisá el email: parece incompleto.'), findsNothing);
           expect(remote.solicitudesRecuperacionPorEmail, isEmpty);
           expect(_enviar(tester).onPressed, isNotNull);
           expect(find.byKey(const Key('recuperacion_password_exito')), findsNothing);

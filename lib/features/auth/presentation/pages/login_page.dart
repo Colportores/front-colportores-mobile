@@ -610,6 +610,10 @@ class _CampoLoginState extends State<_CampoLogin> {
             hintText: widget.textoAyuda,
             errorText: widget.errorText,
             counterText: '',
+            // Con el texto grande (y con el aviso largo del email, #353) el error del campo pasa a
+            // más de un renglón: sin esto se corta con puntos suspensivos (WCAG 1.4.4). Igual que
+            // el resto de los campos de auth.
+            errorMaxLines: 3,
             // Área de toque mínima de 48 (accesibilidad): en el tema claro el campo queda en 41.
             constraints: const BoxConstraints(minHeight: 48),
             suffixIcon: widget.esContrasena

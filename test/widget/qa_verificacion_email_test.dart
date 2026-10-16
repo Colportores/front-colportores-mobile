@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 
 const _correo = 'lucia.silva@correo.com';
@@ -158,8 +159,8 @@ void main() {
       ('lucia', 'El email no es válido'),
       ('lucia@', 'El email no es válido'),
       ('lucia@correo', 'El email no es válido'),
-      ('lu cia@correo.com', 'El email no es válido'),
-      ('😀@😀.com', null),
+      ('lu cia@correo.com', avisoCaracterNoPermitido),
+      ('😀@😀.com', avisoCaracterNoPermitido),
       ('${'a' * 300}@correo.com', null),
     ]) {
       testWidgets('"${entrada.length > 20 ? '${entrada.substring(0, 20)}…' : entrada}": '

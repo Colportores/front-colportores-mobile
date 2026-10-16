@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../repositories/auth_repository.dart';
+import '../services/validador_email.dart';
 
 /// Parámetros de [SolicitarRecuperacionPasswordUseCase].
 final class SolicitarRecuperacionPasswordParams extends Equatable {
@@ -22,10 +23,10 @@ final class SolicitarRecuperacionPasswordParams extends Equatable {
 
 /// HU-AUTH-004 — Solicitud de recuperación de contraseña.
 ///
-/// Valida el email (mismo criterio que el resto de los casos de uso de auth) y delega en el
-/// repositorio, que ya enmascara como éxito tanto "el email no existe" como un rate limit del
-/// proveedor (anti-enumeración, OWASP) — este caso de uso no agrega ni puede agregar esa
-/// distinción.
+/// Valida el email (con [ValidadorEmail], el mismo criterio que el resto de los casos de uso de
+/// auth) y delega en el repositorio, que ya enmascara como éxito tanto "el email no existe" como un
+/// rate limit del proveedor (anti-enumeración, OWASP) — este caso de uso no agrega ni puede agregar
+/// esa distinción. El formato no dice si la cuenta existe.
 ///
 /// Límites de la HU: máximo 1 solicitud por email cada 60 segundos, máximo 5 por hora.
 /// - El de 60 segundos es responsabilidad de la UI (cooldown visible en el botón), mismo patrón
@@ -41,11 +42,6 @@ final class SolicitarRecuperacionPasswordUseCase
 
   final AuthRepository _repository;
 
-  /// Largo máximo de una dirección (RFC 5321): más que eso no es un email.
-  static const int _largoMaximo = 254;
-
-  static final RegExp _emailRegExp = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
-
   @override
   Future<Either<Failure, Unit>> call(SolicitarRecuperacionPasswordParams params) async {
     final email = params.email.trim().toLowerCase();
@@ -53,10 +49,9 @@ final class SolicitarRecuperacionPasswordUseCase
     if (email.isEmpty) {
       return const Left(FailureValidacion(campos: {'email': 'Ingresá tu email'}));
     }
-    if (email.length > _largoMaximo || !_emailRegExp.hasMatch(email)) {
-      return const Left(
-        FailureValidacion(campos: {'email': 'Revisá el email: parece incompleto.'}),
-      );
+    if (ValidadorEmail.mensaje(email, siIncompleto: 'Revisá el email: parece incompleto.')
+        case final aviso?) {
+      return Left(FailureValidacion(campos: {'email': aviso}));
     }
 
     return _repository.solicitarRecuperacionPassword(email: email);
