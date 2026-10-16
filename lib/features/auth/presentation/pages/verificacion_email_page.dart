@@ -435,7 +435,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
             // Dejarlo en `_errorEmail` no mostraba nada.
             _errorGeneral = ValidadorEmail.avisoDireccionRechazadaSinCampo;
             _errorSinConexion = false;
-          } else {
+          } else if (correoParaBloqueo(_correoVisible) == correoParaBloqueo(email)) {
+            // El rechazo es de la dirección a la que se pidió el reenvío: si mientras tanto se
+            // escribió otra, que todavía no se probó, el aviso no va debajo de ella (#371).
             _errorEmail = campos['email'];
           }
         case FailureServidor(status: 429):
