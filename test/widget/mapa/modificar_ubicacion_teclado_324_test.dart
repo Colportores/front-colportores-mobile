@@ -94,6 +94,18 @@ void main() {
               expect(tester.takeException(), isNull, reason: 'escribiendo la $nombre: overflow');
             }
 
+            // Hasta 200 % de texto, en 360×640 y en 412×915, «Guardar cambios» queda FIJO al pie
+            // (#345): un cambio que lo mandara al final de lo que se desplaza no pasaría
+            // desapercibido con el `ensureVisible` de abajo. En el teléfono mínimo o con el texto
+            // más grande puede pasar al final, y ahí sí se lo lleva a la vista.
+            if (tamano.width >= 360 && escala <= 2.0) {
+              expect(
+                _enLoQueSeDesplaza(botonGuardar),
+                isFalse,
+                reason: '$nombreTel · ${_x(escala)}: «Guardar cambios» debe quedar fijo',
+              );
+              expect(botonGuardar.hitTestable(), findsOneWidget, reason: 'fijo y a la mano');
+            }
             // El botón, fijo o al final de lo que se desplaza, se alcanza entero sobre el teclado.
             if (_enLoQueSeDesplaza(botonGuardar)) {
               await tester.ensureVisible(botonGuardar);

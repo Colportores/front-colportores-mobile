@@ -12,7 +12,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart' show SemanticsData;
+import 'package:flutter/semantics.dart' show SemanticsData, SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,6 +70,23 @@ List<String> _escucharAnuncios(WidgetTester tester) {
     ),
   );
   return anuncios;
+}
+
+/// Cuántos nodos de semántica leen [texto] (en la etiqueta, la pista o el valor): cada uno es una lectura
+/// del lector de pantalla.
+int _lecturasDe(WidgetTester tester, String texto) {
+  var lecturas = 0;
+  void visitar(SemanticsNode nodo) {
+    final d = nodo.getSemanticsData();
+    if ([d.label, d.hint, d.value].any((t) => t.contains(texto))) lecturas++;
+    nodo.visitChildren((hijo) {
+      visitar(hijo);
+      return true;
+    });
+  }
+
+  visitar(tester.binding.renderViews.first.owner!.semanticsOwner!.rootSemanticsNode!);
+  return lecturas;
 }
 
 void main() {
@@ -133,6 +150,24 @@ void main() {
                     tester.takeException(),
                     isNull,
                     reason: 'escribiendo la $nombre: overflow',
+                  );
+                }
+                // Hasta 200 % de texto, en 360×640 y en 412×915, «Registrar» queda FIJO al pie
+                // (#345): un cambio que lo mandara al final de lo que se desplaza no pasaría
+                // desapercibido con el `ensureVisible` de `_registrarEntero`. En el teléfono mínimo o
+                // con el texto más grande puede pasar al final, y ahí sí se lo lleva a la vista.
+                if (tamano.width >= 360 && escala <= 2.0) {
+                  expect(
+                    _enLoQueSeDesplaza(botonRegistrarFijo),
+                    isFalse,
+                    reason:
+                        '${estado.rotulo} · $nombreTel · ${_x(escala)}: «Registrar» debería '
+                        'quedar fijo al pie',
+                  );
+                  expect(
+                    botonRegistrarFijo.hitTestable(),
+                    findsOneWidget,
+                    reason: 'fijo y a la mano',
                   );
                 }
                 await _registrarEntero(tester, cuerpo, 'con el teclado abierto');
@@ -448,6 +483,109 @@ void main() {
       await tester.tap(find.text('Casa'));
       await asentar(tester);
       expect(datos().hint, isEmpty, reason: 'habilitado no hay pista');
+      semantica.dispose();
+    });
+  });
+
+  // #345 (M3 de la revisión de #342): el motivo de «Registrar» apagado es la pista del botón y, además,
+  // un texto visible debajo. El lector de pantalla tiene que leerlo una sola vez.
+  group('#345 · 03 · el motivo de «Registrar» apagado se lee una sola vez', () {
+    for (final (estado, motivo, tamano, escala, teclado)
+        in <(EstadoAlta, String, Size, double, double)>[
+          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 2.0, tecladoAbierto),
+          (EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision, telefonoChico, 1.0, tecladoAbierto),
+          (EstadoAlta.sinGps, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.numeroEditado, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinCiudades, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
+          (EstadoAlta.sinGps, TextosAlta.marcaElPunto, _telefono320x568, 2.0, tecladoAbierto),
+        ]) {
+      testWidgets(
+        '${estado.rotulo} · ${tamano.width.round()}×${tamano.height.round()} · texto ${_x(escala)}'
+        '${teclado > 0 ? ' · con teclado' : ''}: el motivo se ve y el lector lo lee una vez, como la '
+        'pista del botón',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          await abrirEn(tester, estado, tamano: tamano, escala: escala, teclado: teclado);
+
+          expect(find.text(motivo), findsOneWidget, reason: 'el motivo se sigue viendo');
+          expect(_lecturasDe(tester, motivo), 1, reason: 'una sola lectura');
+          expect(
+            tester.getSemantics(botonRegistrarFijo).getSemanticsData().hint,
+            motivo,
+            reason: 'la lectura es la pista de «Registrar»',
+          );
+          expect(
+            find.bySemanticsLabel(motivo),
+            findsNothing,
+            reason: 'el texto de al lado no es un nodo propio',
+          );
+
+          // Tocarlo apagado lo anuncia (no es un nodo) y no suma una lectura. Con el texto grande y el
+          // teclado, «Registrar» puede estar al final de lo que se desplaza.
+          await tester.ensureVisible(botonRegistrarFijo);
+          await tester.pump();
+          await tester.tap(botonRegistrarFijo);
+          await asentar(tester);
+          expect(_lecturasDe(tester, motivo), 1);
+          expect(tester.takeException(), isNull);
+          semantica.dispose();
+        },
+      );
+    }
+
+    testWidgets('habilitado no queda ninguna lectura del motivo, ni el texto', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await abrirEn(tester, EstadoAlta.gpsPreciso);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
+
+      await tester.ensureVisible(find.text('Casa'));
+      await tester.pump();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+
+      expect(registrarHabilitado(tester), isTrue);
+      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+      semantica.dispose();
+    });
+
+    testWidgets(
+      'cuando el motivo cambia (de la precisión al tipo) sigue habiendo una sola lectura, '
+      'la del motivo nuevo',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await abrirEn(tester, EstadoAlta.gpsImpreciso);
+        expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 1);
+        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+
+        await tester.ensureVisible(find.text(TextosAlta.continuar));
+        await tester.pump();
+        await tester.tap(find.text(TextosAlta.continuar));
+        await asentar(tester);
+
+        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 0);
+        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
+        semantica.dispose();
+      },
+    );
+
+    testWidgets('mientras guarda no hay motivo: ni texto ni lectura', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
+      m.repo.bloqueo = Completer<void>();
+      await tester.tap(find.text('Casa'));
+      await asentar(tester);
+      await tester.tap(botonRegistrarFijo);
+      await tester.pump();
+
+      expect(find.text(TextosAlta.registrando), findsOneWidget);
+      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      m.repo.bloqueo!.complete();
+      await asentar(tester);
       semantica.dispose();
     });
   });

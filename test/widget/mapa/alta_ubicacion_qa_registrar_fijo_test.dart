@@ -238,7 +238,8 @@ void main() {
 
   group('QA #305 · lectura con lector de pantalla y foco', () {
     testWidgets(
-      '«Registrar» deshabilitado se anuncia como botón deshabilitado y el motivo lo sigue',
+      '«Registrar» deshabilitado se anuncia como botón deshabilitado y el motivo es su pista, leído '
+      'una sola vez',
       (tester) async {
         final handle = tester.ensureSemantics();
         await abrirEn(tester, EstadoAlta.gpsPreciso);
@@ -253,12 +254,20 @@ void main() {
             isEnabled: false,
           ),
         );
-        // El motivo es un nodo propio, inmediatamente después del botón en el orden de lectura.
+        // El motivo se lee una sola vez (#345): es la pista del botón y el texto de al lado, que se
+        // sigue viendo, no es un nodo propio.
         final etiquetas = _etiquetasEnOrden(tester);
-        final iBoton = etiquetas.indexOf(TextosAlta.registrar);
-        final iMotivo = etiquetas.indexOf(TextosAlta.elegiElTipo);
-        expect(iBoton, isNonNegative, reason: 'el botón está en el árbol: $etiquetas');
-        expect(iMotivo, iBoton + 1, reason: 'el motivo sigue al botón: $etiquetas');
+        expect(etiquetas, contains(TextosAlta.registrar), reason: 'el botón está: $etiquetas');
+        expect(
+          etiquetas,
+          isNot(contains(TextosAlta.elegiElTipo)),
+          reason: 'no se repite: $etiquetas',
+        );
+        expect(
+          tester.getSemantics(botonRegistrarFijo).getSemanticsData().hint,
+          TextosAlta.elegiElTipo,
+        );
+        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'el motivo se ve');
         handle.dispose();
       },
     );
@@ -309,18 +318,24 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('a texto 3x el motivo pasa arriba del botón y el orden de lectura lo acompaña', (
+    testWidgets('a texto 3x el motivo pasa arriba del botón y se lee una sola vez, como su pista', (
       tester,
     ) async {
       final handle = tester.ensureSemantics();
       await abrirEn(tester, EstadoAlta.gpsImpreciso, escala: 3);
 
       final etiquetas = _etiquetasEnOrden(tester);
-      final iBoton = etiquetas.indexOf(TextosAlta.registrar);
-      final iMotivo = etiquetas.indexOf(TextosAlta.elegiPrecision);
-      expect(iBoton, isNonNegative, reason: '$etiquetas');
-      expect(iMotivo, isNonNegative, reason: '$etiquetas');
-      expect(iMotivo, lessThan(iBoton), reason: 'arriba del botón se lee antes: $etiquetas');
+      expect(etiquetas, contains(TextosAlta.registrar), reason: '$etiquetas');
+      expect(etiquetas, isNot(contains(TextosAlta.elegiPrecision)), reason: '$etiquetas');
+      expect(
+        tester.getSemantics(botonRegistrarFijo).getSemanticsData().hint,
+        TextosAlta.elegiPrecision,
+      );
+      expect(
+        find.descendant(of: desplazable, matching: find.text(TextosAlta.elegiPrecision)),
+        findsOneWidget,
+        reason: 'el texto del motivo se ve arriba del botón, en lo que se desplaza',
+      );
       handle.dispose();
     });
 

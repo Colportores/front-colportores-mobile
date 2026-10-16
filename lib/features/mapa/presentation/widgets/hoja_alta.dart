@@ -259,9 +259,21 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   ) {
     final motivoAbajo = lugar == LugarDeLaAccion.fijaConMotivoAbajo;
     final botonFijo = lugar != LugarDeLaAccion.alFinalDeLoQueSeDesplaza;
+    // El motivo se ve siempre, pero el lector de pantalla lo lee una sola vez: con «Registrar» apagado
+    // ya es la pista del botón (ver [_botonRegistrar]) y el texto de al lado queda fuera de la
+    // semántica (#345). Apagado y motivo van juntos: `_porQueNo` solo da un motivo si no se puede
+    // registrar.
     final textoMotivo = motivo == null
         ? null
-        : Text(motivo, key: _claveMotivo, textAlign: TextAlign.center, style: estiloMotivo);
+        : ExcludeSemantics(
+            excluding: !estado.puedeRegistrar,
+            child: Text(
+              motivo,
+              key: _claveMotivo,
+              textAlign: TextAlign.center,
+              style: estiloMotivo,
+            ),
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
