@@ -2,8 +2,6 @@
 // renglones y van centrados, como el resto de la pantalla. Va en su propio archivo porque carga la
 // letra real (Inter) y `FontLoader` vale para todo el archivo: mezclada con las pruebas de la letra de
 // `flutter_test` les cambiaría las medidas.
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,22 +29,18 @@ void main() {
     final render = tester.renderObject<RenderParagraph>(
       find.descendant(of: find.byKey(llaveRegistro), matching: find.byType(RichText)).first,
     );
-    final texto = render.text.toPlainText();
-    // Letra por letra (sin los espacios) y agrupadas por renglón: así el espacio con que termina el
-    // primero no cuenta.
-    final porRenglon = <int, List<TextBox>>{};
-    for (var i = 0; i < texto.length; i++) {
-      if (texto[i] == ' ') continue;
-      final cajas = render.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1));
-      porRenglon.putIfAbsent(cajas.first.top.round(), () => []).add(cajas.first);
-    }
-    expect(porRenglon.length, greaterThanOrEqualTo(2), reason: 'se esperaba un texto partido');
+    // Cada renglón se mide sin el espacio con que termina (el que cuelga al final del primero entra en
+    // la caja pero no se pinta).
+    final renglones = renglonesPintados(render);
+    expect(renglones.length, greaterThanOrEqualTo(2), reason: 'se esperaba un texto partido');
     final centroPantalla = tester.view.physicalSize.width / 2;
-    for (final cajas in porRenglon.values) {
-      final izquierda = cajas.map((c) => c.left).reduce(math.min);
-      final derecha = cajas.map((c) => c.right).reduce(math.max);
-      final centro = render.localToGlobal(Offset((izquierda + derecha) / 2, 0)).dx;
-      expect(centro, closeTo(centroPantalla, 1), reason: 'renglón de $izquierda a $derecha');
+    for (final r in renglones) {
+      final centro = (r.izquierda + r.derecha) / 2;
+      expect(
+        centro,
+        closeTo(centroPantalla, 1),
+        reason: 'renglón de ${r.izquierda} a ${r.derecha}',
+      );
     }
   });
 }

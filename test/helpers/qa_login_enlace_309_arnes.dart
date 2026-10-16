@@ -4,6 +4,7 @@
 // accesibilidad y cruces) y `qa_login_enlace_309_medidas_test.dart` (tipografía real).
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
@@ -14,6 +15,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,6 +86,29 @@ Future<void> cargarFuentesReales(WidgetTester tester) => tester.runAsync(() asyn
     }
   }
 });
+
+/// Los renglones en que se parte el texto de [render], cada uno como el tramo `izquierda`–`derecha`
+/// que se pinta, en la pantalla. Se mide letra por letra y sin los espacios: el espacio con que
+/// termina un renglón entra en `getBoxesForSelection` aunque no se pinte y corre el centro del
+/// renglón medio espacio (3,92 dp con el texto al 200 %).
+List<({double izquierda, double derecha})> renglonesPintados(RenderParagraph render) {
+  final texto = render.text.toPlainText();
+  final porRenglon = <int, List<TextBox>>{};
+  for (var i = 0; i < texto.length; i++) {
+    if (texto[i] == ' ') continue;
+    final cajas = render.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1));
+    if (cajas.isEmpty) continue;
+    porRenglon.putIfAbsent(cajas.first.top.round(), () => []).add(cajas.first);
+  }
+  double enPantalla(double x) => render.localToGlobal(Offset(x, 0)).dx;
+  return [
+    for (final cajas in porRenglon.values)
+      (
+        izquierda: enPantalla(cajas.map((c) => c.left).reduce(math.min)),
+        derecha: enPantalla(cajas.map((c) => c.right).reduce(math.max)),
+      ),
+  ];
+}
 
 /// La app entera con la tipografía real. El remoto en memoria acepta a Ana y a Lucía.
 Future<EntornoLogin> montarAppLogin(

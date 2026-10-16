@@ -73,41 +73,59 @@ void main() {
     }
   });
 
-  group('«Registrate» con el texto al 200 %', () {
-    // skip: QA #309 — «Registrate» a 200 % partía el texto en dos renglones alineados a la izquierda.
-    // El texto ya va con `textAlign: center` (los renglones se centran; lo prueba
-    // `qa_login_sin_mantener_sesion_306_test.dart`), pero esta medida sigue sin pasar: el primer
-    // renglón termina en un espacio que `getBoxesForSelection` incluye aunque no se pinte, y corre el
-    // centro medio espacio (3,92 dp contra una tolerancia de 2). Para destaparla: medir cada renglón
-    // sin el espacio final.
-    testWidgets(
-      'si se parte en dos renglones, cada renglón queda centrado como el resto de la pantalla',
-      (tester) async {
-        fijarPantallaLogin(tester, const Size(412, 915), texto: 2);
-        await llegarALogin(tester, PantallaLogin.inicial, fuentesReales: true);
-        await tester.ensureVisible(find.byKey(llaveRegistro));
-        await tester.pumpAndSettle();
+  // «¿No tenés cuenta? Registrate» va con `textAlign: center`: a texto grande se parte en renglones y
+  // cada uno queda centrado como el resto de la pantalla (QA de #309, destapado en #343). Se mide
+  // cada renglón sin el espacio con que termina (`renglonesPintados`): ese espacio entra en la caja
+  // aunque no se pinte y corría el centro 3,92 dp.
+  group(
+    '«Registrate» con la letra real: cada renglón queda centrado como el resto de la pantalla',
+    () {
+      for (final (tam, escala, partido) in [
+        (const Size(412, 915), 2.0, true),
+        (const Size(390, 844), 2.0, true),
+        (const Size(360, 640), 2.0, true),
+        (const Size(320, 568), 2.0, true),
+        (const Size(412, 915), 1.0, false),
+        (const Size(360, 640), 1.0, false),
+      ]) {
+        testWidgets('a ${tam.width.toInt()}x${tam.height.toInt()}, texto ×$escala: '
+            '${partido ? 'se parte en renglones y cada uno' : 'el renglón único'} queda centrado', (
+          tester,
+        ) async {
+          fijarPantallaLogin(tester, tam, texto: escala);
+          await llegarALogin(tester, PantallaLogin.inicial, fuentesReales: true);
+          await tester.ensureVisible(find.byKey(llaveRegistro));
+          await tester.pumpAndSettle();
 
-        final render = tester.renderObject<RenderParagraph>(
-          find.descendant(of: find.byKey(llaveRegistro), matching: find.byType(RichText)).first,
-        );
-        final texto = render.text.toPlainText();
-        final cajas = render.getBoxesForSelection(
-          TextSelection(baseOffset: 0, extentOffset: texto.length),
-        );
-        final renglones = <int, List<TextBox>>{};
-        for (final c in cajas) {
-          renglones.putIfAbsent(c.top.round(), () => []).add(c);
-        }
-        final centroPantalla = tester.view.physicalSize.width / 2;
-        for (final r in renglones.values) {
-          final izquierda = r.map((c) => c.left).reduce(math.min);
-          final derecha = r.map((c) => c.right).reduce(math.max);
-          final centro = render.localToGlobal(Offset((izquierda + derecha) / 2, 0)).dx;
-          expect(centro, closeTo(centroPantalla, 2), reason: 'renglón de $izquierda a $derecha');
-        }
-      },
-      skip: true,
-    );
-  });
+          final render = tester.renderObject<RenderParagraph>(
+            find.descendant(of: find.byKey(llaveRegistro), matching: find.byType(RichText)).first,
+          );
+          expect(
+            render.text.toPlainText(),
+            textoRegistro,
+            reason: 'el texto del enlace cambió: revisar la medida',
+          );
+          final renglones = renglonesPintados(render);
+          if (partido) {
+            expect(
+              renglones.length,
+              greaterThanOrEqualTo(2),
+              reason: 'se esperaba un texto partido',
+            );
+          } else {
+            expect(renglones.length, 1, reason: 'a este tamaño entra en un renglón');
+          }
+          for (final r in renglones) {
+            final centro = (r.izquierda + r.derecha) / 2;
+            expect(
+              centro,
+              closeTo(tam.width / 2, 1),
+              reason: 'renglón de ${r.izquierda} a ${r.derecha}',
+            );
+          }
+          expect(tester.takeException(), isNull);
+        });
+      }
+    },
+  );
 }
