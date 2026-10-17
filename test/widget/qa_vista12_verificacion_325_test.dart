@@ -346,10 +346,16 @@ void main() {
             );
           }
         }
+        expect(
+          tester.takeAnnouncements(),
+          isEmpty,
+          reason: 'ni un anuncio mientras corre la cuenta',
+        );
         reloj.ahora = _base.add(const Duration(seconds: 60));
         await tester.pump(const Duration(seconds: 1));
 
-        expect(tester.takeAnnouncements(), isEmpty, reason: 'ni un anuncio en toda la cuenta');
+        // Decisión del 16/10 (#335): un solo anuncio, al terminar la cuenta.
+        expect(tester.takeAnnouncements().map((a) => a.message), ['Ya podés reenviar el email.']);
         expect(_progreso, findsNothing, reason: 'la barra se va con la cuenta');
         expect(_habilitado(tester), isTrue);
         expect(find.text('Reenviar email'), findsOneWidget);
