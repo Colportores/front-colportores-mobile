@@ -540,22 +540,32 @@ void main() {
       await cerrarApp(tester);
     });
 
-    testWidgets('al llegar a cero el botón vuelve a ser «Reenviar email», habilitado, y con él el '
-        'nodo cambia de etiqueta y de estado', (tester) async {
-      final semantica = tester.ensureSemantics();
-      final esc = await llegarA(tester, Estado12.a03, segundos: 0);
+    testWidgets(
+      'al llegar a cero el botón vuelve a ser «Reenviar email», habilitado, el nodo cambia '
+      'de etiqueta y de estado, y se anuncia una sola vez «Ya podés reenviar el email.» '
+      '(decisión del 16/10)',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final esc = await llegarA(tester, Estado12.a03, segundos: 0);
+        tester.takeAnnouncements();
 
-      await esc.reloj.pasar(tester, 60);
+        await esc.reloj.pasar(tester, 59);
+        expect(tester.takeAnnouncements(), isEmpty, reason: 'nada mientras corre la cuenta');
+        await esc.reloj.pasar(tester, 1);
 
-      final datos = tester.getSemantics(boton).getSemanticsData();
-      expect(datos.label, 'Reenviar email');
-      expect(
-        tester.getSemantics(boton),
-        isSemantics(isButton: true, hasEnabledState: true, isEnabled: true, hasTapAction: true),
-      );
-      semantica.dispose();
-      await cerrarApp(tester);
-    });
+        expect(tester.takeAnnouncements().map((a) => a.message), ['Ya podés reenviar el email.']);
+        await esc.reloj.pasar(tester, 30);
+        expect(tester.takeAnnouncements(), isEmpty, reason: 'una sola vez');
+        final datos = tester.getSemantics(boton).getSemanticsData();
+        expect(datos.label, 'Reenviar email');
+        expect(
+          tester.getSemantics(boton),
+          isSemantics(isButton: true, hasEnabledState: true, isEnabled: true, hasTapAction: true),
+        );
+        semantica.dispose();
+        await cerrarApp(tester);
+      },
+    );
   });
 
   // ---------------------------------------------------------------------------------------------
@@ -651,53 +661,48 @@ void main() {
   });
 
   group('12-A04 · la barra de 3 px', () {
-    // skip: QA #335 — el relleno de la barra (#002856) y su pista (#13407A, el `secondaryContainer`
-    // del tema) dan 1,42:1: el avance no se ve. Con `backgroundColor: colores.borde` (#E3E7EE) da más
-    // de 10:1.
-    testWidgets(
-      'el avance se ve: el relleno de la barra se distingue de su pista (3:1)',
-      skip: true,
-      (tester) async {
-        await llegarA(tester, Estado12.a04Cuenta);
-        final r = tester.getRect(barra);
-        final p = await leerPixeles(tester);
-        final lleno = p.en(r.left + r.width * 0.1, r.center.dy);
-        final pista = p.en(r.left + r.width * 0.9, r.center.dy);
+    // El relleno de la barra (#002856) y su pista (#E3E7EE, `colores.borde`) dan más de 10:1; con la
+    // pista del tema (`secondaryContainer`, #13407A) daba 1,42:1 y el avance no se veía.
+    testWidgets('el avance se ve: el relleno de la barra se distingue de su pista (3:1)', (
+      tester,
+    ) async {
+      await llegarA(tester, Estado12.a04Cuenta);
+      final r = tester.getRect(barra);
+      final p = await leerPixeles(tester);
+      final lleno = p.en(r.left + r.width * 0.1, r.center.dy);
+      final pista = p.en(r.left + r.width * 0.9, r.center.dy);
 
-        expect(
-          contraste(lleno, pista),
-          greaterThanOrEqualTo(3),
-          reason: 'relleno ${hex(lleno)} sobre pista ${hex(pista)}',
-        );
-        await cerrarApp(tester);
-      },
-    );
+      expect(
+        contraste(lleno, pista),
+        greaterThanOrEqualTo(3),
+        reason: 'relleno ${hex(lleno)} sobre pista ${hex(pista)}',
+      );
+      await cerrarApp(tester);
+    });
   });
 
   // ---------------------------------------------------------------------------------------------
   // 5b · El otro botón apagado de la vista: el candado de 12-A06.
   // ---------------------------------------------------------------------------------------------
   group('12-A06 · el botón con candado', () {
-    // skip: QA #335 — el rótulo del botón con candado se pinta con el 38 % de Material (#A3A8AE sobre
-    // #FFFFFF, 2,4:1); el canvas lo dibuja en #5B6B82 y el de la cuenta (A02/A03) ya llega a 4,8:1.
-    testWidgets(
-      'el rótulo «Reenviar email» apagado se lee a 4,5:1, como el de la cuenta',
-      skip: true,
-      (tester) async {
-        await llegarA(tester, Estado12.a06);
-        final b = tester.getRect(botonVisual);
-        final p = await leerPixeles(tester);
-        final fondo = p.en(b.left + 14, b.center.dy);
-        final color = estiloDelRotulo(tester, 'Reenviar email').color!;
+    // El rótulo del botón con candado va en #5B6B82, como el canvas (con el 38 % de Material daba
+    // #A3A8AE sobre #FFFFFF, 2,4:1).
+    testWidgets('el rótulo «Reenviar email» apagado se lee a 4,5:1, como el de la cuenta', (
+      tester,
+    ) async {
+      await llegarA(tester, Estado12.a06);
+      final b = tester.getRect(botonVisual);
+      final p = await leerPixeles(tester);
+      final fondo = p.en(b.left + 14, b.center.dy);
+      final color = estiloDelRotulo(tester, 'Reenviar email').color!;
 
-        expect(
-          contraste(_sobre(color, fondo), fondo),
-          greaterThanOrEqualTo(4.5),
-          reason: 'rótulo ${hex(_sobre(color, fondo))} sobre ${hex(fondo)}',
-        );
-        await cerrarApp(tester);
-      },
-    );
+      expect(
+        contraste(_sobre(color, fondo), fondo),
+        greaterThanOrEqualTo(4.5),
+        reason: 'rótulo ${hex(_sobre(color, fondo))} sobre ${hex(fondo)}',
+      );
+      await cerrarApp(tester);
+    });
   });
 
   // ---------------------------------------------------------------------------------------------

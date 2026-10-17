@@ -881,6 +881,251 @@ void main() {
     });
   });
 
+  // Decisión del 16/10 (pendiente de la QA de #335, P1 §2): un solo anuncio al lector de pantalla
+  // cuando la cuenta llega a cero y el botón vuelve a poder tocarse (AA 4.1.3); nada al empezar ni
+  // segundo a segundo, y nada si el botón sigue bloqueado.
+  group('el anuncio único al terminar la cuenta', () {
+    const aviso = 'Ya podés reenviar el email.';
+
+    List<String> anuncios(WidgetTester tester) =>
+        tester.takeAnnouncements().map((a) => a.message).toList();
+
+    testWidgets('12-A03: «Ya podés reenviar el email.» una sola vez, en el segundo 60, y ninguno '
+        'antes ni después', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+      );
+      await _tocarReenviar(tester);
+      anuncios(tester);
+
+      for (var s = 1; s < 60; s++) {
+        await reloj.pasar(tester, 1);
+        expect(anuncios(tester), isEmpty, reason: 'a los $s s todavía corre la cuenta');
+      }
+      await reloj.pasar(tester, 1);
+      expect(anuncios(tester), [aviso]);
+      expect(_habilitado(tester), isTrue);
+
+      await reloj.pasar(tester, 90);
+      expect(anuncios(tester), isEmpty, reason: 'una sola vez');
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('12-A01b: con la espera que viene del alta, el anuncio llega a los 48 s y no al '
+        'entrar', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        envioDelAlta: _base.subtract(const Duration(seconds: 12)),
+      );
+      expect(anuncios(tester), isEmpty, reason: 'al entrar con la cuenta corriendo no se anuncia');
+
+      await reloj.pasar(tester, 47);
+      expect(anuncios(tester), isEmpty);
+      await reloj.pasar(tester, 1);
+      expect(anuncios(tester), [aviso]);
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+
+    for (final correoConocido in [true, false]) {
+      final artboard = correoConocido ? '12-A04' : '12-A04b';
+      testWidgets('$artboard: el botón primario también lo anuncia, una sola vez', (tester) async {
+        final semantica = tester.ensureSemantics();
+        final reloj = _Reloj(_base);
+        await _montar(
+          tester,
+          remote: _remotoSano(),
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+          ahora: reloj.leer,
+          email: correoConocido ? _lucia : '',
+          password: null,
+          estado: EstadoVerificacionEmail.expirado,
+        );
+        if (!correoConocido) {
+          await tester.enterText(find.byKey(const Key('verificacion_email_campo')), _lucia);
+          await tester.pump();
+        }
+        await _tocarReenviar(tester);
+        anuncios(tester);
+
+        await reloj.pasar(tester, 59);
+        expect(anuncios(tester), isEmpty);
+        await reloj.pasar(tester, 1);
+        expect(anuncios(tester), [aviso]);
+        await reloj.pasar(tester, 60);
+        expect(anuncios(tester), isEmpty);
+        semantica.dispose();
+        await _cerrarApp(tester);
+      });
+    }
+
+    testWidgets('con el candado del límite puesto no se anuncia: el botón sigue bloqueado', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria({
+          _lucia: _base.add(const Duration(minutes: 30)),
+        }),
+        ahora: reloj.leer,
+        envioDelAlta: _base,
+      );
+      await tester.pumpAndSettle();
+      expect(anuncios(tester), [
+        'Demasiados intentos. Probá nuevamente en 30 minutos.',
+      ], reason: 'el aviso del límite sí se anuncia, una vez, al entrar');
+
+      await reloj.pasar(tester, 60);
+
+      expect(_habilitado(tester), isFalse);
+      expect(anuncios(tester), isEmpty);
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('con la pantalla ya verificada (cierre) no se anuncia: no hay botón de reenviar', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+      );
+      await _tocarReenviar(tester);
+      await reloj.pasar(tester, 10);
+      await tester.tap(find.byKey(const Key('verificacion_email_ya_verifique')));
+      await tester.pumpAndSettle();
+      expect(find.text('Email verificado'), findsOneWidget);
+      anuncios(tester);
+
+      await reloj.pasar(tester, 60);
+
+      expect(anuncios(tester), isEmpty);
+      expect(_boton, findsNothing);
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+
+    testWidgets(
+      'mientras se verifica («Ya verifiqué mi email» en curso) el botón sigue apagado y no '
+      'se anuncia',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final remoto = _remotoSano()..demoraIniciarSesion = Completer<void>();
+        final reloj = _Reloj(_base);
+        await _montar(
+          tester,
+          remote: remoto,
+          bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+          ahora: reloj.leer,
+        );
+        await _tocarReenviar(tester);
+        await tester.tap(find.byKey(const Key('verificacion_email_ya_verifique')));
+        await tester.pump();
+        anuncios(tester);
+
+        await reloj.pasar(tester, 60);
+
+        expect(_habilitado(tester), isFalse, reason: 'ocupado: verificando');
+        expect(anuncios(tester), isEmpty);
+        remoto.demoraIniciarSesion!.complete();
+        await tester.pumpAndSettle();
+        semantica.dispose();
+        await _cerrarApp(tester);
+      },
+    );
+
+    testWidgets('cerrada la pantalla antes del final, no se anuncia nada ni falla', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+      );
+      await _tocarReenviar(tester);
+      await reloj.pasar(tester, 30);
+      anuncios(tester);
+
+      await _cerrarApp(tester);
+      await reloj.pasar(tester, 60);
+
+      expect(anuncios(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+      semantica.dispose();
+    });
+
+    testWidgets('cambiar la dirección con la cuenta corriendo no anuncia: no es el final de la '
+        'cuenta', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+        email: '',
+        password: null,
+        estado: EstadoVerificacionEmail.expirado,
+      );
+      await tester.enterText(find.byKey(const Key('verificacion_email_campo')), _lucia);
+      await tester.pump();
+      await _tocarReenviar(tester);
+      await reloj.pasar(tester, 20);
+      anuncios(tester);
+
+      await tester.enterText(find.byKey(const Key('verificacion_email_campo')), 'otra@correo.com');
+      await tester.pump();
+      expect(_habilitado(tester), isTrue, reason: 'la espera era de la otra dirección');
+      await reloj.pasar(tester, 60);
+
+      expect(anuncios(tester), isEmpty);
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+
+    testWidgets('dos cuentas seguidas: un anuncio al final de cada una', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final reloj = _Reloj(_base);
+      await _montar(
+        tester,
+        remote: _remotoSano(),
+        bloqueos: BloqueoReenvioVerificacionEnMemoria(),
+        ahora: reloj.leer,
+      );
+      await _tocarReenviar(tester);
+      await reloj.pasar(tester, 60);
+      expect(anuncios(tester), [aviso]);
+
+      await _tocarReenviar(tester);
+      expect(anuncios(tester), isEmpty, reason: 'al empezar la segunda tampoco');
+      await reloj.pasar(tester, 59);
+      expect(anuncios(tester), isEmpty);
+      await reloj.pasar(tester, 1);
+      expect(anuncios(tester), [aviso]);
+      semantica.dispose();
+      await _cerrarApp(tester);
+    });
+  });
+
   group('la cuenta regresiva y la accesibilidad', () {
     testWidgets('el relleno no entra en el árbol de accesibilidad: el botón se lee apagado con su '
         'cuenta y no se anuncia nada segundo a segundo', (tester) async {

@@ -270,6 +270,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           _segundosRestantes--;
           if (_segundosRestantes <= 0) _terminarCooldown();
         });
+        if (_segundosRestantes <= 0) _anunciarQueYaSePuedeReenviar();
       });
     }
   }
@@ -279,6 +280,26 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     _timer = null;
     _segundosRestantes = 0;
     _mensajeReenvio = null;
+  }
+
+  /// Cuando la cuenta llega a cero y el botón vuelve a poder tocarse, lo dice al lector de pantalla
+  /// **una sola vez** («anuncio único» de #335, decisión del 16/10, AA 4.1.3): quien dejó el foco en
+  /// «Reenviar en Ns» no oye nada cuando el rótulo cambia. Es solo el final natural de la cuenta
+  /// (no al empezar, ni segundo a segundo, ni al cambiar de dirección o volver de segundo plano), y
+  /// solo si el botón de verdad queda habilitado: no con el candado del límite puesto, ni en las
+  /// pantallas de cierre, ni mientras se verifica.
+  void _anunciarQueYaSePuedeReenviar() {
+    final cierre =
+        _estado == EstadoVerificacionEmail.verificado ||
+        _estado == EstadoVerificacionEmail.yaVerificado;
+    if (!mounted || cierre || _bloqueado || _reenviando || _verificando) return;
+    unawaited(
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        'Ya podés reenviar el email.',
+        Directionality.of(context),
+      ),
+    );
   }
 
   /// Descarta los candados que ya vencieron y agenda el repintado para el próximo cambio: que venza
@@ -771,6 +792,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           child: LinearProgressIndicator(
             key: const Key('verificacion_email_barra'),
             value: 1 - _segundosRestantes / _cooldown.inSeconds,
+            // La pista en el borde de la paleta: con la del tema (`secondaryContainer`, #13407A) el
+            // relleno navy no se distingue de ella (1,4:1) y el avance no se ve.
+            backgroundColor: theme.extension<ColoresColportaje>()!.borde,
             minHeight: 3,
             borderRadius: BorderRadius.circular(2),
           ),
@@ -801,14 +825,19 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     );
   }
 
-  /// La forma del botón «Reenviar» con texto grande: la misma que «Ya verifiqué mi email» (radio 16
-  /// y no píldora). Vale en todos sus estados (sin cuenta, con cuenta y con el candado puesto) para
-  /// que no cambie de forma al empezar ni al terminar la espera.
-  ButtonStyle? _estiloReenviar(BuildContext context) {
-    if (!_textoGrande(context)) return null;
+  /// Estilo del botón «Reenviar» fuera de la cuenta. Con texto grande la forma es la de «Ya verifiqué
+  /// mi email» (radio 16 y no píldora), y vale en todos sus estados (sin cuenta, con cuenta y con el
+  /// candado puesto) para que no cambie al empezar ni al terminar la espera.
+  ///
+  /// Apagado (con el candado de 12-A06, o mientras se reenvía) el rótulo va en el `gris` del canvas
+  /// (#5B6B82, 5,4:1 sobre el botón) y no en el 38 % de Material (2,4:1, no llega a AA).
+  ButtonStyle _estiloReenviar(BuildContext context) {
+    final colores = Theme.of(context).extension<ColoresColportaje>()!;
+    final grande = _textoGrande(context);
     return OutlinedButton.styleFrom(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      disabledForegroundColor: colores.gris,
+      shape: grande ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)) : null,
+      padding: grande ? const EdgeInsets.symmetric(horizontal: 16, vertical: 14) : null,
     );
   }
 
