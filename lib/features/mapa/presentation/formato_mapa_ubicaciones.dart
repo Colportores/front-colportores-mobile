@@ -24,6 +24,7 @@ abstract final class TextosMapaUbicaciones {
   static const mapa = 'Mapa de ubicaciones';
   static const nuevaUbicacion = 'Nueva ubicación';
   static const miUbicacionSinGps = 'No disponible: no hay GPS.';
+  static const miUbicacionBuscandoGps = 'No disponible: buscando GPS…';
   static const alturaMinimizada = 'Minimizada';
   static const alturaTercio = 'A un tercio de la pantalla';
   static const alturaMitad = 'A la mitad de la pantalla';
