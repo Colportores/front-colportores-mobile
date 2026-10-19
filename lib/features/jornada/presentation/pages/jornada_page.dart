@@ -191,7 +191,14 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     final falloLaHoraVieja =
         horaElegida != null &&
         resultado.fold((failure) => failure is FailureHoraFueraDeRango, (_) => false) &&
-        _maximoAtrasFin(jornada, ref.read(relojJornadaProvider)()) == 0;
+        // `_maximoAtrasFin == 0` no alcanza: también vale 0 por el tope con el reloj a minutos del
+        // inicio, y ahí repetir sin hora cerraría con «ahora» (un fin inventado). Solo si la jornada
+        // de verdad quedó abierta de un día anterior.
+        JornadaSinCerrar.quedoAbierta(
+          inicio: jornada.inicio,
+          ahora: ref.read(relojJornadaProvider)(),
+          margen: FinalizarJornadaUseCase.margenHaciaAtras,
+        );
     if (falloLaHoraVieja) {
       setState(() => _horaFin = null);
       resultado = await notifier.finalizar();
