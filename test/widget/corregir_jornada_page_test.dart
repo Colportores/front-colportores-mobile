@@ -639,7 +639,9 @@ void main() {
         );
         expect(find.textContaining('Elegí otra hora y volvé a intentar.'), findsOneWidget);
         expect(dataSource.jornadas.single.estaAbierta, isTrue);
-        expect(_botonCerrar(tester).onPressed, isNotNull);
+        // La hora que ya no vale se suelta (#339): el botón no repite el aviso.
+        expect(find.text('--:--'), findsOneWidget);
+        expect(_botonCerrar(tester).onPressed, isNull);
       },
     );
   });
@@ -744,7 +746,9 @@ void main() {
       );
       expect(find.textContaining('Elegí otra hora y volvé a intentar.'), findsOneWidget);
       expect(dataSource.jornadas.firstWhere((j) => j.id == 'jor-previa').estaAbierta, isTrue);
-      expect(_botonCerrar(tester).onPressed, isNotNull);
+      // La hora que ya no vale se suelta (#339) y la hoja ofrece el rango real.
+      expect(find.text('--:--'), findsOneWidget);
+      expect(_botonCerrar(tester).onPressed, isNull);
 
       // Con otra hora dentro del rango, cierra.
       await _elegirHora(tester, 7, 30);

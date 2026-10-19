@@ -719,7 +719,8 @@ class _FilaHora extends StatelessWidget {
                 'Cambiar ›',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: esquema.primary,
+                  // Sin acción se ve apagado, en el gris de los textos sin acción (cumple AA).
+                  color: onTap == null ? colores.gris : esquema.primary,
                 ),
               ),
             ],

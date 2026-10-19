@@ -362,7 +362,7 @@ void main() {
 
   group('21A·03 con una siguiente que llega y deja horas (rango recortado, no vacío)', () {
     testWidgets('dado que elegí 20:00 y llegó una siguiente a las 19:00, cuando cierro, entonces '
-        'veo el rango real, la hora se conserva y con una hora dentro del rango se cierra', (
+        'veo el rango real, la hora se suelta y con una hora dentro del rango se cierra', (
       tester,
     ) async {
       final semantica = tester.ensureSemantics();
@@ -381,9 +381,11 @@ void main() {
       expect(tester.getSemantics(_avisoError), isSemantics(isLiveRegion: true));
       expect(_avisoSiguiente, findsNothing);
       expect(find.text('Finalizando…'), findsNothing);
-      // Lo tipeado no se pierde y el botón sigue disponible para el reintento.
-      expect(find.text('Terminé a las 20:00'), findsOneWidget);
-      expect(tester.widget<FilledButton>(_botonCerrar).onPressed, isNotNull);
+      // La hora que ya no vale se suelta (sin elegir otra por la persona): el botón no repite el
+      // aviso y espera una hora nueva.
+      expect(find.text('Terminé a las 20:00'), findsNothing);
+      expect(find.text('--:--'), findsOneWidget);
+      expect(tester.widget<FilledButton>(_botonCerrar).onPressed, isNull);
       expect(r.ds.escrituras, 0);
 
       await elegirHoraQa(tester, '18:30');
@@ -396,14 +398,15 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('con la siguiente a las 19:00, una hora fuera de rango repetida da el mismo aviso '
-        'una y otra vez sin trabar el botón', (tester) async {
+    testWidgets('con la siguiente a las 19:00, el segundo toque no repite el aviso: el botón queda '
+        'apagado sin trabarse hasta elegir otra hora', (tester) async {
       final r = await _conSiguienteQueLlega(tester, siguiente: _siguienteALas19);
       for (var i = 0; i < 3; i++) {
-        await _tocarCerrar(tester);
+        await tester.tap(_botonCerrar, warnIfMissed: false);
+        await tester.pumpAndSettle();
         expect(find.textContaining('entre las 18:01 y las 19:00'), findsOneWidget);
         expect(find.text('Finalizando…'), findsNothing);
-        expect(tester.widget<FilledButton>(_botonCerrar).onPressed, isNotNull);
+        expect(tester.widget<FilledButton>(_botonCerrar).onPressed, isNull);
       }
       expect(r.ds.escrituras, 0);
     });
@@ -415,7 +418,7 @@ void main() {
 
       expect(find.text('Entre las 18:01 y las 19:00.'), findsOneWidget);
       expect(r.ds.escrituras, 0);
-    }, skip: true); // skip: QA #339 — la hoja sigue diciendo «Entre las 18:01 y las 06:00.»
+    });
   });
 
   group('21A·01/05 Hoy con la hora de fin vieja y la jornada siguiente (dos vueltas)', () {
@@ -585,7 +588,7 @@ void main() {
       final cambiar = tester.widget<Text>(find.text('Cambiar ›'));
       final primario = Theme.of(tester.element(find.text('Cambiar ›'))).colorScheme.primary;
       expect(cambiar.style!.color, isNot(primario));
-    }, skip: true); // skip: QA #339 — «Cambiar ›» sin acción se pinta con el color primario
+    });
   });
 
   if (_conCapturas) {

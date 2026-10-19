@@ -56,6 +56,12 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// siguiente que llegó con la pantalla abierta (la trajo el motor de sync), #339.
   late DateTime? _inicioSiguiente = widget.inicioSiguiente;
 
+  /// Último instante válido que el caso de uso informó al rechazar una hora (`hasta` de
+  /// `FailureHoraFueraDeRango`): si el tope real es menor que el que la pantalla calculó con su foto
+  /// vieja (llegó una siguiente con la pantalla abierta, #339), la hoja ofrece este rango y no
+  /// contradice el aviso. `null` mientras no se haya rechazado nada.
+  DateTime? _topeInformado;
+
   /// Si el último dibujo mostró el aviso de reloj atrasado: un toque más en «Elegir la hora» lo
   /// vuelve a anunciar (un aviso que ya está en pantalla no se lee otra vez solo).
   bool _relojAtrasadoVisible = false;
@@ -66,11 +72,15 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// de uso ([JornadaSinCerrar]), con el inicio de la jornada siguiente como tope si hay una.
   ({DateTime primero, DateTime ultimo})? _rango(DateTime ahora) {
     final primero = JornadaSinCerrar.primerMinutoDelFin(widget.inicio).toLocal();
-    final tope = JornadaSinCerrar.topeDelFin(
+    var topeUtc = JornadaSinCerrar.topeDelFin(
       inicio: widget.inicio,
       ahora: ahora,
       inicioSiguiente: _inicioSiguiente,
-    ).toLocal();
+    );
+    if (_topeInformado case final informado? when informado.isBefore(topeUtc)) {
+      topeUtc = informado;
+    }
+    final tope = topeUtc.toLocal();
     final ultimo = DateTime(tope.year, tope.month, tope.day, tope.hour, tope.minute);
     return ultimo.isBefore(primero) ? null : (primero: primero, ultimo: ultimo);
   }
@@ -187,6 +197,19 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     resultado.fold(
       (failure) => setState(() {
         _cerrando = false;
+        // Una hora que ya no vale porque el tope real es menor (#339): se suelta —sin elegir otra
+        // por la persona— y la hoja toma el tope que informó el caso de uso. El aviso (con el rango
+        // real y qué hacer) queda a la vista hasta que elija otra hora.
+        if (failure case FailureHoraFueraDeRango(:final hasta)) {
+          _horaElegida = null;
+          // Solo si el tope es menor por una siguiente (que no se va): si lo fijara el reloj o las
+          // 12 h, el reloj puede arreglarse y el tope viejo quedaría de más.
+          final sinSiguiente = JornadaSinCerrar.topeDelFin(
+            inicio: widget.inicio,
+            ahora: ref.read(relojJornadaProvider)(),
+          );
+          if (hasta.isBefore(sinSiguiente)) _topeInformado = hasta;
+        }
         _error = switch (failure) {
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
           // Un fallo del sistema al guardar: qué pasó y qué hacer (el mismo texto que Hoy).
