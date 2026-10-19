@@ -51,6 +51,11 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   bool _cerrando = false;
   String? _error;
 
+  /// Inicio de la jornada siguiente que la pantalla conoce. Arranca con la que trajo
+  /// `FailureJornadaDeDiaAnterior` y se actualiza si, al cerrar, el caso de uso encuentra otra: una
+  /// siguiente que llegó con la pantalla abierta (la trajo el motor de sync), #339.
+  late DateTime? _inicioSiguiente = widget.inicioSiguiente;
+
   /// Si el último dibujo mostró el aviso de reloj atrasado: un toque más en «Elegir la hora» lo
   /// vuelve a anunciar (un aviso que ya está en pantalla no se lee otra vez solo).
   bool _relojAtrasadoVisible = false;
@@ -64,7 +69,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     final tope = JornadaSinCerrar.topeDelFin(
       inicio: widget.inicio,
       ahora: ahora,
-      inicioSiguiente: widget.inicioSiguiente,
+      inicioSiguiente: _inicioSiguiente,
     ).toLocal();
     final ultimo = DateTime(tope.year, tope.month, tope.day, tope.hour, tope.minute);
     return ultimo.isBefore(primero) ? null : (primero: primero, ultimo: ultimo);
@@ -80,7 +85,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// porque no haya rango: con el reloj dentro del minuto del inicio tampoco hay rango, y ahí la
   /// siguiente puede estar horas después, así que decir "empezaron a la misma hora" sería falso.
   bool _sinHoraPorSiguiente(DateTime ahora) {
-    final siguiente = widget.inicioSiguiente;
+    final siguiente = _inicioSiguiente;
     return siguiente != null &&
         !_relojAtrasado(ahora) &&
         siguiente.isBefore(JornadaSinCerrar.primerMinutoDelFin(widget.inicio));
@@ -164,6 +169,21 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
       return;
     }
 
+    // Una jornada siguiente llegó con la pantalla abierta y no deja ningún minuto (#339): el caso de
+    // uso devuelve la señal de la corrección con la siguiente actual. La pantalla la toma, suelta la
+    // hora que ya no sirve y se redibuja con el aviso de «misma hora» y la flecha para volver. Nunca
+    // se muestra un rango al revés ni se inventa un fin.
+    final falla = resultado.fold<Failure?>((failure) => failure, (_) => null);
+    if (falla is FailureJornadaDeDiaAnterior) {
+      setState(() {
+        _cerrando = false;
+        _inicioSiguiente = falla.inicioSiguiente;
+        _horaElegida = null;
+        _error = null;
+      });
+      return;
+    }
+
     resultado.fold(
       (failure) => setState(() {
         _cerrando = false;
@@ -224,10 +244,11 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     required bool sinHoraPorSiguiente,
   }) {
     final notaDelDia = horaElegida == null ? null : _notaDelDia(horaElegida);
-    // Sin ninguna hora que ofrecer por la jornada siguiente (o mientras cierra) no hay nada que
-    // elegir: el toque no responde y el texto se ve apagado. Con el reloj atrasado el toque sí
-    // responde (anuncia el aviso), así que sigue encendido.
-    final elegirApagado = _cerrando || sinHoraPorSiguiente;
+    // Sin ninguna hora que ofrecer (por la jornada siguiente o porque el reloj del teléfono está
+    // dentro del minuto del inicio) o mientras cierra, no hay nada que elegir: el toque no responde
+    // y el texto se ve apagado. Con el reloj atrasado el toque sí responde (anuncia el aviso), así
+    // que sigue encendido.
+    final elegirApagado = _cerrando || (sinHoraValida && !relojAtrasado);
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(

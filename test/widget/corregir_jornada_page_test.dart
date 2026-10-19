@@ -1066,6 +1066,8 @@ void main() {
       expect(avisoReloj, findsNothing);
       expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
       expect(_botonCerrar(tester).onPressed, isNull);
+      // «Elegir la hora» no tiene qué hacer: se ve apagado y no responde (#339).
+      expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
     });
 
     testWidgets('con una siguiente que deja horas libres no aparece el aviso del mismo minuto', (
@@ -1171,6 +1173,31 @@ void main() {
         expect(colorDelTexto(tester), gris);
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
+
+      testWidgets(
+        'con el reloj dentro del minuto del inicio (sin ninguna hora, sin aviso nuevo, #339) '
+        'va apagado, deja volver, y al 200 % no desborda ni pierde contraste',
+        (tester) async {
+          await _montar(
+            tester,
+            _DataSource(iniciales: [_jornadaAbierta(inicio: inicio)]),
+            ahora: inicio.add(const Duration(seconds: 20)),
+            escala: _Escala(2),
+          );
+          await _abrirCorregir(tester, inicio: inicio);
+
+          expect(tester.widget<InkWell>(botonElegir).onTap, isNull);
+          expect(colorDelTexto(tester), gris);
+          // La decisión del 09/10: sin texto nuevo. Ningún aviso, solo la flecha para volver.
+          expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsNothing);
+          expect(find.byKey(const Key('corregir_jornada_reloj_atrasado')), findsNothing);
+          expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
+          expect(find.byKey(const Key('corregir_jornada_atras')), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        },
+      );
 
       testWidgets('mientras cierra también va apagado, y vuelve a encenderse si la falla deja la '
           'pantalla lista para reintentar', (tester) async {

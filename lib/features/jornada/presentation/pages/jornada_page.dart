@@ -176,11 +176,27 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       _errorFin = null;
     });
 
-    final resultado = await ref
-        .read(jornadaActualProvider(widget.sesion.usuarioId).notifier)
-        .finalizar(hora: _horaElegidaFin(jornada, ahora));
+    final notifier = ref.read(jornadaActualProvider(widget.sesion.usuarioId).notifier);
+    final horaElegida = _horaElegidaFin(jornada, ahora);
+    var resultado = await notifier.finalizar(hora: horaElegida);
 
     if (!mounted) return;
+
+    // La hora de fin que se eligió antes ya no vale y «Cambiar» no se puede usar (la jornada quedó
+    // abierta de un día anterior y el selector del momento no corresponde): por ejemplo, 23:45
+    // elegida antes de la medianoche y una jornada siguiente que empezó a las 23:30 (#339). Repetir
+    // el mismo error en cada toque no lleva a ningún lado: se suelta esa hora y se vuelve a pedir
+    // sin ella, que lleva a «¿A qué hora terminaste?» con el tope. Nada se cierra con una hora
+    // inventada.
+    final falloLaHoraVieja =
+        horaElegida != null &&
+        resultado.fold((failure) => failure is FailureHoraFueraDeRango, (_) => false) &&
+        _maximoAtrasFin(jornada, ref.read(relojJornadaProvider)()) == 0;
+    if (falloLaHoraVieja) {
+      setState(() => _horaFin = null);
+      resultado = await notifier.finalizar();
+      if (!mounted) return;
+    }
 
     // Jornada de un día anterior (#109, HU-JOR-002 "jornada que quedó abierta"): no se corrige
     // acá mismo —cerrarla con la hora de hoy inventaría un fin—, se ofrece "¿A qué hora
