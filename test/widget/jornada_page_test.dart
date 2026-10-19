@@ -982,6 +982,156 @@ void main() {
     );
   });
 
+  group('Hora de fin elegida antes de la medianoche que ya no vale (#339)', () {
+    // La jornada empezó el miércoles 22:00. A las 23:50 se elige 23:45; pasada la medianoche
+    // (00:35, cuando el margen de 30 min ya cae en otro día) la jornada "quedó abierta".
+    final inicio = DateTime(2026, 9, 23, 22);
+    final antesDeMedianoche = DateTime(2026, 9, 23, 23, 50);
+    final despuesDeMedianoche = DateTime(2026, 9, 24, 0, 35);
+
+    JornadaModel cerradaDesde(DateTime desde) => JornadaModel.fromEntity(
+      Jornada(
+        id: 'jor-siguiente',
+        colportorId: _sesion.usuarioId,
+        inicio: desde,
+        fin: desde.add(const Duration(minutes: 30)),
+        auditoria: Auditoria(
+          createdAt: desde,
+          updatedAt: desde.add(const Duration(minutes: 30)),
+          createdBy: _sesion.usuarioId,
+        ),
+      ),
+    );
+
+    /// Monta Hoy a las 23:50 con la hora de fin 23:45 ya elegida; devuelve el reloj para moverlo.
+    Future<void Function(DateTime)> montarConHoraElegida(
+      WidgetTester tester,
+      _DataSource dataSource,
+    ) async {
+      _pantalla(tester, const Size(390, 844));
+      var reloj = antesDeMedianoche;
+      await _montar(tester, dataSource, reloj: () => reloj);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '23:45');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+      await tester.pumpAndSettle();
+      expect(find.text('23:45 · hace 5 min'), findsOneWidget);
+      return (DateTime nuevo) => reloj = nuevo;
+    }
+
+    testWidgets('con una siguiente que empezó a las 23:30, «Finalizar jornada» no repite el error '
+        'del rango: suelta la hora vieja y lleva a «¿A qué hora terminaste?» con el tope', (
+      tester,
+    ) async {
+      final dataSource = _DataSource(
+        iniciales: [_jornadaAbiertaDesde(inicio), cerradaDesde(DateTime(2026, 9, 23, 23, 30))],
+      );
+      final moverReloj = await montarConHoraElegida(tester, dataSource);
+      moverReloj(despuesDeMedianoche);
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(find.textContaining('entre las 22:01 y las 23:30'), findsNothing);
+      expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
+      // La hora de la corrección arranca vacía y la jornada sigue abierta, sin un fin inventado.
+      expect(find.text('--:--'), findsOneWidget);
+      expect(dataSource.jornadas.where((j) => j.estaAbierta), hasLength(1));
+
+      // Con el tope: 23:30 vale (a ras de la siguiente) y se cierra con esa hora.
+      await tester.tap(find.byKey(const Key('corregir_jornada_elegir_hora')));
+      await tester.pumpAndSettle();
+      expect(find.text('Entre las 22:01 y las 23:30.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '23:20');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('JORNADA FINALIZADA'), findsOneWidget);
+      final cerrada = dataSource.jornadas.firstWhere((j) => j.id == 'jor-previa');
+      expect(cerrada.fin, DateTime(2026, 9, 23, 23, 20).toUtc());
+    });
+
+    testWidgets('sin siguiente, la hora de fin elegida sigue valiendo: no se descarta una hora '
+        'buena y la jornada cierra a las 23:45', (tester) async {
+      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(inicio)]);
+      final moverReloj = await montarConHoraElegida(tester, dataSource);
+      moverReloj(despuesDeMedianoche);
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(find.text('JORNADA FINALIZADA'), findsOneWidget);
+      expect(dataSource.jornadas.single.fin, DateTime(2026, 9, 23, 23, 45).toUtc());
+    });
+
+    testWidgets('con el reloj a menos de 1:30 del inicio y una hora elegida que ya no vale, NO se '
+        'reintenta sin hora: se muestra el error del rango y la jornada sigue abierta (nunca un '
+        'fin inventado)', (tester) async {
+      _pantalla(tester, const Size(390, 844));
+      final inicioCerca = DateTime(2026, 9, 23, 22);
+      final dataSource = _DataSource(iniciales: [_jornadaAbiertaDesde(inicioCerca)]);
+      var reloj = DateTime(2026, 9, 23, 22, 15);
+      await _montar(tester, dataSource, reloj: () => reloj);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jornada_ajustar_hora_fin')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_valor')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('hoja_hora_campo')), '22:10');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar_escrita')));
+      await tester.pumpAndSettle();
+      // El reloj del teléfono se atrasa a mano: la hora elegida queda en el futuro.
+      reloj = DateTime(2026, 9, 23, 22, 0, 40);
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(find.text('JORNADA FINALIZADA'), findsNothing);
+      expect(find.byKey(const Key('jornada_error_fin')), findsOneWidget);
+      expect(dataSource.jornadas.single.estaAbierta, isTrue);
+    });
+
+    testWidgets('con una siguiente en el mismo minuto del inicio, lleva a la corrección con el '
+        'aviso de «misma hora» y deja volver a Hoy sin error ni hora trabada', (tester) async {
+      final dataSource = _DataSource(
+        iniciales: [
+          _jornadaAbiertaDesde(inicio),
+          cerradaDesde(inicio.add(const Duration(seconds: 30))),
+        ],
+      );
+      final moverReloj = await montarConHoraElegida(tester, dataSource);
+      moverReloj(despuesDeMedianoche);
+
+      await _tocarFinalizar(tester);
+
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+      expect(find.byKey(const Key('corregir_jornada_sin_hora_siguiente')), findsOneWidget);
+      expect(find.textContaining('entre las'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('corregir_jornada_atras')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CorregirJornadaPage), findsNothing);
+      expect(find.byKey(const Key('jornada_error_fin')), findsNothing);
+      expect(_botonFinalizar(tester).onPressed, isNotNull);
+      expect(dataSource.jornadas.where((j) => j.estaAbierta), hasLength(1));
+      // La hora vieja no queda guardada: el próximo «Finalizar» vuelve a la corrección.
+      await _tocarFinalizar(tester);
+      expect(find.byType(CorregirJornadaPage), findsOneWidget);
+    });
+  });
+
   group('Estados al finalizar', () {
     testWidgets('mientras guarda, el botón se deshabilita (un segundo toque no vuelve a cerrar)', (
       tester,
