@@ -61,6 +61,7 @@ class AvisoAlta extends StatelessWidget {
     this.acciones,
     this.colorInsignia,
     this.alturaMaxima,
+    this.conRegionViva = true,
   });
 
   final Color color;
@@ -79,10 +80,20 @@ class AvisoAlta extends StatelessWidget {
   /// región viva, y las [acciones] siguen siendo botones aparte.
   final double? alturaMaxima;
 
+  /// `false`: el cuadro no abre su propia región viva (ni dice el texto por etiqueta): quien lo usa
+  /// pone una más afuera, para que otro cuadro con el mismo texto (por ejemplo la forma compacta de
+  /// `PosiblesDuplicadosPage`) comparta el nodo y el lector no repita el aviso al pasar de uno a otro.
+  /// Solo con [alturaMaxima]: el texto queda fuera de la semántica y lo dice esa región.
+  final bool conRegionViva;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tope = alturaMaxima;
+    assert(
+      conRegionViva || tope != null,
+      'sin región viva propia el texto lo dice quien lo envuelve',
+    );
     final cabecera = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -118,16 +129,18 @@ class AvisoAlta extends StatelessWidget {
         ],
       ),
     );
+    final acotado = tope == null
+        ? cuadro
+        : ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: tope),
+            child: cuadro,
+          );
+    if (!conRegionViva) return acotado;
     return Semantics(
       liveRegion: true,
       container: true,
       label: tope == null ? null : texto,
-      child: tope == null
-          ? cuadro
-          : ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: tope),
-              child: cuadro,
-            ),
+      child: acotado,
     );
   }
 }
