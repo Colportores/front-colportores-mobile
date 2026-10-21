@@ -320,8 +320,15 @@ class SyncEngine {
     };
     await _jobs.replacePayload(destino.id, fila);
     await _jobs.discardHeld([for (final q in deLaFila.skip(1)) q.id]);
-    await _jobs.release([destino.id, for (final q in colgados) q.id],
-        at: ahora);
+    // B1: lo que cuelga de la fila y quedó `PENDING` (un espacio cargado sin
+    // señal, antes de que ningún ciclo lo viera) tiene que salir detrás del
+    // alta, no delante. Va con los que estaban esperando, en su orden.
+    final sueltos = _pendientesQueCuelgan(
+        [destino, ...colgados], await _jobs.listPending());
+    await _jobs.release([
+      destino.id,
+      for (final q in _enOrdenDeCreacion([...colgados, ...sueltos])) q.id,
+    ], at: ahora);
     return destino.id;
   }
 
@@ -366,6 +373,45 @@ class SyncEngine {
           pkColumn: _specs.of(entidad).pk, versionPorFila: porFila);
       await _jobs.rebaseVersions(entidad, porFila);
     }
+  }
+
+  /// Los `PENDING` de [pendientes] que nombran una fila de [liberados] (la regla
+  /// de [FilasRetenidas]: como PK o como referencia), o algo que a su vez
+  /// cuelga de ellos. Son los que `release` tiene que pasar detrás del alta: si
+  /// quedaran delante, saldrían en el lote antes de la fila que nombran y el
+  /// servidor los rechazaría con `23503` en vez de dejarlos en espera (§2.2).
+  List<QueuedJob> _pendientesQueCuelgan(
+      List<QueuedJob> liberados, List<QueuedJob> pendientes) {
+    if (pendientes.isEmpty) return const [];
+    final retenidas = FilasRetenidas.de(_specs, liberados);
+    final propios = {for (final q in liberados) q.id};
+    final cuelgan = <String>{};
+    var crecio = true;
+    while (crecio) {
+      crecio = false;
+      for (final q in pendientes) {
+        if (propios.contains(q.id) || cuelgan.contains(q.id)) continue;
+        if (retenidas.nombrada(q.job) == null) continue;
+        cuelgan.add(q.id);
+        retenidas.retener(q.job);
+        crecio = true;
+      }
+    }
+    return [
+      for (final q in pendientes)
+        if (cuelgan.contains(q.id)) q
+    ];
+  }
+
+  /// [jobs] por `createdAt`, con el orden en que vinieron como desempate
+  /// (`List.sort` no es estable).
+  List<QueuedJob> _enOrdenDeCreacion(List<QueuedJob> jobs) {
+    final conPosicion = [for (final (i, q) in jobs.indexed) (i, q)];
+    conPosicion.sort((a, b) {
+      final porFecha = a.$2.job.createdAt.compareTo(b.$2.job.createdAt);
+      return porFecha != 0 ? porFecha : a.$1.compareTo(b.$1);
+    });
+    return [for (final (_, q) in conPosicion) q];
   }
 
   /// Lo que cuelga, directa o indirectamente, de la fila [pk]: los `WAITING`
@@ -826,65 +872,79 @@ class SyncEngine {
           );
         }
 
-        final hechos = <String>[];
+        final hechos = <String>{};
         final versiones = <String, Map<String, int>>{};
-        for (final r in resultado.results) {
-          final id = idPorOpId[r.clientOpId];
-          if (id == null) continue;
-          switch (r.outcome) {
-            case JobOutcome.accepted:
-            case JobOutcome.duplicate:
-              final job = jobPorId[id]!;
-              if ((r.syncVersion, job.rowPk) case (final v?, final pk?)
-                  when job.op != Op.delete) {
-                (versiones[job.entity] ??= {})[pk] = v;
-              }
-              hechos.add(id);
-              pushed++;
-            case JobOutcome.conflict when r.serverRow != null:
-              // §5.4: el servidor gana por sync_version. Se aplica su fila y el
-              // job se cierra: no es un error del colportor, no va a la cola de
-              // error.
-              await _store.applyDelta(
-                {
-                  _entidadDe(tomados, id): [r.serverRow!]
-                },
-                scope: _scopeMirror,
-                watermark: await _store.watermarkOf(_scopeMirror) ?? '',
-              );
-              hechos.add(id);
-              conflicts++;
-            case JobOutcome.conflict:
-              // §2.2: sin server_row no hay con qué resolver. El servidor no
-              // guardó la fila y la colportora la resuelve en la vista 10; lo
-              // que cuelga de ella espera. Ninguno se cierra: un DONE acá es
-              // una venta que no sube nunca.
-              final dependeDe = r.dependsOn ?? '';
-              if (r.code == kCodigoEsperaAltaEnConflicto &&
-                  dependeDe.isNotEmpty) {
-                await _jobs.markWaiting(id,
-                    dependsOn: dependeDe, code: r.code, message: r.message);
-              } else {
-                // Una espera sin depends_on no dice qué esperar: si quedara
-                // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
-                await _jobs.markBlocked(id, code: r.code, message: r.message);
-              }
-              retenidas.retener(jobPorId[id]!);
-              conflicts++;
-            case JobOutcome.invalid:
-              await _jobs.markInvalid(id, code: r.code, message: r.message);
-              invalidated++;
+        try {
+          for (final r in resultado.results) {
+            final id = idPorOpId[r.clientOpId];
+            if (id == null) continue;
+            switch (r.outcome) {
+              case JobOutcome.accepted:
+              case JobOutcome.duplicate:
+                final job = jobPorId[id]!;
+                if ((r.syncVersion, job.rowPk) case (final v?, final pk?)
+                    when job.op != Op.delete) {
+                  (versiones[job.entity] ??= {})[pk] = v;
+                }
+                hechos.add(id);
+                pushed++;
+              case JobOutcome.conflict when r.serverRow != null:
+                // §5.4: el servidor gana por sync_version. Se aplica su fila y el
+                // job se cierra: no es un error del colportor, no va a la cola de
+                // error.
+                await _store.applyDelta(
+                  {
+                    _entidadDe(tomados, id): [r.serverRow!]
+                  },
+                  scope: _scopeMirror,
+                  // M1: la fila del servidor se aplica sin tocar el watermark.
+                  // Guardar `''` si no había ninguno rompe la fase 3 de
+                  // `recover()`: el backend contesta 22023 a un watermark vacío.
+                  watermark: null,
+                );
+                hechos.add(id);
+                conflicts++;
+              case JobOutcome.conflict:
+                // §2.2: sin server_row no hay con qué resolver. El servidor no
+                // guardó la fila y la colportora la resuelve en la vista 10; lo
+                // que cuelga de ella espera. Ninguno se cierra: un DONE acá es
+                // una venta que no sube nunca.
+                final dependeDe = r.dependsOn ?? '';
+                if (r.code == kCodigoEsperaAltaEnConflicto &&
+                    dependeDe.isNotEmpty) {
+                  await _jobs.markWaiting(id,
+                      dependsOn: dependeDe, code: r.code, message: r.message);
+                } else {
+                  // Una espera sin depends_on no dice qué esperar: si quedara
+                  // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
+                  await _jobs.markBlocked(id, code: r.code, message: r.message);
+                }
+                retenidas.retener(jobPorId[id]!);
+                conflicts++;
+              case JobOutcome.invalid:
+                await _jobs.markInvalid(id, code: r.code, message: r.message);
+                invalidated++;
+            }
+            if (!hechos.contains(id)) sinResolver.remove(id);
           }
-          sinResolver.remove(id);
-        }
-        await _devolverVersiones(versiones);
-        for (final MapEntry(key: entidad, value: porFila)
-            in versiones.entries) {
-          for (final MapEntry(key: pk, value: v) in porFila.entries) {
-            versionVista[(entidad, pk)] = v;
+        } finally {
+          // M2: lo que el servidor ya aceptó se cierra aunque un conflicto de
+          // más abajo haga reventar aplicar su fila (una DB local que falla).
+          // Si no, esos jobs quedarían `IN_FLIGHT` hasta el lease y su
+          // `sync_version` no volvería a las filas ni a la cola: una edición
+          // nueva de la misma fila saldría con la versión vieja.
+          await _devolverVersiones(versiones);
+          for (final MapEntry(key: entidad, value: porFila)
+              in versiones.entries) {
+            for (final MapEntry(key: pk, value: v) in porFila.entries) {
+              versionVista[(entidad, pk)] = v;
+            }
+          }
+          if (hechos.isNotEmpty) {
+            await _jobs.markDone(hechos, at: _clock());
+            sinResolver.removeAll(hechos);
           }
         }
-        if (hechos.isNotEmpty) await _jobs.markDone(hechos, at: _clock());
       }
     } on Object {
       if (sinResolver.isNotEmpty) await _jobs.markPending(sinResolver);

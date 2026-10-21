@@ -127,6 +127,12 @@ class InMemoryJobStore implements JobStorePort {
       ]);
 
   @override
+  Future<List<QueuedJob>> listPending() async => _enOrden([
+        for (final j in _jobs.values)
+          if (j.state == JobState.pending) j
+      ]);
+
+  @override
   Future<void> replacePayload(
       String jobId, Map<String, Object?> payload) async {
     final q = _sinMandar(jobId, 'replacePayload');
@@ -183,7 +189,9 @@ class InMemoryJobStore implements JobStorePort {
     for (final id in jobIds) {
       final q = _jobs[id];
       if (q == null ||
-          (q.state != JobState.blocked && q.state != JobState.waiting)) {
+          (q.state != JobState.blocked &&
+              q.state != JobState.waiting &&
+              q.state != JobState.pending)) {
         continue;
       }
       _reemplazar(q.copyWith(
@@ -318,7 +326,7 @@ class InMemoryLocalStore implements LocalStorePort {
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> delta, {
     required String scope,
-    required String watermark,
+    required String? watermark,
   }) async {
     if (failOnApply) {
       throw StateError('la transacción local falló');
@@ -326,7 +334,7 @@ class InMemoryLocalStore implements LocalStorePort {
     for (final MapEntry(key: entity, value: filas) in delta.entries) {
       (rows[entity] ??= []).addAll(filas);
     }
-    watermarks[scope] = watermark;
+    if (watermark != null) watermarks[scope] = watermark;
     applies++;
   }
 

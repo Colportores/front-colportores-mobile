@@ -458,6 +458,38 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
             ['op-par', 'op-alta', 'op-espacio']);
       });
 
+      test('listPending trae solo los PENDING, en orden de creación', () async {
+        final cola = crear();
+        await cola.append(_job('op-b', minuto: 20));
+        await cola.append(_job('op-a', minuto: 10));
+        await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        expect([for (final q in await cola.listPending()) q.job.clientOpId],
+            ['op-a', 'op-b']);
+        await cola.claimPending(limit: 1);
+        expect([for (final q in await cola.listPending()) q.job.clientOpId],
+            ['op-b'],
+            reason: 'lo que ya se tomó no es PENDING');
+      });
+
+      test(
+          'release también reubica un PENDING detrás de todo, y sigue PENDING',
+          () async {
+        final cola = crear();
+        final [alta] = await enEspera(cola, ['op-alta']);
+        // Lo que cuelga del alta pero nunca llegó a quedar en espera: se
+        // encoló antes que el ciclo que lo habría retenido.
+        final colgado = await cola.append(_job('op-colgado', minuto: 10));
+        await cola.append(_job('op-par', minuto: 20));
+
+        await cola.release([alta, colgado],
+            at: _t0.add(const Duration(minutes: 5)));
+
+        final tomados = await cola.claimPending(limit: 10);
+        expect([for (final q in tomados) q.job.clientOpId],
+            ['op-par', 'op-alta', 'op-colgado']);
+      });
+
       test('release limpia el error y dependsOn', () async {
         final cola = crear();
         final ids = await enEspera(cola, ['op-alta', 'op-espacio']);
@@ -541,6 +573,24 @@ void runLocalStoreContract(
       await store
           .applyDelta(const {}, scope: 'mirror', watermark: 'w-del-backup');
       expect(await store.watermarkOf('mirror'), 'w-del-backup');
+    });
+
+    test('applyDelta sin watermark escribe la fila y deja el que había',
+        () async {
+      // El LWW (§5.4) aplica la `server_row` de un conflicto sin pasar por una
+      // página de pull. Con `''` el backend contesta 22023 en la próxima
+      // reconciliación; con el watermark pisado, se saltearía lo que falta.
+      await store.applyDelta(const {}, scope: 'mirror', watermark: 'w-1');
+      await store.applyDelta({
+        fila.entidad: [fila.fila],
+      }, scope: 'mirror', watermark: null);
+      expect(await store.watermarkOf('mirror'), 'w-1');
+
+      await store.applyDelta({
+        fila.entidad: [fila.fila],
+      }, scope: 'otro', watermark: null);
+      expect(await store.watermarkOf('otro'), isNull,
+          reason: 'no se inventa un watermark vacío');
     });
 
     test('aplicar dos veces avanza el watermark, no lo retrocede', () async {

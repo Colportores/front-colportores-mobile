@@ -115,8 +115,20 @@ abstract interface class JobStorePort {
   /// cola con la versión buena.
   Future<void> rebaseVersions(String entity, Map<String, int> versionPorFila);
 
+  /// Los jobs `PENDING`, en orden de creación (el mismo de [claimPending]),
+  /// sin tomarlos.
+  ///
+  /// Lo usa el motor al soltar un alta en conflicto, para encontrar lo que la
+  /// nombra y todavía no salió (§2.2). No está en el camino caliente: solo se
+  /// llama cuando hay algo en espera que se reescribe.
+  Future<List<QueuedJob>> listPending();
+
   /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
   /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
+  ///
+  /// Un job que ya está `PENDING` también se reubica detrás de todo, y sigue
+  /// `PENDING`: es lo que cuelga de la fila que se suelta pero nunca llegó a
+  /// quedar en espera, y tiene que salir **después** del alta.
   ///
   /// El orden es la garantía de §2.2: el servidor deja en espera solo lo que
   /// viaja en el mismo lote que el alta y después de ella. Por eso el alta va
@@ -190,10 +202,14 @@ abstract interface class LocalStorePort {
   /// Es indivisible a propósito: si aplicar falla, el watermark no avanza y el
   /// próximo pull vuelve a traer lo mismo. Dos métodos separados dejarían la
   /// puerta abierta a avanzar el watermark sobre datos que no se escribieron.
+  ///
+  /// Un [watermark] `null` deja el del [scope] como está: es para aplicar una
+  /// fila suelta que no viene de una página de pull (la `server_row` de un
+  /// LWW, §5.4), que no puede inventar un watermark ni borrar el que hay.
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
-    required String watermark,
+    required String? watermark,
   });
 
   /// El watermark guardado para [scope], o `null` si nunca se pulleó.

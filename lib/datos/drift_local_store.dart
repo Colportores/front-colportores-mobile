@@ -34,7 +34,7 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
-    required String watermark,
+    required String? watermark,
   }) => transaction(() async {
     for (final MapEntry(key: entidad, value: filas) in rows.entries) {
       final tabla = _tabla(entidad);
@@ -44,9 +44,12 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
         await into(tabla).insertOnConflictUpdate(RawValuesInsertable<Never>(_valores(tabla, fila)));
       }
     }
-    await into(
-      syncWatermarks,
-    ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
+    // Sin watermark (la `server_row` de un LWW) se deja el que había.
+    if (watermark != null) {
+      await into(
+        syncWatermarks,
+      ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
+    }
   });
 
   @override

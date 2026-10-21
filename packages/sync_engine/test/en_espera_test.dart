@@ -291,6 +291,69 @@ void main() {
       },
     );
 
+    // B1: sin señal, la colportora agrega un espacio a la casa en conflicto.
+    // Ningún ciclo corre, así que el espacio queda PENDING (no WAITING). Al
+    // corregir la dirección, el alta vuelve detrás de todo: si el espacio no se
+    // va con ella, sale primero y el servidor lo rechaza con 23503.
+    test(
+      'lo que cuelga del alta y quedó PENDING sale detrás de ella, no INVALID',
+      () async {
+        final (:motor, :servidor, :cola) = _armar();
+        await _altaEnConflicto(motor, servidor);
+        await motor.stage('espacio', Op.insert, {
+          'id': 'esp-b2',
+          'ubicacion_id': 'ubi-b',
+        }, clientOpId: 'op-esp-b2');
+        expect(_estado(cola, 'op-esp-b2'), JobState.pending);
+
+        await motor.stage('ubicacion', Op.update, {
+          'id': 'ubi-b',
+          'calle': 'Rivera 3',
+        });
+        await motor.syncNow();
+
+        expect(servidor.lotes.last, ['op-alta-b', 'op-espacio-b', 'op-esp-b2']);
+        expect(await cola.listInvalid(), isEmpty);
+        expect(_estado(cola, 'op-esp-b2'), JobState.done);
+        expect(servidor.filas['esp-b2']!['ubicacion_id'], 'ubi-b');
+        await motor.dispose();
+      },
+    );
+
+    test('lo PENDING que cuelga de lo que cuelga del alta también va detrás, y '
+        'lo que no la nombra conserva su lugar', () async {
+      final (:motor, :servidor, :cola) = _armar();
+      await _altaEnConflicto(motor, servidor);
+      await motor.stage('espacio', Op.insert, {
+        'id': 'esp-b2',
+        'ubicacion_id': 'ubi-b',
+      }, clientOpId: 'op-esp-b2');
+      await motor.stage('venta', Op.insert, {
+        'id': 'v-1',
+        'espacio_id': 'esp-b2',
+      }, clientOpId: 'op-venta');
+      await motor.stage('espacio', Op.insert, {
+        'id': 'esp-a',
+        'ubicacion_id': 'ubi-a',
+      }, clientOpId: 'op-esp-a');
+
+      await motor.stage('ubicacion', Op.update, {
+        'id': 'ubi-b',
+        'calle': 'Rivera 3',
+      });
+      await motor.syncNow();
+
+      expect(servidor.lotes.last, [
+        'op-esp-a',
+        'op-alta-b',
+        'op-espacio-b',
+        'op-esp-b2',
+        'op-venta',
+      ]);
+      expect(await cola.listInvalid(), isEmpty);
+      await motor.dispose();
+    });
+
     test(
       'un update solo de algunas columnas no borra las demás del alta',
       () async {

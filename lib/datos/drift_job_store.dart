@@ -148,6 +148,14 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
   }
 
   @override
+  Future<List<QueuedJob>> listPending() async {
+    final filas = await (_enOrden(
+      select(syncQueue),
+    )..where((q) => q.state.equals(EstadoJob.pending))).get();
+    return filas.map(_aJob).toList();
+  }
+
+  @override
   Future<void> replacePayload(String jobId, Map<String, Object?> payload) async {
     final cambiadas =
         await (update(syncQueue)
@@ -195,17 +203,17 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
     var base = at.millisecondsSinceEpoch;
     if (maximo != null && maximo >= base) base = maximo + 1;
     for (final (i, id) in jobIds.indexed) {
-      await (update(syncQueue)
-            ..where((q) => q.id.equals(id) & q.state.isIn([EstadoJob.blocked, EstadoJob.waiting])))
-          .write(
-            SyncQueueCompanion(
-              state: const Value(EstadoJob.pending),
-              code: const Value(''),
-              message: const Value(''),
-              dependsOn: const Value(null),
-              createdAt: Value(DateTime.fromMillisecondsSinceEpoch(base + i, isUtc: true)),
-            ),
-          );
+      await (update(
+        syncQueue,
+      )..where((q) => q.id.equals(id) & q.state.isIn(EstadoJob.sinMandar))).write(
+        SyncQueueCompanion(
+          state: const Value(EstadoJob.pending),
+          code: const Value(''),
+          message: const Value(''),
+          dependsOn: const Value(null),
+          createdAt: Value(DateTime.fromMillisecondsSinceEpoch(base + i, isUtc: true)),
+        ),
+      );
     }
   });
 
