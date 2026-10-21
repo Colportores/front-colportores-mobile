@@ -37,7 +37,8 @@ final sobreSyncProvider = Provider<ClientEnvelope>(
 /// configurado (tests, demo), [TransporteSinBackend]: todo queda `PENDING`, nada se pierde.
 ///
 /// El token es el JWT de la sesión vigente. El refresh es de `supabase_flutter` (§10): si el token
-/// venció, el servidor contesta `401`, el lote queda `PENDING` y sube al próximo trigger.
+/// venció, el servidor contesta `401` y el lote queda `PENDING`. Cuando el refresh termina,
+/// [cicloDeVidaSyncProvider] dispara un ciclo y el lote sube sin esperar al próximo trigger.
 final transporteSyncProvider = Provider<SyncTransport>((ref) {
   if (!ConfigSupabase.configurada) return const TransporteSinBackend();
   return SupabaseRpcTransport(
@@ -74,9 +75,21 @@ final encoladorSyncProvider = Provider<EncoladorSync>((ref) {
   return motor == null ? const EncoladorSyncSinMotor() : EncoladorSyncMotor(motor);
 });
 
+/// Los cambios de la sesión de Supabase (`onAuthStateChange`). Sin Supabase configurado (tests,
+/// demo) no hay sesión que cambie: el flujo queda vacío.
+final cambiosDeSesionSyncProvider = Provider<Stream<AuthState>>((ref) {
+  if (!ConfigSupabase.configurada) return const Stream<AuthState>.empty();
+  return Supabase.instance.client.auth.onAuthStateChange;
+});
+
 /// Los triggers de §5.2 que vienen del sistema: la app vuelve al frente (sube lo pendiente y baja
 /// el delta) o se va al fondo (sale ya lo crítico que esperaba su ventana de 2 s). Al armarse,
 /// además, arranca un ciclo: lo que quedó en la cola de la sesión anterior sube sin esperar.
+///
+/// También cuando `supabase_flutter` termina de refrescar el token (`tokenRefreshed`): el colportor
+/// vuelve con el token vencido, el primer ciclo recibe `401` y todo queda `PENDING`; sin este
+/// disparo lo pendiente esperaría al próximo resume, cambio de red o venta. Va como `appResumed`
+/// (sube la cola y baja el delta), así el contrato no cambia.
 ///
 /// Lo observa la pantalla principal mientras la DB está abierta. Necesita el binding de Flutter
 /// (`AppLifecycleListener`), por eso no vive dentro de [motorSyncProvider].
@@ -88,6 +101,21 @@ final cicloDeVidaSyncProvider = Provider<void>((ref) {
     onHide: () => unawaited(_vaciar(motor)),
   );
   ref.onDispose(ciclo.dispose);
+  final refresco = ref
+      .watch(cambiosDeSesionSyncProvider)
+      .where((cambio) => cambio.event == AuthChangeEvent.tokenRefreshed)
+      .listen(
+        (_) => _disparar(motor, SyncTrigger.appResumed),
+        onError: (Object e, StackTrace st) => AppLogger.instance.error(
+          LogModulo.sync,
+          'REFRESH_TOKEN_FAIL',
+          'falló el flujo de cambios de sesión',
+          const {},
+          e,
+          st,
+        ),
+      );
+  ref.onDispose(() => unawaited(refresco.cancel()));
   _disparar(motor, SyncTrigger.appResumed);
 });
 
