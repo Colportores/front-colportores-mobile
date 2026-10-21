@@ -270,6 +270,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
           _segundosRestantes--;
           if (_segundosRestantes <= 0) _terminarCooldown();
         });
+        if (_segundosRestantes <= 0) _anunciarQueYaSePuedeReenviar();
       });
     }
   }
@@ -279,6 +280,26 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     _timer = null;
     _segundosRestantes = 0;
     _mensajeReenvio = null;
+  }
+
+  /// Cuando la cuenta llega a cero y el botón vuelve a poder tocarse, lo dice al lector de pantalla
+  /// **una sola vez** («anuncio único» de #335, decisión del 16/10, AA 4.1.3): quien dejó el foco en
+  /// «Reenviar en Ns» no oye nada cuando el rótulo cambia. Es solo el final natural de la cuenta
+  /// (no al empezar, ni segundo a segundo, ni al cambiar de dirección o volver de segundo plano), y
+  /// solo si el botón de verdad queda habilitado: no con el candado del límite puesto, ni en las
+  /// pantallas de cierre, ni mientras se verifica.
+  void _anunciarQueYaSePuedeReenviar() {
+    final cierre =
+        _estado == EstadoVerificacionEmail.verificado ||
+        _estado == EstadoVerificacionEmail.yaVerificado;
+    if (!mounted || cierre || _bloqueado || _reenviando || _verificando) return;
+    unawaited(
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        'Ya podés reenviar el email.',
+        Directionality.of(context),
+      ),
+    );
   }
 
   /// Descarta los candados que ya vencieron y agenda el repintado para el próximo cambio: que venza
@@ -435,7 +456,9 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
             // Dejarlo en `_errorEmail` no mostraba nada.
             _errorGeneral = ValidadorEmail.avisoDireccionRechazadaSinCampo;
             _errorSinConexion = false;
-          } else {
+          } else if (correoParaBloqueo(_correoVisible) == correoParaBloqueo(email)) {
+            // El rechazo es de la dirección a la que se pidió el reenvío: si mientras tanto se
+            // escribió otra, que todavía no se probó, el aviso no va debajo de ella (#371).
             _errorEmail = campos['email'];
           }
         case FailureServidor(status: 429):
@@ -742,6 +765,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         OutlinedButton.icon(
           key: const Key('verificacion_email_reenviar'),
           onPressed: null,
+          style: _estiloReenviar(context),
           icon: const Icon(Icons.lock_outline),
           label: Text(etiquetaReenviar),
         )
@@ -749,19 +773,30 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
         FilledButton(
           key: const Key('verificacion_email_reenviar'),
           onPressed: reenviar,
-          child: Text(etiquetaReenviar),
+          style: conCuentaRegresiva ? _estiloPrimarioConCuenta(context) : null,
+          child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         )
       else
         OutlinedButton(
           key: const Key('verificacion_email_reenviar'),
           onPressed: reenviar,
-          child: Text(etiquetaReenviar),
+          // 12-A03 y 12-A01b: con la cuenta corriendo el botón se rellena con lo transcurrido y el
+          // rótulo va en JetBrains Mono (#335).
+          style: conCuentaRegresiva ? _estiloConCuenta(context) : _estiloReenviar(context),
+          child: Text(etiquetaReenviar, style: conCuentaRegresiva ? _rotuloConCuenta : null),
         ),
-      if (conCuentaRegresiva)
+      // El canvas no dibuja la cuenta del botón primario de 12-A04 y 12-A04b (el enlace expiró).
+      // Decisión del 16/10 sobre #335 (https://github.com/Colportores/front-colportores-mobile/pull/377#issuecomment-6225734275):
+      // queda la barra de 3 px, que avanza con lo transcurrido como el relleno de 12-A03, con el
+      // rótulo en JetBrains Mono y legible (4,5:1) sobre el botón apagado.
+      if (conCuentaRegresiva && expirado && widget.password == null)
         ExcludeSemantics(
           child: LinearProgressIndicator(
-            key: const Key('verificacion_email_progreso'),
-            value: _segundosRestantes / _cooldown.inSeconds,
+            key: const Key('verificacion_email_barra'),
+            value: 1 - _segundosRestantes / _cooldown.inSeconds,
+            // La pista en el borde de la paleta: con la del tema (`secondaryContainer`, #13407A) el
+            // relleno navy no se distingue de ella (1,4:1) y el avance no se ve.
+            backgroundColor: theme.extension<ColoresColportaje>()!.borde,
             minHeight: 3,
             borderRadius: BorderRadius.circular(2),
           ),
@@ -779,13 +814,102 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     ];
   }
 
+  /// Texto a partir de ~143 %: la etiqueta de un botón pasa a dos líneas.
+  bool _textoGrande(BuildContext context) => MediaQuery.textScalerOf(context).scale(14) > 20;
+
   /// Con texto grande la etiqueta pasa a dos líneas y los extremos de píldora la recortan: ahí el
   /// radio baja y el relleno lateral sube.
   ButtonStyle? _estiloYaVerifique(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return null;
+    if (!_textoGrande(context)) return null;
     return FilledButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
+  }
+
+  /// Estilo del botón «Reenviar» fuera de la cuenta. Con texto grande la forma es la de «Ya verifiqué
+  /// mi email» (radio 16 y no píldora), y vale en todos sus estados (sin cuenta, con cuenta y con el
+  /// candado puesto) para que no cambie al empezar ni al terminar la espera.
+  ///
+  /// Apagado (con el candado de 12-A06, o mientras se reenvía) el rótulo va en el `gris` del canvas
+  /// (#5B6B82, 5,4:1 sobre el botón) y no en el 38 % de Material (2,4:1, no llega a AA).
+  ButtonStyle _estiloReenviar(BuildContext context) {
+    final colores = Theme.of(context).extension<ColoresColportaje>()!;
+    final grande = _textoGrande(context);
+    return OutlinedButton.styleFrom(
+      disabledForegroundColor: colores.gris,
+      shape: grande ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)) : null,
+      padding: grande ? const EdgeInsets.symmetric(horizontal: 16, vertical: 14) : null,
+    );
+  }
+
+  /// Rótulo de la cuenta regresiva: JetBrains Mono como en el canvas (12-A03), para que el número no
+  /// haga bailar el ancho del texto al bajar cada segundo.
+  static const _rotuloConCuenta = TextStyle(fontFamily: 'JetBrainsMono');
+
+  /// Estilo del botón primario apagado mientras corre la cuenta (12-A04 y 12-A04b). El apagado del
+  /// tema (primario al 50 % con el rótulo al 38 % de Material) no llega a 4,5:1: acá el fondo es el
+  /// `gris` de la paleta (más apagado que el azul del botón activo) y el rótulo, `onPrimary`.
+  ButtonStyle _estiloPrimarioConCuenta(BuildContext context) {
+    final tema = Theme.of(context);
+    return FilledButton.styleFrom(
+      disabledBackgroundColor: tema.extension<ColoresColportaje>()!.gris,
+      disabledForegroundColor: tema.colorScheme.onPrimary,
+    );
+  }
+
+  /// Estilo del botón apagado mientras corre la cuenta (12-A03 y 12-A01b): el mismo borde y forma del
+  /// botón secundario, con el rótulo en `gris` (con el 38 % de opacidad de Material no llega a AA) y
+  /// un relleno suave que avanza de izquierda a derecha con lo transcurrido de los 60 s. El relleno
+  /// no entra en el árbol de accesibilidad: la cuenta ya la dice el rótulo del botón, y no se anuncia
+  /// cada segundo.
+  ButtonStyle _estiloConCuenta(BuildContext context) {
+    final colores = Theme.of(context).extension<ColoresColportaje>()!;
+    final textoGrande = _textoGrande(context);
+    final forma = textoGrande
+        ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+        : const StadiumBorder();
+    // El borde de 1,5 dp lo pinta Material detrás del hijo: el relleno entra por dentro y se recorta
+    // con la forma achicada, para no taparlo ni asomar en las esquinas.
+    final formaInterior = textoGrande
+        ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.5))
+        : const StadiumBorder();
+    final transcurrido = 1 - _segundosRestantes / _cooldown.inSeconds;
+
+    return OutlinedButton.styleFrom(
+      // Sin fondo propio, como el canvas (A02, A03, A01b): lo que no se rellenó es el crema de la
+      // pantalla; el tema le pone `surfaceContainerHighest` (blanco) también apagado.
+      disabledBackgroundColor: Colors.transparent,
+      disabledForegroundColor: colores.gris,
+      shape: forma,
+      padding: EdgeInsets.symmetric(horizontal: textoGrande ? 16 : 0, vertical: 14),
+    ).copyWith(
+      backgroundBuilder: (context, estados, hijo) => Stack(
+        alignment: Alignment.center,
+        fit: StackFit.passthrough,
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: ExcludeSemantics(
+                child: ClipPath(
+                  clipper: ShapeBorderClipper(shape: formaInterior),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FractionallySizedBox(
+                      key: const Key('verificacion_email_progreso'),
+                      widthFactor: transcurrido,
+                      heightFactor: 1,
+                      child: ColoredBox(color: colores.rellenoSuave),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          hijo!,
+        ],
+      ),
     );
   }
 

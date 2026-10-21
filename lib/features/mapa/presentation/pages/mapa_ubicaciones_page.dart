@@ -470,6 +470,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                         children: [
                           BotonMiUbicacion(
                             key: ClavesMapaUbicaciones.miUbicacion,
+                            gps: estado.gps,
                             // Sin una lectura no hay a dónde ir: no está disponible (HU-UBI-003,
                             // «Edge: sin GPS»).
                             alPresionar: lectura == null

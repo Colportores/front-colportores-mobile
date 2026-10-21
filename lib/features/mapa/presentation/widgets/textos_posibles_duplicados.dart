@@ -122,6 +122,16 @@ abstract final class TextosPosiblesDuplicados {
   static String noSePudieronUnir(int cantidad) =>
       'No se pudieron marcar $cantidad pares como duplicados. Probá de nuevo.';
 
+  /// La forma de una línea del aviso rojo, mientras está a la vista el «quedaron unidas en una»:
+  /// «1 no se pudo unir» / «2 no se pudieron unir» (#362). Provisorio: el plural es el ejemplo del
+  /// issue y el singular, su derivado.
+  static String cuentaDeFallas(int cantidad) =>
+      cantidad == 1 ? '1 no se pudo unir' : '$cantidad no se pudieron unir';
+
+  /// Lo que dice el lector del botón que muestra el aviso entero (la línea no lo dice: es un gesto).
+  /// Provisorio (#362).
+  static const verAvisoCompleto = 'Ver el aviso completo';
+
   /// El texto del aviso rojo según las fallas que hay: con una, el suyo ([falloUnion]); con dos o más,
   /// cuántos pares son.
   static String falloUniones(List<Failure> fallas) =>
