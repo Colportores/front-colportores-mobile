@@ -6,6 +6,10 @@
 // parten como en el teléfono). Hasta el 200 % el aviso es el de siempre; con más, ocupa casi todo el
 // ancho, lleva las dos acciones adentro de lo que se desplaza y limita su texto al mayor tamaño en el
 // que ninguna palabra se parte, sin bajar de 2×.
+//
+// #379 (seguimiento): en un teléfono de 320–340 dp el aviso de siempre ya parte «¿Descartar» o
+// «Confirmar» con el texto entre 1,8× y 2×. El aviso grande entra también ahí, cuando alguna palabra no
+// entra en el de siempre; donde todo entra, el aviso es el de siempre.
 import 'dart:math' as math;
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -85,6 +89,9 @@ final _avisos = <_Aviso>[
 
 final _descartarCinco = _avisos[1];
 
+/// Un teléfono de 340 dp: el aviso de siempre parte «¿Descartar» a 2× (#379).
+const _telefono340 = (nombre: '340×640', tamano: Size(340, 640), teclado: 300.0);
+
 class _Anfitrion extends StatelessWidget {
   const _Anfitrion(this.aviso, this.respuestas);
 
@@ -131,6 +138,55 @@ Future<List<bool>> _montar(
     ),
   );
   return respuestas;
+}
+
+/// El aviso de siempre (`AlertDialog` con las acciones fijas, como el de 1× de #358) armado aparte con
+/// los textos de [aviso], abierto, para ver si en esa pantalla parte alguna palabra.
+Future<void> _montarDeSiempre(
+  WidgetTester tester,
+  _Aviso aviso,
+  String cuerpo, {
+  required double ancho,
+  required double escala,
+}) async {
+  tester.view.physicalSize = Size(ancho, 640);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: temaClaro(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+        child: child!,
+      ),
+      home: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              scrollable: true,
+              title: aviso.titulo == null ? null : Text(aviso.titulo!),
+              content: Text(cuerpo),
+              actions: [
+                TextButton(
+                  onPressed: () {},
+                  style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+                  child: Text(aviso.paraNo),
+                ),
+                FilledButton(
+                  onPressed: () {},
+                  style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
+                  child: Text(aviso.paraSi),
+                ),
+              ],
+            ),
+          ),
+          child: const Text('abrir'),
+        ),
+      ),
+    ),
+  );
+  await _abrir(tester);
 }
 
 /// Deja que terminen las animaciones: la del aviso al abrirse o cerrarse y la del `Dialog` al seguir al
@@ -230,16 +286,13 @@ bool _accionesAdentroDelScroll(WidgetTester tester) {
 void main() {
   setUpAll(cargarTipografias);
 
-  final cuerpos = [...telefonos, telefonoMinimo];
+  final cuerpos = [...telefonos, _telefono340, telefonoMinimo];
 
   group('Avisos de «Modificar ubicación» (#358)', () {
     for (final aviso in _avisos) {
       for (final t in cuerpos) {
-        for (final escala in [1.0, 2.0, 2.5, 3.0]) {
+        for (final escala in [1.0, 1.8, 1.9, 2.0, 2.5, 3.0]) {
           final donde = '${aviso.nombre} · ${t.nombre} · ${veces(escala)}';
-          // A 320×568 el aviso de siempre (hasta 2×) ya parte «¿Descartar» (fuera de #358: «a 2× y a 1×
-          // se ven igual que hoy»); desde 2,5× el aviso nuevo lo resuelve.
-          final heredado = t.tamano.width < 340 && escala == 2.0;
 
           testWidgets(
             '$donde: sin desborde con el teclado bajando, sin palabras partidas, acciones al '
@@ -253,21 +306,20 @@ void main() {
               expect(find.text(aviso.paraNo), findsOneWidget, reason: donde);
 
               // Sin palabras cortadas ni partidas por dentro, en el título, el cuerpo y los botones.
-              if (!heredado) {
-                for (final parrafo in _parrafos(tester)) {
-                  expect(
-                    _cortes(parrafo),
-                    isEmpty,
-                    reason: '$donde: «${parrafo.text.toPlainText()}»',
-                  );
-                }
+              for (final parrafo in _parrafos(tester)) {
+                expect(
+                  _cortes(parrafo),
+                  isEmpty,
+                  reason: '$donde: «${parrafo.text.toPlainText()}»',
+                );
               }
 
               // Los dos botones miden 48 dp como mínimo.
               for (final boton in [_botonNo, _botonSi]) {
                 final r = tester.getRect(boton);
-                expect(r.height, greaterThanOrEqualTo(48), reason: '$donde: $r');
-                expect(r.width, greaterThanOrEqualTo(48), reason: '$donde: $r');
+                // (con un margen de 0,01 dp: la altura de un botón a 1,8× sale 47,99999999999994.)
+                expect(r.height, greaterThanOrEqualTo(48 - .01), reason: '$donde: $r');
+                expect(r.width, greaterThanOrEqualTo(48 - .01), reason: '$donde: $r');
               }
 
               // Con el teclado otra vez arriba (300 dp) los dos botones se alcanzan.
@@ -325,6 +377,100 @@ void main() {
         }
       }
     }
+
+    group('el aviso grande entra desde que una palabra no entra en el de siempre (#379)', () {
+      // A 360 dp o más, con 1× y con 2×, el aviso es el de siempre, como hoy.
+      for (final aviso in _avisos) {
+        for (final ancho in [360.0, 380.0, 412.0, 480.0]) {
+          for (final escala in [1.0, 2.0]) {
+            testWidgets(
+              '${aviso.nombre} · ${ancho.round()} dp · ${veces(escala)}: el aviso de siempre',
+              (tester) async {
+                await _montar(tester, aviso, tamano: Size(ancho, 640), escala: escala);
+                await _abrir(tester);
+                expect(_accionesAdentroDelScroll(tester), isFalse);
+                expect(_escalaDelAviso(tester), closeTo(escala, 1e-9));
+                for (final parrafo in _parrafos(tester)) {
+                  expect(_cortes(parrafo), isEmpty);
+                }
+              },
+            );
+          }
+        }
+      }
+
+      // El caso de la colportora: 1,8× en 320×568 (y 1,9× y 2×) y 2× en 340×640.
+      for (final (t, escala) in [
+        (telefonoMinimo, 1.8),
+        (telefonoMinimo, 1.9),
+        (telefonoMinimo, 2.0),
+        (_telefono340, 2.0),
+      ]) {
+        testWidgets(
+          '${t.nombre} · ${veces(escala)}: «¿Descartar» y «Descartar» no se parten; es el grande, al '
+          'tamaño del sistema',
+          (tester) async {
+            await _montar(tester, _descartarCinco, tamano: t.tamano, escala: escala);
+            await _abrir(tester);
+            expect(_accionesAdentroDelScroll(tester), isTrue);
+            expect(_escalaDelAviso(tester), closeTo(escala, 1e-9), reason: 'sin bajar el texto');
+            for (final parrafo in _parrafos(tester)) {
+              expect(_cortes(parrafo), isEmpty, reason: parrafo.text.toPlainText());
+            }
+          },
+        );
+      }
+
+      testWidgets(
+        '320×568 · 1,9×: «Confirmar» y «Cancelar» no se parten; es el grande, al tamaño del sistema',
+        (tester) async {
+          await _montar(tester, _avisos[3], tamano: telefonoMinimo.tamano, escala: 1.9);
+          await _abrir(tester);
+          expect(_accionesAdentroDelScroll(tester), isTrue);
+          expect(_escalaDelAviso(tester), closeTo(1.9, 1e-9));
+          for (final parrafo in _parrafos(tester)) {
+            expect(_cortes(parrafo), isEmpty, reason: parrafo.text.toPlainText());
+          }
+        },
+      );
+
+      // La medida coincide con la realidad en toda la grilla: es el aviso grande cuando, y solo cuando, el
+      // `AlertDialog` de siempre (armado aparte, con las mismas piezas) parte alguna palabra.
+      for (final aviso in _avisos) {
+        testWidgets('${aviso.nombre}: grande si y solo si el de siempre parte una palabra', (
+          tester,
+        ) async {
+          for (final ancho in [280.0, 300.0, 320.0, 340.0, 360.0, 380.0, 412.0]) {
+            for (final escala in [1.0, 1.5, 1.8, 1.9, 2.0]) {
+              final donde = '${aviso.nombre} · ${ancho.round()} dp · ${veces(escala)}';
+              await tester.pumpWidget(const SizedBox());
+              await _montar(tester, aviso, tamano: Size(ancho, 640), escala: escala);
+              await _abrir(tester, donde: donde);
+              final grande = _accionesAdentroDelScroll(tester);
+              final textos = [for (final p in _parrafos(tester)) p.text.toPlainText()];
+              final cuerpo = textos.firstWhere(
+                (t) => t != aviso.titulo && t != aviso.paraNo && t != aviso.paraSi,
+              );
+              if (!grande) {
+                for (final parrafo in _parrafos(tester)) {
+                  expect(_cortes(parrafo), isEmpty, reason: donde);
+                }
+                continue;
+              }
+
+              await tester.pumpWidget(const SizedBox());
+              await _montarDeSiempre(tester, aviso, cuerpo, ancho: ancho, escala: escala);
+              final partidas = [for (final p in _parrafos(tester)) ..._cortes(p)];
+              expect(
+                partidas,
+                isNotEmpty,
+                reason: '$donde: el de siempre entraba y se usó el grande',
+              );
+            }
+          }
+        });
+      }
+    });
 
     group('el tamaño del texto se limita al mayor en el que entra', () {
       for (final t in [...telefonos, telefonoMinimo]) {
