@@ -303,6 +303,20 @@ void _botonesAlcanzables(WidgetTester tester, Size tamano, String donde) {
   }
 }
 
+/// Si la barra de desplazamiento del aviso pinta su pulgar (`thumbVisibility: true`: siempre que haya
+/// algo para desplazar).
+bool _barraSePinta(WidgetTester tester) {
+  final cajas = find.descendant(of: _aviso, matching: find.byType(CustomPaint));
+  for (final caja in tester.renderObjectList<RenderCustomPaint>(cajas)) {
+    final pintor = caja.foregroundPainter;
+    if (pintor is! ScrollbarPainter) continue;
+    final lienzo = TestRecordingCanvas();
+    pintor.paint(lienzo, caja.size);
+    return lienzo.invocations.isNotEmpty;
+  }
+  fail('el aviso grande no tiene barra de desplazamiento');
+}
+
 void main() {
   setUpAll(cargarTipografias);
   tearDown(() => _escalaViva.value = 1);
@@ -568,10 +582,12 @@ void main() {
   });
 
   // -------------------------------------------------------------------------------------------------
-  // Con el aviso grande a menos de 2× las acciones están adentro de lo que se desplaza: ¿se ven enteras
-  // al abrirlo, sin teclado? (la pantalla chica y el texto grande son justo el caso de #379).
+  // Con el aviso grande a menos de 2× las acciones están adentro de lo que se desplaza: si no se ven
+  // enteras al abrirlo (la pantalla chica y el texto grande son justo el caso de #379), una barra de
+  // desplazamiento siempre visible avisa que hay más (decisión (c) del 21/10 sobre el hallazgo menor 1
+  // del QA); si todo entra, no hay barra.
   // -------------------------------------------------------------------------------------------------
-  group('QA #379 · las dos acciones se ven enteras al abrir el aviso grande, sin desplazar', () {
+  group('QA #379 · la barra de desplazamiento del aviso grande se ve cuando algo queda fuera', () {
     for (final (tamano, escala) in <(Size, double)>[
       (const Size(320, 568), 1.8),
       (const Size(320, 568), 1.9),
@@ -579,9 +595,6 @@ void main() {
       (const Size(340, 640), 2.0),
     ]) {
       for (final aviso in _avisos) {
-        // skip: QA #390 — en 320×568 de 1,8× a 2× «Descartar» (con 4 o 5 cambios) queda cortado por el
-        // borde del aviso hasta que se desplaza: la única pista es el botón a medio ver.
-        final cortado = tamano.width == 320 && escala >= 1.9 && aviso.nombre.contains('cinco');
         testWidgets(
           '${aviso.nombre} · ${tamano.width.round()}×${tamano.height.round()} · ${veces(escala)}',
           (tester) async {
@@ -592,17 +605,47 @@ void main() {
             final visor = tester.getRect(
               find.descendant(of: _aviso, matching: find.byType(SingleChildScrollView)).first,
             );
-            for (final boton in [_botonNo, _botonSi]) {
+            // (hasta 2 dp: con 1,8× el botón de abajo se pasa 1,2 dp del borde, que es su relleno.)
+            final fuera = [_botonNo, _botonSi].any((boton) {
               final r = tester.getRect(boton);
-              // (hasta 2 dp: con 1,8× el botón de abajo se pasa 1,2 dp del borde, que es su relleno.)
-              expect(r.bottom, lessThanOrEqualTo(visor.bottom + 2), reason: '$r en $visor');
-              expect(r.top, greaterThanOrEqualTo(visor.top - 2), reason: '$r en $visor');
-            }
+              return r.bottom > visor.bottom + 2 || r.top < visor.top - 2;
+            });
+            final desplazable = tester
+                .state<ScrollableState>(
+                  find.descendant(of: _aviso, matching: find.byType(Scrollable)).first,
+                )
+                .position
+                .maxScrollExtent;
+            expect(desplazable > 0, fuera, reason: 'se desplaza si y solo si algo queda fuera');
+            expect(
+              _barraSePinta(tester),
+              fuera,
+              reason: fuera ? 'algo queda fuera y no hay barra' : 'todo entra y hay barra',
+            );
           },
-          skip: cortado,
         );
       }
     }
+
+    testWidgets(
+      '320×568 · 2× · cinco cambios: la barra está, tocar «Descartar» desplazando contesta',
+      (tester) async {
+        final respuestas = await _montar(
+          tester,
+          _avisos[1],
+          tamano: const Size(320, 568),
+          escala: 2,
+        );
+        await _abrir(tester);
+        await _asentar(tester);
+        expect(_barraSePinta(tester), isTrue);
+        await tester.ensureVisible(_botonSi);
+        await tester.pump();
+        await tester.tap(_botonSi);
+        await _asentar(tester);
+        expect(respuestas, [true]);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------------------------------

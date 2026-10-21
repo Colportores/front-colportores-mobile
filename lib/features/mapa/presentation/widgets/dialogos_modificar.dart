@@ -140,26 +140,17 @@ class _Aviso extends StatelessWidget {
     actions: [_botonNo(context), _botonSi(context)],
   );
 
-  Widget _grande(BuildContext context) => AlertDialog(
-    scrollable: true,
-    insetPadding: const EdgeInsets.symmetric(horizontal: _margenDelAvisoGrande, vertical: 24),
-    title: titulo == null ? null : Text(titulo!),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(cuerpo),
-        const SizedBox(height: 24),
-        // Como las acciones de un `AlertDialog` (a la derecha y una sobre otra si no entran), pero
-        // adentro de lo que se desplaza.
-        OverflowBar(
-          alignment: MainAxisAlignment.end,
-          spacing: 8,
-          overflowAlignment: OverflowBarAlignment.end,
-          overflowSpacing: 8,
-          children: [_botonNo(context), _botonSi(context)],
-        ),
-      ],
+  Widget _grande(BuildContext context) => _AvisoGrande(
+    titulo: titulo,
+    cuerpo: cuerpo,
+    // Como las acciones de un `AlertDialog` (a la derecha y una sobre otra si no entran), pero
+    // adentro de lo que se desplaza.
+    acciones: OverflowBar(
+      alignment: MainAxisAlignment.end,
+      spacing: 8,
+      overflowAlignment: OverflowBarAlignment.end,
+      overflowSpacing: 8,
+      children: [_botonNo(context), _botonSi(context)],
     ),
   );
 
@@ -276,3 +267,89 @@ double _rellenoDelTextButton(double factor) => factor <= 1
     : factor < 3
     ? 8 + (4 - 8) * (factor - 2)
     : 4;
+
+/// El aviso grande: casi todo el ancho, con título, cuerpo y acciones en una misma zona que se
+/// desplaza y una barra de desplazamiento siempre visible cuando no entran (#379): en un teléfono de
+/// 320 dp con el texto al 200 % «Descartar» puede quedar debajo del borde y la barra avisa que hay más.
+///
+/// Arma por su cuenta lo que un `AlertDialog(scrollable: true)` haría con el título y el cuerpo (los
+/// mismos estilos y rellenos que con el texto a 2× o más: un tercio de 24 dp) porque la barra tiene que
+/// envolver la zona que se desplaza, no el aviso entero.
+class _AvisoGrande extends StatefulWidget {
+  const _AvisoGrande({required this.titulo, required this.cuerpo, required this.acciones});
+
+  final String? titulo;
+  final String cuerpo;
+  final Widget acciones;
+
+  @override
+  State<_AvisoGrande> createState() => _AvisoGrandeState();
+}
+
+class _AvisoGrandeState extends State<_AvisoGrande> {
+  final _controlador = ScrollController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final dialogos = DialogTheme.of(context);
+    final titulo = widget.titulo;
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: _margenDelAvisoGrande, vertical: 24),
+      contentPadding: EdgeInsets.zero,
+      content: ScrollbarTheme(
+        data: const ScrollbarThemeData(
+          thumbColor: WidgetStatePropertyAll(ColoresAlta.gris),
+          thickness: WidgetStatePropertyAll(4),
+          radius: Radius.circular(2),
+        ),
+        child: Scrollbar(
+          controller: _controlador,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _controlador,
+            padding: EdgeInsets.fromLTRB(
+              _rellenoLateralDelAvisoGrande,
+              titulo == null ? 16 / 3 : _rellenoLateralDelAvisoGrande,
+              _rellenoLateralDelAvisoGrande,
+              24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (titulo != null) ...[
+                  DefaultTextStyle(
+                    style:
+                        dialogos.titleTextStyle ??
+                        tema.textTheme.headlineSmall!.copyWith(color: tema.colorScheme.onSurface),
+                    child: Semantics(container: true, child: Text(titulo)),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                DefaultTextStyle(
+                  style:
+                      dialogos.contentTextStyle ??
+                      tema.textTheme.bodyMedium!.copyWith(color: tema.colorScheme.onSurfaceVariant),
+                  child: Semantics(
+                    container: true,
+                    explicitChildNodes: true,
+                    child: Text(widget.cuerpo),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                widget.acciones,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
