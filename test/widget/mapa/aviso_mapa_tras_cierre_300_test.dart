@@ -53,6 +53,28 @@ Future<void> _abrirApp(ArnesMapa arnes, DescargaPendiente pendiente) async {
   await arnes.descargador.retomarPendientes();
 }
 
+/// El lugar de la zona `z-1` dentro de la ciudad `c-1`: los dos paquetes lo cubren.
+const _zonaYCiudad = AmbitoTrabajo(zonaId: 'z-1', ciudadId: 'c-1');
+
+/// La app se abre con dos descargas anotadas del mismo lugar —la de la zona y la de Montevideo— en
+/// el orden pedido, y la zona no está en el servidor (404).
+Future<void> _retomarLasDos(
+  ArnesMapa arnes,
+  PaqueteTiles zona, {
+  required bool ciudadPrimero,
+  bool ciudadConDatosMoviles = true,
+}) async {
+  final anotadas = [
+    _anotada(paqueteMontevideo, datosMoviles: ciudadConDatosMoviles),
+    _anotada(zona),
+  ];
+  for (final pendiente in ciudadPrimero ? anotadas : anotadas.reversed) {
+    await arnes.repositorio.anotarDescargaPendiente(pendiente);
+  }
+  await arnes.descargador.retomarPendientes();
+  await arnes.descargador.esperar(zona.id);
+}
+
 bool _botonHabilitado(WidgetTester tester, Finder boton) =>
     tester.widget<FilledButton>(boton).onPressed != null;
 
@@ -323,6 +345,116 @@ void main() {
         unawaited(arnes.cerrar());
       },
     );
+
+    testWidgets(
+      'dado que al abrir la app la descarga de zona falló y la de ciudad del mismo lugar sigue '
+      'bajando, entonces la tarjeta dice «Descargando el mapa…», sin falla y con «Descargar mapa» '
+      'deshabilitado: no invita a pedir lo que ya se está bajando',
+      (tester) async {
+        final arnes = ArnesMapa(conexion: TipoConexion.datosMoviles, catalogo: [paqueteMontevideo]);
+        final zona = paqueteDe(bytesDePrueba(3000, semilla: 4));
+        final compuerta = _retenerElDisco(arnes);
+        await arnes.repositorio.anotarDescargaPendiente(_anotada(zona));
+        await arnes.repositorio.anotarDescargaPendiente(_anotada(paqueteMontevideo));
+        await arnes.descargador.retomarPendientes();
+        await arnes.descargador.esperar(zona.id);
+        expect(arnes.descargador.estadoDe(zona.id), isA<DescargaFallida>());
+        expect(arnes.descargador.estaDescargando(paqueteMontevideo.id), isTrue);
+
+        await montarAviso(
+          tester,
+          conexion: TipoConexion.datosMoviles,
+          arnes: arnes,
+          ambito: const AmbitoTrabajo(zonaId: 'z-1', ciudadId: 'c-1'),
+        );
+
+        expect(find.text(_descargandoMapa), findsOneWidget);
+        expect(find.textContaining('Probá de nuevo'), findsNothing);
+        expect(_botonHabilitado(tester, _descargarConPeso), isFalse);
+
+        compuerta.complete();
+        await asentarAviso(tester);
+
+        expect(arnes.montevideoDescargado, isTrue);
+        expect(find.text(_descargandoMapa), findsNothing);
+      },
+    );
+
+    // La tarjeta ya está en pantalla cuando la retoma de la zona falla: la falla le llega como
+    // evento y no puede pisar lo que dice la descarga de la ciudad del mismo lugar (#367).
+    for (final ciudadPrimero in [true, false]) {
+      final orden = ciudadPrimero ? 'ciudad y zona' : 'zona y ciudad';
+
+      testWidgets(
+        'dado que la tarjeta ya está abierta cuando la retoma de la zona falla y la de la ciudad '
+        'del mismo lugar baja ($orden), entonces sigue diciendo «Descargando el mapa…», sin falla '
+        'y con «Descargar mapa» deshabilitado',
+        (tester) async {
+          final arnes = ArnesMapa(
+            conexion: TipoConexion.datosMoviles,
+            catalogo: [paqueteMontevideo],
+          );
+          final zona = paqueteDe(bytesDePrueba(3000, semilla: 4));
+          final compuerta = _retenerElDisco(arnes);
+          await montarAviso(
+            tester,
+            conexion: TipoConexion.datosMoviles,
+            arnes: arnes,
+            ambito: _zonaYCiudad,
+          );
+
+          await _retomarLasDos(arnes, zona, ciudadPrimero: ciudadPrimero);
+          await asentarAviso(tester);
+
+          expect(arnes.descargador.estadoDe(zona.id), isA<DescargaFallida>());
+          expect(arnes.descargador.estaDescargando(paqueteMontevideo.id), isTrue);
+          expect(find.text(_descargandoMapa), findsOneWidget);
+          expect(find.textContaining('Probá de nuevo'), findsNothing);
+          expect(_botonHabilitado(tester, _descargarConPeso), isFalse);
+
+          compuerta.complete();
+          await asentarAviso(tester);
+
+          expect(arnes.montevideoDescargado, isTrue);
+          expect(find.text(_descargandoMapa), findsNothing);
+          expect(find.textContaining('Probá de nuevo'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'dado que la tarjeta ya está abierta cuando la retoma de la zona falla y la de la ciudad '
+        'del mismo lugar espera el Wi-Fi ($orden), entonces sigue diciendo que se descarga sola, '
+        'sin falla y con «Descargar mapa» deshabilitado',
+        (tester) async {
+          final arnes = ArnesMapa(
+            conexion: TipoConexion.datosMoviles,
+            catalogo: [paqueteMontevideo],
+          );
+          final zona = paqueteDe(bytesDePrueba(3000, semilla: 4));
+          await montarAviso(
+            tester,
+            conexion: TipoConexion.datosMoviles,
+            arnes: arnes,
+            ambito: _zonaYCiudad,
+          );
+
+          await _retomarLasDos(
+            arnes,
+            zona,
+            ciudadPrimero: ciudadPrimero,
+            ciudadConDatosMoviles: false,
+          );
+          await asentarAviso(tester);
+
+          expect(arnes.descargador.estadoDe(zona.id), isA<DescargaFallida>());
+          expect(arnes.descargador.estadoDe(paqueteMontevideo.id), isA<DescargaPausada>());
+          expect(arnes.servidor.origenes, [zona.origen]);
+          expect(find.text(_seDescargaSola), findsOneWidget);
+          expect(find.textContaining('Probá de nuevo'), findsNothing);
+          expect(_botonHabilitado(tester, _descargarConPeso), isFalse);
+        },
+      );
+    }
 
     testWidgets(
       'dado que el colportor había pausado la descarga, entonces la tarjeta no dice que se '

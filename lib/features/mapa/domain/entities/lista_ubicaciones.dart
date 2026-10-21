@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 import 'consulta_lista_ubicaciones.dart';
 import 'estado_casa.dart';
+import 'motivo_baja.dart';
 import 'ubicacion.dart';
 
 /// Una fila de la lista de ubicaciones.
@@ -38,6 +39,13 @@ final class ItemListaUbicacion extends Equatable {
 
   /// Una baja no permite visitas ni ventas (HU-UBI-002, escenario "incluir bajas").
   bool get esInteractiva => !esBaja;
+
+  /// Es una baja por unión de duplicados (`duplicado_de_*`, HU-UBI-006): la unión es definitiva y la
+  /// fila dice «Unida a otra ubicación» en el lugar del motivo (HU-UBI-005, «Reactivar»).
+  bool get esBajaPorUnion => esBaja && MotivosBaja.esUnion(motivoBaja);
+
+  /// «Reactivar» se ofrece en toda baja menos en la que nació de unir duplicados.
+  bool get puedeReactivarse => esBaja && !esBajaPorUnion;
 
   @override
   List<Object?> get props => [

@@ -37,6 +37,12 @@ final class _Repositorio with UbicacionRepositorySinModificar implements Ubicaci
   final porId = <String, Ubicacion>{};
   final bajas = <({String id, bool baja, String? motivo, String? conservadaId})>[];
 
+  /// El criterio de duplicados que llegó con cada baja o reactivación.
+  final criterios = <CriterioDuplicadoUbicacion?>[];
+
+  /// Lo que devuelve [cambiarBaja] en vez de escribir (la guarda de D1 o de la unión).
+  Failure? fallaAlCambiarBaja;
+
   @override
   Stream<List<Ubicacion>> observarDelColportor({
     required String colportorId,
@@ -55,8 +61,12 @@ final class _Repositorio with UbicacionRepositorySinModificar implements Ubicaci
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
     bajas.add((id: id, baja: baja, motivo: motivo, conservadaId: conservadaId));
+    criterios.add(duplicados);
+    final falla = fallaAlCambiarBaja;
+    if (falla != null) return Left(falla);
     return Right((ubicacion: porId[id]!, escribio: true));
   }
 
@@ -242,6 +252,128 @@ void main() {
 
       expect(falla, isA<FailureBajaCambioReciente>());
       expect(pendientes.consultadas, isEmpty);
+    });
+  });
+
+  group('ReactivarUbicacionUseCase', () {
+    late ReactivarUbicacionUseCase reactivar;
+
+    setUp(() {
+      repositorio.porId['ub-1'] = _ubicacion(deletedAt: _t0);
+      reactivar = ReactivarUbicacionUseCase(repositorio, ahora: () => _t1);
+    });
+
+    ReactivarUbicacionParams reactivarParams({DateTime? base}) =>
+        ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: base ?? _t0);
+
+    test(
+      'dado una baja, cuando reactiva, pide al repositorio una reactivación (baja en false) con el '
+      'criterio de D1 y no con el de la regla anterior',
+      () async {
+        final r = await reactivar(reactivarParams());
+
+        expect(r.isRight(), isTrue);
+        expect(repositorio.bajas.single.baja, isFalse);
+        final criterio = repositorio.criterios.single;
+        expect(criterio, isNotNull, reason: 'D1 siempre se comprueba al reactivar');
+        expect(
+          criterio!.esSeguirIgual,
+          isTrue,
+          reason: 'solo frena la misma dirección a menos de 100 m',
+        );
+      },
+    );
+
+    test('dado el criterio de D1, entonces la misma dirección a menos de 100 m frena y a 100 m o '
+        'más no, y la cercanía de otra dirección no frena', () {
+      final criterio = const CriterioDuplicadoUbicacion().alSeguirIgual!;
+      final base = _ubicacion(id: 'ub-1');
+      Ubicacion otra({double metros = 0, String numero = '1240'}) => Ubicacion(
+        id: 'ub-2',
+        tipo: TipoUbicacion.casa,
+        calle: 'Av. Italia',
+        numero: numero,
+        lat: -34.891 + metros / 111195.08,
+        lon: -56.125,
+        ciudadId: 'mvd',
+        auditoria: Auditoria(createdAt: _t0, updatedAt: _t0, createdBy: 'col-1'),
+      );
+
+      expect(criterio.comparar(base, otra(metros: 99.5)), isNotNull);
+      expect(criterio.comparar(base, otra(metros: 100.5)), isNull);
+      expect(criterio.comparar(base, otra(metros: 400)), isNull);
+      expect(criterio.comparar(base, otra(metros: 3, numero: '1300')), isNull);
+    });
+
+    test('dado un repositorio que rechaza por la misma dirección, entonces devuelve esa falla tal '
+        'cual', () async {
+      repositorio.fallaAlCambiarBaja = const FailureReactivacionChocaConActiva(
+        existenteId: 'ub-2',
+        direccion: 'Av. Italia 1240',
+      );
+
+      final r = await reactivar(reactivarParams());
+
+      expect(
+        r,
+        const Left<Failure, Ubicacion>(
+          FailureReactivacionChocaConActiva(existenteId: 'ub-2', direccion: 'Av. Italia 1240'),
+        ),
+      );
+    });
+
+    test(
+      'dado un repositorio que rechaza por la unión, entonces devuelve esa falla tal cual',
+      () async {
+        repositorio.fallaAlCambiarBaja = const FailureReactivacionDeUnion(conservadaId: 'ub-a');
+
+        final r = await reactivar(reactivarParams());
+
+        expect(r, const Left<Failure, Ubicacion>(FailureReactivacionDeUnion(conservadaId: 'ub-a')));
+      },
+    );
+
+    test(
+      'dado el criterio de la regla anterior a D1 (la misma dirección se admite), entonces no se '
+      'pide ninguna comprobación',
+      () async {
+        final sinD1 = ReactivarUbicacionUseCase(
+          repositorio,
+          ahora: () => _t1,
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
+        );
+
+        await sinD1(reactivarParams());
+
+        expect(repositorio.criterios.single, isNull);
+      },
+    );
+
+    test('dado una ubicación ya activa (doble toque), entonces la devuelve sin pedir nada al '
+        'repositorio', () async {
+      repositorio.porId['ub-1'] = _ubicacion();
+
+      final r = await reactivar(reactivarParams());
+
+      expect(r.isRight(), isTrue);
+      expect(repositorio.bajas, isEmpty);
+    });
+
+    test('dado que la fila cambió desde que se cargó, entonces falla como cambio concurrente sin '
+        'pedir nada', () async {
+      final r = await reactivar(reactivarParams(base: _t1));
+
+      expect(r, const Left<Failure, Ubicacion>(FailureReactivacionCambioReciente()));
+      expect(repositorio.bajas, isEmpty);
+    });
+
+    test('dado que se da de baja (no se reactiva), entonces D1 no se pide', () async {
+      repositorio.porId['ub-1'] = _ubicacion();
+      final baja = DarDeBajaUbicacionUseCase(repositorio, _Pendientes(), ahora: () => _t1);
+
+      await baja(DarDeBajaUbicacionParams(id: 'ub-1', baseUpdatedAt: _t0));
+
+      expect(repositorio.criterios.single, isNull);
     });
   });
 

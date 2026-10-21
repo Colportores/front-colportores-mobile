@@ -22,7 +22,9 @@ Future<void> asentarLista(WidgetTester tester, [int veces = 8]) async {
 /// Monta la pestaña «Lista» como la ve el colportor `col-1`.
 ///
 /// [activa] `false` la deja montada pero fuera de vista (como las demás pestañas del
-/// `IndexedStack`); [activaCambiante] la va cambiando durante el test. [escala] es el `textScaler`.
+/// `IndexedStack`); [activaCambiante] la va cambiando durante el test. [montadaCambiante] `false`
+/// la desmonta del todo (la pestaña se destruye, como al cerrar la sesión) y `true` la vuelve a
+/// montar. [escala] es el `textScaler`.
 Future<void> montarLista(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -32,6 +34,7 @@ Future<void> montarLista(
   Size tamano = const Size(390, 844),
   bool activa = true,
   ValueNotifier<bool>? activaCambiante,
+  ValueNotifier<bool>? montadaCambiante,
   ValueChanged<String>? alAbrir,
   Future<void> Function()? alRegistrar,
   Key? clave,
@@ -52,14 +55,19 @@ Future<void> montarLista(
         ),
         home: Scaffold(
           body: ValueListenableBuilder<bool>(
-            valueListenable: activaCambiante ?? ValueNotifier(activa),
-            builder: (context, estaActiva, _) => ListaUbicacionesPage(
-              key: clave,
-              colportorId: 'col-1',
-              activa: estaActiva,
-              alAbrirUbicacion: alAbrir,
-              alRegistrar: alRegistrar,
-            ),
+            valueListenable: montadaCambiante ?? ValueNotifier(true),
+            builder: (context, estaMontada, _) => !estaMontada
+                ? const SizedBox.shrink()
+                : ValueListenableBuilder<bool>(
+                    valueListenable: activaCambiante ?? ValueNotifier(activa),
+                    builder: (context, estaActiva, _) => ListaUbicacionesPage(
+                      key: clave,
+                      colportorId: 'col-1',
+                      activa: estaActiva,
+                      alAbrirUbicacion: alAbrir,
+                      alRegistrar: alRegistrar,
+                    ),
+                  ),
           ),
         ),
       ),

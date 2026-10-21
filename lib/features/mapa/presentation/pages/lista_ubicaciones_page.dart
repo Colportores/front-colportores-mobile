@@ -94,6 +94,9 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   /// Una sola hoja de filtros y una sola alta a la vez: un segundo toque no abre otra encima.
   var _abriendoHoja = false;
+
+  /// La baja sobre la que está abierta la hoja de «Reactivar»: su fila va resaltada (vista 09·03).
+  String? _reactivandoId;
   var _abriendoAlta = false;
   var _abriendoDuplicados = false;
 
@@ -189,18 +192,34 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
-  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04).
+  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
+  /// choca con otra casa activa (D1), la hoja lo dice y ofrece «Abrir la existente» solo si la Lista
+  /// tiene a dónde abrirla ([ListaUbicacionesPage.alAbrirUbicacion]).
   Future<void> _reactivar(ItemListaUbicacion item) async {
     if (_abriendoHoja) return;
     _abriendoHoja = true;
-    Ubicacion? reactivada;
+    setState(() => _reactivandoId = item.ubicacion.id);
+    SalidaHojaReactivar? salida;
     try {
-      reactivada = await mostrarHojaReactivar(context, colportorId: widget.colportorId, item: item);
+      salida = await mostrarHojaReactivar(
+        context,
+        colportorId: widget.colportorId,
+        item: item,
+        ofreceAbrirExistente: widget.alAbrirUbicacion != null,
+      );
     } finally {
       _abriendoHoja = false;
+      if (mounted) setState(() => _reactivandoId = null);
     }
-    if (reactivada == null || !mounted) return;
-    _avisarReactivada(reactivada, item.motivoBaja);
+    if (!mounted) return;
+    switch (salida) {
+      case ReactivacionRealizada(:final ubicacion):
+        _avisarReactivada(ubicacion, item.motivoBaja);
+      case AbrirExistenteElegida(:final ubicacionId):
+        widget.alAbrirUbicacion?.call(ubicacionId);
+      case null:
+        break;
+    }
   }
 
   /// El aviso de la vista 09·04: «Av. Italia 1240 reactivada. Vuelve a aparecer en el mapa.» con
@@ -339,6 +358,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final sinUbicaciones = lista?.sinUbicaciones ?? false;
     // Sin pares para revisar la Lista queda como siempre: la franja no ocupa ni un lugar entre las filas.
     final hayDuplicados = ref.watch(cantidadParesParaRevisarProvider(widget.colportorId)) > 0;
+    final fallasDeUnion = ref.watch(avisoUnionFallidaProvider(widget.colportorId));
     // Una unión que falló cuando ya se había salido de «Posibles duplicados»: se anuncia aunque la Lista
     // esté bajada y la franja (primer ítem del desplazamiento) no esté construida (WCAG 4.1.3). La
     // franja no se anuncia sola mientras muestra una falla (`liveRegion` apagado en `_AvisoDuplicados`),
@@ -384,22 +404,55 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                 child: _AvisoLectura(alReintentar: _notificador.reintentar),
               ),
             Expanded(
-              child: _Cuerpo(
-                estado: estado,
-                ahora: ahora,
-                // Lo primero de lo que se desplaza, no del encabezado fijo: a 320×568 con el texto al
-                // 200 % el encabezado ya ocupa casi toda la pantalla y la franja no entra (QA de #357).
-                avisoDuplicados: sinUbicaciones || !hayDuplicados
-                    ? null
-                    : _AvisoDuplicados(
-                        colportorId: widget.colportorId,
-                        alRevisar: () => unawaited(_revisarDuplicados()),
+              child: LayoutBuilder(
+                builder: (context, zona) {
+                  final franja = sinUbicaciones || !hayDuplicados
+                      ? null
+                      : _AvisoDuplicados(
+                          colportorId: widget.colportorId,
+                          alRevisar: () => unawaited(_revisarDuplicados()),
+                        );
+                  // La franja de una unión fallida queda fija bajo el encabezado si entra y todavía
+                  // deja lugar a las filas (#362); si no, es lo primero de lo que se desplaza. La de
+                  // siempre («3 posibles duplicados») va siempre dentro del desplazamiento.
+                  final fija =
+                      franja != null &&
+                      lista != null &&
+                      fallasDeUnion.isNotEmpty &&
+                      _AvisoDuplicados.entraFija(context, fallasDeUnion, zona);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Siempre hay un hijo en este lugar: al pasar de fija a desplazable el cuerpo
+                      // conserva su estado.
+                      if (fija)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: _AvisoDuplicados.separacionDeLaFija,
+                          ),
+                          child: franja,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      Expanded(
+                        child: _Cuerpo(
+                          estado: estado,
+                          ahora: ahora,
+                          // Lo primero de lo que se desplaza, no del encabezado fijo: a 320×568 con el
+                          // texto al 200 % el encabezado ya ocupa casi toda la pantalla y la franja no
+                          // entra (QA de #357).
+                          avisoDuplicados: fija ? null : franja,
+                          alAbrirUbicacion: widget.alAbrirUbicacion,
+                          alReactivar: (item) => unawaited(_reactivar(item)),
+                          reactivandoId: _reactivandoId,
+                          alRegistrar: () => unawaited(_registrar()),
+                          notificador: _notificador,
+                          desplazamiento: _desplazamiento,
+                        ),
                       ),
-                alAbrirUbicacion: widget.alAbrirUbicacion,
-                alReactivar: (item) => unawaited(_reactivar(item)),
-                alRegistrar: () => unawaited(_registrar()),
-                notificador: _notificador,
-                desplazamiento: _desplazamiento,
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -733,6 +786,7 @@ class _Cuerpo extends StatelessWidget {
     required this.ahora,
     required this.alAbrirUbicacion,
     required this.alReactivar,
+    required this.reactivandoId,
     required this.alRegistrar,
     required this.notificador,
     required this.desplazamiento,
@@ -747,6 +801,9 @@ class _Cuerpo extends StatelessWidget {
   final Widget? avisoDuplicados;
   final ValueChanged<String>? alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
+
+  /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
+  final String? reactivandoId;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
   final ScrollController desplazamiento;
@@ -903,7 +960,10 @@ class _Cuerpo extends StatelessWidget {
           lista: lista,
           ahora: ahora,
           alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
-          alReactivar: item.esBaja ? () => alReactivar(item) : null,
+          // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
+          // se toca (HU-UBI-005, «Reactivar»).
+          alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,
+          seleccionada: id == reactivandoId,
         );
       },
     );
@@ -1025,7 +1085,9 @@ class _AvisoLectura extends StatelessWidget {
 /// #338, F3); con más de una, «No pudimos unir 2 pares · Revisar». Los pares siguen en «Revisar».
 ///
 /// Es lo primero de lo que se desplaza en la Lista (no del encabezado fijo): con el texto agrandado
-/// en un teléfono chico el encabezado ya ocupa casi toda la pantalla.
+/// en un teléfono chico el encabezado ya ocupa casi toda la pantalla. La de una unión fallida es la
+/// excepción (#362): si entra bajo el encabezado y deja lugar a las filas ([entraFija]) queda fija
+/// ahí, a la vista aunque la Lista esté bajada; si no entra, se desplaza como siempre.
 class _AvisoDuplicados extends ConsumerWidget {
   const _AvisoDuplicados({required this.colportorId, required this.alRevisar});
 
@@ -1038,6 +1100,55 @@ class _AvisoDuplicados extends ConsumerWidget {
       '${TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])}. '
       '${TextosPosiblesDuplicados.revisar}';
 
+  /// Lo que la Lista conserva como mínimo para las filas cuando la franja queda fija: una fila tocable
+  /// (48 dp). Si no queda eso, la franja va dentro del desplazamiento.
+  static const _alturaMinimaDeLasFilas = 48.0;
+
+  /// Respiro entre la franja fija y las filas.
+  static const separacionDeLaFija = 8.0;
+  static const _margenLateral = 20.0;
+  static const _rellenoLateral = 14.0;
+  static const _margenSuperior = 8.0;
+  static const _rellenoVertical = 8.0;
+  static const _alturaTocable = 48.0;
+
+  static const _estiloTexto = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 13.5,
+    color: Color(0xFF6E5212),
+  );
+  static const _estiloRevisar = TextStyle(fontWeight: FontWeight.w700, color: ColoresLista.azul);
+
+  /// Lo que mide la franja de [fallas] en un ancho de [ancho] dp con el texto de la persona: el margen
+  /// de arriba más el cuadro (el texto en sus renglones o 48 dp, lo que sea más).
+  static double alturaDeLaFranja(BuildContext context, double ancho, List<FallaUnion> fallas) {
+    final base = (Theme.of(context).textTheme.bodyMedium ?? const TextStyle()).merge(_estiloTexto);
+    final pintor = TextPainter(
+      text: TextSpan(
+        style: base,
+        children: [
+          TextSpan(text: '${_textoDeFallas(fallas)} · '),
+          const TextSpan(text: TextosPosiblesDuplicados.revisar, style: _estiloRevisar),
+        ],
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: ancho - 2 * (_margenLateral + _rellenoLateral));
+    final alto = pintor.height + 2 * _rellenoVertical;
+    pintor.dispose();
+    return _margenSuperior + (alto < _alturaTocable ? _alturaTocable : alto);
+  }
+
+  /// Si la franja de [fallas] entra en [zona] (lo que queda bajo el encabezado) y deja a las filas al
+  /// menos [_alturaMinimaDeLasFilas].
+  static bool entraFija(BuildContext context, List<FallaUnion> fallas, BoxConstraints zona) {
+    final alto = alturaDeLaFranja(context, zona.maxWidth, fallas) + separacionDeLaFija;
+    return zona.maxHeight - alto >= _alturaMinimaDeLasFilas;
+  }
+
+  static String _textoDeFallas(List<FallaUnion> fallas) =>
+      TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion]);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
@@ -1045,10 +1156,10 @@ class _AvisoDuplicados extends ConsumerWidget {
     final fallas = ref.watch(avisoUnionFallidaProvider(colportorId));
     final hayFallas = fallas.isNotEmpty;
     final texto = hayFallas
-        ? TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])
+        ? _textoDeFallas(fallas)
         : TextosPosiblesDuplicados.avisoEnLista(cantidad);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.fromLTRB(_margenLateral, _margenSuperior, _margenLateral, 0),
       child: Semantics(
         button: true,
         // Con una falla no es región viva: la Lista la anuncia ella (`ref.listen` de arriba), esté o no
@@ -1067,24 +1178,23 @@ class _AvisoDuplicados extends ConsumerWidget {
               borderRadius: BorderRadius.circular(12),
               onTap: alRevisar,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
+                constraints: const BoxConstraints(minHeight: _alturaTocable),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _rellenoLateral,
+                    vertical: _rellenoVertical,
+                  ),
                   child: Text.rich(
                     TextSpan(
                       children: [
                         TextSpan(text: '$texto · '),
                         const TextSpan(
                           text: TextosPosiblesDuplicados.revisar,
-                          style: TextStyle(fontWeight: FontWeight.w700, color: ColoresLista.azul),
+                          style: _estiloRevisar,
                         ),
                       ],
                     ),
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13.5,
-                      color: Color(0xFF6E5212),
-                    ),
+                    style: _estiloTexto,
                   ),
                 ),
               ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
+import '../providers/lista_ubicaciones_state.dart' show EstadoGpsLista;
 import 'piezas_alta.dart' show ColoresAlta;
 import 'piezas_lista_ubicaciones.dart';
 
@@ -30,11 +31,21 @@ abstract final class ClavesMapaUbicaciones {
 }
 
 /// «Mi ubicación» (canvas, 06C·01): el botón redondo blanco de 52 dp que centra el mapa en el GPS.
-/// Sin [alPresionar] está deshabilitado (HU-UBI-003, «Edge: sin GPS»).
+/// Sin [alPresionar] está deshabilitado (HU-UBI-003, «Edge: sin GPS») y el lector de pantalla dice por
+/// qué según el [gps]: mientras busca la primera lectura todavía no se sabe si hay GPS, así que no se
+/// afirma que no lo hay (#359).
 class BotonMiUbicacion extends StatelessWidget {
-  const BotonMiUbicacion({super.key, required this.alPresionar});
+  const BotonMiUbicacion({super.key, required this.alPresionar, required this.gps});
 
   final VoidCallback? alPresionar;
+  final EstadoGpsLista gps;
+
+  /// El motivo por el que el botón está apagado.
+  String get _motivo => switch (gps) {
+    EstadoGpsLista.sinPedir ||
+    EstadoGpsLista.buscando => TextosMapaUbicaciones.miUbicacionBuscandoGps,
+    EstadoGpsLista.conLectura || EstadoGpsLista.sinGps => TextosMapaUbicaciones.miUbicacionSinGps,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +53,11 @@ class BotonMiUbicacion extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: habilitado,
-      label: TextosMapaUbicaciones.miUbicacion,
-      hint: habilitado ? null : TextosMapaUbicaciones.miUbicacionSinGps,
+      // Apagado, el motivo va en la etiqueta, detrás del nombre, y no en la pista: con «Hablar pistas»
+      // apagado en VoiceOver una pista no se leería (#359; igual que «Registrar» apagado, #345).
+      label: habilitado
+          ? TextosMapaUbicaciones.miUbicacion
+          : '${TextosMapaUbicaciones.miUbicacion}. $_motivo',
       onTap: alPresionar,
       child: ExcludeSemantics(
         child: Material(

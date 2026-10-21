@@ -579,6 +579,57 @@ final class FailureConservadaDeBaja extends Failure {
       );
 }
 
+/// Reactivar una baja choca con la regla de dirección única (D1, HU-UBI-005 «Reactivar choca con otra
+/// casa activa»): ya hay otra ubicación activa con la misma dirección a menos de 100 m y no pueden
+/// quedar las dos. No se escribió nada. [existenteId] es la otra (la más cercana, si hay varias) para
+/// que la pantalla ofrezca «Abrir la existente»; [direccion] es la suya, como la escribió quien la
+/// cargó (la dirección de una casa no es un dato de persona, ADR-004). El texto es el literal de la
+/// HU (decisión del orquestador, 09/10, front-colportores-mobile#205).
+final class FailureReactivacionChocaConActiva extends Failure {
+  const FailureReactivacionChocaConActiva({required this.existenteId, required this.direccion})
+    : super(
+        mensaje:
+            'No puede haber dos ubicaciones con la misma dirección a menos de 100 m, y $direccion '
+            'ya está activa. Si es la misma, seguí usando esa; si es otra puerta, abrila y '
+            'agregala como espacio.',
+        codigo: 'UBI_REACTIVAR_MISMA_DIRECCION',
+      );
+
+  /// La ubicación activa con la que choca.
+  final String existenteId;
+
+  /// Su dirección («Av. Italia 1240»).
+  final String direccion;
+
+  @override
+  List<Object?> get props => [...super.props, existenteId, direccion];
+}
+
+/// Se quiso reactivar una baja por unión de duplicados (`duplicado_de_*`, HU-UBI-006): la unión es
+/// definitiva y todo lo que colgaba de esta ubicación pasó a la otra (HU-UBI-005, «Reactivar»). No se
+/// escribió nada. La Lista ni siquiera ofrece reactivarla; es la guarda de quien reactiva (también al
+/// guardar desde Editar).
+///
+/// [conservadaId] es la ubicación a la que se unió (la `A` de `duplicado_de_A`) **si sigue activa**,
+/// para que la hoja ofrezca «Abrir la existente»; `null` si ya no está activa o no se sabe. Es un
+/// uuid: no lleva la dirección ni el motivo, y [toString] solo muestra el código.
+///
+/// El texto lo decidió el agente de decisiones el 16/10 (mapa §2: texto, front-colportores-mobile#334);
+/// ni la HU ni las vistas traen uno, porque la pantalla no deja llegar acá.
+final class FailureReactivacionDeUnion extends Failure {
+  const FailureReactivacionDeUnion({this.conservadaId})
+    : super(
+        mensaje: 'Esta ubicación se unió a otra y no se puede reactivar. Seguí usando la otra.',
+        codigo: 'UBI_REACTIVAR_UNION',
+      );
+
+  /// La ubicación activa a la que se unió, si la hay.
+  final String? conservadaId;
+
+  @override
+  List<Object?> get props => [...super.props, conservadaId];
+}
+
 /// No hay lugar en el teléfono para el paquete de mapa que se quiere descargar (HU-SYNC-010).
 /// [megabytesFaltantes] es lo que le falta al teléfono: lo que falta bajar (al reanudar descuenta
 /// lo que ya está descargado) menos el espacio libre, redondeado para arriba; `null` si no se pudo
