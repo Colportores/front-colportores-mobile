@@ -40,6 +40,17 @@ jobs:
       - name: dart format (archivos versionados)
         run: git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs -0 dart format --output=none --set-exit-if-changed
 
+      # El motor es un paquete aparte con su propia suite (§8 del contrato) y núcleo Dart puro:
+      # corre en la VM, sin emulador. `flutter test` solo mira el `test/` de la app, así que sin
+      # este paso sus tests no los ejecuta nadie — y ahí vive la lógica de la cola, los lotes, los
+      # conflictos y el backup.
+      - name: sync_engine (paquete Dart puro)
+        working-directory: packages/sync_engine
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
       # `dart analyze` y no `flutter analyze`: este último no muestra los diagnósticos de plugins,
       # y las reglas de Riverpod vienen del plugin (analysis_options.yaml → plugins).
       - run: dart analyze --fatal-infos

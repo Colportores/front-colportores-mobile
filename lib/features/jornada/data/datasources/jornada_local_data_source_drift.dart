@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/sync/encolador_sync.dart';
 import '../models/jornada_model.dart';
 import 'jornada_local_data_source.dart';
 import 'jornadas_table.dart';
@@ -13,12 +14,16 @@ part 'jornada_local_data_source_drift.g.dart';
 ///
 /// Es el DAO de la tabla (`@DriftAccessor`): recibe el [AppDatabase] que abrió `DatabaseHelper` y
 /// traduce [JornadaModel] ↔ [JornadaFila]. La traducción vive acá y no en el modelo para que
-/// `JornadaModel` no dependa de Drift.
+/// `JornadaModel` no dependa de Drift. El sync entra por [EncoladorSync], dentro de la misma
+/// transacción que la escritura (contrato-sync-engine §3): `jornada` es `push` y `critical` (§2).
 @DriftAccessor(tables: [Jornadas])
 final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$JornadaLocalDataSourceDriftMixin
     implements JornadaLocalDataSource {
-  JornadaLocalDataSourceDrift(super.attachedDatabase);
+  /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
+  JornadaLocalDataSourceDrift(super.attachedDatabase, {required this._encolador});
+
+  final EncoladorSync _encolador;
 
   @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
@@ -35,13 +40,17 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     final activa = await _consultaActiva(jornada.colportorId).getSingleOrNull();
     if (activa != null) throw const JornadaActivaExistenteException();
     await into(jornadas).insert(_aFila(jornada));
+    await _encolador.encolar('jornada', OperacionSync.insert, jornada.toJson());
   });
 
   /// Un solo `UPDATE … WHERE fin IS NULL AND deleted_at IS NULL`: la comprobación y la escritura
   /// son la misma sentencia, así que un segundo cierre casi simultáneo no encuentra la fila
   /// abierta y lanza [JornadaNoAbiertaException] en vez de pisar el `fin` del primero.
+  ///
+  /// Encola la fila **como quedó en la DB** (con su `sync_version`, que el motor mantiene al día),
+  /// en la misma transacción: un cierre guardado sin su job no subiría nunca.
   @override
-  Future<void> finalizar(JornadaModel jornada) async {
+  Future<void> finalizar(JornadaModel jornada) => transaction(() async {
     final fin = jornada.fin;
     if (fin == null) throw ArgumentError.value(jornada.id, 'jornada', 'no trae fin');
     final actualizadas =
@@ -56,7 +65,9 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               JornadasCompanion(fin: Value(fin), updatedAt: Value(jornada.auditoria.updatedAt)),
             );
     if (actualizadas == 0) throw const JornadaNoAbiertaException();
-  }
+    final cerrada = await (select(jornadas)..where((j) => j.id.equals(jornada.id))).getSingle();
+    await _encolador.encolar('jornada', OperacionSync.update, _aModelo(cerrada).toJson());
+  });
 
   /// La primera jornada no borrada del colportor con `inicio` estrictamente posterior, abierta o
   /// cerrada: el tope del fin de la que quedó abierta (HU-JOR-002).

@@ -79,7 +79,13 @@ enum ClaveSegura {
   /// nombres. Hace que «Te asignaron la zona…» y «Ya no tenés zona…» se avisen una sola vez. No es
   /// secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro almacenamiento, y así el borrado
   /// de datos locales (HU-AUTH-010) también lo borra.
-  zonasAvisadas('zones_notified');
+  zonasAvisadas('zones_notified'),
+
+  /// El id de esta instalación (UUID v7) que viaja en el sobre de cada push y pull del motor de
+  /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
+  /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
+  /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) estrena uno nuevo.
+  idInstalacion('device_id');
 
   const ClaveSegura(this.id);
 

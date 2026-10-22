@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import '../../data/datasources/jornada_local_data_source.dart';
 import '../../data/datasources/jornada_local_data_source_drift.dart';
@@ -32,7 +33,9 @@ DateTime Function() relojJornada(Ref ref) => DateTime.now;
 @Riverpod(keepAlive: true)
 JornadaLocalDataSource jornadaLocalDataSource(Ref ref) {
   final db = ref.watch(dbLocalProvider);
-  if (db != null) return JornadaLocalDataSourceDrift(db);
+  if (db != null) {
+    return JornadaLocalDataSourceDrift(db, encolador: ref.watch(encoladorSyncProvider));
+  }
 
   AppLogger.instance.warn(
     LogModulo.db,

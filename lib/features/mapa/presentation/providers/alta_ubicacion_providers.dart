@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
-import '../../../../core/sync/encolador_sync.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
 import '../../data/datasources/zona_local_data_source.dart';
 import '../../data/repositories/ubicacion_repository_impl.dart';
@@ -26,13 +26,13 @@ import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
 import '../../domain/usecases/registrar_ubicacion_use_case.dart';
 import '../../domain/value_objects/area_mapa.dart';
 
+/// El motor de sync (#178) vive en `core/sync/sync_providers.dart`; se reexporta acá porque el
+/// alta lo cablea y sus tests lo sobreescriben desde este archivo.
+export '../../../../core/sync/sync_providers.dart' show encoladorSyncProvider;
+
 // Cableado del alta de ubicación (HU-UBI-001, vistas 03 y 04). Presentation conoce domain; data se
 // inyecta acá. Todo lo que todavía no tiene fuente real (ciudades de la campaña, inscripciones,
 // motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
-
-/// El motor de sync (#178). Hasta que llegue, [EncoladorSyncSinMotor]: encolar falla y el alta no
-/// se guarda, en vez de quedar en el teléfono sin subir nunca.
-final encoladorSyncProvider = Provider<EncoladorSync>((ref) => const EncoladorSyncSinMotor());
 
 /// El job «marcar como duplicado» del motor de sync (#178, RPC 0026). Hasta que llegue,
 /// [EncoladorMarcarDuplicadoSinMotor]: unir dos ubicaciones falla y no cambia nada, en vez de dejar la

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/error/failure.dart';
+import 'core/sync/sync_providers.dart';
 import 'core/theme/tema_colportaje.dart';
 import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
@@ -227,6 +228,9 @@ class _PrincipalState extends ConsumerState<_Principal> {
     ref.watch(copiaNombreSesionProvider);
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
+    // y vacía lo crítico al irse al fondo.
+    ref.watch(cicloDeVidaSyncProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

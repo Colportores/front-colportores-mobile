@@ -19,6 +19,7 @@ import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
+import 'generated/schema_v8.dart' as v8;
 
 class _SinSalida extends LogOutput {
   @override
@@ -484,6 +485,73 @@ void main() {
           final sesiones = await nuevo.select(nuevo.sesionUsuario).get();
           expect(sesiones.map((f) => f.toJson()).toList(), [sesion.toJson()]);
           expect(await nuevo.select(nuevo.auditLog).get(), isEmpty);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 7, cuando migra a la 8, se conserva todo y la cola del motor '
+    'queda vacía',
+    () async {
+      // #178: solo se suman `sync_queue` y `sync_watermark`. Nada de lo guardado se encola al
+      // migrar: antes de la 8 no había motor y encolar fallaba, así que no hay un alta guardada
+      // sin su job (convenciones §9).
+      const jornada = v7.JornadaData(
+        id: 'jor-1',
+        colportorId: 'col-1',
+        inicio: 1758700000000,
+        fin: 1758720000000,
+        totalVisitas: 7,
+        totalVentas: 2,
+        createdAt: 1758700000000,
+        updatedAt: 1758720000000,
+        createdBy: 'col-1',
+        syncVersion: 3,
+      );
+      const ubicacion = v7.UbicacionData(
+        id: 'ub-1',
+        tipo: 'CASA',
+        calle: 'Av. Ñandú',
+        numero: '1234 bis',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        zonaId: 'zon-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758710000000,
+        createdBy: 'col-1',
+        syncVersion: 5,
+      );
+      const auditoria = v7.AuditLogData(
+        id: 1,
+        evento: 'ubicacion_baja',
+        uuid: 'ub-1',
+        motivo: 'Se mudaron',
+        creadoEn: 1758715000000,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 7,
+        newVersion: 8,
+        createOld: v7.DatabaseAtV7.new,
+        createNew: v8.DatabaseAtV8.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.jornada, jornada)
+            ..insert(viejo.ubicacion, ubicacion)
+            ..insert(viejo.auditLog, auditoria);
+        },
+        validateItems: (nuevo) async {
+          final jornadas = await nuevo.select(nuevo.jornada).get();
+          expect(jornadas.map((f) => f.toJson()).toList(), [jornada.toJson()]);
+          final ubicaciones = await nuevo.select(nuevo.ubicacion).get();
+          expect(ubicaciones.map((f) => f.toJson()).toList(), [ubicacion.toJson()]);
+          final auditorias = await nuevo.select(nuevo.auditLog).get();
+          expect(auditorias.map((f) => f.toJson()).toList(), [auditoria.toJson()]);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncWatermark).get(), isEmpty);
         },
       );
     },

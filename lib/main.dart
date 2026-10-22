@@ -16,6 +16,7 @@ import 'core/logging/app_logger.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
+import 'core/sync/sync_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
@@ -29,6 +30,7 @@ import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'plataforma/identidad_instalacion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +75,10 @@ Future<void> main() async {
   // Paquetes de mapas offline (#189): conexión real del teléfono, catálogo del bucket `mapas`,
   // descarga con Range y checksum. Si no se puede preparar la carpeta, la app arranca igual y el
   // mapa queda con el servidor online.
+  // El sobre del sync (contrato-sync-engine §5.3): el id de la instalación sale del almacén seguro,
+  // que es asincrónico, y el transporte lo necesita sincrónico.
+  final sobreSync = await sobreDeEstaInstalacion(almacenSeguro);
+
   final conectividad = MonitorConectividadPlus();
   ComposicionTiles? tiles;
   try {
@@ -104,6 +110,7 @@ Future<void> main() async {
         // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o
         // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
+        sobreSyncProvider.overrideWithValue(sobreSync),
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.
         ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacenSeguro)),
