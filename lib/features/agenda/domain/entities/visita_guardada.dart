@@ -39,8 +39,8 @@ final class VisitaGuardada extends Equatable {
   /// Texto **para confirmar** cuando llegue la pantalla (vista 39): la visita se guardó y la agenda
   /// sigue esperando, con qué hacer.
   static const avisoAgendaPendiente =
-      'Guardamos la visita. La agenda sigue pendiente porque todavía no se puede marcar como no '
-      'cumplida: si ya no va, cancelala desde Agendados.';
+      'Guardamos la visita. La agenda de esta casa sigue pendiente: si ya no va, cancelala desde '
+      'Agendados.';
 
   final Visita visita;
 

@@ -173,20 +173,14 @@ void main() {
   });
 
   group('Criterio 3: el aviso guía (qué pasó y qué hacer)', () {
-    test(
-      'el aviso de la agenda pendiente dice el texto fijado por la decisión del orquestador del '
-      '23/10 (sin explicar limitaciones internas)',
-      () {
-        expect(
-          VisitaGuardada.avisoAgendaPendiente,
-          'Guardamos la visita. La agenda de esta casa sigue pendiente: si ya no va, cancelala '
-          'desde Agendados.',
-        );
-      },
-      skip:
-          'QA #410: el aviso sigue con el texto viejo ("...porque todavía no se puede marcar como '
-          'no cumplida...") y no con el que fijó la decisión del 23/10',
-    );
+    test('el aviso de la agenda pendiente dice el texto fijado por la decisión del orquestador del '
+        '23/10 (sin explicar limitaciones internas)', () {
+      expect(
+        VisitaGuardada.avisoAgendaPendiente,
+        'Guardamos la visita. La agenda de esta casa sigue pendiente: si ya no va, cancelala '
+        'desde Agendados.',
+      );
+    });
 
     test('el aviso de P3 (sin persona) llega en el campo persona y dice qué hacer', () async {
       final r = await registrar(_R.rechazo, vinculo: '');
