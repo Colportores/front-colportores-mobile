@@ -1,5 +1,5 @@
 // La app queda fija en vertical (#301, decisión de Cristian del 07/10). Tres lugares dicen lo mismo:
-// el arranque (`OrientacionApp.fijarVertical`), el manifest de Android y el `Info.plist` de iOS.
+// el arranque (`OrientacionApp.fijarVertical`), el manifest de Android y el `Info.plist` de iOS (solo iPhone, #385).
 // Los dos archivos nativos no se pueden probar en un teléfono desde Docker: el test los lee, para
 // que nadie vuelva a abrir el horizontal sin darse cuenta.
 import 'dart:io';
@@ -56,15 +56,26 @@ void main() {
       }
     });
 
-    test('iOS: iPhone y iPad aceptan solo UIInterfaceOrientationPortrait', () {
+    test('iOS: el iPhone acepta solo UIInterfaceOrientationPortrait', () {
       final plist = File('ios/Runner/Info.plist').readAsStringSync();
 
       expect(_orientacionesDe(plist, 'UISupportedInterfaceOrientations'), [
         'UIInterfaceOrientationPortrait',
       ]);
-      expect(_orientacionesDe(plist, 'UISupportedInterfaceOrientations~ipad'), [
-        'UIInterfaceOrientationPortrait',
-      ]);
+    });
+
+    test('iOS: la app se marca solo para iPhone, sin variante de iPad (#385)', () {
+      final plist = File('ios/Runner/Info.plist').readAsStringSync();
+      final proyecto = File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+
+      expect(plist, isNot(contains('UISupportedInterfaceOrientations~ipad')));
+      expect(plist, isNot(contains('UIRequiresFullScreen')));
+      final familias = RegExp(r'TARGETED_DEVICE_FAMILY = ([^;]+);').allMatches(proyecto).toList();
+      // Debug, Release y Profile del target Runner.
+      expect(familias, hasLength(3));
+      for (final familia in familias) {
+        expect(familia.group(1), '1', reason: 'solo iPhone (1); "1,2" suma el iPad');
+      }
     });
   });
 }
