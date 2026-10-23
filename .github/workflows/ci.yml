@@ -20,7 +20,7 @@ jobs:
   verificar:
     name: format · analyze · test · coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40 # los tests tardan 14-18 min y con 20 el job se cancelaba antes de terminar (23/10)
     steps:
       - uses: actions/checkout@v4
 
