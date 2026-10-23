@@ -1,52 +1,64 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/domain/instante.dart';
 
-/// Contacto realizado por el colportor (esquema-datos.md §Operaciones de campo, tabla
-/// `visita`).
-enum TipoResultadoVisita { venta, noContesto, rechazo, entrevista }
+/// Resultado de una visita (`visita.tipo_resultado`, esquema-datos.md §Operaciones de campo).
+/// [codigo] es el valor de la columna.
+///
+/// La HU-VIS-005 suma `COBRANZA`, que el servidor no admite todavía: hasta la decisión de Cristian
+/// (pendiente P2 de #151) la tabla copia el `CHECK` del servidor y este enum no lo tiene.
+enum TipoResultadoVisita {
+  venta('VENTA'),
+  noContesto('NO_CONTESTO'),
+  rechazo('RECHAZO'),
+  entrevista('ENTREVISTA');
 
+  const TipoResultadoVisita(this.codigo);
+
+  final String codigo;
+
+  /// Inversa de [codigo]. Lanza `ArgumentError` con un valor desconocido (lo frena el `CHECK`).
+  static TipoResultadoVisita desdeCodigo(String codigo) => values.firstWhere(
+    (t) => t.codigo == codigo,
+    orElse: () => throw ArgumentError.value(codigo, 'codigo', 'resultado de visita desconocido'),
+  );
+}
+
+/// Contacto realizado por el colportor (esquema-datos.md §Operaciones de campo, tabla `visita`).
+///
+/// **No lleva notas**: las de una visita son filas de `nota` (`target_type = VISITA`, local-only,
+/// ADR-017), nunca una columna. Así la fila que sube es la entidad entera y no hay dato personal.
 class Visita extends Equatable {
   Visita({
     required this.id,
     required this.espacioPersonaId,
     required DateTime fecha,
     required this.tipoResultado,
-    this.notas,
     required this.colportorId,
-    required this.jornadaId,
+    this.jornadaId,
     required this.auditoria,
-  }) : fecha = fecha.toUtc();
+  }) : fecha = instanteMs(fecha);
 
   final String id;
 
-  /// FK a `espacio_persona.id`.
+  /// FK a `espacio_persona.id` (`NOT NULL`, ADR-017).
   final String espacioPersonaId;
 
-  /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
+  /// Siempre en UTC y al milisegundo — ver [instanteMs].
   final DateTime fecha;
 
   final TipoResultadoVisita tipoResultado;
 
-  /// Generalmente contiene PII (esquema-datos.md, tabla de clasificación de PII) — no loguear
-  /// (convenciones-desarrollo.md §7.5).
-  final String? notas;
-
   /// FK a `usuario.id`.
   final String colportorId;
 
-  /// FK a `jornada.id`.
-  final String jornadaId;
+  /// FK a `jornada.id`. Opcional, como en el servidor.
+  final String? jornadaId;
 
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
-
-  /// [notas] está en [props] y `EquatableConfig.stringify` arranca en `true` en debug: sin esto,
-  /// cualquier interpolación del objeto o `logger.d(visita)` imprimiría las notas del cliente
-  /// (convenciones-desarrollo.md §7.5, "sin PII en logs: solo IDs").
-  @override
-  bool? get stringify => false;
 
   @override
   List<Object?> get props => [
@@ -54,7 +66,6 @@ class Visita extends Equatable {
     espacioPersonaId,
     fecha,
     tipoResultado,
-    notas,
     colportorId,
     jornadaId,
     auditoria,

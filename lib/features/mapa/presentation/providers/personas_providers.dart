@@ -1,0 +1,75 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../../core/database/database_providers.dart';
+import '../../../../core/error/failure.dart';
+import '../../../../core/sync/sync_providers.dart';
+import '../../data/datasources/persona_local_data_source_drift.dart';
+import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/repositories/espacio_repository_impl.dart';
+import '../../data/repositories/persona_repository_impl.dart';
+import '../../domain/entities/persona_del_espacio.dart';
+import '../../domain/repositories/espacio_repository.dart';
+import '../../domain/repositories/persona_repository.dart';
+import '../../domain/services/contador_personas_espacio.dart';
+import '../../domain/usecases/registrar_persona_use_case.dart';
+
+// Cableado de las personas de un espacio (HU-UBI-008, vistas 32A y 11·04). Presentation conoce domain;
+// data se inyecta acá. Todo es local: la persona y sus notas no se sincronizan, y el vínculo con el
+// espacio sube solo con ids (ADR-017) por el motor, que es el que ya cablea `encoladorSyncProvider`.
+
+/// La DB local abierta (`dbLocalProvider`). Sin DB abierta no hay dónde guardar: lanza, y quien lo lee
+/// lo traduce a un error de la pantalla.
+final espacioRepositoryProvider = Provider<EspacioRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return EspacioRepositoryImpl(
+    UbicacionLocalDataSourceDrift(db, encolador: ref.watch(encoladorSyncProvider)),
+  );
+});
+
+final _personaLocalProvider = Provider<PersonaLocalDataSourceDrift>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return PersonaLocalDataSourceDrift(db, encolador: ref.watch(encoladorSyncProvider));
+});
+
+final personaRepositoryProvider = Provider<PersonaRepository>(
+  (ref) => PersonaRepositoryImpl(ref.watch(_personaLocalProvider)),
+);
+
+/// Cuántas personas activas tiene un espacio: el adaptador real del puerto de la baja de espacios
+/// (HU-UBI-007), que hasta ahora solo tenía un fake.
+final contadorPersonasEspacioProvider = Provider<ContadorPersonasEspacio>(
+  (ref) => ref.watch(_personaLocalProvider),
+);
+
+/// Generador de UUID v7 del alta de una persona; un test lo reemplaza para fijar los ids.
+final generadorIdPersonaProvider = Provider<String Function()>((ref) => const Uuid().v7);
+
+/// Reloj del alta de una persona; un test lo reemplaza.
+final relojPersonaProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+final registrarPersonaUseCaseProvider = Provider<RegistrarPersonaUseCase>(
+  (ref) => RegistrarPersonaUseCase(
+    ref.watch(personaRepositoryProvider),
+    generarId: ref.watch(generadorIdPersonaProvider),
+    ahora: ref.watch(relojPersonaProvider),
+  ),
+);
+
+/// El espacio [espacioId] con su ubicación, o `null` si ya no está en el teléfono. Una falla de
+/// lectura sale como error del provider.
+final contextoEspacioProvider = FutureProvider.autoDispose.family<EspacioConUbicacion?, String>((
+  ref,
+  espacioId,
+) async {
+  final lectura = await ref.watch(espacioRepositoryProvider).buscar(espacioId);
+  return lectura.fold((Failure falla) => throw falla, (contexto) => contexto);
+});
+
+/// Las personas activas de [espacioId], al día cuando se agrega o se da de baja una.
+final personasDelEspacioProvider = StreamProvider.autoDispose
+    .family<List<PersonaDelEspacio>, String>(
+      (ref, espacioId) => ref.watch(personaRepositoryProvider).observarDelEspacio(espacioId),
+    );

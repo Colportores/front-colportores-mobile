@@ -22,6 +22,7 @@ import '../core/ports.dart';
 class FakeSyncTransport implements SyncTransport {
   FakeSyncTransport({
     this.pkField = 'id',
+    this.pkFieldPorEntidad = const {},
     this.versionField = 'sync_version',
     DateTime Function()? clock,
   }) : _clock = clock ?? (() => DateTime.now().toUtc());
@@ -29,6 +30,12 @@ class FakeSyncTransport implements SyncTransport {
   /// Nombre de la PK dentro del payload — el UUID v7 del dispositivo (§7).
   /// **Pendiente de fijar en v1.0**: hoy el contrato no nombra este campo.
   final String pkField;
+
+  /// La PK de las entidades que no usan [pkField] (por ejemplo `house_status`, que tiene una fila
+  /// por ubicación y su PK es `ubicacion_id`: `SyncSpec.push(..., pk: 'ubicacion_id')`).
+  final Map<String, String> pkFieldPorEntidad;
+
+  String _pkFieldDe(String entity) => pkFieldPorEntidad[entity] ?? pkField;
 
   /// Campo de versión que declara cada `SyncTableAdapter` (§3).
   final String versionField;
@@ -54,24 +61,31 @@ class FakeSyncTransport implements SyncTransport {
 
   /// Las filas que hay "en el servidor" para una entidad, sin las borradas.
   List<Map<String, Object?>> rowsOf(String entity) => [
-        for (final fila in (_tables[entity] ?? {}).values)
-          if (!fila.deleted) fila.payload,
-      ];
+    for (final fila in (_tables[entity] ?? {}).values)
+      if (!fila.deleted) fila.payload,
+  ];
 
   // --- lo que el test programa ------------------------------------------------
 
   /// La próxima llamada —push o pull, la que venga— falla con este status,
   /// clasificado por [kindForStatus]. Se consume una sola vez.
   void failWith(int status, {String code = 'FAKE', Duration? retryAfter}) {
-    _failures.add(TransportFailure.fromStatus(status,
-        code: code, message: 'falla simulada', retryAfter: retryAfter));
+    _failures.add(
+      TransportFailure.fromStatus(
+        status,
+        code: code,
+        message: 'falla simulada',
+        retryAfter: retryAfter,
+      ),
+    );
   }
 
   /// Las próximas [times] llamadas fallan sin respuesta, como un timeout.
   void failTransient([int times = 1]) {
     for (var i = 0; i < times; i++) {
-      _failures.add(const TransportFailure(FailureKind.transient,
-          message: 'sin conexión'));
+      _failures.add(
+        const TransportFailure(FailureKind.transient, message: 'sin conexión'),
+      );
     }
   }
 
@@ -126,8 +140,10 @@ class FakeSyncTransport implements SyncTransport {
 
     if (_loseResponse > 0) {
       _loseResponse--;
-      throw const TransportFailure(FailureKind.transient,
-          message: 'el lote se aplicó, pero la respuesta no volvió');
+      throw const TransportFailure(
+        FailureKind.transient,
+        message: 'el lote se aplicó, pero la respuesta no volvió',
+      );
     }
 
     return PushResult(serverTime: _clock(), results: results);
@@ -162,8 +178,9 @@ class FakeSyncTransport implements SyncTransport {
       serverTime: _clock(),
       // Sin novedades el watermark vuelve igual que como llegó: pedir dos veces
       // desde el mismo punto devuelve dos veces lo mismo.
-      watermark:
-          servidas.isEmpty ? (watermark ?? '') : 'w-${servidas.last.row.seq}',
+      watermark: servidas.isEmpty
+          ? (watermark ?? '')
+          : 'w-${servidas.last.row.seq}',
       hasMore: servidas.length < pendientes.length,
       rows: rows,
     );
@@ -189,7 +206,9 @@ class FakeSyncTransport implements SyncTransport {
     // en la cola de error que en realidad ya cobró.
     if (appliedOpIds.contains(job.clientOpId)) {
       return JobResult(
-          clientOpId: job.clientOpId, outcome: JobOutcome.duplicate);
+        clientOpId: job.clientOpId,
+        outcome: JobOutcome.duplicate,
+      );
     }
 
     final rechazo = _rejected[job.clientOpId];
@@ -204,13 +223,14 @@ class FakeSyncTransport implements SyncTransport {
 
     appliedOpIds.add(job.clientOpId);
 
-    final pk = job.payload[pkField];
+    final campoPk = _pkFieldDe(job.entity);
+    final pk = job.payload[campoPk];
     if (pk == null) {
       return JobResult(
         clientOpId: job.clientOpId,
         outcome: JobOutcome.invalid,
         code: 'PK_FALTANTE',
-        message: 'el payload no trae "$pkField"',
+        message: 'el payload no trae "$campoPk"',
       );
     }
 
@@ -254,8 +274,12 @@ class FakeSyncTransport implements SyncTransport {
             serverRow: actual.payload,
           );
         }
-        final fila = _apply(job.entity, job.payload,
-            version: actual.version + 1, deleted: job.op == Op.delete);
+        final fila = _apply(
+          job.entity,
+          job.payload,
+          version: actual.version + 1,
+          deleted: job.op == Op.delete,
+        );
         return JobResult(
           clientOpId: job.clientOpId,
           outcome: JobOutcome.accepted,
@@ -264,9 +288,13 @@ class FakeSyncTransport implements SyncTransport {
     }
   }
 
-  _Row _apply(String entity, Map<String, Object?> payload,
-      {required int version, bool deleted = false}) {
-    final pk = '${payload[pkField]}';
+  _Row _apply(
+    String entity,
+    Map<String, Object?> payload, {
+    required int version,
+    bool deleted = false,
+  }) {
+    final pk = '${payload[_pkFieldDe(entity)]}';
     final fila = _Row(
       payload: {...payload, versionField: version},
       version: version,
@@ -311,14 +339,16 @@ class _Row {
 
 /// Tamaño aproximado de un lote en bytes, para el tope de ~1 MB de §5.5.
 int estimatedBytes(PushBatch batch) => utf8
-    .encode(jsonEncode([
-      for (final job in batch.jobs)
-        {
-          'client_op_id': job.clientOpId,
-          'entity': job.entity,
-          'op': job.op.name,
-          'sync_version': job.syncVersion,
-          'payload': job.payload,
-        }
-    ]))
+    .encode(
+      jsonEncode([
+        for (final job in batch.jobs)
+          {
+            'client_op_id': job.clientOpId,
+            'entity': job.entity,
+            'op': job.op.name,
+            'sync_version': job.syncVersion,
+            'payload': job.payload,
+          },
+      ]),
+    )
     .length;

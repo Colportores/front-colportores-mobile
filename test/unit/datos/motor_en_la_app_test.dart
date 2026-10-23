@@ -7,17 +7,20 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/datos/encolador_sync_motor.dart';
+import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/sync_engine.dart';
 import 'package:sync_engine/testing.dart';
 
+import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
 
 const _ubi = 'ub-0000000000000000000000000001';
@@ -77,7 +80,7 @@ void main() {
 
   setUp(() {
     db = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
-    servidor = FakeSyncTransport();
+    servidor = FakeSyncTransport(pkFieldPorEntidad: const {'house_status': 'ubicacion_id'});
     motor = SyncEngine(
       specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
       transport: servidor,
@@ -192,5 +195,147 @@ void main() {
     await motor.syncNow();
     expect((await cola()).pending, 0);
     expect(servidor.rowsOf('jornada'), hasLength(1));
+  });
+
+  group('la agenda y las visitas (BACK-HU-VIS-001)', () {
+    late AgendaLocalDataSourceDrift agenda;
+
+    setUp(() async {
+      final encolador = EncoladorSyncMotor(motor);
+      agenda = AgendaLocalDataSourceDrift(
+        db,
+        encolador: encolador,
+        estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+      );
+      await sembrarCasa(db);
+    });
+
+    test(
+      'agendar y registrar la visita suben: la agenda cumplida, la visita y el color de la casa',
+      () async {
+        await agenda.agendar(agendaDe('age-1', esEstricta: true), nota: notaDe('nota-1'));
+        await agenda.registrarVisita(visitaDe('vis-1', creada: t0), agendaId: 'age-1');
+
+        final resultado = await motor.syncNow();
+
+        expect(resultado.ok, isTrue);
+        expect(resultado.conflicts, 0);
+        expect((await cola()).pending, 0);
+        final subida = servidor.rowsOf('agenda').single;
+        expect(subida['estado'], 'COMPLETADA');
+        expect(subida['visita_id'], 'vis-1');
+        expect(subida['es_estricta'], true);
+        expect(servidor.rowsOf('visita').single['tipo_resultado'], 'ENTREVISTA');
+        final casa = servidor.rowsOf('house_status').single;
+        expect(casa['ubicacion_id'], 'ub-1');
+        expect(casa['color'], 'ENTREVISTA_SIN_VENTA');
+        expect(casa['prioridad'], 5);
+        final todo = '${servidor.rowsOf('agenda')}${servidor.rowsOf('visita')}$casa';
+        expect(todo, isNot(contains('Atiende')), reason: 'la nota es local-only (ADR-017)');
+      },
+    );
+
+    test(
+      'la visita espontánea sube con su agenda COMPLETADA: la visita primero y sin conflictos',
+      () async {
+        await agenda.registrarVisita(visitaDe('vis-1', creada: t0));
+
+        final resultado = await motor.syncNow();
+
+        expect(resultado.ok, isTrue);
+        expect(resultado.conflicts, 0);
+        expect((await cola()).pending, 0);
+        final subida = servidor.rowsOf('agenda').single;
+        expect(subida['estado'], 'COMPLETADA');
+        expect(subida['tipo'], 'ENTREVISTA');
+        expect(subida['visita_id'], 'vis-1');
+        expect(servidor.rowsOf('visita').single['id'], 'vis-1');
+      },
+    );
+
+    test('cancelar la única agenda de una casa baja su fila de la cache con un delete', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      await motor.syncNow();
+      expect(servidor.rowsOf('house_status').single['deleted_at'], isNull);
+
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.conflicts, 0);
+      expect(servidor.rowsOf('agenda').single['estado'], 'CANCELADA');
+      expect(servidor.rowsOf('house_status'), isEmpty, reason: 'la fila se dio de baja');
+    });
+
+    test('la casa que vuelve a «Sin visita» y se vuelve a pintar sube viva y sin conflictos '
+        '(agendar, sync, cancelar, sync, re-agendar, sync)', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      expect((await motor.syncNow()).conflicts, 0);
+
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      expect((await motor.syncNow()).conflicts, 0);
+      expect(servidor.rowsOf('house_status'), isEmpty, reason: 'la baja subió');
+      expect(
+        (await db.select(db.houseStatuses).getSingle()).syncVersion,
+        2,
+        reason: 'el delete aceptado devolvió su versión a la fila local',
+      );
+
+      await agenda.agendar(agendaDe('age-2', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      final casa = servidor.rowsOf('house_status').single;
+      expect(casa['color'], 'ENTREVISTA_PROGRAMADA');
+      expect(casa['deleted_at'], isNull);
+      final local = await db.select(db.houseStatuses).getSingle();
+      expect([local.color, local.deletedAt, local.syncVersion], ['ENTREVISTA_PROGRAMADA', null, 3]);
+    });
+
+    test('lo mismo sin sync entre medio: cancelar y re-agendar antes de subir', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      await motor.syncNow();
+
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      await agenda.agendar(agendaDe('age-2', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_PROGRAMADA');
+    });
+
+    test('una baja que vuelve a pintarse con otro color tampoco choca', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      await motor.syncNow();
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      await motor.syncNow();
+
+      await agenda.registrarVisita(visitaDe('vis-1', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.conflicts, 0);
+      expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_SIN_VENTA');
+    });
+
+    test('sin red, todo queda en la cola y sube cuando vuelve, en orden', () async {
+      servidor.offline();
+      await agenda.agendar(agendaDe('age-1'));
+      await agenda.registrarVisita(
+        visitaDe('vis-1', creada: t0.add(const Duration(minutes: 1))),
+        agendaId: 'age-1',
+      );
+
+      expect((await motor.syncNow()).ok, isFalse);
+      servidor.online();
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect((await cola()).pending, 0);
+      expect(servidor.rowsOf('agenda').single['estado'], 'COMPLETADA');
+      expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_SIN_VENTA');
+    });
   });
 }

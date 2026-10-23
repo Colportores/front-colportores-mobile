@@ -1,13 +1,19 @@
 import 'package:drift/drift.dart';
 
 import '../../datos/sync_queue_table.dart';
+import '../../features/agenda/data/datasources/agendas_table.dart';
+import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
+import '../../features/mapa/data/datasources/espacio_personas_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
 import '../../features/mapa/data/datasources/geojson_converter.dart';
+import '../../features/mapa/data/datasources/house_status_table.dart';
+import '../../features/mapa/data/datasources/notas_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
+import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
@@ -44,6 +50,12 @@ part 'app_database.g.dart';
     AuditLogLocal,
     SyncQueue,
     SyncWatermarks,
+    Personas,
+    EspacioPersonas,
+    Notas,
+    Agendas,
+    Visitas,
+    HouseStatuses,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -64,10 +76,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 6: `sesion_usuario`, copia local del nombre del usuario (#243).
   /// - 7: `audit_log`, la auditoría del dispositivo, solo local (#205: el motivo de la baja).
   /// - 8: `sync_queue` y `sync_watermark`, la cola y los watermarks del motor de sync (#178).
+  /// - 9: `persona` y `nota`, solo locales, y `espacio_persona`, que sube solo con ids (HU-UBI-008, #140).
+  /// - 10: `agenda` y `visita`, que suben, y la cache `house_status`, que también (BACK-HU-VIS-001, #404).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 8;
+  static const int versionEsquema = 10;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -155,6 +169,26 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.syncQueueFila);
       await m.createIndex(esquema.syncQueueDoneAt);
       await m.createTable(esquema.syncWatermark);
+    },
+    // Solo crea las tablas de las personas, vacías: nada de lo guardado cambia.
+    from8To9: (m, esquema) async {
+      await m.createTable(esquema.persona);
+      await m.createTable(esquema.espacioPersona);
+      await m.createIndex(esquema.espacioPersonaEspacioIdx);
+      await m.createIndex(esquema.espacioPersonaPersonaIdx);
+      await m.createTable(esquema.nota);
+      await m.createIndex(esquema.notaObjetivoIdx);
+    },
+    // Solo crea las tablas de la agenda, las visitas y la cache del color de las casas, vacías: nada
+    // de lo guardado cambia ni se encola al migrar.
+    from9To10: (m, esquema) async {
+      await m.createTable(esquema.agenda);
+      await m.createIndex(esquema.agendaColportorIdx);
+      await m.createIndex(esquema.agendaEspacioPersonaIdx);
+      await m.createTable(esquema.visita);
+      await m.createIndex(esquema.visitaColportorIdx);
+      await m.createIndex(esquema.visitaEspacioPersonaIdx);
+      await m.createTable(esquema.houseStatus);
     },
   );
 }

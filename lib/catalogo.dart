@@ -22,6 +22,17 @@ final specsDeLaApp = <SyncSpec>[
   // §2 y backend 0032: sube y sobrevive a una reinstalación. Hoy la tabla local no tiene `id` ni
   // columnas de sync y nada la encola: eso es un seguimiento de #178.
   SyncSpec.push('ubicacion_par_decidido'),
+  // ADR-017: el vínculo persona ↔ espacio sube con ids opacos y sin `alsoPull` (un solo escritor). La
+  // persona y sus notas (abajo) no suben nunca: solo el backup E2E (HU-UBI-008, #140).
+  SyncSpec.push('espacio_persona'),
+  // La agenda y las visitas del colportor (BACK-HU-VIS-001, #404): suben enteras, porque sus notas
+  // son filas de `nota` (ADR-017) y la fila no lleva dato personal. Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('agenda'),
+  SyncSpec.push('visita'),
+  // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
+  // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
+  // casas (#181).
+  SyncSpec.push('house_status', pk: 'ubicacion_id'),
 
   // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
   SyncSpec.pull('campania_ciudad'),
@@ -32,6 +43,9 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.
   SyncSpec.local('sesion_usuario'),
+  // El cliente del colportor y sus notas: PII (Ley 18.331), solo en el teléfono.
+  SyncSpec.local('persona'),
+  SyncSpec.local('nota'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).
