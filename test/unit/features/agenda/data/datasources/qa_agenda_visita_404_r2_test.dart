@@ -93,9 +93,11 @@ void main() {
       expect(await agendaComoEstaba('age-1'), antes);
       expect(
         encolador.encolados.skip(cola).map((c) => '${c.entidad}:${c.operacion.name}'),
-        ['visita:insert', 'house_status:update'],
-        reason: 'la agenda no se vuelve a encolar',
+        ['visita:insert', 'agenda:insert', 'house_status:update'],
+        reason: 'la cancelada no se vuelve a encolar: solo nace la agenda cumplida de la visita',
       );
+      final nueva = (await db.select(db.agendas).get()).singleWhere((a) => a.id != 'age-1');
+      expect([nueva.estado, nueva.visitaId], ['COMPLETADA', 'vis-1']);
       expect((await db.select(db.houseStatuses).getSingle()).color, 'RECHAZO');
       final nota = (await db.select(db.notas).get()).single;
       expect((nota.targetType, nota.targetId), ('VISITA', 'vis-1'));
@@ -111,7 +113,13 @@ void main() {
 
       guardadaSinAgenda(r, MotivoAgendaIgnorada.cerrada);
       expect(await agendaComoEstaba('age-1'), antes);
-      expect((await db.select(db.agendas).getSingle()).visitaId, 'vis-1');
+      final agendas = await db.select(db.agendas).get();
+      expect(agendas.singleWhere((a) => a.id == 'age-1').visitaId, 'vis-1');
+      expect(
+        agendas.singleWhere((a) => a.id != 'age-1').visitaId,
+        'vis-2',
+        reason: 'la segunda nace con su agenda cumplida',
+      );
       expect((await db.select(db.visitas).get()).map((v) => v.id).toSet(), {'vis-1', 'vis-2'});
     });
 
@@ -120,14 +128,21 @@ void main() {
         await registrar(agendaId: 'age-fantasma'),
         MotivoAgendaIgnorada.inexistente,
       );
-      expect(await db.select(db.agendas).get(), isEmpty, reason: 'no se inventa una agenda');
+      final agenda = (await db.select(db.agendas).get()).single;
+      expect(
+        [agenda.estado, agenda.visitaId],
+        ['COMPLETADA', 'vis-1'],
+        reason: 'la espontánea nace con su agenda cumplida, no con la fantasma',
+      );
       expect((await db.select(db.visitas).get()).length, 1);
     });
 
     test('agenda dada de baja: cuenta como inexistente', () async {
       await insertarAgenda(db, agendaDe('age-b', borrada: t0));
       guardadaSinAgenda(await registrar(agendaId: 'age-b'), MotivoAgendaIgnorada.inexistente);
-      expect((await db.select(db.agendas).getSingle()).estado, 'PENDIENTE');
+      final agendas = await db.select(db.agendas).get();
+      expect(agendas.singleWhere((a) => a.id == 'age-b').estado, 'PENDIENTE');
+      expect(agendas.singleWhere((a) => a.id != 'age-b').estado, 'COMPLETADA');
     });
 
     test('agenda de otra persona: se guarda y la agenda sigue pendiente', () async {

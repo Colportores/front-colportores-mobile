@@ -235,6 +235,21 @@ void main() {
       },
     );
 
+    test('la visita espontánea sube con su agenda COMPLETADA: la visita primero y sin conflictos', () async {
+      await agenda.registrarVisita(visitaDe('vis-1', creada: t0));
+
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      final subida = servidor.rowsOf('agenda').single;
+      expect(subida['estado'], 'COMPLETADA');
+      expect(subida['tipo'], 'ENTREVISTA');
+      expect(subida['visita_id'], 'vis-1');
+      expect(servidor.rowsOf('visita').single['id'], 'vis-1');
+    });
+
     test('cancelar la única agenda de una casa baja su fila de la cache con un delete', () async {
       await agenda.agendar(agendaDe('age-1'));
       await motor.syncNow();

@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
@@ -19,6 +20,8 @@ import 'agenda_local_data_source.dart';
 
 typedef _Motivo = MotivoRechazoAgenda;
 
+String _uuidV7() => const Uuid().v7();
+
 /// [AgendaLocalDataSource] sobre las tablas `agenda`, `visita` y `nota` de la DB cifrada.
 ///
 /// Cada operación es **una transacción de Drift** que escribe la fila, la encola para el sync
@@ -33,11 +36,19 @@ typedef _Motivo = MotivoRechazoAgenda;
 final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   /// [_encolador] y [_estadoDeLasCasas] se pasan como `encolador:` y `estadoDeLasCasas:`
   /// (parámetros nombrados privados, Dart ≥ 3.10).
-  AgendaLocalDataSourceDrift(this._db, {required this._encolador, required this._estadoDeLasCasas});
+  AgendaLocalDataSourceDrift(
+    this._db, {
+    required this._encolador,
+    required this._estadoDeLasCasas,
+    this._generarId = _uuidV7,
+  });
 
   final AppDatabase _db;
   final EncoladorSync _encolador;
   final HouseStatusUpdater _estadoDeLasCasas;
+
+  /// Id de la agenda `COMPLETADA` que se crea junto con una visita espontánea.
+  final String Function() _generarId;
 
   @override
   Future<AgendaAgendada> agendar(Agenda agenda, {NotaDeCampo? nota}) => _db.transaction(() async {
@@ -103,7 +114,9 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
           OperacionSync.insert,
           VisitaModel.fromEntity(visita).toJson(),
         );
-        if (agenda != null) {
+        if (agenda == null) {
+          await _crearAgendaCumplida(visita);
+        } else {
           await _escribirAgenda(
             agenda.id,
             AgendasCompanion(
@@ -169,6 +182,33 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       return (agenda: null, ignorada: MotivoAgendaIgnorada.cerrada);
     }
     return (agenda: fila, ignorada: null);
+  }
+
+  /// La visita espontánea (sin agenda, o con una que no sirvió) nace con su agenda `COMPLETADA`,
+  /// en la misma transacción (HU-VIS-005; decisión del 23/10 sobre la regla «Agenda»): fecha de la
+  /// visita, misma persona y colportora, tipo `ENTREVISTA`, sin slot y no estricta. Se encola
+  /// después de la visita, porque `agenda.visita_id` apunta a ella.
+  Future<void> _crearAgendaCumplida(Visita visita) async {
+    final agenda = Agenda(
+      id: _generarId(),
+      espacioPersonaId: visita.espacioPersonaId,
+      tipo: TipoAgenda.entrevista,
+      fechaProgramada: visita.fecha,
+      estado: EstadoAgenda.completada,
+      colportorId: visita.colportorId,
+      visitaId: visita.id,
+      auditoria: Auditoria(
+        createdAt: visita.auditoria.createdAt,
+        updatedAt: visita.auditoria.updatedAt,
+        createdBy: visita.auditoria.createdBy,
+      ),
+    );
+    await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
+    await _encolador.encolar(
+      'agenda',
+      OperacionSync.insert,
+      AgendaModel.fromEntity(agenda).toJson(),
+    );
   }
 
   /// Aplica [cambios] a la agenda [id], lee la fila resultante y encola su `update` con la fila

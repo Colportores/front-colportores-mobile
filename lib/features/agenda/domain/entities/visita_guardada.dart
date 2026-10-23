@@ -5,17 +5,21 @@ import 'visita.dart';
 /// Por qué una visita se guardó **sin** la agenda que la pantalla le había indicado.
 ///
 /// Una visita no se pierde porque su agenda ya no sirva (decisión de Cristian/mapa §2, QA de #404):
-/// se guarda como visita espontánea y se avisa. Los [aviso]s son textos **para confirmar** cuando
+/// se guarda como visita espontánea (con su agenda cumplida) y se avisa. Los [aviso]s son textos **para confirmar** cuando
 /// llegue la pantalla (vista 23, #410).
 enum MotivoAgendaIgnorada {
   /// La agenda ya se cumplió o se canceló: no se toca.
-  cerrada('Esa agenda ya estaba cerrada: guardamos la visita igual, sin agenda.'),
+  cerrada('Esa agenda ya estaba cerrada: guardamos la visita igual, como visita espontánea.'),
 
   /// La agenda no está en el teléfono (o está dada de baja).
-  inexistente('Esa agenda ya no está en tu teléfono: guardamos la visita igual, sin agenda.'),
+  inexistente(
+    'Esa agenda ya no está en tu teléfono: guardamos la visita igual, como visita espontánea.',
+  ),
 
   /// La agenda es de otra persona que la de la visita: no se toca.
-  deOtraPersona('Esa agenda es de otra persona: guardamos la visita igual, sin agenda.');
+  deOtraPersona(
+    'Esa agenda es de otra persona: guardamos la visita igual, como visita espontánea.',
+  );
 
   const MotivoAgendaIgnorada(this.aviso);
 

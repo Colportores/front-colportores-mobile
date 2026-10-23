@@ -90,7 +90,7 @@ void main() {
       expect(guardada.agendaIgnorada, MotivoAgendaIgnorada.cerrada);
       expect(
         guardada.aviso,
-        'Esa agenda ya estaba cerrada: guardamos la visita igual, sin agenda.',
+        'Esa agenda ya estaba cerrada: guardamos la visita igual, como visita espontánea.',
       );
     });
 
