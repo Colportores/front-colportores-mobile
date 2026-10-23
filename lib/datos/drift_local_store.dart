@@ -115,7 +115,10 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     if (valor == null) return null;
     if (columna is GeneratedColumnWithTypeConverter) {
       final conversor = (columna as GeneratedColumnWithTypeConverter<Object?, Object>).converter;
-      if (conversor is FechaUtcConverter) {
+      // Las fechas del cloud llegan como texto ISO. Una columna `nullable()` envuelve el conversor
+      // en un `NullAwareTypeConverter`, que ya no es un `FechaUtcConverter` pero sigue siendo un
+      // `TypeConverter<DateTime?, int?>`: se las reconoce por eso, con o sin `null`.
+      if (conversor is TypeConverter<DateTime?, int?>) {
         return conversor.toSql(valor is DateTime ? valor : DateTime.parse('$valor'));
       }
       return conversor.toSql(valor);

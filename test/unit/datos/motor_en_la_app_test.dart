@@ -248,6 +248,60 @@ void main() {
       expect(servidor.rowsOf('house_status'), isEmpty, reason: 'la fila se dio de baja');
     });
 
+    test('la casa que vuelve a «Sin visita» y se vuelve a pintar sube viva y sin conflictos '
+        '(agendar, sync, cancelar, sync, re-agendar, sync)', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      expect((await motor.syncNow()).conflicts, 0);
+
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      expect((await motor.syncNow()).conflicts, 0);
+      expect(servidor.rowsOf('house_status'), isEmpty, reason: 'la baja subió');
+      expect(
+        (await db.select(db.houseStatuses).getSingle()).syncVersion,
+        2,
+        reason: 'el delete aceptado devolvió su versión a la fila local',
+      );
+
+      await agenda.agendar(agendaDe('age-2', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      final casa = servidor.rowsOf('house_status').single;
+      expect(casa['color'], 'ENTREVISTA_PROGRAMADA');
+      expect(casa['deleted_at'], isNull);
+      final local = await db.select(db.houseStatuses).getSingle();
+      expect([local.color, local.deletedAt, local.syncVersion], ['ENTREVISTA_PROGRAMADA', null, 3]);
+    });
+
+    test('lo mismo sin sync entre medio: cancelar y re-agendar antes de subir', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      await motor.syncNow();
+
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      await agenda.agendar(agendaDe('age-2', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_PROGRAMADA');
+    });
+
+    test('una baja que vuelve a pintarse con otro color tampoco choca', () async {
+      await agenda.agendar(agendaDe('age-1'));
+      await motor.syncNow();
+      await agenda.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      await motor.syncNow();
+
+      await agenda.registrarVisita(visitaDe('vis-1', creada: t0.add(const Duration(minutes: 2))));
+      final resultado = await motor.syncNow();
+
+      expect(resultado.conflicts, 0);
+      expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_SIN_VENTA');
+    });
+
     test('sin red, todo queda en la cola y sube cuando vuelve, en orden', () async {
       servidor.offline();
       await agenda.agendar(agendaDe('age-1'));

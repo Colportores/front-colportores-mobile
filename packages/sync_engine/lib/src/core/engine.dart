@@ -77,15 +77,15 @@ class SyncEngine {
     this.realtimeDebounce = const Duration(milliseconds: 300),
     this.criticalDebounce = const Duration(seconds: 2),
     this.inFlightLease = const Duration(minutes: 10),
-  })  : _specs = specs,
-        _uuid = uuid ?? UuidV7(),
-        _adapters = {for (final a in adapters) a.remoteName: a},
-        _backup = backup,
-        _realtimePort = realtime,
-        _transport = transport,
-        _jobs = jobs,
-        _store = store,
-        _clock = clock ?? (() => DateTime.now().toUtc()) {
+  }) : _specs = specs,
+       _uuid = uuid ?? UuidV7(),
+       _adapters = {for (final a in adapters) a.remoteName: a},
+       _backup = backup,
+       _realtimePort = realtime,
+       _transport = transport,
+       _jobs = jobs,
+       _store = store,
+       _clock = clock ?? (() => DateTime.now().toUtc()) {
     if (connectivity != null) {
       _conn = connectivity.onlineChanges.listen((online) {
         if (online) trigger(SyncTrigger.connectivity);
@@ -108,8 +108,10 @@ class SyncEngine {
   /// backup: es un error de cableado, no algo que la app deba atrapar.
   BackupService get backup =>
       _backup ??
-      (throw StateError('este SyncEngine se armó sin BackupService: '
-          'faltan ArchivePort, CryptoPort y SnapshotPort'));
+      (throw StateError(
+        'este SyncEngine se armó sin BackupService: '
+        'faltan ArchivePort, CryptoPort y SnapshotPort',
+      ));
 
   /// Ventana de coalescencia de eventos realtime.
   ///
@@ -196,7 +198,8 @@ class SyncEngine {
   Future<SyncOutcome> get settled =>
       _running ??
       Future.value(
-          const SyncOutcome(trigger: SyncTrigger.manual, skipped: true));
+        const SyncOutcome(trigger: SyncTrigger.manual, skipped: true),
+      );
 
   /// Encola una escritura local (§3).
   ///
@@ -293,7 +296,7 @@ class SyncEngine {
     // esperándola, y fundirlo después de esta escritura la pisaría.
     final deLaFila = [
       for (final q in enEspera)
-        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q
+        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q,
     ];
     if (deLaFila.isEmpty) return null;
 
@@ -323,8 +326,10 @@ class SyncEngine {
     // B1: lo que cuelga de la fila y quedó `PENDING` (un espacio cargado sin
     // señal, antes de que ningún ciclo lo viera) tiene que salir detrás del
     // alta, no delante. Va con los que estaban esperando, en su orden.
-    final sueltos = _pendientesQueCuelgan(
-        [destino, ...colgados], await _jobs.listPending());
+    final sueltos = _pendientesQueCuelgan([
+      destino,
+      ...colgados,
+    ], await _jobs.listPending());
     await _jobs.release([
       destino.id,
       for (final q in _enOrdenDeCreacion([...colgados, ...sueltos])) q.id,
@@ -352,8 +357,10 @@ class SyncEngine {
     if (destino.state != JobState.pending || destino.job.op == Op.delete) {
       return null;
     }
-    await _jobs.replacePayload(
-        destino.id, {...destino.job.payload, ...job.payload});
+    await _jobs.replacePayload(destino.id, {
+      ...destino.job.payload,
+      ...job.payload,
+    });
     return destino.id;
   }
 
@@ -367,10 +374,14 @@ class SyncEngine {
   /// por fila: con 20.000 jobs, una consulta por fila es la diferencia entre
   /// subir en segundos y en minutos.
   Future<void> _devolverVersiones(
-      Map<String, Map<String, int>> versiones) async {
+    Map<String, Map<String, int>> versiones,
+  ) async {
     for (final MapEntry(key: entidad, value: porFila) in versiones.entries) {
-      await _store.applyVersions(entidad,
-          pkColumn: _specs.of(entidad).pk, versionPorFila: porFila);
+      await _store.applyVersions(
+        entidad,
+        pkColumn: _specs.of(entidad).pk,
+        versionPorFila: porFila,
+      );
       await _jobs.rebaseVersions(entidad, porFila);
     }
   }
@@ -381,7 +392,9 @@ class SyncEngine {
   /// quedaran delante, saldrían en el lote antes de la fila que nombran y el
   /// servidor los rechazaría con `23503` en vez de dejarlos en espera (§2.2).
   List<QueuedJob> _pendientesQueCuelgan(
-      List<QueuedJob> liberados, List<QueuedJob> pendientes) {
+    List<QueuedJob> liberados,
+    List<QueuedJob> pendientes,
+  ) {
     if (pendientes.isEmpty) return const [];
     final retenidas = FilasRetenidas.de(_specs, liberados);
     final propios = {for (final q in liberados) q.id};
@@ -399,7 +412,7 @@ class SyncEngine {
     }
     return [
       for (final q in pendientes)
-        if (cuelgan.contains(q.id)) q
+        if (cuelgan.contains(q.id)) q,
     ];
   }
 
@@ -417,8 +430,11 @@ class SyncEngine {
   /// Lo que cuelga, directa o indirectamente, de la fila [pk]: los `WAITING`
   /// cuyo `dependsOn` es ella, o una fila que a su vez cuelga de ella. En orden
   /// de creación.
-  List<QueuedJob> _colgadosDe(String pk, List<QueuedJob> enEspera,
-      {required List<QueuedJob> excepto}) {
+  List<QueuedJob> _colgadosDe(
+    String pk,
+    List<QueuedJob> enEspera, {
+    required List<QueuedJob> excepto,
+  }) {
     final fuera = {for (final q in excepto) q.id};
     final filas = {pk};
     final colgados = <String>{};
@@ -439,7 +455,7 @@ class SyncEngine {
     }
     return [
       for (final q in enEspera)
-        if (colgados.contains(q.id)) q
+        if (colgados.contains(q.id)) q,
     ];
   }
 
@@ -458,8 +474,10 @@ class SyncEngine {
       // Qué entidad cambió no altera lo que hay que hacer: bajar el delta.
       _realtimePending = true;
       _realtimeTimer?.cancel();
-      _realtimeTimer =
-          _zona.createTimer(realtimeDebounce, () => unawaited(_drainRealtime()));
+      _realtimeTimer = _zona.createTimer(
+        realtimeDebounce,
+        () => unawaited(_drainRealtime()),
+      );
     });
   }
 
@@ -484,8 +502,10 @@ class SyncEngine {
     for (final adaptador in _adapters.values) {
       if (adaptador is SyncTableAdapter<T>) return adaptador;
     }
-    throw StateError('no hay SyncTableAdapter registrado para $T. '
-        'Pasalo en SyncEngine(adapters: [...])');
+    throw StateError(
+      'no hay SyncTableAdapter registrado para $T. '
+      'Pasalo en SyncEngine(adapters: [...])',
+    );
   }
 
   /// El adaptador de una entidad remota, si la app lo registró.
@@ -792,12 +812,9 @@ class SyncEngine {
   /// Vacía la cola hacia el backend. Es el corazón del ciclo y también la
   /// fase 2 de §7 (replay), que es el mismo trabajo sobre una cola restaurada.
   Future<
-      ({
-        int pushed,
-        int invalidated,
-        int conflicts,
-        TransportFailure? failure
-      })> _pushPending() async {
+    ({int pushed, int invalidated, int conflicts, TransportFailure? failure})
+  >
+  _pushPending() async {
     var pushed = 0, invalidated = 0, conflicts = 0;
 
     // Lo que quedó colgado en vuelo vuelve a la cola. En **cada** ciclo y no
@@ -834,7 +851,9 @@ class SyncEngine {
     try {
       for (final armado in buildBatches(tomados)) {
         final lote = _conVersionVista(
-            await _sinLoQueEspera(armado, retenidas, idPorOpId), versionVista);
+          await _sinLoQueEspera(armado, retenidas, idPorOpId),
+          versionVista,
+        );
         // Lo que se retuvo ya no está en vuelo: quedó WAITING.
         final salen = {for (final job in lote.jobs) job.clientOpId};
         for (final job in armado.jobs) {
@@ -853,8 +872,11 @@ class SyncEngine {
             // El lote entero rebotó por su contenido: reintentarlo tal cual daría
             // el mismo error para siempre (§5.1).
             for (final id in ids) {
-              await _jobs.markInvalid(id,
-                  code: falla.code, message: falla.message);
+              await _jobs.markInvalid(
+                id,
+                code: falla.code,
+                message: falla.message,
+              );
               sinResolver.remove(id);
             }
             invalidated += ids.length;
@@ -882,8 +904,11 @@ class SyncEngine {
               case JobOutcome.accepted:
               case JobOutcome.duplicate:
                 final job = jobPorId[id]!;
-                if ((r.syncVersion, job.rowPk) case (final v?, final pk?)
-                    when job.op != Op.delete) {
+                // También la de un `delete`: la baja de esta app es lógica (`deleted_at`), la
+                // fila sigue en el teléfono y, si se reactiva, su próximo `update` tiene que
+                // salir con la versión que dejó la baja. Si la fila ya no está (baja física),
+                // `applyVersions` la saltea.
+                if ((r.syncVersion, job.rowPk) case (final v?, final pk?)) {
                   (versiones[job.entity] ??= {})[pk] = v;
                 }
                 hechos.add(id);
@@ -894,7 +919,7 @@ class SyncEngine {
                 // error.
                 await _store.applyDelta(
                   {
-                    _entidadDe(tomados, id): [r.serverRow!]
+                    _entidadDe(tomados, id): [r.serverRow!],
                   },
                   scope: _scopeMirror,
                   // M1: la fila del servidor se aplica sin tocar el watermark.
@@ -912,8 +937,12 @@ class SyncEngine {
                 final dependeDe = r.dependsOn ?? '';
                 if (r.code == kCodigoEsperaAltaEnConflicto &&
                     dependeDe.isNotEmpty) {
-                  await _jobs.markWaiting(id,
-                      dependsOn: dependeDe, code: r.code, message: r.message);
+                  await _jobs.markWaiting(
+                    id,
+                    dependsOn: dependeDe,
+                    code: r.code,
+                    message: r.message,
+                  );
                 } else {
                   // Una espera sin depends_on no dice qué esperar: si quedara
                   // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
@@ -963,7 +992,9 @@ class SyncEngine {
   /// ciclo para cada fila que ya viajó (ver `versionVista` en
   /// [_pushPending]). Las altas no esperan versión.
   PushBatch _conVersionVista(
-      PushBatch lote, Map<(String, String), int> versionVista) {
+    PushBatch lote,
+    Map<(String, String), int> versionVista,
+  ) {
     if (versionVista.isEmpty) return lote;
     var cambio = false;
     final jobs = <SyncJob>[];
@@ -984,8 +1015,11 @@ class SyncEngine {
   /// salir (§2.2). Si viajara, el servidor no lo podría aplicar: la fila no
   /// existe allá, y como el alta que la crea no va en este lote, no lo deja en
   /// espera sino `INVALID`.
-  Future<PushBatch> _sinLoQueEspera(PushBatch lote, FilasRetenidas retenidas,
-      Map<String, String> idPorOpId) async {
+  Future<PushBatch> _sinLoQueEspera(
+    PushBatch lote,
+    FilasRetenidas retenidas,
+    Map<String, String> idPorOpId,
+  ) async {
     if (retenidas.isEmpty) return lote;
     final salen = <SyncJob>[];
     for (final job in lote.jobs) {
@@ -1010,12 +1044,17 @@ class SyncEngine {
     var watermark = await _store.watermarkOf(scope);
 
     while (true) {
-      final delta =
-          await _transport.pull(entities: entities, watermark: watermark);
+      final delta = await _transport.pull(
+        entities: entities,
+        watermark: watermark,
+      );
       final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
       if (filas > 0) {
-        await _store.applyDelta(delta.rows,
-            scope: scope, watermark: delta.watermark);
+        await _store.applyDelta(
+          delta.rows,
+          scope: scope,
+          watermark: delta.watermark,
+        );
         traidas += filas;
       }
       // Si el watermark no avanzó, la próxima request es idéntica a esta: un
@@ -1038,12 +1077,17 @@ class SyncEngine {
     var watermark = await _store.watermarkOf(scope);
 
     while (true) {
-      final delta =
-          await _transport.pull(entities: entities, watermark: watermark);
+      final delta = await _transport.pull(
+        entities: entities,
+        watermark: watermark,
+      );
       final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
       if (filas > 0) {
-        await _store.applyDelta(delta.rows,
-            scope: scope, watermark: delta.watermark);
+        await _store.applyDelta(
+          delta.rows,
+          scope: scope,
+          watermark: delta.watermark,
+        );
         for (final MapEntry(key: entidad, value: lista) in delta.rows.entries) {
           contador[entidad] = (contador[entidad] ?? 0) + lista.length;
         }
@@ -1080,15 +1124,17 @@ class SyncEngine {
     // quién informarle.
     if (!_status.hasListener) return;
     final s = await _jobs.status();
-    _status.add(SyncStatus(
-      pending: s.pending,
-      inFlight: s.inFlight,
-      invalid: s.invalid,
-      blocked: s.blocked,
-      waiting: s.waiting,
-      lastSuccessAt: _lastSuccessAt,
-      unauthorizedSince: _sinSesionDesde,
-    ));
+    _status.add(
+      SyncStatus(
+        pending: s.pending,
+        inFlight: s.inFlight,
+        invalid: s.invalid,
+        blocked: s.blocked,
+        waiting: s.waiting,
+        lastSuccessAt: _lastSuccessAt,
+        unauthorizedSince: _sinSesionDesde,
+      ),
+    );
   }
 
   // --- correspondencia entre lote y cola --------------------------------------
@@ -1102,9 +1148,9 @@ class SyncEngine {
   static const _scopeRecovery = 'recovery';
 
   List<String> _idsDe(PushBatch lote, Map<String, String> idPorOpId) => [
-        for (final job in lote.jobs)
-          if (idPorOpId[job.clientOpId] case final id?) id,
-      ];
+    for (final job in lote.jobs)
+      if (idPorOpId[job.clientOpId] case final id?) id,
+  ];
 
   String _entidadDe(List<QueuedJob> tomados, String id) =>
       tomados.firstWhere((q) => q.id == id).job.entity;

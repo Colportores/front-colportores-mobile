@@ -200,6 +200,59 @@ void main() {
       );
     });
 
+    test('una fila dada de baja (deleted_at en texto ISO) se aplica: la fecha nullable también '
+        'se convierte', () async {
+      final casa = {
+        'ubicacion_id': 'ub-1',
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'ENTREVISTA_PROGRAMADA',
+        'prioridad': 3,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:50:00.000Z',
+        'created_by': 'col-1',
+        'deleted_at': '2026-10-23T13:50:00.000Z',
+        'sync_version': 2,
+      };
+
+      await store.applyDelta(
+        {
+          'house_status': [casa],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      final fila = await db.select(db.houseStatuses).getSingle();
+      expect(fila.deletedAt, DateTime.utc(2026, 10, 23, 13, 50));
+      expect(fila.syncVersion, 2);
+    });
+
+    test('la server_row de una baja pisa una fila viva de otra tabla con deleted_at', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [_ubicacion],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [
+            {..._ubicacion, 'deleted_at': '2026-10-17T09:00:00.000Z', 'sync_version': 5},
+          ],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      final fila = await db.select(db.ubicaciones).getSingle();
+      expect(fila.deletedAt, DateTime.utc(2026, 10, 17, 9));
+      expect(fila.syncVersion, 5);
+    });
+
     test('el mapa de la campaña: campania_ciudad, zona con su GeoJSON y vértices', () async {
       final cc = {
         'id': 'cc-1',
