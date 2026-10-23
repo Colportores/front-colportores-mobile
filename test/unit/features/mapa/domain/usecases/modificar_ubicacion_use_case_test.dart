@@ -2,6 +2,7 @@
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
@@ -19,6 +20,7 @@ typedef _Escritura = ({
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
   bool reduceAUnEspacio,
+  Espacio? espacioSiNoTiene,
 });
 
 /// Un repositorio con una ubicación y N espacios, que anota lo que se le manda a escribir.
@@ -46,12 +48,14 @@ final class _Repositorio implements UbicacionRepository {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
   }) async {
     escrituras.add((
       nueva: nueva,
       baseUpdatedAt: baseUpdatedAt,
       duplicados: duplicados,
       reduceAUnEspacio: reduceAUnEspacio,
+      espacioSiNoTiene: espacioSiNoTiene,
     ));
     return respuesta ?? Right(UbicacionModificada(ubicacion: nueva));
   }
@@ -128,6 +132,7 @@ void main() {
     inscripciones = InscripcionesEnMemoria();
     modificar = ModificarUbicacionUseCase(
       repo,
+      generarId: () => 'esp-nuevo',
       ubicador: UbicadorZona(zonas, inscripciones),
       ahora: () => t1,
     );
@@ -294,6 +299,7 @@ void main() {
       () async {
         modificar = ModificarUbicacionUseCase(
           repo,
+          generarId: () => 'esp-nuevo',
           ubicador: ubicadorSinZonas(),
           ahora: () => t1,
           criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
@@ -324,7 +330,12 @@ void main() {
   group('Cambio de tipo de un edificio o un negocio (S17, decisión de Cristian del 07/10)', () {
     void conTipo(TipoUbicacion tipo, int espacios) {
       repo = _Repositorio(ubicacion(tipo: tipo), espacios: espacios);
-      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
+      modificar = ModificarUbicacionUseCase(
+        repo,
+        ubicador: ubicadorSinZonas(),
+        generarId: () => 'esp-nuevo',
+        ahora: () => t1,
+      );
     }
 
     void conEdificio(int espacios) => conTipo(TipoUbicacion.edificio, espacios);
@@ -414,6 +425,73 @@ void main() {
       // Igual se avisa: el repositorio vuelve a contar dentro de la transacción.
       expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
     });
+
+    test(
+      'dado un EDIFICIO o NEGOCIO sin espacios, cuando pasa a CASA, le manda al repositorio el '
+      'espacio default de la casa: id nuevo, sin número y a nombre de quien edita (#382)',
+      () async {
+        for (final tipo in [TipoUbicacion.edificio, TipoUbicacion.negocio]) {
+          conTipo(tipo, 0);
+
+          await ok(params(tipo: TipoUbicacion.casa));
+
+          final e = repo.escrituras.single.espacioSiNoTiene!;
+          expect(e.id, 'esp-nuevo');
+          expect(e.ubicacionId, 'ub-1');
+          expect(e.numeroDepto, isNull);
+          expect((e.piso, e.descripcion, e.estaBorrada), (null, null, false));
+          expect(e.auditoria.createdAt, t1);
+          expect(e.auditoria.updatedAt, repo.escrituras.single.nueva.auditoria.updatedAt);
+          expect(e.auditoria.createdBy, 'col-1');
+        }
+      },
+    );
+
+    test('dado un EDIFICIO sin espacios, cuando pasa a NEGOCIO, o una CASA, cuando cambia a otro '
+        'tipo, no manda ningún espacio (#382)', () async {
+      conEdificio(0);
+      await ok(params(tipo: TipoUbicacion.negocio));
+      expect(repo.escrituras.single.espacioSiNoTiene, isNull);
+
+      conTipo(TipoUbicacion.casa, 0);
+      await ok(params(tipo: TipoUbicacion.edificio));
+      expect(repo.escrituras.single.espacioSiNoTiene, isNull);
+    });
+
+    test('dado dos guardados que pasan a CASA, cada intento genera su propio id (#382)', () async {
+      var n = 0;
+      conEdificio(0);
+      modificar = ModificarUbicacionUseCase(
+        repo,
+        ubicador: ubicadorSinZonas(),
+        generarId: () => 'esp-${++n}',
+        ahora: () => t1,
+      );
+
+      await ok(params(tipo: TipoUbicacion.casa));
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(repo.escrituras.map((e) => e.espacioSiNoTiene?.id), ['esp-1', 'esp-2']);
+    });
+
+    test(
+      'dado que el bloqueo por espacios o por zona corta antes, no se genera ningún id (#382)',
+      () async {
+        var n = 0;
+        conEdificio(2);
+        modificar = ModificarUbicacionUseCase(
+          repo,
+          ubicador: ubicadorSinZonas(),
+          generarId: () => 'esp-${++n}',
+          ahora: () => t1,
+        );
+
+        await falla(params(tipo: TipoUbicacion.casa));
+
+        expect(n, 0);
+        expect(repo.escrituras, isEmpty);
+      },
+    );
 
     test('dado que no se pueden contar los espacios, cuando saca el edificio de su tipo, falla y '
         'no escribe', () async {

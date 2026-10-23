@@ -12,6 +12,7 @@ final modificarUbicacionUseCaseProvider = Provider<ModificarUbicacionUseCase>(
   (ref) => ModificarUbicacionUseCase(
     ref.watch(ubicacionRepositoryProvider),
     ubicador: ref.watch(ubicadorZonaProvider),
+    generarId: ref.watch(generadorIdUbicacionProvider),
     ahora: ref.watch(relojAltaUbicacionProvider),
   ),
 );

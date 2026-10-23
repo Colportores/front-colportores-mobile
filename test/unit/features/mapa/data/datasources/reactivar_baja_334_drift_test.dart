@@ -97,6 +97,7 @@ void main() {
     reactivar = ReactivarUbicacionUseCase(repositorio, ahora: () => t2);
     modificar = ModificarUbicacionUseCase(
       repositorio,
+      generarId: () => 'esp-nuevo',
       ubicador: ubicadorSinZonas(),
       ahora: () => t2,
     );

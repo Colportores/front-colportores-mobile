@@ -119,6 +119,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    EspacioModel? espacioSiNoTiene,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -131,14 +132,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
 
     // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
     // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
-    // pierde el número. Los de baja no cuentan.
+    // pierde el número. Los de baja no cuentan. Sin ninguno, una casa recibe su espacio default
+    // (S13, decisión de Cristian 21/10 «Casa vacía»).
     EspacioFila? deptoConNumero;
+    var creaEspacio = false;
     if (reduceAUnEspacio) {
       final activos = await (select(
         espacios,
       )..where((e) => e.ubicacionId.equals(nueva.id) & e.deletedAt.isNull())).get();
       if (activos.length > 1) throw UbicacionConEspaciosException(activos.length);
       deptoConNumero = activos.where((e) => e.numeroDepto != null).firstOrNull;
+      creaEspacio = activos.isEmpty && espacioSiNoTiene != null;
     }
 
     if (duplicados != null) {
@@ -171,6 +175,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
           updatedAt: Value(guardada.auditoria.updatedAt),
         ),
       );
+    }
+    if (creaEspacio) {
+      await into(espacios).insert(_aFilaEspacio(espacioSiNoTiene!));
+      await _encolador.encolar('espacio', OperacionSync.insert, espacioSiNoTiene.toJson());
     }
     return guardada;
   });
