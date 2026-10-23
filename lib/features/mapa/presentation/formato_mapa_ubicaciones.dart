@@ -15,6 +15,7 @@ abstract final class TextosMapaUbicaciones {
   static const miUbicacion = 'Mi ubicación';
   static const nueva = 'Nueva';
   static const cerrarVistaPrevia = 'Cerrar vista previa';
+  static const detalle = 'Detalle';
   static const leyendaSinVisita = 'Sin visita';
   static const leyendaAgrupadas = 'Agrupadas';
   static const leyendaCerca = 'Cerca tuyo: crece y muestra el número';
@@ -47,6 +48,8 @@ abstract final class TextosMapaUbicaciones {
   static const buscandoGps = 'Buscando GPS…';
   static const activarGps = 'Activar GPS';
   static const noPudimosAbrirAlta = 'No pudimos abrir «Nueva ubicación». Probá de nuevo.';
+  static const noPudimosAbrirDetalle =
+      'No pudimos abrir el detalle de la ubicación. Probá de nuevo.';
 
   /// Al elegir «usar esa» en el alta con una ubicación que ya registró otro colportor: no es una de
   /// las del colportor, así que el mapa no la muestra ni la elige (decisión del 07/10 en el #294).

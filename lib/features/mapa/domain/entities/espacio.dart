@@ -24,6 +24,16 @@ class Espacio extends Equatable {
   /// #192: cambiarlo es cambiar esta constante.
   static const String? deptoPorDefecto = null;
 
+  /// La clave con la que dos números de depto se consideran el mismo: sin espacios y sin distinguir
+  /// mayúsculas («3B», «3 b» y «3b» son el mismo depto; canvas 11, «el número se compara sin espacios
+  /// ni mayúsculas»). `null` si no hay número (el espacio sin número no se compara con otro).
+  ///
+  /// Es el único detector de repetidos: lo usan la validación del alta y la edición y la pantalla.
+  static String? claveDeNumero(String? numeroDepto) {
+    final limpio = numeroDepto?.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    return limpio == null || limpio.isEmpty ? null : limpio;
+  }
+
   final String id;
 
   /// FK a `ubicacion.id`.
@@ -41,6 +51,13 @@ class Espacio extends Equatable {
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
+
+  /// [claveDeNumero] de este espacio.
+  String? get clave => claveDeNumero(numeroDepto);
+
+  /// El espacio no tiene número (el espacio único de una casa que se unió a un edificio): se ve como
+  /// «Sin número» y se numera con «Editar».
+  bool get sinNumero => clave == null;
 
   @override
   List<Object?> get props => [id, ubicacionId, numeroDepto, piso, descripcion, auditoria];

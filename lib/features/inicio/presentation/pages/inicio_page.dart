@@ -10,7 +10,10 @@ import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
+    show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -37,6 +40,32 @@ class _InicioPageState extends ConsumerState<InicioPage> {
   PestanaInicio _actual = PestanaInicio.hoy;
 
   void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+
+  /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
+  var _abriendoUbicacion = false;
+
+  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
+  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
+  /// baja) la Lista lo ve sola al releer.
+  Future<void> _abrirUbicacion(String ubicacionId) async {
+    if (_abriendoUbicacion) return;
+    _abriendoUbicacion = true;
+    try {
+      var id = ubicacionId;
+      while (mounted) {
+        final salida = await mostrarHojaUbicacion(
+          context,
+          colportorId: widget.sesion.usuarioId,
+          ubicacionId: id,
+        );
+        if (salida is! UbicacionExistenteElegida) break;
+        id = salida.ubicacionId;
+      }
+    } finally {
+      _abriendoUbicacion = false;
+    }
+  }
 
   /// Configuración devuelve la pestaña elegida en su barra inferior (vista 16), o `null` si se
   /// salió con "volver".
@@ -113,6 +142,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
+                      alAbrirUbicacion: (id) => unawaited(_abrirUbicacion(id)),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },

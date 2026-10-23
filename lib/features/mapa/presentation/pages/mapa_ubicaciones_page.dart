@@ -19,9 +19,11 @@ import '../providers/mapa_ubicaciones_providers.dart';
 import '../providers/situacion_mapa_providers.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
+import '../widgets/hoja_ubicacion.dart';
 import '../widgets/mapa_alta.dart';
 import '../widgets/piezas_mapa_ubicaciones.dart';
 import 'alta_ubicacion_page.dart';
+import 'modificar_ubicacion_page.dart';
 
 /// La pestaña «Mapa» (vista 06, HU-UBI-003): las ubicaciones del colportor sobre el mapa, su GPS y,
 /// abajo, la hoja «Cercanía» con la lista de la más cercana a la más lejana o la vista previa de la
@@ -73,6 +75,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   /// Un solo alta y una sola leyenda a la vez: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
+
+  /// Evita abrir dos veces la hoja de la ubicación con dos toques seguidos en «Detalle».
+  var _abriendoDetalle = false;
   var _abriendoReferencias = false;
 
   /// La pestaña se abrió alguna vez: desde ahí el mapa queda armado aunque se cambie de pestaña (la
@@ -282,6 +287,46 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     ScaffoldMessenger.maybeOf(context)
       ?..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text(TextosMapaUbicaciones.ubicacionDeOtroColportor)));
+  }
+
+  /// «Detalle» de la vista previa: la hoja de la ubicación (vista 11, #211). Al volver, lo que pasó con
+  /// la ubicación en la edición (vista 07) se aplica acá, igual que si se hubiera editado desde la
+  /// lista: una editada queda seleccionada y centrada (07·03), una de baja deja de mostrarse (09) y
+  /// una que el aviso de duplicado reemplazó por otra elige esa otra.
+  Future<void> _abrirDetalle(String ubicacionId) async {
+    if (_abriendoDetalle) return;
+    _abriendoDetalle = true;
+    try {
+      final lista = ref.read(_proveedor).lista;
+      double? distancia;
+      for (final item in lista?.items ?? const <ItemListaUbicacion>[]) {
+        if (item.ubicacion.id == ubicacionId) distancia = item.distanciaMetros;
+      }
+      final salida = await mostrarHojaUbicacion(
+        context,
+        colportorId: widget.colportorId,
+        ubicacionId: ubicacionId,
+        distanciaMetros: distancia,
+      );
+      if (!mounted) return;
+      switch (salida) {
+        case UbicacionEditada(:final ubicacion):
+          _elegir(ubicacion.id, zoomMinimo: MapaAlta.zoomCalle);
+        case UbicacionExistenteElegida(ubicacionId: final otra):
+          _alReutilizar(otra);
+        case UbicacionBajaRealizada() || IrALaCobranzaElegida():
+          _notificador.cerrarSeleccion();
+        case null:
+          return;
+      }
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(const SnackBar(content: Text(TextosMapaUbicaciones.noPudimosAbrirDetalle)));
+    } finally {
+      _abriendoDetalle = false;
+    }
   }
 
   Future<void> _abrirReferencias() async {
@@ -494,6 +539,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     alCambiarAltura: _cambiarAltura,
                     alElegir: (id) => _elegir(id, zoomMinimo: MapaAlta.zoomCalle),
                     alCerrarVistaPrevia: _notificador.cerrarSeleccion,
+                    alAbrirDetalle: (id) => unawaited(_abrirDetalle(id)),
                     alReintentar: _notificador.reintentar,
                     alActivarGps: () => unawaited(_notificador.activarGps()),
                     alRegistrar: () => unawaited(_abrirAlta()),
