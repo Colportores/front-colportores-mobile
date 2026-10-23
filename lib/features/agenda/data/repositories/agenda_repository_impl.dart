@@ -49,7 +49,18 @@ final class AgendaRepositoryImpl implements AgendaRepository {
         'motivo': motivo.name,
       });
     }
-    return VisitaGuardada(visita: r.visita, agendaIgnorada: r.agendaIgnorada);
+    if (r.agendaQuedoPendiente) {
+      _log.info(LogModulo.db, 'VISITA_ALTA_AGENDA_PENDIENTE', 'visita sin cerrar su agenda', {
+        'visita_id': r.visita.id,
+        'agenda_id': ?agendaId,
+        'resultado': r.visita.tipoResultado.codigo,
+      });
+    }
+    return VisitaGuardada(
+      visita: r.visita,
+      agendaIgnorada: r.agendaIgnorada,
+      agendaQuedoPendiente: r.agendaQuedoPendiente,
+    );
   });
 
   Future<Either<Failure, T>> _correr<T>(

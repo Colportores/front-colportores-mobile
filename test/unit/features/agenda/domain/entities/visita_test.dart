@@ -61,6 +61,32 @@ void main() {
       }
     });
 
+    test('dado cada resultado, cuando se pregunta si es presentacion, solo cuentan VENTA y '
+        'ENTREVISTA (docs#69, S62)', () {
+      expect(
+        {for (final t in TipoResultadoVisita.values) t: t.cuentaComoPresentacion},
+        {
+          TipoResultadoVisita.venta: true,
+          TipoResultadoVisita.entrevista: true,
+          TipoResultadoVisita.noContesto: false,
+          TipoResultadoVisita.rechazo: false,
+        },
+      );
+    });
+
+    test('dado cada resultado, cuando se pregunta si cumple la agenda, solo NO_CONTESTO no la '
+        'cumple (P1 de #151: no cumplida espera)', () {
+      expect(
+        {for (final t in TipoResultadoVisita.values) t: t.cumpleLaAgenda},
+        {
+          TipoResultadoVisita.venta: true,
+          TipoResultadoVisita.entrevista: true,
+          TipoResultadoVisita.rechazo: true,
+          TipoResultadoVisita.noContesto: false,
+        },
+      );
+    });
+
     test('dado un codigo que no existe, cuando se lee, lanza ArgumentError', () {
       expect(() => TipoResultadoVisita.desdeCodigo('COBRANZA'), throwsArgumentError);
     });
