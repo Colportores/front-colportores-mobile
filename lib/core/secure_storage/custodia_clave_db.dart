@@ -277,6 +277,8 @@ final class CustodiaClaveDb {
     ClaveSegura.zonasAvisadas,
     // Sigue siendo la misma instalación: el sync tiene que seguir diciendo el mismo id (§5.3).
     ClaveSegura.idInstalacion,
+    // La DB sigue y la entrevista apunta a sus filas: no se pierde la hora de inicio (#450).
+    ClaveSegura.entrevistaEnCurso,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -365,8 +367,9 @@ final class CustodiaClaveDb {
   /// (lleva el id del usuario), el reloj de la sesión (el último momento en que se usó la app), los
   /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado, la
   /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
-  /// bloqueado, las zonas ya avisadas de cada inscripción y el id de la instalación (el sync estrena
-  /// uno, como en una reinstalación: la cola y la réplica también arrancan de cero).
+  /// bloqueado, las zonas ya avisadas de cada inscripción, la entrevista en curso (apunta a filas que se
+  /// borran) y el id de la instalación (el sync estrena uno, como en una reinstalación: la cola y la
+  /// réplica también arrancan de cero).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -377,6 +380,7 @@ final class CustodiaClaveDb {
     ClaveSegura.bloqueoReenvioVerificacion,
     ClaveSegura.zonasAvisadas,
     ClaveSegura.idInstalacion,
+    ClaveSegura.entrevistaEnCurso,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/presentation/providers/entrevista_providers.dart';
+import '../../../agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/proyeccion_mercator.dart';
@@ -428,24 +430,38 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
               right: 0,
               top: 0,
               height: libre,
-              child: Stack(
+              // Con una entrevista en curso, su aviso fijo ocupa el borde de arriba y «Referencias»
+              // y el aviso del mapa quedan debajo, en lo que sobra (decisión de Cristian, 23/10,
+              // #450). Sin entrevista el `Expanded` ocupa todo: el mismo dibujo de siempre.
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // «Referencias» y el aviso comparten el borde de arriba: con el aviso a la vista
-                  // (la tarjeta o la píldora) el chip se corre, el canvas no los dibuja juntos.
-                  if (!avisoVisible)
-                    Positioned(
-                      top: 8,
-                      right: 14,
-                      child: ChipReferencias(
-                        key: ClavesMapaUbicaciones.referencias,
-                        alPresionar: () => unawaited(_abrirReferencias()),
+                  _AvisoDeLaEntrevista(colportorId: widget.colportorId, alturaMaxima: libre),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, restricciones) => Stack(
+                        children: [
+                          // «Referencias» y el aviso comparten el borde de arriba: con el aviso a
+                          // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
+                          // dibuja juntos.
+                          if (!avisoVisible)
+                            Positioned(
+                              top: 8,
+                              right: 14,
+                              child: ChipReferencias(
+                                key: ClavesMapaUbicaciones.referencias,
+                                alPresionar: () => unawaited(_abrirReferencias()),
+                              ),
+                            ),
+                          Positioned.fill(
+                            child: AvisoMapaConectado(
+                              ambito: ambito,
+                              modo: AvisoMapaModo.flotante,
+                              altoLibre: restricciones.maxHeight,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  Positioned.fill(
-                    child: AvisoMapaConectado(
-                      ambito: ambito,
-                      modo: AvisoMapaModo.flotante,
-                      altoLibre: libre,
                     ),
                   ),
                 ],
@@ -504,6 +520,33 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           ],
         );
       },
+    );
+  }
+}
+
+/// El aviso fijo de la entrevista en curso arriba del mapa, con un margen. Sin entrevista no ocupa
+/// nada.
+class _AvisoDeLaEntrevista extends ConsumerWidget {
+  const _AvisoDeLaEntrevista({required this.colportorId, required this.alturaMaxima});
+
+  final String colportorId;
+
+  /// Lo que queda libre arriba: el aviso no pasa de ahí (con el texto grande se desplaza).
+  final double alturaMaxima;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hay = ref.watch(entrevistaEnCursoProvider(colportorId).select((e) => e.hayEntrevista));
+    if (!hay) return const SizedBox.shrink();
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: alturaMaxima),
+      child: SingleChildScrollView(
+        primary: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: AvisoEntrevistaEnCurso(colportorId: colportorId),
+        ),
+      ),
     );
   }
 }
