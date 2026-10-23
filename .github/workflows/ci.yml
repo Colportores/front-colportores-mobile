@@ -17,10 +17,11 @@ env:
   FLUTTER_VERSION: "3.44.0"
 
 jobs:
-  verificar:
-    name: format · analyze · test · coverage
+  # Formato, análisis, motor y proveedores de auth: ~5 min, en paralelo con los tests.
+  estatico:
+    name: format · analyze
     runs-on: ubuntu-latest
-    timeout-minutes: 40 # los tests tardan 14-18 min y con 20 el job se cancelaba antes de terminar (23/10)
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -54,10 +55,6 @@ jobs:
       # `dart analyze` y no `flutter analyze`: este último no muestra los diagnósticos de plugins,
       # y las reglas de Riverpod vienen del plugin (analysis_options.yaml → plugins).
       - run: dart analyze --fatal-infos
-      - run: flutter test --coverage
-
-      - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)
-        run: bash scripts/coverage_check.sh
 
       # Variables de repo (no secrets: la anon key es pública). Sin ellas el paso se omite.
       - name: Proveedores de Supabase Auth (solo email, sin apple)
@@ -65,6 +62,81 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: bash scripts/check_auth_providers.sh
+
+  # La suite de la app partida en 3 tandas (23/10: en un solo job tardaba 14-18 min y rozaba el límite).
+  # Cada tanda sube su lcov; el job `cobertura` los junta y verifica los umbrales.
+  tests:
+    name: test (${{ matrix.tanda }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        tanda: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: dart run build_runner build
+
+      # --shard-index va de 0 a 2.
+      - name: flutter test (tanda ${{ matrix.tanda }} de 3)
+        run: flutter test --coverage --total-shards 3 --shard-index $(( ${{ matrix.tanda }} - 1 ))
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov-${{ matrix.tanda }}
+          path: coverage/lcov.info
+          retention-days: 7
+
+  # Mantiene el nombre del job de antes ("format · analyze · test · coverage"): es el que miran la tubería y las reglas del repo.
+  cobertura:
+    name: format · analyze · test · coverage
+    needs: [estatico, tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lcov-*
+          path: lcov-tandas
+
+      # Suma los aciertos de cada línea entre las tandas (un mismo archivo puede aparecer en varias).
+      - name: Juntar la cobertura de las tandas
+        run: |
+          mkdir -p coverage
+          python3 - <<'PY'
+          import glob
+          from collections import defaultdict
+          cob = defaultdict(lambda: defaultdict(int))
+          for ruta in sorted(glob.glob('lcov-tandas/*/lcov.info')):
+              sf = None
+              for linea in open(ruta, encoding='utf-8'):
+                  linea = linea.strip()
+                  if linea.startswith('SF:'):
+                      sf = linea[3:]
+                  elif linea.startswith('DA:') and sf:
+                      n, hits = linea[3:].split(',')[:2]
+                      cob[sf][int(n)] += int(hits)
+          with open('coverage/lcov.info', 'w', encoding='utf-8') as out:
+              for sf in sorted(cob):
+                  out.write(f'SF:{sf}\n')
+                  for n in sorted(cob[sf]):
+                      out.write(f'DA:{n},{cob[sf][n]}\n')
+                  out.write(f'LF:{len(cob[sf])}\nLH:{sum(1 for h in cob[sf].values() if h > 0)}\nend_of_record\n')
+          print(f'{len(cob)} archivos de {len(glob.glob("lcov-tandas/*/lcov.info"))} tandas')
+          PY
+
+      - name: Umbrales de cobertura (total ≥ 70%, dominio ≥ 90%)
+        run: bash scripts/coverage_check.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -75,7 +147,7 @@ jobs:
 
   build-android:
     name: build apk (debug)
-    needs: verificar
+    needs: cobertura
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
