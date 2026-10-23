@@ -20,6 +20,7 @@ import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
 import 'generated/schema_v8.dart' as v8;
+import 'generated/schema_v9.dart' as v9;
 
 class _SinSalida extends LogOutput {
   @override
@@ -552,6 +553,61 @@ void main() {
           expect(auditorias.map((f) => f.toJson()).toList(), [auditoria.toJson()]);
           expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
           expect(await nuevo.select(nuevo.syncWatermark).get(), isEmpty);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 8, cuando migra a la 9, se conserva todo y las tablas de las '
+    'personas quedan vacías',
+    () async {
+      // HU-UBI-008 (#140): solo se suman `persona`, `espacio_persona` y `nota`. Nada de lo guardado
+      // cambia ni se encola al migrar (convenciones §9).
+      const ubicacion = v8.UbicacionData(
+        id: 'ub-1',
+        tipo: 'EDIFICIO',
+        calle: 'Mataojo',
+        numero: '2044',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        zonaId: 'zon-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758710000000,
+        createdBy: 'col-1',
+        syncVersion: 5,
+      );
+      const espacio = v8.EspacioData(
+        id: 'esp-1',
+        ubicacionId: 'ub-1',
+        numeroDepto: '3B',
+        createdAt: 1758700000000,
+        updatedAt: 1758710000000,
+        createdBy: 'col-1',
+        syncVersion: 2,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 8,
+        newVersion: 9,
+        createOld: v8.DatabaseAtV8.new,
+        createNew: v9.DatabaseAtV9.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.ubicacion, ubicacion)
+            ..insert(viejo.espacio, espacio);
+        },
+        validateItems: (nuevo) async {
+          final ubicaciones = await nuevo.select(nuevo.ubicacion).get();
+          expect(ubicaciones.map((f) => f.toJson()).toList(), [ubicacion.toJson()]);
+          final espacios = await nuevo.select(nuevo.espacio).get();
+          expect(espacios.map((f) => f.toJson()).toList(), [espacio.toJson()]);
+          expect(await nuevo.select(nuevo.persona).get(), isEmpty);
+          expect(await nuevo.select(nuevo.espacioPersona).get(), isEmpty);
+          expect(await nuevo.select(nuevo.nota).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
         },
       );
     },
