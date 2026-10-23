@@ -12,6 +12,7 @@ import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/entities/visita.dart';
+import '../../domain/entities/visita_guardada.dart';
 import '../models/agenda_model.dart';
 import '../models/visita_model.dart';
 import 'agenda_local_data_source.dart';
@@ -87,10 +88,14 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota}) =>
       _db.transaction(() async {
         final existente = await _visitaPorId(visita.id);
-        if (existente != null) return (visita: _aVisita(existente), yaEstaba: true);
+        if (existente != null) {
+          return (visita: _aVisita(existente), yaEstaba: true, agendaIgnorada: null);
+        }
 
         await _exigirVinculo(visita.espacioPersonaId);
-        final agenda = agendaId == null ? null : await _agendaACumplir(agendaId, visita);
+        final (:agenda, :ignorada) = agendaId == null
+            ? (agenda: null, ignorada: null)
+            : await _agendaACumplir(agendaId, visita);
 
         await _db.into(_db.visitas).insert(_aFilaVisita(visita));
         await _encolador.encolar(
@@ -114,7 +119,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
           ahora: visita.auditoria.updatedAt,
           colportorId: visita.colportorId,
         );
-        return (visita: visita, yaEstaba: false);
+        return (visita: visita, yaEstaba: false, agendaIgnorada: ignorada);
       });
 
   @override
@@ -146,19 +151,24 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     }
   }
 
-  /// La agenda que [visita] cumple: existe, es de la misma persona y sigue pendiente.
-  Future<AgendaFila> _agendaACumplir(String agendaId, Visita visita) async {
+  /// La agenda que [visita] cumple, o por qué no sirve: una agenda inexistente, de otra persona o
+  /// ya cerrada no frena la visita (no se pierde lo que la colportora acaba de registrar), que se
+  /// guarda como espontánea y deja la agenda como estaba.
+  Future<({AgendaFila? agenda, MotivoAgendaIgnorada? ignorada})> _agendaACumplir(
+    String agendaId,
+    Visita visita,
+  ) async {
     final fila = await _agendaPorId(agendaId);
     if (fila == null || fila.deletedAt != null) {
-      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.inexistente);
     }
     if (fila.espacioPersonaId != visita.espacioPersonaId) {
-      throw const AgendaRechazadaException(_Motivo.agendaDeOtraPersona);
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.deOtraPersona);
     }
     if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
-      throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.cerrada);
     }
-    return fila;
+    return (agenda: fila, ignorada: null);
   }
 
   /// Aplica [cambios] a la agenda [id], lee la fila resultante y encola su `update` con la fila

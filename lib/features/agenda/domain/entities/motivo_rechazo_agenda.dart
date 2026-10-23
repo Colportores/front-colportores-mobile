@@ -13,9 +13,6 @@ enum MotivoRechazoAgenda {
     'Esa agenda ya no está en tu teléfono. Volvé a la lista de agendados.',
   ),
 
-  /// La agenda es de otra persona que la de la visita.
-  agendaDeOtraPersona('agenda', 'Esa agenda es de otra persona. Elegí la agenda de esta visita.'),
-
   /// La agenda ya se cumplió o se canceló.
   agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.');
 

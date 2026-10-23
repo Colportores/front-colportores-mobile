@@ -5,6 +5,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
+import '../../domain/entities/visita_guardada.dart';
 import '../../domain/repositories/agenda_repository.dart';
 import '../datasources/agenda_local_data_source.dart';
 
@@ -35,14 +36,21 @@ final class AgendaRepositoryImpl implements AgendaRepository {
   );
 
   @override
-  Future<Either<Failure, Visita>> registrarVisita(
+  Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
-  }) => _correr('VISITA_ALTA', {
-    'visita_id': visita.id,
-    'agenda_id': ?agendaId,
-  }, () async => (await _local.registrarVisita(visita, agendaId: agendaId, nota: nota)).visita);
+  }) => _correr('VISITA_ALTA', {'visita_id': visita.id, 'agenda_id': ?agendaId}, () async {
+    final r = await _local.registrarVisita(visita, agendaId: agendaId, nota: nota);
+    if (r.agendaIgnorada case final motivo?) {
+      _log.info(LogModulo.db, 'VISITA_ALTA_SIN_AGENDA', 'visita guardada sin su agenda', {
+        'visita_id': r.visita.id,
+        'agenda_id': ?agendaId,
+        'motivo': motivo.name,
+      });
+    }
+    return VisitaGuardada(visita: r.visita, agendaIgnorada: r.agendaIgnorada);
+  });
 
   Future<Either<Failure, T>> _correr<T>(
     String evento,

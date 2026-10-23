@@ -4,6 +4,7 @@ import '../../../../core/error/failure.dart';
 import '../entities/agenda.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/visita.dart';
+import '../entities/visita_guardada.dart';
 
 /// Persistencia de las agendas y las visitas del colportor (BACK-HU-VIS-001, HU-VIS-001 y
 /// HU-VIS-005).
@@ -29,9 +30,10 @@ abstract interface class AgendaRepository {
   /// `COMPLETADA` en la misma transacción. Si ya hay una visita con ese `id`, no escribe nada y
   /// devuelve la que estaba.
   ///
-  /// Un vínculo ausente es un `FailureValidacion` con el campo `persona`; una agenda inexistente,
-  /// de otra persona o ya cerrada, uno con el campo `agenda`.
-  Future<Either<Failure, Visita>> registrarVisita(
+  /// Un vínculo ausente es un `FailureValidacion` con el campo `persona`. Una agenda inexistente,
+  /// de otra persona o ya cerrada **no frena la visita**: se guarda como espontánea, la agenda no
+  /// se toca y `VisitaGuardada.agendaIgnorada` dice por qué, para avisar sin perder lo registrado.
+  Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,

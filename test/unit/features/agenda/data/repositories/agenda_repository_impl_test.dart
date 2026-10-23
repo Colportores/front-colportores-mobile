@@ -8,6 +8,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/motivo_rechazo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/campo_falsos.dart';
@@ -15,6 +16,7 @@ import '../../../../../helpers/logger_mudo.dart';
 
 final class _Local implements AgendaLocalDataSource {
   Object? lanza;
+  MotivoAgendaIgnorada? ignorada;
 
   @override
   Future<AgendaAgendada> agendar(Agenda agenda, {NotaDeCampo? nota}) async {
@@ -35,7 +37,7 @@ final class _Local implements AgendaLocalDataSource {
     NotaDeCampo? nota,
   }) async {
     _lanzarSiCorresponde();
-    return (visita: visita, yaEstaba: false);
+    return (visita: visita, yaEstaba: false, agendaIgnorada: ignorada);
   }
 
   @override
@@ -75,7 +77,27 @@ void main() {
     test('registrar la visita devuelve la visita', () async {
       final r = await repositorio.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
 
-      expect(r.getOrElse(() => throw StateError('falló')).id, 'vis-1');
+      expect(r.getOrElse(() => throw StateError('falló')).visita.id, 'vis-1');
+    });
+
+    test('registrar la visita con una agenda que no sirve devuelve la visita y el aviso', () async {
+      local.ignorada = MotivoAgendaIgnorada.cerrada;
+
+      final r = await repositorio.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
+
+      final guardada = r.getOrElse(() => throw StateError('falló'));
+      expect(guardada.visita.id, 'vis-1');
+      expect(guardada.agendaIgnorada, MotivoAgendaIgnorada.cerrada);
+      expect(
+        guardada.aviso,
+        'Esa agenda ya estaba cerrada: guardamos la visita igual, sin agenda.',
+      );
+    });
+
+    test('registrar la visita sin problema no trae aviso', () async {
+      final r = await repositorio.registrarVisita(visitaDe('vis-1'));
+
+      expect(r.getOrElse(() => throw StateError('falló')).aviso, isNull);
     });
   });
 

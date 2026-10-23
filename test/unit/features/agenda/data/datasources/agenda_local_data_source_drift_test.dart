@@ -8,6 +8,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/motivo_rechazo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -375,42 +376,62 @@ void main() {
       expect(encolador.encolados, isEmpty);
     });
 
-    test('con una agenda que no existe: la rechaza y no guarda la visita', () async {
-      await expectLater(
-        local.registrarVisita(visitaDe('vis-1'), agendaId: 'age-fantasma'),
-        rechazaCon(MotivoRechazoAgenda.agendaInexistente),
-      );
+    test('con una agenda que no existe: guarda la visita igual, sin agenda, y avisa', () async {
+      final r = await local.registrarVisita(visitaDe('vis-1'), agendaId: 'age-fantasma');
 
-      expect(await visitas(), isEmpty);
+      expect(r.yaEstaba, isFalse);
+      expect(r.agendaIgnorada, MotivoAgendaIgnorada.inexistente);
+      expect((await visitas()).single.id, 'vis-1');
+      expect(cola(), ['visita:insert', 'house_status:insert']);
     });
 
-    test('con una agenda de otra persona: la rechaza y la agenda sigue pendiente', () async {
-      await sembrarEspacio(db, id: 'esp-2', numeroDepto: '2B');
-      await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-2', personaId: 'per-2');
-      await local.agendar(agendaDe('age-1', vinculo: 'ep-2'));
+    test(
+      'con una agenda de otra persona: guarda la visita igual y la agenda sigue pendiente',
+      () async {
+        await sembrarEspacio(db, id: 'esp-2', numeroDepto: '2B');
+        await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-2', personaId: 'per-2');
+        await local.agendar(agendaDe('age-1', vinculo: 'ep-2'));
+        encolador.encolados.clear();
 
-      await expectLater(
-        local.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1'),
-        rechazaCon(MotivoRechazoAgenda.agendaDeOtraPersona),
-      );
+        final r = await local.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
 
-      expect(await visitas(), isEmpty);
-      expect((await agendas()).single.estado, 'PENDIENTE');
-    });
+        expect(r.agendaIgnorada, MotivoAgendaIgnorada.deOtraPersona);
+        expect((await visitas()).single.id, 'vis-1');
+        expect((await agendas()).single.estado, 'PENDIENTE');
+        expect((await agendas()).single.visitaId, isNull);
+        expect(cola().where((c) => c.startsWith('agenda')), isEmpty, reason: 'no la tocó');
+      },
+    );
 
-    test('con una agenda ya cumplida o cancelada: la rechaza', () async {
+    test(
+      'con una agenda ya cumplida o cancelada: guarda la visita igual, no toca la agenda y avisa',
+      () async {
+        await local.agendar(agendaDe('age-1'));
+        await local.agendar(agendaDe('age-2'));
+        await local.cancelar('age-2', ahora: t1);
+        await local.registrarVisita(visitaDe('vis-0', creada: t1), agendaId: 'age-1');
+        final antes = await agendas();
+
+        for (final agendaId in ['age-1', 'age-2']) {
+          final r = await local.registrarVisita(
+            visitaDe('vis-$agendaId', creada: t2),
+            agendaId: agendaId,
+          );
+          expect(r.agendaIgnorada, MotivoAgendaIgnorada.cerrada, reason: agendaId);
+          expect(r.agendaIgnorada!.aviso, contains('guardamos la visita igual'));
+        }
+
+        expect(await visitas(), hasLength(3));
+        expect(await agendas(), antes, reason: 'las agendas cerradas quedan como estaban');
+      },
+    );
+
+    test('con la agenda que sirve: no hay aviso', () async {
       await local.agendar(agendaDe('age-1'));
-      await local.agendar(agendaDe('age-2'));
-      await local.cancelar('age-2', ahora: t1);
-      await local.registrarVisita(visitaDe('vis-0', creada: t1), agendaId: 'age-1');
 
-      for (final agendaId in ['age-1', 'age-2']) {
-        await expectLater(
-          local.registrarVisita(visitaDe('vis-$agendaId', creada: t2), agendaId: agendaId),
-          rechazaCon(MotivoRechazoAgenda.agendaCerrada),
-        );
-      }
-      expect(await visitas(), hasLength(1));
+      final r = await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+
+      expect(r.agendaIgnorada, isNull);
     });
 
     test(
@@ -489,21 +510,19 @@ void main() {
       expect((await casas()).single.deletedAt, isNotNull);
     });
 
-    test('cancelar y registrar la visita de la misma agenda a la vez: gana la primera y la otra '
-        'se rechaza sin dejar nada a medias', () async {
+    test('cancelar y registrar la visita de la misma agenda a la vez: la visita no se pierde y '
+        'la agenda queda cancelada', () async {
       await local.agendar(agendaDe('age-1'));
       encolador.encolados.clear();
 
       final cancelada = local.cancelar('age-1', ahora: t1);
-      final visitada = local
-          .registrarVisita(visitaDe('vis-1', creada: t2), agendaId: 'age-1')
-          .then<Object?>((r) => r, onError: (Object e) => e);
+      final visitada = local.registrarVisita(visitaDe('vis-1', creada: t2), agendaId: 'age-1');
       await cancelada;
       final resultado = await visitada;
 
-      expect(resultado, isA<AgendaRechazadaException>());
+      expect(resultado.agendaIgnorada, MotivoAgendaIgnorada.cerrada);
       expect((await agendas()).single.estado, 'CANCELADA');
-      expect(await visitas(), isEmpty);
+      expect((await visitas()).single.id, 'vis-1');
     });
   });
 

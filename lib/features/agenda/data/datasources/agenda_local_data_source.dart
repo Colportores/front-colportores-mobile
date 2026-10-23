@@ -2,6 +2,7 @@ import '../../domain/entities/agenda.dart';
 import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
+import '../../domain/entities/visita_guardada.dart';
 
 /// Resultado de [AgendaLocalDataSource.agendar]: la agenda guardada y si ya estaba.
 typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
@@ -10,8 +11,9 @@ typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
 /// (`false` si ya estaba cancelada).
 typedef AgendaCancelada = ({Agenda agenda, bool escribio});
 
-/// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada y si ya estaba.
-typedef VisitaRegistrada = ({Visita visita, bool yaEstaba});
+/// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba y, si la
+/// agenda indicada no servía, por qué se guardó sin ella.
+typedef VisitaRegistrada = ({Visita visita, bool yaEstaba, MotivoAgendaIgnorada? agendaIgnorada});
 
 /// Persistencia local de las agendas y las visitas (BACK-HU-VIS-001), sobre las tablas `agenda`,
 /// `visita` y `nota` de la DB cifrada. La implementa `AgendaLocalDataSourceDrift`.
@@ -36,8 +38,9 @@ abstract interface class AgendaLocalDataSource {
   /// `COMPLETADA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,
   /// no escribe nada y la devuelve con `yaEstaba: true`.
   ///
-  /// Lanza [AgendaRechazadaException] si el vínculo de la visita no está en el teléfono, o si la
-  /// agenda no existe, es de otra persona o ya no está pendiente.
+  /// Lanza [AgendaRechazadaException] si el vínculo de la visita no está en el teléfono. Si la
+  /// agenda no existe, es de otra persona o ya no está pendiente, la visita se guarda igual como
+  /// espontánea, sin tocar esa agenda, y el resultado trae el motivo en `agendaIgnorada`.
   Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota});
 
   /// La agenda [id], o `null` si no está en el teléfono.
