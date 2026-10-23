@@ -124,6 +124,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
   }) async {
     try {
       final guardada = await _local.actualizar(
@@ -131,6 +132,9 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         baseUpdatedAt: baseUpdatedAt,
         duplicados: duplicados,
         reduceAUnEspacio: reduceAUnEspacio,
+        espacioSiNoTiene: espacioSiNoTiene == null
+            ? null
+            : EspacioModel.fromEntity(espacioSiNoTiene),
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,

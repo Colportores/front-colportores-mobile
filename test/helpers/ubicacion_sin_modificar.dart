@@ -1,6 +1,8 @@
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
+import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_union_duplicados.dart';
@@ -26,6 +28,7 @@ mixin UbicacionRepositorySinModificar {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
   }) => throw UnimplementedError();
 
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
@@ -73,6 +76,7 @@ mixin UbicacionLocalSinModificar {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    EspacioModel? espacioSiNoTiene,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({

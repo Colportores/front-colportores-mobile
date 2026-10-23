@@ -82,11 +82,17 @@ abstract interface class UbicacionRepository {
   /// ser el espacio de la casa y se le quita el `numero_depto` (decisión de Cristian, 07/10), y el
   /// `update` del espacio se encola junto al de la ubicación. Contar acá y no antes evita que un
   /// espacio que aparece entre la lectura y la escritura quede con número en una casa.
+  ///
+  /// [espacioSiNoTiene] es el espacio default que el caso de uso arma al pasar a `CASA` (S13,
+  /// decisión de Cristian 21/10): si al contar dentro de la transacción no hay ningún espacio
+  /// activo, se inserta y se encola su `insert` junto al `update` de la ubicación; con alguno, no
+  /// se crea otro.
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
   });
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación

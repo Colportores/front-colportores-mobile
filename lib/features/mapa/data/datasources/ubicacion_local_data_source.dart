@@ -72,7 +72,9 @@ abstract interface class UbicacionLocalDataSource {
   ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
   ///   igual) y se encola su `update` con la fila entera, después del de la ubicación. Si ya no
   ///   tenía número, no se escribe ni se encola nada del espacio. Los espacios dados de baja no
-  ///   cuentan ni se tocan.
+  ///   cuentan ni se tocan. Con **ninguno** y con [espacioSiNoTiene] (el caso de uso lo manda al
+  ///   pasar a `CASA`), se inserta ese espacio y se encola su `insert` —después del `update` de la
+  ///   ubicación— en la misma transacción: una casa nunca queda sin espacio (S13).
   /// - Si la fila está de baja y [nueva] la reactiva (`deleted_at` nulo) y esa baja nació de unir
   ///   duplicados (`duplicado_de_*` en la auditoría local, con la misma marca que `deleted_at`): no
   ///   escribe y lanza [ReactivacionDeUnionException]. Va antes que la búsqueda de duplicados: una
@@ -85,6 +87,7 @@ abstract interface class UbicacionLocalDataSource {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    EspacioModel? espacioSiNoTiene,
   });
 
   /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con

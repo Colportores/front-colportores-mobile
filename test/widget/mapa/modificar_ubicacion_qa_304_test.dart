@@ -746,9 +746,8 @@ void main() {
       await tester.runAsync(db.close);
     });
 
-    testWidgets('sin deptos: pasa a Casa sin línea ni bloqueo y no encola ningún espacio', (
-      tester,
-    ) async {
+    testWidgets('sin deptos: pasa a Casa sin línea ni bloqueo y la casa recibe su espacio default '
+        '(#382)', (tester) async {
       await preparar(tester, deptos: const []);
       final e = await _montar(tester, repositorio);
       expect(find.textContaining('Edificio · Sin espacios'), findsOneWidget);
@@ -759,7 +758,12 @@ void main() {
       await _tocar(tester, _guardar);
 
       expect(e.salidas.single, isA<UbicacionEditada>());
-      expect(entidades(), ['ubicacion']);
+      expect((await ubicacion(tester)).tipo, TipoUbicacion.casa);
+      final filas = (await tester.runAsync(() => db.select(db.espacios).get()))!;
+      expect(filas, hasLength(1));
+      expect((filas.single.ubicacionId, filas.single.numeroDepto), ('ubi-1', null));
+      expect(filas.single.deletedAt, isNull);
+      expect(entidades(), ['ubicacion', 'espacio']);
       await tester.runAsync(db.close);
     });
 
