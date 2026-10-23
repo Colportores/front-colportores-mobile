@@ -270,4 +270,120 @@ void main() {
       });
     }
   });
+
+  group('la visita espontánea nace con su agenda cumplida: todo o nada, una sola vez', () {
+    late AppDatabase db;
+    late EncoladorSyncEnMemoria encolador;
+    late AgendaRepositoryImpl repo;
+
+    setUp(() async {
+      db = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
+      encolador = EncoladorSyncEnMemoria();
+      repo = AgendaRepositoryImpl(
+        AgendaLocalDataSourceDrift(
+          db,
+          encolador: encolador,
+          estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+        ),
+        logger: loggerMudo(),
+      );
+      await sembrarCasa(db);
+    });
+    tearDown(() => db.close());
+
+    Future<List<String>> filas() async => [
+      for (final a in await db.select(db.agendas).get()) 'a:${a.id}:${a.estado}:${a.visitaId}',
+      for (final v in await db.select(db.visitas).get()) 'v:${v.id}',
+      for (final h in await db.select(db.houseStatuses).get()) 'h:${h.color}:${h.deletedAt}',
+      for (final n in await db.select(db.notas).get()) 'n:${n.id}',
+    ];
+
+    // La espontánea encola 3 jobs: la visita, su agenda y el color de la casa.
+    for (final n in [0, 1, 2]) {
+      test('si el encolado falla en el job $n no queda nada, y el reintento deja una sola agenda '
+          'y una sola visita', () async {
+        encolador
+          ..fallarCon = StateError('motor apagado')
+          ..fallarDespuesDe = n;
+        final visita = visitaDe(
+          'vis-1',
+          resultado: TipoResultadoVisita.noContesto,
+          creada: t0.add(const Duration(minutes: 3)),
+        );
+
+        final r = await repo.registrarVisita(visita, nota: notaDe('not-1'));
+
+        expect(r.isLeft(), isTrue);
+        expect(await filas(), isEmpty);
+
+        encolador.fallarCon = null;
+        expect((await repo.registrarVisita(visita, nota: notaDe('not-1'))).isRight(), isTrue);
+        final agendas = await db.select(db.agendas).get();
+        expect(agendas.map((a) => (a.estado, a.visitaId)), [('COMPLETADA', 'vis-1')]);
+        expect((await db.select(db.visitas).get()).length, 1);
+        expect((await db.select(db.houseStatuses).getSingle()).color, 'SIN_CONTESTAR');
+      });
+    }
+
+    test('el mismo envío dos veces a la vez (doble tap) deja una visita y una agenda', () async {
+      final visita = visitaDe('vis-1', creada: t0.add(const Duration(minutes: 3)));
+
+      final rs = await Future.wait([repo.registrarVisita(visita), repo.registrarVisita(visita)]);
+
+      expect(rs.every((r) => r.isRight()), isTrue);
+      expect((await db.select(db.visitas).get()).length, 1);
+      expect((await db.select(db.agendas).get()).length, 1);
+      expect(encolador.encolados.where((c) => c.entidad == 'agenda').length, 1);
+    });
+
+    test('el mismo envío otra vez, ya guardado, no suma otra agenda ni otro job', () async {
+      final visita = visitaDe('vis-1', creada: t0.add(const Duration(minutes: 3)));
+      await repo.registrarVisita(visita);
+      final cola = encolador.encolados.length;
+
+      final otra = await repo.registrarVisita(visita);
+
+      expect(otra.isRight(), isTrue);
+      expect((await db.select(db.agendas).get()).length, 1);
+      expect(encolador.encolados.length, cola);
+    });
+
+    test('cada espontánea tiene su agenda y su agenda es de su visita, sin pintar la casa por sí '
+        'sola', () async {
+      await repo.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.venta, creada: t0),
+      );
+      await repo.registrarVisita(
+        visitaDe(
+          'vis-2',
+          resultado: TipoResultadoVisita.venta,
+          creada: t0.add(const Duration(minutes: 1)),
+        ),
+      );
+
+      final agendas = await db.select(db.agendas).get();
+      expect(agendas.map((a) => a.visitaId).toSet(), {'vis-1', 'vis-2'});
+      expect(agendas.map((a) => a.id).toSet().length, 2);
+      expect(
+        await db.select(db.houseStatuses).get(),
+        isEmpty,
+        reason: 'la agenda cumplida no pinta; la venta pinta en S9',
+      );
+    });
+
+    test('la agenda cumplida sube después de la visita y con los datos de la visita', () async {
+      final visita = visitaDe('vis-1', creada: t0.add(const Duration(minutes: 3)));
+
+      await repo.registrarVisita(visita);
+
+      final cola = encolador.encolados.map((c) => c.entidad).toList();
+      expect(cola.indexOf('visita'), lessThan(cola.indexOf('agenda')));
+      final agenda = encolador.encolados.firstWhere((c) => c.entidad == 'agenda').payload;
+      expect(agenda['estado'], 'COMPLETADA');
+      expect(agenda['visita_id'], 'vis-1');
+      expect(agenda['espacio_persona_id'], visita.espacioPersonaId);
+      expect(agenda['colportor_id'], visita.colportorId);
+      expect(DateTime.parse(agenda['fecha_programada']! as String), visita.fecha);
+    });
+  });
 }
