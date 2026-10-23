@@ -1,0 +1,258 @@
+// QA r2 de BACK-HU-VIS-001 (#404): lo que cambió tras la ronda 1 de la revisión y la decisión de QA
+// P1. (a) Una visita sobre una agenda que no sirve se guarda como espontánea y la agenda queda como
+// estaba; (b) la casa que vuelve a «Sin visita» y se repinta sube bien con el motor real, en
+// cualquier orden de acciones y de syncs, sin conflictos.
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:colportores_mobile/catalogo.dart';
+import 'package:colportores_mobile/core/database/app_database.dart';
+import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_job_store.dart';
+import 'package:colportores_mobile/datos/drift_local_store.dart';
+import 'package:colportores_mobile/datos/encolador_sync_motor.dart';
+import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/agenda/data/repositories/agenda_repository_impl.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
+import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sync_engine/sync_engine.dart';
+import 'package:sync_engine/testing.dart';
+
+import '../../../../../helpers/campo_falsos.dart';
+import '../../../../../helpers/logger_mudo.dart';
+
+void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+  group('visita sobre una agenda que no sirve: se guarda igual, sin tocar la agenda', () {
+    late AppDatabase db;
+    late EncoladorSyncEnMemoria encolador;
+    late AgendaRepositoryImpl repo;
+
+    setUp(() async {
+      db = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
+      encolador = EncoladorSyncEnMemoria();
+      repo = AgendaRepositoryImpl(
+        AgendaLocalDataSourceDrift(
+          db,
+          encolador: encolador,
+          estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+        ),
+        logger: loggerMudo(),
+      );
+      await sembrarEdificio(db);
+    });
+    tearDown(() => db.close());
+
+    Future<String> agendaComoEstaba(String id) async => jsonEncode(
+      (await (db.select(db.agendas)..where((a) => a.id.equals(id))).getSingle()).toJson(),
+    );
+
+    Future<VisitaGuardada> registrar({
+      String? agendaId,
+      String vinculo = 'ep-1',
+      String id = 'vis-1',
+    }) async {
+      final r = await repo.registrarVisita(
+        visitaDe(
+          id,
+          vinculo: vinculo,
+          resultado: TipoResultadoVisita.rechazo,
+          creada: t0.add(const Duration(minutes: 9)),
+        ),
+        agendaId: agendaId,
+        nota: notaDe('not-$id', texto: 'no quiere que vuelvan'),
+      );
+      return r.fold((f) => fail('debía guardarse: $f'), (v) => v);
+    }
+
+    void guardadaSinAgenda(VisitaGuardada r, MotivoAgendaIgnorada motivo) {
+      expect(r.agendaIgnorada, motivo);
+      expect(r.aviso, motivo.aviso);
+      expect(
+        r.aviso,
+        contains('guardamos la visita igual'),
+        reason: 'dice qué pasó y que no se perdió',
+      );
+    }
+
+    test('agenda cancelada: la visita queda con su nota y su color, la agenda no cambia', () async {
+      await repo.agendar(agendaDe('age-1'));
+      await repo.cancelar('age-1', ahora: t0.add(const Duration(minutes: 1)));
+      final antes = await agendaComoEstaba('age-1');
+      final cola = encolador.encolados.length;
+
+      final r = await registrar(agendaId: 'age-1');
+
+      guardadaSinAgenda(r, MotivoAgendaIgnorada.cerrada);
+      expect(await agendaComoEstaba('age-1'), antes);
+      expect(
+        encolador.encolados.skip(cola).map((c) => '${c.entidad}:${c.operacion.name}'),
+        ['visita:insert', 'house_status:update'],
+        reason: 'la agenda no se vuelve a encolar',
+      );
+      expect((await db.select(db.houseStatuses).getSingle()).color, 'RECHAZO');
+      final nota = (await db.select(db.notas).get()).single;
+      expect((nota.targetType, nota.targetId), ('VISITA', 'vis-1'));
+    });
+
+    test('agenda ya cumplida por otra visita: la segunda se guarda sin vincular y no pisa a la '
+        'primera', () async {
+      await repo.agendar(agendaDe('age-1'));
+      await registrar(agendaId: 'age-1', id: 'vis-1');
+      final antes = await agendaComoEstaba('age-1');
+
+      final r = await registrar(agendaId: 'age-1', id: 'vis-2');
+
+      guardadaSinAgenda(r, MotivoAgendaIgnorada.cerrada);
+      expect(await agendaComoEstaba('age-1'), antes);
+      expect((await db.select(db.agendas).getSingle()).visitaId, 'vis-1');
+      expect((await db.select(db.visitas).get()).map((v) => v.id).toSet(), {'vis-1', 'vis-2'});
+    });
+
+    test('agenda que no existe: se guarda y avisa', () async {
+      guardadaSinAgenda(
+        await registrar(agendaId: 'age-fantasma'),
+        MotivoAgendaIgnorada.inexistente,
+      );
+      expect(await db.select(db.agendas).get(), isEmpty, reason: 'no se inventa una agenda');
+      expect((await db.select(db.visitas).get()).length, 1);
+    });
+
+    test('agenda dada de baja: cuenta como inexistente', () async {
+      await insertarAgenda(db, agendaDe('age-b', borrada: t0));
+      guardadaSinAgenda(await registrar(agendaId: 'age-b'), MotivoAgendaIgnorada.inexistente);
+      expect((await db.select(db.agendas).getSingle()).estado, 'PENDIENTE');
+    });
+
+    test('agenda de otra persona: se guarda y la agenda sigue pendiente', () async {
+      await repo.agendar(agendaDe('age-2', vinculo: 'ep-2'));
+      final antes = await agendaComoEstaba('age-2');
+
+      final r = await registrar(agendaId: 'age-2', vinculo: 'ep-1');
+
+      guardadaSinAgenda(r, MotivoAgendaIgnorada.deOtraPersona);
+      expect(await agendaComoEstaba('age-2'), antes);
+      expect(
+        (await db.select(db.houseStatuses).getSingle()).color,
+        'ENTREVISTA_PROGRAMADA',
+        reason: 'la agenda pendiente de la casa manda sobre el rechazo (prioridad 3 < 7)',
+      );
+    });
+
+    test('un vínculo que no está en el teléfono sigue rechazando', () async {
+      final r = await repo.registrarVisita(visitaDe('vis-x', vinculo: 'ep-que-no-existe'));
+      expect(r.isLeft(), isTrue);
+      expect(await db.select(db.visitas).get(), isEmpty);
+    });
+
+    test('sin agendaId no hay aviso', () async {
+      final r = await registrar();
+      expect(r.agendaIgnorada, isNull);
+      expect(r.aviso, isNull);
+    });
+
+    test('los avisos dicen qué pasó, no traen ids y son cortos', () {
+      for (final m in MotivoAgendaIgnorada.values) {
+        expect(m.aviso, isNot(contains('age-')));
+        expect(m.aviso.length, lessThan(120));
+      }
+    });
+  });
+
+  group('la casa que vuelve a «Sin visita» y se repinta, con el motor real', () {
+    late AppDatabase db;
+    late FakeSyncTransport servidor;
+    late SyncEngine motor;
+    late AgendaRepositoryImpl repo;
+
+    setUp(() async {
+      db = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
+      servidor = FakeSyncTransport(pkFieldPorEntidad: const {'house_status': 'ubicacion_id'});
+      motor = SyncEngine(
+        specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
+        transport: servidor,
+        jobs: DriftJobStore(db),
+        store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
+      );
+      final encolador = EncoladorSyncMotor(motor);
+      repo = AgendaRepositoryImpl(
+        AgendaLocalDataSourceDrift(
+          db,
+          encolador: encolador,
+          estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+        ),
+        logger: loggerMudo(),
+      );
+      await sembrarCasa(db);
+    });
+    tearDown(() async {
+      await motor.dispose();
+      await db.close();
+    });
+
+    for (final semilla in List.generate(10, (i) => 700 + i)) {
+      test('agendar, cancelar y visitar en cualquier orden, con syncs en cualquier momento '
+          '(semilla $semilla)', () async {
+        final azar = Random(semilla);
+        var minuto = 0;
+        DateTime ahora() => t0.add(Duration(minutes: ++minuto));
+        final agendas = <String>[];
+        var n = 0;
+        var conflictos = 0;
+
+        for (var paso = 0; paso < 24; paso++) {
+          switch (azar.nextInt(4)) {
+            case 0:
+              final id = 'age-${++n}';
+              agendas.add(id);
+              await repo.agendar(agendaDe(id, creada: ahora()));
+            case 1:
+              if (agendas.isNotEmpty) {
+                await repo.cancelar(agendas[azar.nextInt(agendas.length)], ahora: ahora());
+              }
+            case 2:
+              await repo.registrarVisita(
+                visitaDe(
+                  'vis-${++n}',
+                  resultado: TipoResultadoVisita.values[1 + azar.nextInt(3)],
+                  creada: ahora(),
+                ),
+                agendaId: agendas.isEmpty || azar.nextBool()
+                    ? null
+                    : agendas[azar.nextInt(agendas.length)],
+              );
+            default:
+              final r = await motor.syncNow();
+              conflictos += r.conflicts;
+              expect(r.ok, isTrue, reason: 'paso $paso');
+          }
+        }
+        final fin = await motor.syncNow();
+        conflictos += fin.conflicts;
+
+        expect(conflictos, 0, reason: 'ningún conflicto en toda la secuencia');
+        expect((await DriftJobStore(db).status()).pending, 0);
+        final local = await db.select(db.houseStatuses).getSingleOrNull();
+        final enServidor = servidor.rowsOf('house_status');
+        if (local == null || local.deletedAt != null) {
+          expect(enServidor, isEmpty, reason: 'casa sin estado: no hay fila viva arriba');
+        } else {
+          expect(enServidor.single['color'], local.color);
+          expect(enServidor.single['deleted_at'], isNull);
+        }
+        for (final a in await db.select(db.agendas).get()) {
+          final arriba = servidor.rowsOf('agenda').where((f) => f['id'] == a.id).single;
+          expect(arriba['estado'], a.estado, reason: a.id);
+          expect(a.estado, isIn(EstadoAgenda.values.map((e) => e.codigo)));
+        }
+        expect(servidor.rowsOf('visita').length, (await db.select(db.visitas).get()).length);
+      });
+    }
+  });
+}
