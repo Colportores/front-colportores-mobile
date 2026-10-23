@@ -12,7 +12,11 @@ import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/iniciar_sesion_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/registrar_usuario_use_case.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacio_persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_persona_use_case.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
 
@@ -47,6 +51,48 @@ void main() {
       expect(texto, isNot(contains('Techera')));
       expect(texto, isNot(contains('099123456')));
       expect(texto, isNot(contains('prefiere que la visiten de tarde')));
+    });
+
+    test('dado una NotaPersona, un PersonaDelEspacio y los parametros del alta de una persona, '
+        'cuando se interpolan, no aparece ningun dato personal', () {
+      final nota = NotaPersona(
+        id: 'nota-1',
+        personaId: 'per-1',
+        texto: 'tiene un perro bravo',
+        auditoria: auditoria,
+      );
+      final persona = Persona(
+        id: 'per-1',
+        nombre: 'Rosalia',
+        apellido: 'Techera',
+        telefono: '099123456',
+        auditoria: auditoria,
+      );
+      final cliente = PersonaDelEspacio(
+        persona: persona,
+        vinculo: EspacioPersona(
+          id: 'ep-1',
+          espacioId: 'esp-1',
+          personaId: 'per-1',
+          auditoria: auditoria,
+        ),
+      );
+      const params = RegistrarPersonaParams(
+        ids: IdsAltaPersona(persona: 'a', vinculo: 'b', nota: 'c'),
+        espacioId: 'esp-1',
+        colportorId: 'col-1',
+        nombre: 'Rosalia',
+        apellido: 'Techera',
+        telefono: '099123456',
+        nota: 'tiene un perro bravo',
+      );
+
+      for (final texto in ['$nota', '$cliente', '$params']) {
+        expect(texto, isNot(contains('Rosalia')));
+        expect(texto, isNot(contains('Techera')));
+        expect(texto, isNot(contains('099123456')));
+        expect(texto, isNot(contains('perro bravo')));
+      }
     });
 
     test('dado una Visita con notas, cuando se interpola, las notas no aparecen', () {
