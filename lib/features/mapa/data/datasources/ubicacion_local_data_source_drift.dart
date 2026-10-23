@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
@@ -21,6 +22,7 @@ import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcar
 import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
+import 'house_status_table.dart';
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
 
@@ -34,7 +36,7 @@ typedef _Motivo = MotivoRechazoEspacio;
 /// Es el DAO de las dos tablas (`@DriftAccessor`) y traduce modelos ↔ filas, como
 /// `JornadaLocalDataSourceDrift`. El sync entra por [EncoladorSync], dentro de la misma
 /// transacción que la escritura (contrato-sync-engine §3).
-@DriftAccessor(tables: [Ubicaciones, Espacios, AuditLogLocal])
+@DriftAccessor(tables: [Ubicaciones, Espacios, AuditLogLocal, HouseStatuses])
 final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
@@ -457,6 +459,14 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
                   auditLogLocal.uuid.equalsExp(ubicaciones.id) &
                   auditLogLocal.creadoEn.equalsExp(ubicaciones.deletedAt),
             ),
+            // El color vigente de la casa: una fila por ubicación, y la dada de baja (la casa volvió
+            // a «Sin visita») no cuenta. Al estar en la consulta, un cambio de `house_status` hace
+            // que el stream emita de nuevo.
+            leftOuterJoin(
+              houseStatuses,
+              houseStatuses.ubicacionId.equalsExp(ubicaciones.id) &
+                  houseStatuses.deletedAt.isNull(),
+            ),
           ])
           ..addColumns([cantidad, motivo])
           ..where(ubicaciones.createdBy.equals(colportorId))
@@ -468,11 +478,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
           (
             ubicacion: _aModelo(fila.readTable(ubicaciones)),
             cantidadEspacios: fila.read(cantidad) ?? 0,
+            color: _colorDe(fila.readTableOrNull(houseStatuses)),
             motivoBaja: fila.read(motivo),
           ),
       ],
     );
   }
+
+  /// El color de la fila de `house_status`, o `null` si la ubicación no tiene (es «Sin visita»).
+  static ColorHouseStatus? _colorDe(HouseStatusFila? fila) =>
+      fila == null ? null : ColorHouseStatus.desdeCodigo(fila.color);
 
   @override
   Stream<List<MarcadorMapa>> observarMarcadoresEnArea({

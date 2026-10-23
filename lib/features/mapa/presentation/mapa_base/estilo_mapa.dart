@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import '../../domain/services/circulo_geografico.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import 'marcador_cercano.dart';
+import 'marcador_estado.dart';
 import 'modelo_mapa_base.dart';
 
 /// Arma el estilo MapLibre que dibuja `MapaBase`: el de backend (`estilo/colportores.json`, con la
@@ -34,6 +35,18 @@ abstract final class ConstructorEstiloMapa {
   static const capaCercano = 'colportores:cercano';
   static const capaCercanoRespaldo = 'colportores:cercano-respaldo';
   static const capaSeleccionado = 'colportores:seleccionado';
+
+  /// Vista 39, M·01: la insignia del estado de una casa (capa de símbolos, una imagen por estado:
+  /// [MarcadorEstado]) y, si la imagen no está registrada, el círculo con el color del estado.
+  static const capaEstado = 'colportores:estado';
+  static const capaEstadoRespaldo = 'colportores:estado-respaldo';
+
+  /// Vista 39, M·02: el cuadrado de 40 dp de la casa acercada (símbolos de una imagen por estado),
+  /// su aro cuando es la seleccionada, el número en dos renglones y el respaldo si falta la imagen.
+  static const capaCuadradoAro = 'colportores:cuadrado-aro';
+  static const capaCuadrado = 'colportores:cuadrado';
+  static const capaCuadradoRespaldo = 'colportores:cuadrado-respaldo';
+  static const capaCuadradoNumero = 'colportores:cuadrado-numero';
   static const capaNuevo = 'colportores:nuevo';
   static const capaGps = 'colportores:gps';
 
@@ -55,8 +68,12 @@ abstract final class ConstructorEstiloMapa {
   static const capasTocables = [
     capaGrupos,
     capaSeleccionado,
+    capaCuadrado,
+    capaCuadradoRespaldo,
     capaCercano,
     capaCercanoRespaldo,
+    capaEstado,
+    capaEstadoRespaldo,
     capaContexto,
     capaCandidata,
     capaNuevo,
@@ -69,8 +86,12 @@ abstract final class ConstructorEstiloMapa {
   static const capasTocablesLargo = [
     capaGrupos,
     capaSeleccionado,
+    capaCuadrado,
+    capaCuadradoRespaldo,
     capaCercano,
     capaCercanoRespaldo,
+    capaEstado,
+    capaEstadoRespaldo,
     capaContexto,
     capaCandidata,
     capaNuevo,
@@ -181,16 +202,23 @@ abstract final class ConstructorEstiloMapa {
 
   /// Los puntos que se pueden agrupar, como `FeatureCollection` de GeoJSON, con `id`, `estilo`,
   /// `letra` y `etiqueta` como propiedades.
-  static Map<String, dynamic> coleccionPuntos(List<PuntoMapa> puntos) =>
-      _coleccion(puntos.where((p) => !p.estilo.sinAgrupar));
+  ///
+  /// [imagenes] son los nombres de las imágenes que la vista ya registró en el estilo (como en
+  /// [coleccionPuntosLibres]): una casa con estado cuya insignia está entre ellas lleva la propiedad
+  /// `imagen` y la dibuja la capa de símbolos; la que no, el círculo de respaldo.
+  static Map<String, dynamic> coleccionPuntos(
+    List<PuntoMapa> puntos, {
+    Set<String> imagenes = const {},
+  }) => _coleccion(puntos.where((p) => !p.estilo.sinAgrupar), imagenes);
 
   /// Los puntos que nunca se agrupan ([EstiloPunto.sinAgrupar]), con las mismas propiedades. Van en
   /// otra fuente: en la de los grupos, un punto del GPS o uno cercano quedaría absorbido por el
   /// grupo de los que tiene al lado.
   ///
   /// [imagenes] son los nombres de las imágenes que la vista ya registró en el estilo
-  /// ([MarcadorCercano.nombre]): un punto cercano cuya etiqueta está entre ellas lleva la propiedad
-  /// `imagen` y lo dibuja la capa de símbolos; el que no, el círculo de respaldo.
+  /// ([MarcadorCercano.nombre], [MarcadorEstado.nombreCuadrado]): un punto cercano o un cuadrado cuya
+  /// imagen está entre ellas lleva la propiedad `imagen` y lo dibuja la capa de símbolos; el que no,
+  /// el círculo de respaldo.
   static Map<String, dynamic> coleccionPuntosLibres(
     List<PuntoMapa> puntos, {
     Set<String> imagenes = const {},
@@ -216,12 +244,38 @@ abstract final class ConstructorEstiloMapa {
             if (p.etiqueta != null) 'etiqueta': p.etiqueta,
             if (p.estilo == EstiloPunto.cercano &&
                 p.etiqueta != null &&
-                imagenes.contains(MarcadorCercano.nombre(p.etiqueta!)))
-              'imagen': MarcadorCercano.nombre(p.etiqueta!),
+                imagenes.contains(MarcadorCercano.nombre(p.etiqueta!, p.variante)))
+              'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
+            ..._propiedadesDeEstado(p, imagenes),
           },
         },
     ],
   };
+
+  /// Lo que el estado de la casa (vista 39) le suma a un punto: la variante, los colores con que lo
+  /// pintan las capas de respaldo y el seleccionado, y —según el estilo— la imagen de su insignia o
+  /// de su cuadrado (si ya está registrada) y el número en dos renglones. Un punto sin variante no
+  /// lleva nada de esto.
+  static Map<String, dynamic> _propiedadesDeEstado(PuntoMapa p, Set<String> imagenes) {
+    final variante = p.variante;
+    if (variante == null) return const {};
+    final imagen = switch (p.estilo) {
+      EstiloPunto.conEstado => MarcadorEstado.nombreInsignia(variante),
+      EstiloPunto.cuadrado ||
+      EstiloPunto.cuadradoSeleccionado => MarcadorEstado.nombreCuadrado(variante),
+      _ => null,
+    };
+    final etiqueta = p.etiqueta;
+    return {
+      'variante': variante.name,
+      'fondo': _hex(variante.fondo),
+      'tinta': _hex(variante.tintaNumero),
+      'borde': _hex(variante.borde),
+      if (imagen != null && imagenes.contains(imagen)) 'imagen': imagen,
+      if (p.estilo.esCuadrado && etiqueta != null)
+        'numero': MarcadorEstado.numeroEnDosRenglones(etiqueta),
+    };
+  }
 
   /// El radio de precisión como `FeatureCollection` con un polígono, o vacía si no hay.
   static Map<String, dynamic> poligonoPrecision(CirculoPrecision? precision) =>
@@ -265,6 +319,23 @@ abstract final class ConstructorEstiloMapa {
   static const List<Object?> _sinImagen = [
     '!',
     ['has', 'imagen'],
+  ];
+
+  /// Las dos formas del cuadrado de M·02: el común y el de la casa seleccionada.
+  static const List<Object?> _esCuadrado = [
+    'in',
+    ['get', 'estilo'],
+    [
+      'literal',
+      ['cuadrado', 'cuadradoSeleccionado'],
+    ],
+  ];
+
+  /// La propiedad [propiedad] del punto (un color en hex) o, si no la tiene, [respaldo].
+  static List<Object?> _conRespaldo(String propiedad, String respaldo) => [
+    'coalesce',
+    ['get', propiedad],
+    respaldo,
   ];
 
   static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
@@ -359,6 +430,33 @@ abstract final class ConstructorEstiloMapa {
           'circle-radius': 9.5,
           'circle-stroke-width': 2.5,
           'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+        },
+      },
+      // Vista 39, M·01: de lejos, cada casa con estado es la insignia de su estado (color y símbolo).
+      // Se agrupa con las que tiene cerca, como el punto de «Sin visita».
+      {
+        'id': capaEstado,
+        'type': 'symbol',
+        'source': fuentePuntos,
+        'filter': ['all', _filtroEstilo(EstiloPunto.conEstado), _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+      // El respaldo: mientras la insignia no está registrada (o si no se pudo), la casa no queda sin
+      // dibujar y conserva el color de su estado.
+      {
+        'id': capaEstadoRespaldo,
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': ['all', _filtroEstilo(EstiloPunto.conEstado), _sinImagen],
+        'paint': {
+          'circle-color': _conRespaldo('fondo', blanco),
+          'circle-radius': 11,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
         },
       },
       {
@@ -529,10 +627,11 @@ abstract final class ConstructorEstiloMapa {
         'source': fuentePuntosLibres,
         'filter': _esEstilo(EstiloPunto.seleccionado),
         'paint': {
-          'circle-color': blanco,
+          // Con estado, el círculo lleva el color de su estado; sin él, el blanco de siempre.
+          'circle-color': _conRespaldo('fondo', blanco),
           'circle-radius': _radioPorEtiqueta,
           'circle-stroke-width': 2.5,
-          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
         },
       },
       if (conRecursos)
@@ -546,7 +645,66 @@ abstract final class ConstructorEstiloMapa {
             ['has', 'etiqueta'],
           ],
           'layout': _estiloNumero,
-          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+          'paint': {'text-color': _conRespaldo('tinta', _hex(ColoresMapa.tinta))},
+        },
+      // Vista 39, M·02: la casa acercada es un cuadrado de 40 dp (una imagen por estado) con el
+      // número en dos renglones encima. La seleccionada lleva el aro doble por debajo. Nunca se
+      // agrupa ni se esconde: la página solo los pide cuando entran todos sin taparse.
+      {
+        'id': capaCuadradoAro,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.cuadradoSeleccionado),
+        'layout': {
+          'icon-image': MarcadorEstado.nombreAro,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+      {
+        'id': capaCuadrado,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esCuadrado, _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+      {
+        'id': capaCuadradoRespaldo,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esCuadrado, _sinImagen],
+        'paint': {
+          'circle-color': _conRespaldo('fondo', blanco),
+          'circle-radius': 16,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': capaCuadradoNumero,
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esCuadrado,
+            ['has', 'numero'],
+          ],
+          'layout': {
+            'text-field': ['get', 'numero'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 12,
+            'text-line-height': 1.05,
+            // Un poco arriba y a la izquierda: abajo a la derecha va el símbolo del estado.
+            'text-offset': [-.3, -.25],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': _conRespaldo('tinta', _hex(ColoresMapa.tinta))},
         },
       {
         'id': capaNuevo,

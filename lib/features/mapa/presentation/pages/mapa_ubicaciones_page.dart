@@ -6,11 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
+import '../../domain/services/cuadrados_del_mapa.dart';
 import '../../domain/services/proyeccion_mercator.dart';
+import '../../domain/value_objects/area_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/mapa_base.dart';
+import '../mapa_base/marcador_estado.dart' show VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
@@ -32,9 +36,14 @@ import 'alta_ubicacion_page.dart';
 /// lee la base: el mapa nativo cuesta memoria y datos. El GPS se pide esa primera vez, no al
 /// arrancar la app, y se refresca cada vez que se vuelve a ella.
 ///
+/// Cada casa se ve con el color y el símbolo de su estado (`house_status`, vista 39, HU-VIS-005):
+/// de lejos es un punto de color (M·01) y, acercando, un cuadrado de 40 dp con su número (M·02). Los
+/// cuadrados aparecen solo cuando **entran todos** los de lo que se ve sin taparse (decisión de
+/// Cristian del 23/10, «Números casas»: [CuadradosDelMapa]); hasta entonces siguen los puntos y los
+/// grupos de HU-UBI-003.
+///
 /// Qué queda para otras HU (decisión de Cristian en el #199): «Agendados» y la vista previa con
-/// «Registrar visita» y «Agendar» (HU-VIS-001 y HU-VIS-002), los colores por estado (HU-VIS-005) y
-/// «Cobranza» (HU-COB-005).
+/// «Registrar visita» y «Agendar» (HU-VIS-001 y HU-VIS-002) y «Cobranza» (HU-COB-005).
 class MapaUbicacionesPage extends ConsumerStatefulWidget {
   const MapaUbicacionesPage({
     super.key,
@@ -70,6 +79,16 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   /// Cuántos gestos del colportor movieron el mapa: sirve para no tirarle la cámara de las manos.
   var _gestos = 0;
+
+  /// La cámara de la última vez que el mapa quedó quieto: con ella se decide si las casas se dibujan
+  /// como cuadrados (nunca mientras el mapa se mueve: el cuadro cambiaría a cada paso del gesto).
+  CamaraMapa? _camaraQuieta;
+
+  /// Lo último que se le preguntó a [CuadradosDelMapa] y lo que contestó: la misma cámara, vista y
+  /// lista no se vuelven a calcular. [_cuadradosPintados] es lo que se dibujó en el último cuadro.
+  ({CamaraMapa camara, Size vista, double reserva, ListaUbicaciones lista})? _entradaCuadrados;
+  var _cuadradosCalculados = false;
+  var _cuadradosPintados = false;
 
   /// Un solo alta y una sola leyenda a la vez: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
@@ -193,6 +212,40 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     unawaited(mapa.moverCamara(CamaraMapa(centro: centro, zoom: zoom)));
   }
 
+  // ---------------------------------------------------------------- cuadrados (M·02)
+
+  /// ¿Entran todos los cuadrados de las casas que se ven, sin taparse? Se mira con la cámara de la
+  /// última vez que el mapa quedó quieto y con la parte del mapa que la hoja no tapa.
+  bool _entranLosCuadrados(MapaUbicacionesState estado) {
+    final camara = _camaraQuieta;
+    final lista = estado.lista;
+    if (camara == null || lista == null || _tamano.isEmpty) return false;
+    final reserva = _altoHoja(_altura);
+    final previa = _entradaCuadrados;
+    if (previa != null &&
+        previa.camara == camara &&
+        previa.vista == _tamano &&
+        previa.reserva == reserva &&
+        identical(previa.lista, lista)) {
+      return _cuadradosCalculados;
+    }
+    _entradaCuadrados = (camara: camara, vista: _tamano, reserva: reserva, lista: lista);
+    return _cuadradosCalculados = CuadradosDelMapa.entranTodos(
+      casas: [for (final item in lista.items) item.ubicacion.coordenadas],
+      camara: camara,
+      ancho: _tamano.width,
+      alto: _tamano.height,
+      reservaInferior: reserva,
+    );
+  }
+
+  /// El mapa quedó quieto: si con esta cámara cambia entre puntos y cuadrados, se vuelve a dibujar.
+  void _alQuedarQuieto(CamaraMapa camara, AreaMapa area) {
+    _camaraQuieta = camara;
+    if (!mounted) return;
+    if (_entranLosCuadrados(ref.read(_proveedor)) != _cuadradosPintados) setState(() {});
+  }
+
   // ---------------------------------------------------------------- acciones
 
   /// Un marcador o una fila de la lista: se abre su vista previa y el mapa se centra en ella.
@@ -301,28 +354,40 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   // ---------------------------------------------------------------- dibujo
 
-  List<PuntoMapa> _puntos(MapaUbicacionesState estado) {
+  List<PuntoMapa> _puntos(MapaUbicacionesState estado, {required bool cuadrados}) {
     final seleccionada = estado.seleccionada?.ubicacion.id;
     return [
       for (final item in estado.lista?.items ?? const <ItemListaUbicacion>[])
-        _punto(item, seleccionada: item.ubicacion.id == seleccionada),
+        _punto(item, seleccionada: item.ubicacion.id == seleccionada, cuadrados: cuadrados),
       if (estado.lectura != null)
         PuntoMapa(id: 'gps', coordenadas: estado.lectura!.coordenadas, estilo: EstiloPunto.gps),
     ];
   }
 
-  PuntoMapa _punto(ItemListaUbicacion item, {required bool seleccionada}) {
+  /// El marcador de una casa: con [cuadrados] el cuadrado de M·02 (con el aro si es la elegida); si
+  /// no, el que se toca, el de «cerca tuyo», la insignia de su estado (M·01) o, sin estado, el punto
+  /// de «Sin visita». El estado sale de `house_status` (`ItemListaUbicacion.estado`).
+  PuntoMapa _punto(ItemListaUbicacion item, {required bool seleccionada, required bool cuadrados}) {
     final ubicacion = item.ubicacion;
+    final variante = VarianteMarcador.de(
+      item.estado,
+      edificio: ubicacion.tipo == TipoUbicacion.edificio,
+    );
     final distancia = item.distanciaMetros;
     final cerca = distancia != null && distancia <= MapaUbicacionesState.radioCercaMetros;
-    final estilo = seleccionada
+    final estilo = cuadrados
+        ? (seleccionada ? EstiloPunto.cuadradoSeleccionado : EstiloPunto.cuadrado)
+        : seleccionada
         ? EstiloPunto.seleccionado
-        : (cerca ? EstiloPunto.cercano : EstiloPunto.contexto);
+        : cerca
+        ? EstiloPunto.cercano
+        : (variante == VarianteMarcador.sinVisita ? EstiloPunto.contexto : EstiloPunto.conEstado);
     return PuntoMapa(
       id: ubicacion.id,
       coordenadas: ubicacion.coordenadas,
       estilo: estilo,
-      etiqueta: estilo == EstiloPunto.contexto
+      variante: variante,
+      etiqueta: estilo == EstiloPunto.contexto || estilo == EstiloPunto.conEstado
           ? null
           : FormatoMapaUbicaciones.etiquetaPuerta(ubicacion),
     );
@@ -378,6 +443,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       builder: (context, restricciones) {
         _tamano = restricciones.biggest;
         final hoja = _altoHoja(_altura);
+        final cuadrados = _cuadradosPintados = _entranLosCuadrados(estado);
         // Lo que queda libre arriba, sobre los botones y la hoja: ahí caben el aviso de conexión y
         // «Referencias». La tarjeta del aviso no puede pasar de ahí (con el texto grande se
         // desliza): más abajo quedaría detrás de los botones y de la hoja, con sus acciones a las
@@ -398,7 +464,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMinimo: MapaAlta.zoomMinimo,
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
-                  puntos: _puntos(estado),
+                  puntos: _puntos(estado, cuadrados: cuadrados),
                   precision: lectura != null
                       ? CirculoPrecision(
                           centro: lectura.coordenadas,
@@ -416,6 +482,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   reservaInferior: hoja,
                   alCrearse: _alCrearseElMapa,
                   alMoverCamara: (_) => _gestos++,
+                  alQuedarQuieto: _alQuedarQuieto,
                   alTocarLargo: (punto) => unawaited(_abrirAlta(punto)),
                   alTocarPunto: _alTocarPunto,
                 ),

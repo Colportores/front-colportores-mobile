@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_r
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_estado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_mapa_ubicaciones.dart';
@@ -102,10 +103,13 @@ void main() {
         expect(punto(mapa, id).estilo, EstiloPunto.cercano, reason: id);
         expect(punto(mapa, id).etiqueta, numero, reason: id);
       }
+      // Las que están lejos son la insignia de su estado (vista 39, M·01), sin número.
       for (final id in ['d', 'e', 'f']) {
-        expect(punto(mapa, id).estilo, EstiloPunto.contexto, reason: id);
+        expect(punto(mapa, id).estilo, EstiloPunto.conEstado, reason: id);
         expect(punto(mapa, id).etiqueta, isNull, reason: id);
       }
+      // Y la cercana también lleva el color y el símbolo de su estado.
+      expect(punto(mapa, 'a').variante, VarianteMarcador.cobranzaPendiente);
       expect(punto(mapa, 'gps').estilo, EstiloPunto.gps);
       expect(mapa.config!.precision!.radioMetros, 6);
       expect(mapa.config!.cercania!.radioMetros, 60);
