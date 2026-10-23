@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/agenda/presentation/widgets/flujo_en
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -198,6 +199,25 @@ void main() {
         tester.getSize(find.byKey(ClavesEntrevista.avisoFijo)).height,
         greaterThanOrEqualTo(48),
       );
+      semantica.dispose();
+    });
+
+    testWidgets('el aviso entero es un botón para el lector y el texto contrasta al menos 4,5:1', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      await empezada(tester);
+
+      final datos = tester.getSemantics(find.byKey(ClavesEntrevista.avisoFijo));
+      expect(datos.flagsCollection.isButton, isTrue);
+      expect(datos.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+
+      final texto = find.text('Entrevista en curso · Grecia 3307 · 18 min');
+      final contexto = tester.element(texto);
+      final color = Theme.of(contexto).textTheme.bodyMedium!.color!;
+      final claro = Colors.white.computeLuminance();
+      final oscuro = color.computeLuminance();
+      expect((claro + 0.05) / (oscuro + 0.05), greaterThanOrEqualTo(4.5));
       semantica.dispose();
     });
 
