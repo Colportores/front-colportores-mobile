@@ -63,16 +63,16 @@ jobs:
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: bash scripts/check_auth_providers.sh
 
-  # La suite de la app partida en 3 tandas (23/10: en un solo job tardaba 14-18 min y rozaba el límite).
+  # La suite de la app partida en 5 tandas (23/10: en un solo job tardaba 14-18 min y rozaba el límite).
   # Cada tanda sube su lcov; el job `cobertura` los junta y verifica los umbrales.
   tests:
-    name: test (${{ matrix.tanda }}/3)
+    name: test (${{ matrix.tanda }}/5)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        tanda: [1, 2, 3]
+        tanda: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
 
@@ -85,9 +85,9 @@ jobs:
       - run: flutter pub get
       - run: dart run build_runner build
 
-      # --shard-index va de 0 a 2.
-      - name: flutter test (tanda ${{ matrix.tanda }} de 3)
-        run: flutter test --coverage --total-shards 3 --shard-index $(( ${{ matrix.tanda }} - 1 ))
+      # --shard-index va de 0 a 4.
+      - name: flutter test (tanda ${{ matrix.tanda }} de 5)
+        run: flutter test --coverage --total-shards 5 --shard-index $(( ${{ matrix.tanda }} - 1 ))
 
       - uses: actions/upload-artifact@v4
         with:
