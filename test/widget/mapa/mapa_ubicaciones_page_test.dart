@@ -342,15 +342,16 @@ void main() {
       expect(hayPunto(m.mapa, 'a'), isFalse);
     });
 
-    testWidgets('los botones y la cuota de la vista previa llegan con sus HU: no se dibujan '
-        '(HU-VIS-001/002 y HU-COB-005)', (tester) async {
+    testWidgets('«Registrar visita», «Agendar» y la cuota llegan con sus HU (HU-VIS-001/002 y '
+        'HU-COB-005): no se dibujan; «Detalle» sí (#211)', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.mapa.tocarPunto('a');
       await asentarLista(tester);
 
-      for (final texto in ['Registrar visita', 'Agendar', 'Detalle']) {
+      for (final texto in ['Registrar visita', 'Agendar']) {
         expect(find.text(texto), findsNothing, reason: texto);
       }
+      expect(find.text('Detalle'), findsOneWidget);
     });
   });
 

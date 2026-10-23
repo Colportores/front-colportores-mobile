@@ -81,6 +81,7 @@ class HojaMapaUbicaciones extends StatefulWidget {
     required this.alCambiarAltura,
     required this.alElegir,
     required this.alCerrarVistaPrevia,
+    this.alAbrirDetalle,
     required this.alReintentar,
     required this.alActivarGps,
     required this.alRegistrar,
@@ -100,6 +101,10 @@ class HojaMapaUbicaciones extends StatefulWidget {
   /// Una fila de la lista: se elige la ubicación (vista previa y mapa centrado en ella).
   final ValueChanged<String> alElegir;
   final VoidCallback alCerrarVistaPrevia;
+
+  /// «Detalle» de la vista previa (canvas 06C·04): abre la hoja de la ubicación (vista 11, #211) con
+  /// el `id` de la seleccionada. Sin esto el botón no se dibuja.
+  final ValueChanged<String>? alAbrirDetalle;
   final VoidCallback alReintentar;
   final VoidCallback alActivarGps;
   final VoidCallback alRegistrar;
@@ -196,6 +201,9 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                       item: seleccionada,
                       ahora: widget.ahora,
                       alCerrar: widget.alCerrarVistaPrevia,
+                      alAbrirDetalle: widget.alAbrirDetalle == null
+                          ? null
+                          : () => widget.alAbrirDetalle!(seleccionada.ubicacion.id),
                     )
                   : _Contenido(
                       estado: estado,
@@ -642,20 +650,24 @@ class _BuscandoGps extends StatelessWidget {
 }
 
 /// La vista previa de la ubicación que se tocó (canvas, 06C·04): el rótulo («CASA · 2 ESPACIOS · A
-/// 40 M»), la dirección y, si se conoce, el estado de la casa. Los botones («Registrar visita»,
-/// «Agendar», «Detalle») llegan con sus pantallas: las visitas (HU-VIS-001 y HU-VIS-002) y el
-/// detalle de la ubicación (#211).
+/// 40 M»), la dirección y, si se conoce, el estado de la casa, y «Detalle» (la hoja de la ubicación,
+/// vista 11, #211). Los otros botones del canvas («Registrar visita», «Agendar») llegan con las
+/// visitas (HU-VIS-001 y HU-VIS-002, #151).
 class VistaPreviaUbicacion extends StatelessWidget {
   const VistaPreviaUbicacion({
     super.key,
     required this.item,
     required this.ahora,
     required this.alCerrar,
+    this.alAbrirDetalle,
   });
 
   final ItemListaUbicacion item;
   final DateTime ahora;
   final VoidCallback alCerrar;
+
+  /// «Detalle»: sin esto el botón no se dibuja.
+  final VoidCallback? alAbrirDetalle;
 
   @override
   Widget build(BuildContext context) {
@@ -743,6 +755,18 @@ class VistaPreviaUbicacion extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              if (alAbrirDetalle != null)
+                OutlinedButton(
+                  key: ClavesMapaUbicaciones.detalle,
+                  onPressed: alAbrirDetalle,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    shape: const StadiumBorder(),
+                    foregroundColor: ColoresAlta.azul,
+                    side: const BorderSide(color: ColoresLista.grisBorde, width: 1.5),
+                  ),
+                  child: const Text(TextosMapaUbicaciones.detalle),
                 ),
             ],
           ),

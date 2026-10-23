@@ -73,7 +73,7 @@ final class MontajeMapaUbicaciones {
 /// `IndexedStack`). Con [arnes] el aviso sale de la conexión y del catálogo reales del arnés del
 /// aviso; sin él, el mapa no tiene tiles ni aviso ([situacion] lo cambia). [ambito] es la ciudad del
 /// mapa, fija (por defecto ninguna, como hoy: #274); con [ciudades] la ciudad sale, como en la app,
-/// del puerto `CiudadesParaAlta` (y [ambito] no cuenta).
+/// del puerto `CiudadesParaAlta` (y [ambito] no cuenta). [extras] se suman al final de los overrides.
 Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -88,6 +88,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   bool activa = true,
   SalidaAltaUbicacion? salidaAlta,
   bool asentar = true,
+  List<Override> extras = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -114,6 +115,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
           ambitoMapaUbicacionesProvider.overrideWith2(
             (_) => AmbitoFijo(ambito ?? const AmbitoTrabajo()),
           ),
+        ...extras,
       ],
       child: MaterialApp(
         theme: temaClaro(),

@@ -17,6 +17,7 @@ abstract final class ClavesMapaUbicaciones {
   static const pestanaCercania = Key('mapa_pestana_cercania');
   static const vistaPrevia = Key('mapa_vista_previa');
   static const cerrarVistaPrevia = Key('mapa_vista_previa_cerrar');
+  static const detalle = Key('mapa_vista_previa_detalle');
   static const cargando = Key('mapa_cargando');
   static const vacio = Key('mapa_vacio');
   static const error = Key('mapa_error');
