@@ -21,16 +21,33 @@ abstract final class SeleccionToque {
     return Rect.fromLTRB(punto.x - mitad, punto.y - mitad, punto.x + mitad, punto.y + mitad);
   }
 
+  /// Con las casas acercadas (vista 39, M·02) el toque elige la más cercana **dentro de 44 dp**
+  /// (decisión de Cristian del 23/10, «Números casas»; el mismo radio que aplicó el #462 para las
+  /// casas en un mismo punto).
+  static const radioDeCuadradosDp = 44.0;
+
+  /// El área alrededor de [punto] donde se consultan los cuadrados: un cuadrado de ±44 dp, así
+  /// entran los que tienen el centro a 44 dp aunque su dibujo (de 40 dp) quede apenas fuera. Después
+  /// [masCercano] descarta los que pasan de [radioDeCuadradosDp].
+  static Rect areaDeCuadrados(math.Point<double> punto, {required double unidadesPorDp}) {
+    final mitad = radioDeCuadradosDp * unidadesPorDp;
+    return Rect.fromLTRB(punto.x - mitad, punto.y - mitad, punto.x + mitad, punto.y + mitad);
+  }
+
   /// El de [hallados] (los `Feature` GeoJSON de la consulta) más cercano a [toque]; `null` si
   /// ninguno es un punto con coordenadas. A igual distancia gana el primero, o sea el de la capa
   /// de más arriba.
-  static Object? masCercano(Iterable<Object?> hallados, Coordenadas toque) {
+  ///
+  /// Con [maximoMetros] solo cuentan los que están a esa distancia o menos del toque: si ninguno,
+  /// `null` (el toque cae en el mapa).
+  static Object? masCercano(Iterable<Object?> hallados, Coordenadas toque, {double? maximoMetros}) {
     Object? mejor;
     var distanciaMejor = double.infinity;
     for (final elemento in hallados) {
       final posicion = _posicion(elemento);
       if (posicion == null) continue;
       final distancia = toque.distanciaMetrosA(posicion);
+      if (maximoMetros != null && distancia > maximoMetros) continue;
       if (distancia < distanciaMejor) {
         distanciaMejor = distancia;
         mejor = elemento;

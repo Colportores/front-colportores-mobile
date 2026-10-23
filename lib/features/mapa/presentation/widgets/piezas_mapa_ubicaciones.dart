@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/estado_casa.dart';
+import '../formato_lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
 import '../providers/lista_ubicaciones_state.dart' show EstadoGpsLista;
@@ -195,9 +196,8 @@ Future<void> mostrarReferenciasMapa(BuildContext context) => showModalBottomShee
 );
 
 /// La leyenda de los marcadores de la vista 06. El canvas la dibuja entera y la marca «PROPUESTA»
-/// (con los ocho estados de la visita y la venta); acá van solo los marcadores que el mapa dibuja
-/// hoy: hasta que lleguen los colores por estado (HU-VIS-005) todas las ubicaciones se ven «Sin
-/// visita».
+/// (con los ocho estados de la visita y la venta). Desde la vista 39 (HU-VIS-005) el mapa dibuja los
+/// ocho —el color y el símbolo de cada estado—, y acá van todos, con los rótulos de la lista.
 class HojaReferenciasMapa extends StatelessWidget {
   const HojaReferenciasMapa({super.key});
 
@@ -226,6 +226,12 @@ class HojaReferenciasMapa extends StatelessWidget {
               muestra: InsigniaEstadoCasa(estado: EstadoCasa.sinVisita, tamano: 24),
               texto: TextosMapaUbicaciones.leyendaSinVisita,
             ),
+            for (final estado in EstadoCasa.values)
+              if (estado != EstadoCasa.sinVisita)
+                _FilaReferencia(
+                  muestra: InsigniaEstadoCasa(estado: estado, tamano: 24),
+                  texto: FormatoListaUbicaciones.estado(estado),
+                ),
             const _FilaReferencia(
               muestra: _MuestraGrupo(),
               texto: TextosMapaUbicaciones.leyendaAgrupadas,

@@ -80,8 +80,7 @@ final class ConsultarParesDuplicadosUseCase
 }
 
 /// Un par para revisar con lo que la pantalla muestra al lado de cada ubicación: cuántos espacios
-/// tiene y, si se sabe, en qué estado está la casa. Las visitas todavía no están en el teléfono
-/// (HU-VIS-005, #151) y no se inventan: el estado es `null` hasta que exista `house_status`.
+/// tiene y en qué estado está la casa (`house_status`, HU-VIS-005; sin fila es «Sin visita»).
 final class ParaRevisar extends Equatable {
   const ParaRevisar({
     required this.par,
