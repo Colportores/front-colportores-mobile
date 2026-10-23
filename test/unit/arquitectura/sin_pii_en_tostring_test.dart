@@ -5,6 +5,9 @@
 // incluya filtraría teléfono, notas del cliente, cédula o el JWT. Las entidades con esos campos
 // apagan `stringify`; esto lo verifica con la config en `true`, que es el peor caso.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_registro.dart';
@@ -95,19 +98,37 @@ void main() {
       }
     });
 
-    test('dado una Visita con notas, cuando se interpola, las notas no aparecen', () {
+    test('dado la nota de una visita o una agenda, cuando se interpola, el texto no aparece', () {
+      final nota = NotaDeCampo(
+        id: 'nota-1',
+        texto: 'la hija esta enferma, volver el martes',
+        auditoria: auditoria,
+      );
+
+      expect('$nota', isNot(contains('la hija esta enferma, volver el martes')));
+    });
+
+    test('dado una Visita y una Agenda, cuando se interpolan, sus ids no arrastran ninguna nota '
+        '(las notas son filas de nota, ADR-017)', () {
       final visita = Visita(
         id: 'vis-1',
         espacioPersonaId: 'ep-1',
         fecha: DateTime(2026, 9, 18),
         tipoResultado: TipoResultadoVisita.entrevista,
-        notas: 'la hija esta enferma, volver el martes',
         colportorId: 'u-1',
-        jornadaId: 'jor-1',
+        auditoria: auditoria,
+      );
+      final agenda = Agenda(
+        id: 'age-1',
+        espacioPersonaId: 'ep-1',
+        tipo: TipoAgenda.entrevista,
+        fechaProgramada: DateTime(2026, 9, 20),
+        colportorId: 'u-1',
         auditoria: auditoria,
       );
 
-      expect('$visita', isNot(contains('la hija esta enferma, volver el martes')));
+      expect('$visita', isNot(contains('notas')));
+      expect('$agenda', isNot(contains('notas')));
     });
 
     test('dado un Usuario, cuando se interpola, no aparecen nombre, cedula ni email', () {

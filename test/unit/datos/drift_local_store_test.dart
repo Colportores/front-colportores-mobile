@@ -6,6 +6,9 @@ import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
+import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/agenda/data/models/agenda_model.dart';
+import 'package:colportores_mobile/features/agenda/data/models/visita_model.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_data_source.dart';
@@ -17,6 +20,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
 
+import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
 
 const _ubicacion = {
@@ -104,6 +108,96 @@ void main() {
       final dao = JornadaLocalDataSourceDrift(db, encolador: EncoladorSyncEnMemoria());
       final activa = await dao.obtenerActiva('col-1');
       expect(activa!.toJson(), _jornada);
+    });
+
+    test(
+      'agenda: el booleano es_estricta entra como 0/1 y vuelve como bool, con sus fechas',
+      () async {
+        final fila = {
+          'id': 'age-1',
+          'espacio_persona_id': 'ep-1',
+          'tipo': 'ENTREVISTA',
+          'fecha_programada': '2026-10-25T14:00:00.000Z',
+          'slot_codigo': 'mid_morning',
+          'es_estricta': true,
+          'ubicacion_alt_id': null,
+          'estado': 'PENDIENTE',
+          'colportor_id': 'col-1',
+          'visita_id': null,
+          'created_at': '2026-10-23T13:45:10.123Z',
+          'updated_at': '2026-10-23T13:45:10.123Z',
+          'created_by': 'col-1',
+          'deleted_at': null,
+          'sync_version': 2,
+        };
+
+        await store.applyDelta(
+          {
+            'agenda': [fila],
+          },
+          scope: 'mirror',
+          watermark: 'w1',
+        );
+
+        final dao = AgendaLocalDataSourceDrift(
+          db,
+          encolador: EncoladorSyncEnMemoria(),
+          estadoDeLasCasas: HouseStatusUpdaterEspia(),
+        );
+        final leida = await dao.obtenerAgenda('age-1');
+        expect(AgendaModel.fromEntity(leida!).toJson(), fila);
+        expect(leida.esEstricta, isTrue);
+      },
+    );
+
+    test('visita y house_status', () async {
+      final visita = {
+        'id': 'vis-1',
+        'espacio_persona_id': 'ep-1',
+        'fecha': '2026-10-23T13:45:10.123Z',
+        'tipo_resultado': 'RECHAZO',
+        'colportor_id': 'col-1',
+        'jornada_id': null,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:45:10.123Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+      final casa = {
+        'ubicacion_id': 'ub-1',
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'RECHAZO',
+        'prioridad': 7,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:45:10.123Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+
+      await store.applyDelta(
+        {
+          'visita': [visita],
+          'house_status': [casa],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      final dao = AgendaLocalDataSourceDrift(
+        db,
+        encolador: EncoladorSyncEnMemoria(),
+        estadoDeLasCasas: HouseStatusUpdaterEspia(),
+      );
+      expect(VisitaModel.fromEntity((await dao.obtenerVisita('vis-1'))!).toJson(), visita);
+      final fila = await db.select(db.houseStatuses).getSingle();
+      expect(
+        [fila.ubicacionId, fila.color, fila.prioridad, fila.tipoUbicacion],
+        ['ub-1', 'RECHAZO', 7, 'CASA'],
+      );
     });
 
     test('el mapa de la campaña: campania_ciudad, zona con su GeoJSON y vértices', () async {
