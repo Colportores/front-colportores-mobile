@@ -421,6 +421,53 @@ void main() {
       expect(resultado.elegida, _ana.aLaEntrevista);
     });
 
+    group('dos personas con el mismo nombre (HU-UBI-008 permite duplicados)', () {
+      final padre = clienteDePersonas('padre', 'Pedro', apellido: 'Gómez', telefono: '099 123 412');
+      final hijo = clienteDePersonas('hijo', 'Pedro', apellido: 'Gómez', minutos: 5);
+      final otra = clienteDePersonas('otra', 'Ana', apellido: 'Gómez', minutos: 9);
+
+      testWidgets('cada fila suma una segunda línea: el teléfono enmascarado o «Cargada el», y el '
+          'lector las distingue', (tester) async {
+        final handle = tester.ensureSemantics();
+        await montarConQuien(
+          tester,
+          repo: PersonaRepositorioFalso()..sembrar([padre, hijo, otra]),
+          saldos: SaldosFalsos({'hijo': 120000}),
+        );
+
+        expect(find.text('Tel. 099 ••• 412'), findsOneWidget);
+        expect(find.text('Cargada el 22/10'), findsOneWidget);
+        expect(find.text('Saldo \$ 1.200'), findsOneWidget);
+        expect(find.bySemanticsLabel('Pedro Gómez. Teléfono terminado en 412'), findsOneWidget);
+        expect(
+          find.bySemanticsLabel('Pedro Gómez. Cargada el 22/10. Saldo \$ 1.200'),
+          findsOneWidget,
+        );
+        // Con nombre único, la fila queda como el canvas.
+        expect(find.bySemanticsLabel('Ana Gómez'), findsOneWidget);
+        handle.dispose();
+      });
+
+      testWidgets('con nombres distintos no hay segunda línea', (tester) async {
+        await montarConQuien(tester, repo: _casaConDos());
+
+        expect(find.textContaining('Tel.'), findsNothing);
+        expect(find.textContaining('Cargada el'), findsNothing);
+      });
+
+      testWidgets('se puede elegir al segundo «Pedro» y devuelve a ese', (tester) async {
+        final resultado = await montarConQuien(
+          tester,
+          repo: PersonaRepositorioFalso()..sembrar([padre, hijo]),
+        );
+
+        await _tocar(tester, find.text('Cargada el 22/10'));
+        await _tocar(tester, _botonEmpezar);
+
+        expect(resultado.elegida, hijo.aLaEntrevista);
+      });
+    });
+
     testWidgets('dado que elige a la segunda, cuando toca «Empezar entrevista», devuelve a esa '
         'persona y no guarda nada', (tester) async {
       final repo = _casaConDos();

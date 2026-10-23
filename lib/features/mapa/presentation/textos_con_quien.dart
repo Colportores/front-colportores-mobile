@@ -1,5 +1,7 @@
+import '../domain/entities/persona.dart';
 import '../domain/entities/persona_del_espacio.dart';
 import 'formato_baja.dart';
+import 'formato_lista_ubicaciones.dart';
 import 'textos_personas.dart';
 
 /// Los textos del paso «¿Con quién?» de la vista 39 (R·04 y C·07). Los del canvas van tal cual; los
@@ -36,9 +38,53 @@ abstract final class TextosConQuien {
   static String saldo(int centavos) =>
       'Saldo ${FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$')}';
 
-  /// Lo que lee el lector de pantalla de una fila: «Pedro Gómez. Saldo $ 1.200».
-  static String filaParaLector(PersonaDelEspacio p, int? saldoCentavos) {
-    final nombre = FormatoPersonas.nombreCompleto(p.persona);
-    return saldoCentavos == null ? nombre : '$nombre. ${saldo(saldoCentavos)}';
+  /// La segunda línea de una fila cuyo nombre se repite en la lista (HU-UBI-008 permite duplicados):
+  /// el teléfono enmascarado de 11·04 («Tel. 099 ••• 412») o, sin teléfono, «Cargada el 12/10». No se
+  /// numera: «(1)» y «(2)» no dicen quién es quién.
+  static String paraDistinguir(Persona persona) {
+    if ((persona.telefono?.trim() ?? '').isNotEmpty) {
+      return FormatoPersonas.telefonoOculto(persona.telefono);
+    }
+    return cargadaEl(persona.auditoria.createdAt);
+  }
+
+  /// «Cargada el 12/10» (día y mes, en hora local).
+  static String cargadaEl(DateTime momento) =>
+      'Cargada el ${FormatoListaUbicaciones.diaMes(momento)}';
+
+  /// Lo que lee el lector de pantalla de una fila: «Pedro Gómez. Saldo $ 1.200». Con
+  /// [nombreRepetido], suma el dato que la distingue: «Pedro Gómez. Teléfono terminado en 412.
+  /// Saldo $ 1.200» o «Pedro Gómez. Cargada el 12/10».
+  static String filaParaLector(
+    PersonaDelEspacio p,
+    int? saldoCentavos, {
+    bool nombreRepetido = false,
+  }) {
+    final persona = p.persona;
+    final partes = [
+      FormatoPersonas.nombreCompleto(persona),
+      if (nombreRepetido)
+        (persona.telefono?.trim() ?? '').isNotEmpty
+            ? FormatoPersonas.telefonoParaLector(persona.telefono)
+            : cargadaEl(persona.auditoria.createdAt),
+      if (saldoCentavos != null) saldo(saldoCentavos),
+    ];
+    return partes.join('. ');
+  }
+
+  /// Los ids de las personas de [personas] cuyo nombre completo se repite en la lista (sin mirar
+  /// mayúsculas ni espacios de más).
+  static Set<String> conNombreRepetido(List<PersonaDelEspacio> personas) {
+    String clave(PersonaDelEspacio p) => FormatoPersonas.nombreCompleto(
+      p.persona,
+    ).trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    final cuenta = <String, int>{};
+    for (final p in personas) {
+      cuenta.update(clave(p), (n) => n + 1, ifAbsent: () => 1);
+    }
+    return {
+      for (final p in personas)
+        if (cuenta[clave(p)]! > 1) p.persona.id,
+    };
   }
 }

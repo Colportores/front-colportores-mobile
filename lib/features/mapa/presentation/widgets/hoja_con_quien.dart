@@ -358,6 +358,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
   Widget _lista(BuildContext context, List<PersonaDelEspacio> personas) {
     final saldos = ref.watch(saldosDelEspacioProvider(widget.espacioId)).asData?.value ?? const {};
     final elegida = _elegidaDe(personas);
+    final repetidos = TextosConQuien.conNombreRepetido(personas);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -382,10 +383,13 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
               }
               final p = personas[i - 1];
               final saldo = saldos[p.persona.id];
+              final repetido = repetidos.contains(p.persona.id);
               return _FilaOpcion(
                 titulo: FormatoPersonas.nombreCompleto(p.persona),
+                // Solo con el nombre repetido, la segunda línea de 11·04 que dice quién es quién.
+                distintivo: repetido ? TextosConQuien.paraDistinguir(p.persona) : null,
                 detalle: saldo == null ? null : TextosConQuien.saldo(saldo),
-                etiquetaLector: TextosConQuien.filaParaLector(p, saldo),
+                etiquetaLector: TextosConQuien.filaParaLector(p, saldo, nombreRepetido: repetido),
                 seleccionada: p.persona.id == elegida?.persona.id,
                 alTocar: () => setState(() => _elegidaId = p.persona.id),
               );
@@ -479,12 +483,16 @@ class _FilaOpcion extends StatelessWidget {
     required this.etiquetaLector,
     required this.alTocar,
     this.detalle,
+    this.distintivo,
     this.seleccionada = false,
     this.seleccionable = true,
   });
 
   final String titulo;
   final String? detalle;
+
+  /// El dato que distingue a dos personas con el mismo nombre (va entre el nombre y el detalle).
+  final String? distintivo;
   final String etiquetaLector;
   final bool seleccionada;
   final bool seleccionable;
@@ -543,6 +551,11 @@ class _FilaOpcion extends StatelessWidget {
                           titulo,
                           style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                         ),
+                        if (distintivo != null)
+                          Text(
+                            distintivo!,
+                            style: theme.textTheme.bodyMedium?.copyWith(color: gris),
+                          ),
                         if (detalle != null)
                           Text(detalle!, style: theme.textTheme.bodyMedium?.copyWith(color: gris)),
                       ],

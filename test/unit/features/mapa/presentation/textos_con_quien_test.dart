@@ -49,4 +49,38 @@ void main() {
       },
     );
   });
+
+  group('el nombre repetido', () {
+    final padre = clienteDePersonas('padre', 'Pedro', apellido: 'Gómez', telefono: '099 123 412');
+    final hijo = clienteDePersonas('hijo', 'Pedro', apellido: 'Gómez', minutos: 5);
+    final ana = clienteDePersonas('ana', 'Ana', apellido: 'Gómez');
+
+    test(
+      'dadas dos con el mismo nombre (sin mirar mayúsculas ni espacios), solo ellas cuentan',
+      () {
+        final tocaya = clienteDePersonas('t', ' pedro ', apellido: 'GÓMEZ');
+        expect(TextosConQuien.conNombreRepetido([padre, hijo, ana]), {'padre', 'hijo'});
+        expect(TextosConQuien.conNombreRepetido([padre, tocaya]), {'padre', 't'});
+        expect(TextosConQuien.conNombreRepetido([padre, ana]), isEmpty);
+        expect(TextosConQuien.conNombreRepetido(const []), isEmpty);
+      },
+    );
+
+    test('con teléfono se ve enmascarado; sin teléfono, «Cargada el» con día y mes', () {
+      expect(TextosConQuien.paraDistinguir(padre.persona), 'Tel. 099 ••• 412');
+      expect(TextosConQuien.paraDistinguir(hijo.persona), 'Cargada el 22/10');
+    });
+
+    test('el lector suma el dato que distingue antes del saldo, y solo si el nombre se repite', () {
+      expect(
+        TextosConQuien.filaParaLector(padre, 120000, nombreRepetido: true),
+        'Pedro Gómez. Teléfono terminado en 412. Saldo \$ 1.200',
+      );
+      expect(
+        TextosConQuien.filaParaLector(hijo, null, nombreRepetido: true),
+        'Pedro Gómez. Cargada el 22/10',
+      );
+      expect(TextosConQuien.filaParaLector(hijo, null), 'Pedro Gómez');
+    });
+  });
 }
