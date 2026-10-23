@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
 
 import 'generated/schema.dart';
+import 'generated/schema_v10.dart' as v10;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -612,4 +613,70 @@ void main() {
       );
     },
   );
+
+  test('dado lo guardado en la versión 9, cuando migra a la 10, se conserva todo y la agenda, las '
+      'visitas y la cache del color quedan vacías', () async {
+    // BACK-HU-VIS-001 (#404): solo se suman `agenda`, `visita` y `house_status`. Nada de lo
+    // guardado cambia ni se encola al migrar (convenciones §9, y nunca se pierde una persona).
+    const ubicacion = v9.UbicacionData(
+      id: 'ub-1',
+      tipo: 'CASA',
+      calle: 'Mataojo',
+      numero: '2044',
+      lat: -34.9,
+      lon: -56.16,
+      ciudadId: 'ciu-1',
+      zonaId: 'zon-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 5,
+    );
+    const persona = v9.PersonaData(
+      id: 'per-1',
+      nombre: 'Ana',
+      apellido: 'Martínez',
+      telefono: '099123456',
+      notasGlobales: 'prefiere de tarde',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 0,
+    );
+    const vinculo = v9.EspacioPersonaData(
+      id: 'ep-1',
+      espacioId: 'esp-1',
+      personaId: 'per-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 2,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 9,
+      newVersion: 10,
+      createOld: v9.DatabaseAtV9.new,
+      createNew: v10.DatabaseAtV10.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.ubicacion, ubicacion)
+          ..insert(viejo.persona, persona)
+          ..insert(viejo.espacioPersona, vinculo);
+      },
+      validateItems: (nuevo) async {
+        final ubicaciones = await nuevo.select(nuevo.ubicacion).get();
+        expect(ubicaciones.map((f) => f.toJson()).toList(), [ubicacion.toJson()]);
+        final personas = await nuevo.select(nuevo.persona).get();
+        expect(personas.map((f) => f.toJson()).toList(), [persona.toJson()]);
+        final vinculos = await nuevo.select(nuevo.espacioPersona).get();
+        expect(vinculos.map((f) => f.toJson()).toList(), [vinculo.toJson()]);
+        expect(await nuevo.select(nuevo.agenda).get(), isEmpty);
+        expect(await nuevo.select(nuevo.visita).get(), isEmpty);
+        expect(await nuevo.select(nuevo.houseStatus).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+      },
+    );
+  });
 }

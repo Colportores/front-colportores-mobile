@@ -3,9 +3,12 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/fecha_utc_converter.dart';
 
 /// Tipos de objeto al que se ata una `nota` (`target_type`, esquema-datos.md §`nota`). Hoy la app
-/// escribe `PERSONA` (HU-UBI-008, la primera nota del alta; HU-UBI-012 trae el resto).
+/// escribe `PERSONA` (HU-UBI-008, la primera nota del alta), `VISITA` y `AGENDA` (la nota opcional
+/// de cada una, #404); HU-UBI-012 trae el resto.
 abstract final class TipoObjetivoNota {
   static const persona = 'PERSONA';
+  static const visita = 'VISITA';
+  static const agenda = 'AGENDA';
 }
 
 /// Tabla `nota` de la DB local cifrada (esquema-datos.md §`nota`): texto libre atado a una persona,

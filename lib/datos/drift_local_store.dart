@@ -123,6 +123,9 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     return switch (columna.type) {
       DriftSqlType.int => (valor as num).toInt(),
       DriftSqlType.double => (valor as num).toDouble(),
+      // El cloud manda `true`/`false` (`agenda.es_estricta`); Drift lo guarda como 0 o 1 al
+      // atar la variable, pero su validación espera un `bool`, no el entero.
+      DriftSqlType.bool => valor is num ? valor != 0 : valor,
       _ => valor,
     };
   }
