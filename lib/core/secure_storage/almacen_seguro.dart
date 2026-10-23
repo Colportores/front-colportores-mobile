@@ -85,7 +85,16 @@ enum ClaveSegura {
   /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
   /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
   /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) estrena uno nuevo.
-  idInstalacion('device_id');
+  idInstalacion('device_id'),
+
+  /// La entrevista que cada colportora tiene en curso (vista 39, R·05; decisión de Cristian, 23/10,
+  /// front-colportores-mobile#450): un JSON `{"<id del colportor>": {...}}` con **solo ids** y la
+  /// hora de inicio (ISO 8601, UTC), sin nombres ni direcciones. Hace que la entrevista siga en
+  /// curso al salir de la hoja o cerrar la app y que la hora de inicio no se pierda. Vive acá, junto a
+  /// `zonasAvisadas`, para no sumar otro almacenamiento ni una migración de la DB; se conserva al
+  /// reconstruir el almacén (la DB sigue) y se borra con el borrado de datos locales (HU-AUTH-010),
+  /// que se lleva los espacios a los que apunta.
+  entrevistaEnCurso('interview_in_progress');
 
   const ClaveSegura(this.id);
 

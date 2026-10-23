@@ -33,6 +33,8 @@ abstract interface class AgendaRepository {
   /// Un vínculo ausente es un `FailureValidacion` con el campo `persona`. Una agenda inexistente,
   /// de otra persona o ya cerrada **no frena la visita**: se guarda como espontánea, la agenda no
   /// se toca y `VisitaGuardada.agendaIgnorada` dice por qué, para avisar sin perder lo registrado.
+  /// Un resultado que no cumple la agenda (`TipoResultadoVisita.cumpleLaAgenda`: `NO_CONTESTO`) la
+  /// deja `PENDIENTE` y `VisitaGuardada.agendaQuedoPendiente` lo dice.
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,

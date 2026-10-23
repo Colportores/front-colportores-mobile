@@ -18,6 +18,22 @@ enum TipoResultadoVisita {
 
   final String codigo;
 
+  /// Si el resultado cuenta como **presentación** (HU-VIS-005, decisión de Cristian del 21/10,
+  /// docs#69): la visita con la entrevista hecha. Cuentan `VENTA` y `ENTREVISTA`; no `NO_CONTESTO`
+  /// (nadie atendió). `RECHAZO` tampoco, hasta que se confirme (S62). Es la misma definición que usa
+  /// el servidor para el tablero del coordinador: la app no guarda ningún campo aparte, el resultado
+  /// ya queda distinguible por su [codigo].
+  bool get cuentaComoPresentacion => this == venta || this == entrevista;
+
+  /// Si la visita **cumple** la agenda que tenía la casa (la agenda pasa a `COMPLETADA`).
+  ///
+  /// La HU-VIS-005 dice que con `NO_CONTESTO` la agenda pasa a `NO_CUMPLIDA`, un estado que el
+  /// servidor no tiene (pendiente P1 de #151, de Cristian): hasta que se decida, `NO_CONTESTO` no
+  /// cierra la agenda —ni la marca como cumplida, que sería falso— y la deja `PENDIENTE`. Los otros
+  /// tres resultados la cumplen: la HU solo nombra a `NO_CONTESTO` como «no cumplida» (lectura a
+  /// confirmar con el mapa de decisiones, §2).
+  bool get cumpleLaAgenda => this != noContesto;
+
   /// Inversa de [codigo]. Lanza `ArgumentError` con un valor desconocido (lo frena el `CHECK`).
   static TipoResultadoVisita desdeCodigo(String codigo) => values.firstWhere(
     (t) => t.codigo == codigo,
