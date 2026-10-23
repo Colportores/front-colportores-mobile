@@ -80,6 +80,7 @@ docker compose -f compose.dev.yml run --rm flutter dart run build_runner build  
 docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 ```
 
+- **Check local en secuencia (`J=1`).** En local el check completo se corre con `docker compose -f compose.dev.yml run --rm -e J=1 flutter bash scripts/check.sh` (o `flutter test --concurrency=1` si lo corrés suelto): un solo `flutter_tester` en vez de ~8 en paralelo, para no pasar de los 3 GB que `compose.dev.yml` le fija al contenedor (`mem_limit: 3g`). Sin `J` los tests corren en paralelo, que es lo que usa CI.
 - **Imagen y cachés compartidas.** `-p <nombre>` propio está bien para aislar contenedores, `build/` y `android/.gradle`; la imagen (`front-colportores-mobile-dev:latest`) y las cachés de pub y Gradle (`front-colportores-mobile_pub_cache`, `front-colportores-mobile_gradle_cache`) son compartidas por todos los proyectos.
   `docker compose build` solo cuando cambia `dockerfile.dev` (y nunca `down -v` sobre esas cachés).
 - `build/` y `android/.gradle` viven en volúmenes Linux (D8/dex falla sobre el bind mount de Windows). Para sacar el APK al host:
