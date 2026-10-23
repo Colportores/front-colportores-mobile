@@ -17,6 +17,7 @@ import '../../../../../helpers/logger_mudo.dart';
 final class _Local implements AgendaLocalDataSource {
   Object? lanza;
   MotivoAgendaIgnorada? ignorada;
+  bool pendiente = false;
 
   @override
   Future<AgendaAgendada> agendar(Agenda agenda, {NotaDeCampo? nota}) async {
@@ -37,7 +38,12 @@ final class _Local implements AgendaLocalDataSource {
     NotaDeCampo? nota,
   }) async {
     _lanzarSiCorresponde();
-    return (visita: visita, yaEstaba: false, agendaIgnorada: ignorada);
+    return (
+      visita: visita,
+      yaEstaba: false,
+      agendaIgnorada: ignorada,
+      agendaQuedoPendiente: pendiente,
+    );
   }
 
   @override
@@ -92,6 +98,17 @@ void main() {
         guardada.aviso,
         'Esa agenda ya estaba cerrada: guardamos la visita igual, como visita espontánea.',
       );
+    });
+
+    test('registrar la visita que deja la agenda pendiente trae el aviso que guia', () async {
+      local.pendiente = true;
+
+      final r = await repositorio.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
+
+      final guardada = r.getOrElse(() => throw StateError('falló'));
+      expect(guardada.agendaQuedoPendiente, isTrue);
+      expect(guardada.agendaIgnorada, isNull);
+      expect(guardada.aviso, VisitaGuardada.avisoAgendaPendiente);
     });
 
     test('registrar la visita sin problema no trae aviso', () async {

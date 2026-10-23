@@ -30,16 +30,32 @@ enum MotivoAgendaIgnorada {
 /// El resultado de registrar una visita: la [visita] guardada y, si la agenda que se quería
 /// cumplir no sirvió, por qué se guardó sin ella ([agendaIgnorada]).
 final class VisitaGuardada extends Equatable {
-  const VisitaGuardada({required this.visita, this.agendaIgnorada});
+  const VisitaGuardada({
+    required this.visita,
+    this.agendaIgnorada,
+    this.agendaQuedoPendiente = false,
+  });
+
+  /// Texto **para confirmar** cuando llegue la pantalla (vista 39): la visita se guardó y la agenda
+  /// sigue esperando, con qué hacer.
+  static const avisoAgendaPendiente =
+      'Guardamos la visita. La agenda sigue pendiente porque todavía no se puede marcar como no '
+      'cumplida: si ya no va, cancelala desde Agendados.';
 
   final Visita visita;
 
   /// `null` si no había agenda, o si la visita cumplió la que se indicó.
   final MotivoAgendaIgnorada? agendaIgnorada;
 
+  /// `true` si la agenda indicada sirve pero el resultado no la cumple (`NO_CONTESTO`): la visita se
+  /// guardó y la agenda sigue `PENDIENTE`, sin tocar (pendiente P1 de #151: «no cumplida» no existe
+  /// en el servidor). Nunca es `true` junto con [agendaIgnorada].
+  final bool agendaQuedoPendiente;
+
   /// El aviso para la pantalla, o `null` si no hay nada que avisar.
-  String? get aviso => agendaIgnorada?.aviso;
+  String? get aviso =>
+      agendaIgnorada?.aviso ?? (agendaQuedoPendiente ? avisoAgendaPendiente : null);
 
   @override
-  List<Object?> get props => [visita, agendaIgnorada];
+  List<Object?> get props => [visita, agendaIgnorada, agendaQuedoPendiente];
 }

@@ -315,6 +315,52 @@ void main() {
       },
     );
 
+    test('NO_CONTESTO con la agenda de la casa: guarda la visita y deja la agenda PENDIENTE, sin '
+        'cumplirla ni crear una agenda cumplida de más', () async {
+      await local.agendar(agendaDe('age-1'));
+      final antes = (await agendas()).single;
+      encolador.encolados.clear();
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect([r.yaEstaba, r.agendaQuedoPendiente, r.agendaIgnorada], [false, true, null]);
+      expect((await visitas()).single.tipoResultado, 'NO_CONTESTO');
+      expect((await agendas()).single, antes);
+      expect(cola(), ['visita:insert']);
+      // La agenda pendiente (3) manda sobre «sin contestar» (6) hasta que se decida «no cumplida».
+      expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
+    });
+
+    test('NO_CONTESTO con una agenda cerrada: sigue siendo espontanea, con su agenda cumplida y el '
+        'motivo', () async {
+      await local.agendar(agendaDe('age-1'));
+      await local.cancelar('age-1', ahora: t1);
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t2),
+        agendaId: 'age-1',
+      );
+
+      expect([r.agendaQuedoPendiente, r.agendaIgnorada], [false, MotivoAgendaIgnorada.cerrada]);
+      expect((await agendas()).map((a) => a.estado), ['CANCELADA', 'COMPLETADA']);
+    });
+
+    test('RECHAZO con la agenda de la casa: la cumple (lectura de la HU a confirmar)', () async {
+      await local.agendar(agendaDe('age-1'));
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.rechazo, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect(r.agendaQuedoPendiente, isFalse);
+      expect((await agendas()).single.estado, 'COMPLETADA');
+      expect((await casas()).single.color, 'RECHAZO');
+    });
+
     test('con la agenda que cumple: la agenda pasa a COMPLETADA apuntando a la visita, y se '
         'encola primero la visita', () async {
       await local.agendar(agendaDe('age-1'));
