@@ -50,32 +50,28 @@ void main() {
     for (final escala in escalas39) {
       final celda = '${tamano.width.toInt()}x${tamano.height.toInt()}_x${escala.toInt()}';
 
-      testWidgets(
-        'mapa con el aviso fijo · $celda: sin overflow, a tamaño de toque y etiquetado',
-        // skip: QA #450 — a 360×640 con letra al 200 % el aviso fijo aprieta «Referencias» a 39 dp de
-        // alto (y la corta por abajo), con el mismo mapa sin entrevista mide 48.
-        skip: celda == '360x640_x2',
-        (tester) async {
-          final semantica = tester.ensureSemantics();
-          await cargarFuentes(tester);
-          await entrevista.almacen.guardar(entrevistaDePrueba());
-          await montarMapaUbicaciones(
-            tester,
-            overridesExtra: entrevista.overrides,
-            escala: escala,
-            tamano: tamano,
-          );
-          await asentarLista(tester);
+      testWidgets('mapa con el aviso fijo · $celda: sin overflow, a tamaño de toque y etiquetado', (
+        tester,
+      ) async {
+        final semantica = tester.ensureSemantics();
+        await cargarFuentes(tester);
+        await entrevista.almacen.guardar(entrevistaDePrueba());
+        await montarMapaUbicaciones(
+          tester,
+          overridesExtra: entrevista.overrides,
+          escala: escala,
+          tamano: tamano,
+        );
+        await asentarLista(tester);
 
-          expect(tester.takeException(), isNull);
-          expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
-          await _capturar(tester, 'aviso_$celda');
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          semantica.dispose();
-        },
-      );
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
+        await _capturar(tester, 'aviso_$celda');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        semantica.dispose();
+      });
 
       testWidgets('el aviso lleva a R·05 sobre el mapa · $celda y al volver el aviso sigue', (
         tester,

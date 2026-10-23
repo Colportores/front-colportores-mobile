@@ -132,7 +132,7 @@ class _HojaEntrevistaEnCursoState extends State<HojaEntrevistaEnCurso> {
               container: true,
               label:
                   '${TextosEntrevista.enCurso.toLowerCase()}, ${duracionCorta(transcurrido)}, '
-                  '${TextosEntrevista.desdeLas(horaCorta(widget.inicio)).toLowerCase()}',
+                  '${TextosEntrevista.desde(widget.inicio, _ahora).toLowerCase()}',
               excludeSemantics: true,
               child: Padding(
                 key: ClavesEntrevista.tiempo,
@@ -154,7 +154,7 @@ class _HojaEntrevistaEnCursoState extends State<HojaEntrevistaEnCurso> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      TextosEntrevista.desdeLas(horaCorta(widget.inicio)),
+                      TextosEntrevista.desde(widget.inicio, _ahora),
                       style: theme.textTheme.bodyMedium,
                     ),
                   ],

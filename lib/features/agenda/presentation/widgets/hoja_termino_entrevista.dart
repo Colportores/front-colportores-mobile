@@ -177,6 +177,10 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
         pregunta: pregunta,
         etiquetaCampo: campo,
         mostrarRelativo: false,
+        notaDeHora: (hora) {
+          final texto = TextosEntrevista.horaConDia(hora, _ahora());
+          return texto == horaCorta(hora) ? null : diaCorto(hora);
+        },
       );
       if (elegida == null || !mounted) return;
       setState(() {
@@ -268,6 +272,7 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
               const SizedBox(height: 12),
             ],
             _TarjetaDeHoras(
+              ahora: _ahora(),
               entrada: entrada,
               salida: salida,
               alElegirEntrada: _guardando ? null : _elegirEntrada,
@@ -327,12 +332,14 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
 /// tocable con su ✎.
 class _TarjetaDeHoras extends StatelessWidget {
   const _TarjetaDeHoras({
+    required this.ahora,
     required this.entrada,
     required this.salida,
     required this.alElegirEntrada,
     required this.alElegirSalida,
   });
 
+  final DateTime ahora;
   final DateTime? entrada;
   final DateTime? salida;
   final VoidCallback? alElegirEntrada;
@@ -354,6 +361,7 @@ class _TarjetaDeHoras extends StatelessWidget {
           _FilaDeHora(
             key: ClavesEntrevista.filaEntrada,
             rotulo: TextosEntrevista.entrada,
+            ahora: ahora,
             hora: entrada,
             alTocar: alElegirEntrada,
           ),
@@ -361,6 +369,7 @@ class _TarjetaDeHoras extends StatelessWidget {
           _FilaDeHora(
             key: ClavesEntrevista.filaSalida,
             rotulo: TextosEntrevista.salida,
+            ahora: ahora,
             hora: salida,
             alTocar: alElegirSalida,
           ),
@@ -399,9 +408,16 @@ class _TarjetaDeHoras extends StatelessWidget {
 }
 
 class _FilaDeHora extends StatelessWidget {
-  const _FilaDeHora({super.key, required this.rotulo, required this.hora, required this.alTocar});
+  const _FilaDeHora({
+    super.key,
+    required this.rotulo,
+    required this.ahora,
+    required this.hora,
+    required this.alTocar,
+  });
 
   final String rotulo;
+  final DateTime ahora;
   final DateTime? hora;
   final VoidCallback? alTocar;
 
@@ -409,7 +425,9 @@ class _FilaDeHora extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
-    final texto = hora == null ? TextosEntrevista.elegirLaHora : horaCorta(hora!);
+    final texto = hora == null
+        ? TextosEntrevista.elegirLaHora
+        : TextosEntrevista.horaConDia(hora!, ahora);
     return Semantics(
       container: true,
       button: true,

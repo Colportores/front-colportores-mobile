@@ -531,15 +531,20 @@ class _AvisoDeLaEntrevista extends ConsumerWidget {
 
   final String colportorId;
 
-  /// Lo que queda libre arriba: el aviso no pasa de ahí (con el texto grande se desplaza).
+  /// Lo que queda libre arriba: el aviso no pasa de ahí menos el lugar de «Referencias» (con el
+  /// texto grande se desplaza).
   final double alturaMaxima;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hay = ref.watch(entrevistaEnCursoProvider(colportorId).select((e) => e.hayEntrevista));
     if (!hay) return const SizedBox.shrink();
+    // Le deja a «Referencias» su lugar debajo (8 + 48 dp) más el margen: el aviso se desplaza dentro
+    // de lo que sobra y, si no sobra casi nada, conserva una fila (QA de #450).
+    const lugarDeReferencias = 64.0;
+    final tope = math.max(alturaMaxima - lugarDeReferencias, math.min(alturaMaxima, 56.0));
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: alturaMaxima),
+      constraints: BoxConstraints(maxHeight: tope),
       child: SingleChildScrollView(
         primary: false,
         child: Padding(

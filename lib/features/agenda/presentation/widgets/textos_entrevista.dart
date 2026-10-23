@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../jornada/presentation/formato_jornada.dart';
+
 /// Los textos de la entrevista en curso (vista 39: R·05 «Entrevista en curso», R·06 «Finalizar:
 /// horas y ¿hubo venta?» y R·07 «Sin inicio registrado»; HU-VIS-005).
 ///
@@ -15,6 +17,22 @@ abstract final class TextosEntrevista {
 
   /// «Desde las 14:23».
   static String desdeLas(String hora) => 'Desde las $hora';
+
+  /// La hora de [hora], con el día delante si no es de hoy: «14:23» o «Lunes 19 · 14:23». Una
+  /// entrevista que quedó abierta de días atrás no se confunde con otra (decisión del 23/10 sobre
+  /// la pregunta 2 del QA de #450). Lo que se guarda no cambia.
+  static String horaConDia(DateTime hora, DateTime ahora) {
+    final h = hora.toLocal();
+    final a = ahora.toLocal();
+    final esHoy = h.year == a.year && h.month == a.month && h.day == a.day;
+    return esHoy ? horaCorta(h) : '${diaCorto(h)} · ${horaCorta(h)}';
+  }
+
+  /// «Desde las 14:23» si empezó hoy; «Desde Lunes 19 · 14:23» si no.
+  static String desde(DateTime inicio, DateTime ahora) {
+    final texto = horaConDia(inicio, ahora);
+    return texto == horaCorta(inicio) ? desdeLas(texto) : 'Desde $texto';
+  }
 
   // R·06 y R·07 — terminó la entrevista.
   static const terminoTitulo = 'Terminó la entrevista';

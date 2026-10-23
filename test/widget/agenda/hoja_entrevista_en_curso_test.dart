@@ -67,6 +67,33 @@ void main() {
     expect(find.text('Finalizar entrevista'), findsOneWidget);
   });
 
+  testWidgets('una entrevista de días atrás dice desde qué día y cuánto va', (tester) async {
+    final antes = DateTime(2026, 10, 21, 14, 23);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: temaClaro(),
+        home: Scaffold(
+          body: HojaEntrevistaEnCurso(
+            direccion: 'Grecia 3307',
+            persona: 'Pedro Gómez',
+            inicio: antes,
+            notaInicial: '',
+            alEscribirNota: notas.add,
+            alFinalizar: () {},
+            reloj: () => ahora,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Desde Miércoles 21 · 14:23'), findsOneWidget);
+    expect(find.text('48 h 18 min'), findsOneWidget);
+    expect(find.text('Desde las 14:23'), findsNothing);
+  });
+
   testWidgets('el tiempo se actualiza solo cada medio minuto', (tester) async {
     await montar(tester);
     expect(find.text('18 min'), findsOneWidget);

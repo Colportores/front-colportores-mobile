@@ -227,6 +227,53 @@ void main() {
     });
   });
 
+  group(
+    'una entrevista que quedó abierta de días atrás (el día se ve si la hora no es de hoy)',
+    () {
+      final antes = DateTime(2026, 10, 21, 14, 23);
+
+      testWidgets('la entrada de otro día lleva el día; la salida de hoy, no', (tester) async {
+        await montar(tester, entrada: antes, salida: _salida);
+
+        expect(find.text('Miércoles 21 · 14:23  ✎'), findsOneWidget);
+        expect(find.text('14:41  ✎'), findsOneWidget);
+      });
+
+      testWidgets('las horas de hoy se ven solo como HH:mm', (tester) async {
+        await montar(tester, entrada: _entrada, salida: _salida);
+
+        expect(find.textContaining('Viernes'), findsNothing);
+        expect(find.text('14:23  ✎'), findsOneWidget);
+      });
+
+      testWidgets('la hoja de la hora dice el día de la hora que se mira', (tester) async {
+        await montar(tester, entrada: antes, salida: null);
+
+        await tocar(tester, ClavesEntrevista.filaSalida);
+
+        // El tope de la salida es la entrada + 12 h: ya es el jueves.
+        expect(find.byKey(const Key('hoja_hora_nota')), findsOneWidget);
+        expect(find.text('Jueves 22'), findsOneWidget);
+      });
+
+      testWidgets('la hoja de la hora de hoy no agrega ninguna aclaración', (tester) async {
+        await montar(tester, entrada: _entrada, salida: _salida);
+
+        await tocar(tester, ClavesEntrevista.filaSalida);
+
+        expect(find.byKey(const Key('hoja_hora_nota')), findsNothing);
+      });
+
+      testWidgets('el lector de pantalla también dice el día', (tester) async {
+        final semantica = tester.ensureSemantics();
+        await montar(tester, entrada: antes, salida: null);
+
+        expect(find.bySemanticsLabel('Entrada, Miércoles 21 · 14:23'), findsOneWidget);
+        semantica.dispose();
+      });
+    },
+  );
+
   group('R·07 · Sin inicio registrado', () {
     testWidgets('avisa que tomó la hora de la visita anterior y la deja para revisar', (
       tester,
