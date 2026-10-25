@@ -20,6 +20,11 @@ abstract final class TextosMapaUbicaciones {
   static const leyendaCerca = 'Cerca tuyo: crece y muestra el número';
   static const leyendaTuUbicacion = 'Tu ubicación';
 
+  // Vista 39 (decisión del 23/10, #467): lo que el mapa dibuja y la leyenda no explicaba.
+  static const leyendaEdificio = 'Edificio';
+  static const leyendaAcercar = 'Al acercar: cada casa muestra su número';
+  static const muestraCuadrado = 'Casa con su número de puerta';
+
   // Lo que dice el lector de pantalla donde el canvas dibuja solo un ícono o un número.
   static const mapa = 'Mapa de ubicaciones';
   static const nuevaUbicacion = 'Nueva ubicación';

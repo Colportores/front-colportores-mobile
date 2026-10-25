@@ -265,7 +265,7 @@ void main() {
       expect(find.text('Av. Italia 1234'), findsOneWidget);
       expect(find.text('Comercio 2381'), findsNothing);
       expect(punto(m.mapa, 'a').estilo, EstiloPunto.seleccionado);
-      expect(punto(m.mapa, 'd').estilo, EstiloPunto.contexto);
+      expect(punto(m.mapa, 'd').estilo, EstiloPunto.conEstado);
     });
 
     testWidgets('«✕» tocada dos veces, y volver a elegir la misma ubicación', (tester) async {
