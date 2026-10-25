@@ -56,7 +56,7 @@ void main() {
       expect(TextosEspacios.preguntaBaja(espacioDe('e', '102')), '¿Dar de baja el depto 102?');
       expect(
         TextosEspacios.preguntaBaja(espacioDe('e', null)),
-        '¿Dar de baja el depto sin número?',
+        '¿Dar de baja este depto sin número?',
       );
     });
 

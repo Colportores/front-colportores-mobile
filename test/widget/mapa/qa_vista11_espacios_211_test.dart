@@ -198,22 +198,35 @@ void main() {
 
   // ------------------------------------------------- 3. regla del repetido
   group('regla de «repetido» (canvas 11: «PB-A» y «pb a» son el mismo)', () {
-    testWidgets(
-      'el ejemplo literal del canvas: con «PB-A» cargado, «pb a» es repetido',
-      (tester) async {
-        final m = await llegarA(tester, EstadoV11.lista);
-        await abrirAltaDepto(tester);
-        await escribir(tester, campoNumero, 'pb a');
-        await tester.tap(botonAgregar);
-        await asentarHoja(tester);
+    testWidgets('el ejemplo literal del canvas: con «PB-A» cargado, «pb a» es repetido', (
+      tester,
+    ) async {
+      final m = await llegarA(tester, EstadoV11.lista);
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, 'pb a');
+      await tester.tap(botonAgregar);
+      await asentarHoja(tester);
 
-        expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
-        expect(m.repo.activos.where((e) => e.numeroDepto == 'pb a'), isEmpty);
-      },
-      // skip: QA #211 — el canvas 11 dice «“PB-A” y “pb a” son el mismo» y el PR los trata como
-      // distintos (el guion cuenta, pendiente P3).
-      skip: !_verHallazgos,
-    );
+      expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
+      expect(m.repo.activos.where((e) => e.numeroDepto == 'pb a'), isEmpty);
+    });
+
+    testWidgets('«PBA» y «PB—A» (guion largo del autocorrector) también son el mismo', (
+      tester,
+    ) async {
+      final m = await llegarA(tester, EstadoV11.lista);
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, 'PBA');
+      await tester.tap(botonAgregar);
+      await asentarHoja(tester);
+      expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
+
+      await escribir(tester, campoNumero, 'PB${String.fromCharCode(0x2014)}A');
+      await tester.tap(botonAgregar);
+      await asentarHoja(tester);
+      expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
+      expect(m.repo.activos.where((e) => e.numeroDepto != 'PB-A' && e.clave == 'pba'), isEmpty);
+    });
 
     testWidgets('espacios y mayúsculas sí se ignoran: «pb  A» vs «PB A»', (tester) async {
       final m = await llegarA(tester, EstadoV11.vacio);

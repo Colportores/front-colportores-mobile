@@ -49,6 +49,10 @@ abstract final class TextosListaUbicaciones {
   static const nueva = 'Nueva';
 }
 
+/// Qué se hace al abrir una ubicación de la Lista: su `id` y la distancia que muestra su fila (la
+/// hoja de la ubicación dice «EDIFICIO · A 25 M» igual que desde el mapa), o `null` sin GPS.
+typedef AlAbrirUbicacion = void Function(String ubicacionId, double? distanciaMetros);
+
 /// La pestaña «Lista» (vista 05, HU-UBI-002): las ubicaciones del colportor con filtros combinables,
 /// contadores, orden por cercanía, «Mostrar bajas», buscador y carga de a 50.
 ///
@@ -72,7 +76,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
 
   /// Qué pasa al tocar una fila. `null` mientras no haya una pantalla de destino (las ubicaciones
   /// del espacio, vista 11): las filas se ven igual pero no se tocan.
-  final ValueChanged<String>? alAbrirUbicacion;
+  final AlAbrirUbicacion? alAbrirUbicacion;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
@@ -192,6 +196,16 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
+  /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
+  double? _distanciaDe(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
+    }
+    return null;
+  }
+
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
   /// choca con otra casa activa (D1), la hoja lo dice y ofrece «Abrir la existente» solo si la Lista
   /// tiene a dónde abrirla ([ListaUbicacionesPage.alAbrirUbicacion]).
@@ -216,7 +230,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId);
+        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
       case null:
         break;
     }
@@ -799,7 +813,7 @@ class _Cuerpo extends StatelessWidget {
   /// «3 posibles duplicados · Revisar» (o el de la falla): va arriba de lo que se desplaza. No se
   /// muestra mientras se lee la lista por primera vez ni cuando esa lectura falla.
   final Widget? avisoDuplicados;
-  final ValueChanged<String>? alAbrirUbicacion;
+  final AlAbrirUbicacion? alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
 
   /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
@@ -959,7 +973,9 @@ class _Cuerpo extends StatelessWidget {
           item: item,
           lista: lista,
           ahora: ahora,
-          alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
+          alTocar: alAbrirUbicacion == null
+              ? null
+              : () => alAbrirUbicacion!(id, item.distanciaMetros),
           // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
           // se toca (HU-UBI-005, «Reactivar»).
           alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,

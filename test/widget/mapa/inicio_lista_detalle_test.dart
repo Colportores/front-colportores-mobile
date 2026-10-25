@@ -8,6 +8,7 @@ import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jorna
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/espacios_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
@@ -60,7 +61,7 @@ Future<_Edicion> _montar(WidgetTester tester) async {
         relojJornadaProvider.overrideWithValue(() => DateTime(2026, 10, 6, 15)),
         ...overridesLista(
           repo: RepoListaFalso([
-            filaLista('a', calle: 'Rivadavia', numero: '100'),
+            filaLista('a', calle: 'Rivadavia', numero: '100', metrosAlNorte: 25),
             filaLista('b', calle: 'Mataojo', numero: '2044'),
           ]),
         ),
@@ -102,6 +103,20 @@ void main() {
     expect(find.text('Depto 11'), findsOneWidget);
     expect(find.text('Depto 22'), findsNothing);
   });
+
+  testWidgets(
+    'la hoja abierta desde la Lista dice la misma distancia que la fila: «EDIFICIO · A 25 '
+    'M», como desde el mapa',
+    (tester) async {
+      await _montar(tester);
+
+      await tester.tap(find.byKey(const ValueKey('a')));
+      await asentarLista(tester);
+
+      expect(find.text('EDIFICIO · A 25${FormatoUbicaciones.espacioDuro}M'), findsOneWidget);
+      expect(find.text('EDIFICIO'), findsNothing);
+    },
+  );
 
   testWidgets('cerrar la hoja vuelve a la Lista, que sigue en la misma pestaña', (tester) async {
     await _montar(tester);
@@ -149,5 +164,8 @@ void main() {
     expect(find.byKey(ClavesHojaUbicacion.hoja), findsOneWidget);
     expect(find.text('Depto 22'), findsOneWidget);
     expect(find.text('Depto 11'), findsNothing);
+    // La distancia era la de «a»: la de «b» no se conoce desde acá y no se inventa.
+    expect(find.text('EDIFICIO'), findsOneWidget);
+    expect(find.text('EDIFICIO · A 25${FormatoUbicaciones.espacioDuro}M'), findsNothing);
   });
 }

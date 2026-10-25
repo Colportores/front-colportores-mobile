@@ -33,6 +33,7 @@ abstract final class ClavesHojaDepto {
   static const repetido = Key('depto_repetido');
   static const verRepetido = Key('depto_ver_repetido');
   static const falla = Key('depto_falla');
+  static const agregado = Key('depto_agregado');
   static const alternarTecladoNumero = Key('depto_teclado_numero');
   static const alternarTecladoPiso = Key('depto_teclado_piso');
   static const confirmarBaja = Key('depto_confirmar_baja');
@@ -143,6 +144,10 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
   String? _errorNumero;
   String? _falla;
 
+  /// «Depto 301 agregado.»: la confirmación visible de «Agregar y cargar otro». Se va cuando empieza
+  /// a escribir el siguiente número (o al volver a guardar).
+  String? _agregado;
+
   /// El depto con el mismo número (11·03): su número tal como se escribió y su id.
   ({String numero, String id})? _repetido;
 
@@ -162,14 +167,16 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
     _errorNumero = null;
     _falla = null;
     _repetido = null;
+    _agregado = null;
   }
 
   void _alEscribirNumero(String _) {
     // El aviso de «repetido» o «obligatorio» era de lo que había escrito: al cambiarlo se va.
-    if (_errorNumero != null || _repetido != null) {
+    if (_errorNumero != null || _repetido != null || _agregado != null) {
       setState(() {
         _errorNumero = null;
         _repetido = null;
+        _agregado = null;
       });
     }
   }
@@ -245,18 +252,16 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
     if (accion == _Accion.agregarYCargarOtro) {
       // El formulario queda listo para el siguiente: otro id, el número vacío y el piso como estaba.
       final numero = guardado.numeroDepto ?? '';
+      final aviso = TextosEspacios.agregado(numero);
       setState(() {
         _enCurso = null;
         _idAlta = ref.read(agregarEspacioUseCaseProvider).nuevoId();
         _numero.clear();
+        _agregado = aviso;
       });
       _focoNumero.requestFocus();
       unawaited(
-        SemanticsService.sendAnnouncement(
-          View.of(context),
-          TextosEspacios.agregado(numero),
-          Directionality.of(context),
-        ),
+        SemanticsService.sendAnnouncement(View.of(context), aviso, Directionality.of(context)),
       );
       return;
     }
@@ -494,6 +499,10 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                      if (_agregado != null) ...[
+                        _DeptoAgregado(key: ClavesHojaDepto.agregado, texto: _agregado!),
+                        const SizedBox(height: 10),
+                      ],
                       _CampoDepto(
                         key: ClavesHojaDepto.numero,
                         etiqueta: TextosEspacios.numeroObligatorio,
@@ -638,6 +647,34 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
 /// Un campo de texto de la hoja del depto: la etiqueta de arriba, el campo y, a la derecha, la tecla
 /// «ABC» / «123» que pasa el teclado de números a letras y de vuelta (canvas 11: «el teclado arranca
 /// numérico con una tecla para cambiar a letras»).
+/// La línea que confirma, a quien mira la pantalla, que el depto anterior quedó guardado («Depto 301
+/// agregado.»). No es región viva: el lector ya lo recibe como anuncio al guardar, una sola vez.
+class _DeptoAgregado extends StatelessWidget {
+  const _DeptoAgregado({super.key, required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const InsigniaCirculo(color: ColoresAlta.verde, glyph: '✓', tamano: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            texto,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: ColoresAlta.verde,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CampoDepto extends StatelessWidget {
   const _CampoDepto({
     super.key,

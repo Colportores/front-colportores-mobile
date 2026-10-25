@@ -24,13 +24,17 @@ class Espacio extends Equatable {
   /// #192: cambiarlo es cambiar esta constante.
   static const String? deptoPorDefecto = null;
 
-  /// La clave con la que dos números de depto se consideran el mismo: sin espacios y sin distinguir
-  /// mayúsculas («3B», «3 b» y «3b» son el mismo depto; canvas 11, «el número se compara sin espacios
-  /// ni mayúsculas»). `null` si no hay número (el espacio sin número no se compara con otro).
+  static final _ignorados = RegExp(r'[\s\-\u2010-\u2015]+');
+
+  /// La clave con la que dos números de depto se consideran el mismo: sin espacios, sin guiones y sin
+  /// distinguir mayúsculas («3B», «3 b» y «3b» son el mismo depto; «PB-A», «pb a» y «PBA» también:
+  /// canvas 11, «“PB-A” y “pb a” son el mismo»). Los guiones largos (– y —, que pone el autocorrector)
+  /// cuentan como guion; los puntos y las barras siguen contando. `null` si no hay número (el espacio
+  /// sin número no se compara con otro).
   ///
   /// Es el único detector de repetidos: lo usan la validación del alta y la edición y la pantalla.
   static String? claveDeNumero(String? numeroDepto) {
-    final limpio = numeroDepto?.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    final limpio = numeroDepto?.replaceAll(_ignorados, '').toLowerCase();
     return limpio == null || limpio.isEmpty ? null : limpio;
   }
 

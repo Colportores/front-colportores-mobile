@@ -21,9 +21,10 @@ final class GrupoDePiso extends Equatable {
 
 /// Arma los grupos de la lista de deptos de un edificio (vista 11·01).
 ///
-/// - Los pisos van en orden natural («2» antes que «10»; los números antes que los textos como «PB»)
-///   y «Sin piso» al final.
-/// - «1», « 1 » y «1» son el mismo piso; «pb» y «PB» también.
+/// - Los pisos van en orden natural («2» antes que «10»): primero «PB» (la planta baja, con o sin
+///   mayúsculas), después los números y después los otros textos de la A a la Z; «Sin piso» al final.
+/// - «1», « 1 » y «1» son el mismo piso; «pb» y «PB» también. Del piso el guion sí cuenta («-1» es el
+///   subsuelo, no el piso 1).
 /// - Dentro de un piso, los deptos con número van en orden natural («2B» antes que «10A») y, después,
 ///   los que no tienen número, en el orden en que se dieron de alta (HU-UBI-007: «todos como “Sin
 ///   número”, en el orden en que se dieron de alta», sin contador).
@@ -34,7 +35,7 @@ abstract final class AgrupadorEspacios {
     final sinPiso = <Espacio>[];
     for (final espacio in espacios) {
       final piso = espacio.piso?.trim();
-      final clave = Espacio.claveDeNumero(piso);
+      final clave = _clavePiso(piso);
       if (piso == null || clave == null) {
         sinPiso.add(espacio);
         continue;
@@ -42,12 +43,29 @@ abstract final class AgrupadorEspacios {
       grupos.putIfAbsent(clave, () => []).add(espacio);
       nombres.putIfAbsent(clave, () => piso);
     }
-    final claves = grupos.keys.toList()..sort(_compararNatural);
+    final claves = grupos.keys.toList()..sort(_compararPisos);
     return [
       for (final clave in claves)
         GrupoDePiso(piso: nombres[clave], espacios: _ordenar(grupos[clave]!)),
       if (sinPiso.isNotEmpty) GrupoDePiso(piso: null, espacios: _ordenar(sinPiso)),
     ];
+  }
+
+  /// La clave de un piso: sin espacios y sin distinguir mayúsculas; `null` si no hay piso.
+  static String? _clavePiso(String? piso) {
+    final limpio = piso?.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    return limpio == null || limpio.isEmpty ? null : limpio;
+  }
+
+  /// Planta baja.
+  static const _clavePlantaBaja = 'pb';
+
+  /// «PB» antes que cualquier otro piso; el resto, en orden natural.
+  static int _compararPisos(String a, String b) {
+    final aPb = a == _clavePlantaBaja;
+    final bPb = b == _clavePlantaBaja;
+    if (aPb != bPb) return aPb ? -1 : 1;
+    return _compararNatural(a, b);
   }
 
   static List<Espacio> _ordenar(List<Espacio> espacios) {

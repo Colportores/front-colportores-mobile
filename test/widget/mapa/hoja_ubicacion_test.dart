@@ -102,8 +102,8 @@ void main() {
       expect(find.text('Depto Local 1'), findsOneWidget);
     });
 
-    testWidgets('el orden es natural: 2 antes que 10, los pisos también, y los sin número al final '
-        'del piso en el orden en que se dieron de alta', (tester) async {
+    testWidgets('el orden es natural: «PB» primero, 2 antes que 10, los pisos también, y los sin '
+        'número al final del piso en el orden en que se dieron de alta', (tester) async {
       await montarHoja(
         tester,
         espacios: [
@@ -118,7 +118,7 @@ void main() {
       );
 
       final y = [
-        for (final id in ['e-2', 'e-10', 'e-sn1', 'e-sn2', 'e-p10', 'e-pb'])
+        for (final id in ['e-pb', 'e-2', 'e-10', 'e-sn1', 'e-sn2', 'e-p10'])
           _y(tester, filaDepto(id)),
       ];
       expect(y, orderedEquals([...y]..sort()), reason: 'orden de arriba a abajo');

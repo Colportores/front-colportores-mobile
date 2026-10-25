@@ -48,19 +48,23 @@ class _InicioPageState extends ConsumerState<InicioPage> {
   /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
   /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
   /// baja) la Lista lo ve sola al releer.
-  Future<void> _abrirUbicacion(String ubicacionId) async {
+  Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
     if (_abriendoUbicacion) return;
     _abriendoUbicacion = true;
     try {
       var id = ubicacionId;
+      var distancia = distanciaMetros;
       while (mounted) {
         final salida = await mostrarHojaUbicacion(
           context,
           colportorId: widget.sesion.usuarioId,
           ubicacionId: id,
+          distanciaMetros: distancia,
         );
         if (salida is! UbicacionExistenteElegida) break;
         id = salida.ubicacionId;
+        // La distancia era la de la otra ubicación: de esta no se conoce desde acá.
+        distancia = null;
       }
     } finally {
       _abriendoUbicacion = false;
@@ -142,7 +146,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
-                      alAbrirUbicacion: (id) => unawaited(_abrirUbicacion(id)),
+                      alAbrirUbicacion: (id, distancia) =>
+                          unawaited(_abrirUbicacion(id, distancia)),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },

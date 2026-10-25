@@ -27,8 +27,26 @@ void main() {
       expect(Espacio.claveDeNumero('pb  a'), Espacio.claveDeNumero('PB A'));
     });
 
-    test('el guion cuenta: «PB-A» no es «PB A»', () {
-      expect(Espacio.claveDeNumero('PB-A'), isNot(Espacio.claveDeNumero('PB A')));
+    test('«PB-A», «pb a» y «PBA» son el mismo número (canvas 11)', () {
+      expect(Espacio.claveDeNumero('PB-A'), 'pba');
+      expect(Espacio.claveDeNumero('PB-A'), Espacio.claveDeNumero('pb a'));
+      expect(Espacio.claveDeNumero('PB-A'), Espacio.claveDeNumero('PBA'));
+    });
+
+    test('los guiones largos que pone el autocorrector (– y —) cuentan como guion', () {
+      final largos = '${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}';
+      expect(Espacio.claveDeNumero('PB${largos}A'), Espacio.claveDeNumero('PB-A'));
+      expect(Espacio.claveDeNumero('PB ${String.fromCharCode(0x2013)} A'), 'pba');
+    });
+
+    test('los puntos y las barras siguen contando', () {
+      expect(Espacio.claveDeNumero('1.2'), isNot(Espacio.claveDeNumero('12')));
+      expect(Espacio.claveDeNumero('1/2'), isNot(Espacio.claveDeNumero('12')));
+    });
+
+    test('un número que es solo guiones no tiene clave: es «Sin número»', () {
+      expect(Espacio.claveDeNumero('-'), isNull);
+      expect(Espacio.claveDeNumero(' - - '), isNull);
     });
 
     test('sin número (nulo, vacío o en blanco) no hay clave', () {
@@ -60,7 +78,7 @@ void main() {
       expect(_ids(grupos[2]), ['b']);
     });
 
-    test('los pisos van en orden natural: 2 antes que 10 y los números antes que «PB»', () {
+    test('los pisos van en orden natural: «PB» primero y después 1, 2, 10', () {
       final grupos = AgrupadorEspacios.porPiso([
         _e('a', '1', piso: 'PB'),
         _e('b', '1', piso: '10'),
@@ -68,7 +86,27 @@ void main() {
         _e('d', '1', piso: '1'),
       ]);
 
-      expect(grupos.map((g) => g.piso), ['1', '2', '10', 'PB']);
+      expect(grupos.map((g) => g.piso), ['PB', '1', '2', '10']);
+    });
+
+    test('«PB» (sin importar mayúsculas) va antes que el piso 1; los otros textos, después de '
+        'los números y de la A a la Z; «Sin piso» al final', () {
+      final grupos = AgrupadorEspacios.porPiso([
+        _e('a', '1'),
+        _e('b', '1', piso: 'Terraza'),
+        _e('c', '1', piso: '10'),
+        _e('d', '1', piso: 'azotea'),
+        _e('e', '1', piso: '1'),
+        _e('f', '1', piso: 'pb'),
+      ]);
+
+      expect(grupos.map((g) => g.piso), ['pb', '1', '10', 'azotea', 'Terraza', null]);
+    });
+
+    test('el guion del piso cuenta: «-1» no es el piso «1»', () {
+      final grupos = AgrupadorEspacios.porPiso([_e('a', '1', piso: '-1'), _e('b', '2', piso: '1')]);
+
+      expect(grupos, hasLength(2));
     });
 
     test(
@@ -82,8 +120,8 @@ void main() {
         ]);
 
         expect(grupos, hasLength(2));
-        expect(_ids(grupos[0]), ['a', 'b']);
-        expect(_ids(grupos[1]), ['c', 'd']);
+        expect(_ids(grupos[0]), ['c', 'd']);
+        expect(_ids(grupos[1]), ['a', 'b']);
       },
     );
 

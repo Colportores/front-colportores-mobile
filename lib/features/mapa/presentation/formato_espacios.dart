@@ -79,14 +79,15 @@ abstract final class TextosEspacios {
   static const dandoDeBaja = 'Dando de baja…';
   static const noPudimosDarDeBaja = 'No pudimos dar de baja el departamento. Probá de nuevo.';
 
-  /// El título de la confirmación de la baja de un depto sin personas.
+  /// El título de la confirmación de la baja de un depto sin personas: «¿Dar de baja el depto 102?»;
+  /// sin número no puede decir «el depto Sin número», dice «este depto sin número».
   static String preguntaBaja(Espacio espacio) => '¿Dar de baja ${_deLaLista(espacio)}?';
 
   static String cuerpoBaja(TipoUbicacion tipo) =>
       'Deja de aparecer en la lista del ${tipo == TipoUbicacion.negocio ? 'negocio' : 'edificio'}.';
 
   static String _deLaLista(Espacio espacio) =>
-      espacio.sinNumero ? 'el depto sin número' : 'el ${depto(espacio).toLowerCase()}';
+      espacio.sinNumero ? 'este depto sin número' : 'el ${depto(espacio).toLowerCase()}';
 
   /// Lo que dice el lector de pantalla de una fila de la lista.
   static String filaSemantica(Espacio espacio) => '${depto(espacio)}. Editar.';

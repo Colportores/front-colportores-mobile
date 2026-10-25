@@ -186,6 +186,104 @@ void main() {
       expect(habilitado(tester, botonAgregar), isTrue);
     });
 
+    testWidgets('«PB-A» y «pb a» son el mismo número: el segundo es repetido (canvas 11·03)', (
+      tester,
+    ) async {
+      final m = await montarHoja(tester, espacios: [espacioDe('e-pba', 'PB-A', piso: 'PB')]);
+      await abrirAltaDepto(tester);
+
+      await escribir(tester, campoNumero, 'pb a');
+      await tester.tap(botonAgregar);
+      await asentarHoja(tester);
+
+      expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
+      expect(m.repo.espacios, hasLength(1));
+      expect(textoDe(tester, campoNumero), 'pb a', reason: 'lo escrito no se pierde');
+    });
+
+    testWidgets('al editar, cambiar «PB-B» a «pb a» choca con «PB-A»', (tester) async {
+      final m = await montarHoja(
+        tester,
+        espacios: [
+          espacioDe('e-pba', 'PB-A', piso: 'PB'),
+          espacioDe('e-pbb', 'PB-B', piso: 'PB'),
+        ],
+      );
+      await abrirEdicionDepto(tester, 'e-pbb');
+
+      await escribir(tester, campoNumero, 'pb a');
+      await tester.tap(botonGuardarDepto);
+      await asentarHoja(tester);
+
+      expect(find.text('Ya existe el departamento PB-A en este edificio.'), findsOneWidget);
+      expect(m.repo.espacios.map((e) => e.numeroDepto), ['PB-A', 'PB-B']);
+    });
+
+    testWidgets(
+      '«Agregar y cargar otro» confirma a la vista «Depto 101 agregado.» sobre el campo y '
+      'la línea se va cuando empieza a escribir el siguiente',
+      (tester) async {
+        await montarHoja(tester);
+        await abrirAltaDepto(tester);
+        expect(find.byKey(ClavesHojaDepto.agregado), findsNothing);
+
+        await escribir(tester, campoNumero, '101');
+        await tester.tap(botonAgregarYCargarOtro);
+        await asentarHoja(tester);
+
+        expect(find.byKey(ClavesHojaDepto.agregado), findsOneWidget);
+        expect(find.text('Depto 101 agregado.'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(ClavesHojaDepto.agregado)).dy,
+          lessThan(tester.getTopLeft(campoNumero).dy),
+          reason: 'la línea va sobre el campo',
+        );
+
+        await escribir(tester, campoNumero, '1');
+        await tester.pump();
+        expect(find.byKey(ClavesHojaDepto.agregado), findsNothing);
+        expect(find.text('Depto 101 agregado.'), findsNothing);
+      },
+    );
+
+    testWidgets('la línea de «agregado» no es región viva (el lector la recibe una sola vez, como '
+        'anuncio) y la del último se reemplaza por la del siguiente', (tester) async {
+      await montarHoja(tester);
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, '101');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+
+      final semantica = tester.getSemantics(find.text('Depto 101 agregado.'));
+      expect(semantica.flagsCollection.isLiveRegion, isFalse);
+
+      await escribir(tester, campoNumero, '102');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+      expect(find.text('Depto 101 agregado.'), findsNothing);
+      expect(find.text('Depto 102 agregado.'), findsOneWidget);
+    });
+
+    testWidgets('si el siguiente falla, la línea del anterior se va y queda el aviso de la falla', (
+      tester,
+    ) async {
+      final m = await montarHoja(tester);
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, '101');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+      expect(find.text('Depto 101 agregado.'), findsOneWidget);
+
+      m.repo.fallas.add(const FailureInesperado(causa: 'disco'));
+      await escribir(tester, campoNumero, '102');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+
+      expect(find.text('Depto 101 agregado.'), findsNothing);
+      expect(find.byKey(ClavesHojaDepto.falla), findsOneWidget);
+      expect(habilitado(tester, botonAgregar), isTrue);
+    });
+
     testWidgets('dos seguidos agregan dos deptos distintos con ids distintos; la lista de abajo '
         'los muestra al cerrar', (tester) async {
       final m = await montarHoja(tester, tamano: const Size(390, 1400));
