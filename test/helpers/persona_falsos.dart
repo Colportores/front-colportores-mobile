@@ -127,12 +127,10 @@ PersonaDelEspacio clienteDePersonas(
   String apellido = '',
   String? telefono,
   int minutos = 0,
+  DateTime? creada,
 }) {
-  final a = Auditoria(
-    createdAt: _t0.add(Duration(minutes: minutos)),
-    updatedAt: _t0.add(Duration(minutes: minutos)),
-    createdBy: 'col-1',
-  );
+  final momento = creada ?? _t0.add(Duration(minutes: minutos));
+  final a = Auditoria(createdAt: momento, updatedAt: momento, createdBy: 'col-1');
   return PersonaDelEspacio(
     persona: Persona(id: id, nombre: nombre, apellido: apellido, telefono: telefono, auditoria: a),
     vinculo: EspacioPersona(id: 'ep-$id', espacioId: 'esp-1', personaId: id, auditoria: a),
