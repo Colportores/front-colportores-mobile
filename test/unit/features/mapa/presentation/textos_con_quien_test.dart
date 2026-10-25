@@ -83,4 +83,79 @@ void main() {
       expect(TextosConQuien.filaParaLector(hijo, null), 'Pedro Gómez');
     });
   });
+  group('el nombre repetido y también la segunda línea', () {
+    final padre = clienteDePersonas(
+      'padre',
+      'Pedro',
+      apellido: 'Gómez',
+      creada: DateTime(2026, 10, 23, 15, 40),
+    );
+    final hijo = clienteDePersonas(
+      'hijo',
+      'Pedro',
+      apellido: 'Gómez',
+      creada: DateTime(2026, 10, 23, 9, 5),
+    );
+    final conTelA = clienteDePersonas(
+      'a',
+      'Pedro',
+      apellido: 'Gómez',
+      telefono: '099 123 412',
+      creada: DateTime(2026, 10, 23, 15, 40),
+    );
+    final conTelB = clienteDePersonas(
+      'b',
+      'Pedro',
+      apellido: 'Gómez',
+      telefono: '099 777 412',
+      creada: DateTime(2026, 10, 24, 8, 0),
+    );
+    final otro = clienteDePersonas('otro', 'Pedro', apellido: 'Gómez', minutos: 3);
+
+    test('dos sin teléfono cargados el mismo día suman la hora de alta (hora local, HH:mm)', () {
+      expect(TextosConQuien.conSegundaLineaRepetida([padre, hijo]), {'padre', 'hijo'});
+      expect(
+        TextosConQuien.paraDistinguir(padre.persona, conHora: true),
+        'Cargada el 23/10 a las 15:40',
+      );
+      expect(
+        TextosConQuien.paraDistinguir(hijo.persona, conHora: true),
+        'Cargada el 23/10 a las 09:05',
+      );
+    });
+
+    test('con el mismo teléfono enmascarado, la hora va después de «Tel. 099 ••• 412 · »', () {
+      expect(TextosConQuien.conSegundaLineaRepetida([conTelA, conTelB]), {'a', 'b'});
+      expect(
+        TextosConQuien.paraDistinguir(conTelB.persona, conHora: true),
+        'Tel. 099 ••• 412 · Cargada el 24/10 a las 08:00',
+      );
+    });
+
+    test('solo suman la hora las filas cuya línea se repite, no las que ya se distinguen', () {
+      // padre e hijo comparten «Cargada el 23/10»; «otro» (con teléfono propio) ya se distingue.
+      final conTel = clienteDePersonas('t', 'Pedro', apellido: 'Gómez', telefono: '098 555 111');
+      expect(TextosConQuien.conSegundaLineaRepetida([padre, hijo, conTel]), {'padre', 'hijo'});
+      expect(TextosConQuien.conSegundaLineaRepetida([padre, conTel]), isEmpty);
+      expect(TextosConQuien.conSegundaLineaRepetida([padre, otro]), isEmpty);
+    });
+
+    test('un nombre único, o ninguno, no suma nada', () {
+      final ana = clienteDePersonas('ana', 'Ana', apellido: 'Gómez');
+      expect(TextosConQuien.conSegundaLineaRepetida([padre, ana]), isEmpty);
+      expect(TextosConQuien.conSegundaLineaRepetida(const []), isEmpty);
+    });
+
+    test('el lector lee lo mismo que ve la pantalla', () {
+      expect(
+        TextosConQuien.filaParaLector(padre, null, nombreRepetido: true, conHora: true),
+        'Pedro Gómez. Cargada el 23/10 a las 15:40',
+      );
+      expect(
+        TextosConQuien.filaParaLector(conTelB, 120000, nombreRepetido: true, conHora: true),
+        'Pedro Gómez. Teléfono terminado en 412. Cargada el 24/10 a las 08:00. Saldo \$ 1.200',
+      );
+      expect(TextosConQuien.filaParaLector(padre, null, conHora: true), 'Pedro Gómez');
+    });
+  });
 }

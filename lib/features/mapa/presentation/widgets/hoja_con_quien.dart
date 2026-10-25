@@ -359,6 +359,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     final saldos = ref.watch(saldosDelEspacioProvider(widget.espacioId)).asData?.value ?? const {};
     final elegida = _elegidaDe(personas);
     final repetidos = TextosConQuien.conNombreRepetido(personas);
+    final conHora = TextosConQuien.conSegundaLineaRepetida(personas);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -384,12 +385,21 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
               final p = personas[i - 1];
               final saldo = saldos[p.persona.id];
               final repetido = repetidos.contains(p.persona.id);
+              final horaDeAlta = conHora.contains(p.persona.id);
               return _FilaOpcion(
                 titulo: FormatoPersonas.nombreCompleto(p.persona),
-                // Solo con el nombre repetido, la segunda línea de 11·04 que dice quién es quién.
-                distintivo: repetido ? TextosConQuien.paraDistinguir(p.persona) : null,
+                // Solo con el nombre repetido, la segunda línea de 11·04 que dice quién es quién; si
+                // esa línea también se repite, suma la hora de alta.
+                distintivo: repetido
+                    ? TextosConQuien.paraDistinguir(p.persona, conHora: horaDeAlta)
+                    : null,
                 detalle: saldo == null ? null : TextosConQuien.saldo(saldo),
-                etiquetaLector: TextosConQuien.filaParaLector(p, saldo, nombreRepetido: repetido),
+                etiquetaLector: TextosConQuien.filaParaLector(
+                  p,
+                  saldo,
+                  nombreRepetido: repetido,
+                  conHora: horaDeAlta,
+                ),
                 seleccionada: p.persona.id == elegida?.persona.id,
                 alTocar: () => setState(() => _elegidaId = p.persona.id),
               );

@@ -448,6 +448,76 @@ void main() {
         handle.dispose();
       });
 
+      testWidgets('dos homónimos sin teléfono cargados el mismo día: la segunda línea suma la '
+          'hora de alta, y el lector la lee', (tester) async {
+        final handle = tester.ensureSemantics();
+        final a = clienteDePersonas(
+          'a',
+          'Pedro',
+          apellido: 'Gómez',
+          creada: DateTime(2026, 10, 23, 15, 40),
+        );
+        final b = clienteDePersonas(
+          'b',
+          'Pedro',
+          apellido: 'Gómez',
+          creada: DateTime(2026, 10, 23, 9, 5),
+        );
+        final resultado = await montarConQuien(
+          tester,
+          repo: PersonaRepositorioFalso()..sembrar([a, b]),
+        );
+
+        expect(find.text('Cargada el 23/10 a las 15:40'), findsOneWidget);
+        expect(find.text('Cargada el 23/10 a las 09:05'), findsOneWidget);
+        expect(find.text('Cargada el 23/10'), findsNothing);
+        expect(find.bySemanticsLabel('Pedro Gómez. Cargada el 23/10 a las 15:40'), findsOneWidget);
+        expect(find.bySemanticsLabel('Pedro Gómez. Cargada el 23/10 a las 09:05'), findsOneWidget);
+        // Se puede elegir a la segunda por su hora y devuelve a esa.
+        await _tocar(tester, find.text('Cargada el 23/10 a las 09:05'));
+        await _tocar(tester, _botonEmpezar);
+        expect(resultado.elegida, b.aLaEntrevista);
+        handle.dispose();
+      });
+
+      testWidgets('dos homónimos con el mismo teléfono: «Tel. … · Cargada el … a las …»', (
+        tester,
+      ) async {
+        final a = clienteDePersonas(
+          'a',
+          'Pedro',
+          apellido: 'Gómez',
+          telefono: '099 123 412',
+          creada: DateTime(2026, 10, 23, 15, 40),
+        );
+        final b = clienteDePersonas(
+          'b',
+          'Pedro',
+          apellido: 'Gómez',
+          telefono: '099 123 412',
+          creada: DateTime(2026, 10, 23, 16, 2),
+        );
+        await montarConQuien(tester, repo: PersonaRepositorioFalso()..sembrar([a, b]));
+
+        expect(find.text('Tel. 099 ••• 412 · Cargada el 23/10 a las 15:40'), findsOneWidget);
+        expect(find.text('Tel. 099 ••• 412 · Cargada el 23/10 a las 16:02'), findsOneWidget);
+      });
+
+      testWidgets('si también coinciden en el minuto, las filas quedan en el orden de alta y la '
+          'primera elegida', (tester) async {
+        final mismaHora = DateTime(2026, 10, 23, 15, 40);
+        final a = clienteDePersonas('a', 'Pedro', apellido: 'Gómez', creada: mismaHora);
+        final b = clienteDePersonas('b', 'Pedro', apellido: 'Gómez', creada: mismaHora);
+        final resultado = await montarConQuien(
+          tester,
+          repo: PersonaRepositorioFalso()..sembrar([a, b]),
+        );
+
+        expect(find.text('Cargada el 23/10 a las 15:40'), findsNWidgets(2));
+        await _tocar(tester, _botonEmpezar);
+        expect(resultado.elegida, a.aLaEntrevista);
+      });
+
       testWidgets('con nombres distintos no hay segunda línea', (tester) async {
         await montarConQuien(tester, repo: _casaConDos());
 
