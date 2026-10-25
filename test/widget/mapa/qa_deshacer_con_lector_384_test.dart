@@ -346,9 +346,12 @@ void main() {
         await _unir(tester, _parItalia);
 
         final avisoNodo = tester.getSemantics(
-          find.descendant(of: _aviso, matching: find.textContaining('quedaron unidas')),
+          find.descendant(of: _aviso, matching: find.textContaining('se unen en una')),
         );
-        expect(avisoNodo.label, contains('Las dos Av. Italia 1234 quedaron unidas en una.'));
+        expect(
+          avisoNodo.label,
+          contains('Las dos Av. Italia 1234 se unen en una cuando cierres este aviso.'),
+        );
         // El nodo que acepta `dismiss` es un ancestro del texto.
         expect(find.semantics.byAction(SemanticsAction.dismiss), findsOneWidget);
         expect(find.semantics.byLabel('Deshacer'), findsOneWidget);
@@ -374,8 +377,8 @@ void main() {
 
   group('Un aviso que no se va solo no tapa lo que hay que tocar', () {
     for (final escala in [1.0, 2.0]) {
-      // skip: issue #384 — con lector el aviso queda fijo y tapa el "Revisar" del último par (1,0×: 30 de
-      // 52 dp; 2,0×: entero) sin lugar para bajar más: la lista no deja espacio abajo para el aviso.
+      // Hallazgo de la QA de #470 (el aviso fijo tapaba el "Revisar" del último par), resuelto: la lista
+      // suma abajo la altura del aviso mientras no se va solo.
       _prueba(
         'texto $escala a 360x640: con 5 pares y el aviso pendiente, la última tarjeta y su "Revisar" '
         'se pueden ver y tocar sin descartar el aviso',
@@ -409,7 +412,6 @@ void main() {
                 '"Revisar" del último par $boton queda debajo del aviso $aviso con la lista al final',
           );
         },
-        skip: !_verHallazgos,
       );
     }
   });
@@ -626,8 +628,8 @@ void main() {
       expect(find.byKey(const Key('duplicados_falla_union')), findsNothing);
     });
 
-    // skip: issue #384 — el aviso del módulo bloqueado (`hideCurrentSnackBar`) cierra el de «Deshacer» y, con
-    // lector, eso une la pendiente sin que la persona la haya cerrado.
+    // Hallazgo de la QA de #470, decidido (mapa §2): si otro aviso (`hide` / `remove`) cierra el de
+    // «Deshacer», la unión sigue esperando y el aviso vuelve a mostrarse.
     _prueba(
       'cuenta restringida a mitad de la espera: tocar "Revisar" no une la pendiente a escondidas',
       (tester) async {
@@ -650,7 +652,6 @@ void main() {
           reason: 'el aviso del módulo bloqueado cerró el de "Deshacer"',
         );
       },
-      skip: !_verHallazgos,
     );
   });
 

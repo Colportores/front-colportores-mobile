@@ -316,6 +316,55 @@ void main() {
     });
   });
 
+  group('Escenario: el aviso dice la verdad (mapa §2, P1 de la QA)', () {
+    _prueba('con lector el aviso dice que se une cuando se cierre, en pantalla y para el lector', (
+      tester,
+    ) async {
+      final datos = _datos();
+      await _montar(tester, datos, lector: true);
+      await _unir(tester, _parItalia);
+
+      const texto = 'Las dos Av. Italia 1234 se unen en una cuando cierres este aviso.';
+      expect(find.text(texto), findsOneWidget);
+      expect(find.textContaining('quedaron unidas'), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('cuando cierres este aviso')), findsWidgets);
+      expect(_deshacer, findsOneWidget);
+    });
+
+    _prueba('sin lector el aviso dice lo de siempre', (tester) async {
+      final datos = _datos();
+      await _montar(tester, datos, lector: false);
+      await _unir(tester, _parItalia);
+
+      expect(find.text('Las dos Av. Italia 1234 quedaron unidas en una.'), findsOneWidget);
+      expect(find.textContaining('cuando cierres'), findsNothing);
+    });
+  });
+
+  group('Escenario: otro aviso cierra el de "Deshacer" (mapa §2, P2 de la QA)', () {
+    _prueba(
+      'con lector, si otro aviso lo cierra (hide) la unión sigue esperando y el aviso vuelve',
+      (tester) async {
+        final datos = _datos();
+        await _montar(tester, datos, lector: true);
+        await _unir(tester, _parItalia);
+
+        ScaffoldMessenger.of(
+          tester.element(find.byType(PosiblesDuplicadosPage)),
+        ).hideCurrentSnackBar();
+        await _transicion(tester);
+        await tester.pump(const Duration(minutes: 1));
+
+        expect(datos.uniones, isEmpty, reason: 'no la cerró la persona');
+        expect(_deshacer, findsOneWidget, reason: 'el aviso vuelve a mostrarse');
+        expect(find.text('1 para revisar'), findsOneWidget);
+
+        await _descartarElAviso(tester);
+        expect(datos.uniones, hasLength(1));
+      },
+    );
+  });
+
   group('Escenario: sin lector de pantalla todo sigue igual, 8 s', () {
     _prueba(
       'dado el lector apagado, cuando toco "Conservar A y unir", a los 8 s la unión se hace y el '
