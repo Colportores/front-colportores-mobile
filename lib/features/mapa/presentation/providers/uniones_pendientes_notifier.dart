@@ -9,13 +9,15 @@ import '../../domain/usecases/duplicados_ubicacion_use_cases.dart';
 import 'duplicados_providers.dart';
 
 /// Una unión que el colportor pidió con «Conservar A y unir» y todavía no se hizo: espera sus 8 s de
-/// «Deshacer». **No cambia nada** en la base local ni en la cola de sync hasta que se cumplen.
+/// «Deshacer» (o, con un lector de pantalla, a que se cierre el aviso). **No cambia nada** en la base
+/// local ni en la cola de sync hasta que se cumple.
 final class UnionPendiente extends Equatable {
   const UnionPendiente({
     required this.clavePar,
     required this.conservarId,
     required this.duplicadaId,
     required this.direccion,
+    this.esperaElCierre = false,
   });
 
   /// `ParDuplicado.clave`: identifica el par sin importar cuál se conserva.
@@ -30,8 +32,14 @@ final class UnionPendiente extends Equatable {
   /// de las dos tiene (los avisos tienen su frase para ese caso).
   final String direccion;
 
+  /// Con un lector de pantalla encendido (WCAG 2.2.1, decisión de Cristian 21/10, «Deshacer AA»): los
+  /// 8 s no corren, porque con el lector «Deshacer» puede no llegar a tiempo. La unión se hace cuando
+  /// la colportora cierra el aviso ([UnionesPendientesNotifier.confirmarPendiente]), sale de la
+  /// pantalla o une otro par; «Deshacer» sigue cancelándola. Sin lector es `false`: 8 s, como siempre.
+  final bool esperaElCierre;
+
   @override
-  List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion];
+  List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion, esperaElCierre];
 }
 
 /// Una unión que se intentó hacer y no se pudo, con el motivo.
@@ -159,6 +167,9 @@ final avisoUnionFallidaProvider = Provider.autoDispose.family<List<FallaUnion>, 
 /// - **Unir otro par** hace definitiva la anterior en ese momento, y los 8 s corren para el nuevo.
 /// - **Pasados los 8 s**, o al salir de la pantalla (se descarta el notificador), la unión es
 ///   definitiva: una sola transacción local (`UnirDuplicadosUseCase`).
+/// - **Con lector de pantalla** ([UnionPendiente.esperaElCierre]) no hay 8 s: la unión es definitiva
+///   cuando se cierra el aviso ([confirmarPendiente]), al salir de la pantalla o al unir otro par.
+///   «Deshacer» cancela igual. El resto no cambia (nada se escribe mientras espera).
 /// - Si la app se cierra de golpe en los 8 s, no se hizo nada (todo está en memoria).
 /// - Las uniones definitivas corren de a una y en el orden en que se pidieron.
 /// - Si una falla, no cambia nada, el par vuelve a la lista y [UnionesPendientesState.fallas] dice
@@ -216,7 +227,15 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       duplicadasEnCurso: {...state.duplicadasEnCurso, union.duplicadaId},
       fallas: _fallasQueSiguenCon(union),
     );
-    _reloj = Timer(_plazo, _alCumplirse);
+    // Con lector no corre ningún reloj: la pantalla llama a [confirmarPendiente] al cerrarse el aviso.
+    _reloj = union.esperaElCierre ? null : Timer(_plazo, _alCumplirse);
+  }
+
+  /// El aviso de [union] se cerró (con un lector de pantalla no se cierra solo): si sigue siendo la
+  /// que espera, se hace ya. Si ya se hizo, se deshizo o la reemplazó otra, no pasa nada.
+  void confirmarPendiente(UnionPendiente union) {
+    if (!identical(_pendiente, union)) return;
+    _alCumplirse();
   }
 
   /// Las fallas que se quedan cuando se pide [nueva]: las que ya estaban, menos las que [nueva]

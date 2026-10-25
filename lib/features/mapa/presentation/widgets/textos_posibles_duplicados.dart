@@ -99,6 +99,14 @@ abstract final class TextosPosiblesDuplicados {
       ? 'Las dos ubicaciones quedaron unidas en una.'
       : 'Las dos $direccion quedaron unidas en una.';
 
+  /// El mismo aviso con un lector de pantalla encendido (decisión de Cristian 21/10, «Deshacer AA»;
+  /// mapa §2, #384): la unión todavía no se hizo, se hace al cerrar el aviso. «Las dos Av. Italia 1234 se
+  /// unen en una cuando cierres este aviso.»; sin dirección: «Las dos ubicaciones se unen en una cuando
+  /// cierres este aviso.»
+  static String unenAlCerrar(String direccion) => direccion.isEmpty
+      ? 'Las dos ubicaciones se unen en una cuando cierres este aviso.'
+      : 'Las dos $direccion se unen en una cuando cierres este aviso.';
+
   // ------------------------------------------------------------ estados que el canvas no dibuja
   static const cargando = 'Buscando posibles duplicados';
   static const vacioTitulo = 'No hay posibles duplicados';
