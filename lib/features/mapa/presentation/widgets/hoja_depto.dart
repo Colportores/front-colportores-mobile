@@ -644,9 +644,6 @@ class _HojaDeptoState extends ConsumerState<HojaDepto> {
   static final _estiloPrimario = FilledButton.styleFrom(minimumSize: const Size.fromHeight(52));
 }
 
-/// Un campo de texto de la hoja del depto: la etiqueta de arriba, el campo y, a la derecha, la tecla
-/// «ABC» / «123» que pasa el teclado de números a letras y de vuelta (canvas 11: «el teclado arranca
-/// numérico con una tecla para cambiar a letras»).
 /// La línea que confirma, a quien mira la pantalla, que el depto anterior quedó guardado («Depto 301
 /// agregado.»). No es región viva: el lector ya lo recibe como anuncio al guardar, una sola vez.
 class _DeptoAgregado extends StatelessWidget {
@@ -675,6 +672,9 @@ class _DeptoAgregado extends StatelessWidget {
   }
 }
 
+/// Un campo de texto de la hoja del depto: la etiqueta de arriba, el campo y, a la derecha, la tecla
+/// «ABC» / «123» que pasa el teclado de números a letras y de vuelta (canvas 11: «el teclado arranca
+/// numérico con una tecla para cambiar a letras»).
 class _CampoDepto extends StatelessWidget {
   const _CampoDepto({
     super.key,
