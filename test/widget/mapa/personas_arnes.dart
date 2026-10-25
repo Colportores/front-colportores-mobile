@@ -101,6 +101,7 @@ Future<void> montarClientes(
   Failure? fallaDeContexto,
   double escala = 1,
   Size tamano = const Size(390, 844),
+  List<Override> otrosOverrides = const [],
 }) async {
   _fijarTamano(tester, tamano);
   await tester.pumpWidget(
@@ -109,7 +110,7 @@ Future<void> montarClientes(
         repo ?? PersonaRepositorioFalso(),
         contextoNulo ? null : (contexto ?? contextoActivo()),
         falla: fallaDeContexto,
-      ),
+      )..addAll(otrosOverrides),
       child: _App(
         escala: escala,
         home: Builder(

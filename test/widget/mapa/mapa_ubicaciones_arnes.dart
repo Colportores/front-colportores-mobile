@@ -88,6 +88,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   bool activa = true,
   SalidaAltaUbicacion? salidaAlta,
   bool asentar = true,
+  List<Override> otrosOverrides = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -104,6 +105,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
       overrides: <Override>[
         ...overridesLista(repo: montaje.repo, gps: montaje.gps, ciudades: ciudades),
         montaje.mapa.override,
+        ...otrosOverrides,
         if (arnes != null)
           ...arnes.overrides
         else
