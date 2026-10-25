@@ -82,22 +82,29 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
     return resultado.fold((falla) => throw falla, (estado) => estado);
   }
 
-  /// La respuesta que llegó después del tope de 15 s del arranque (decisión del agente de
-  /// decisiones, #278). Se aplica solo si la persona sigue en la vista 18 (sin estado conocido,
-  /// pendiente o suspendida), la sesión es la misma y ninguna consulta pedida después (un
-  /// «Reintentar») ya contestó: ahí la pantalla cambia sola. Si ya entró a su inicio con el último
-  /// estado conocido, no la saca de ahí: queda guardada para el próximo arranque (la guarda el
-  /// repositorio, con el mismo criterio).
+  /// La respuesta que llegó después del tope de 15 s del arranque (decisiones del agente de
+  /// decisiones, #278, y de Cristian del 21/10, «Suspensión», #383). Se aplica si la sesión es la
+  /// misma y ninguna consulta pedida después (un «Reintentar») ya contestó, y además:
+  ///
+  /// - La persona sigue en la vista 18 (sin estado conocido, pendiente o suspendida): la pantalla
+  ///   cambia sola, sea buena o mala la noticia.
+  /// - Ya entró a su inicio con el último estado conocido y la respuesta **restringe** (suspendida
+  ///   o pendiente): se aplica igual. Ante la duda se bloquea, pero sin perder nada: lo que tiene
+  ///   abierto lo termina y lo guarda, y la raíz de la app lleva a la pantalla de su cuenta al
+  ///   volver (`_Principal`).
+  /// - Ya entró a su inicio y la respuesta **habilita** (activa): no cambia nada bajo los dedos.
+  ///   Queda guardada para el próximo arranque (la guarda el repositorio, con el mismo criterio).
   void _aplicarRespuestaTardia(int arranque, int pedido, String usuarioId, EstadoCuenta estado) {
     if (!ref.mounted || arranque != _arranque || pedido < _ultimaContestada) return;
     _ultimaContestada = pedido;
     if (ref.read(sesionProvider).value?.usuarioId != usuarioId) return;
-    final enLaVista18 = switch (state) {
+    final aplicar = switch (state) {
       AsyncError() => true,
-      AsyncData(value: final actual?) => !actual.accedeAModulosDeCampo,
+      AsyncData(value: final actual?) =>
+        !actual.accedeAModulosDeCampo || !estado.accedeAModulosDeCampo,
       _ => false,
     };
-    if (enLaVista18) state = AsyncData(estado);
+    if (aplicar) state = AsyncData(estado);
   }
 
   /// Vuelve a consultar al backend (pull-to-refresh o "Actualizar"). Devuelve el [Failure] si no

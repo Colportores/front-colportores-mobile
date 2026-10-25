@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/estado_casa.dart';
@@ -25,8 +26,9 @@ import 'textos_posibles_duplicados.dart';
 /// Abre la hoja de la vista 10·02: compara el par y deja elegir cuál conservar. Cierra sola cuando el
 /// par deja de existir (se unió, se decidió o se corrigió una de las dos).
 ///
-/// «Conservar A y unir» **no une**: deja la unión pendiente 8 s en `UnionesPendientesNotifier` y
-/// cierra la hoja; el aviso con «Deshacer» lo muestra la pantalla de atrás.
+/// «Conservar A y unir» **no une**: deja la unión pendiente 8 s (con lector de pantalla, hasta que se
+/// cierre el aviso) en `UnionesPendientesNotifier` y cierra la hoja; el aviso con «Deshacer» lo muestra
+/// la pantalla de atrás.
 Future<void> mostrarHojaCompararDuplicado(
   BuildContext context, {
   required String colportorId,
@@ -121,6 +123,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
             conservarId: _conservada.id,
             duplicadaId: _duplicada.id,
             direccion: FormatoUbicaciones.direccionDeLaUnion(_conservada, _duplicada),
+            // Con lector de pantalla la unión espera a que se cierre el aviso, no a los 8 s.
+            esperaElCierre: MediaQuery.accessibleNavigationOf(context),
           ),
         );
     _cerrar();
@@ -160,6 +164,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
 
   Future<void> _editarUno() async {
     if (_guardando || _cerrando || _eligiendoCual) return;
+    // Con la cuenta restringida no se abre otra edición (la hoja en sí se puede terminar).
+    if (frenaPorCuentaRestringida(context, ref)) return;
     setState(() => _eligiendoCual = true);
     final id = await showDialog<String>(
       context: context,
