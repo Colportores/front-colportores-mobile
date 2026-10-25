@@ -1121,6 +1121,202 @@ void main() {
     });
   });
 
+  group(
+    'Con lector de pantalla (#384): la unión espera a que se cierre el aviso, no a los 8 s',
+    () {
+      UnionPendiente conLector(String conserva, String duplicada) => UnionPendiente(
+        clavePar: conserva.compareTo(duplicada) <= 0
+            ? '$conserva|$duplicada'
+            : '$duplicada|$conserva',
+        conservarId: conserva,
+        duplicadaId: duplicada,
+        direccion: 'Av. Italia 1234',
+        esperaElCierre: true,
+      );
+
+      _conReloj('dado el lector, cuando pasan los 8 s y mucho más, no se une nada y el par sigue '
+          'esperando', (banco, reloj) {
+        banco.notificador.unir(conLector('ub-a', 'ub-b'));
+
+        reloj.elapse(_ocho);
+        reloj.elapse(const Duration(hours: 1));
+        reloj.flushMicrotasks();
+
+        expect(banco.datos.uniones, isEmpty);
+        expect(banco.estado.pendiente, conLector('ub-a', 'ub-b'));
+        expect(banco.estado.ocultas, {'ub-a|ub-b'});
+      });
+
+      _conReloj(
+        'dado el lector, cuando se cierra el aviso (confirmarPendiente), la unión se hace una '
+        'sola vez',
+        (banco, reloj) {
+          banco.notificador.unir(conLector('ub-a', 'ub-b'));
+          reloj.elapse(const Duration(minutes: 5));
+          final pendiente = banco.estado.pendiente!;
+
+          banco.notificador.confirmarPendiente(pendiente);
+          banco.notificador.confirmarPendiente(pendiente);
+          reloj.flushMicrotasks();
+          reloj.elapse(const Duration(minutes: 1));
+          reloj.flushMicrotasks();
+
+          expect(banco.unidas, ['ub-a<-ub-b']);
+          expect(banco.estado.pendiente, isNull);
+          expect(banco.estado.ocultas, {'ub-a|ub-b'});
+          expect(banco.estado.falla, isNull);
+        },
+      );
+
+      _conReloj(
+        'dado el lector, cuando toco "Deshacer", no cambia nada y un cierre tardío del aviso '
+        'no la hace',
+        (banco, reloj) {
+          banco.notificador.unir(conLector('ub-a', 'ub-b'));
+          final pendiente = banco.estado.pendiente!;
+
+          banco.notificador.deshacer();
+          banco.notificador.confirmarPendiente(pendiente);
+          reloj.elapse(const Duration(minutes: 1));
+          reloj.flushMicrotasks();
+
+          expect(banco.datos.uniones, isEmpty);
+          expect(banco.estado.pendiente, isNull);
+          expect(banco.estado.ocultas, isEmpty);
+        },
+      );
+
+      _conReloj(
+        'dado "Deshacer" y la misma unión pedida de nuevo, cuando llega el cierre del aviso '
+        'viejo, no confirma a la nueva',
+        (banco, reloj) {
+          banco.notificador.unir(conLector('ub-a', 'ub-b'));
+          final vieja = banco.estado.pendiente!;
+          banco.notificador.deshacer();
+          banco.notificador.unir(conLector('ub-a', 'ub-b'));
+
+          banco.notificador.confirmarPendiente(vieja);
+          reloj.elapse(const Duration(minutes: 1));
+          reloj.flushMicrotasks();
+
+          expect(banco.datos.uniones, isEmpty, reason: 'la nueva espera su propio cierre');
+          expect(banco.estado.pendiente, isNotNull);
+        },
+      );
+
+      _conReloj('dado el lector, cuando se une otro par, la primera queda definitiva y la segunda '
+          'espera el cierre', (banco, reloj) {
+        banco.notificador.unir(conLector('ub-a', 'ub-b'));
+        banco.notificador.unir(conLector('ub-c', 'ub-d'));
+        reloj.elapse(const Duration(minutes: 1));
+        reloj.flushMicrotasks();
+
+        expect(banco.unidas, ['ub-a<-ub-b']);
+        expect(banco.estado.pendiente, conLector('ub-c', 'ub-d'));
+
+        banco.notificador.confirmarPendiente(banco.estado.pendiente!);
+        reloj.flushMicrotasks();
+        expect(banco.unidas, ['ub-a<-ub-b', 'ub-c<-ub-d']);
+      });
+
+      _conReloj('dado el lector, cuando un segundo toque sobre el mismo par, no hace nada', (
+        banco,
+        reloj,
+      ) {
+        banco.notificador.unir(conLector('ub-a', 'ub-b'));
+        final pendiente = banco.estado.pendiente;
+
+        banco.notificador.unir(conLector('ub-a', 'ub-b'));
+
+        expect(identical(banco.estado.pendiente, pendiente), isTrue);
+        expect(banco.datos.uniones, isEmpty);
+      });
+
+      test(
+        'dado el lector y un par esperando, cuando el colportor sale de la pantalla, la unión se '
+        'hace definitiva',
+        () {
+          fakeAsync((reloj) {
+            final banco = _Banco();
+            banco.notificador.unir(conLector('ub-a', 'ub-b'));
+            reloj.elapse(const Duration(minutes: 2));
+            expect(banco.datos.uniones, isEmpty);
+
+            banco.contenedor.dispose();
+            reloj.flushMicrotasks();
+
+            expect(banco.unidas, ['ub-a<-ub-b']);
+            reloj.elapse(const Duration(minutes: 1));
+            reloj.flushMicrotasks();
+            expect(banco.unidas, hasLength(1));
+            unawaited(banco.datos.cerrar());
+          });
+        },
+      );
+
+      test(
+        'dado el lector y un par esperando, cuando la app se cierra de golpe, no se hizo nada',
+        () {
+          fakeAsync((reloj) {
+            final banco = _Banco();
+            banco.notificador.unir(conLector('ub-a', 'ub-b'));
+            reloj.elapse(const Duration(minutes: 2));
+            reloj.flushMicrotasks();
+
+            expect(banco.datos.uniones, isEmpty);
+            banco.cerrar();
+            reloj.flushMicrotasks();
+          });
+        },
+      );
+
+      _conReloj(
+        'dado el lector, cuando la unión falla al confirmarla, el par vuelve a la lista con su '
+        'falla y "Reintentar" la hace',
+        (banco, reloj) {
+          banco.datos.falloAlUnir = const FailureInesperado();
+          banco.notificador.unir(conLector('ub-a', 'ub-b'));
+          banco.notificador.confirmarPendiente(banco.estado.pendiente!);
+          reloj.flushMicrotasks();
+
+          expect(banco.estado.ocultas, isEmpty);
+          expect(banco.estado.falla?.union, conLector('ub-a', 'ub-b'));
+          expect(banco.unidas, hasLength(1), reason: 'un intento, que falló');
+
+          banco.datos.falloAlUnir = null;
+          banco.notificador.reintentar();
+          reloj.flushMicrotasks();
+
+          expect(banco.unidas, hasLength(2), reason: 'el reintento corre ya, sin otra espera');
+          expect(banco.estado.falla, isNull);
+        },
+      );
+
+      _conReloj(
+        'dado el plazo, cuando no hay lector, sigue valiendo: 8 s y confirmarPendiente no hace '
+        'nada de más',
+        (banco, reloj) {
+          banco.notificador.unir(_union('ub-a', 'ub-b'));
+
+          reloj.elapse(const Duration(seconds: 7));
+          expect(banco.datos.uniones, isEmpty);
+          reloj.elapse(const Duration(seconds: 1));
+          reloj.flushMicrotasks();
+
+          expect(banco.unidas, ['ub-a<-ub-b']);
+          banco.notificador.confirmarPendiente(_union('ub-a', 'ub-b'));
+          reloj.flushMicrotasks();
+          expect(banco.unidas, hasLength(1));
+        },
+      );
+
+      test('esperaElCierre cuenta en la igualdad de la unión', () {
+        expect(conLector('ub-a', 'ub-b'), isNot(_union('ub-a', 'ub-b')));
+        expect(_union('ub-a', 'ub-b').esperaElCierre, isFalse);
+      });
+    },
+  );
+
   group('Igualdad por valor (Equatable)', () {
     test('dado dos instancias con los mismos datos, son iguales; con otro dato, distintas', () {
       final falla = FallaUnion(union: _union('ub-a', 'ub-b'), falla: const FailureInesperado());

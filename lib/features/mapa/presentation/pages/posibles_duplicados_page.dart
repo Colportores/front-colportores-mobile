@@ -55,9 +55,18 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   /// Lo más que ocupa el aviso rojo de la altura disponible: el resto es de la lista.
   static const _fraccionMaximaDelAviso = 0.5;
 
+  /// Lo que mide el aviso «quedaron unidas» mientras no se va solo (con lector de pantalla): la lista
+  /// lo suma abajo para poder llegar al «Revisar» del último par sin descartar el aviso. 0 si no hay
+  /// uno de esos a la vista (con los 8 s el aviso se va solo y la lista no se mueve).
+  final _altoAvisoQueSeQueda = ValueNotifier<double>(0);
+
+  /// De quién es la altura que se está siguiendo: el aviso que se va (o está saliendo) no la pisa.
+  Object? _medidorVigente;
+
   @override
   void dispose() {
-    _ocultarAviso();
+    _ocultarAvisoAlTerminarElCuadro();
+    _altoAvisoQueSeQueda.dispose();
     super.dispose();
   }
 
@@ -85,7 +94,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     // Flutter mide la acción sin la escala del texto y la deja en una columna angosta).
     final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
     final texto = Text(
-      TextosPosiblesDuplicados.unidas(union.direccion),
+      // Con lector la unión todavía no se hizo: se hace al cerrar el aviso (mapa §2, #384).
+      union.esperaElCierre
+          ? TextosPosiblesDuplicados.unenAlCerrar(union.direccion)
+          : TextosPosiblesDuplicados.unidas(union.direccion),
       style: const TextStyle(fontSize: 13.5, color: Colors.white),
     );
     final deshacer = SnackBarAction(
@@ -96,41 +108,70 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
       },
     );
     _ocultarAviso();
+    final medidor = Object();
     final aviso = mensajero.showSnackBar(
       SnackBar(
         duration: plazo,
         // Con un lector de pantalla el aviso no se cierra solo (le da tiempo de leerlo y de llegar a
-        // «Deshacer»): se va cuando la unión se hace o con «Deshacer» (`_ocultarAviso`). Eso NO cumple
-        // WCAG 2.2.1 (límite de tiempo ajustable): la unión se hace igual a los 8 s, también con
-        // lector. Cuánto espera con lector lo decide Cristian (mobile-208-impl-p6-deshacer-lector).
-        persist: mediaQuery.accessibleNavigation,
+        // «Deshacer») y la unión tampoco corre contra un reloj (WCAG 2.2.1, decisión de Cristian 21/10,
+        // «Deshacer AA»): se hace cuando el aviso se cierra (`aviso.closed`, abajo), al salir de la
+        // pantalla o al unir otro par. «Deshacer» la cancela. Sin lector, 8 s para todos.
+        persist: union.esperaElCierre,
         // Sin arrastrar para cerrarlo: «Deshacer» es lo único que sale de ahí antes de los 8 s.
         dismissDirection: DismissDirection.none,
         backgroundColor: ColoresLista.tinta,
         // El texto no pasa del 200 %, como el del aviso rojo (#362): a 300 % en un teléfono chico el
         // aviso ocupaba más de la mitad de la pantalla y, con el aviso rojo, no dejaba ver la lista.
         content: _EscalaAcotada(
-          child: textoGrande
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    texto,
-                    Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
-                  ],
-                )
-              : texto,
+          child: _MideElAviso(
+            alMedir: union.esperaElCierre ? (alto) => _alMedirAviso(medidor, alto) : null,
+            child: textoGrande
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      texto,
+                      Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
+                    ],
+                  )
+                : texto,
+          ),
         ),
         action: textoGrande ? null : deshacer,
       ),
     );
     _aviso = aviso;
     _mensajero = mensajero;
+    _medidorVigente = union.esperaElCierre ? medidor : null;
     unawaited(
-      aviso.closed.then((_) {
-        if (identical(_aviso, aviso)) _aviso = null;
+      aviso.closed.then((motivo) {
+        // Se cerró por otro lado (el lector lo descartó, otra pantalla limpió los avisos). Si lo
+        // cerramos nosotros (`_ocultarAviso`) `_aviso` ya es `null`.
+        if (!identical(_aviso, aviso)) return;
+        _aviso = null;
+        if (!mounted) return;
+        _medidorVigente = null;
+        _altoAvisoQueSeQueda.value = 0;
+        if (!union.esperaElCierre) return;
+        // Con lector la unión espera a que la persona cierre el aviso (`dismiss`). Si lo cerró otro
+        // aviso (`hide` / `remove`: p. ej. el del módulo bloqueado), la unión sigue esperando y el aviso
+        // vuelve a mostrarse (mapa §2, #384).
+        final sigueEsperando = identical(ref.read(unionesPendientesProvider).pendiente, union);
+        if (sigueEsperando &&
+            (motivo == SnackBarClosedReason.hide || motivo == SnackBarClosedReason.remove)) {
+          _mostrarAviso(union);
+        } else {
+          notificador.confirmarPendiente(union);
+        }
       }),
     );
+  }
+
+  /// La altura que mide el aviso de esta pantalla que no se va solo; la de uno que ya no es el vigente
+  /// no cuenta.
+  void _alMedirAviso(Object medidor, double alto) {
+    if (!mounted || !identical(_medidorVigente, medidor)) return;
+    if (alto != _altoAvisoQueSeQueda.value) _altoAvisoQueSeQueda.value = alto;
   }
 
   /// Cierra el aviso si es el nuestro. Se limpia la cola entera (no `close()` del aviso): con uno que
@@ -138,7 +179,22 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   void _ocultarAviso() {
     if (_aviso == null) return;
     _aviso = null;
+    _medidorVigente = null;
+    _altoAvisoQueSeQueda.value = 0;
     _mensajero?.clearSnackBars();
+  }
+
+  /// Lo mismo que [_ocultarAviso], pero después del cuadro en curso: en `dispose` el árbol está
+  /// bloqueado y, con un lector de pantalla, el cierre del aviso es inmediato y falla («ScaffoldMessenger
+  /// cannot be marked as needing to build because the framework is locked»). `_aviso` se suelta ya,
+  /// para que el cierre no cuente como un cierre de la persona (`aviso.closed`).
+  void _ocultarAvisoAlTerminarElCuadro() {
+    final mensajero = _mensajero;
+    if (_aviso == null || mensajero == null) return;
+    _aviso = null;
+    scheduleMicrotask(() {
+      if (mensajero.mounted) mensajero.clearSnackBars();
+    });
   }
 
   @override
@@ -192,20 +248,23 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
                       )
                     : visibles.isEmpty
                     ? const _Vacio()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        itemCount: visibles.length + 1,
-                        itemBuilder: (context, i) {
-                          if (i == 0) return _Encabezado(cantidad: visibles.length);
-                          final item = visibles[i - 1];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _TarjetaPar(
-                              item: item,
-                              alRevisar: () => unawaited(_abrirHoja(item)),
-                            ),
-                          );
-                        },
+                    : ValueListenableBuilder<double>(
+                        valueListenable: _altoAvisoQueSeQueda,
+                        builder: (context, altoAviso, _) => ListView.builder(
+                          padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + altoAviso),
+                          itemCount: visibles.length + 1,
+                          itemBuilder: (context, i) {
+                            if (i == 0) return _Encabezado(cantidad: visibles.length);
+                            final item = visibles[i - 1];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _TarjetaPar(
+                                item: item,
+                                alRevisar: () => unawaited(_abrirHoja(item)),
+                              ),
+                            );
+                          },
+                        ),
                       ),
               ),
             ],
@@ -457,6 +516,46 @@ class _AvisoFallaState extends ConsumerState<_AvisoFalla> {
       ),
     );
   }
+}
+
+/// Dice cuánto mide el aviso «quedaron unidas» a la vista ([alMedir]) mientras exista, mirando el
+/// `SnackBar` que lo contiene después de cada cuadro (sin pedir ninguno: no hace que la pantalla gaste
+/// de más). Sin [alMedir] es [child] y nada más. No usa una `GlobalKey` en el `SnackBar`: durante la
+/// transición de página lo dibujan dos `Scaffold` a la vez.
+class _MideElAviso extends StatefulWidget {
+  const _MideElAviso({required this.alMedir, required this.child});
+
+  final ValueChanged<double>? alMedir;
+  final Widget child;
+
+  @override
+  State<_MideElAviso> createState() => _MideElAvisoState();
+}
+
+class _MideElAvisoState extends State<_MideElAviso> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.alMedir != null) _medirDespuesDelCuadro();
+  }
+
+  void _medirDespuesDelCuadro() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      double? alto;
+      context.visitAncestorElements((elemento) {
+        if (elemento.widget is! SnackBar) return true;
+        alto = elemento.size?.height;
+        return false;
+      });
+      final medida = alto;
+      if (medida != null) widget.alMedir?.call(medida);
+      _medirDespuesDelCuadro();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// El texto de [child] no pasa del 200 % ([_AvisoFalla.escalaMaximaDelAviso]): el aviso rojo y el

@@ -26,8 +26,9 @@ import 'textos_posibles_duplicados.dart';
 /// Abre la hoja de la vista 10·02: compara el par y deja elegir cuál conservar. Cierra sola cuando el
 /// par deja de existir (se unió, se decidió o se corrigió una de las dos).
 ///
-/// «Conservar A y unir» **no une**: deja la unión pendiente 8 s en `UnionesPendientesNotifier` y
-/// cierra la hoja; el aviso con «Deshacer» lo muestra la pantalla de atrás.
+/// «Conservar A y unir» **no une**: deja la unión pendiente 8 s (con lector de pantalla, hasta que se
+/// cierre el aviso) en `UnionesPendientesNotifier` y cierra la hoja; el aviso con «Deshacer» lo muestra
+/// la pantalla de atrás.
 Future<void> mostrarHojaCompararDuplicado(
   BuildContext context, {
   required String colportorId,
@@ -122,6 +123,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
             conservarId: _conservada.id,
             duplicadaId: _duplicada.id,
             direccion: FormatoUbicaciones.direccionDeLaUnion(_conservada, _duplicada),
+            // Con lector de pantalla la unión espera a que se cierre el aviso, no a los 8 s.
+            esperaElCierre: MediaQuery.accessibleNavigationOf(context),
           ),
         );
     _cerrar();
