@@ -12,6 +12,7 @@ import '../../domain/entities/persona_del_espacio.dart';
 import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
+import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
 
 // Cableado de las personas de un espacio (HU-UBI-008, vistas 32A y 11·04). Presentation conoce domain;
@@ -73,3 +74,25 @@ final personasDelEspacioProvider = StreamProvider.autoDispose
     .family<List<PersonaDelEspacio>, String>(
       (ref, espacioId) => ref.watch(personaRepositoryProvider).observarDelEspacio(espacioId),
     );
+
+/// De dónde sale lo que debe cada persona (la línea «Saldo» de «¿Con quién?»). Sin ventas locales
+/// todavía (S9) no hay fuente: [SaldosDePersonasSinFuente]. Un test o el S9 lo reemplazan.
+final saldosDePersonasProvider = Provider<SaldosDePersonas>(
+  (ref) => const SaldosDePersonasSinFuente(),
+);
+
+/// Lo que debe cada persona de [espacioId], en centavos, por `persona.id`. Una falla al leerlo no
+/// frena el paso: la fila queda sin saldo (no se afirma lo que no se sabe) y se puede elegir igual.
+final saldosDelEspacioProvider = FutureProvider.autoDispose.family<Map<String, int>, String>((
+  ref,
+  espacioId,
+) async {
+  final personas = await ref.watch(personasDelEspacioProvider(espacioId).future);
+  try {
+    return await ref
+        .watch(saldosDePersonasProvider)
+        .saldosPendientes(personas.map((p) => p.persona.id));
+  } on Object {
+    return const {};
+  }
+});
