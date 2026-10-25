@@ -11,9 +11,15 @@ typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
 /// (`false` si ya estaba cancelada).
 typedef AgendaCancelada = ({Agenda agenda, bool escribio});
 
-/// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba y, si la
-/// agenda indicada no servía, por qué se guardó sin ella.
-typedef VisitaRegistrada = ({Visita visita, bool yaEstaba, MotivoAgendaIgnorada? agendaIgnorada});
+/// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba, si la
+/// agenda indicada no servía, por qué se guardó sin ella y si la agenda sirve pero el resultado no
+/// la cumple (`agendaQuedoPendiente`).
+typedef VisitaRegistrada = ({
+  Visita visita,
+  bool yaEstaba,
+  MotivoAgendaIgnorada? agendaIgnorada,
+  bool agendaQuedoPendiente,
+});
 
 /// Persistencia local de las agendas y las visitas (BACK-HU-VIS-001), sobre las tablas `agenda`,
 /// `visita` y `nota` de la DB cifrada. La implementa `AgendaLocalDataSourceDrift`.
@@ -37,6 +43,10 @@ abstract interface class AgendaLocalDataSource {
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
   /// `COMPLETADA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,
   /// no escribe nada y la devuelve con `yaEstaba: true`.
+  ///
+  /// Un resultado que no cumple la agenda (`TipoResultadoVisita.cumpleLaAgenda`, hoy `NO_CONTESTO`)
+  /// guarda la visita y deja la agenda como estaba, sin crear una agenda cumplida de más:
+  /// `agendaQuedoPendiente: true`.
   ///
   /// Lanza [AgendaRechazadaException] si el vínculo de la visita no está en el teléfono. Si la
   /// agenda no existe, es de otra persona o ya no está pendiente, la visita se guarda igual como

@@ -96,44 +96,60 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       });
 
   @override
-  Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota}) =>
-      _db.transaction(() async {
-        final existente = await _visitaPorId(visita.id);
-        if (existente != null) {
-          return (visita: _aVisita(existente), yaEstaba: true, agendaIgnorada: null);
-        }
+  Future<VisitaRegistrada> registrarVisita(
+    Visita visita, {
+    String? agendaId,
+    NotaDeCampo? nota,
+  }) => _db.transaction(() async {
+    final existente = await _visitaPorId(visita.id);
+    if (existente != null) {
+      return (
+        visita: _aVisita(existente),
+        yaEstaba: true,
+        agendaIgnorada: null,
+        agendaQuedoPendiente: false,
+      );
+    }
 
-        await _exigirVinculo(visita.espacioPersonaId);
-        final (:agenda, :ignorada) = agendaId == null
-            ? (agenda: null, ignorada: null)
-            : await _agendaACumplir(agendaId, visita);
+    await _exigirVinculo(visita.espacioPersonaId);
+    final (:agenda, :ignorada) = agendaId == null
+        ? (agenda: null, ignorada: null)
+        : await _agendaACumplir(agendaId, visita);
 
-        await _db.into(_db.visitas).insert(_aFilaVisita(visita));
-        await _encolador.encolar(
-          'visita',
-          OperacionSync.insert,
-          VisitaModel.fromEntity(visita).toJson(),
-        );
-        if (agenda == null) {
-          await _crearAgendaCumplida(visita);
-        } else {
-          await _escribirAgenda(
-            agenda.id,
-            AgendasCompanion(
-              estado: Value(EstadoAgenda.completada.codigo),
-              visitaId: Value(visita.id),
-              updatedAt: Value(visita.auditoria.updatedAt),
-            ),
-          );
-        }
-        if (nota != null) await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
-        await _recalcular(
-          visita.espacioPersonaId,
-          ahora: visita.auditoria.updatedAt,
-          colportorId: visita.colportorId,
-        );
-        return (visita: visita, yaEstaba: false, agendaIgnorada: ignorada);
-      });
+    await _db.into(_db.visitas).insert(_aFilaVisita(visita));
+    await _encolador.encolar(
+      'visita',
+      OperacionSync.insert,
+      VisitaModel.fromEntity(visita).toJson(),
+    );
+    // Una agenda que sirve pero que este resultado no cumple (`NO_CONTESTO`) se queda como está:
+    // ni cumplida (sería falso) ni una agenda cumplida de más.
+    final noLaCumple = agenda != null && !visita.tipoResultado.cumpleLaAgenda;
+    if (agenda == null) {
+      await _crearAgendaCumplida(visita);
+    } else if (!noLaCumple) {
+      await _escribirAgenda(
+        agenda.id,
+        AgendasCompanion(
+          estado: Value(EstadoAgenda.completada.codigo),
+          visitaId: Value(visita.id),
+          updatedAt: Value(visita.auditoria.updatedAt),
+        ),
+      );
+    }
+    if (nota != null) await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    await _recalcular(
+      visita.espacioPersonaId,
+      ahora: visita.auditoria.updatedAt,
+      colportorId: visita.colportorId,
+    );
+    return (
+      visita: visita,
+      yaEstaba: false,
+      agendaIgnorada: ignorada,
+      agendaQuedoPendiente: noLaCumple,
+    );
+  });
 
   @override
   Future<Agenda?> obtenerAgenda(String id) async {
