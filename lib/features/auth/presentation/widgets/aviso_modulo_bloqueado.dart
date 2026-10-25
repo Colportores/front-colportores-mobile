@@ -69,6 +69,40 @@ AvisoEnPantalla avisarModuloBloqueado(
   );
 }
 
+/// Lo que devuelve `showMaterialBanner`: el aviso de la cuenta restringida en pantalla.
+typedef AvisoDeCuentaRestringida =
+    ScaffoldFeatureController<MaterialBanner, MaterialBannerClosedReason>;
+
+/// El botón que cierra el aviso de la cuenta restringida (el mismo «Entendido» de los avisos de
+/// zona).
+const textoEntendidoCuentaRestringida = 'Entendido';
+
+/// Avisa que la cuenta pasó a [estado] (suspendida o pendiente) mientras la persona tiene algo
+/// abierto (#383): el mismo texto que el módulo bloqueado de esa cuenta.
+///
+/// Es un aviso fijo arriba del contenido y no un `SnackBar`: el `SnackBar` se apoya sobre el borde
+/// de abajo y tapa justo el botón con el que la persona termina lo que tiene abierto («Registrar»,
+/// «Guardar»). Se queda hasta que lo cierra o hasta que llega a la pantalla de su cuenta.
+AvisoDeCuentaRestringida avisarCuentaRestringida(
+  BuildContext context,
+  EstadoCuenta estado, {
+  required VoidCallback alCerrar,
+}) => ScaffoldMessenger.of(context).showMaterialBanner(
+  MaterialBanner(
+    key: const Key('cuenta_restringida_aviso'),
+    // El `MaterialBanner` ya es una región viva: se anuncia apenas aparece.
+    content: Text(TextosModuloBloqueado.para(estado)),
+    forceActionsBelow: true,
+    actions: [
+      TextButton(
+        key: const Key('cuenta_restringida_entendido'),
+        onPressed: alCerrar,
+        child: const Text(textoEntendidoCuentaRestringida),
+      ),
+    ],
+  ),
+);
+
 /// Para la pantalla que muestra avisos del módulo bloqueado: se acuerda del último y lo cierra
 /// cuando deja de ser verdad (la consulta contestó, cambió la cuenta) y cuando la pantalla se va.
 ///
