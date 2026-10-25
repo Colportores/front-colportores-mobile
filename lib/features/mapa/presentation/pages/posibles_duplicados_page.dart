@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/usecases/duplicados_ubicacion_use_cases.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/uniones_pendientes_notifier.dart';
@@ -62,6 +63,8 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
 
   Future<void> _abrirHoja(ParaRevisar par) async {
     if (_abriendoHoja) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza otra revisión.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoHoja = true;
     try {
       await mostrarHojaCompararDuplicado(context, colportorId: widget.colportorId, par: par);

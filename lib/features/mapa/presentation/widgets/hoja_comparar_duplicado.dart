@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/estado_casa.dart';
@@ -160,6 +161,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
 
   Future<void> _editarUno() async {
     if (_guardando || _cerrando || _eligiendoCual) return;
+    // Con la cuenta restringida no se abre otra edición (la hoja en sí se puede terminar).
+    if (frenaPorCuentaRestringida(context, ref)) return;
     setState(() => _eligiendoCual = true);
     final id = await showDialog<String>(
       context: context,

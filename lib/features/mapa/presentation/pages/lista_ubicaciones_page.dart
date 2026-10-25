@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -306,6 +307,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   Future<void> _registrar() async {
     if (_abriendoAlta) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoAlta = true;
     try {
       final personalizado = widget.alRegistrar;
@@ -323,6 +326,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// ver los pares: el aviso de una unión que falló fuera de la pantalla se da por leído.
   Future<void> _revisarDuplicados() async {
     if (_abriendoDuplicados) return;
+    // Con la cuenta restringida no se abre otra revisión de duplicados.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoDuplicados = true;
     try {
       ref.read(unionesFallidasFueraDePantallaProvider.notifier).olvidar();
