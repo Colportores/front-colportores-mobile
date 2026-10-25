@@ -248,7 +248,15 @@ void main() {
 
       await llegaLaRespuesta(tester, colgada);
 
-      expect(find.descendant(of: aviso, matching: find.text(literalSuspendida)), findsOneWidget);
+      // El literal de la HU, y detrás la frase que suma el aviso sobre algo abierto (decisión P1 del
+      // 25/10): se puede terminar y guardar lo que estaba abierto.
+      expect(
+        find.descendant(
+          of: aviso,
+          matching: find.text('$literalSuspendida Podés terminar y guardar lo que tenés abierto.'),
+        ),
+        findsOneWidget,
+      );
       expect(TextosModuloBloqueado.suspendida, literalSuspendida);
     });
 
