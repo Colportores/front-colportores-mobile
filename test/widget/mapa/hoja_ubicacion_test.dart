@@ -7,10 +7,14 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/espacios_falsos.dart';
@@ -28,6 +32,33 @@ final _delCanvas = [
 ];
 
 double _y(WidgetTester tester, Finder f) => tester.getTopLeft(f.first).dy;
+
+/// Un estado de cuenta fijo (#383).
+class _CuentaFija extends EstadoCuentaNotifier {
+  _CuentaFija(this._estado);
+
+  final EstadoCuenta _estado;
+
+  @override
+  Future<EstadoCuenta?> build() async => _estado;
+}
+
+/// Monta la hoja con la cuenta en [cuenta] y deja su estado escuchado, como lo hace la pantalla
+/// principal de la app (un `read` solo lo deja cargando la primera vez).
+Future<MontajeHoja> _montarConCuenta(WidgetTester tester, EstadoCuenta cuenta) async {
+  final m = await montarHoja(
+    tester,
+    espacios: _delCanvas,
+    extras: [estadoCuentaProvider.overrideWith(() => _CuentaFija(cuenta))],
+  );
+  final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+  final suscripcion = contenedor.listen(estadoCuentaProvider, (_, _) {});
+  addTearDown(suscripcion.close);
+  await asentarHoja(tester);
+  return m;
+}
+
+final _avisoBloqueado = find.byKey(const Key('modulo_bloqueado_aviso'));
 
 void main() {
   group('11·01 Edificio con departamentos', () {
@@ -122,6 +153,71 @@ void main() {
           _y(tester, filaDepto(id)),
       ];
       expect(y, orderedEquals([...y]..sort()), reason: 'orden de arriba a abajo');
+    });
+  });
+
+  group('cuenta restringida con la hoja ya abierta (#383, convención de #469)', () {
+    testWidgets('suspendida, «+ Departamento» no abre el alta y avisa por qué', (tester) async {
+      await _montarConCuenta(tester, EstadoCuenta.suspendida);
+
+      await tester.tap(botonAgregarDepto);
+      await asentarHoja(tester);
+
+      expect(hojaDepto, findsNothing);
+      expect(
+        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.suspendida)),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('suspendida, tocar la fila de un depto no abre su edición y avisa', (tester) async {
+      await _montarConCuenta(tester, EstadoCuenta.suspendida);
+
+      await tester.tap(filaDepto('e-102'));
+      await asentarHoja(tester);
+
+      expect(hojaDepto, findsNothing);
+      expect(
+        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.suspendida)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('pendiente, «Editar edificio» no abre la edición y avisa con el texto de esa '
+        'cuenta', (tester) async {
+      final m = await _montarConCuenta(tester, EstadoCuenta.pendienteAsignacion);
+
+      await tester.tap(botonEditarUbicacion);
+      await asentarHoja(tester);
+
+      expect(m.ediciones, isEmpty);
+      expect(
+        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.pendiente)),
+        findsOneWidget,
+      );
+      expect(botonEditarUbicacion, findsOneWidget, reason: 'el botón sigue disponible');
+    });
+
+    testWidgets('activa, las tres entradas siguen abriendo lo suyo (control)', (tester) async {
+      final m = await _montarConCuenta(tester, EstadoCuenta.activa);
+
+      await tester.tap(botonAgregarDepto);
+      await asentarHoja(tester);
+      expect(hojaDepto, findsOneWidget);
+      Navigator.of(tester.element(hojaDepto)).pop();
+      await asentarHoja(tester);
+
+      await tester.tap(filaDepto('e-102'));
+      await asentarHoja(tester);
+      expect(hojaDepto, findsOneWidget);
+      Navigator.of(tester.element(hojaDepto)).pop();
+      await asentarHoja(tester);
+
+      await tester.tap(botonEditarUbicacion);
+      await asentarHoja(tester);
+      expect(m.ediciones, ['ubi-1']);
+      expect(_avisoBloqueado, findsNothing);
     });
   });
 

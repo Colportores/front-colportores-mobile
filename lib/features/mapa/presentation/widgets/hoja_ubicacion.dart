@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/agrupador_espacios.dart';
@@ -283,6 +284,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   Future<void> _agregar(Ubicacion u) async {
     if (_abriendo) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
     setState(() => _abriendo = true);
     try {
       final salida = await mostrarHojaDepto(context, ubicacion: u, colportorId: widget.colportorId);
@@ -294,6 +296,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   Future<void> _editarDepto(Ubicacion u, Espacio e) async {
     if (_abriendo) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
     setState(() => _abriendo = true);
     try {
       final salida = await mostrarHojaDepto(
@@ -366,6 +369,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   Future<void> _editar(Ubicacion u) async {
     if (_abriendo) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
     setState(() => _abriendo = true);
     SalidaModificarUbicacion? salida;
     try {

@@ -63,7 +63,7 @@ void main() {
         filaLista('a', calle: 'Av. Italia', numero: '1234', metrosAlNorte: 40, espacios: 2),
         filaLista('b', calle: 'Av. Italia', numero: '1250', metrosAlNorte: 55),
       ]),
-      extras: _extras(edicion),
+      otrosOverrides: _extras(edicion),
     );
     m.mapa.tocarPunto('a');
     await asentarLista(tester);

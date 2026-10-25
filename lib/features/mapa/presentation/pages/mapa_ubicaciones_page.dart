@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/proyeccion_mercator.dart';
@@ -239,6 +240,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// registrada (o la que se reutilizó) queda seleccionada.
   Future<void> _abrirAlta([Coordenadas? punto]) async {
     if (_abriendoAlta) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoAlta = true;
     try {
       final personalizado = widget.alAbrirAlta;

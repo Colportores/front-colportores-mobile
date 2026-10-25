@@ -71,7 +71,7 @@ void main() {
           ]),
           tamano: tamano,
           escala: escala,
-          extras: [
+          otrosOverrides: [
             ubicacionDeLaHojaProvider.overrideWith(
               (ref, id) => ubicacionGuardada(
                 id: id,
