@@ -100,10 +100,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
       SnackBar(
         duration: plazo,
         // Con un lector de pantalla el aviso no se cierra solo (le da tiempo de leerlo y de llegar a
-        // «Deshacer»): se va cuando la unión se hace o con «Deshacer» (`_ocultarAviso`). Eso NO cumple
-        // WCAG 2.2.1 (límite de tiempo ajustable): la unión se hace igual a los 8 s, también con
-        // lector. Cuánto espera con lector lo decide Cristian (mobile-208-impl-p6-deshacer-lector).
-        persist: mediaQuery.accessibleNavigation,
+        // «Deshacer») y la unión tampoco corre contra un reloj (WCAG 2.2.1, decisión de Cristian 21/10,
+        // «Deshacer AA»): se hace cuando el aviso se cierra (`aviso.closed`, abajo), al salir de la
+        // pantalla o al unir otro par. «Deshacer» la cancela. Sin lector, 8 s para todos.
+        persist: union.esperaElCierre,
         // Sin arrastrar para cerrarlo: «Deshacer» es lo único que sale de ahí antes de los 8 s.
         dismissDirection: DismissDirection.none,
         backgroundColor: ColoresLista.tinta,
@@ -128,7 +128,11 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     _mensajero = mensajero;
     unawaited(
       aviso.closed.then((_) {
-        if (identical(_aviso, aviso)) _aviso = null;
+        // Se cerró por otro lado (el lector lo descartó, otra pantalla limpió los avisos): con lector la
+        // unión espera ese cierre. Si lo cerramos nosotros (`_ocultarAviso`) `_aviso` ya es `null`.
+        if (!identical(_aviso, aviso)) return;
+        _aviso = null;
+        if (union.esperaElCierre && mounted) notificador.confirmarPendiente(union);
       }),
     );
   }
