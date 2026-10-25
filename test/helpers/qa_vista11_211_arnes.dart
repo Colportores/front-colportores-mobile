@@ -89,7 +89,9 @@ enum EstadoV11 {
   repetido('11·03 repetido'),
   fallaGuardado('falla al guardar'),
   edicion('edición'),
+  agregadoOtro('alta tras «Agregar y cargar otro»'),
   preguntaBaja('baja sin personas'),
+  preguntaBajaSinNumero('baja de un depto sin número'),
   avisoPersonas('baja con personas'),
   bajaBloqueada('baja bloqueada');
 
@@ -168,6 +170,21 @@ Future<MontajeHoja> llegarA(
     case EstadoV11.edicion:
       final m = await montar();
       await abrirEdicionDepto(tester, 'e-101');
+      return m;
+    case EstadoV11.agregadoOtro:
+      final m = await montar();
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, '301');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+      return m;
+    case EstadoV11.preguntaBajaSinNumero:
+      final m = await montar();
+      tester.widget<CustomScrollView>(find.byType(CustomScrollView)).controller!.jumpTo(5000);
+      await asentarHoja(tester);
+      await abrirEdicionDepto(tester, 'e-sn');
+      await tester.tap(botonDarDeBaja);
+      await asentarHoja(tester);
       return m;
     case EstadoV11.preguntaBaja:
       final m = await montar();

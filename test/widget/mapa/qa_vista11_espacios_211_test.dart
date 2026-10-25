@@ -19,6 +19,7 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_depto
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -685,5 +686,212 @@ void main() {
       // Text suelto y el lector dice «cuadro de edición» a secas.
       skip: !_verHallazgos,
     );
+  });
+
+  // ------------------------------- 8. re-verificación (d020957): lo que cambió tras la revisión
+  group('«Depto N agregado.» visible tras «Agregar y cargar otro» (decisión QA P2)', () {
+    for (final tamano in [telefonoChico211, telefonoGrande211]) {
+      for (final escala in [1.0, 2.0]) {
+        testWidgets(
+          'con un número de 40 caracteres a ${tamano.width.toInt()}×${tamano.height.toInt()} y '
+          'texto ×$escala la línea cabe, está sobre el campo y no hay overflow',
+          (tester) async {
+            await llegarA(tester, EstadoV11.vacio, tamano: tamano, escala: escala);
+            await abrirAltaDepto(tester);
+            final largo = 'A' * 20 + 'B' * 20;
+            await escribir(tester, campoNumero, largo);
+            await tester.tap(botonAgregarYCargarOtro);
+            await asentarHoja(tester);
+            await tester.pump(const Duration(milliseconds: 400));
+
+            expect(tester.takeException(), isNull);
+            final linea = find.byKey(ClavesHojaDepto.agregado);
+            expect(linea, findsOneWidget);
+            expect(find.text('Depto $largo agregado.'), findsOneWidget);
+            expectSinTextoFueraDeLosCostados211(tester, tamano);
+            expect(
+              tester.getRect(linea).bottom,
+              lessThanOrEqualTo(tester.getRect(campoNumero).top),
+            );
+            await capturar211(tester, 'agregado_largo_${tamano.width.toInt()}_x$escala');
+          },
+        );
+      }
+    }
+
+    testWidgets('con el teclado abierto (280 dp) a 360×640 ×2 la línea y los botones se alcanzan', (
+      tester,
+    ) async {
+      await llegarA(tester, EstadoV11.agregadoOtro, tamano: telefonoChico211, escala: 2);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      addTearDown(tester.view.resetViewInsets);
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(botonAgregar);
+      await tester.pump();
+      expect(tester.getRect(botonAgregar).bottom, lessThanOrEqualTo(640 - 280 + 0.5));
+      expect(find.byKey(ClavesHojaDepto.agregado), findsOneWidget);
+    });
+
+    testWidgets('el lector la recibe una sola vez: un anuncio y la línea no es región viva', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      final anuncios = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<dynamic>(
+        SystemChannels.accessibility,
+        (mensaje) async {
+          if (mensaje is Map && mensaje['type'] == 'announce') {
+            anuncios.add((mensaje['data'] as Map)['message'] as String);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<dynamic>(
+          SystemChannels.accessibility,
+          null,
+        ),
+      );
+      await llegarA(tester, EstadoV11.agregadoOtro);
+
+      expect(anuncios.where((a) => a == 'Depto 301 agregado.'), hasLength(1));
+      final nodo = tester.getSemantics(find.text('Depto 301 agregado.'));
+      expect(nodo.flagsCollection.isLiveRegion, isFalse);
+      h.dispose();
+    });
+
+    testWidgets('cerrar la hoja y volver a abrir «+ Departamento» arranca sin la línea', (
+      tester,
+    ) async {
+      await llegarA(tester, EstadoV11.agregadoOtro);
+      await tester.binding.handlePopRoute();
+      await asentarHoja(tester);
+      await abrirAltaDepto(tester);
+
+      expect(find.byKey(ClavesHojaDepto.agregado), findsNothing);
+      expect(textoDe(tester, campoNumero), isEmpty);
+    });
+
+    testWidgets('tras «Agregar y cargar otro» un repetido saca la línea y avisa el repetido', (
+      tester,
+    ) async {
+      await llegarA(tester, EstadoV11.agregadoOtro);
+      await escribir(tester, campoNumero, '102');
+      await tester.tap(botonAgregarYCargarOtro);
+      await asentarHoja(tester);
+
+      expect(find.byKey(ClavesHojaDepto.agregado), findsNothing);
+      expect(find.text(_repetido102), findsOneWidget);
+      expect(textoDe(tester, campoNumero), '102');
+    });
+
+    testWidgets('dos «Agregar y cargar otro» antes de que termine el primero: un solo depto, una '
+        'línea y nada trabado', (tester) async {
+      final m = await llegarA(tester, EstadoV11.vacio);
+      await abrirAltaDepto(tester);
+      final espera = Completer<void>();
+      m.repo.espera = espera;
+      await escribir(tester, campoNumero, '501');
+      await tester.tap(botonAgregarYCargarOtro);
+      await tester.pump();
+      await tester.tap(botonAgregarYCargarOtro, warnIfMissed: false);
+      await tester.pump();
+      espera.complete();
+      await asentarHoja(tester);
+
+      expect(m.repo.activos.where((e) => e.numeroDepto == '501'), hasLength(1));
+      expect(find.byKey(ClavesHojaDepto.agregado), findsOneWidget);
+      expect(find.text('Depto 501 agregado.'), findsOneWidget);
+      expect(habilitado(tester, botonAgregar), isTrue);
+    });
+  });
+
+  group('comparación del número y orden tras el fix (d020957)', () {
+    testWidgets('«pb a», «PBA», «PB–A», «PB—A», « p b - a » y «PB‑A» son el mismo que «PB-A»', (
+      tester,
+    ) async {
+      final m = await llegarA(tester, EstadoV11.lista);
+      await abrirAltaDepto(tester);
+      for (final v in ['pb a', 'PBA', 'PB–A', 'PB—A', ' p b - a ', 'PB‑A']) {
+        await escribir(tester, campoNumero, v);
+        await tester.tap(botonAgregar);
+        await asentarHoja(tester);
+        expect(
+          find.text('Ya existe el departamento PB-A en este edificio.'),
+          findsOneWidget,
+          reason: '«$v» debería ser repetido',
+        );
+      }
+      expect(m.repo.activos, hasLength(6));
+    });
+
+    testWidgets('los puntos y las barras siguen contando: «12», «1.2» y «1/2» son distintos', (
+      tester,
+    ) async {
+      final m = await llegarA(tester, EstadoV11.vacio);
+      await abrirAltaDepto(tester);
+      for (final v in ['12', '1.2', '1/2']) {
+        await escribir(tester, campoNumero, v);
+        await tester.tap(botonAgregarYCargarOtro);
+        await asentarHoja(tester);
+      }
+      expect(m.repo.activos.map((e) => e.numeroDepto), ['12', '1.2', '1/2']);
+    });
+
+    testWidgets('editar «101» a «1-0-1» no es repetido de sí mismo y guarda', (tester) async {
+      final m = await llegarA(tester, EstadoV11.lista);
+      await abrirEdicionDepto(tester, 'e-101');
+      await escribir(tester, campoNumero, '1-0-1');
+      await tester.tap(botonGuardarDepto);
+      await asentarHoja(tester);
+
+      expect(find.byKey(ClavesHojaDepto.repetido), findsNothing);
+      expect(m.repo.activos.firstWhere((e) => e.id == 'e-101').numeroDepto, '1-0-1');
+    });
+
+    testWidgets('un número que es solo guiones («-») se guarda y la fila dice «Sin número»', (
+      tester,
+    ) async {
+      // Documenta el menor del revisor: pasa la validación, la clave es nula y la fila dice
+      // «Sin número» aunque el dato sea «-». No se pierde nada.
+      final m = await llegarA(tester, EstadoV11.vacio);
+      await abrirAltaDepto(tester);
+      await escribir(tester, campoNumero, '-');
+      await tester.tap(botonAgregar);
+      await asentarHoja(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(m.repo.activos.map((e) => e.numeroDepto), ['-']);
+      expect(find.text('Sin número'), findsOneWidget);
+    });
+
+    testWidgets('la baja de un depto sin número pregunta «¿Dar de baja este depto sin número?»', (
+      tester,
+    ) async {
+      await llegarA(tester, EstadoV11.preguntaBajaSinNumero);
+      expect(find.text('¿Dar de baja este depto sin número?'), findsOneWidget);
+    });
+
+    testWidgets('«PB» va primero entre los pisos, sin importar mayúsculas; «Sin piso» al final', (
+      tester,
+    ) async {
+      await montarHoja(
+        tester,
+        espacios: [
+          espacioDe('a', '1', piso: '1', orden: 1),
+          espacioDe('b', '2', piso: 'pb', orden: 2),
+          espacioDe('c', '3', piso: 'Azotea', orden: 3),
+          espacioDe('d', '4', orden: 4),
+          espacioDe('e', '5', piso: '2', orden: 5),
+        ],
+        tamano: const Size(390, 1400),
+      );
+      final rotulos = ['PISO PB', 'PISO 1', 'PISO 2', 'PISO AZOTEA', 'SIN PISO'];
+      final ys = [for (final r in rotulos) tester.getTopLeft(find.text(r)).dy];
+      expect(ys, orderedEquals([...ys]..sort()), reason: 'orden de los pisos: $ys');
+    });
   });
 }
