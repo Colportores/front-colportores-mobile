@@ -1,8 +1,6 @@
 import '../domain/entities/estado_casa.dart';
-import '../domain/entities/lista_ubicaciones.dart';
 import '../domain/entities/ubicacion.dart';
 import 'formato_lista_ubicaciones.dart';
-import 'formato_ubicaciones.dart';
 
 /// Los textos del mapa de ubicaciones (vista 06, HU-UBI-003). Los del canvas están letra por letra;
 /// los que el canvas no dibuja (el vacío, el error, «Sin GPS») son propuestas marcadas en el
@@ -66,18 +64,6 @@ abstract final class FormatoMapaUbicaciones {
   static String etiquetaPuerta(Ubicacion ubicacion) {
     final numero = ubicacion.numero?.trim();
     return numero == null || numero.isEmpty ? 's/n' : numero;
-  }
-
-  /// La línea chica de arriba de la vista previa (canvas): «CASA · 2 ESPACIOS · A 40 M». Sin GPS no
-  /// hay distancia y se omite.
-  static String rotuloVistaPrevia(ItemListaUbicacion item) {
-    final distancia = item.distanciaMetros;
-    final partes = [
-      FormatoUbicaciones.tipo(item.ubicacion.tipo),
-      FormatoListaUbicaciones.espacios(item.cantidadEspacios),
-      if (distancia != null && distancia.isFinite) 'a ${FormatoUbicaciones.distancia(distancia)}',
-    ];
-    return partes.join(' · ').toUpperCase();
   }
 
   /// El estado de la casa en la vista previa (canvas: «Cobranza pendiente · hoy 15:00»): el rótulo

@@ -262,9 +262,10 @@ void main() {
 
       expect(altoHoja(tester), closeTo(844 / 3, 1));
       expect(vistaPrevia, findsOneWidget);
-      expect(find.text('CASA · 2 ESPACIOS · A 40 M'), findsOneWidget);
+      // La hoja de la casa (vista 39, C·01): la dirección y una línea con el tipo, el estado y la
+      // distancia.
       expect(find.text('Av. Italia 1234'), findsOneWidget);
-      expect(find.text('Cobranza pendiente'), findsOneWidget);
+      expect(find.text('Casa · Cobranza pendiente · a 40 m de vos'), findsOneWidget);
       expect(fila('a'), findsNothing);
       // El marcador se ve con el aro; su número sigue visible.
       expect(punto(m.mapa, 'a').estilo, EstiloPunto.seleccionado);
@@ -276,7 +277,7 @@ void main() {
       expect(centro.lon, closeTo(ubicacion.lon, 1e-9));
     });
 
-    testWidgets('el rótulo no inventa la distancia sin GPS', (tester) async {
+    testWidgets('el subtítulo no inventa la distancia sin GPS', (tester) async {
       final m = await montarMapaUbicaciones(
         tester,
         repo: RepoListaFalso(canvas()),
@@ -286,8 +287,8 @@ void main() {
       m.mapa.tocarPunto('d');
       await asentarLista(tester);
 
-      expect(find.text('NEGOCIO · 1 ESPACIO'), findsOneWidget);
-      expect(find.textContaining(' A '), findsNothing);
+      expect(find.text('Negocio · Entrevista agendada'), findsOneWidget);
+      expect(find.textContaining('de vos'), findsNothing);
     });
 
     testWidgets('la ✕ cierra la vista previa y vuelve a la lista, en la misma altura', (
@@ -347,16 +348,19 @@ void main() {
       expect(hayPunto(m.mapa, 'a'), isFalse);
     });
 
-    testWidgets('los botones y la cuota de la vista previa llegan con sus HU: no se dibujan '
-        '(HU-VIS-001/002 y HU-COB-005)', (tester) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      m.mapa.tocarPunto('a');
-      await asentarLista(tester);
+    testWidgets(
+      'sin destino enganchado, los botones de la hoja (Registrar visita, \$ Cobrar) no se '
+      'dibujan: llegan con #411 y #440; «Agendar» y «Detalle» no son de esta hoja',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        m.mapa.tocarPunto('a');
+        await asentarLista(tester);
 
-      for (final texto in ['Registrar visita', 'Agendar', 'Detalle']) {
-        expect(find.text(texto), findsNothing, reason: texto);
-      }
-    });
+        for (final texto in ['Registrar visita', 'Agendar', 'Detalle']) {
+          expect(find.text(texto), findsNothing, reason: texto);
+        }
+      },
+    );
   });
 
   group('06C·05 / 06C·06 · sin conexión y sin mapa descargado', () {

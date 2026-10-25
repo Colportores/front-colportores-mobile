@@ -10,6 +10,7 @@ import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../../domain/services/cuadrados_del_mapa.dart';
 import '../../domain/services/proyeccion_mercator.dart';
+import '../../domain/services/ubicaciones_en_el_punto.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
@@ -265,7 +266,46 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   void _alTocarPunto(String id) {
     // El punto azul es «Tu ubicación»: no tiene vista previa.
     if (id == 'gps') return;
+    final candidatas = _candidatasEnElPunto(id);
+    if (candidatas.length >= 2) {
+      _elegirEntre(candidatas);
+      return;
+    }
     _elegir(id);
+  }
+
+  /// Las ubicaciones entre las que hay que elegir al tocar [id] (vista 39, E·06): las que el mapa
+  /// pinta a 44 dp o menos del toque, **solo** con el mapa en su zoom máximo —antes de eso se abre la
+  /// más cercana y con los dedos se acerca—. Vacía si no hay nada que elegir.
+  List<String> _candidatasEnElPunto(String id) {
+    final lista = ref.read(_proveedor).lista;
+    final camara = _mapa?.camara ?? _camaraQuieta;
+    if (lista == null || camara == null) return const [];
+    return UbicacionesEnElPunto.elegibles(
+      tocada: id,
+      todas: [
+        for (final item in lista.items)
+          (id: item.ubicacion.id, coordenadas: item.ubicacion.coordenadas),
+      ],
+      zoom: camara.zoom,
+      zoomMaximo: MapaAlta.zoomMaximo,
+    );
+  }
+
+  /// «3 ubicaciones acá»: la hoja pide elegir cuál, de la más cercana al toque a la más lejana. El
+  /// mapa se centra en la tocada, que va primera.
+  void _elegirEntre(List<String> ids) {
+    final lista = ref.read(_proveedor).lista;
+    ItemListaUbicacion? tocada;
+    for (final candidato in lista?.items ?? const <ItemListaUbicacion>[]) {
+      if (candidato.ubicacion.id == ids.first) tocada = candidato;
+    }
+    _notificador.elegirEntre(ids);
+    // Elegir es mirar varias filas: a un tercio se verían una y media. Sube a la mitad (el colportor
+    // la baja si quiere el mapa).
+    const nueva = AlturaHoja.mitad;
+    if (nueva != _altura) setState(() => _altura = nueva);
+    if (tocada != null) _centrarEn(tocada.ubicacion.coordenadas, nueva);
   }
 
   /// «Mi ubicación»: el mapa vuelve al GPS; se pide una lectura nueva y, si el colportor no tocó el
@@ -424,7 +464,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     // Con la vista previa abierta, el atrás del teléfono hace lo que la ✕: cierra la vista previa y
     // deja la hoja a la altura que tenía. Solo con la pestaña a la vista: en otra, el atrás es de
     // la pantalla principal (y esta le avisa que ya es de ella: `InicioPage`).
-    final conVistaPrevia = widget.activa && estado.seleccionada != null;
+    final conVistaPrevia = widget.activa && estado.hayVistaPrevia;
     return PopScope(
       canPop: !conVistaPrevia,
       onPopInvokedWithResult: (salio, _) {
@@ -564,6 +604,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     alCambiarAltura: _cambiarAltura,
                     alElegir: (id) => _elegir(id, zoomMinimo: MapaAlta.zoomCalle),
                     alCerrarVistaPrevia: _notificador.cerrarSeleccion,
+                    alElegirDelPunto: (id) => _elegir(id),
                     alReintentar: _notificador.reintentar,
                     alActivarGps: () => unawaited(_notificador.activarGps()),
                     alRegistrar: () => unawaited(_abrirAlta()),

@@ -18,6 +18,7 @@ final class MapaUbicacionesState extends Equatable {
     this.lectura,
     this.motivoSinGps,
     this.seleccionadaId,
+    this.candidatasIds = const [],
   });
 
   /// «Cerca tuyo» (canvas, 06C·01): a menos de esta distancia del GPS el marcador crece y muestra
@@ -40,6 +41,11 @@ final class MapaUbicacionesState extends Equatable {
   /// no hay vista previa.
   final String? seleccionadaId;
 
+  /// Las ubicaciones entre las que hay que elegir (vista 39, E·06 «3 ubicaciones acá»): los `id`, de
+  /// la más cercana al toque a la más lejana. Vacía si no hay nada que elegir. Nunca hay a la vez una
+  /// [seleccionadaId] y candidatas: o se eligió una, o se está eligiendo.
+  final List<String> candidatasIds;
+
   /// La posición con la que se ordena y se mide, si hay.
   Coordenadas? get posicion => lectura?.coordenadas;
 
@@ -57,6 +63,21 @@ final class MapaUbicacionesState extends Equatable {
     return null;
   }
 
+  /// Las filas de las candidatas que siguen en [lista], en el orden de [candidatasIds]. Una que ya no
+  /// está (una baja, otra sesión) sale de la elección.
+  List<ItemListaUbicacion> get candidatas {
+    final items = lista?.items;
+    if (candidatasIds.isEmpty || items == null) return const [];
+    return [
+      for (final id in candidatasIds)
+        for (final item in items)
+          if (item.ubicacion.id == id) item,
+    ];
+  }
+
+  /// Hay una hoja de la casa que mostrar: la de la seleccionada o la elección entre candidatas.
+  bool get hayVistaPrevia => seleccionada != null || candidatas.isNotEmpty;
+
   MapaUbicacionesState copyWith({
     ListaUbicaciones? lista,
     bool? fallaLectura,
@@ -66,6 +87,8 @@ final class MapaUbicacionesState extends Equatable {
     bool borrarMotivo = false,
     String? seleccionadaId,
     bool borrarSeleccion = false,
+    List<String>? candidatasIds,
+    bool borrarCandidatas = false,
   }) => MapaUbicacionesState(
     lista: lista ?? this.lista,
     fallaLectura: fallaLectura ?? this.fallaLectura,
@@ -73,8 +96,17 @@ final class MapaUbicacionesState extends Equatable {
     lectura: lectura ?? this.lectura,
     motivoSinGps: borrarMotivo ? null : (motivoSinGps ?? this.motivoSinGps),
     seleccionadaId: borrarSeleccion ? null : (seleccionadaId ?? this.seleccionadaId),
+    candidatasIds: borrarCandidatas ? const [] : (candidatasIds ?? this.candidatasIds),
   );
 
   @override
-  List<Object?> get props => [lista, fallaLectura, gps, lectura, motivoSinGps, seleccionadaId];
+  List<Object?> get props => [
+    lista,
+    fallaLectura,
+    gps,
+    lectura,
+    motivoSinGps,
+    seleccionadaId,
+    candidatasIds,
+  ];
 }

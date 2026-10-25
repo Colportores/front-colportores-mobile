@@ -4,9 +4,11 @@ import '../../../../core/database/fecha_utc_converter.dart';
 
 /// Tipos de objeto al que se ata una `nota` (`target_type`, esquema-datos.md §`nota`). Hoy la app
 /// escribe `PERSONA` (HU-UBI-008, la primera nota del alta), `VISITA` y `AGENDA` (la nota opcional
-/// de cada una, #404); HU-UBI-012 trae el resto.
+/// de cada una, #404) y lee `UBICACION` (la nota del lugar que muestra la hoja de la casa, vista 39);
+/// HU-UBI-012 trae el resto.
 abstract final class TipoObjetivoNota {
   static const persona = 'PERSONA';
+  static const ubicacion = 'UBICACION';
   static const visita = 'VISITA';
   static const agenda = 'AGENDA';
 }
