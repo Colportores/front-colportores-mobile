@@ -92,6 +92,7 @@ void main() {
     final r = await casoDeUso(
       RegistrarResultadoVisitaParams(
         ids: casoDeUso.nuevosIds(),
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         colportorId: 'col-1',
         resultado: TipoResultadoVisita.rechazo,

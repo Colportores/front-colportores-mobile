@@ -93,6 +93,15 @@ void main() {
       expect(CalculadorColorCasa.calcular(agendasPendientes: [TipoAgenda.cobranza]), isNull);
     });
 
+    test('dado una visita de cobranza, cuando se calcula, no pinta nada ni pisa a las demás: queda '
+        'en el historial (decisión «Visita cobro», 23/10)', () {
+      expect(CalculadorColorCasa.calcular(resultadosDeVisitas: [_R.cobranza]), isNull);
+      expect(
+        CalculadorColorCasa.calcular(resultadosDeVisitas: [_R.cobranza, _R.noContesto]),
+        _C.sinContestar,
+      );
+    });
+
     test('dado el resultado de una visita, cuando se calcula, cada uno tiene su color', () {
       expect(
         CalculadorColorCasa.calcular(resultadosDeVisitas: [_R.entrevista]),

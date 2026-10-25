@@ -6,13 +6,15 @@ import '../../../../core/domain/instante.dart';
 /// Resultado de una visita (`visita.tipo_resultado`, esquema-datos.md §Operaciones de campo).
 /// [codigo] es el valor de la columna.
 ///
-/// La HU-VIS-005 suma `COBRANZA`, que el servidor no admite todavía: hasta la decisión de Cristian
-/// (pendiente P2 de #151) la tabla copia el `CHECK` del servidor y este enum no lo tiene.
+/// `COBRANZA` es la pasada a cobrar (HU-VIS-005; decisión de Cristian del 23/10, «Visita cobro»):
+/// un resultado más, que queda en el historial aunque no se cobre, cumple la cita de cobranza y **no**
+/// cuenta como presentación.
 enum TipoResultadoVisita {
   venta('VENTA'),
   noContesto('NO_CONTESTO'),
   rechazo('RECHAZO'),
-  entrevista('ENTREVISTA');
+  entrevista('ENTREVISTA'),
+  cobranza('COBRANZA');
 
   const TipoResultadoVisita(this.codigo);
 
@@ -20,18 +22,15 @@ enum TipoResultadoVisita {
 
   /// Si el resultado cuenta como **presentación** (HU-VIS-005, decisión de Cristian del 21/10,
   /// docs#69): la visita con la entrevista hecha. Cuentan `VENTA` y `ENTREVISTA`; no `NO_CONTESTO`
-  /// (nadie atendió). `RECHAZO` tampoco, hasta que se confirme (S62). Es la misma definición que usa
+  /// (nadie atendió) ni `COBRANZA` (fue a cobrar). `RECHAZO` tampoco, hasta que se confirme (S62). Es la misma definición que usa
   /// el servidor para el tablero del coordinador: la app no guarda ningún campo aparte, el resultado
   /// ya queda distinguible por su [codigo].
   bool get cuentaComoPresentacion => this == venta || this == entrevista;
 
-  /// Si la visita **cumple** la agenda que tenía la casa (la agenda pasa a `COMPLETADA`).
-  ///
-  /// La HU-VIS-005 dice que con `NO_CONTESTO` la agenda pasa a `NO_CUMPLIDA`, un estado que el
-  /// servidor no tiene (pendiente P1 de #151, de Cristian): hasta que se decida, `NO_CONTESTO` no
-  /// cierra la agenda —ni la marca como cumplida, que sería falso— y la deja `PENDIENTE`. Los otros
-  /// tres resultados la cumplen: la HU solo nombra a `NO_CONTESTO` como «no cumplida» (lectura a
-  /// confirmar con el mapa de decisiones, §2).
+  /// Si la visita **cumple** la agenda que tenía la casa (la agenda pasa a `CUMPLIDA`). Con
+  /// `NO_CONTESTO` la agenda pasa a `NO_CUMPLIDA` (HU-VIS-005; decisión del 23/10, «No cumplida»).
+  /// Los otros resultados la cumplen: la HU solo nombra a `NO_CONTESTO` como «no cumplida» (lectura
+  /// del mapa de decisiones, §2; `COBRANZA` cumple la cita de cobranza).
   bool get cumpleLaAgenda => this != noContesto;
 
   /// Inversa de [codigo]. Lanza `ArgumentError` con un valor desconocido (lo frena el `CHECK`).
@@ -48,7 +47,8 @@ enum TipoResultadoVisita {
 class Visita extends Equatable {
   Visita({
     required this.id,
-    required this.espacioPersonaId,
+    required this.espacioId,
+    this.espacioPersonaId,
     required DateTime fecha,
     required this.tipoResultado,
     required this.colportorId,
@@ -58,8 +58,13 @@ class Visita extends Equatable {
 
   final String id;
 
-  /// FK a `espacio_persona.id` (`NOT NULL`, ADR-017).
-  final String espacioPersonaId;
+  /// FK a `espacio.id`: la casa o el depto de la visita. Es a lo que cuelga la visita
+  /// (backend-supabase 0069; decisión del 23/10, «Sin persona»).
+  final String espacioId;
+
+  /// FK opcional a `espacio_persona.id`: con quién fue la visita. «No contestó» y «Rechazo» no piden
+  /// persona; con persona, es el vínculo de ese espacio (ADR-017).
+  final String? espacioPersonaId;
 
   /// Siempre en UTC y al milisegundo — ver [instanteMs].
   final DateTime fecha;
@@ -79,6 +84,7 @@ class Visita extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    espacioId,
     espacioPersonaId,
     fecha,
     tipoResultado,

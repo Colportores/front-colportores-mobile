@@ -11,11 +11,12 @@ void main() {
   final auditoria = Auditoria(createdAt: DateTime(2026, 1, 1), updatedAt: DateTime(2026, 1, 1));
 
   Agenda construir({
-    EstadoAgenda estado = EstadoAgenda.pendiente,
+    EstadoAgenda estado = EstadoAgenda.programada,
     DateTime? fecha,
     Auditoria? auditoriaPropia,
   }) => Agenda(
     id: 'age-1',
+    espacioId: 'esp-1',
     espacioPersonaId: 'ep-1',
     tipo: TipoAgenda.entrevista,
     fechaProgramada: fecha ?? DateTime.utc(2026, 10, 25, 14),
@@ -29,7 +30,7 @@ void main() {
         'visita', () {
       final agenda = construir();
 
-      expect(agenda.estado, EstadoAgenda.pendiente);
+      expect(agenda.estado, EstadoAgenda.programada);
       expect(agenda.esEstricta, isFalse);
       expect(agenda.visitaId, isNull);
       expect(agenda.slotCodigo, isNull);
@@ -58,11 +59,11 @@ void main() {
       expect(a, equals(construir(fecha: utc)));
     });
 
-    test('dado el estado, cuando se consulta estaPendiente, solo lo es la agenda pendiente y sin '
+    test('dado el estado, cuando se consulta estaProgramada, solo lo es la agenda pendiente y sin '
         'baja', () {
-      expect(construir().estaPendiente, isTrue);
-      expect(construir(estado: EstadoAgenda.completada).estaPendiente, isFalse);
-      expect(construir(estado: EstadoAgenda.cancelada).estaPendiente, isFalse);
+      expect(construir().estaProgramada, isTrue);
+      expect(construir(estado: EstadoAgenda.cumplida).estaProgramada, isFalse);
+      expect(construir(estado: EstadoAgenda.cancelada).estaProgramada, isFalse);
       expect(
         construir(
           auditoriaPropia: Auditoria(
@@ -70,7 +71,7 @@ void main() {
             updatedAt: DateTime(2026, 1, 1),
             deletedAt: DateTime(2026, 1, 2),
           ),
-        ).estaPendiente,
+        ).estaProgramada,
         isFalse,
       );
     });
@@ -98,8 +99,9 @@ void main() {
       expect(
         {for (final e in EstadoAgenda.values) e: e.codigo},
         {
-          EstadoAgenda.pendiente: 'PENDIENTE',
-          EstadoAgenda.completada: 'COMPLETADA',
+          EstadoAgenda.programada: 'PROGRAMADA',
+          EstadoAgenda.cumplida: 'CUMPLIDA',
+          EstadoAgenda.noCumplida: 'NO_CUMPLIDA',
           EstadoAgenda.cancelada: 'CANCELADA',
         },
       );
@@ -116,17 +118,15 @@ void main() {
 
     test('dado un código que el servidor no tiene, cuando se lee, lanza ArgumentError', () {
       expect(() => TipoAgenda.desdeCodigo('VENTA'), throwsArgumentError);
-      expect(() => EstadoAgenda.desdeCodigo('NO_CUMPLIDA'), throwsArgumentError);
+      expect(() => EstadoAgenda.desdeCodigo('PENDIENTE'), throwsArgumentError);
     });
 
-    test(
-      'dado el estado, cuando se consulta estaCerrada, solo lo está lo cumplido o cancelado',
-      () {
-        expect(EstadoAgenda.pendiente.estaCerrada, isFalse);
-        expect(EstadoAgenda.completada.estaCerrada, isTrue);
-        expect(EstadoAgenda.cancelada.estaCerrada, isTrue);
-      },
-    );
+    test('dado el estado, cuando se consulta estaCerrada, solo no lo está lo programado', () {
+      expect(EstadoAgenda.programada.estaCerrada, isFalse);
+      expect(EstadoAgenda.cumplida.estaCerrada, isTrue);
+      expect(EstadoAgenda.noCumplida.estaCerrada, isTrue);
+      expect(EstadoAgenda.cancelada.estaCerrada, isTrue);
+    });
   });
 
   group('NotaDeCampo y MotivoRechazoAgenda', () {
@@ -142,7 +142,7 @@ void main() {
 
     test('dado cada motivo de rechazo, cuando se lee, dice a qué campo va y guía a la persona', () {
       for (final motivo in MotivoRechazoAgenda.values) {
-        expect(motivo.campo, anyOf('persona', 'agenda'));
+        expect(motivo.campo, anyOf('espacio', 'persona', 'agenda', 'visita'));
         expect(motivo.mensaje, endsWith('.'));
       }
     });

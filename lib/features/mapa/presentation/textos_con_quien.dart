@@ -19,6 +19,14 @@ abstract final class TextosConQuien {
   static String ayudaSinPersonas(String? donde) =>
       donde == null ? 'Con el nombre alcanza' : '$donde · con el nombre alcanza';
 
+  /// El paso de programar una entrevista (todavía no ocurrió: el verbo va en presente).
+  static const tituloProgramar = '¿Con quién es la entrevista?';
+  static const seguir = 'Seguir';
+
+  /// Solo al programar: la cita queda sin persona (decisión «Sin persona», 23/10). Texto propuesto
+  /// (mapa §2: texto/aviso); el canvas no dibuja este paso.
+  static const todaviaNoSe = 'Todavía no sé con quién';
+
   static const empezar = 'Empezar entrevista';
   static const volver = 'Volver';
   static const alguienNuevo = '+ Alguien nuevo';

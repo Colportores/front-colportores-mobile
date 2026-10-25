@@ -17,7 +17,8 @@ import '../../../../../helpers/logger_mudo.dart';
 final class _Local implements AgendaLocalDataSource {
   Object? lanza;
   MotivoAgendaIgnorada? ignorada;
-  bool pendiente = false;
+  bool noCumplida = false;
+  VisitaDeshecha? deshecha;
 
   @override
   Future<AgendaAgendada> agendar(Agenda agenda, {NotaDeCampo? nota}) async {
@@ -42,8 +43,29 @@ final class _Local implements AgendaLocalDataSource {
       visita: visita,
       yaEstaba: false,
       agendaIgnorada: ignorada,
-      agendaQuedoPendiente: pendiente,
+      agendaNoCumplida: noCumplida,
+      agendaCreadaId: 'age-nueva',
+      agendaAfectadaId: null,
     );
+  }
+
+  @override
+  Future<VisitaDeshecha> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) async {
+    _lanzarSiCorresponde();
+    return deshecha ?? (visita: visitaDe(visitaId), escribio: true);
+  }
+
+  Agenda? programada;
+
+  @override
+  Future<Agenda?> agendaProgramadaDe(String espacioId) async {
+    _lanzarSiCorresponde();
+    return programada;
   }
 
   @override
@@ -100,15 +122,58 @@ void main() {
       );
     });
 
-    test('registrar la visita que deja la agenda pendiente trae el aviso que guia', () async {
-      local.pendiente = true;
+    test(
+      'registrar la visita que deja la agenda no cumplida lo dice, sin aviso de error',
+      () async {
+        local.noCumplida = true;
 
-      final r = await repositorio.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
+        final r = await repositorio.registrarVisita(visitaDe('vis-1'), agendaId: 'age-1');
 
-      final guardada = r.getOrElse(() => throw StateError('falló'));
-      expect(guardada.agendaQuedoPendiente, isTrue);
-      expect(guardada.agendaIgnorada, isNull);
-      expect(guardada.aviso, VisitaGuardada.avisoAgendaPendiente);
+        final guardada = r.getOrElse(() => throw StateError('falló'));
+        expect(guardada.agendaNoCumplida, isTrue);
+        expect(guardada.agendaIgnorada, isNull);
+        expect(guardada.aviso, isNull);
+        expect(guardada.agendaCreadaId, 'age-nueva');
+      },
+    );
+
+    test('deshacer una visita devuelve la visita dada de baja', () async {
+      final r = await repositorio.deshacerVisita('vis-1', ahora: DateTime.utc(2026, 10, 25));
+
+      expect(r.getOrElse(() => throw StateError('falló')).id, 'vis-1');
+    });
+
+    test(
+      'deshacer una visita que el teléfono no tiene es una validación en el campo visita',
+      () async {
+        local.lanza = const AgendaRechazadaException(MotivoRechazoAgenda.visitaInexistente);
+
+        final r = await repositorio.deshacerVisita('vis-x', ahora: DateTime.utc(2026, 10, 25));
+
+        final falla = r.fold<Failure?>((f) => f, (_) => null);
+        expect(falla, isA<FailureValidacion>());
+        expect((falla! as FailureValidacion).campos.keys, ['visita']);
+      },
+    );
+
+    test('la agenda programada de la casa sale tal cual, o null si no hay', () async {
+      expect(
+        (await repositorio.agendaProgramadaDe('esp-1')).getOrElse(() => throw StateError('x')),
+        isNull,
+      );
+
+      local.programada = agendaDe('age-1');
+      final r = await repositorio.agendaProgramadaDe('esp-1');
+
+      expect(r.getOrElse(() => throw StateError('falló'))!.id, 'age-1');
+    });
+
+    test('leer la agenda de la casa que falla es un error inesperado, sin excepción', () async {
+      local.lanza = StateError('no se pudo leer');
+
+      final r = await repositorio.agendaProgramadaDe('esp-1');
+
+      expect(r.swap().getOrElse(() => throw StateError('debía fallar')), isA<FailureInesperado>());
     });
 
     test('registrar la visita sin problema no trae aviso', () async {

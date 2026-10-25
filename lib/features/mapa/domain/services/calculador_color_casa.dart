@@ -21,7 +21,8 @@ abstract final class CalculadorColorCasa {
   /// - Una agenda pendiente **de entrevista** → 3, entrevista programada. La de **cobranza** no
   ///   pinta nada acá: «cobranza pendiente» (2) depende de que haya una venta con saldo (S9).
   /// - Una visita `ENTREVISTA` → 5, `NO_CONTESTO` → 6, `RECHAZO` → 7. La `VENTA` no aporta nada
-  ///   hasta que la venta exista (S9: 4 si el saldo es 0, 1 o 2 si falta cobrar o entregar).
+  ///   hasta que la venta exista (S9: 4 si el saldo es 0, 1 o 2 si falta cobrar o entregar). La
+  ///   `COBRANZA` tampoco: pinta el cobro (S9), no la visita.
   static ColorHouseStatus? calcular({
     Iterable<TipoAgenda> agendasPendientes = const [],
     Iterable<TipoResultadoVisita> resultadosDeVisitas = const [],
@@ -34,7 +35,7 @@ abstract final class CalculadorColorCasa {
           TipoResultadoVisita.entrevista => ColorHouseStatus.entrevistaSinVenta,
           TipoResultadoVisita.noContesto => ColorHouseStatus.sinContestar,
           TipoResultadoVisita.rechazo => ColorHouseStatus.rechazo,
-          TipoResultadoVisita.venta => null,
+          TipoResultadoVisita.venta || TipoResultadoVisita.cobranza => null,
         },
     ].whereType<ColorHouseStatus>(),
   );
