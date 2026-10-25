@@ -21,6 +21,7 @@ import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/uniones_pendientes_notifier.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
+import '../widgets/mostrar_hoja_casa.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import '../widgets/piezas_lista_ubicaciones.dart';
 import '../widgets/textos_posibles_duplicados.dart';
@@ -75,8 +76,9 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// La pestaña está a la vista.
   final bool activa;
 
-  /// Qué pasa al tocar una fila. `null` mientras no haya una pantalla de destino (las ubicaciones
-  /// del espacio, vista 11): las filas se ven igual pero no se tocan.
+  /// Qué pasa al tocar una fila. Por defecto abre la hoja de la casa, «la misma que en el mapa»
+  /// (vista 39, C·01); una pantalla de destino propia (las ubicaciones del espacio, vista 11) la
+  /// reemplaza.
   final AlAbrirUbicacion? alAbrirUbicacion;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
@@ -104,6 +106,9 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   String? _reactivandoId;
   var _abriendoAlta = false;
   var _abriendoDuplicados = false;
+
+  /// Una sola hoja de la casa a la vez: un segundo toque (o dos filas seguidas) no abre otra encima.
+  var _abriendoCasa = false;
 
   ListaUbicacionesNotifier get _notificador =>
       ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
@@ -205,6 +210,29 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
     }
     return null;
+  }
+
+  /// Tocar una fila (vista 05): se abre la hoja de la casa de la vista 39, o el destino que se pasó en
+  /// [ListaUbicacionesPage.alAbrirUbicacion]. Una casa dada de baja se abre igual, para ver lo que
+  /// pasó; su «Reactivar» es el de la fila.
+  Future<void> _abrirCasa(ItemListaUbicacion item) async {
+    final destino = widget.alAbrirUbicacion;
+    if (destino != null) {
+      destino(item.ubicacion.id, item.distanciaMetros);
+      return;
+    }
+    if (_abriendoCasa) return;
+    _abriendoCasa = true;
+    try {
+      await mostrarHojaCasa(
+        context,
+        colportorId: widget.colportorId,
+        item: item,
+        alReactivar: _reactivar,
+      );
+    } finally {
+      _abriendoCasa = false;
+    }
   }
 
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
@@ -461,7 +489,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                           // texto al 200 % el encabezado ya ocupa casi toda la pantalla y la franja no
                           // entra (QA de #357).
                           avisoDuplicados: fija ? null : franja,
-                          alAbrirUbicacion: widget.alAbrirUbicacion,
+                          alAbrirUbicacion: (item) => unawaited(_abrirCasa(item)),
                           alReactivar: (item) => unawaited(_reactivar(item)),
                           reactivandoId: _reactivandoId,
                           alRegistrar: () => unawaited(_registrar()),
@@ -818,7 +846,7 @@ class _Cuerpo extends StatelessWidget {
   /// «3 posibles duplicados · Revisar» (o el de la falla): va arriba de lo que se desplaza. No se
   /// muestra mientras se lee la lista por primera vez ni cuando esa lectura falla.
   final Widget? avisoDuplicados;
-  final AlAbrirUbicacion? alAbrirUbicacion;
+  final ValueChanged<ItemListaUbicacion> alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
 
   /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
@@ -978,9 +1006,7 @@ class _Cuerpo extends StatelessWidget {
           item: item,
           lista: lista,
           ahora: ahora,
-          alTocar: alAbrirUbicacion == null
-              ? null
-              : () => alAbrirUbicacion!(id, item.distanciaMetros),
+          alTocar: () => alAbrirUbicacion(item),
           // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
           // se toca (HU-UBI-005, «Reactivar»).
           alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,

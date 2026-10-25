@@ -58,7 +58,26 @@ Future<MontajeHoja> _montarConCuenta(WidgetTester tester, EstadoCuenta cuenta) a
   return m;
 }
 
-final _avisoBloqueado = find.byKey(const Key('modulo_bloqueado_aviso'));
+/// El aviso DENTRO de la hoja (no un `SnackBar`: la hoja es un modal y lo taparía).
+final _avisoDeLaHoja = find.byKey(ClavesHojaUbicacion.aviso);
+
+/// El texto [texto] está en el aviso de la hoja y se ve de verdad: el toque lo alcanza (no lo cubre
+/// la hoja ni otra cosa) y cae dentro de la pantalla y de la hoja.
+void _seVeElAviso(WidgetTester tester, String texto) {
+  final enAviso = find.descendant(of: _avisoDeLaHoja, matching: find.text(texto));
+  expect(enAviso, findsOneWidget);
+  expect(enAviso.hitTestable(), findsOneWidget, reason: 'el aviso no está tapado');
+  final rect = tester.getRect(enAviso);
+  final hoja = tester.getRect(find.byKey(ClavesHojaUbicacion.hoja));
+  final pantalla = tester.view.physicalSize / tester.view.devicePixelRatio;
+  expect(hoja.contains(rect.topLeft) && hoja.contains(rect.bottomRight), isTrue);
+  expect(rect.bottom <= pantalla.height && rect.right <= pantalla.width, isTrue);
+  expect(
+    find.byType(SnackBar),
+    findsNothing,
+    reason: 'el aviso no es un SnackBar tapado por la hoja',
+  );
+}
 
 void main() {
   group('11·01 Edificio con departamentos', () {
@@ -164,10 +183,7 @@ void main() {
       await asentarHoja(tester);
 
       expect(hojaDepto, findsNothing);
-      expect(
-        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.suspendida)),
-        findsOneWidget,
-      );
+      _seVeElAviso(tester, TextosModuloBloqueado.suspendida);
       expect(tester.takeException(), isNull);
     });
 
@@ -178,10 +194,7 @@ void main() {
       await asentarHoja(tester);
 
       expect(hojaDepto, findsNothing);
-      expect(
-        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.suspendida)),
-        findsOneWidget,
-      );
+      _seVeElAviso(tester, TextosModuloBloqueado.suspendida);
     });
 
     testWidgets('pendiente, «Editar edificio» no abre la edición y avisa con el texto de esa '
@@ -192,10 +205,7 @@ void main() {
       await asentarHoja(tester);
 
       expect(m.ediciones, isEmpty);
-      expect(
-        find.descendant(of: _avisoBloqueado, matching: find.text(TextosModuloBloqueado.pendiente)),
-        findsOneWidget,
-      );
+      _seVeElAviso(tester, TextosModuloBloqueado.pendiente);
       expect(botonEditarUbicacion, findsOneWidget, reason: 'el botón sigue disponible');
     });
 
@@ -217,7 +227,7 @@ void main() {
       await tester.tap(botonEditarUbicacion);
       await asentarHoja(tester);
       expect(m.ediciones, ['ubi-1']);
-      expect(_avisoBloqueado, findsNothing);
+      expect(_avisoDeLaHoja, findsNothing);
     });
   });
 
@@ -505,10 +515,51 @@ void main() {
       espera.completeError(StateError('no abrió'));
       await asentarHoja(tester);
 
-      expect(find.text('No pudimos abrir la edición. Probá de nuevo.'), findsOneWidget);
+      _seVeElAviso(tester, 'No pudimos abrir la edición. Probá de nuevo.');
       expect(habilitado(tester, botonEditarUbicacion), isTrue);
       expect(habilitado(tester, botonAgregarDepto), isTrue);
       expect(hojaUbicacion, findsOneWidget);
+    });
+
+    testWidgets('el aviso de la edición que falló se va al volver a intentar', (tester) async {
+      final m = await montarHoja(tester, espacios: _delCanvas);
+      final espera = Completer<SalidaModificarUbicacion?>();
+      m.esperaEdicion = espera;
+      await tester.tap(botonEditarUbicacion);
+      await tester.pump();
+      espera.completeError(StateError('no abrió'));
+      await asentarHoja(tester);
+      expect(_avisoDeLaHoja, findsOneWidget);
+
+      m.esperaEdicion = null;
+      await tester.tap(botonEditarUbicacion);
+      await asentarHoja(tester);
+
+      expect(m.ediciones, ['ubi-1', 'ubi-1']);
+      expect(_avisoDeLaHoja, findsNothing);
+    });
+
+    testWidgets('con el texto al 200 % y 360×640 el aviso de la cuenta sigue a la vista', (
+      tester,
+    ) async {
+      final m = await montarHoja(
+        tester,
+        espacios: _delCanvas,
+        escala: 2,
+        tamano: const Size(360, 640),
+        abrir: false,
+        extras: [estadoCuentaProvider.overrideWith(() => _CuentaFija(EstadoCuenta.suspendida))],
+      );
+      final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      final suscripcion = contenedor.listen(estadoCuentaProvider, (_, _) {});
+      addTearDown(suscripcion.close);
+      await asentarHoja(tester);
+      await abrirLaHoja(tester);
+      await tester.tap(botonEditarUbicacion);
+      await asentarHoja(tester);
+
+      expect(m.ediciones, isEmpty);
+      _seVeElAviso(tester, TextosModuloBloqueado.suspendida);
     });
   });
 

@@ -11,8 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../../helpers/lista_ubicaciones_falsos.dart';
 
 void main() {
-  const nbsp = ' ';
-
   ItemListaUbicacion item(
     String id, {
     TipoUbicacion tipo = TipoUbicacion.casa,
@@ -37,44 +35,6 @@ void main() {
     test('sin número (el alta no lo exige) dice «s/n»', () {
       expect(FormatoMapaUbicaciones.etiquetaPuerta(item('a', numero: '').ubicacion), 's/n');
       expect(FormatoMapaUbicaciones.etiquetaPuerta(item('a', numero: '   ').ubicacion), 's/n');
-    });
-  });
-
-  group('rotuloVistaPrevia', () {
-    test('tipo, espacios y distancia, en mayúsculas como el canvas', () {
-      expect(
-        FormatoMapaUbicaciones.rotuloVistaPrevia(item('a', distancia: 40)),
-        'CASA · 2 ESPACIOS · A 40${nbsp}M',
-      );
-    });
-
-    test('sin GPS no hay distancia y no se inventa', () {
-      expect(
-        FormatoMapaUbicaciones.rotuloVistaPrevia(
-          item('a', tipo: TipoUbicacion.negocio, espacios: 1),
-        ),
-        'NEGOCIO · 1 ESPACIO',
-      );
-    });
-
-    test('una distancia que no es un número se omite', () {
-      expect(
-        FormatoMapaUbicaciones.rotuloVistaPrevia(item('a', distancia: double.nan)),
-        'CASA · 2 ESPACIOS',
-      );
-      expect(
-        FormatoMapaUbicaciones.rotuloVistaPrevia(item('a', distancia: double.infinity)),
-        'CASA · 2 ESPACIOS',
-      );
-    });
-
-    test('más de un kilómetro se escribe en km y sin espacios queda «sin espacios»', () {
-      expect(
-        FormatoMapaUbicaciones.rotuloVistaPrevia(
-          item('a', tipo: TipoUbicacion.edificio, espacios: 0, distancia: 1500),
-        ),
-        'EDIFICIO · SIN ESPACIOS · A 1,5${nbsp}KM',
-      );
     });
   });
 

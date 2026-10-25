@@ -14,7 +14,10 @@ abstract final class ColoresLista {
   static const tinta = Color(0xFF0E1A2B);
   static const verde = Color(0xFF1F6E3A);
   static const azul = Color(0xFF13407A);
-  static const azulClaro = Color(0xFF5C82B8);
+
+  /// La franja clara de «Entrega y pago»: 4,6:1 con el blanco del número (AA), un poco más oscura
+  /// que el #5C82B8 del canvas (3,9:1), y 2,2:1 contra el azul de fondo (decisión del 23/10, #467).
+  static const azulClaro = Color(0xFF4D76B1);
   static const rojo = Color(0xFFA8312A);
   static const azulFondo = Color(0xFFE6EEF8);
   static const grisBorde = Color(0xFFCFD6E1);

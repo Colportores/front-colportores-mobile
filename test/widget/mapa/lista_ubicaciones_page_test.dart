@@ -8,6 +8,8 @@ import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dar
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
@@ -1135,20 +1137,17 @@ void main() {
     );
 
     testWidgets(
-      'dado que todavía no hay pantalla de destino, entonces las filas no se pueden tocar '
-      'ni muestran la «›»',
+      'dado que no se pasó un destino propio, cuando toca una fila, entonces abre la hoja de la casa '
+      '(vista 39, «la misma que en el mapa») y las filas muestran la «›»',
       (tester) async {
         await montarLista(tester, repo: RepoListaFalso(_muestra()));
+        expect(find.text('›'), findsNWidgets(3));
 
-        final fila = find.ancestor(
-          of: find.text('Colonia 2020'),
-          matching: find.byType(FilaUbicacionLista),
-        );
-        expect(find.descendant(of: fila, matching: find.byType(InkWell)), findsNothing);
-        expect(find.text('›'), findsNothing);
         await tester.tap(find.text('Colonia 2020'));
-        await tester.pump();
+        await asentarLista(tester);
 
+        expect(find.byType(HojaCasa), findsOneWidget);
+        expect(find.byKey(ClavesHojaCasa.titulo), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

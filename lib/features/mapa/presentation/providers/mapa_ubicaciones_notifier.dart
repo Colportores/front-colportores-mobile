@@ -118,10 +118,16 @@ final class MapaUbicacionesNotifier extends Notifier<MapaUbicacionesState> {
 
   /// El colportor tocó el marcador de [ubicacionId] (o volvió del alta con esa ubicación): se abre
   /// su vista previa.
-  void seleccionar(String ubicacionId) => state = state.copyWith(seleccionadaId: ubicacionId);
+  void seleccionar(String ubicacionId) =>
+      state = state.copyWith(seleccionadaId: ubicacionId, borrarCandidatas: true);
 
-  /// La ✕ de la vista previa: la hoja vuelve a la lista.
-  void cerrarSeleccion() => state = state.copyWith(borrarSeleccion: true);
+  /// El toque cayó sobre varias ubicaciones que no se separan ni con el zoom máximo (vista 39, E·06):
+  /// la hoja pide elegir entre [ubicacionIds], de la más cercana al toque a la más lejana.
+  void elegirEntre(List<String> ubicacionIds) =>
+      state = state.copyWith(candidatasIds: ubicacionIds, borrarSeleccion: true);
+
+  /// La ✕ de la vista previa (o del «Elegí cuál»): la hoja vuelve a la lista.
+  void cerrarSeleccion() => state = state.copyWith(borrarSeleccion: true, borrarCandidatas: true);
 
   // ---------------------------------------------------------------- GPS
 

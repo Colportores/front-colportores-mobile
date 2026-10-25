@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -27,6 +28,7 @@ abstract final class ClavesHojaUbicacion {
   static const error = Key('ubicacion_hoja_error');
   static const reintentar = Key('ubicacion_hoja_reintentar');
   static const cantidad = Key('ubicacion_hoja_cantidad');
+  static const aviso = Key('ubicacion_hoja_aviso');
 
   /// La fila del espacio [id].
   static Key fila(String id) => Key('ubicacion_hoja_fila_$id');
@@ -49,8 +51,7 @@ final abridorEdicionUbicacionProvider = Provider<AbridorEdicionUbicacion>(
 );
 
 /// Abre la hoja de la ubicación [ubicacionId] (vista 11·01): su dirección, sus deptos agrupados por
-/// piso, «+ Departamento» y «Editar …». Se abre desde «Detalle» de la vista previa del mapa y desde
-/// «›» de la lista. [distanciaMetros] es la distancia desde donde está el colportor, si se sabe (el
+/// piso, «+ Departamento» y «Editar …». Se abre desde «›» de la lista y del inicio. [distanciaMetros] es la distancia desde donde está el colportor, si se sabe (el
 /// rótulo «EDIFICIO · A 25 M»).
 ///
 /// Devuelve lo que pasó en la edición de la ubicación ([SalidaModificarUbicacion]) para que quien la
@@ -87,8 +88,7 @@ Future<SalidaModificarUbicacion?> mostrarHojaUbicacion(
 ///   baja pasan a un botón de esa ficha. «Ver depto N ›» del repetido (11·03) también va a la ficha.
 /// - Atajo de la casa al alta de una persona: en [_contenido], rama `esCasa`, hoy solo el encabezado y
 ///   «Editar casa».
-/// - «Registrar visita» y «Agendar» (#151): botones de `VistaPreviaUbicacion` junto a «Detalle», en
-///   `hoja_mapa_ubicaciones.dart`.
+/// - «Registrar visita» y «Agendar» (#151): botones de la hoja de la casa (vista 39), no de esta.
 /// - Una casa no tiene deptos: solo el encabezado y «Editar casa».
 /// - Tocar un depto abre su edición (11·02 con los datos cargados), donde también se da de baja.
 class HojaUbicacion extends ConsumerStatefulWidget {
@@ -113,6 +113,24 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   /// El depto que «Ver depto 102 ›» dejó señalado.
   String? _resaltado;
+
+  /// El aviso que se ve DENTRO de la hoja (el freno de la cuenta restringida, la edición que no se
+  /// pudo abrir). No es un `SnackBar`: la hoja es un modal y se dibuja encima del borde de abajo donde
+  /// se apoya, así que la persona no vería ni oiría nada.
+  String? _aviso;
+  final _claveAviso = GlobalKey();
+
+  /// Deja el aviso a la vista: con el texto grande la cabecera de la hoja ocupa casi todo el alto y el
+  /// aviso, que va debajo de los botones, quedaría fuera de lo que se ve.
+  void _avisar(String texto) {
+    setState(() => _aviso = texto);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveAviso.currentContext;
+      if (mounted && contexto != null) {
+        unawaited(Scrollable.ensureVisible(contexto, duration: Duration.zero));
+      }
+    });
+  }
 
   final _claves = <String, GlobalKey>{};
 
@@ -194,6 +212,17 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
         cantidad: total == null ? null : TextosEspacios.cantidad(total),
         alCerrar: _cerrar,
       ),
+      if (_aviso case final aviso?)
+        Padding(
+          key: _claveAviso,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: AvisoAlta(
+            key: ClavesHojaUbicacion.aviso,
+            color: ColoresAlta.rojo,
+            glyph: '!',
+            texto: aviso,
+          ),
+        ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
         child: Wrap(
@@ -282,10 +311,22 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   // ---------------------------------------------------------------- acciones
 
+  /// Frena empezar algo nuevo si la cuenta se restringió con la hoja abierta (#383): el aviso se ve en
+  /// la hoja misma. Lo ya abierto se termina y se guarda sin pasar por acá.
+  bool _frena() {
+    final estado = ref.read(estadoCuentaProvider).value;
+    if (estado == null || estado.accedeAModulosDeCampo) return false;
+    _avisar(TextosModuloBloqueado.para(estado));
+    return true;
+  }
+
   Future<void> _agregar(Ubicacion u) async {
     if (_abriendo) return;
-    if (frenaPorCuentaRestringida(context, ref)) return;
-    setState(() => _abriendo = true);
+    if (_frena()) return;
+    setState(() {
+      _aviso = null;
+      _abriendo = true;
+    });
     try {
       final salida = await mostrarHojaDepto(context, ubicacion: u, colportorId: widget.colportorId);
       _aplicar(salida);
@@ -296,8 +337,11 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   Future<void> _editarDepto(Ubicacion u, Espacio e) async {
     if (_abriendo) return;
-    if (frenaPorCuentaRestringida(context, ref)) return;
-    setState(() => _abriendo = true);
+    if (_frena()) return;
+    setState(() {
+      _aviso = null;
+      _abriendo = true;
+    });
     try {
       final salida = await mostrarHojaDepto(
         context,
@@ -369,8 +413,11 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
 
   Future<void> _editar(Ubicacion u) async {
     if (_abriendo) return;
-    if (frenaPorCuentaRestringida(context, ref)) return;
-    setState(() => _abriendo = true);
+    if (_frena()) return;
+    setState(() {
+      _aviso = null;
+      _abriendo = true;
+    });
     SalidaModificarUbicacion? salida;
     try {
       salida = await ref.read(abridorEdicionUbicacionProvider)(
@@ -379,11 +426,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
         ubicacionId: u.id,
       );
     } on Object {
-      if (mounted) {
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(const SnackBar(content: Text(TextosEspacios.noPudimosAbrirEdicion)));
-      }
+      if (mounted) _avisar(TextosEspacios.noPudimosAbrirEdicion);
     } finally {
       if (mounted) setState(() => _abriendo = false);
     }

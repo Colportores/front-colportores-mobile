@@ -1,8 +1,6 @@
 import '../domain/entities/estado_casa.dart';
-import '../domain/entities/lista_ubicaciones.dart';
 import '../domain/entities/ubicacion.dart';
 import 'formato_lista_ubicaciones.dart';
-import 'formato_ubicaciones.dart';
 
 /// Los textos del mapa de ubicaciones (vista 06, HU-UBI-003). Los del canvas están letra por letra;
 /// los que el canvas no dibuja (el vacío, el error, «Sin GPS») son propuestas marcadas en el
@@ -15,11 +13,15 @@ abstract final class TextosMapaUbicaciones {
   static const miUbicacion = 'Mi ubicación';
   static const nueva = 'Nueva';
   static const cerrarVistaPrevia = 'Cerrar vista previa';
-  static const detalle = 'Detalle';
   static const leyendaSinVisita = 'Sin visita';
   static const leyendaAgrupadas = 'Agrupadas';
   static const leyendaCerca = 'Cerca tuyo: crece y muestra el número';
   static const leyendaTuUbicacion = 'Tu ubicación';
+
+  // Vista 39 (decisión del 23/10, #467): lo que el mapa dibuja y la leyenda no explicaba.
+  static const leyendaEdificio = 'Edificio';
+  static const leyendaAcercar = 'Al acercar: cada casa muestra su número';
+  static const muestraCuadrado = 'Casa con su número de puerta';
 
   // Lo que dice el lector de pantalla donde el canvas dibuja solo un ícono o un número.
   static const mapa = 'Mapa de ubicaciones';
@@ -48,8 +50,6 @@ abstract final class TextosMapaUbicaciones {
   static const buscandoGps = 'Buscando GPS…';
   static const activarGps = 'Activar GPS';
   static const noPudimosAbrirAlta = 'No pudimos abrir «Nueva ubicación». Probá de nuevo.';
-  static const noPudimosAbrirDetalle =
-      'No pudimos abrir el detalle de la ubicación. Probá de nuevo.';
 
   /// Al elegir «usar esa» en el alta con una ubicación que ya registró otro colportor: no es una de
   /// las del colportor, así que el mapa no la muestra ni la elige (decisión del 07/10 en el #294).
@@ -64,18 +64,6 @@ abstract final class FormatoMapaUbicaciones {
   static String etiquetaPuerta(Ubicacion ubicacion) {
     final numero = ubicacion.numero?.trim();
     return numero == null || numero.isEmpty ? 's/n' : numero;
-  }
-
-  /// La línea chica de arriba de la vista previa (canvas): «CASA · 2 ESPACIOS · A 40 M». Sin GPS no
-  /// hay distancia y se omite.
-  static String rotuloVistaPrevia(ItemListaUbicacion item) {
-    final distancia = item.distanciaMetros;
-    final partes = [
-      FormatoUbicaciones.tipo(item.ubicacion.tipo),
-      FormatoListaUbicaciones.espacios(item.cantidadEspacios),
-      if (distancia != null && distancia.isFinite) 'a ${FormatoUbicaciones.distancia(distancia)}',
-    ];
-    return partes.join(' · ').toUpperCase();
   }
 
   /// El estado de la casa en la vista previa (canvas: «Cobranza pendiente · hoy 15:00»): el rótulo

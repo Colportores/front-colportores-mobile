@@ -89,7 +89,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         ref.watch(
           mapaUbicacionesProvider(
             widget.sesion.usuarioId,
-          ).select((estado) => estado.seleccionada != null),
+          ).select((estado) => estado.hayVistaPrevia),
         );
     return PopScope(
       canPop: _actual == PestanaInicio.hoy,
