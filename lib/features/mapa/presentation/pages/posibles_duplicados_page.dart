@@ -57,7 +57,7 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
 
   @override
   void dispose() {
-    _ocultarAviso();
+    _ocultarAvisoAlTerminarElCuadro();
     super.dispose();
   }
 
@@ -143,6 +143,19 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     if (_aviso == null) return;
     _aviso = null;
     _mensajero?.clearSnackBars();
+  }
+
+  /// Lo mismo que [_ocultarAviso], pero después del cuadro en curso: en `dispose` el árbol está
+  /// bloqueado y, con un lector de pantalla, el cierre del aviso es inmediato y falla («ScaffoldMessenger
+  /// cannot be marked as needing to build because the framework is locked»). `_aviso` se suelta ya,
+  /// para que el cierre no cuente como un cierre de la persona (`aviso.closed`).
+  void _ocultarAvisoAlTerminarElCuadro() {
+    final mensajero = _mensajero;
+    if (_aviso == null || mensajero == null) return;
+    _aviso = null;
+    scheduleMicrotask(() {
+      if (mensajero.mounted) mensajero.clearSnackBars();
+    });
   }
 
   @override

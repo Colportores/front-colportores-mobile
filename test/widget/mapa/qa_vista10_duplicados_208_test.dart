@@ -147,6 +147,13 @@ Future<void> _montar(
   addTearDown(tester.view.reset);
   addTearDown(datos.cerrar);
   await cargarFuentes208(tester);
+  // El lector se enciende en la plataforma (también lo ve el `ScaffoldMessenger`).
+  if (lector) {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  }
   await tester.pumpWidget(
     ProviderScope(
       overrides: overridesDuplicados(datos, conMapa: true, situacion: situacion),
@@ -155,9 +162,7 @@ Future<void> _montar(
         child: MaterialApp(
           theme: temaClaro(),
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(escala), accessibleNavigation: lector),
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
             child: child!,
           ),
           home: Builder(

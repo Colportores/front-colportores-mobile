@@ -72,15 +72,21 @@ Future<void> _montar(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   addTearDown(datos.cerrar);
+  // El lector se enciende en la plataforma, como en el teléfono: un `MediaQuery` dentro del
+  // `MaterialApp.builder` queda dentro del `ScaffoldMessenger`, que seguiría viendo `false`.
+  if (lector) {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  }
   await tester.pumpWidget(
     ProviderScope(
       overrides: overridesDuplicados(datos, conMapa: true),
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(escala), accessibleNavigation: lector),
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
           child: child!,
         ),
         home: Builder(
