@@ -140,6 +140,11 @@ Future<void> _abrirElAlta(WidgetTester tester) async {
 bool _registrarHabilitado(WidgetTester tester) =>
     tester.widget<FilledButton>(botonRegistrar).onPressed != null;
 
+/// Los avisos de la cuenta que se restringió con algo abierto: el de esa cuenta y que lo abierto se
+/// puede terminar y guardar.
+final _suspendidaConLoAbierto = TextosModuloBloqueado.conLoAbierto(EstadoCuenta.suspendida);
+final _pendienteConLoAbierto = TextosModuloBloqueado.conLoAbierto(EstadoCuenta.pendienteAsignacion);
+
 /// El texto del aviso de la cuenta restringida.
 Finder _textoDelAviso(String texto) => find.descendant(of: _aviso, matching: find.text(texto));
 
@@ -234,7 +239,7 @@ void main() {
       await _llegaLaRespuesta(tester, colgada);
 
       expect(_atrasDeConfiguracion, findsOneWidget, reason: 'lo abierto sigue abierto');
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
       expect(find.byType(MaterialBanner), findsOneWidget);
 
       await tester.tap(_atrasDeConfiguracion);
@@ -257,7 +262,7 @@ void main() {
 
       await _llegaLaRespuesta(tester, colgada);
 
-      expect(_textoDelAviso(TextosModuloBloqueado.pendiente), findsOneWidget);
+      expect(_textoDelAviso(_pendienteConLoAbierto), findsOneWidget);
       await tester.tap(_atrasDeConfiguracion);
       await tester.pumpAndSettle();
       expect(find.text('Esperando asignación'), findsOneWidget);
@@ -303,7 +308,7 @@ void main() {
       // El formulario sigue, con lo que ya había elegido, y el aviso le dice por qué.
       expect(botonRegistrar, findsOneWidget);
       expect(_registrarHabilitado(tester), isTrue);
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
       expect(_repo.llamadas, isEmpty);
 
       await tocar(tester, botonRegistrar);
@@ -327,7 +332,7 @@ void main() {
 
       await _llegaLaRespuesta(tester, colgada);
       await asentar(tester);
-      expect(_textoDelAviso(TextosModuloBloqueado.pendiente), findsOneWidget);
+      expect(_textoDelAviso(_pendienteConLoAbierto), findsOneWidget);
 
       await tocar(tester, botonRegistrar);
 
@@ -445,7 +450,7 @@ void main() {
       expect(_repo.llamadas, hasLength(1));
 
       await _llegaLaRespuesta(tester, colgada);
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
       guardando.complete();
       await asentar(tester);
       await tester.pumpAndSettle();
@@ -554,7 +559,7 @@ void main() {
       await _llegaLaRespuesta(tester, colgada);
 
       expect(find.text('Otro aviso del formulario'), findsOneWidget);
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
     });
 
     testWidgets('a 360×640 y con el texto al 200 %: se lee entero y no desborda', (tester) async {
@@ -569,7 +574,7 @@ void main() {
       await _llegaLaRespuesta(tester, colgada);
       await tester.pumpAndSettle();
 
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
       final caja = tester.getRect(_aviso);
       expect(caja.left, greaterThanOrEqualTo(0));
       expect(caja.right, lessThanOrEqualTo(360));
@@ -591,10 +596,10 @@ void main() {
       await _llegaLaRespuesta(tester, colgada);
       await tester.pumpAndSettle();
 
-      expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+      expect(_textoDelAviso(_suspendidaConLoAbierto), findsOneWidget);
       expect(
         find.ancestor(
-          of: _textoDelAviso(TextosModuloBloqueado.suspendida),
+          of: _textoDelAviso(_suspendidaConLoAbierto),
           matching: find.byWidgetPredicate(
             (w) => w is Semantics && w.properties.liveRegion == true,
           ),

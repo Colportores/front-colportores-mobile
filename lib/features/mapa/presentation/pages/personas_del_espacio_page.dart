@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/persona_del_espacio.dart';
 import '../formato_ubicaciones.dart';
 import '../providers/personas_providers.dart';
@@ -48,6 +49,8 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
 
   Future<void> _agregar() async {
     if (_abriendoAlta) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se da de alta a nadie.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoAlta = true;
     try {
       final guardada = await AltaPersonaPage.abrir(

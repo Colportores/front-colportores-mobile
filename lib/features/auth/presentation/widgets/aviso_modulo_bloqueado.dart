@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/estado_cuenta.dart';
 import '../pages/esperando_asignacion_page.dart';
+import '../providers/estado_cuenta_providers.dart';
 
 /// Lo que se le dice al colportor que toca un módulo bloqueado de la barra inferior (vista 18).
 abstract final class TextosModuloBloqueado {
@@ -15,6 +17,14 @@ abstract final class TextosModuloBloqueado {
 
   /// Mientras «Reintentar» del aviso consulta la cuenta desde Configuración (#278).
   static const revisando = TextosEsperaAsignacion.revisando;
+
+  /// Se suma al aviso de la cuenta que se restringió con algo abierto (decisión del agente de
+  /// decisiones, #383): sin esto la persona no sabe si lo que lleva cargado se perdió.
+  static const puedeTerminarLoAbierto = 'Podés terminar y guardar lo que tenés abierto.';
+
+  /// El aviso de la cuenta [estado] (suspendida o pendiente) que se restringió mientras la persona
+  /// tenía algo abierto.
+  static String conLoAbierto(EstadoCuenta estado) => '${para(estado)} $puedeTerminarLoAbierto';
 
   /// El aviso para [estado]. Con [estado] `null` (nunca se pudo consultar la cuenta) la app no
   /// sabe si está pendiente: repite el aviso de la pantalla para la misma causa (decisión del
@@ -78,7 +88,8 @@ typedef AvisoDeCuentaRestringida =
 const textoEntendidoCuentaRestringida = 'Entendido';
 
 /// Avisa que la cuenta pasó a [estado] (suspendida o pendiente) mientras la persona tiene algo
-/// abierto (#383): el mismo texto que el módulo bloqueado de esa cuenta.
+/// abierto (#383): el texto del módulo bloqueado de esa cuenta y que lo abierto se puede terminar
+/// y guardar ([TextosModuloBloqueado.conLoAbierto]).
 ///
 /// Es un aviso fijo arriba del contenido y no un `SnackBar`: el `SnackBar` se apoya sobre el borde
 /// de abajo y tapa justo el botón con el que la persona termina lo que tiene abierto («Registrar»,
@@ -91,7 +102,7 @@ AvisoDeCuentaRestringida avisarCuentaRestringida(
   MaterialBanner(
     key: const Key('cuenta_restringida_aviso'),
     // El `MaterialBanner` ya es una región viva: se anuncia apenas aparece.
-    content: Text(TextosModuloBloqueado.para(estado)),
+    content: Text(TextosModuloBloqueado.conLoAbierto(estado)),
     forceActionsBelow: true,
     actions: [
       TextButton(
@@ -167,4 +178,15 @@ mixin CierraSusAvisos<T extends StatefulWidget> on State<T> {
     _aviso = null;
     super.dispose();
   }
+}
+
+/// Frena empezar algo nuevo desde una pantalla que ya estaba abierta cuando la cuenta se restringió
+/// (#383, decisión del agente de decisiones, P2): devuelve `true`, y avisa con el texto de esa cuenta,
+/// si la cuenta no accede a los módulos de campo. Quien llama no hace lo que iba a hacer (abrir otra
+/// edición, un alta, una unión). Lo que ya tenía abierto se termina y se guarda sin pasar por acá.
+bool frenaPorCuentaRestringida(BuildContext context, WidgetRef ref) {
+  final estado = ref.read(estadoCuentaProvider).value;
+  if (estado == null || estado.accedeAModulosDeCampo) return false;
+  avisarModuloBloqueado(context, estado);
+  return true;
 }
