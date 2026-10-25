@@ -830,6 +830,19 @@ void main() {
           expect((numero['layout'] as Map<String, dynamic>)['text-field'], ['get', 'numero']);
         });
 
+        test('el número va anclado arriba a la izquierda, alineado a la izquierda y a 3 dp del '
+            'borde: la esquina de abajo a la derecha es del símbolo', () {
+          final numero = capa(construir(_config()), ConstructorEstiloMapa.capaCuadradoNumero);
+          final layout = numero['layout'] as Map<String, dynamic>;
+
+          expect(layout['text-anchor'], 'top-left');
+          expect(layout['text-justify'], 'left');
+          expect(layout['text-size'], 12);
+          // 20 dp del centro al borde menos 3 de margen, en ems de 12 dp.
+          expect(layout['text-offset'], everyElement(closeTo(-17 / 12, 1e-9)));
+          expect(layout['text-offset'], hasLength(2));
+        });
+
         test('cada casa se dibuja una sola vez: o con la imagen o con el respaldo', () {
           final estilo = construir(_config());
           final conImagen = capa(estilo, ConstructorEstiloMapa.capaCuadrado)['filter'] as List;

@@ -697,10 +697,17 @@ abstract final class ConstructorEstiloMapa {
           'layout': {
             'text-field': ['get', 'numero'],
             'text-font': ['NotoSans-Medium'],
-            'text-size': 12,
-            'text-line-height': 1.05,
-            // Un poco arriba y a la izquierda: abajo a la derecha va el símbolo del estado.
-            'text-offset': [-.3, -.25],
+            'text-size': MarcadorEstado.tamanoNumero,
+            'text-line-height': MarcadorEstado.interlineadoNumero,
+            // El bloque del número, arriba a la izquierda y alineado a la izquierda: abajo a la
+            // derecha va el símbolo del estado y es una esquina reservada (el segundo renglón se
+            // corta antes de llegar, `MarcadorEstado.numeroEnDosRenglones`).
+            'text-anchor': 'top-left',
+            'text-justify': 'left',
+            'text-offset': [
+              MarcadorEstado.desplazamientoNumeroEm,
+              MarcadorEstado.desplazamientoNumeroEm,
+            ],
             'text-allow-overlap': true,
             'text-ignore-placement': true,
           },

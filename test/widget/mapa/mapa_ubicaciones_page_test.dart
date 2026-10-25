@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/formato_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_estado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
@@ -482,6 +483,62 @@ void main() {
       await tester.tap(find.byKey(ClavesMapaUbicaciones.cerrarReferencias));
       await asentarLista(tester);
       expect(hojaReferencias, findsNothing);
+    });
+
+    testWidgets('dado un edificio y un cuadrado con número en el mapa, cuando se abre la leyenda, '
+        'entonces explica el ▦ «Edificio» tras los ocho estados y «Al acercar» tras «Cerca tuyo» '
+        '(decisión del 23/10, #467)', (tester) async {
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      double arriba(String texto) {
+        final f = find.descendant(of: hojaReferencias, matching: find.text(texto));
+        expect(f, findsOneWidget, reason: texto);
+        return tester.getTopLeft(f).dy;
+      }
+
+      final ultimoEstado = arriba(FormatoListaUbicaciones.estado(EstadoCasa.values.last));
+      expect(arriba('Edificio'), greaterThan(ultimoEstado));
+      expect(arriba('Edificio'), lessThan(arriba('Agrupadas')));
+      expect(
+        arriba('Al acercar: cada casa muestra su número'),
+        greaterThan(arriba('Cerca tuyo: crece y muestra el número')),
+      );
+      expect(arriba('Al acercar: cada casa muestra su número'), lessThan(arriba('Tu ubicación')));
+    });
+
+    testWidgets('dado el cuadrado de muestra, cuando se abre la leyenda, entonces lleva un número '
+        'de ejemplo en dos renglones («20 / 44») y el lector lo lee como «Casa con su número de '
+        'puerta»', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      expect(find.descendant(of: hojaReferencias, matching: find.text('20\n44')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          'Casa con su número de puerta. Al acercar: cada casa muestra su número',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(ClavesMapaUbicaciones.muestraCuadrado), findsOneWidget);
+      semantica.dispose();
+    });
+
+    testWidgets('dado el edificio de la leyenda, cuando se pinta, entonces es el mismo símbolo que '
+        'dibuja el mapa de lejos', (tester) async {
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      final pintura = find.byKey(ClavesMapaUbicaciones.muestraEdificio);
+      expect(pintura, findsOneWidget);
+      expect(tester.getSize(pintura), const Size.square(24));
     });
   });
 

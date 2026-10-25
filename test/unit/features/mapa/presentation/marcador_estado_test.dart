@@ -83,13 +83,27 @@ void main() {
     });
 
     test('dado un número larguísimo, cuando se parte, entonces se corta con «…» y no pasa de '
-        'dos renglones de cuatro', () {
+        'dos renglones', () {
       final partido = MarcadorEstado.numeroEnDosRenglones('1234567890123');
       final renglones = partido.split('\n');
 
       expect(renglones, hasLength(2));
-      expect(renglones.every((r) => r.length <= MarcadorEstado.caracteresPorRenglon), isTrue);
+      expect(renglones.first.length, lessThanOrEqualTo(MarcadorEstado.caracteresPorRenglon));
+      expect(renglones.last.length, lessThanOrEqualTo(MarcadorEstado.caracteresSegundoRenglon));
       expect(partido, endsWith('…'));
+    });
+
+    test('dado un número de seis a ocho caracteres, cuando se parte, entonces el primer renglón '
+        'lleva lo que el segundo no puede (el símbolo ocupa su esquina)', () {
+      expect(MarcadorEstado.numeroEnDosRenglones('123456'), '1234\n56');
+      expect(MarcadorEstado.numeroEnDosRenglones('1234567'), '1234\n5…');
+      expect(MarcadorEstado.numeroEnDosRenglones('12345678'), '1234\n5…');
+    });
+
+    test('dado un número con emoji, cuando se parte, entonces no se corta un carácter por el '
+        'medio', () {
+      expect(MarcadorEstado.numeroEnDosRenglones('12🏠3'), '12\n🏠3');
+      expect(MarcadorEstado.numeroEnDosRenglones('🏠🏠🏠🏠🏠🏠🏠'), '🏠🏠🏠🏠\n🏠…');
     });
 
     test('dado un número con espacios alrededor, cuando se parte, entonces no cuentan', () {

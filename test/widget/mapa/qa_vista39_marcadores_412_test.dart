@@ -84,15 +84,18 @@ Future<_Imagen> _decodificar(Uint8List png) async {
   return _Imagen(cuadro.image, rgba);
 }
 
-/// Los píxeles del cuadrado de [v] bajo el texto del número (la mitad de arriba a la izquierda,
-/// donde la capa del mapa lo pone: `text-offset` de -0,3 / -0,25 em).
+/// Los píxeles del cuadrado bajo el texto del número más largo (arriba a la izquierda, donde la
+/// capa del mapa lo pone: anclado en `top-left`, a 3 dp del borde).
 Iterable<Color> _fondoDelNumero(_Imagen cuadrado) sync* {
   final cx = cuadrado.ancho ~/ 2;
   final cy = cuadrado.alto ~/ 2;
-  // Un rectángulo de 20 × 16 dp centrado en el offset del texto (-3,6 / -3 dp).
-  for (var dx = -13; dx <= 6; dx++) {
-    for (var dy = -11; dy <= 4; dy++) {
-      yield cuadrado.pixel((cx + (dx * _escala)).round(), (cy + (dy * _escala)).round());
+  for (final caja in MarcadorEstado.cajasDelNumero(
+    MarcadorEstado.numeroEnDosRenglones('1234567'),
+  )) {
+    for (var dx = caja.left.ceil(); dx < caja.right.floor(); dx++) {
+      for (var dy = caja.top.ceil(); dy < caja.bottom.floor(); dy++) {
+        yield cuadrado.pixel((cx + (dx * _escala)).round(), (cy + (dy * _escala)).round());
+      }
     }
   }
 }
@@ -124,8 +127,8 @@ void main() {
       });
     }
 
-    // skip: QA #412 — el número blanco de «Entrega y pago» cae sobre las franjas de azul claro
-    // (#5C82B8): 3,9:1, por debajo de los 4,5:1 del texto chico (WCAG 1.4.3).
+    // La franja clara es #4D76B1 (4,6:1 con el blanco; el canvas pedía #5C82B8, 3,9:1). Decisión del
+    // 23/10 al hallazgo 1 del QA: sigue siendo una franja visible contra el azul de fondo.
     test(
       'dado el cuadrado «Entrega y pago» con sus franjas, cuando se pinta el número, entonces el '
       'texto contrasta 4,5:1 también con la franja clara',
@@ -140,8 +143,14 @@ void main() {
             .reduce((a, b) => a < b ? a : b);
         expect(peor, greaterThanOrEqualTo(4.5));
       },
-      skip: true,
     );
+
+    test('dada la franja clara de «Entrega y pago», cuando se la compara con el azul del fondo, '
+        'entonces sigue viéndose (más de 2:1) y es la misma de la lista', () {
+      expect(ColoresLista.azulClaro, const Color(0xFF4D76B1));
+      expect(_contraste(ColoresLista.azulClaro, ColoresLista.azul), greaterThan(2));
+      expect(_contraste(Colors.white, ColoresLista.azulClaro), greaterThanOrEqualTo(4.5));
+    });
   });
 
   group('el estado no depende solo del color (§8.4)', () {
@@ -233,8 +242,6 @@ void main() {
       expect(r.every((x) => x.trim().isNotEmpty), isTrue, reason: '$r');
     });
 
-    // skip: QA #412 — el campo de número de puerta acepta emoji y el corte por unidades UTF-16
-    // parte un par sustituto: queda un carácter huérfano que viaja al GeoJSON del mapa nativo.
     test(
       'dado un número con emoji, cuando se parte en renglones, entonces ningún renglón queda con '
       'un sustituto UTF-16 huérfano',
@@ -264,8 +271,92 @@ void main() {
           }
         }
       },
-      skip: true,
     );
+  });
+
+  group('número y símbolo nunca se pisan (decisión del 23/10, P2 del QA)', () {
+    const cuadrado = Rect.fromLTWH(-20, -20, 40, 40);
+    const casos = ['2044', '12345', '12345678', '1234567890123'];
+
+    /// `true` si [a] y [b] no se tocan: hay al menos [aire] dp entre las dos cajas.
+    bool separadas(Rect a, Rect b, double aire) =>
+        a.right + aire <= b.left + 1e-9 ||
+        b.right + aire <= a.left + 1e-9 ||
+        a.bottom + aire <= b.top + 1e-9 ||
+        b.bottom + aire <= a.top + 1e-9;
+
+    for (final numero in casos) {
+      test('dado el número «$numero», cuando se parte para el cuadrado, entonces la caja de cada '
+          'renglón queda dentro del cuadrado y a 1 dp o más de la del símbolo', () {
+        final partido = MarcadorEstado.numeroEnDosRenglones(numero);
+        final simbolo = MarcadorEstado.cajaDelSimbolo;
+
+        for (final caja in MarcadorEstado.cajasDelNumero(partido)) {
+          expect(cuadrado.contains(caja.topLeft), isTrue, reason: '«$partido» $caja');
+          expect(cuadrado.contains(caja.bottomRight), isTrue, reason: '«$partido» $caja');
+          expect(
+            separadas(caja, simbolo, MarcadorEstado.aireNumeroSimbolo),
+            isTrue,
+            reason: '«$partido» $caja toca el símbolo $simbolo',
+          );
+        }
+      });
+    }
+
+    test('dado cada número de 1 a 13 caracteres, cuando se parte, entonces ninguna caja toca el '
+        'símbolo', () {
+      for (var n = 1; n <= 13; n++) {
+        final partido = MarcadorEstado.numeroEnDosRenglones('1234567890123'.substring(0, n));
+        for (final caja in MarcadorEstado.cajasDelNumero(partido)) {
+          expect(
+            separadas(caja, MarcadorEstado.cajaDelSimbolo, MarcadorEstado.aireNumeroSimbolo),
+            isTrue,
+            reason: 'n=$n «${partido.replaceAll("\n", "/")}»',
+          );
+        }
+      }
+    });
+
+    testWidgets('dado el número con la letra real a 12 dp, cuando se mide cada renglón, entonces '
+        'cabe en la caja que reserva el cálculo y no toca el símbolo', (tester) async {
+      await _cargarFuentes();
+      for (final numero in casos) {
+        final partido = MarcadorEstado.numeroEnDosRenglones(numero);
+        final cajas = MarcadorEstado.cajasDelNumero(partido);
+        final renglones = partido.split('\n');
+        for (var i = 0; i < renglones.length; i++) {
+          final medido = TextPainter(
+            text: TextSpan(
+              text: renglones[i],
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: MarcadorEstado.tamanoNumero,
+                fontWeight: FontWeight.w500,
+                height: MarcadorEstado.interlineadoNumero,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          final real = Rect.fromLTWH(cajas[i].left, cajas[i].top, medido.width, cajas[i].height);
+          medido.dispose();
+
+          expect(real.width, lessThanOrEqualTo(cajas[i].width), reason: '«${renglones[i]}»');
+          expect(
+            separadas(real, MarcadorEstado.cajaDelSimbolo, 0),
+            isTrue,
+            reason: '«${renglones[i]}» de $numero mide ${real.width} y toca el símbolo',
+          );
+        }
+      }
+    });
+
+    test('dado el símbolo del estado, cuando se pinta, entonces ocupa la caja reservada: abajo a '
+        'la derecha, a 5 dp de los bordes', () {
+      final simbolo = MarcadorEstado.cajaDelSimbolo;
+      expect(simbolo.right, 20 - MarcadorEstado.margenSimbolo);
+      expect(simbolo.bottom, 20 - MarcadorEstado.margenSimbolo);
+      expect(simbolo.width, MarcadorEstado.ladoSimbolo);
+    });
   });
 
   group('imágenes que se registran en el estilo', () {
@@ -328,20 +419,21 @@ void main() {
       Widget cuadradoConNumero(VarianteMarcador v, String numero) {
         final partido = MarcadorEstado.numeroEnDosRenglones(numero);
         return Stack(
-          alignment: Alignment.center,
           children: [
             imagen(cuadrados[v]!),
-            // La capa de texto del mapa: 12 dp, interlineado 1,05, corrida (-0,3 / -0,25) em.
-            Transform.translate(
-              offset: const Offset(-3.6, -3),
+            // La capa de texto del mapa: 12 dp, interlineado 1,05, anclada arriba a la izquierda a
+            // 3 dp del borde (la esquina de abajo a la derecha es del símbolo).
+            Positioned(
+              left: MarcadorEstado.margenNumero + MarcadorEstado.margen,
+              top: MarcadorEstado.margenNumero + MarcadorEstado.margen,
               child: Text(
                 partido,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.left,
                 style: TextStyle(
                   fontFamily: 'Inter',
-                  fontSize: 12,
+                  fontSize: MarcadorEstado.tamanoNumero,
                   fontWeight: FontWeight.w500,
-                  height: 1.05,
+                  height: MarcadorEstado.interlineadoNumero,
                   color: v.tintaNumero,
                 ),
               ),

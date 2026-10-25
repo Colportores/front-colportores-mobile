@@ -121,20 +121,87 @@ abstract final class MarcadorEstado {
   /// El azul del aro (el mismo del aro del seleccionado de lejos, `ColoresMapa.aroSeleccion`).
   static const _azulDelAro = ui.Color(0xFF002856);
 
-  /// Cuántos caracteres entran en un renglón del cuadrado a 12 dp (el número largo se corta con «…»:
-  /// la dirección completa está en la hoja de la casa).
+  /// Cuántos caracteres entran en el primer renglón del cuadrado a 12 dp.
   static const caracteresPorRenglon = 4;
+
+  /// Cuántos caracteres entran en el segundo renglón: abajo a la derecha está el símbolo del estado
+  /// y el texto no puede llegar a él (decisión del 23/10, «Número y símbolo nunca se pisan»).
+  static const caracteresSegundoRenglon = 2;
+
+  /// El tamaño del número de puerta en el cuadrado: no se achica (no se leería en la calle).
+  static const tamanoNumero = 12.0;
+
+  /// El interlineado del número (múltiplo del tamaño), el de la capa de texto del mapa.
+  static const interlineadoNumero = 1.05;
+
+  /// Cuánto se separa el bloque del número del borde de arriba y de la izquierda del cuadrado.
+  static const margenNumero = 3.0;
+
+  /// Lo que el bloque del número se aleja del símbolo como mínimo (dp).
+  static const aireNumeroSimbolo = 1.0;
+
+  /// Cuánto se corre el texto del número respecto del centro del cuadrado, en ems (`text-offset` de
+  /// la capa, con el texto anclado arriba a la izquierda): la esquina de arriba a la izquierda del
+  /// bloque queda a [margenNumero] del borde.
+  static const desplazamientoNumeroEm = -(ladoCuadrado / 2 - margenNumero) / tamanoNumero;
+
+  /// Lo que mide un carácter del número, en dp, para reservar la esquina del símbolo. Es más que lo
+  /// que miden los dígitos de la fuente del mapa (NotoSans a 12 dp: ~6,9): el bloque nunca llega a
+  /// donde el cálculo dice que no llega.
+  static const anchoDeCaracter = 8.0;
+
+  /// Lo que mide la «…» (más ancha que un dígito), en dp.
+  static const anchoDePuntosSuspensivos = 11.0;
 
   /// El número de puerta como va dentro del cuadrado (M·02: «el número adentro en dos renglones, 20 /
   /// 44»): «2044» es «20» y «44». Hasta tres caracteres («s/n», «12», «120») va en un renglón; más,
-  /// se parte a la mitad (el primer renglón con el que sobra); y más de ocho, se corta con «…».
+  /// en dos, el primero con hasta [caracteresPorRenglon] y el segundo con hasta
+  /// [caracteresSegundoRenglon] (el símbolo del estado ocupa la esquina de abajo a la derecha). Si lo
+  /// que sobra no entra en el segundo renglón, se corta con «…»: la dirección completa está en la
+  /// hoja de la casa.
   static String numeroEnDosRenglones(String etiqueta) {
-    final numero = etiqueta.trim();
-    if (numero.length <= 3) return numero;
-    const tope = caracteresPorRenglon * 2;
-    final corto = numero.length > tope ? '${numero.substring(0, tope - 1)}…' : numero;
-    final mitad = (corto.length + 1) ~/ 2;
-    return '${corto.substring(0, mitad)}\n${corto.substring(mitad)}';
+    final letras = etiqueta.trim().runes.toList();
+    String texto(Iterable<int> runas) => String.fromCharCodes(runas);
+    if (letras.length <= 3) return texto(letras);
+    final primero = math.min(
+      caracteresPorRenglon,
+      math.max((letras.length + 1) ~/ 2, letras.length - caracteresSegundoRenglon),
+    );
+    final resto = letras.sublist(primero);
+    final segundo = resto.length <= caracteresSegundoRenglon
+        ? texto(resto)
+        : '${texto(resto.take(caracteresSegundoRenglon - 1))}…';
+    return '${texto(letras.take(primero))}\n$segundo';
+  }
+
+  /// La caja de cada renglón de [partido] (lo que devuelve [numeroEnDosRenglones]) dentro del
+  /// cuadrado de 40 dp, en dp respecto de su centro: el bloque va anclado arriba a la izquierda y
+  /// alineado a la izquierda. Con el ancho de carácter de [anchoDeCaracter], que sobra.
+  static List<ui.Rect> cajasDelNumero(String partido) {
+    const alto = tamanoNumero * interlineadoNumero;
+    const izquierda = -ladoCuadrado / 2 + margenNumero;
+    var arriba = -ladoCuadrado / 2 + margenNumero;
+    final cajas = <ui.Rect>[];
+    for (final renglon in partido.split('\n')) {
+      final ancho = renglon.runes.fold<double>(
+        0,
+        (suma, r) => suma + (r == 0x2026 ? anchoDePuntosSuspensivos : anchoDeCaracter),
+      );
+      cajas.add(ui.Rect.fromLTWH(izquierda, arriba, ancho, alto));
+      arriba += alto;
+    }
+    return cajas;
+  }
+
+  /// La caja del símbolo chico del cuadrado, en dp respecto de su centro: la esquina de abajo a la
+  /// derecha que el número no puede tocar.
+  static ui.Rect get cajaDelSimbolo {
+    const centro = ladoCuadrado / 2 - margenSimbolo - ladoSimbolo / 2;
+    return ui.Rect.fromCenter(
+      center: const ui.Offset(centro, centro),
+      width: ladoSimbolo,
+      height: ladoSimbolo,
+    );
   }
 
   static String nombreInsignia(VarianteMarcador variante) => 'colportores:estado:${variante.name}';
@@ -178,14 +245,7 @@ abstract final class MarcadorEstado {
         );
         _pintarForma(lienzo, forma, variante);
         // El símbolo chico, abajo a la derecha.
-        const desplazamiento = ladoCuadrado / 2 - margenSimbolo - ladoSimbolo / 2;
-        _pintarGlifo(
-          lienzo,
-          variante,
-          centro + const ui.Offset(desplazamiento, desplazamiento),
-          ladoSimbolo,
-          variante.tinta,
-        );
+        _pintarGlifo(lienzo, variante, centro + cajaDelSimbolo.center, ladoSimbolo, variante.tinta);
       });
 
   /// El aro del cuadrado seleccionado: un anillo azul y otro blanco alrededor del cuadrado, que se
