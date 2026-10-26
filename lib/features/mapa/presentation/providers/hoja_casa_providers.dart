@@ -82,6 +82,13 @@ final registrarVisitaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(C
   (ref) => null,
 );
 
+/// A dónde lleva N·03 «¿Qué pasó?» de una casa **recién registrada** (vista 39, sumar una casa
+/// arrastrando el pin, #451): lo mismo que [registrarVisitaDesdeLaCasaProvider], con la hoja que dice
+/// «Casa nueva» y sale con «Volver». Devuelve `true` si se guardó una visita y la casa ya no necesita
+/// su hoja. **Sin destino** (`null`) no se abre N·03: la casa queda registrada y seleccionada.
+final registrarVisitaDeLaCasaNuevaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeVisita)?>((ref) => null);
+
 /// A dónde lleva «Programar entrevista» (R·02, #408: «Elegís día y franja»). Devuelve `true` si la
 /// cita se agendó. Sin destino, la opción no se ofrece en «¿Qué pasó?».
 final programarEntrevistaDesdeLaCasaProvider =

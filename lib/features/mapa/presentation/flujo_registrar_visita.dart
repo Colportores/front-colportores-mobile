@@ -36,11 +36,15 @@ import 'widgets/hoja_que_paso.dart';
 abstract final class FlujoRegistrarVisita {
   /// Abre «¿Qué pasó?» para [datos]. Devuelve `true` si algo se resolvió y la hoja de la casa puede
   /// cerrarse; `false` si la colportora cerró «¿Qué pasó?» sin elegir, o no hay dónde registrar.
+  ///
+  /// Con [casaNueva] es N·03 (vista 39): la casa se acaba de registrar. La hoja dice «Casa nueva» junto
+  /// a la dirección y se sale con «Volver»; el aviso «Guardado» nombra la dirección sola.
   /// Lanza si no puede leer la casa (la hoja de la casa lo dice).
   static Future<bool> abrir(
     BuildContext context,
     ContextoDeVisita datos, {
     required String? colportorId,
+    bool casaNueva = false,
   }) async {
     final mensajero = ScaffoldMessenger.maybeOf(context);
     final mediaQuery = MediaQuery.of(context);
@@ -209,7 +213,8 @@ abstract final class FlujoRegistrarVisita {
 
     final resuelta = await mostrarHojaQuePaso(
       context,
-      direccion: direccion,
+      direccion: casaNueva ? TextosRegistrarVisita.direccionDeCasaNueva(direccion) : direccion,
+      etiquetaCancelar: casaNueva ? TextosRegistrarVisita.volver : TextosRegistrarVisita.cancelar,
       ofrecidas: ofrecidas,
       cobro: cobro == null ? null : (persona: cobro.nombre, saldoCentavos: cobro.saldoCentavos),
       alElegir: (opcion) => switch (opcion) {

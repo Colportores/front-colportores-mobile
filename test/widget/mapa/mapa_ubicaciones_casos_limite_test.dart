@@ -32,30 +32,42 @@ const _textoOtroColportor =
 CamaraMapa _gesto(Coordenadas centro) => CamaraMapa(centro: centro, zoom: MapaAlta.zoomCalle);
 
 void main() {
-  group('«Nueva» y el dedo mantenido en el mapa · el alta', () {
-    testWidgets('«Nueva» abre el alta sin punto; si se cierra sin registrar no cambia nada', (
+  group('el pin de la casa nueva · el alta', () {
+    testWidgets(
+      'tocar el pin lo deja en el mapa con «Confirmar posición»; cancelarlo no cambia nada',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        final altura = altoHoja(tester);
+
+        await tester.tap(botonNueva);
+        await asentarLista(tester);
+
+        expect(confirmarPosicion, findsOneWidget);
+        expect(botonNueva, findsNothing);
+        expect(m.altas, isEmpty);
+
+        await tester.tap(cancelarPosicion);
+        await asentarLista(tester);
+
+        expect(confirmarPosicion, findsNothing);
+        expect(botonNueva, findsOneWidget);
+        expect(m.altas, isEmpty);
+        expect(vistaPrevia, findsNothing);
+        expect(altoHoja(tester), altura);
+        expect(find.text(_textoSinAlta), findsNothing);
+      },
+    );
+
+    testWidgets('mantener el dedo en el mapa ya no abre el alta (el alta empieza con el pin)', (
       tester,
     ) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      final altura = altoHoja(tester);
 
-      await tester.tap(botonNueva);
+      m.mapa.tocarLargo(const Coordenadas(lat: -34.9, lon: -56.2));
       await asentarLista(tester);
 
-      expect(m.altas, [null]);
-      expect(vistaPrevia, findsNothing);
-      expect(altoHoja(tester), altura);
-      expect(find.text(_textoSinAlta), findsNothing);
-    });
-
-    testWidgets('mantener el dedo en el mapa abre el alta con ese punto', (tester) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      const punto = Coordenadas(lat: -34.9, lon: -56.2);
-
-      m.mapa.tocarLargo(punto);
-      await asentarLista(tester);
-
-      expect(m.altas, [punto]);
+      expect(confirmarPosicion, findsNothing);
+      expect(m.altas, isEmpty);
     });
 
     testWidgets('un toque corto en un lugar vacío del mapa no hace nada', (tester) async {
@@ -78,8 +90,7 @@ void main() {
       repo.emitir([...canvas(), nueva]);
       m.salidaAlta = UbicacionCreada(nueva.ubicacion);
 
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+      await tocarPinYConfirmar(tester);
 
       expect(vistaPrevia, findsOneWidget);
       expect(find.text('Rivera 900'), findsOneWidget);
@@ -94,8 +105,7 @@ void main() {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.salidaAlta = const UbicacionReutilizada('c');
 
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+      await tocarPinYConfirmar(tester);
 
       expect(vistaPrevia, findsOneWidget);
       expect(find.text('Av. Italia 1236'), findsOneWidget);
@@ -106,9 +116,11 @@ void main() {
         'vista previa vacía, el mapa quieto y nada elegido', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.salidaAlta = const UbicacionReutilizada('de-otro');
-      final movimientos = m.mapa.movimientos.length;
 
       await tester.tap(botonNueva);
+      await asentarLista(tester);
+      final movimientos = m.mapa.movimientos.length;
+      await tester.tap(confirmarPosicion);
       await asentarLista(tester);
 
       expect(find.text(_textoOtroColportor), findsOneWidget);
@@ -130,8 +142,7 @@ void main() {
       expect(seleccionadaId(tester), 'a');
       m.salidaAlta = const UbicacionReutilizada('de-otro');
 
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+      await tocarPinYConfirmar(tester);
 
       expect(find.text(_textoOtroColportor), findsOneWidget);
       expect(seleccionadaId(tester), isNull);
@@ -153,32 +164,34 @@ void main() {
       m.salidaAlta = const UbicacionReutilizada('de-otro');
 
       for (var i = 0; i < 2; i++) {
-        await tester.tap(botonNueva);
-        await asentarLista(tester);
+        await tocarPinYConfirmar(tester);
       }
 
       expect(m.altas.length, 2);
       expect(find.text(_textoOtroColportor), findsOneWidget);
     });
 
-    testWidgets('si el alta falla al abrirse avisa qué hacer y «Nueva» se puede volver a tocar', (
-      tester,
-    ) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      m.fallaAlta = StateError('sin navegador');
+    testWidgets(
+      'si el alta falla al abrirse avisa qué hacer y «Confirmar posición» se puede volver a tocar',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        m.fallaAlta = StateError('sin navegador');
 
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+        await tocarPinYConfirmar(tester);
 
-      expect(find.text(_textoSinAlta), findsOneWidget);
-      expect(m.altas.length, 1);
+        expect(find.text(_textoSinAlta), findsOneWidget);
+        expect(m.altas.length, 1);
 
-      m.fallaAlta = null;
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+        // El aviso se va solo (4 s) y deja libre «Confirmar posición», que está en el mismo borde.
+        await tester.pump(const Duration(seconds: 5));
+        await asentarLista(tester);
+        m.fallaAlta = null;
+        await tester.tap(confirmarPosicion);
+        await asentarLista(tester);
 
-      expect(m.altas.length, 2);
-    });
+        expect(m.altas.length, 2);
+      },
+    );
 
     testWidgets('si el alta falla a mitad de camino (después de abrirse) pasa lo mismo', (
       tester,
@@ -186,26 +199,32 @@ void main() {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.esperaAlta = Completer<SalidaAltaUbicacion?>();
 
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+      await tocarPinYConfirmar(tester);
       m.esperaAlta!.completeError(StateError('se cerró la base'));
       await asentarLista(tester);
 
       expect(find.text(_textoSinAlta), findsOneWidget);
 
+      await tester.pump(const Duration(seconds: 5));
+      await asentarLista(tester);
       m.esperaAlta = null;
-      await tester.tap(botonNueva);
+      await tester.tap(confirmarPosicion);
       await asentarLista(tester);
       expect(m.altas.length, 2);
     });
 
-    testWidgets('doble toque en «Nueva»: un solo alta; con el alta abierta tampoco se abre otro '
-        'con el dedo mantenido, y al cerrarla se puede abrir de nuevo', (tester) async {
+    testWidgets('doble toque en el pin: un solo pin; doble toque en «Confirmar posición»: una sola '
+        'hoja, y al volver se puede confirmar de nuevo', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.esperaAlta = Completer<SalidaAltaUbicacion?>();
 
       await tester.tap(botonNueva);
-      await tester.tap(botonNueva);
+      await tester.tap(botonNueva, warnIfMissed: false);
+      await asentarLista(tester);
+      expect(confirmarPosicion, findsOneWidget);
+
+      await tester.tap(confirmarPosicion);
+      await tester.tap(confirmarPosicion);
       await asentarLista(tester);
       m.mapa.tocarLargo(const Coordenadas(lat: -34.9, lon: -56.2));
       await asentarLista(tester);
@@ -215,7 +234,7 @@ void main() {
       m.esperaAlta!.complete(null);
       await asentarLista(tester);
       m.esperaAlta = null;
-      await tester.tap(botonNueva);
+      await tester.tap(confirmarPosicion);
       await asentarLista(tester);
 
       expect(m.altas.length, 2);
@@ -225,8 +244,7 @@ void main() {
         'resultado no rompe nada', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       m.esperaAlta = Completer<SalidaAltaUbicacion?>();
-      await tester.tap(botonNueva);
-      await asentarLista(tester);
+      await tocarPinYConfirmar(tester);
 
       await tester.pumpWidget(const SizedBox());
       m.esperaAlta!.complete(UbicacionCreada(canvas().first.ubicacion));
@@ -455,17 +473,20 @@ void main() {
       }
     });
 
-    testWidgets('el alta se abre, se cierra sin registrar y se puede abrir otra vez', (
+    testWidgets('el alta se confirma, se vuelve sin registrar y se puede confirmar otra vez', (
       tester,
     ) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
 
+      await tester.tap(botonNueva);
+      await asentarLista(tester);
       for (var i = 0; i < 3; i++) {
-        await tester.tap(botonNueva);
+        await tester.tap(confirmarPosicion);
         await asentarLista(tester);
       }
 
-      expect(m.altas, [null, null, null]);
+      expect(m.altas.length, 3);
+      expect(m.altas.toSet().length, 1, reason: 'el pin sigue en el mismo lugar');
     });
 
     testWidgets('si la base se vacía mientras se ve una vista previa, vuelve el vacío con la '

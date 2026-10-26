@@ -320,12 +320,12 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                 const SizedBox(height: 14),
                 SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
                 const SizedBox(height: 14),
-                _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
+                CampoCiudadDelAlta(estado: estado, alTocar: widget.alElegirCiudad),
                 if (estado.ciudad == null &&
                     (estado.origenCiudad == OrigenCiudad.sinCiudades ||
                         estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
                   const SizedBox(height: 10),
-                  _AvisoCiudad(
+                  AvisoCiudadDelAlta(
                     sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
                     alReintentar: _notificador.reintentarCiudad,
                   ),
@@ -550,8 +550,10 @@ class _Encabezado extends StatelessWidget {
   }
 }
 
-class _CampoCiudad extends StatelessWidget {
-  const _CampoCiudad({required this.estado, required this.alTocar});
+/// El campo «Ciudad» del alta con la ciudad propuesta, su origen y «Cambiar» / «Elegir» (también lo usa
+/// el alta de la vista 39 cuando no hay ciudad propuesta).
+class CampoCiudadDelAlta extends StatelessWidget {
+  const CampoCiudadDelAlta({super.key, required this.estado, required this.alTocar});
 
   final AltaUbicacionState estado;
   final VoidCallback alTocar;
@@ -594,8 +596,8 @@ class _CampoCiudad extends StatelessWidget {
 
 /// El único aviso de ciudad que queda: la campaña no tiene ciudades cargadas, o no se pudieron leer.
 /// Dice qué pasa y qué hacer, con «Reintentar» a mano.
-class _AvisoCiudad extends StatelessWidget {
-  const _AvisoCiudad({required this.sinCiudades, required this.alReintentar});
+class AvisoCiudadDelAlta extends StatelessWidget {
+  const AvisoCiudadDelAlta({super.key, required this.sinCiudades, required this.alReintentar});
 
   final bool sinCiudades;
   final VoidCallback alReintentar;

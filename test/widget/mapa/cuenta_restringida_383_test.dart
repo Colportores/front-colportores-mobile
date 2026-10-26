@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ub
 import 'package:colportores_mobile/features/mapa/presentation/pages/posibles_duplicados_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/duplicados_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_comparar_duplicado.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/pin_nueva_casa.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -329,9 +330,7 @@ void main() {
       await _desmontar(tester);
     });
 
-    testWidgets('en el Mapa, con la cuenta pendiente, «Nueva» no abre el alta y avisa', (
-      tester,
-    ) async {
+    testWidgets('en el Mapa, con la cuenta pendiente, el pin no se suma y avisa', (tester) async {
       final montaje = await mapa.montarMapaUbicaciones(
         tester,
         otrosOverrides: [
@@ -346,12 +345,44 @@ void main() {
       await tester.tap(mapa.botonNueva);
       await _asentar(tester);
 
+      expect(mapa.confirmarPosicion, findsNothing);
       expect(montaje.altas, isEmpty);
       expect(_textoDelAviso(TextosModuloBloqueado.pendiente), findsOneWidget);
       await _desmontar(tester);
     });
 
-    testWidgets('en el Mapa, con la cuenta activa, «Nueva» abre el alta (control)', (tester) async {
+    testWidgets(
+      'en el Mapa, con la cuenta suspendida, arrastrar el pin tampoco suma nada y avisa',
+      (tester) async {
+        final montaje = await mapa.montarMapaUbicaciones(
+          tester,
+          otrosOverrides: [
+            estadoCuentaProvider.overrideWith(() => _EstadoControlable(EstadoCuenta.suspendida)),
+          ],
+        );
+        _escucharCuenta(tester);
+        await _asentar(tester);
+
+        final gesto = await tester.startGesture(
+          tester.getCenter(find.byKey(ClavesPinNuevaCasa.boton)),
+        );
+        await tester.pump();
+        await gesto.moveTo(const Offset(200, 300));
+        await tester.pump();
+        await gesto.up();
+        await _asentar(tester);
+
+        expect(find.byKey(ClavesPinNuevaCasa.enArrastre), findsNothing);
+        expect(mapa.confirmarPosicion, findsNothing);
+        expect(montaje.altas, isEmpty);
+        expect(_textoDelAviso(TextosModuloBloqueado.suspendida), findsOneWidget);
+        await _desmontar(tester);
+      },
+    );
+
+    testWidgets('en el Mapa, con la cuenta activa, el pin se suma y se confirma (control)', (
+      tester,
+    ) async {
       final montaje = await mapa.montarMapaUbicaciones(
         tester,
         otrosOverrides: [
@@ -360,6 +391,8 @@ void main() {
       );
 
       await tester.tap(mapa.botonNueva);
+      await _asentar(tester);
+      await tester.tap(mapa.confirmarPosicion);
       await _asentar(tester);
 
       expect(montaje.altas, hasLength(1));

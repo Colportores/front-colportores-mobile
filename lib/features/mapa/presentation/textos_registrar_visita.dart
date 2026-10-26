@@ -8,6 +8,10 @@ abstract final class TextosRegistrarVisita {
   static const titulo = '¿Qué pasó?';
   static const cancelar = 'Cancelar';
 
+  /// N·03 (casa recién registrada): el canvas cierra con «Volver» y dice «Casa nueva» junto a la dirección.
+  static const volver = 'Volver';
+  static String direccionDeCasaNueva(String direccion) => '$direccion · Casa nueva';
+
   static const noContesto = 'No contestó';
   static const rechazo = 'Rechazo';
   static const programarEntrevista = 'Programar entrevista';

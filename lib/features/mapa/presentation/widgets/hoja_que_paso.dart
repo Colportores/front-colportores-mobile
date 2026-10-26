@@ -102,6 +102,7 @@ Future<bool> mostrarHojaQuePaso(
   required Set<OpcionQuePaso> ofrecidas,
   required Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir,
   CobroOfrecido? cobro,
+  String etiquetaCancelar = TextosRegistrarVisita.cancelar,
 }) async {
   final resultado = await showModalBottomSheet<bool>(
     context: context,
@@ -114,8 +115,13 @@ Future<bool> mostrarHojaQuePaso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        HojaQuePaso(direccion: direccion, ofrecidas: ofrecidas, cobro: cobro, alElegir: alElegir),
+    builder: (_) => HojaQuePaso(
+      direccion: direccion,
+      ofrecidas: ofrecidas,
+      cobro: cobro,
+      alElegir: alElegir,
+      etiquetaCancelar: etiquetaCancelar,
+    ),
   );
   return resultado ?? false;
 }
@@ -132,9 +138,14 @@ class HojaQuePaso extends StatefulWidget {
     required this.ofrecidas,
     required this.alElegir,
     this.cobro,
+    this.etiquetaCancelar = TextosRegistrarVisita.cancelar,
   });
 
   final String direccion;
+
+  /// El rótulo de la salida: «Cancelar» desde la hoja de la casa y «Volver» en N·03, la casa recién
+  /// registrada (vista 39).
+  final String etiquetaCancelar;
   final Set<OpcionQuePaso> ofrecidas;
   final CobroOfrecido? cobro;
   final Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir;
@@ -305,7 +316,7 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
                 side: const BorderSide(color: _Canvas.bordeBoton, width: 1.5),
               ),
               onPressed: ocupada ? null : _cancelar,
-              child: const Text(TextosRegistrarVisita.cancelar, textAlign: TextAlign.center),
+              child: Text(widget.etiquetaCancelar, textAlign: TextAlign.center),
             ),
           ],
         ),

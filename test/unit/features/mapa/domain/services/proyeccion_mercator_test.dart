@@ -256,6 +256,31 @@ void main() {
     });
   });
 
+  group('ProyeccionMercator · pantalla (pin de la casa nueva, vista 39)', () {
+    const camara = CamaraMapa(centro: montevideo, zoom: 17);
+
+    test('el centro de la cámara cae en el medio de la vista', () {
+      final p = ProyeccionMercator.aPantalla(montevideo, camara, ancho: 390, alto: 844);
+      expect(p.x, closeTo(195, 1e-6));
+      expect(p.y, closeTo(422, 1e-6));
+    });
+
+    test('un punto al este y al sur cae a la derecha y abajo', () {
+      final centro = ProyeccionMercator.aPixeles(montevideo, 17);
+      final otro = ProyeccionMercator.aCoordenadas(centro.x + 50, centro.y + 80, 17);
+      final p = ProyeccionMercator.aPantalla(otro, camara, ancho: 390, alto: 844);
+      expect(p.x, closeTo(245, 1e-6));
+      expect(p.y, closeTo(502, 1e-6));
+    });
+
+    test('dePantalla es lo inverso de aPantalla', () {
+      final coordenadas = ProyeccionMercator.dePantalla(120, 640, camara, ancho: 390, alto: 844);
+      final vuelta = ProyeccionMercator.aPantalla(coordenadas, camara, ancho: 390, alto: 844);
+      expect(vuelta.x, closeTo(120, 1e-6));
+      expect(vuelta.y, closeTo(640, 1e-6));
+    });
+  });
+
   group('CamaraMapa', () {
     const camara = CamaraMapa(centro: montevideo, zoom: 12);
 

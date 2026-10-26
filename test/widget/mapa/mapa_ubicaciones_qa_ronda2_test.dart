@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/mapa_descargas_arnes.dart';
 import 'mapa_ubicaciones_arnes.dart'
-    show asentarLista, botonNueva, chipReferencias, montarMapaUbicaciones, tocarAsa;
+    show asentarLista, chipReferencias, montarMapaUbicaciones, tocarAsa, tocarPinYConfirmar;
 import 'mapa_ubicaciones_page_test.dart' show canvas;
 import 'mapa_ubicaciones_qa_pantalla_principal_test.dart'
     show PantallaPrincipal, montarEnPantallaPrincipal, motivoInaccesible;
@@ -425,8 +425,7 @@ void main() {
           salidaAlta: const UbicacionReutilizada('de-otro'),
         );
 
-        await tester.tap(botonNueva);
-        await asentarLista(tester);
+        await tocarPinYConfirmar(tester);
 
         final texto = find.text(TextosMapaUbicaciones.ubicacionDeOtroColportor);
         expect(texto, findsOneWidget);
