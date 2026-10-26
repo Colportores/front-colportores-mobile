@@ -107,22 +107,20 @@ void main() {
     await motor.dispose();
   });
 
-  test('el ahorro de datos también frena el pull de realtime', () async {
+  test('el ahorro de datos no frena el realtime (HU-SYNC-008: es liviano)',
+      () async {
     final (:motor, :rt, :transport, store: _) = _armar();
     motor.setDataSaver(true);
-
-    rt.emit('producto');
-    await _asentar();
-    expect(transport.pulls, isEmpty);
-
-    // Y al apagarlo, el cambio no se perdió: entra en el próximo ciclo.
-    motor.setDataSaver(false);
     transport.seed('producto', [
       {'id': 'p-1'}
     ]);
-    await motor.syncNow();
-    expect(transport.pulls, isNotEmpty);
 
+    rt.emit('producto');
+    await _asentar();
+
+    expect(transport.pulls, isNotEmpty,
+        reason: 'un cambio de precio del administrador llega aunque el '
+            'colportor cuide sus datos');
     await motor.dispose();
   });
 

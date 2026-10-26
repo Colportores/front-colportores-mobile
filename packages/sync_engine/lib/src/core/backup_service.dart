@@ -23,6 +23,13 @@ class BackupService {
   final SnapshotPort _snapshot;
   final DateTime Function() _clock;
 
+  /// Se llama cuando un backup terminó de subir. El motor lo usa para que
+  /// `SyncStatus.lastBackupAt` diga la verdad (HU-SYNC-007).
+  ///
+  /// Si lanza, el backup **no** se da por fallido: ya está en Drive, y un
+  /// contador de pantalla no puede deshacerlo.
+  Future<void> Function(BackupEntry entrada)? alTerminarUnBackup;
+
   /// OAuth con Google Drive (HU-SYNC-004).
   Future<bool> authorize() => _archive.authorize();
 
@@ -52,11 +59,17 @@ class BackupService {
     final crudo = await _snapshot.export(since: punta?.createdAt);
     final cifrado = await _crypto.encrypt(crudo);
 
-    return _archive.upload(
+    final entrada = await _archive.upload(
       payload: cifrado,
       parentId: punta?.id,
       watermark: watermark,
     );
+    try {
+      await alTerminarUnBackup?.call(entrada);
+    } on Object {
+      // Ver [alTerminarUnBackup]: el backup ya está hecho.
+    }
+    return entrada;
   }
 
   /// Integridad de la cadena (HU-SYNC-009).

@@ -41,6 +41,7 @@ class SyncOutcome {
     this.conflicts = 0,
     this.pulled = 0,
     this.skipped = false,
+    this.pausedReason,
     this.failure,
   });
 
@@ -50,8 +51,13 @@ class SyncOutcome {
   final int conflicts;
   final int pulled;
 
-  /// El ciclo no llegó a correr: ahorro de datos, o ya había uno en curso.
+  /// El ciclo no llegó a correr: ya había uno en curso, o el motor está apagado.
   final bool skipped;
+
+  /// Por qué el ciclo subió pero **no bajó** el delta: [kDataSaverOnMobile]
+  /// (HU-SYNC-008). El ciclo no falló —lo pendiente subió— y el pull espera a
+  /// que haya Wi-Fi, a un sync manual o a un evento de realtime.
+  final String? pausedReason;
 
   /// La falla transitoria que lo cortó. Los jobs volvieron a `PENDING`.
   final TransportFailure? failure;
@@ -81,6 +87,7 @@ class SyncEngine {
        _uuid = uuid ?? UuidV7(),
        _adapters = {for (final a in adapters) a.remoteName: a},
        _backup = backup,
+       _connectivity = connectivity,
        _realtimePort = realtime,
        _transport = transport,
        _jobs = jobs,
@@ -90,7 +97,17 @@ class SyncEngine {
       _conn = connectivity.onlineChanges.listen((online) {
         if (online) trigger(SyncTrigger.connectivity);
       });
+      // HU-SYNC-008: el pull que el ahorro de datos dejó esperando sale cuando
+      // aparece un Wi-Fi. Pasar de datos móviles a Wi-Fi no cambia `online`.
+      _wifiSub = connectivity.wifiChanges.listen((wifi) {
+        if (wifi && _pullEnPausa != null) trigger(SyncTrigger.connectivity);
+      });
     }
+    // HU-SYNC-007: la fecha del último backup sale del propio servicio.
+    _backup?.alTerminarUnBackup = (entrada) async {
+      _ultimoBackup = entrada.createdAt;
+      await _emit();
+    };
     resubscribe();
   }
 
@@ -102,6 +119,7 @@ class SyncEngine {
   final UuidV7 _uuid;
   final Map<String, SyncTableAdapter<Object?>> _adapters;
   final BackupService? _backup;
+  final ConnectivityPort? _connectivity;
   final DateTime Function() _clock;
 
   /// Backup E2E (§3, ADR-003). Lanza si el motor se armó sin los puertos de
@@ -152,6 +170,7 @@ class SyncEngine {
   final Duration inFlightLease;
 
   StreamSubscription<bool>? _conn;
+  StreamSubscription<bool>? _wifiSub;
   StreamSubscription<String>? _realtimeSub;
   Timer? _realtimeTimer;
   Timer? _criticalTimer;
@@ -187,12 +206,28 @@ class SyncEngine {
   Future<SyncOutcome>? _running;
   bool _dataSaver = false;
   DateTime? _lastSuccessAt;
+  DateTime? _ultimoPush;
+  DateTime? _ultimoPull;
+  DateTime? _ultimoBackup;
+
+  /// Por qué el último ciclo dejó el pull esperando (HU-SYNC-008), o `null`.
+  String? _pullEnPausa;
 
   /// Desde cuándo el backend contesta `401`. Ver [SyncStatus.unauthorizedSince].
   DateTime? _sinSesionDesde;
 
-  /// Estado de la cola para la UI (§3). No emite hasta que algo cambia.
+  /// Estado de la cola para la UI (§3). No emite hasta que algo cambia: quien
+  /// abre la pantalla pide el estado de ahora con [statusNow] y sigue el flujo.
   Stream<SyncStatus> get status => _status.stream;
+
+  /// El estado de ahora (HU-SYNC-007): conteos de la cola, última subida y
+  /// última bajada, último backup y si el pull está en pausa por el ahorro de
+  /// datos. Es lo primero que muestra la pantalla de estado, antes de que el
+  /// flujo [status] emita algo.
+  Future<SyncStatus> statusNow() async {
+    _verificarVivo();
+    return _foto();
+  }
 
   /// El ciclo en curso, si hay uno. Los tests lo esperan en vez de dormir.
   Future<SyncOutcome> get settled =>
@@ -525,13 +560,15 @@ class SyncEngine {
     await settled;
   }
 
-  /// Sync manual (HU-SYNC-007). Corre **siempre**, incluso con ahorro de datos.
+  /// Sync manual (HU-SYNC-007): push y pull inmediatos. Corre **siempre**,
+  /// incluso con ahorro de datos y con datos móviles.
   Future<SyncOutcome> syncNow() {
     _verificarVivo();
     return _start(SyncTrigger.manual);
   }
 
-  /// Un disparador automático (§5.2). No corre con ahorro de datos activo.
+  /// Un disparador automático (§5.2). Con el ahorro de datos activo y solo
+  /// datos móviles sube igual, pero deja el pull para el Wi-Fi ([setDataSaver]).
   Future<SyncOutcome> trigger(SyncTrigger trigger) => _start(trigger);
 
   /// La cola de error, para mostrarla (RF-SY06).
@@ -541,6 +578,27 @@ class SyncEngine {
   /// que después va a [requeue].
   Future<List<QueuedJob>> errorQueue({int limit = 100}) =>
       _jobs.listInvalid(limit: limit);
+
+  /// Las operaciones que el servidor rechazó, para el «Ver detalle» de la
+  /// pantalla de estado (HU-SYNC-007): tabla, fecha, tipo y el último error,
+  /// **sin datos personales** (ni el payload ni los valores que el servidor
+  /// cita en su mensaje; ver [sanitizarError]).
+  ///
+  /// Del más reciente al más viejo. Para el payload entero, [errorQueue].
+  Future<List<FailedOperation>> failedOperations({int limit = 100}) async {
+    final fallidas = await _jobs.listInvalid(limit: limit);
+    return [
+      for (final q in fallidas)
+        FailedOperation(
+          jobId: q.id,
+          entity: q.job.entity,
+          op: q.job.op,
+          createdAt: q.job.createdAt,
+          code: q.code,
+          lastError: sanitizarError(q.message),
+        ),
+    ];
+  }
 
   /// Lo que está en espera (§2.2), en orden de creación: las escrituras que el
   /// servidor no aplicó por un conflicto ([JobState.blocked]) y lo que cuelga
@@ -557,6 +615,31 @@ class SyncEngine {
     _verificarVivo();
     await _jobs.requeue(jobId);
     await _emit();
+  }
+
+  /// «Reintentar todas las fallidas» (HU-SYNC-007): `INVALID` → `PENDING` para
+  /// todas. Devuelve cuántas reencoló. No dispara un ciclo: la pantalla sigue
+  /// con [syncNow], así el colportor ve el resultado de ese intento.
+  ///
+  /// Una que el servidor vuelva a rechazar vuelve a la cola de error con su
+  /// motivo; nada se pierde ni se reintenta solo.
+  Future<int> requeueAllInvalid() async {
+    _verificarVivo();
+    // De a páginas: reencolar saca de `INVALID` lo que se acaba de leer, así
+    // que la página siguiente es la que sigue. El tope es lo que había al
+    // empezar: lo que el servidor rechace mientras tanto no entra en esta vuelta.
+    final total = (await _jobs.status()).invalid;
+    var n = 0;
+    while (n < total) {
+      final pagina = await _jobs.listInvalid(limit: 200);
+      if (pagina.isEmpty) break;
+      for (final q in pagina) {
+        await _jobs.requeue(q.id);
+      }
+      n += pagina.length;
+    }
+    if (n > 0) await _emit();
+    return n;
   }
 
   /// Saca jobs de la cola de error para siempre. Devuelve cuántos sacó.
@@ -577,9 +660,33 @@ class SyncEngine {
     return n;
   }
 
-  /// Ahorro de datos (HU-SYNC-008). Solo afecta a los ciclos automáticos:
-  /// [syncNow] sigue funcionando.
-  void setDataSaver(bool on) => _dataSaver = on;
+  /// Ahorro de datos (HU-SYNC-008). Solo afecta al batch, y dentro del batch,
+  /// solo a **bajar**:
+  ///
+  /// - Con datos móviles, el delta (el «pull periódico» de cualquier ciclo
+  ///   automático) espera a que haya Wi-Fi. El ciclo no falla: sube lo pendiente
+  ///   y lo deja dicho en [SyncOutcome.pausedReason] y en
+  ///   [SyncStatus.pullPausedReason] (`data_saver_on_mobile`).
+  /// - **Lo que sube no se frena**: una venta, un cobro o una jornada salen por
+  ///   datos móviles igual que antes, en el mismo ciclo.
+  /// - Realtime sigue activo (es liviano) y [syncNow] corre siempre.
+  /// - El backup automático pide Wi-Fi: ver [automaticBackupAllowed].
+  void setDataSaver(bool on) {
+    _dataSaver = on;
+    // La pantalla de estado muestra el modo y, si hay un pull en pausa, el motivo.
+    unawaited(_emit().catchError((Object _) {}));
+  }
+
+  /// El ahorro de datos está activo (HU-SYNC-008).
+  bool get dataSaver => _dataSaver;
+
+  /// Si el backup **automático** (el de la noche, el del cierre de jornada)
+  /// puede correr ahora: con el ahorro de datos activo exige Wi-Fi
+  /// (HU-SYNC-008). Quien lo agenda lo consulta antes de llamar a
+  /// `backup.backupNow()`. El backup que el colportor pide a mano no pasa por
+  /// acá: lo pidió, y la pantalla le avisa del peso.
+  Future<bool> automaticBackupAllowed() async =>
+      !_dataSaver || await _estaEnWifi();
 
   /// Recuperación de dispositivo: el colportor perdió el celular (§7).
   ///
@@ -667,7 +774,7 @@ class SyncEngine {
     await _pullInto(_scopeReplica, _specs.replicaOnly, reconciliadas);
     resubscribe();
 
-    _lastSuccessAt = _clock();
+    _lastSuccessAt = _ultimoPull = _clock();
     await _emit();
 
     // En un reintento, la fecha sale de la marca: el reporte tiene que decir de
@@ -696,6 +803,8 @@ class SyncEngine {
     await _realtimeSub?.cancel();
     await _realtimePort?.unsubscribe();
     await _conn?.cancel();
+    await _wifiSub?.cancel();
+    _backup?.alTerminarUnBackup = null;
     await _status.close();
   }
 
@@ -718,7 +827,6 @@ class SyncEngine {
     if (_running != null) return;
     while (_realtimePending) {
       _realtimePending = false;
-      if (_dataSaver) return;
       await _start(SyncTrigger.realtime);
     }
   }
@@ -733,9 +841,6 @@ class SyncEngine {
     // Los caminos internos —un trigger pendiente que se libera, el debounce de
     // realtime— no tiran: simplemente no hacen nada.
     if (_disposed) return SyncOutcome(trigger: trigger, skipped: true);
-    if (_dataSaver && trigger != SyncTrigger.manual) {
-      return SyncOutcome(trigger: trigger, skipped: true);
-    }
 
     // Un solo ciclo por vez: dos en paralelo se pisarían los jobs IN_FLIGHT y
     // podrían mandar el mismo dos veces.
@@ -782,6 +887,21 @@ class SyncEngine {
       );
     }
 
+    // Con la subida hecha, la fecha del último envío se actualiza sola: sale de
+    // los jobs que el servidor confirmó (`DONE`). Lo que sí se decide acá es si
+    // este ciclo baja el delta (HU-SYNC-008).
+    if (await _pausaDelPull(trigger) case final motivo?) {
+      _pullEnPausa = motivo;
+      await _emit();
+      return SyncOutcome(
+        trigger: trigger,
+        pushed: subida.pushed,
+        invalidated: subida.invalidated,
+        conflicts: subida.conflicts,
+        pausedReason: motivo,
+      );
+    }
+
     final int pulled;
     try {
       pulled = await _pull(_scopeReplica, _specs.pullable);
@@ -797,7 +917,8 @@ class SyncEngine {
       );
     }
 
-    _lastSuccessAt = _clock();
+    _lastSuccessAt = _ultimoPull = _clock();
+    _pullEnPausa = null;
     _anotarSesion(null);
     await _emit();
     return SyncOutcome(
@@ -807,6 +928,31 @@ class SyncEngine {
       conflicts: subida.conflicts,
       pulled: pulled,
     );
+  }
+
+  /// HU-SYNC-008: con el ahorro de datos activo y solo datos móviles, el ciclo
+  /// automático **no baja** el delta y devuelve el motivo.
+  ///
+  /// No aplica al sync manual (el colportor lo pidió), al realtime (es liviano:
+  /// un evento, un delta chico) ni a un teléfono sin red: ahí el pull falla como
+  /// siempre, y llamar «ahorro de datos» a eso mentiría sobre el motivo.
+  Future<String?> _pausaDelPull(SyncTrigger trigger) async {
+    if (!_dataSaver ||
+        trigger == SyncTrigger.manual ||
+        trigger == SyncTrigger.realtime) {
+      return null;
+    }
+    final red = _connectivity;
+    if (red == null) return null;
+    if (!await red.isOnline || await red.isOnWifi) return null;
+    return kDataSaverOnMobile;
+  }
+
+  /// Sin puerto de conectividad no hay forma de saber que es un dato móvil: se
+  /// asume Wi-Fi, que es el comportamiento de antes del ahorro de datos.
+  Future<bool> _estaEnWifi() async {
+    final red = _connectivity;
+    return red == null || await red.isOnWifi;
   }
 
   /// Vacía la cola hacia el backend. Es el corazón del ciclo y también la
@@ -970,7 +1116,9 @@ class SyncEngine {
             }
           }
           if (hechos.isNotEmpty) {
-            await _jobs.markDone(hechos, at: _clock());
+            final ahora = _clock();
+            await _jobs.markDone(hechos, at: ahora);
+            _ultimoPush = ahora;
             sinResolver.removeAll(hechos);
           }
         }
@@ -1123,17 +1271,34 @@ class SyncEngine {
     // sobre una tabla que crece. Si nadie está mirando el estado, no hay a
     // quién informarle.
     if (!_status.hasListener) return;
+    final foto = await _foto();
+    if (_status.isClosed) return;
+    _status.add(foto);
+  }
+
+  /// El estado de ahora: lo que cuenta la cola más lo que sabe el motor.
+  Future<SyncStatus> _foto() async {
     final s = await _jobs.status();
-    _status.add(
-      SyncStatus(
-        pending: s.pending,
-        inFlight: s.inFlight,
-        invalid: s.invalid,
-        blocked: s.blocked,
-        waiting: s.waiting,
-        lastSuccessAt: _lastSuccessAt,
-        unauthorizedSince: _sinSesionDesde,
-      ),
+    // El último envío se acuerda de los `DONE` de la cola (sobrevive a cerrar
+    // la app); el de memoria cubre un store que no lo sabe contar.
+    final ultimoPush = switch ((_ultimoPush, s.lastPushAt)) {
+      (final a?, final b?) => a.isAfter(b) ? a : b,
+      (final a?, null) => a,
+      (null, final b) => b,
+    };
+    return SyncStatus(
+      pending: s.pending,
+      inFlight: s.inFlight,
+      invalid: s.invalid,
+      blocked: s.blocked,
+      waiting: s.waiting,
+      lastSuccessAt: _lastSuccessAt,
+      lastPushAt: ultimoPush,
+      lastPullAt: _ultimoPull,
+      lastBackupAt: _ultimoBackup,
+      pullPausedReason: _dataSaver ? _pullEnPausa : null,
+      dataSaver: _dataSaver,
+      unauthorizedSince: _sinSesionDesde,
     );
   }
 
