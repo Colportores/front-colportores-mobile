@@ -61,6 +61,7 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
       item: item,
       ahora: ref.watch(relojListaUbicacionesProvider)(),
       alCerrar: () => Navigator.of(context).maybePop(),
+      colportorId: colportorId,
       alReactivar: alReactivar == null || !item.puedeReactivarse ? null : () => alReactivar!(item),
     );
   }

@@ -14,6 +14,7 @@ import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
+import '../providers/aviso_privacidad_providers.dart';
 import '../providers/nombre_cuenta_provider.dart';
 import '../widgets/hoja_cerrar_sesion.dart';
 import 'borrar_datos_locales_page.dart';
@@ -43,6 +44,38 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   /// Mientras «Reintentar» del aviso de módulo bloqueado consulta la cuenta: una sola consulta
   /// aunque se toque dos veces (#278).
   bool _reintentandoCuenta = false;
+
+  /// Se está guardando «Mostrar el aviso de privacidad». Es un campo: corta el segundo toque aunque
+  /// llegue antes de que se vuelva a dibujar.
+  bool _cambiandoAviso = false;
+
+  /// «Mostrar el aviso de privacidad» (decisión de Cristian, 23/10, «Aviso privado», #445): enciende
+  /// o apaga el aviso «Estos datos solo viven en tu celular…» de esta cuenta, el mismo del alta de
+  /// persona y de las notas. Si no se pudo guardar, el interruptor queda como estaba y lo dice.
+  Future<void> _cambiarAvisoDePrivacidad(String cuentaId, {required bool mostrar}) async {
+    if (_cambiandoAviso) return;
+    _cambiandoAviso = true;
+    setState(() {});
+    var guardado = false;
+    try {
+      final notificador = ref.read(avisoPrivacidadOcultoProvider(cuentaId).notifier);
+      guardado = await (mostrar ? notificador.mostrar() : notificador.ocultar());
+    } finally {
+      _cambiandoAviso = false;
+    }
+    if (!mounted) return;
+    setState(() {});
+    if (!guardado) {
+      recordarAviso(
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            key: Key('configuracion_aviso_privacidad_falla'),
+            content: Text(TextosConfiguracion.noPudimosGuardarElAviso),
+          ),
+        ),
+      );
+    }
+  }
 
   /// Toca un módulo de la barra bloqueada. Sin estado conocido el aviso es el de la causa y trae
   /// «Reintentar»; si ya hay una consulta en curso, muestra que está revisando.
@@ -156,6 +189,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     final colores = theme.extension<ColoresColportaje>()!;
     final email = ref.watch(sesionProvider).value?.email ?? '';
     final nombre = ref.watch(nombreCuentaProvider);
+    final cuentaId = ref.watch(sesionProvider).value?.usuarioId;
+    // Mientras se lee, o si no se pudo leer, el aviso cuenta como encendido (ante la duda, se ve).
+    final avisoOculto =
+        cuentaId != null && (ref.watch(avisoPrivacidadOcultoProvider(cuentaId)).value ?? false);
     // Con la cuenta pendiente (o sin estado conocido) la barra se ve con los módulos bloqueados
     // (vista 16, nota; vista 18). Mientras se consulta el estado no hay barra.
     final estadoCuenta = ref.watch(estadoCuentaProvider);
@@ -234,6 +271,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                       const SizedBox(height: 8),
                       _Tarjeta(
                         children: [
+                          if (cuentaId != null)
+                            _FilaAvisoDePrivacidad(
+                              visible: !avisoOculto,
+                              cambiando: _cambiandoAviso,
+                              alCambiar: (mostrar) =>
+                                  unawaited(_cambiarAvisoDePrivacidad(cuentaId, mostrar: mostrar)),
+                            ),
                           ListTile(
                             key: const Key('configuracion_borrar_datos'),
                             enabled: !_revisando,
@@ -285,6 +329,42 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
           : null,
     );
   }
+}
+
+/// «Mostrar el aviso de privacidad»: el interruptor que vuelve a encender (o apaga) el aviso «Estos
+/// datos solo viven en tu celular. Nunca se suben a la nube.» del alta de persona y de las notas.
+class _FilaAvisoDePrivacidad extends StatelessWidget {
+  const _FilaAvisoDePrivacidad({
+    required this.visible,
+    required this.cambiando,
+    required this.alCambiar,
+  });
+
+  final bool visible;
+  final bool cambiando;
+  final ValueChanged<bool> alCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      key: const Key('configuracion_aviso_privacidad'),
+      value: visible,
+      onChanged: cambiando ? null : alCambiar,
+      minVerticalPadding: 12,
+      secondary: const Icon(Icons.visibility_outlined),
+      title: const Text(TextosConfiguracion.mostrarAvisoDePrivacidad),
+      subtitle: const Text(TextosConfiguracion.mostrarAvisoDePrivacidadAyuda),
+    );
+  }
+}
+
+/// Los textos de Configuración que no son de una vista aprobada con literales en el canvas (mapa §2:
+/// texto, a confirmar): «Mostrar el aviso de privacidad» es el rótulo que dio Cristian el 23/10.
+abstract final class TextosConfiguracion {
+  static const mostrarAvisoDePrivacidad = 'Mostrar el aviso de privacidad';
+  static const mostrarAvisoDePrivacidadAyuda =
+      'Sale cuando agregás una persona o una nota: tus datos solo viven en tu celular.';
+  static const noPudimosGuardarElAviso = 'No pudimos guardar el cambio. Probá de nuevo.';
 }
 
 /// Color del encabezado chico ("CONFIGURACIÓN", "PRIVACIDAD Y DATOS"): el color primario (paleta

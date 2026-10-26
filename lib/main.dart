@@ -29,6 +29,8 @@ import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
+import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -136,6 +138,11 @@ Future<void> main() async {
         // #251): un cambio de zona se avisa una sola vez, aunque se cierre la app.
         zonasAvisadasRepositoryProvider.overrideWithValue(
           ZonasAvisadasRepositoryImpl(almacenSeguro),
+        ),
+        // Qué cuentas escondieron el aviso de privacidad con «No volver a mostrar» (#445, #447): es
+        // por cuenta y se vuelve a encender desde Configuración.
+        avisoPrivacidadRepositoryProvider.overrideWithValue(
+          AvisoPrivacidadRepositoryImpl(almacenSeguro),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
