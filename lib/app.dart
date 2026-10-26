@@ -7,6 +7,7 @@ import 'core/conectividad/conectividad_providers.dart';
 import 'core/error/failure.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
 import 'features/auth/domain/entities/estado_cuenta.dart';
@@ -324,6 +325,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
+    // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
+    ref.watch(aperturasDesdeRecordatorioProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

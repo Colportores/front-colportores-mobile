@@ -9,6 +9,9 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Recordatorios de las visitas (HU-NOT-002), flutter_local_notifications: el centro de
+    // notificaciones le avisa a este delegado cuando el aviso llega o se toca.
+    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
