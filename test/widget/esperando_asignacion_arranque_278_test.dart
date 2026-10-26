@@ -173,6 +173,8 @@ void _tocarActualizarBajoElAviso(WidgetTester tester) {
 Future<void> _cerrarSesionDesdeConfiguracion(WidgetTester tester) async {
   await tester.tap(_configuracion);
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+  await tester.pump();
   await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));

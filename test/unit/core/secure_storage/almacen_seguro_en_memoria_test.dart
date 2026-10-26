@@ -103,6 +103,7 @@ void main() {
       expect(ClaveSegura.bloqueoReenvioVerificacion.id, 'verification_resend_locks');
       expect(ClaveSegura.zonasAvisadas.id, 'zones_notified');
       expect(ClaveSegura.permisoNotificaciones.id, 'notifications_permission');
+      expect(ClaveSegura.modoAhorroDatos.id, 'data_saver_mode');
       expect(ClaveSegura.avisoNotificacionesCerrado.id, 'notifications_banner_closed');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });

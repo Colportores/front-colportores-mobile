@@ -1467,6 +1467,8 @@ void main() {
       await _montar(tester);
       _datos.demoraResumen = Completer<void>();
 
+      await tester.ensureVisible(_k('configuracion_borrar_datos'));
+      await tester.pumpAndSettle();
       await tester.tap(_k('configuracion_borrar_datos'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));

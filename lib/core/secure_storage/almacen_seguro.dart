@@ -97,7 +97,13 @@ enum ClaveSegura {
 
   /// Marca de que la persona cerró con la ✕ el aviso «Notificaciones desactivadas» de Hoy (24A·03):
   /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
-  avisoNotificacionesCerrado('notifications_banner_closed');
+  avisoNotificacionesCerrado('notifications_banner_closed'),
+
+  /// Si el colportor activó el modo ahorro de datos (HU-SYNC-008, vista 25): `1` activo; sin la
+  /// clave, apagado. Es una preferencia del teléfono, no un secreto: vive acá, junto a
+  /// `ultimoCorreo`, para no sumar otro almacenamiento, y el borrado de datos locales
+  /// (HU-AUTH-010) también la borra.
+  modoAhorroDatos('data_saver_mode');
 
   const ClaveSegura(this.id);
 

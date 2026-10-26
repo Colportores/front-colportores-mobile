@@ -281,6 +281,9 @@ final class CustodiaClaveDb {
     // a pedirlo ni a mostrar el aviso que ya se cerró.
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
+    // El modo ahorro de datos (HU-SYNC-008) es una preferencia del teléfono: recuperar la DB no la
+    // apaga.
+    ClaveSegura.modoAhorroDatos,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -371,7 +374,8 @@ final class CustodiaClaveDb {
   /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
   /// bloqueado, las zonas ya avisadas de cada inscripción y el id de la instalación (el sync estrena
   /// uno, como en una reinstalación: la cola y la réplica también arrancan de cero) y lo contestado
-  /// del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir, HU-NOT-001).
+  /// del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir, HU-NOT-001) y el
+  /// modo ahorro de datos (vuelve al comportamiento estándar, HU-SYNC-008).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -384,6 +388,7 @@ final class CustodiaClaveDb {
     ClaveSegura.idInstalacion,
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
+    ClaveSegura.modoAhorroDatos,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

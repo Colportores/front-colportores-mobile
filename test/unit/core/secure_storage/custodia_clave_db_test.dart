@@ -468,6 +468,16 @@ void main() {
       expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
 
+    test('conserva el modo ahorro de datos (HU-SYNC-008): recuperar los datos no vuelve a gastar '
+        'datos móviles sin que la persona lo pida', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.modoAhorroDatos], '1');
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {
@@ -664,6 +674,25 @@ void main() {
       expect(almacen.contenido.containsKey(ClaveSegura.permisoNotificaciones), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.avisoNotificacionesCerrado), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también el modo ahorro de datos (HU-SYNC-008): la próxima persona que entre en '
+        'este teléfono arranca con el comportamiento estándar', () async {
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.modoAhorroDatos), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el modo ahorro de datos', () async {
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.modoAhorroDatos], '1');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {
