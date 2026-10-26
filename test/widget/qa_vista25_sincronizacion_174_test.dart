@@ -417,6 +417,47 @@ void main() {
     );
   });
 
+  group('P1 · operaciones que esperan un conflicto no prometen salir solas', () {
+    for (final tam in tamanos25) {
+      for (final escala in escalas25) {
+        testWidgets(
+          'con 2 de 5 esperando un conflicto: el texto lo dice, sin overflow y con las guías '
+          '(${tam.width.toInt()}×${tam.height.toInt()} · texto ${escala == 1 ? '100' : '200'} %)',
+          (tester) async {
+            final semantica = tester.ensureSemantics();
+            final t = TelefonoSync(
+              estado: const EstadoSincronizacion(pendientes: 5, conflictos: 2),
+            );
+            await montar25(tester, t, tamano: tam, escala: escala);
+            expect(
+              textoDe(tarjetaDetalle),
+              '2 esperan que resuelvas un conflicto. 3 se envían solas cuando haya conexión.',
+            );
+            expect(tester.takeException(), isNull);
+            await guias25(tester);
+            semantica.dispose();
+          },
+        );
+      }
+    }
+
+    testWidgets('«Listo» con conflictos pendientes no dice «todo estaba al día»', (tester) async {
+      final t = TelefonoSync(estado: const EstadoSincronizacion(pendientes: 2, conflictos: 2));
+      t.servicio.resultado = const ActualizacionCompleta(conflictos: 2);
+      await montar25(tester, t);
+      await tester.tap(botonActualizar);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.text(
+          'Listo: no había nada nuevo, pero 2 operaciones esperan que resuelvas un conflicto.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('todo estaba al día'), findsNothing);
+    });
+  });
+
   group('privacidad', () {
     testWidgets('la tarjeta de una rechazada no lleva cliente ni calle', (tester) async {
       await llegar25(tester, Estado25.a06ConError);
