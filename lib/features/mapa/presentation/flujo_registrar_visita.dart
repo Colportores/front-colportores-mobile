@@ -16,6 +16,7 @@ import 'providers/hoja_casa_providers.dart';
 import 'providers/personas_providers.dart';
 import 'textos_personas.dart';
 import 'textos_registrar_visita.dart';
+import 'widgets/aviso_con_deshacer.dart';
 import 'widgets/hoja_con_quien.dart';
 import 'widgets/hoja_que_paso.dart';
 
@@ -280,46 +281,20 @@ abstract final class FlujoRegistrarVisita {
     required VisitaGuardada guardada,
     required DeshacerResultadoVisitaUseCase deshacer,
   }) {
-    // Con el texto grande «Deshacer» va debajo del aviso, no al lado: Flutter mide la acción sin la
-    // escala del texto y la deja en una columna angosta que parte la dirección.
-    final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
     var tocado = false;
-    final texto = Text(
-      TextosRegistrarVisita.guardado(direccion, resultado),
-      style: const TextStyle(fontSize: 13.5, color: Colors.white),
-    );
-    final accion = SnackBarAction(
-      label: TextosRegistrarVisita.deshacer,
-      textColor: const Color(0xFFC9D6EA),
-      onPressed: () {
+    mostrarAvisoConDeshacer(
+      mensajero,
+      mediaQuery: mediaQuery,
+      texto: TextosRegistrarVisita.guardado(direccion, resultado),
+      etiquetaDeshacer: TextosRegistrarVisita.deshacer,
+      duracion: TextosRegistrarVisita.duracionDeshacer,
+      alDeshacer: () {
         // Un segundo toque (o uno tardío) no deshace dos veces.
         if (tocado) return;
         tocado = true;
         unawaited(_deshacer(mensajero, deshacer, guardada, direccion));
       },
     );
-    mensajero
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: TextosRegistrarVisita.duracionDeshacer,
-          // Con un lector de pantalla el aviso no se cierra solo (WCAG 2.2.1): quien navega con
-          // TalkBack/VoiceOver no llega a «Deshacer» en 8 s.
-          persist: mediaQuery.accessibleNavigation,
-          backgroundColor: const Color(0xFF0E1A2B),
-          content: textoGrande
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    texto,
-                    Align(alignment: AlignmentDirectional.centerEnd, child: accion),
-                  ],
-                )
-              : texto,
-          action: textoGrande ? null : accion,
-        ),
-      );
   }
 
   static Future<void> _deshacer(

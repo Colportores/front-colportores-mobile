@@ -733,6 +733,59 @@ void main() {
       },
     );
 
+    test(
+      'una visita de cobranza sin cita: se guarda sin crear agenda, y «Deshacer» solo da de baja '
+      'la visita',
+      () async {
+        final r = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+
+        expect([r.agendaCreadaId, r.agendaAfectadaId, r.agendaNoCumplida], [null, null, false]);
+        expect((await visitas()).single.tipoResultado, 'COBRANZA');
+        expect(await agendas(), isEmpty);
+        expect(cola(), ['visita:insert']);
+
+        // Un reintento con los mismos ids sigue sin agenda.
+        final otra = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+        expect([otra.yaEstaba, otra.agendaCreadaId, otra.agendaAfectadaId], [true, null, null]);
+        encolador.encolados.clear();
+
+        await local.deshacerVisita('vis-1', ahora: t2);
+
+        expect((await visitas()).single.deletedAt, isNotNull);
+        expect(await agendas(), isEmpty);
+        expect(cola(), ['visita:delete']);
+      },
+    );
+
+    test('una visita de cobranza con la cita de la casa: cumple la cita, como antes', () async {
+      await local.agendar(agendaDe('age-1'));
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect([r.agendaCreadaId, r.agendaAfectadaId], [null, 'age-1']);
+      expect((await agendas()).single.estado, 'CUMPLIDA');
+    });
+
+    test('un «No contestó» y un rechazo sin cita siguen creando su agenda espontánea', () async {
+      final noContesto = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
+      );
+      final rechazo = await local.registrarVisita(
+        visitaDe('vis-2', resultado: TipoResultadoVisita.rechazo, creada: t1),
+      );
+
+      expect(noContesto.agendaCreadaId, isNotNull);
+      expect(rechazo.agendaCreadaId, isNotNull);
+      expect(await agendas(), hasLength(2));
+    });
+
     test('un reintento con los mismos ids sobre una visita espontánea: sigue diciendo que creó su '
         'agenda y «Deshacer» la da de baja', () async {
       final primera = await local.registrarVisita(visitaDe('vis-1', creada: t1));

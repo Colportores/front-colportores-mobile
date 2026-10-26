@@ -141,11 +141,15 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     );
     // Una agenda que sirve pasa a `CUMPLIDA` con el resultado que la cumple, o a `NO_CUMPLIDA` con
     // «No contestó» (HU-VIS-005; decisión del 23/10, «No cumplida»): en los dos casos apunta a la
-    // visita. Sin agenda, la visita espontánea nace con la suya, ya cumplida.
+    // visita. Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
+    // a cobrar no es una entrevista que haya quedado hecha, así que queda en el historial sin agenda
+    // (decisión del 25/10, «Cobranza sin cita no crea agenda»).
     final noLaCumple = agenda != null && !visita.tipoResultado.cumpleLaAgenda;
     String? agendaCreadaId;
     if (agenda == null) {
-      agendaCreadaId = await _crearAgendaCumplida(visita);
+      if (visita.tipoResultado != TipoResultadoVisita.cobranza) {
+        agendaCreadaId = await _crearAgendaCumplida(visita);
+      }
     } else {
       await _escribirAgenda(
         agenda.id,

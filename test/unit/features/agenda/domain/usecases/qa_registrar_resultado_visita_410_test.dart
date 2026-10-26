@@ -121,17 +121,30 @@ void main() {
       (_R.cobranza, null, true),
     ];
     for (final (resultado, color, cumple) in casos) {
-      test('dado ${resultado.codigo} sin agenda previa, la visita nace con su agenda CUMPLIDA y '
-          'sube visita, agenda y color en este orden', () async {
-        final r = salio(await registrar(resultado));
+      // `COBRANZA` sin cita no crea agenda (decisión del 25/10, «Cobranza sin cita no crea agenda»).
+      final creaAgenda = resultado != _R.cobranza;
+      test(
+        creaAgenda
+            ? 'dado ${resultado.codigo} sin agenda previa, la visita nace con su agenda CUMPLIDA y '
+                  'sube visita, agenda y color en este orden'
+            : 'dado ${resultado.codigo} sin agenda previa, la visita queda sin agenda',
+        () async {
+          final r = salio(await registrar(resultado));
 
-        expect(r.guardada.aviso, isNull);
-        expect((await visitas()).single.tipoResultado, resultado.codigo);
-        expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('CUMPLIDA', 'id-1')]);
-        expect(await colores(), color == null ? isEmpty : [color]);
-        expect(cola().take(2), ['visita:insert', 'agenda:insert']);
-        expect(cola().where((c) => c == 'visita:insert'), hasLength(1));
-      });
+          expect(r.guardada.aviso, isNull);
+          expect((await visitas()).single.tipoResultado, resultado.codigo);
+          expect(
+            (await agendas()).map((a) => (a.estado, a.visitaId)),
+            creaAgenda ? [('CUMPLIDA', 'id-1')] : isEmpty,
+          );
+          expect(await colores(), color == null ? isEmpty : [color]);
+          expect(
+            cola().take(2),
+            creaAgenda ? ['visita:insert', 'agenda:insert'] : ['visita:insert'],
+          );
+          expect(cola().where((c) => c == 'visita:insert'), hasLength(1));
+        },
+      );
 
       test(
         'dado ${resultado.codigo} con la agenda de la casa, ${cumple ? 'la agenda se cumple y '
@@ -427,7 +440,8 @@ void main() {
       }
 
       expect(await visitas(), hasLength(60));
-      expect(await agendas(), hasLength(60));
+      // Las de cobranza no crean agenda (12 de 60).
+      expect(await agendas(), hasLength(48));
       expect(await colores(), hasLength(1));
     });
 
