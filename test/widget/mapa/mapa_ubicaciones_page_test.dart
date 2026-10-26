@@ -82,7 +82,10 @@ void main() {
       expect(find.descendant(of: pestana, matching: find.text('6')), findsOneWidget);
       expect(botonMiUbicacion, findsOneWidget);
       expect(botonNueva, findsOneWidget);
-      expect(find.descendant(of: botonNueva, matching: find.text('Nueva')), findsOneWidget);
+      expect(
+        find.descendant(of: botonNueva, matching: find.text('Arrastrá para sumar una casa')),
+        findsOneWidget,
+      );
       expect(chipReferencias, findsOneWidget);
       expect(find.text('Referencias'), findsOneWidget);
       // Minimizada solo se ve la pestaña: ninguna fila, ninguna vista previa.
@@ -574,7 +577,11 @@ void main() {
       await tester.tap(find.byKey(ClavesMapaUbicaciones.registrarPrimera));
       await asentarLista(tester);
 
-      expect(m.altas, [null]);
+      // «Registrar tu primera ubicación» pone el pin en el centro del mapa (N·01).
+      expect(confirmarPosicion, findsOneWidget);
+      await tester.tap(confirmarPosicion);
+      await asentarLista(tester);
+      expect(m.altas, hasLength(1));
     });
 
     testWidgets('solo ubicaciones dadas de baja: no dice que no registró ninguna', (tester) async {

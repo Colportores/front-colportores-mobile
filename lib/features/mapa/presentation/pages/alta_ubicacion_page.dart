@@ -5,37 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/duplicado_ubicacion.dart';
-import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart';
-import '../providers/alta_ubicacion_providers.dart';
+import '../salida_alta_ubicacion.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
-import '../widgets/hoja_duplicado_alta.dart';
 import '../widgets/mapa_alta.dart';
 import '../widgets/medida_hoja.dart';
 import '../widgets/piezas_alta.dart';
+import '../widgets/resolver_duplicados_alta.dart';
 
-/// Cómo se cerró el alta de ubicación.
-sealed class SalidaAltaUbicacion {
-  const SalidaAltaUbicacion();
-}
-
-/// La ubicación quedó registrada: el mapa vuelve con ella seleccionada.
-final class UbicacionCreada extends SalidaAltaUbicacion {
-  const UbicacionCreada(this.ubicacion);
-
-  final Ubicacion ubicacion;
-}
-
-/// El colportor eligió «Reutilizar esta» (o «Abrir la existente») en el aviso de duplicado: el mapa
-/// abre esa ubicación con la vista previa, sin modificar sus datos.
-final class UbicacionReutilizada extends SalidaAltaUbicacion {
-  const UbicacionReutilizada(this.ubicacionId);
-
-  final String ubicacionId;
-}
+export '../salida_alta_ubicacion.dart';
 
 /// Vista 03 (HU-UBI-001, #193): alta de ubicación sobre el mapa, con captura GPS.
 ///
@@ -50,6 +31,10 @@ class AltaUbicacionPage extends ConsumerStatefulWidget {
 
   static var _aperturas = 0;
 
+  /// El número de la próxima apertura del alta: cada una arranca de cero. Lo usa también el alta de la
+  /// vista 39 (arrastrar el pin), que arma sus propios [ParametrosAlta].
+  static int siguienteApertura() => ++_aperturas;
+
   /// Abre el alta encima de la pantalla actual. [puntoInicial] es el tap largo del mapa.
   static Future<SalidaAltaUbicacion?> abrir(
     BuildContext context, {
@@ -61,7 +46,7 @@ class AltaUbicacionPage extends ConsumerStatefulWidget {
         parametros: ParametrosAlta(
           colportorId: colportorId,
           puntoInicial: puntoInicial,
-          apertura: ++_aperturas,
+          apertura: siguienteApertura(),
         ),
       ),
     ),
@@ -110,46 +95,18 @@ class _AltaUbicacionPageState extends ConsumerState<AltaUbicacionPage> with Widg
     }
   }
 
-  Future<Map<String, String>> _nombresCiudad() async {
-    try {
-      final r = await ref
-          .read(ciudadesParaAltaProvider)
-          .deMiCampania(widget.parametros.colportorId);
-      return r.fold<Map<String, String>>(
-        (_) => const {},
-        (ciudades) => {for (final c in ciudades) c.id: c.nombre},
-      );
-    } on Object {
-      return const {};
-    }
-  }
-
   Future<void> _mostrarDuplicados(List<CandidataDuplicado> candidatas) async {
     if (_mostrandoDuplicados) return;
-    final punto = ref.read(altaUbicacionProvider(widget.parametros)).punto;
-    if (punto == null) return;
     _mostrandoDuplicados = true;
     try {
-      final nombres = await _nombresCiudad();
-      if (!mounted) return;
-      final decision = await mostrarHojaDuplicado(
+      final salida = await resolverDuplicadosDelAlta(
         context,
+        ref,
+        parametros: widget.parametros,
         candidatas: candidatas,
-        puntoNuevo: punto,
-        nombresCiudad: nombres,
-        ambito: ref.read(altaUbicacionProvider(widget.parametros)).ambitoMapa,
-        crearIgual: (justificacion) => _notificador.registrar(justificacion: justificacion),
-        ahora: ref.read(relojAltaUbicacionProvider),
       );
-      if (!mounted) return;
-      switch (decision) {
-        case DecisionReutilizar(:final ubicacionId):
-          Navigator.of(context).pop(UbicacionReutilizada(ubicacionId));
-        case DecisionCreada(:final ubicacion):
-          Navigator.of(context).pop(UbicacionCreada(ubicacion));
-        case null:
-          break;
-      }
+      if (!mounted || salida == null) return;
+      Navigator.of(context).pop(salida);
     } finally {
       _mostrandoDuplicados = false;
     }

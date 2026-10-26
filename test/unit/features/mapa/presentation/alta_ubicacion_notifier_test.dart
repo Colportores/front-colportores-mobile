@@ -1083,4 +1083,71 @@ void main() {
       expect(b.repo.llamadas.single.origen, OrigenCoordenadas.gps);
     });
   });
+
+  group('buscando la dirección (el pin de la vista 39)', () {
+    const conPunto = ParametrosAlta(colportorId: 'col-1', puntoInicial: puntoItalia, apertura: 7);
+
+    test(
+      'un alta con el punto puesto arranca «buscando» y deja de buscar al llegar la dirección',
+      () async {
+        final geo = GeocodificadorFalso(
+          (_) => const DireccionDelPunto(calle: 'Grecia', numero: '3307'),
+        )..bloqueo = Completer<void>();
+        final b = _banco(geocodificador: geo, parametros: conPunto);
+
+        expect(b.estado.punto, puntoItalia);
+        expect(b.estado.buscandoDireccion, isTrue, reason: 'desde el primer cuadro, sin parpadeo');
+        await _esperar();
+        expect(b.estado.buscandoDireccion, isTrue);
+        expect(b.estado.calle.texto, isEmpty);
+
+        geo.bloqueo!.complete();
+        await _esperar();
+
+        expect(b.estado.buscandoDireccion, isFalse);
+        expect(b.estado.calle.texto, 'Grecia');
+        expect(b.estado.numero.texto, '3307');
+      },
+    );
+
+    test('si el mapa no conoce la dirección, deja de buscar con calle y número vacíos', () async {
+      final b = _banco(geocodificador: GeocodificadorFalso(), parametros: conPunto);
+
+      await _esperar();
+
+      expect(b.estado.buscandoDireccion, isFalse);
+      expect(b.estado.calle.fuente, FuenteCampo.vacio);
+      expect(b.estado.numero.fuente, FuenteCampo.vacio);
+    });
+
+    test('mover el punto vuelve a buscar, y una respuesta vieja no la corta', () async {
+      final geo = GeocodificadorFalso(
+        (p) => const DireccionDelPunto(calle: 'Grecia', numero: '3307'),
+      );
+      final b = _banco(geocodificador: geo, parametros: conPunto);
+      await _esperar();
+      expect(b.estado.buscandoDireccion, isFalse);
+
+      geo.bloqueo = Completer<void>();
+      b.notificador.moverPunto(_otroPunto);
+
+      expect(b.estado.buscandoDireccion, isTrue);
+      await _esperar();
+      expect(b.estado.buscandoDireccion, isTrue, reason: 'la nueva dirección todavía no llegó');
+
+      geo.bloqueo!.complete();
+      await _esperar();
+      expect(b.estado.buscandoDireccion, isFalse);
+    });
+
+    test('si el puerto lanza, no se queda «buscando» para siempre', () async {
+      final geo = GeocodificadorFalso((_) => throw StateError('sin red'));
+      final b = _banco(geocodificador: geo, parametros: conPunto);
+
+      await _esperar();
+
+      expect(b.estado.buscandoDireccion, isFalse);
+      expect(b.estado.punto, puntoItalia);
+    });
+  });
 }

@@ -38,7 +38,7 @@ abstract final class TextosMapaUbicaciones {
   static const cargando = 'Cargando ubicaciones';
   static const vacioTitulo = 'Todavía no registraste ubicaciones';
   static const vacioCuerpo =
-      'Tocá «Nueva» o mantené el dedo sobre el mapa para registrar la primera.';
+      'Arrastrá el pin del botón de abajo hasta el lugar para registrar la primera.';
   static const registrarPrimera = 'Registrar tu primera ubicación';
   static const soloBajasTitulo = 'No tenés ubicaciones activas';
   static const soloBajasCuerpo =

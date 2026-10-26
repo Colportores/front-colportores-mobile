@@ -110,6 +110,7 @@ final class AltaUbicacionState extends Equatable {
     this.calle = const CampoDireccion(),
     this.numero = const CampoDireccion(),
     this.propuesta,
+    this.buscandoDireccion = false,
     this.avisosCalle = 0,
     this.movimientosCamara = 0,
     this.guardando = false,
@@ -144,6 +145,10 @@ final class AltaUbicacionState extends Equatable {
 
   /// La dirección que el mapa conoce del punto actual (para «El punto está en … Usar …»).
   final DireccionDelPunto? propuesta;
+
+  /// Se está pidiendo la dirección del punto actual (el mapa todavía no contestó): el pin de la vista 39
+  /// dice «Buscando la dirección…» en vez de afirmar que el mapa no la conoce.
+  final bool buscandoDireccion;
 
   /// Cuántas veces se actualizó sola la calle al mover el punto (dispara «Calle actualizada»).
   final int avisosCalle;
@@ -192,6 +197,7 @@ final class AltaUbicacionState extends Equatable {
     CampoDireccion? numero,
     DireccionDelPunto? propuesta,
     bool borrarPropuesta = false,
+    bool? buscandoDireccion,
     int? avisosCalle,
     int? movimientosCamara,
     bool? guardando,
@@ -210,6 +216,7 @@ final class AltaUbicacionState extends Equatable {
     calle: calle ?? this.calle,
     numero: numero ?? this.numero,
     propuesta: borrarPropuesta ? null : (propuesta ?? this.propuesta),
+    buscandoDireccion: buscandoDireccion ?? this.buscandoDireccion,
     avisosCalle: avisosCalle ?? this.avisosCalle,
     movimientosCamara: movimientosCamara ?? this.movimientosCamara,
     guardando: guardando ?? this.guardando,
@@ -230,6 +237,7 @@ final class AltaUbicacionState extends Equatable {
     calle,
     numero,
     propuesta,
+    buscandoDireccion,
     avisosCalle,
     movimientosCamara,
     guardando,
@@ -301,6 +309,8 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
       punto: inicial,
       origen: OrigenCoordenadas.manual,
       movimientosCamara: 1,
+      // La dirección se pide enseguida: hasta que conteste, el pin dice que la busca (no que no hay).
+      buscandoDireccion: true,
     );
   }
 
@@ -446,6 +456,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
   void _programarEnriquecimiento({bool inmediato = false}) {
     _espera?.cancel();
     final secuencia = ++_secuencia;
+    if (!state.buscandoDireccion) state = state.copyWith(buscandoDireccion: true);
     if (inmediato) {
       unawaited(_enriquecer(secuencia));
       return;
@@ -462,7 +473,13 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     if (punto == null || !ref.mounted) return;
     final direccion = ref.read(geocodificadorInversoProvider).direccionDe(punto);
     if (state.origenCiudad != OrigenCiudad.elegida) unawaited(_proponerCiudad(punto, secuencia));
-    final dir = await direccion;
+    DireccionDelPunto? dir;
+    try {
+      dir = await direccion;
+    } on Object {
+      // El puerto no lanza; si lo hiciera, el punto queda sin dirección y no «buscando» para siempre.
+      dir = null;
+    }
     if (!ref.mounted || secuencia != _secuencia) return;
     _aplicarDireccion(dir);
   }
@@ -542,6 +559,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
       numero: aplicar(numeroAnterior, nuevoNumero),
       propuesta: dir,
       borrarPropuesta: dir == null,
+      buscandoDireccion: false,
       avisosCalle: cambioLaCalle ? state.avisosCalle + 1 : null,
     );
   }

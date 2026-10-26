@@ -79,6 +79,7 @@ Future<ArnesQuePaso> montarQuePaso(
   bool lector = false,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  bool casaNueva = false,
 }) async {
   final agenda = repo ?? AgendaRepositorioFalso();
   final enganches = EnganchesRecibidos();
@@ -144,10 +145,12 @@ Future<ArnesQuePaso> montarQuePaso(
               child: TextButton(
                 onPressed: () async {
                   try {
-                    final r = await FlujoRegistrarVisita.abrir(context, (
-                      ubicacionId: 'ub-1',
-                      espacioId: espacioId,
-                    ), colportorId: colportorId);
+                    final r = await FlujoRegistrarVisita.abrir(
+                      context,
+                      (ubicacionId: 'ub-1', espacioId: espacioId),
+                      colportorId: colportorId,
+                      casaNueva: casaNueva,
+                    );
                     arnes.resultados.add(r);
                   } on Object catch (e) {
                     arnes.errorAlAbrir = e;

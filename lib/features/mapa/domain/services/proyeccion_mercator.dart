@@ -59,6 +59,32 @@ abstract final class ProyeccionMercator {
     return Coordenadas(lat: lat, lon: lon);
   }
 
+  /// Dónde cae [punto] en una vista de [ancho] × [alto] píxeles con [camara]: `(0, 0)` es la esquina
+  /// de arriba a la izquierda y el centro de la cámara cae en el medio de la vista. Es lo que usa lo
+  /// que se dibuja encima del mapa como un widget (el pin de la casa nueva, vista 39).
+  static ({double x, double y}) aPantalla(
+    Coordenadas punto,
+    CamaraMapa camara, {
+    required double ancho,
+    required double alto,
+  }) {
+    final centro = aPixeles(camara.centro, camara.zoom);
+    final buscado = aPixeles(punto, camara.zoom);
+    return (x: ancho / 2 + buscado.x - centro.x, y: alto / 2 + buscado.y - centro.y);
+  }
+
+  /// Lo inverso de [aPantalla]: las coordenadas del píxel ([x], [y]) de la vista.
+  static Coordenadas dePantalla(
+    double x,
+    double y,
+    CamaraMapa camara, {
+    required double ancho,
+    required double alto,
+  }) {
+    final centro = aPixeles(camara.centro, camara.zoom);
+    return aCoordenadas(centro.x + x - ancho / 2, centro.y + y - alto / 2, camara.zoom);
+  }
+
   /// Cuántos píxeles separan a [a] de [b] a [zoom].
   static double distanciaPixeles(Coordenadas a, Coordenadas b, double zoom) {
     final pa = aPixeles(a, zoom);

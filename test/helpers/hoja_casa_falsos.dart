@@ -59,6 +59,7 @@ List<Override> overridesHojaCasa({
   List<ClaveDeLaCasa>? lecturas,
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   FutureOr<void> Function(ContextoDeCobro)? cobrar,
+  FutureOr<Object?> Function(ContextoDeVisita)? registrarVisitaDeCasaNueva,
 }) => [
   contextoDeLaCasaProvider.overrideWith((ref, clave) {
     lecturas?.add(clave);
@@ -66,4 +67,5 @@ List<Override> overridesHojaCasa({
   }),
   registrarVisitaDesdeLaCasaProvider.overrideWithValue(registrarVisita),
   cobrarDesdeLaCasaProvider.overrideWithValue(cobrar),
+  registrarVisitaDeLaCasaNuevaProvider.overrideWithValue(registrarVisitaDeCasaNueva),
 ];

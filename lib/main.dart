@@ -162,6 +162,20 @@ Future<void> main() async {
             );
           },
         ),
+        // N·03 de una casa recién registrada (vista 39, #451): el mismo «¿Qué pasó?», que dice «Casa
+        // nueva» y sale con «Volver».
+        registrarVisitaDeLaCasaNuevaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoRegistrarVisita.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+              casaNueva: true,
+            );
+          },
+        ),
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),

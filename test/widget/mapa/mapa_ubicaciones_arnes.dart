@@ -12,6 +12,8 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart'
+    show ParametrosAlta;
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
     show ClaveDeLaCasa, ContextoDeCobro, ContextoDeVisita;
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_notifier.dart'
@@ -19,6 +21,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubi
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/pin_nueva_casa.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,8 +54,12 @@ final class MontajeMapaUbicaciones {
   /// Si la pestaña está a la vista: cambiarlo es cambiar de pestaña y volver.
   final ValueNotifier<bool> activa;
 
-  /// El punto de cada alta que se abrió (`null` si fue desde «Nueva», no desde el mapa).
+  /// El punto de cada alta que se confirmó con «Confirmar posición» (vista 39, N·01 → N·02).
   final altas = <Coordenadas?>[];
+
+  /// Los parámetros de cada alta confirmada: con ellos se lee el estado vivo del alta (el punto
+  /// donde quedó el pin, que puede no ser el inicial si se lo reubicó).
+  final parametrosDeAltas = <ParametrosAlta>[];
 
   /// Qué devuelve el alta al cerrarse. Con [esperaAlta] se queda abierta hasta completarla.
   SalidaAltaUbicacion? salidaAlta;
@@ -61,8 +68,9 @@ final class MontajeMapaUbicaciones {
   /// Si no es `null`, abrir el alta lanza esto.
   Object? fallaAlta;
 
-  Future<SalidaAltaUbicacion?> abrirAlta(Coordenadas? punto) async {
-    altas.add(punto);
+  Future<SalidaAltaUbicacion?> abrirAlta(ParametrosAlta alta) async {
+    altas.add(alta.puntoInicial);
+    parametrosDeAltas.add(alta);
     final falla = fallaAlta;
     if (falla != null) throw falla;
     final espera = esperaAlta;
@@ -97,6 +105,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   List<ClaveDeLaCasa>? lecturasContexto,
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   FutureOr<void> Function(ContextoDeCobro)? cobrar,
+  FutureOr<Object?> Function(ContextoDeVisita)? registrarVisitaDeCasaNueva,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -119,6 +128,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
           lecturas: lecturasContexto,
           registrarVisita: registrarVisita,
           cobrar: cobrar,
+          registrarVisitaDeCasaNueva: registrarVisitaDeCasaNueva,
         ),
         ...otrosOverrides,
         if (arnes != null)
@@ -147,7 +157,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
               key: const Key('pestana_mapa'),
               colportorId: 'col-1',
               activa: estaActiva,
-              alAbrirAlta: montaje.abrirAlta,
+              alConfirmarPosicion: montaje.abrirAlta,
             ),
           ),
         ),
@@ -161,7 +171,20 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
 final hoja = find.byKey(ClavesMapaUbicaciones.hoja);
 final asa = find.byKey(ClavesMapaUbicaciones.asa);
 final botonMiUbicacion = find.byKey(ClavesMapaUbicaciones.miUbicacion);
+
+/// El botón del pin de la casa nueva (vista 39, M·01): antes «Nueva».
 final botonNueva = find.byKey(ClavesMapaUbicaciones.nueva);
+final confirmarPosicion = find.byKey(ClavesPinNuevaCasa.confirmar);
+final cancelarPosicion = find.byKey(ClavesPinNuevaCasa.cancelar);
+
+/// Toca el pin (queda en el centro del mapa) y «Confirmar posición»: abre N·02.
+Future<void> tocarPinYConfirmar(WidgetTester tester) async {
+  await tester.tap(botonNueva);
+  await asentarLista(tester);
+  await tester.tap(confirmarPosicion);
+  await asentarLista(tester);
+}
+
 final chipReferencias = find.byKey(ClavesMapaUbicaciones.referencias);
 final vistaPrevia = find.byKey(ClavesMapaUbicaciones.vistaPrevia);
 final cerrarVistaPrevia = find.byKey(ClavesMapaUbicaciones.cerrarVistaPrevia);
