@@ -26,12 +26,14 @@ ItemAgenda itemAgenda(
   DateTime? actualizada,
   DateTime? borrada,
   String colportorId = 'col-1',
+  String? espacioId,
+  String? ubicacionId,
 }) {
   final creada = DateTime.utc(2026, 10, 20, 12);
   return ItemAgenda(
     agenda: Agenda(
       id: id,
-      espacioId: 'esp-$id',
+      espacioId: espacioId ?? 'esp-$id',
       espacioPersonaId: nombre == null ? null : 'ep-$id',
       tipo: tipo,
       fechaProgramada: cuando.toUtc(),
@@ -48,7 +50,7 @@ ItemAgenda itemAgenda(
     personaApellido: apellido,
     casa: conCasa
         ? DireccionDeAgenda(
-            ubicacionId: 'ub-$id',
+            ubicacionId: ubicacionId ?? 'ub-$id',
             tipo: tipoUbicacion,
             calle: calle,
             numero: numero,
@@ -89,6 +91,13 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
       }
     };
     return c.stream;
+  }
+
+  /// Un error del lector después de haber emitido datos.
+  void emitirError(Object e) {
+    for (final c in _abiertos) {
+      if (!c.isClosed && c.hasListener) c.addError(e);
+    }
   }
 
   void emitir(List<ItemAgenda> nuevos) {

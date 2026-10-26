@@ -1,3 +1,4 @@
+import '../entities/estado_agenda.dart';
 import '../entities/filtros_agenda.dart';
 import '../entities/item_agenda.dart';
 import '../entities/vista_agenda.dart';
@@ -40,19 +41,30 @@ class VentanaAgenda {
 }
 
 /// Arma la vista de la agenda (23B): filtra lo leído por la ventana, el tipo y el estado, lo ordena
-/// por hora y lo agrupa por día con su conteo. Es una función pura: la pantalla la vuelve a correr
+/// por hora y lo agrupa por día con su conteo. Las `PROGRAMADA` de días anteriores a hoy (una visita
+/// que pasó y nadie registró) no se pierden: van al grupo «ATRASADAS» arriba de «HOY». Es una función pura: la pantalla la vuelve a correr
 /// cada vez que cambia lo leído, un filtro o el minuto.
 abstract final class ArmadorAgenda {
   static VistaAgenda armar(List<ItemAgenda> items, FiltrosAgenda filtros, DateTime ahora) {
     final ventana = VentanaAgenda.de(ahora);
-    final elegidos = [
-      for (final item in items)
-        if (!item.agenda.estaBorrada &&
-            ventana.contiene(item.agenda.fechaProgramada) &&
-            filtros.estado.admite(item.agenda.estado) &&
-            (filtros.tipo == null || item.agenda.tipo == filtros.tipo))
-          item,
-    ]..sort(_porHora);
+    final elegidos = <ItemAgenda>[];
+    final atrasadas = <ItemAgenda>[];
+    for (final item in items) {
+      final agenda = item.agenda;
+      if (agenda.estaBorrada ||
+          !filtros.estado.admite(agenda.estado) ||
+          (filtros.tipo != null && agenda.tipo != filtros.tipo)) {
+        continue;
+      }
+      if (ventana.contiene(agenda.fechaProgramada)) {
+        elegidos.add(item);
+      } else if (agenda.estado == EstadoAgenda.programada &&
+          agenda.fechaProgramada.toLocal().isBefore(ventana.inicioDeHoy)) {
+        atrasadas.add(item);
+      }
+    }
+    elegidos.sort(_porHora);
+    atrasadas.sort(_porHora);
 
     final dias = <DiaDeAgenda>[];
     List<ItemAgenda>? delDia;
@@ -69,7 +81,9 @@ abstract final class ArmadorAgenda {
       }
       delDia!.add(item);
     }
-    return dias.isEmpty ? VistaAgenda.vacia : VistaAgenda(dias: dias);
+    return dias.isEmpty && atrasadas.isEmpty
+        ? VistaAgenda.vacia
+        : VistaAgenda(dias: dias, atrasadas: atrasadas);
   }
 
   static int _porHora(ItemAgenda a, ItemAgenda b) {

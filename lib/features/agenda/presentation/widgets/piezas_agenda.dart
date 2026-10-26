@@ -196,10 +196,15 @@ class FilaAgenda extends StatelessWidget {
     this.alTocar,
     this.alRegistrar,
     this.registrarHabilitado = true,
+    this.conFecha = false,
   });
 
   final ItemAgenda item;
   final DateTime ahora;
+
+  /// La fila lleva el día además de la hora («26/10 · 09:30»): las del grupo «ATRASADAS» son de
+  /// días distintos y la hora sola no las distingue.
+  final bool conFecha;
 
   /// `null`: la fila no se toca y no lleva «›» (todavía no hay detalle a dónde ir).
   final VoidCallback? alTocar;
@@ -221,8 +226,11 @@ class FilaAgenda extends StatelessWidget {
     final conRegistrar = vencida && alRegistrar != null;
     final conFlecha = !conRegistrar && alTocar != null;
 
+    final horaTexto = FormatoAgenda.hora(item.agenda.fechaProgramada);
+    final fechaTexto = FormatoAgenda.diaMes(item.agenda.fechaProgramada);
     final hora = Text(
-      FormatoAgenda.hora(item.agenda.fechaProgramada),
+      // Apilada hay ancho de sobra: en una línea. Si no, el día arriba de la hora en los 44 px.
+      !conFecha ? horaTexto : (apilada ? '$fechaTexto · $horaTexto' : '$fechaTexto\n$horaTexto'),
       style: TextStyle(
         fontFamily: 'JetBrainsMono',
         fontSize: 11,
@@ -374,7 +382,7 @@ class FilaAgenda extends StatelessWidget {
       child: Semantics(
         container: true,
         button: alTocar != null,
-        label: FormatoAgenda.etiquetaDeFila(item, vencida: vencida),
+        label: FormatoAgenda.etiquetaDeFila(item, vencida: vencida, conFecha: conFecha),
         onTap: alTocar,
         child: tarjeta,
       ),

@@ -47,8 +47,10 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
           ..where(
             agendas.colportorId.equals(colportorId) &
                 agendas.deletedAt.isNull() &
-                agendas.fechaProgramada.isBiggerOrEqualValue(conversor.toSql(desde)) &
-                agendas.fechaProgramada.isSmallerThanValue(conversor.toSql(hasta)),
+                agendas.fechaProgramada.isSmallerThanValue(conversor.toSql(hasta)) &
+                // La ventana, o una programada de antes: la atrasada no se pierde (P3).
+                (agendas.fechaProgramada.isBiggerOrEqualValue(conversor.toSql(desde)) |
+                    agendas.estado.equals(EstadoAgenda.programada.codigo)),
           )
           ..orderBy([OrderingTerm.asc(agendas.fechaProgramada), OrderingTerm.asc(agendas.id)]);
 

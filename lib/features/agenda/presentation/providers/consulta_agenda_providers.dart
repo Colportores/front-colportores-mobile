@@ -32,7 +32,8 @@ Duration? _sinReintentos(int intento, Object error) => null;
 /// cambiar el día la clave cambia y se lee la ventana nueva.
 typedef ClaveAgenda = ({String colportorId, DateTime inicioDeHoy});
 
-/// Las agendas de la ventana «hoy + 7 días», de todos los estados, reactivas: agendar, cancelar o
+/// Las agendas de la ventana «hoy + 7 días», de todos los estados, y las programadas que quedaron
+/// atrás (las atrasadas), reactivas: agendar, cancelar o
 /// registrar una visita las vuelve a emitir (stream-first, HU-VIS-002 «Stream reactivo»). Los filtros
 /// se aplican después, en memoria, sobre lo ya leído: cambiarlos no vuelve a la base.
 final agendaLeidaProvider = StreamProvider.autoDispose.family<List<ItemAgenda>, ClaveAgenda>((

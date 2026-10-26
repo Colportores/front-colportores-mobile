@@ -5,7 +5,8 @@ import 'tipo_agenda.dart';
 
 /// Qué estados muestra la agenda (23B·04 «Filtro de estado»). Por defecto, [pendientes].
 enum EstadoFiltroAgenda {
-  /// Las `PROGRAMADA` de hoy en adelante, incluida la de hoy cuya hora ya pasó (23B·02).
+  /// Las `PROGRAMADA` de hoy en adelante, incluida la de hoy cuya hora ya pasó (23B·02), y las
+  /// atrasadas de días anteriores que siguen sin resultado (grupo «ATRASADAS»).
   pendientes,
   cumplidas,
   noCumplidas,

@@ -74,6 +74,7 @@ Future<ArnesQuePaso> montarQuePaso(
   bool entrevistaDada = false,
   bool cobrar = false,
   String? espacioId = 'esp-1',
+  String? agendaId,
   String? colportorId = 'col-1',
   double escala = 1,
   bool lector = false,
@@ -147,6 +148,7 @@ Future<ArnesQuePaso> montarQuePaso(
                     final r = await FlujoRegistrarVisita.abrir(context, (
                       ubicacionId: 'ub-1',
                       espacioId: espacioId,
+                      agendaId: agendaId,
                     ), colportorId: colportorId);
                     arnes.resultados.add(r);
                   } on Object catch (e) {

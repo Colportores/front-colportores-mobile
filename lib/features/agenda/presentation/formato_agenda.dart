@@ -19,6 +19,7 @@ abstract final class TextosAgenda {
 
   static const agendar = '+ Agendar';
   static const registrar = 'Registrar';
+  static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
 
   static const tagEntrevista = 'Entrevista';
@@ -75,6 +76,9 @@ abstract final class FormatoAgenda {
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
   static String rotuloConConteo(DiaDeAgenda dia) => '${rotuloDelDia(dia)} (${dia.cantidad})';
 
+  /// «ATRASADAS (2)»: las programadas de días anteriores que siguen sin resultado.
+  static String rotuloAtrasadas(int cantidad) => '${TextosAgenda.atrasadas} ($cantidad)';
+
   /// «Av. Italia 1234», con «· Depto 101» si la casa es un edificio y la cita tiene depto. `null`
   /// si no hay ninguna dirección.
   static String? direccion(ItemAgenda item) {
@@ -126,8 +130,9 @@ abstract final class FormatoAgenda {
   }
 
   /// Lo que dice el lector de pantalla de una fila.
-  static String etiquetaDeFila(ItemAgenda item, {required bool vencida}) {
+  static String etiquetaDeFila(ItemAgenda item, {required bool vencida, bool conFecha = false}) {
     final partes = [
+      if (conFecha) diaMes(item.agenda.fechaProgramada),
       hora(item.agenda.fechaProgramada),
       tipo(item.agenda.tipo),
       titulo(item),

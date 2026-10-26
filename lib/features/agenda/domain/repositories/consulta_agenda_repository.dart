@@ -10,6 +10,9 @@ abstract interface class ConsultaAgendaRepository {
   /// (excluido), en **cualquier estado**, de la más temprana a la más tardía, con la persona y la
   /// dirección de cada una. Emite de nuevo cada vez que cambia una agenda, una persona o una
   /// ubicación involucrada. Un error al leer sale por el `Stream`.
+  ///
+  /// Además de esa ventana, trae las `PROGRAMADA` **anteriores a [desde]** (las atrasadas: una visita
+  /// que pasó de fecha y nadie registró, que sigue en «Pendientes» hasta que se registre qué pasó).
   Stream<List<ItemAgenda>> observar({
     required String colportorId,
     required DateTime desde,

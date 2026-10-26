@@ -51,7 +51,9 @@ final contextoDeLaCasaProvider = StreamProvider.autoDispose.family<ContextoDeLaC
 
 /// Lo que recibe «Registrar visita» (vista 39, tabla de contratos): la ubicación y el espacio ya
 /// resueltos. En un edificio [espacioId] es `null`: el depto lo elige quien recibe esto (C·09).
-typedef ContextoDeVisita = ({String ubicacionId, String? espacioId});
+/// [agendaId] es la agenda que la visita viene a cerrar cuando se registra desde una fila de la
+/// agenda (23B); desde la hoja de la casa es `null` y el flujo toma la programada de la casa.
+typedef ContextoDeVisita = ({String ubicacionId, String? espacioId, String? agendaId});
 
 /// Lo que recibe «$ Cobrar»: lo mismo y la persona que debe; la venta se elige después (C·08).
 typedef ContextoDeCobro = ({String ubicacionId, String? espacioId, String personaId});

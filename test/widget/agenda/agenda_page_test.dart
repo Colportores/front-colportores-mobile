@@ -315,7 +315,7 @@ void main() {
       await tester.tap(find.text('Registrar'));
       await _asentar(tester);
 
-      expect(recibidos, [(ubicacionId: 'ub-e0', espacioId: 'esp-e0')]);
+      expect(recibidos, [(ubicacionId: 'ub-e0', espacioId: 'esp-e0', agendaId: 'e0')]);
     });
 
     _probar('«Registrar» reemplaza a la flecha en esa fila', (tester) async {
@@ -367,6 +367,279 @@ void main() {
 
       expect(find.text('Pasó la hora · registrá qué pasó'), findsOneWidget);
       expect(find.text('Registrar'), findsOneWidget);
+    });
+  });
+
+  group('ATRASADAS · agendas de días anteriores que siguen sin resultado (P3)', () {
+    // Lunes 26/10 y martes 27/10, con hoy miércoles 28/10 a las 10:00.
+    final lunes = _entrevista('lun', DateTime(2026, 10, 26, 15, 30), nombre: 'Lidia');
+    final martes = _entrevista('mar', DateTime(2026, 10, 27, 9), nombre: 'Mario');
+
+    _probar('arriba de HOY, con su conteo, de la más antigua a la más reciente', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([..._delCanvas(), martes, lunes]));
+
+      double y(String t) => tester.getTopLeft(find.text(t)).dy;
+      expect(find.text('ATRASADAS (2)'), findsOneWidget);
+      expect(find.text(_hoyConDos), findsOneWidget);
+      expect(y('ATRASADAS (2)'), lessThan(y('Lidia Martínez')));
+      expect(y('Lidia Martínez'), lessThan(y('Mario Martínez')));
+      expect(y('Mario Martínez'), lessThan(y(_hoyConDos)));
+    });
+
+    _probar('cada fila dice su día además de la hora y que pasó la hora', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([lunes, martes]));
+
+      expect(find.text('26/10\n15:30'), findsOneWidget);
+      expect(find.text('27/10\n09:00'), findsOneWidget);
+      expect(find.text('Pasó la hora · registrá qué pasó'), findsNWidgets(2));
+    });
+
+    _probar('las de hoy y las de después no llevan el día en la hora', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([lunes, ..._delCanvas()]));
+
+      expect(find.text('14:30'), findsOneWidget);
+      expect(find.textContaining('28/10'), findsNothing);
+    });
+
+    _probar('sin ninguna atrasada no aparece el grupo', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa(_delCanvas()));
+
+      expect(find.textContaining('ATRASADAS'), findsNothing);
+    });
+
+    _probar('si lo único que hay son atrasadas no es «sin agendas» y se ven igual', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([lunes]));
+
+      expect(find.text('ATRASADAS (1)'), findsOneWidget);
+      expect(find.text('Lidia Martínez'), findsOneWidget);
+      expect(find.text('No tenés visitas en los próximos 7 días'), findsNothing);
+    });
+
+    _probar('lo cerrado de días anteriores no es atrasado', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([
+          itemAgenda('c', DateTime(2026, 10, 26, 9), estado: EstadoAgenda.cumplida),
+          itemAgenda('n', DateTime(2026, 10, 26, 10), estado: EstadoAgenda.noCumplida),
+          itemAgenda('x', DateTime(2026, 10, 26, 11), estado: EstadoAgenda.cancelada),
+        ]),
+      );
+
+      expect(find.textContaining('ATRASADAS'), findsNothing);
+      expect(find.text('No tenés visitas en los próximos 7 días'), findsOneWidget);
+    });
+
+    _probar('«Registrar» manda SU agenda, no otra de la misma casa (ayer y hoy en un espacio)', (
+      tester,
+    ) async {
+      final recibidos = <ContextoDeVisita>[];
+      // Dos agendas programadas en la misma casa y el mismo espacio: ayer y hoy.
+      final ayer = itemAgenda(
+        'a0',
+        DateTime(2026, 10, 27, 9),
+        espacioId: 'esp-casa',
+        ubicacionId: 'ub-casa',
+      );
+      final hoy = itemAgenda(
+        'a1',
+        DateTime(2026, 10, 28, 9),
+        espacioId: 'esp-casa',
+        ubicacionId: 'ub-casa',
+      );
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([hoy, ayer]),
+        overrides: [
+          registrarVisitaDesdeLaCasaProvider.overrideWithValue((contexto) async {
+            recibidos.add(contexto);
+            return true;
+          }),
+        ],
+      );
+
+      await tester.tap(find.byKey(const Key('agenda_registrar_a1')));
+      await _asentar(tester);
+      await tester.tap(find.byKey(const Key('agenda_registrar_a0')));
+      await _asentar(tester);
+
+      expect(recibidos, [
+        (ubicacionId: 'ub-casa', espacioId: 'esp-casa', agendaId: 'a1'),
+        (ubicacionId: 'ub-casa', espacioId: 'esp-casa', agendaId: 'a0'),
+      ]);
+    });
+
+    _probar('una cobranza atrasada se ve pero no ofrece «Registrar»', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', DateTime(2026, 10, 26, 11))]),
+        overrides: [registrarVisitaDesdeLaCasaProvider.overrideWithValue((_) async => true)],
+      );
+
+      expect(find.text('ATRASADAS (1)'), findsOneWidget);
+      expect(find.text('Luis Martínez'), findsOneWidget);
+      expect(find.text('Registrar'), findsNothing);
+    });
+
+    _probar(
+      'con un registro abierto el resto sigue apagado y, al guardarse, el grupo se actualiza',
+      (tester) async {
+        final repo = ConsultaAgendaFalsa([lunes, martes]);
+        final espera = Completer<Object?>();
+        await _montar(
+          tester,
+          repo,
+          overrides: [registrarVisitaDesdeLaCasaProvider.overrideWithValue((_) => espera.future)],
+        );
+
+        await tester.tap(find.byKey(const Key('agenda_registrar_lun')));
+        await tester.pump();
+        expect(
+          tester.widget<TextButton>(find.byKey(const Key('agenda_registrar_mar'))).onPressed,
+          isNull,
+        );
+
+        // Se guardó la visita del lunes: la lectura reactiva la saca del grupo.
+        repo.emitir([
+          itemAgenda(
+            'lun',
+            DateTime(2026, 10, 26, 15, 30),
+            nombre: 'Lidia',
+            estado: EstadoAgenda.cumplida,
+          ),
+          martes,
+        ]);
+        espera.complete(true);
+        await _asentar(tester);
+
+        expect(find.text('ATRASADAS (1)'), findsOneWidget);
+        expect(find.text('Lidia Martínez'), findsNothing);
+        expect(
+          tester.widget<TextButton>(find.byKey(const Key('agenda_registrar_mar'))).onPressed,
+          isNotNull,
+        );
+
+        repo.emitir([]);
+        await _asentar(tester);
+        expect(find.textContaining('ATRASADAS'), findsNothing);
+        expect(find.text('No tenés visitas en los próximos 7 días'), findsOneWidget);
+      },
+    );
+
+    _probar('los filtros las alcanzan: «Cobranzas» y «Cumplidas» las acotan u ocultan', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([lunes, _cobranza('cob', DateTime(2026, 10, 27, 11))]),
+      );
+      expect(find.text('ATRASADAS (2)'), findsOneWidget);
+
+      await tester.tap(find.text('Cobranzas'));
+      await _asentar(tester);
+      expect(find.text('ATRASADAS (1)'), findsOneWidget);
+      expect(find.text('Lidia Martínez'), findsNothing);
+
+      await tester.tap(find.text('Todas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pendientes ▾'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cumplidas'));
+      await tester.tap(find.text('Aplicar'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ATRASADAS'), findsNothing);
+    });
+
+    _probar('«+ Agendar» sale en HOY y no en las atrasadas', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([lunes, ..._delCanvas()]),
+        overrides: [agendarDesdeLaAgendaProvider.overrideWithValue(() async => true)],
+      );
+
+      expect(find.text('+ Agendar'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('+ Agendar')).dy,
+        greaterThan(tester.getTopLeft(find.text('Lidia Martínez')).dy),
+      );
+    });
+
+    _probar('si no hay días, «+ Agendar» sale en el rótulo de las atrasadas', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([lunes]),
+        overrides: [agendarDesdeLaAgendaProvider.overrideWithValue(() async => true)],
+      );
+
+      expect(find.text('+ Agendar'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('+ Agendar')).dy,
+        lessThan(tester.getTopLeft(find.text('Lidia Martínez')).dy),
+      );
+    });
+
+    _probar('al pasar la medianoche, la de hoy que no se registró pasa a ATRASADAS', (
+      tester,
+    ) async {
+      final reloj = _Reloj(DateTime(2026, 10, 28, 23, 59, 30));
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_entrevista('e1', DateTime(2026, 10, 28, 18), nombre: 'Elena')]),
+        reloj: reloj,
+      );
+      expect(find.textContaining('ATRASADAS'), findsNothing);
+      expect(find.text('HOY · MIÉRCOLES 28 (1)'), findsOneWidget);
+
+      reloj.ahora = DateTime(2026, 10, 29, 0, 0, 30);
+      await tester.pump(const Duration(seconds: 30));
+      await _asentar(tester);
+
+      expect(find.text('ATRASADAS (1)'), findsOneWidget);
+      expect(find.text('Elena Martínez'), findsOneWidget);
+      expect(find.textContaining('HOY'), findsNothing);
+    });
+
+    _probar('el grupo se anuncia como encabezado y cada fila dice su día', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await _montar(tester, ConsultaAgendaFalsa([lunes]));
+
+      expect(
+        tester.getSemantics(find.text('ATRASADAS (1)')),
+        isSemantics(label: 'ATRASADAS (1)', isHeader: true),
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^26/10\. 15:30\. Entrevista\. Lidia Martínez')),
+        findsOneWidget,
+      );
+      semantica.dispose();
+    });
+
+    _probar('con muchas atrasadas y el texto al 200 % en 320 px no desborda', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([
+          for (var i = 0; i < 12; i++)
+            itemAgenda(
+              'v$i',
+              DateTime(2026, 10, 20 + i % 7, 9, i),
+              nombre: 'Persona con un nombre larguísimo número $i',
+              calle: 'Avenida General Fructuoso Rivera y Ellauri',
+            ),
+        ]),
+        overrides: [registrarVisitaDesdeLaCasaProvider.overrideWithValue((_) async => true)],
+        escala: 2,
+        tamano: const Size(320, 700),
+      );
+
+      expect(find.text('ATRASADAS (12)'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('agenda_registrar_v11')),
+        300,
+        scrollable: find.descendant(
+          of: find.byKey(const Key('agenda_filas')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -607,7 +880,7 @@ void main() {
       await _montar(
         tester,
         ConsultaAgendaFalsa([
-          _entrevista('ayer', DateTime(2026, 10, 27, 23, 59)),
+          itemAgenda('ayer', DateTime(2026, 10, 27, 23, 59), estado: EstadoAgenda.cumplida),
           _entrevista('dia8', DateTime(2026, 11, 5)),
         ]),
       );
@@ -678,6 +951,27 @@ void main() {
       await _asentar(tester);
 
       expect(repo.pedidos, hasLength(2));
+      expect(find.text('No pudimos leer tu agenda.'), findsNothing);
+      expect(find.text('Ana Martínez'), findsOneWidget);
+    });
+
+    _probar('un error que llega después de los primeros datos también se dice, y se recupera', (
+      tester,
+    ) async {
+      final repo = ConsultaAgendaFalsa(_delCanvas());
+      await _montar(tester, repo);
+      expect(find.text('Ana Martínez'), findsOneWidget);
+
+      repo.emitirError(StateError('disco'));
+      await _asentar(tester);
+
+      expect(find.text('No pudimos leer tu agenda.'), findsOneWidget);
+      expect(find.text('Ana Martínez'), findsNothing);
+
+      // Si la lectura vuelve a emitir, la agenda vuelve.
+      repo.emitir(_delCanvas());
+      await _asentar(tester);
+
       expect(find.text('No pudimos leer tu agenda.'), findsNothing);
       expect(find.text('Ana Martínez'), findsOneWidget);
     });

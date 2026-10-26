@@ -25,18 +25,22 @@ class DiaDeAgenda extends Equatable {
   List<Object?> get props => [dia, items, diasDesdeHoy];
 }
 
-/// Lo que la pantalla de la agenda dibuja: los días con agendas, agrupados.
+/// Lo que la pantalla de la agenda dibuja: las atrasadas y, debajo, los días con agendas, agrupados.
 class VistaAgenda extends Equatable {
-  const VistaAgenda({required this.dias});
+  const VistaAgenda({required this.dias, this.atrasadas = const []});
 
   static const vacia = VistaAgenda(dias: []);
 
+  /// El grupo «ATRASADAS (N)» (P3, decisión de Cristian): las `PROGRAMADA` de días anteriores a hoy
+  /// que siguen sin resultado, de la más antigua a la más reciente. Van arriba de «HOY».
+  final List<ItemAgenda> atrasadas;
+
   final List<DiaDeAgenda> dias;
 
-  bool get estaVacia => dias.isEmpty;
+  bool get estaVacia => dias.isEmpty && atrasadas.isEmpty;
 
-  int get total => dias.fold(0, (suma, d) => suma + d.cantidad);
+  int get total => atrasadas.length + dias.fold(0, (suma, d) => suma + d.cantidad);
 
   @override
-  List<Object?> get props => [dias];
+  List<Object?> get props => [dias, atrasadas];
 }

@@ -116,7 +116,13 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     final casa = item.casa;
     if (casa == null) return Future.value();
     return _sola(
-      () => destino((ubicacionId: casa.ubicacionId, espacioId: item.agenda.espacioId)),
+      // Con el `id` de la fila tocada: sin él el flujo tomaría «la programada más antigua» de la casa,
+      // que con dos agendas pendientes puede ser otra.
+      () => destino((
+        ubicacionId: casa.ubicacionId,
+        espacioId: item.agenda.espacioId,
+        agendaId: item.agenda.id,
+      )),
       registrandoId: item.agenda.id,
     );
   }
@@ -144,8 +150,10 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     final detalle = ref.watch(abrirDetalleDeAgendaProvider);
     final registrar = ref.watch(registrarVisitaDesdeLaCasaProvider);
 
-    final items = leida.value;
-    final conError = items == null && leida.hasError;
+    // Un error del lector también cuenta si llega después de los primeros datos: se dice (23B·09) en
+    // vez de seguir mostrando una lista que ya no se sabe si está al día.
+    final conError = leida.hasError;
+    final items = conError ? null : leida.value;
 
     final List<Widget> cuerpo;
     if (conError) {
@@ -285,6 +293,10 @@ class _Dias extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entradas = <Object>[
+      if (vista.atrasadas.isNotEmpty) ...[
+        const _RotuloAtrasadas(),
+        for (final item in vista.atrasadas) _FilaAtrasada(item),
+      ],
       for (final dia in vista.dias) ...[dia, ...dia.items],
     ];
     return SliverPadding(
@@ -293,19 +305,32 @@ class _Dias extends StatelessWidget {
         itemCount: entradas.length,
         itemBuilder: (context, i) {
           final entrada = entradas[i];
+          if (entrada is _RotuloAtrasadas) {
+            return RotuloDeDia(
+              key: const Key('agenda_atrasadas'),
+              texto: FormatoAgenda.rotuloAtrasadas(vista.atrasadas.length),
+              // Sin días debajo, «+ Agendar» queda en este primer rótulo.
+              alAgendar: vista.dias.isEmpty ? alAgendar : null,
+            );
+          }
           if (entrada is DiaDeAgenda) {
             return RotuloDeDia(
               key: ValueKey('dia_${entrada.dia.millisecondsSinceEpoch}'),
               texto: FormatoAgenda.rotuloConConteo(entrada),
-              // «+ Agendar» queda en el primer día de la lista, sea hoy o no.
-              alAgendar: i == 0 ? alAgendar : null,
+              // «+ Agendar» queda en el primer día de la lista (hoy, o el que siga), no en las atrasadas.
+              alAgendar: identical(entrada, vista.dias.first) ? alAgendar : null,
             );
           }
-          final item = entrada as ItemAgenda;
+          final item = switch (entrada) {
+            _FilaAtrasada(:final item) => item,
+            _ => entrada as ItemAgenda,
+          };
+          final atrasada = entrada is _FilaAtrasada;
           return FilaAgenda(
             key: ValueKey(item.agenda.id),
             item: item,
             ahora: ahora,
+            conFecha: atrasada,
             alTocar: alAbrirDetalle == null ? null : () => alAbrirDetalle!(item),
             // Solo una entrevista vencida se registra desde acá: el cobro tiene su propio flujo.
             alRegistrar:
@@ -320,4 +345,16 @@ class _Dias extends StatelessWidget {
       ),
     );
   }
+}
+
+/// El rótulo «ATRASADAS (N)» del grupo de arriba.
+class _RotuloAtrasadas {
+  const _RotuloAtrasadas();
+}
+
+/// Una fila del grupo «ATRASADAS»: lleva el día además de la hora.
+class _FilaAtrasada {
+  const _FilaAtrasada(this.item);
+
+  final ItemAgenda item;
 }

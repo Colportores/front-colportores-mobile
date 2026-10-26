@@ -1,6 +1,7 @@
 // HU-VIS-002: la ventana «hoy + 7 días», el filtrado y el agrupado por día de la agenda.
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/filtros_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/services/armador_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/formato_agenda.dart';
@@ -56,7 +57,7 @@ void main() {
       expect(vista.dias[1].esManana, isTrue);
     });
 
-    test('deja afuera lo anterior a hoy, lo del día 8 y las bajas', () {
+    test('deja afuera de los días lo anterior a hoy, lo del día 8 y las bajas', () {
       final vista = ArmadorAgenda.armar(
         [
           itemAgenda('ayer', DateTime(2026, 10, 27, 23, 59)),
@@ -86,6 +87,138 @@ void main() {
       );
 
       expect(vista.dias.single.items.map((i) => i.agenda.id), ['pasada', 'futura']);
+    });
+
+    group('ATRASADAS (agendas de días anteriores sin resultado)', () {
+      List<String> ids(Iterable<ItemAgenda> items) => [for (final i in items) i.agenda.id];
+
+      test('las programadas de antes de hoy van aparte, de la más antigua a la más reciente', () {
+        final vista = ArmadorAgenda.armar(
+          [
+            itemAgenda('hoy', DateTime(2026, 10, 28, 8)),
+            itemAgenda('ayer', DateTime(2026, 10, 27, 23, 59)),
+            itemAgenda('lunes-b', DateTime(2026, 10, 26, 15)),
+            itemAgenda('lunes-a', DateTime(2026, 10, 26, 9)),
+            itemAgenda('mes', DateTime(2026, 9, 30, 12)),
+          ],
+          FiltrosAgenda.porDefecto,
+          ahora,
+        );
+
+        expect(ids(vista.atrasadas), ['mes', 'lunes-a', 'lunes-b', 'ayer']);
+        expect(ids(vista.dias.expand((d) => d.items)), ['hoy']);
+        expect(vista.total, 5);
+        expect(vista.estaVacia, isFalse);
+      });
+
+      test('la de hoy cuya hora ya pasó sigue en HOY, no en las atrasadas', () {
+        final vista = ArmadorAgenda.armar(
+          [
+            itemAgenda('hoy-0000', DateTime(2026, 10, 28)),
+            itemAgenda('hoy', DateTime(2026, 10, 28, 8)),
+          ],
+          FiltrosAgenda.porDefecto,
+          ahora,
+        );
+
+        expect(vista.atrasadas, isEmpty);
+        expect(ids(vista.dias.single.items), ['hoy-0000', 'hoy']);
+      });
+
+      test(
+        'solo hay atrasadas si están programadas: lo cerrado y las bajas de ayer no cuentan',
+        () {
+          final vista = ArmadorAgenda.armar(
+            [
+              itemAgenda('cumplida', DateTime(2026, 10, 27, 9), estado: EstadoAgenda.cumplida),
+              itemAgenda('no', DateTime(2026, 10, 27, 10), estado: EstadoAgenda.noCumplida),
+              itemAgenda('cancelada', DateTime(2026, 10, 27, 11), estado: EstadoAgenda.cancelada),
+              itemAgenda('baja', DateTime(2026, 10, 27, 12), borrada: DateTime.utc(2026, 10, 25)),
+            ],
+            FiltrosAgenda.porDefecto,
+            ahora,
+          );
+
+          expect(vista.atrasadas, isEmpty);
+          expect(vista.estaVacia, isTrue);
+        },
+      );
+
+      test('si lo único que hay es una atrasada, la vista no está vacía', () {
+        final vista = ArmadorAgenda.armar(
+          [itemAgenda('ayer', DateTime(2026, 10, 27, 9))],
+          FiltrosAgenda.porDefecto,
+          ahora,
+        );
+
+        expect(vista.dias, isEmpty);
+        expect(vista.estaVacia, isFalse);
+      });
+
+      test(
+        'respetan el filtro de tipo, y los de estado que no son pendientes las dejan afuera',
+        () {
+          final items = [
+            itemAgenda('e', DateTime(2026, 10, 27, 9)),
+            itemAgenda('c', DateTime(2026, 10, 27, 11), tipo: TipoAgenda.cobranza),
+          ];
+
+          expect(
+            ids(
+              ArmadorAgenda.armar(
+                items,
+                const FiltrosAgenda(tipo: TipoAgenda.cobranza),
+                ahora,
+              ).atrasadas,
+            ),
+            ['c'],
+          );
+          expect(
+            ids(
+              ArmadorAgenda.armar(
+                items,
+                const FiltrosAgenda(tipo: TipoAgenda.entrevista),
+                ahora,
+              ).atrasadas,
+            ),
+            ['e'],
+          );
+          // «Todas» también las muestra (siguen pendientes); «Cumplidas» y las demás, no.
+          expect(
+            ids(
+              ArmadorAgenda.armar(
+                items,
+                const FiltrosAgenda(estado: EstadoFiltroAgenda.todas),
+                ahora,
+              ).atrasadas,
+            ),
+            ['e', 'c'],
+          );
+          for (final estado in [
+            EstadoFiltroAgenda.cumplidas,
+            EstadoFiltroAgenda.noCumplidas,
+            EstadoFiltroAgenda.canceladas,
+          ]) {
+            expect(
+              ArmadorAgenda.armar(items, FiltrosAgenda(estado: estado), ahora).atrasadas,
+              isEmpty,
+            );
+          }
+        },
+      );
+
+      test('al pasar la medianoche, la de hoy pasa a atrasada', () {
+        final items = [itemAgenda('hoy', DateTime(2026, 10, 28, 20))];
+
+        expect(ArmadorAgenda.armar(items, FiltrosAgenda.porDefecto, ahora).atrasadas, isEmpty);
+        final manana = ArmadorAgenda.armar(
+          items,
+          FiltrosAgenda.porDefecto,
+          DateTime(2026, 10, 29, 0, 1),
+        );
+        expect(ids(manana.atrasadas), ['hoy']);
+        expect(manana.dias, isEmpty);
+      });
     });
 
     test('filtra por tipo', () {

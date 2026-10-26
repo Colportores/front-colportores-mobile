@@ -89,12 +89,17 @@ abstract final class FlujoRegistrarVisita {
       final resultado = opcion == OpcionQuePaso.noContesto
           ? TipoResultadoVisita.noContesto
           : TipoResultadoVisita.rechazo;
-      // Mejor esfuerzo: sin la lectura la visita se guarda igual, como espontánea.
-      String? agendaId;
-      try {
-        agendaId = (await agendas.agendaProgramadaDe(espacioId)).fold((_) => null, (a) => a?.id);
-      } on Object {
-        agendaId = null;
+      // Desde una fila de la agenda (23B) viene la agenda tocada: es esa, no «la más antigua» de la
+      // casa. Si ya no se puede cumplir (se canceló, se cerró) el repositorio guarda la visita como
+      // espontánea y no toca la agenda. Desde la hoja de la casa se lee la programada del espacio, de
+      // mejor esfuerzo: sin la lectura la visita se guarda igual, como espontánea.
+      var agendaId = datos.agendaId;
+      if (agendaId == null) {
+        try {
+          agendaId = (await agendas.agendaProgramadaDe(espacioId)).fold((_) => null, (a) => a?.id);
+        } on Object {
+          agendaId = null;
+        }
       }
       final r = await registrar(
         RegistrarResultadoVisitaParams(

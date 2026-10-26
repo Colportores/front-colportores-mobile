@@ -92,7 +92,11 @@ void main() {
   });
 
   test('la ventana incluye el primer instante y deja afuera el último', () async {
-    await agendar('antes', desde.subtract(const Duration(milliseconds: 1)));
+    await agendar(
+      'antes',
+      desde.subtract(const Duration(milliseconds: 1)),
+      estado: EstadoAgenda.cumplida,
+    );
     await agendar('justo-desde', desde);
     await agendar('justo-antes-del-fin', hasta.subtract(const Duration(milliseconds: 1)));
     await agendar('justo-hasta', hasta);
@@ -101,6 +105,36 @@ void main() {
 
     expect(items.map((i) => i.agenda.id), ['justo-desde', 'justo-antes-del-fin']);
   });
+
+  test(
+    'trae también las programadas de antes de la ventana (las atrasadas), no las cerradas',
+    () async {
+      await agendar('hace-un-mes', DateTime.utc(2026, 9, 28, 12));
+      await agendar('ayer', desde.subtract(const Duration(milliseconds: 1)));
+      await agendar('ayer-cumplida', DateTime.utc(2026, 10, 27, 12), estado: EstadoAgenda.cumplida);
+      await agendar(
+        'ayer-no-cumplida',
+        DateTime.utc(2026, 10, 27, 13),
+        estado: EstadoAgenda.noCumplida,
+      );
+      await agendar(
+        'ayer-cancelada',
+        DateTime.utc(2026, 10, 27, 14),
+        estado: EstadoAgenda.cancelada,
+      );
+      await agendar(
+        'ayer-baja',
+        DateTime.utc(2026, 10, 27, 15),
+        borrada: DateTime.utc(2026, 10, 25),
+      );
+      await agendar('ayer-ajena', DateTime.utc(2026, 10, 27, 16), colportor: 'col-2');
+      await agendar('hoy', desde);
+      // Pasado el fin de la ventana no hay nada atrasado: lo futuro sigue afuera.
+      await agendar('lejana', hasta.add(const Duration(days: 3)));
+
+      expect((await leer()).map((i) => i.agenda.id), ['hace-un-mes', 'ayer', 'hoy']);
+    },
+  );
 
   test('trae las agendas de todos los estados, para filtrar después en memoria', () async {
     for (final e in EstadoAgenda.values) {
