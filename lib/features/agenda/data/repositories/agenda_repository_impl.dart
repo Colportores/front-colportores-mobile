@@ -49,7 +49,36 @@ final class AgendaRepositoryImpl implements AgendaRepository {
         'motivo': motivo.name,
       });
     }
-    return VisitaGuardada(visita: r.visita, agendaIgnorada: r.agendaIgnorada);
+    return VisitaGuardada(
+      visita: r.visita,
+      agendaIgnorada: r.agendaIgnorada,
+      agendaNoCumplida: r.agendaNoCumplida,
+      agendaCreadaId: r.agendaCreadaId,
+      agendaAfectadaId: r.agendaAfectadaId,
+    );
+  });
+
+  @override
+  Future<Either<Failure, Agenda?>> agendaProgramadaDe(String espacioId) => _correr(
+    'AGENDA_PROGRAMADA',
+    {'espacio_id': espacioId},
+    () => _local.agendaProgramadaDe(espacioId),
+  );
+
+  @override
+  Future<Either<Failure, Visita>> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) => _correr('VISITA_DESHACER', {'visita_id': visitaId}, () async {
+    final r = await _local.deshacerVisita(
+      visitaId,
+      agendaCreadaId: agendaCreadaId,
+      agendaAfectadaId: agendaAfectadaId,
+      ahora: ahora,
+    );
+    return r.visita;
   });
 
   Future<Either<Failure, T>> _correr<T>(

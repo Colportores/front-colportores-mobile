@@ -47,6 +47,7 @@ void main() {
         'iguales y comparten hashCode', () {
       Visita construir(DateTime fecha) => Visita(
         id: 'vis-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         fecha: fecha,
         tipoResultado: TipoResultadoVisita.venta,

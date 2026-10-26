@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../data/datasources/nota_del_lugar_local_data_source_drift.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
+import '../../domain/entities/persona_de_la_entrevista.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/lector_notas_del_lugar.dart';
 import '../../domain/usecases/observar_contexto_de_la_casa_use_case.dart';
@@ -55,15 +56,45 @@ typedef ContextoDeVisita = ({String ubicacionId, String? espacioId});
 /// Lo que recibe «$ Cobrar»: lo mismo y la persona que debe; la venta se elige después (C·08).
 typedef ContextoDeCobro = ({String ubicacionId, String? espacioId, String personaId});
 
-/// A dónde lleva «✓ Registrar visita» (#411, «¿Qué pasó?»). **Sin destino todavía**: mientras sea
-/// `null` el botón no se muestra (HU-UBI-003, «los botones llegan con la HU que los resuelve y no se
-/// muestran mientras no tengan a dónde llevar»). Cuando vuelve la hoja sigue abierta, y el marcador
-/// ya tiene el color nuevo (la lista es reactiva).
-final registrarVisitaDesdeLaCasaProvider = Provider<FutureOr<void> Function(ContextoDeVisita)?>(
+/// Lo que recibe «Programar entrevista» (R·02, #408) después de «¿Con quién es la entrevista?»: la
+/// casa y, si se sabe, con quién. Con «Todavía no sé con quién» (o una casa sin personas)
+/// [espacioPersonaId] y [personaId] son `null`: la cita queda sin persona.
+typedef ContextoDeCita = ({
+  String ubicacionId,
+  String espacioId,
+  String? espacioPersonaId,
+  String? personaId,
+});
+
+/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?».
+typedef ContextoDeEntrevista = ({
+  String ubicacionId,
+  String espacioId,
+  PersonaDeLaEntrevista persona,
+});
+
+/// A dónde lleva «✓ Registrar visita» (#411, «¿Qué pasó?»). **Sin destino**: mientras sea `null` el
+/// botón no se muestra (HU-UBI-003, «los botones llegan con la HU que los resuelve y no se muestran
+/// mientras no tengan a dónde llevar»). Devuelve `true` si algo se resolvió y la hoja de la casa se
+/// cierra; con cualquier otro valor la hoja sigue abierta. Cuando vuelve, el marcador ya tiene el
+/// color nuevo (la lista es reactiva).
+final registrarVisitaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeVisita)?>(
   (ref) => null,
 );
 
-/// A dónde lleva «$ Cobrar» (#440, «¿Qué venta?»). Sin destino, el botón no se muestra.
-final cobrarDesdeLaCasaProvider = Provider<FutureOr<void> Function(ContextoDeCobro)?>(
+/// A dónde lleva «Programar entrevista» (R·02, #408: «Elegís día y franja»). Devuelve `true` si la
+/// cita se agendó. Sin destino, la opción no se ofrece en «¿Qué pasó?».
+final programarEntrevistaDesdeLaCasaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeCita)?>((ref) => null);
+
+/// A dónde lleva «Entrevista dada» (#450: «Empieza a contar el tiempo»). Devuelve `true` si la
+/// entrevista se dio. Sin destino, la opción no se ofrece en «¿Qué pasó?».
+final entrevistaDadaDesdeLaCasaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeEntrevista)?>((ref) => null);
+
+/// A dónde lleva «$ Cobrar» (#440, «¿Qué venta?»), tanto desde la hoja de la casa como desde la opción
+/// «Cobranza» de «¿Qué pasó?». Devuelve `true` si se cobró (desde «¿Qué pasó?» la visita queda
+/// guardada como «Cobranza»). Sin destino, el botón y la opción no se muestran.
+final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeCobro)?>(
   (ref) => null,
 );

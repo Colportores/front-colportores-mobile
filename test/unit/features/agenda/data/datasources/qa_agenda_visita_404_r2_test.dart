@@ -97,7 +97,7 @@ void main() {
         reason: 'la cancelada no se vuelve a encolar: solo nace la agenda cumplida de la visita',
       );
       final nueva = (await db.select(db.agendas).get()).singleWhere((a) => a.id != 'age-1');
-      expect([nueva.estado, nueva.visitaId], ['COMPLETADA', 'vis-1']);
+      expect([nueva.estado, nueva.visitaId], ['CUMPLIDA', 'vis-1']);
       expect((await db.select(db.houseStatuses).getSingle()).color, 'RECHAZO');
       final nota = (await db.select(db.notas).get()).single;
       expect((nota.targetType, nota.targetId), ('VISITA', 'vis-1'));
@@ -131,7 +131,7 @@ void main() {
       final agenda = (await db.select(db.agendas).get()).single;
       expect(
         [agenda.estado, agenda.visitaId],
-        ['COMPLETADA', 'vis-1'],
+        ['CUMPLIDA', 'vis-1'],
         reason: 'la espontánea nace con su agenda cumplida, no con la fantasma',
       );
       expect((await db.select(db.visitas).get()).length, 1);
@@ -141,17 +141,17 @@ void main() {
       await insertarAgenda(db, agendaDe('age-b', borrada: t0));
       guardadaSinAgenda(await registrar(agendaId: 'age-b'), MotivoAgendaIgnorada.inexistente);
       final agendas = await db.select(db.agendas).get();
-      expect(agendas.singleWhere((a) => a.id == 'age-b').estado, 'PENDIENTE');
-      expect(agendas.singleWhere((a) => a.id != 'age-b').estado, 'COMPLETADA');
+      expect(agendas.singleWhere((a) => a.id == 'age-b').estado, 'PROGRAMADA');
+      expect(agendas.singleWhere((a) => a.id != 'age-b').estado, 'CUMPLIDA');
     });
 
-    test('agenda de otra persona: se guarda y la agenda sigue pendiente', () async {
-      await repo.agendar(agendaDe('age-2', vinculo: 'ep-2'));
+    test('agenda de otro depto: se guarda y la agenda sigue pendiente', () async {
+      await repo.agendar(agendaDe('age-2', espacio: 'esp-2', vinculo: 'ep-2'));
       final antes = await agendaComoEstaba('age-2');
 
       final r = await registrar(agendaId: 'age-2', vinculo: 'ep-1');
 
-      guardadaSinAgenda(r, MotivoAgendaIgnorada.deOtraPersona);
+      guardadaSinAgenda(r, MotivoAgendaIgnorada.deOtraCasa);
       expect(await agendaComoEstaba('age-2'), antes);
       expect(
         (await db.select(db.houseStatuses).getSingle()).color,
@@ -319,7 +319,7 @@ void main() {
         encolador.fallarCon = null;
         expect((await repo.registrarVisita(visita, nota: notaDe('not-1'))).isRight(), isTrue);
         final agendas = await db.select(db.agendas).get();
-        expect(agendas.map((a) => (a.estado, a.visitaId)), [('COMPLETADA', 'vis-1')]);
+        expect(agendas.map((a) => (a.estado, a.visitaId)), [('CUMPLIDA', 'vis-1')]);
         expect((await db.select(db.visitas).get()).length, 1);
         expect((await db.select(db.houseStatuses).getSingle()).color, 'SIN_CONTESTAR');
       });
@@ -379,7 +379,7 @@ void main() {
       final cola = encolador.encolados.map((c) => c.entidad).toList();
       expect(cola.indexOf('visita'), lessThan(cola.indexOf('agenda')));
       final agenda = encolador.encolados.firstWhere((c) => c.entidad == 'agenda').payload;
-      expect(agenda['estado'], 'COMPLETADA');
+      expect(agenda['estado'], 'CUMPLIDA');
       expect(agenda['visita_id'], 'vis-1');
       expect(agenda['espacio_persona_id'], visita.espacioPersonaId);
       expect(agenda['colportor_id'], visita.colportorId);

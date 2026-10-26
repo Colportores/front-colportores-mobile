@@ -19,6 +19,7 @@ import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/uniones_pendientes_notifier.dart';
+import '../widgets/aviso_con_deshacer.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
 import '../widgets/mostrar_hoja_casa.dart';
@@ -263,42 +264,14 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final darDeBaja = ref.read(darDeBajaUbicacionUseCaseProvider);
     final direccion = FormatoUbicaciones.direccion(reactivada);
     final mediaQuery = MediaQuery.of(context);
-    // Con el texto grande «Deshacer» va debajo del aviso, no al lado: Flutter mide la acción sin la
-    // escala del texto y la deja en una columna angosta que parte «reactivada»; y `actionOverflowThreshold`
-    // tampoco alcanza (reserva el 40 % del ancho aunque la acción baje, y el aviso mide ~300 de 640).
-    final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
-    final texto = Text(
-      TextosReactivar.reactivada(direccion),
-      style: const TextStyle(fontSize: 13.5, color: Colors.white),
+    mostrarAvisoConDeshacer(
+      mensajero,
+      mediaQuery: mediaQuery,
+      texto: TextosReactivar.reactivada(direccion),
+      etiquetaDeshacer: TextosReactivar.deshacer,
+      duracion: TextosReactivar.duracionDeshacer,
+      alDeshacer: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
     );
-    final deshacer = SnackBarAction(
-      label: TextosReactivar.deshacer,
-      textColor: const Color(0xFFC9D6EA),
-      onPressed: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
-    );
-    mensajero
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: TextosReactivar.duracionDeshacer,
-          // Con un lector de pantalla el aviso no se cierra solo (WCAG 2.2.1): quien navega con
-          // TalkBack/VoiceOver no llega a «Deshacer» en 8 s. Sin lector dura 8 s, como en el canvas
-          // (sin `action` Flutter no lo deja abierto, y con `action` lo dejaría abierto para todos).
-          persist: mediaQuery.accessibleNavigation,
-          backgroundColor: ColoresLista.tinta,
-          content: textoGrande
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    texto,
-                    Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
-                  ],
-                )
-              : texto,
-          action: textoGrande ? null : deshacer,
-        ),
-      );
   }
 
   Future<void> _deshacer(

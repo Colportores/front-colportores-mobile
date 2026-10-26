@@ -61,7 +61,7 @@ void main() {
       final fila = (await agendas()).single;
       expect(
         [fila.tipo, fila.estado, fila.esEstricta, fila.slotCodigo],
-        ['ENTREVISTA', 'PENDIENTE', true, 'mid_morning'],
+        ['ENTREVISTA', 'PROGRAMADA', true, 'mid_morning'],
       );
       expect(fila.fechaProgramada, DateTime.utc(2026, 10, 25, 14));
       expect(cola(), ['agenda:insert', 'house_status:insert']);
@@ -69,7 +69,7 @@ void main() {
       expect(payload['id'], 'age-1');
       expect(payload['espacio_persona_id'], 'ep-1');
       expect(payload['tipo'], 'ENTREVISTA');
-      expect(payload['estado'], 'PENDIENTE');
+      expect(payload['estado'], 'PROGRAMADA');
       expect(payload['es_estricta'], true);
       expect(payload['fecha_programada'], '2026-10-25T14:00:00.000Z');
       expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
@@ -192,23 +192,36 @@ void main() {
       },
     );
 
-    test(
-      'con un vínculo cuyo espacio no está en el teléfono: guarda la agenda igual, sin color',
-      () async {
-        await sembrarVinculo(
-          db,
-          id: 'ep-huerfano',
-          espacioId: 'esp-que-no-llego',
-          personaId: 'per-9',
-        );
+    test('con un espacio que no está en el teléfono: la rechaza y no encola nada', () async {
+      await expectLater(
+        local.agendar(agendaDe('age-1', espacio: 'esp-que-no-llego', vinculo: null)),
+        rechazaCon(MotivoRechazoAgenda.espacioInexistente),
+      );
 
-        await local.agendar(agendaDe('age-1', vinculo: 'ep-huerfano'));
+      expect(await agendas(), isEmpty);
+      expect(cola(), isEmpty);
+    });
 
-        expect(await agendas(), hasLength(1));
-        expect(await casas(), isEmpty);
-        expect(cola(), ['agenda:insert']);
-      },
-    );
+    test('con una persona de otra casa: la rechaza (no se cuela en este espacio)', () async {
+      await sembrarEspacio(db, id: 'esp-2', numeroDepto: '2B');
+      await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-2', personaId: 'per-2');
+
+      await expectLater(
+        local.agendar(agendaDe('age-1', espacio: 'esp-1', vinculo: 'ep-2')),
+        rechazaCon(MotivoRechazoAgenda.personaInexistente),
+      );
+      expect(await agendas(), isEmpty);
+    });
+
+    test('sin persona: la agenda se guarda con el espacio y sin vínculo', () async {
+      await local.agendar(agendaDe('age-1', vinculo: null));
+
+      final fila = (await agendas()).single;
+      expect([fila.espacioId, fila.espacioPersonaId], ['esp-1', null]);
+      final subida = encolador.encolados.firstWhere((c) => c.entidad == 'agenda');
+      expect(subida.payload['espacio_persona_id'], isNull);
+      expect(subida.payload['espacio_id'], 'esp-1');
+    });
 
     test('en una casa dada de baja: guarda la agenda igual, sin tocar el color', () async {
       await db.update(db.ubicaciones).write(UbicacionesCompanion(deletedAt: Value(t1)));
@@ -269,7 +282,7 @@ void main() {
         local.cancelar('age-1', ahora: t2),
         rechazaCon(MotivoRechazoAgenda.agendaCerrada),
       );
-      expect((await agendas()).single.estado, 'COMPLETADA');
+      expect((await agendas()).single.estado, 'CUMPLIDA');
     });
 
     test('una agenda que no existe o está dada de baja: la rechaza', () async {
@@ -289,7 +302,7 @@ void main() {
 
       await expectLater(local.cancelar('age-1', ahora: t1), throwsStateError);
 
-      expect((await agendas()).single.estado, 'PENDIENTE');
+      expect((await agendas()).single.estado, 'PROGRAMADA');
       expect((await casas()).single.deletedAt, isNull);
       encolador.fallarCon = null;
       expect((await local.cancelar('age-1', ahora: t1)).escribio, isTrue);
@@ -315,7 +328,54 @@ void main() {
       },
     );
 
-    test('con la agenda que cumple: la agenda pasa a COMPLETADA apuntando a la visita, y se '
+    test('NO_CONTESTO con la agenda de la casa: guarda la visita y marca la agenda NO_CUMPLIDA '
+        '(apunta a la visita), sin crear una agenda cumplida de más', () async {
+      await local.agendar(agendaDe('age-1'));
+      encolador.encolados.clear();
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect([r.yaEstaba, r.agendaNoCumplida, r.agendaIgnorada], [false, true, null]);
+      expect([r.agendaAfectadaId, r.agendaCreadaId], ['age-1', null]);
+      expect((await visitas()).single.tipoResultado, 'NO_CONTESTO');
+      final agenda = (await agendas()).single;
+      expect([agenda.estado, agenda.visitaId], ['NO_CUMPLIDA', 'vis-1']);
+      expect(cola(), ['visita:insert', 'agenda:update', 'house_status:update']);
+      // Ya no espera la visita: la casa se pinta de «sin contestar» (6), no de entrevista programada.
+      expect((await casas()).single.color, 'SIN_CONTESTAR');
+    });
+
+    test('NO_CONTESTO con una agenda cerrada: sigue siendo espontanea, con su agenda cumplida y el '
+        'motivo', () async {
+      await local.agendar(agendaDe('age-1'));
+      await local.cancelar('age-1', ahora: t1);
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t2),
+        agendaId: 'age-1',
+      );
+
+      expect([r.agendaNoCumplida, r.agendaIgnorada], [false, MotivoAgendaIgnorada.cerrada]);
+      expect((await agendas()).map((a) => a.estado), ['CANCELADA', 'CUMPLIDA']);
+    });
+
+    test('RECHAZO con la agenda de la casa: la cumple (lectura de la HU a confirmar)', () async {
+      await local.agendar(agendaDe('age-1'));
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.rechazo, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect(r.agendaNoCumplida, isFalse);
+      expect((await agendas()).single.estado, 'CUMPLIDA');
+      expect((await casas()).single.color, 'RECHAZO');
+    });
+
+    test('con la agenda que cumple: la agenda pasa a CUMPLIDA apuntando a la visita, y se '
         'encola primero la visita', () async {
       await local.agendar(agendaDe('age-1'));
       encolador.encolados.clear();
@@ -323,13 +383,13 @@ void main() {
       await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
 
       final agenda = (await agendas()).single;
-      expect([agenda.estado, agenda.visitaId, agenda.updatedAt], ['COMPLETADA', 'vis-1', t1]);
+      expect([agenda.estado, agenda.visitaId, agenda.updatedAt], ['CUMPLIDA', 'vis-1', t1]);
       expect(cola(), ['visita:insert', 'agenda:update', 'house_status:update']);
       expect(encolador.encolados[1].payload['visita_id'], 'vis-1');
       expect((await casas()).single.color, 'ENTREVISTA_SIN_VENTA');
     });
 
-    test('sin agenda (visita espontánea): crea en la misma transacción la agenda COMPLETADA de la '
+    test('sin agenda (visita espontánea): crea en la misma transacción la agenda CUMPLIDA de la '
         'visita y la encola después de ella', () async {
       final visita = visitaDe('vis-1', creada: t1);
 
@@ -337,7 +397,7 @@ void main() {
 
       final agenda = (await agendas()).single;
       expect(agenda.id, 'age-esp-1');
-      expect(agenda.estado, 'COMPLETADA');
+      expect(agenda.estado, 'CUMPLIDA');
       expect(agenda.tipo, 'ENTREVISTA');
       expect(agenda.visitaId, 'vis-1');
       expect(agenda.espacioPersonaId, visita.espacioPersonaId);
@@ -346,7 +406,7 @@ void main() {
       expect([agenda.slotCodigo, agenda.esEstricta, agenda.deletedAt], [null, false, null]);
       expect(encolador.encolados[1].entidad, 'agenda');
       expect(encolador.encolados[1].payload['visita_id'], 'vis-1');
-      expect(encolador.encolados[1].payload['estado'], 'COMPLETADA');
+      expect(encolador.encolados[1].payload['estado'], 'CUMPLIDA');
     });
 
     test('la agenda de la espontánea no pinta la casa: solo cuenta el resultado', () async {
@@ -382,7 +442,7 @@ void main() {
         expect(await visitas(), hasLength(1));
         expect(encolador.encolados, isEmpty);
         expect(
-          (await db.select(db.agendas).get()).where((a) => a.estado == 'PENDIENTE'),
+          (await db.select(db.agendas).get()).where((a) => a.estado == 'PROGRAMADA'),
           hasLength(1),
         );
       },
@@ -416,14 +476,13 @@ void main() {
       expect(r.agendaIgnorada, MotivoAgendaIgnorada.inexistente);
       expect((await visitas()).single.id, 'vis-1');
       expect(cola(), ['visita:insert', 'agenda:insert', 'house_status:insert']);
-      expect((await agendas()).single.estado, 'COMPLETADA');
+      expect((await agendas()).single.estado, 'CUMPLIDA');
     });
 
     test(
       'con una agenda de otra persona: guarda la visita igual y la agenda sigue pendiente',
       () async {
-        await sembrarEspacio(db, id: 'esp-2', numeroDepto: '2B');
-        await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-2', personaId: 'per-2');
+        await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-1', personaId: 'per-2');
         await local.agendar(agendaDe('age-1', vinculo: 'ep-2'));
         encolador.encolados.clear();
 
@@ -432,7 +491,7 @@ void main() {
         expect(r.agendaIgnorada, MotivoAgendaIgnorada.deOtraPersona);
         expect((await visitas()).single.id, 'vis-1');
         final ajena = (await agendas()).singleWhere((a) => a.id == 'age-1');
-        expect([ajena.estado, ajena.visitaId], ['PENDIENTE', null]);
+        expect([ajena.estado, ajena.visitaId], ['PROGRAMADA', null]);
         expect(cola().where((c) => c == 'agenda:update'), isEmpty, reason: 'no la tocó');
         expect((await agendas()).singleWhere((a) => a.id != 'age-1').visitaId, 'vis-1');
       },
@@ -463,7 +522,7 @@ void main() {
         expect(
           (await agendas()).where((a) => a.id.startsWith('age-esp')).map((a) => a.visitaId),
           unorderedEquals(['vis-age-1', 'vis-age-2']),
-          reason: 'cada visita nace con su agenda COMPLETADA',
+          reason: 'cada visita nace con su agenda CUMPLIDA',
         );
       },
     );
@@ -496,7 +555,7 @@ void main() {
 
         expect(await visitas(), isEmpty);
         expect(await notas(), isEmpty);
-        expect((await agendas()).single.estado, 'PENDIENTE');
+        expect((await agendas()).single.estado, 'PROGRAMADA');
         expect((await agendas()).single.visitaId, isNull);
         expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
 
@@ -505,7 +564,7 @@ void main() {
           ..encolados.clear();
         final r = await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
         expect(r.yaEstaba, isFalse);
-        expect((await agendas()).single.estado, 'COMPLETADA');
+        expect((await agendas()).single.estado, 'CUMPLIDA');
       },
     );
 
@@ -523,7 +582,7 @@ void main() {
       );
 
       expect(await visitas(), isEmpty);
-      expect((await agendas()).single.estado, 'PENDIENTE');
+      expect((await agendas()).single.estado, 'PROGRAMADA');
     });
   });
 
@@ -536,7 +595,7 @@ void main() {
 
         await Future.wait([agendada, visitada]);
 
-        expect((await agendas()).single.estado, 'COMPLETADA');
+        expect((await agendas()).single.estado, 'CUMPLIDA');
         expect(cola().where((c) => c.startsWith('house_status')), isNotEmpty);
         expect((await casas()).single.color, 'ENTREVISTA_SIN_VENTA');
       },
@@ -582,7 +641,13 @@ void main() {
       () async {
         await local.agendar(agendaDe('age-1'));
         await local.registrarVisita(
-          visitaDe('vis-1', vinculo: 'ep-2', resultado: TipoResultadoVisita.rechazo, creada: t1),
+          visitaDe(
+            'vis-1',
+            espacio: 'esp-2',
+            vinculo: 'ep-2',
+            resultado: TipoResultadoVisita.rechazo,
+            creada: t1,
+          ),
         );
         expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
 
@@ -594,6 +659,249 @@ void main() {
     );
   });
 
+  group('deshacerVisita (el «Deshacer» de «Guardado»)', () {
+    test(
+      'una visita espontánea: se da de baja con la agenda que creó y sus notas, y la casa vuelve '
+      'a «Sin visita»',
+      () async {
+        final r = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.rechazo, creada: t1),
+          nota: notaDe('nota-1'),
+        );
+        expect(r.agendaCreadaId, isNotNull);
+        expect((await casas()).single.color, 'RECHAZO');
+        encolador.encolados.clear();
+
+        final d = await local.deshacerVisita('vis-1', agendaCreadaId: r.agendaCreadaId, ahora: t2);
+
+        expect(d.escribio, isTrue);
+        expect((await visitas()).single.deletedAt, isNotNull);
+        expect((await agendas()).single.deletedAt, isNotNull);
+        expect((await notas()).single.deletedAt, isNotNull);
+        final casa = await casas();
+        expect(casa.isEmpty || casa.single.deletedAt != null, isTrue, reason: 'sin color');
+        expect(cola(), containsAll(['visita:delete', 'agenda:delete']));
+        expect(cola().where((c) => c == 'visita:delete'), hasLength(1));
+      },
+    );
+
+    test(
+      'una visita que cumplió la agenda de la casa: la agenda vuelve a «Programada» sin visita y '
+      'la casa a su color',
+      () async {
+        await local.agendar(agendaDe('age-1'));
+        final r = await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+        expect(r.agendaAfectadaId, 'age-1');
+        expect((await agendas()).single.estado, 'CUMPLIDA');
+        encolador.encolados.clear();
+
+        await local.deshacerVisita('vis-1', agendaAfectadaId: r.agendaAfectadaId, ahora: t2);
+
+        final agenda = (await agendas()).single;
+        expect([agenda.estado, agenda.visitaId, agenda.deletedAt], ['PROGRAMADA', null, null]);
+        expect((await visitas()).single.deletedAt, isNotNull);
+        expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
+        expect(cola(), containsAll(['visita:delete', 'agenda:update']));
+      },
+    );
+
+    test(
+      'un reintento con los mismos ids sobre una visita que cumplió la cita: sigue diciendo que la '
+      'cumplió (no que la creó) y «Deshacer» la vuelve a «Programada», sin darla de baja',
+      () async {
+        await local.agendar(agendaDe('age-1'));
+        await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+
+        // El reintento ya no encuentra la cita programada: llega sin agendaId.
+        final r = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+
+        expect(r.yaEstaba, isTrue);
+        expect([r.agendaAfectadaId, r.agendaCreadaId], ['age-1', null]);
+        encolador.encolados.clear();
+
+        await local.deshacerVisita(
+          'vis-1',
+          agendaCreadaId: r.agendaCreadaId,
+          agendaAfectadaId: r.agendaAfectadaId,
+          ahora: t2,
+        );
+
+        final agenda = (await agendas()).single;
+        expect([agenda.estado, agenda.visitaId, agenda.deletedAt], ['PROGRAMADA', null, null]);
+        expect(cola(), containsAll(['visita:delete', 'agenda:update']));
+        expect(cola(), isNot(contains('agenda:delete')));
+      },
+    );
+
+    test(
+      'una visita de cobranza sin cita: se guarda sin crear agenda, y «Deshacer» solo da de baja '
+      'la visita',
+      () async {
+        final r = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+
+        expect([r.agendaCreadaId, r.agendaAfectadaId, r.agendaNoCumplida], [null, null, false]);
+        expect((await visitas()).single.tipoResultado, 'COBRANZA');
+        expect(await agendas(), isEmpty);
+        expect(cola(), ['visita:insert']);
+
+        // Un reintento con los mismos ids sigue sin agenda.
+        final otra = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+        expect([otra.yaEstaba, otra.agendaCreadaId, otra.agendaAfectadaId], [true, null, null]);
+        encolador.encolados.clear();
+
+        await local.deshacerVisita('vis-1', ahora: t2);
+
+        expect((await visitas()).single.deletedAt, isNotNull);
+        expect(await agendas(), isEmpty);
+        expect(cola(), ['visita:delete']);
+      },
+    );
+
+    test('una visita de cobranza con la cita de la casa: cumple la cita, como antes', () async {
+      await local.agendar(agendaDe('age-1'));
+
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        agendaId: 'age-1',
+      );
+
+      expect([r.agendaCreadaId, r.agendaAfectadaId], [null, 'age-1']);
+      expect((await agendas()).single.estado, 'CUMPLIDA');
+    });
+
+    test('un «No contestó» y un rechazo sin cita siguen creando su agenda espontánea', () async {
+      final noContesto = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
+      );
+      final rechazo = await local.registrarVisita(
+        visitaDe('vis-2', resultado: TipoResultadoVisita.rechazo, creada: t1),
+      );
+
+      expect(noContesto.agendaCreadaId, isNotNull);
+      expect(rechazo.agendaCreadaId, isNotNull);
+      expect(await agendas(), hasLength(2));
+    });
+
+    test('un reintento con los mismos ids sobre una visita espontánea: sigue diciendo que creó su '
+        'agenda y «Deshacer» la da de baja', () async {
+      final primera = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+      final r = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+
+      expect(r.yaEstaba, isTrue);
+      expect([r.agendaCreadaId, r.agendaAfectadaId], [primera.agendaCreadaId, null]);
+    });
+
+    test('un «No contestó» sobre la agenda de la casa: al deshacer, la agenda vuelve a '
+        '«Programada»', () async {
+      await local.agendar(agendaDe('age-1'));
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
+        agendaId: 'age-1',
+      );
+      expect([r.agendaNoCumplida, r.agendaAfectadaId], [true, 'age-1']);
+      expect((await agendas()).single.estado, 'NO_CUMPLIDA');
+
+      await local.deshacerVisita('vis-1', agendaAfectadaId: r.agendaAfectadaId, ahora: t2);
+
+      final agenda = (await agendas()).single;
+      expect([agenda.estado, agenda.visitaId], ['PROGRAMADA', null]);
+      expect((await casas()).single.color, 'ENTREVISTA_PROGRAMADA');
+    });
+
+    test('dos veces (doble toque): la segunda no escribe ni encola', () async {
+      final r = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+      await local.deshacerVisita('vis-1', agendaCreadaId: r.agendaCreadaId, ahora: t2);
+      encolador.encolados.clear();
+
+      final otra = await local.deshacerVisita(
+        'vis-1',
+        agendaCreadaId: r.agendaCreadaId,
+        ahora: t2.add(const Duration(minutes: 1)),
+      );
+
+      expect(otra.escribio, isFalse);
+      expect(cola(), isEmpty);
+    });
+
+    test('una visita que no está en el teléfono: la rechaza', () async {
+      await expectLater(
+        local.deshacerVisita('vis-que-no-esta', ahora: t2),
+        rechazaCon(MotivoRechazoAgenda.visitaInexistente),
+      );
+    });
+
+    test(
+      'con la agenda de otra visita: no la toca (solo se suelta lo que la visita tocó)',
+      () async {
+        await local.agendar(agendaDe('age-1'));
+        await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+        await local.registrarVisita(visitaDe('vis-2', creada: t2));
+
+        await local.deshacerVisita('vis-2', agendaAfectadaId: 'age-1', ahora: t2);
+
+        final propia = (await agendas()).singleWhere((a) => a.id == 'age-1');
+        expect([propia.estado, propia.visitaId], ['CUMPLIDA', 'vis-1']);
+      },
+    );
+
+    test('si falla el encolado a mitad: no queda nada a medias y se puede reintentar', () async {
+      await local.agendar(agendaDe('age-1'));
+      final r = await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+      encolador.encolados.clear();
+      encolador
+        ..fallarCon = StateError('motor apagado')
+        ..fallarDespuesDe = 1;
+
+      await expectLater(
+        local.deshacerVisita('vis-1', agendaAfectadaId: r.agendaAfectadaId, ahora: t2),
+        throwsStateError,
+      );
+
+      expect((await visitas()).single.deletedAt, isNull);
+      expect((await agendas()).single.estado, 'CUMPLIDA');
+
+      encolador.fallarCon = null;
+      final bien = await local.deshacerVisita(
+        'vis-1',
+        agendaAfectadaId: r.agendaAfectadaId,
+        ahora: t2,
+      );
+
+      expect(bien.escribio, isTrue);
+      expect((await agendas()).single.estado, 'PROGRAMADA');
+    });
+  });
+
+  group('agendaProgramadaDe (la agenda que una visita viene a cumplir)', () {
+    test('sin agendas: null', () async {
+      expect(await local.agendaProgramadaDe('esp-1'), isNull);
+    });
+
+    test('una entrevista programada en la casa: la devuelve', () async {
+      await local.agendar(agendaDe('age-1'));
+
+      expect((await local.agendaProgramadaDe('esp-1'))!.id, 'age-1');
+    });
+
+    test('no devuelve las cumplidas, las canceladas, las dadas de baja, las de cobranza ni las de '
+        'otro depto', () async {
+      await sembrarEspacio(db, id: 'esp-2', numeroDepto: '2B');
+      await local.agendar(agendaDe('cumplida'));
+      await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'cumplida');
+      await local.agendar(agendaDe('cancelada'));
+      await local.cancelar('cancelada', ahora: t1);
+      await local.agendar(agendaDe('cobranza', tipo: TipoAgenda.cobranza));
+      await local.agendar(agendaDe('otro-depto', espacio: 'esp-2', vinculo: null));
+
+      expect(await local.agendaProgramadaDe('esp-1'), isNull);
+      expect((await local.agendaProgramadaDe('esp-2'))!.id, 'otro-depto');
+    });
+  });
+
   group('leer', () {
     test('devuelve la agenda y la visita guardadas, o null si no están', () async {
       expect(await local.obtenerAgenda('age-1'), isNull);
@@ -602,7 +910,7 @@ void main() {
       await local.agendar(agendaDe('age-1'));
       await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
 
-      expect((await local.obtenerAgenda('age-1'))!.estado, EstadoAgenda.completada);
+      expect((await local.obtenerAgenda('age-1'))!.estado, EstadoAgenda.cumplida);
       expect((await local.obtenerAgenda('age-1'))!.visitaId, 'vis-1');
       expect((await local.obtenerVisita('vis-1'))!.tipoResultado, TipoResultadoVisita.entrevista);
     });
@@ -614,7 +922,7 @@ void main() {
         db.customInsert(
           'INSERT INTO agenda (id, espacio_persona_id, tipo, fecha_programada, estado, colportor_id, '
           'created_at, updated_at, es_estricta, sync_version) '
-          "VALUES ('a', 'ep-1', 'VENTA', 0, 'PENDIENTE', 'c', 0, 0, 0, 0)",
+          "VALUES ('a', 'ep-1', 'VENTA', 0, 'PROGRAMADA', 'c', 0, 0, 0, 0)",
         ),
         throwsA(anything),
       );

@@ -36,7 +36,7 @@ void main() {
       final agenda = agendaDe(
         'age-1',
         tipo: TipoAgenda.cobranza,
-        estado: EstadoAgenda.completada,
+        estado: EstadoAgenda.cumplida,
         esEstricta: true,
         slot: 'afternoon',
         visitaId: 'vis-1',
@@ -45,7 +45,7 @@ void main() {
       final json = AgendaModel.fromEntity(agenda).toJson();
 
       expect(json['tipo'], 'COBRANZA');
-      expect(json['estado'], 'COMPLETADA');
+      expect(json['estado'], 'CUMPLIDA');
       expect(json['es_estricta'], true);
       expect(json['slot_codigo'], 'afternoon');
       expect(json['visita_id'], 'vis-1');

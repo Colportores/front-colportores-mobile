@@ -13,13 +13,14 @@ import 'tipo_agenda.dart';
 class Agenda extends Equatable {
   Agenda({
     required this.id,
-    required this.espacioPersonaId,
+    required this.espacioId,
+    this.espacioPersonaId,
     required this.tipo,
     required DateTime fechaProgramada,
     this.slotCodigo,
     this.esEstricta = false,
     this.ubicacionAltId,
-    this.estado = EstadoAgenda.pendiente,
+    this.estado = EstadoAgenda.programada,
     required this.colportorId,
     this.visitaId,
     required this.auditoria,
@@ -28,8 +29,12 @@ class Agenda extends Equatable {
   /// UUID v7 generado en el dispositivo (esquema-datos.md §Principios 2).
   final String id;
 
-  /// FK a `espacio_persona.id` (`NOT NULL`, ADR-017).
-  final String espacioPersonaId;
+  /// FK a `espacio.id`: la casa o el depto de la cita (backend-supabase 0068).
+  final String espacioId;
+
+  /// FK opcional a `espacio_persona.id`: con quién es la cita. Sin persona la cita cuelga solo del
+  /// espacio (decisión del 23/10, «Sin persona»).
+  final String? espacioPersonaId;
 
   final TipoAgenda tipo;
 
@@ -58,11 +63,12 @@ class Agenda extends Equatable {
   bool get estaBorrada => auditoria.estaBorrada;
 
   /// Una agenda que sigue esperando su visita (la que pinta la casa de «entrevista programada»).
-  bool get estaPendiente => estado == EstadoAgenda.pendiente && !estaBorrada;
+  bool get estaProgramada => estado == EstadoAgenda.programada && !estaBorrada;
 
   @override
   List<Object?> get props => [
     id,
+    espacioId,
     espacioPersonaId,
     tipo,
     fechaProgramada,

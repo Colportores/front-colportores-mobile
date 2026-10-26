@@ -14,6 +14,7 @@ import 'package:logger/logger.dart';
 
 import 'generated/schema.dart';
 import 'generated/schema_v10.dart' as v10;
+import 'generated/schema_v11.dart' as v11;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -676,6 +677,110 @@ void main() {
         expect(await nuevo.select(nuevo.visita).get(), isEmpty);
         expect(await nuevo.select(nuevo.houseStatus).get(), isEmpty);
         expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 10, cuando migra a la 11, las visitas y las agendas conservan '
+      'todo, toman el espacio de su vínculo y la agenda pasa a los estados de la HU', () async {
+    // #411: `visita` y `agenda` cuelgan del espacio y la persona es opcional. Nada se pierde ni se
+    // encola al migrar (convenciones §9; nunca se pierde una venta ni una persona).
+    const vinculo = v10.EspacioPersonaData(
+      id: 'ep-1',
+      espacioId: 'esp-1',
+      personaId: 'per-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 2,
+    );
+    const visita = v10.VisitaData(
+      id: 'vis-1',
+      espacioPersonaId: 'ep-1',
+      fecha: 1758720000000,
+      tipoResultado: 'ENTREVISTA',
+      colportorId: 'col-1',
+      createdAt: 1758720000000,
+      updatedAt: 1758720000000,
+      createdBy: 'col-1',
+      syncVersion: 3,
+    );
+    const visitaSinVinculo = v10.VisitaData(
+      id: 'vis-2',
+      espacioPersonaId: 'ep-que-no-llego',
+      fecha: 1758730000000,
+      tipoResultado: 'NO_CONTESTO',
+      colportorId: 'col-1',
+      createdAt: 1758730000000,
+      updatedAt: 1758730000000,
+      syncVersion: 0,
+    );
+    v10.AgendaData agenda(String id, String estado, {String? visitaId}) => v10.AgendaData(
+      id: id,
+      espacioPersonaId: 'ep-1',
+      tipo: 'ENTREVISTA',
+      fechaProgramada: 1758800000000,
+      esEstricta: 0,
+      estado: estado,
+      colportorId: 'col-1',
+      visitaId: visitaId,
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+    final agendas = [
+      agenda('ag-1', 'PENDIENTE'),
+      agenda('ag-2', 'COMPLETADA', visitaId: 'vis-1'),
+      agenda('ag-3', 'CANCELADA'),
+    ];
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 10,
+      newVersion: 11,
+      createOld: v10.DatabaseAtV10.new,
+      createNew: v11.DatabaseAtV11.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.espacioPersona, vinculo)
+          ..insert(viejo.visita, visita)
+          ..insert(viejo.visita, visitaSinVinculo);
+        for (final a in agendas) {
+          batch.insert(viejo.agenda, a);
+        }
+      },
+      validateItems: (nuevo) async {
+        final visitas = {for (final v in await nuevo.select(nuevo.visita).get()) v.id: v};
+        expect(visitas.keys, unorderedEquals(['vis-1', 'vis-2']));
+        expect(visitas['vis-1']!.espacioId, 'esp-1');
+        expect(visitas['vis-1']!.espacioPersonaId, 'ep-1');
+        expect(visitas['vis-1']!.tipoResultado, 'ENTREVISTA');
+        expect(visitas['vis-1']!.fecha, visita.fecha);
+        expect(visitas['vis-1']!.syncVersion, 3);
+        // Un vínculo que todavía no llegó: no se inventa un espacio, y la visita no se pierde.
+        expect(visitas['vis-2']!.espacioId, '');
+        expect(visitas['vis-2']!.espacioPersonaId, 'ep-que-no-llego');
+
+        final filas = {for (final a in await nuevo.select(nuevo.agenda).get()) a.id: a};
+        expect(filas.keys, unorderedEquals(['ag-1', 'ag-2', 'ag-3']));
+        expect(filas['ag-1']!.estado, 'PROGRAMADA');
+        expect(filas['ag-2']!.estado, 'CUMPLIDA');
+        expect(filas['ag-2']!.visitaId, 'vis-1');
+        expect(filas['ag-3']!.estado, 'CANCELADA');
+        for (final a in filas.values) {
+          expect(a.espacioId, 'esp-1');
+          expect(a.espacioPersonaId, 'ep-1');
+          expect(a.fechaProgramada, 1758800000000);
+        }
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // El esquema nuevo admite lo que el viejo no: visita sin persona, `COBRANZA` y `NO_CUMPLIDA`.
+        await nuevo.customStatement(
+          'INSERT INTO visita (id, espacio_id, fecha, tipo_resultado, colportor_id, created_at, '
+          "updated_at, sync_version) VALUES ('vis-3', 'esp-1', 1, 'COBRANZA', 'col-1', 1, 1, 0)",
+        );
+        await nuevo.customStatement("UPDATE agenda SET estado = 'NO_CUMPLIDA' WHERE id = 'ag-1'");
       },
     );
   });

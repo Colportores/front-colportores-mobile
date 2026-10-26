@@ -28,6 +28,9 @@ import 'features/auth/data/repositories/ultimo_envio_recuperacion_repository_imp
 import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
+import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/mapa/presentation/flujo_registrar_visita.dart';
+import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
 import 'plataforma/identidad_instalacion.dart';
@@ -145,6 +148,20 @@ Future<void> main() async {
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
         monitorConectividadProvider.overrideWithValue(conectividad),
+        // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
+        // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
+        // cierra. «Programar entrevista», «Entrevista dada» y «Cobranza» se enganchan con sus HU.
+        registrarVisitaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoRegistrarVisita.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),

@@ -185,7 +185,7 @@ void main() {
         );
         expect(otra.isRight(), isTrue, reason: 'el reintento con los mismos ids sale bien');
         expect((await db.select(db.visitas).get()).map((v) => v.id), ['vis-1']);
-        expect((await db.select(db.agendas).get()).single.estado, 'COMPLETADA');
+        expect((await db.select(db.agendas).get()).single.estado, 'CUMPLIDA');
         expect((await db.select(db.agendas).get()).single.visitaId, 'vis-1');
         expect((await db.select(db.houseStatuses).get()).single.color, 'RECHAZO');
         expect((await db.select(db.notas).get()).map((x) => x.id).toSet(), {'not-0', 'not-1'});
@@ -250,6 +250,7 @@ void main() {
           db,
           visitaDe(
             'vm$i',
+            espacio: 'e${i % 40}',
             vinculo: 'v${i % 40}',
             resultado: i.isEven ? TipoResultadoVisita.noContesto : TipoResultadoVisita.rechazo,
           ),
@@ -258,13 +259,23 @@ void main() {
       for (var i = 0; i < 300; i++) {
         await insertarAgenda(
           db,
-          agendaDe('am$i', vinculo: 'v${i % 40}', estado: EstadoAgenda.cancelada),
+          agendaDe(
+            'am$i',
+            espacio: 'e${i % 40}',
+            vinculo: 'v${i % 40}',
+            estado: EstadoAgenda.cancelada,
+          ),
         );
       }
 
       final reloj = Stopwatch()..start();
       final r = await repo.agendar(
-        agendaDe('age-nueva', vinculo: 'v7', creada: t0.add(const Duration(minutes: 1))),
+        agendaDe(
+          'age-nueva',
+          espacio: 'e7',
+          vinculo: 'v7',
+          creada: t0.add(const Duration(minutes: 1)),
+        ),
       );
       reloj.stop();
 
@@ -277,6 +288,7 @@ void main() {
   group('acciones superpuestas: la cache y la cola siempre cuentan lo mismo que las tablas', () {
     // Tres casas: un edificio con dos deptos (ub-1) y dos casas (ub-2, ub-3).
     const vinculos = {'ep-1': 'ub-1', 'ep-2': 'ub-1', 'ep-3': 'ub-2', 'ep-4': 'ub-3'};
+    const espacios = {'ep-1': 'es-1', 'ep-2': 'es-2', 'ep-3': 'es-3', 'ep-4': 'es-4'};
 
     Future<void> sembrarTodo() async {
       await db.delete(db.espacioPersonas).go();
@@ -300,18 +312,18 @@ void main() {
       final prioridades = <int, String>{};
       final deLaCasa = vinculos.entries
           .where((e) => e.value == ubicacion)
-          .map((e) => e.key)
+          .map((e) => espacios[e.key])
           .toSet();
       for (final a in await db.select(db.agendas).get()) {
-        if (deLaCasa.contains(a.espacioPersonaId) &&
-            a.estado == 'PENDIENTE' &&
+        if (deLaCasa.contains(a.espacioId) &&
+            a.estado == 'PROGRAMADA' &&
             a.deletedAt == null &&
             a.tipo == 'ENTREVISTA') {
           prioridades[3] = 'ENTREVISTA_PROGRAMADA';
         }
       }
       for (final v in await db.select(db.visitas).get()) {
-        if (!deLaCasa.contains(v.espacioPersonaId) || v.deletedAt != null) continue;
+        if (!deLaCasa.contains(v.espacioId) || v.deletedAt != null) continue;
         switch (v.tipoResultado) {
           case 'ENTREVISTA':
             prioridades[5] = 'ENTREVISTA_SIN_VENTA';
@@ -343,6 +355,7 @@ void main() {
               return repo.agendar(
                 agendaDe(
                   id,
+                  espacio: espacios[vinculo]!,
                   vinculo: vinculo,
                   tipo: azar.nextBool() ? TipoAgenda.entrevista : TipoAgenda.cobranza,
                   creada: ahora(),
@@ -358,7 +371,9 @@ void main() {
               final id = agendasCreadas.isEmpty
                   ? 'age-1'
                   : agendasCreadas[azar.nextInt(agendasCreadas.length)];
-              return repo.agendar(agendaDe(id, vinculo: vinculo, creada: ahora()));
+              return repo.agendar(
+                agendaDe(id, espacio: espacios[vinculo]!, vinculo: vinculo, creada: ahora()),
+              );
             default:
               final resultado = TipoResultadoVisita.values[azar.nextInt(4)];
               final agendaId = agendasCreadas.isEmpty || azar.nextBool()
@@ -367,6 +382,7 @@ void main() {
               return repo.registrarVisita(
                 visitaDe(
                   'vis-${++contador}',
+                  espacio: espacios[vinculo]!,
                   vinculo: vinculo,
                   resultado: resultado,
                   creada: ahora(),
@@ -428,14 +444,17 @@ void main() {
         }
         final visitas = {for (final v in await db.select(db.visitas).get()) v.id};
         for (final a in await db.select(db.agendas).get()) {
-          if (a.estado == 'COMPLETADA') {
+          if (a.estado == 'CUMPLIDA') {
             expect(visitas, contains(a.visitaId), reason: '${a.id} cumplida sin visita');
             final posAgenda = encolador.encolados.lastIndexWhere(
               (c) => c.entidad == 'agenda' && c.payload['id'] == a.id,
             );
             expect(posicionDeVisita[a.visitaId]!, lessThan(posAgenda), reason: a.id);
+          } else if (a.estado == 'NO_CUMPLIDA') {
+            // La «No contestó» sobre la agenda: apunta a la visita que no la cumplió.
+            expect(visitas, contains(a.visitaId), reason: '${a.id} no cumplida sin visita');
           } else {
-            expect(a.visitaId, isNull, reason: '${a.id} no cumplida con visita');
+            expect(a.visitaId, isNull, reason: '${a.id} programada o cancelada con visita');
           }
         }
       });
@@ -466,6 +485,7 @@ void main() {
         final r = await repo.agendar(
           Agenda(
             id: 'age-fk',
+            espacioId: 'esp-1',
             espacioPersonaId: 'ep-1',
             tipo: TipoAgenda.cobranza,
             fechaProgramada: DateTime.utc(2026, 10, 25, 14),

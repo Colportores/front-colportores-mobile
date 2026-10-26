@@ -144,10 +144,14 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
   VoidCallback? _registrarVisita(ContextoDeLaCasa contexto) {
     final destino = ref.watch(registrarVisitaDesdeLaCasaProvider);
     if (destino == null || widget.item.esBaja) return null;
-    return () => _correr(
-      () => destino((ubicacionId: widget.item.ubicacion.id, espacioId: contexto.espacioId)),
-      TextosHojaCasa.noPudimosAbrirVisita,
-    );
+    return () => _correr(() async {
+      final resuelta = await destino((
+        ubicacionId: widget.item.ubicacion.id,
+        espacioId: contexto.espacioId,
+      ));
+      // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa muestra el color nuevo.
+      if (resuelta == true && mounted) widget.alCerrar();
+    }, TextosHojaCasa.noPudimosAbrirVisita);
   }
 
   /// Lo que hace «$ Cobrar» de la persona [personaId], o `null` si no se ofrece.
