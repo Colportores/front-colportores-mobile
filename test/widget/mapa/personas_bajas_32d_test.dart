@@ -8,6 +8,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -356,6 +357,43 @@ void main() {
       await asentar(tester);
 
       expect(repo.reactivacionesRecibidas, ['b39']);
+    });
+
+    testWidgets(
+      'con el texto al 200 %, el nombre de un cliente activo no se corta con «…» (decisión P2 '
+      'del QA)',
+      (tester) async {
+        final repo = PersonaRepositorioFalso()
+          ..sembrar([
+            clienteDePersonas('p1', 'Maximiliano Alejandro', apellido: 'Fernández de la Peña'),
+          ]);
+        await montarClientes(
+          tester,
+          repo: repo,
+          otrosOverrides: _extras(),
+          escala: 2,
+          tamano: const Size(360, 640),
+        );
+
+        for (final e in find.byType(RichText).evaluate()) {
+          final p = e.renderObject! as RenderParagraph;
+          expect(p.didExceedMaxLines, isFalse, reason: 'texto cortado: ${p.text.toPlainText()}');
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('a la escala de siempre, el nombre de una fila sigue acotado a tres renglones', (
+      tester,
+    ) async {
+      final repo = PersonaRepositorioFalso()
+        ..sembrar([
+          clienteDePersonas('p1', 'Maximiliano Alejandro', apellido: 'Fernández de la Peña'),
+        ]);
+      await montarClientes(tester, repo: repo, otrosOverrides: _extras());
+
+      final nombre = tester.widget<Text>(find.text('Maximiliano Alejandro Fernández de la Peña'));
+      expect(nombre.maxLines, 3);
     });
 
     testWidgets('con un nombre larguísimo y textScaler 2.0 a 320×568, la fila no desborda y '
