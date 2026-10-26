@@ -192,6 +192,7 @@ void main() {
       final container = await _montar(tester);
       expect(find.text('ana@example.com'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       expect(
@@ -221,6 +222,7 @@ void main() {
       );
       final container = await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -239,6 +241,7 @@ void main() {
       expect(container.read(sesionProvider).value, isNotNull, reason: 'cancelar no cierra nada');
       expect(find.byType(ConfiguracionPage), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cerrar sesión igual'));
@@ -250,6 +253,7 @@ void main() {
       final container = await _montar(tester);
       _remote.simularSinConexion = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -279,6 +283,7 @@ void main() {
       final container = await _montar(tester, local: local);
       local.fallar = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -300,9 +305,11 @@ void main() {
       _datos.demoraResumen = Completer<void>();
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
       expect(find.byKey(const Key('configuracion_cerrando')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
 
@@ -400,6 +407,7 @@ void main() {
 
         expect(find.byType(ConfiguracionPage), findsOneWidget);
         expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -415,6 +423,7 @@ void main() {
       setUp(() => local = _LocalQueNoBorra());
 
       Future<void> abrirHoja(WidgetTester tester) async {
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
       }
@@ -835,6 +844,7 @@ void main() {
       );
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -851,6 +861,7 @@ void main() {
       final local = _LocalQueNoBorra()..fallar = true;
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -870,6 +881,7 @@ void main() {
       final local = _LocalQueNoBorra()..demora = Completer<void>();
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
