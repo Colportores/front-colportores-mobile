@@ -1,5 +1,6 @@
 import '../domain/entities/lista_ubicaciones.dart';
 import 'formato_baja.dart';
+import 'formato_lista_ubicaciones.dart';
 import 'formato_mapa_ubicaciones.dart';
 import 'formato_ubicaciones.dart';
 import 'widgets/estados_hoja_casa.dart';
@@ -30,6 +31,31 @@ abstract final class TextosHojaCasa {
 
   /// «$ 1.200»: pesos con punto de miles y, si no son pesos justos, coma decimal.
   static String monto(int centavos) => FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$');
+}
+
+/// Los textos de la hoja de la casa arriba (vista 39, C·02 «Hoja arriba · Personas»). Los del canvas van
+/// letra por letra; los que el canvas no dibuja están marcados «a confirmar» (mapa §2: texto) y se
+/// listan en el PR.
+abstract final class TextosPestanasHojaCasa {
+  // Del canvas (C·02).
+  static const personas = 'Personas';
+  static const historial = 'Historial';
+  static const notas = 'Notas';
+  static const agregarPersona = '+ Agregar persona';
+
+  /// A confirmar: el canvas no dibuja la pestaña sin personas. Con «+ Agregar persona» abajo, el
+  /// texto solo dice que no hay.
+  static const sinPersonas = 'Todavía no hay personas acá.';
+
+  /// A confirmar: lo que dice la hoja si no se pudo abrir el alta de persona o la ficha. El canvas no
+  /// dibuja el error.
+  static const noPudimosAbrirAlta = 'No pudimos abrir «Agregar persona». Probá de nuevo.';
+  static const noPudimosAbrirFicha = 'No pudimos abrir la ficha. Probá de nuevo.';
+
+  /// «Entrevista dada el 05/10» (canvas): la línea de la persona que no debe nada y tuvo una
+  /// entrevista.
+  static String entrevistaDada(DateTime fecha) =>
+      'Entrevista dada el ${FormatoListaUbicaciones.diaMes(fecha)}';
 }
 
 /// Cómo se escribe la hoja de la casa a partir de la ubicación y su contexto.

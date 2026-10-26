@@ -275,6 +275,7 @@ final class CustodiaClaveDb {
     ClaveSegura.ultimoEnvioRecuperacion,
     ClaveSegura.bloqueoReenvioVerificacion,
     ClaveSegura.zonasAvisadas,
+    ClaveSegura.avisoPrivacidadOculto,
     // Sigue siendo la misma instalación: el sync tiene que seguir diciendo el mismo id (§5.3).
     ClaveSegura.idInstalacion,
   };
@@ -365,8 +366,9 @@ final class CustodiaClaveDb {
   /// (lleva el id del usuario), el reloj de la sesión (el último momento en que se usó la app), los
   /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado, la
   /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
-  /// bloqueado, las zonas ya avisadas de cada inscripción y el id de la instalación (el sync estrena
-  /// uno, como en una reinstalación: la cola y la réplica también arrancan de cero).
+  /// bloqueado, las zonas ya avisadas de cada inscripción, las cuentas que escondieron el aviso de
+  /// privacidad y el id de la instalación (el sync estrena uno, como en una reinstalación: la cola y
+  /// la réplica también arrancan de cero).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -376,6 +378,7 @@ final class CustodiaClaveDb {
     ClaveSegura.ultimoEnvioRecuperacion,
     ClaveSegura.bloqueoReenvioVerificacion,
     ClaveSegura.zonasAvisadas,
+    ClaveSegura.avisoPrivacidadOculto,
     ClaveSegura.idInstalacion,
   ];
 

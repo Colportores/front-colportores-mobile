@@ -13,6 +13,7 @@ class ContextoDeLaCasa extends Equatable {
     this.espacioId,
     this.personas = const [],
     this.saldosCentavos = const {},
+    this.ultimaEntrevistaDe = const {},
     this.nota,
   });
 
@@ -26,6 +27,10 @@ class ContextoDeLaCasa extends Equatable {
   /// Lo que debe cada persona (`persona.id` → centavos). Quien no está en el mapa no tiene saldo
   /// conocido: no se muestra nada, ni «$ 0».
   final Map<String, int> saldosCentavos;
+
+  /// Cuándo fue la última entrevista dada a cada persona (`persona.id` → fecha). Quien no está en el
+  /// mapa no tuvo ninguna que se sepa: no se muestra nada.
+  final Map<String, DateTime> ultimaEntrevistaDe;
 
   /// La nota más reciente del lugar, si hay.
   final NotaDelLugar? nota;
@@ -56,5 +61,5 @@ class ContextoDeLaCasa extends Equatable {
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [espacioId, personas, saldosCentavos, nota];
+  List<Object?> get props => [espacioId, personas, saldosCentavos, ultimaEntrevistaDe, nota];
 }

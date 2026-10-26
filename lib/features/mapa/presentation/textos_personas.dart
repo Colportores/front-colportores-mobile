@@ -11,6 +11,16 @@ abstract final class TextosPersonas {
   static const altaRotulo = 'NUEVA PERSONA';
   static const altaTitulo = 'Nueva persona';
   static const privacidad = 'Estos datos solo viven en tu celular. Nunca se suben a la nube.';
+
+  /// «No volver a mostrar» del aviso de privacidad (canvas, `Bloques` · banner «lock»; decisión de
+  /// Cristian, 23/10, «Aviso privado»). Los dos textos de abajo no están en el canvas (mapa §2: texto):
+  /// lo que queda donde estaba el aviso, que dice cómo volver a verlo, y la falla al guardar la
+  /// preferencia.
+  static const noVolverAMostrar = 'No volver a mostrar';
+  static const avisoEscondido =
+      'Listo, no vas a ver más este aviso. Para volver a verlo, andá a Configuración y activá '
+      '«Mostrar el aviso de privacidad».';
+  static const noPudimosGuardarElAviso = 'No pudimos guardar tu elección. Probá de nuevo.';
   static const etiquetaNombre = 'NOMBRE';
   static const etiquetaApellido = 'APELLIDO (OPCIONAL)';
   static const etiquetaTelefono = 'TELÉFONO (OPCIONAL)';

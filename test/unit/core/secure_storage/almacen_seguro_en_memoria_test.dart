@@ -102,6 +102,7 @@ void main() {
       expect(ClaveSegura.ultimoEnvioRecuperacion.id, 'last_recovery_request');
       expect(ClaveSegura.bloqueoReenvioVerificacion.id, 'verification_resend_locks');
       expect(ClaveSegura.zonasAvisadas.id, 'zones_notified');
+      expect(ClaveSegura.avisoPrivacidadOculto.id, 'privacy_notice_hidden');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });

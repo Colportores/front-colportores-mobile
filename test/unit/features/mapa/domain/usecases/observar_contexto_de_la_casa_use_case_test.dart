@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_esp
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/persona_repository.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/lector_entrevistas_de_personas.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/lector_notas_del_lugar.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/saldos_de_personas.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/observar_contexto_de_la_casa_use_case.dart';
@@ -68,6 +69,20 @@ final class _Saldos implements SaldosDePersonas {
   }
 }
 
+final class _Entrevistas implements LectorEntrevistasDePersonas {
+  Map<String, DateTime> respuesta = const {};
+  Object? falla;
+  final pedidos = <List<String>>[];
+
+  @override
+  Future<Map<String, DateTime>> ultimaEntrevistaDe(Iterable<String> vinculoIds) async {
+    pedidos.add(vinculoIds.toList());
+    final error = falla;
+    if (error != null) throw error;
+    return respuesta;
+  }
+}
+
 final class _Notas implements LectorNotasDelLugar {
   final controlador = StreamController<NotaDelLugar?>.broadcast();
   final consultadas = <String>[];
@@ -84,6 +99,7 @@ void main() {
   late _Personas personas;
   late _Saldos saldos;
   late _Notas notas;
+  late _Entrevistas entrevistas;
   late ObservarContextoDeLaCasaUseCase caso;
 
   final espacio = espacioDePersonas(numeroDepto: null);
@@ -99,11 +115,13 @@ void main() {
     personas = _Personas();
     saldos = _Saldos();
     notas = _Notas();
+    entrevistas = _Entrevistas();
     caso = ObservarContextoDeLaCasaUseCase(
       espacios: espacios,
       personas: personas,
       saldos: saldos,
       notas: notas,
+      entrevistas: entrevistas,
     );
   });
 
@@ -143,6 +161,38 @@ void main() {
     expect(saldos.pedidos, [
       ['p-1'],
     ]);
+  });
+
+  test(
+    'la última entrevista de cada persona sale por su vínculo y llega por la persona (C·02)',
+    () async {
+      final pedro = clienteDePersonas('p-2', 'Pedro', apellido: 'Gómez');
+      entrevistas.respuesta = {'ep-p-1': DateTime.utc(2026, 10, 5)};
+      final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+
+      personas.de(espacio.id).add([ana, pedro]);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+
+      expect(entrevistas.pedidos, [
+        ['ep-p-1', 'ep-p-2'],
+      ]);
+      expect(emitidos.single.ultimaEntrevistaDe, {'p-1': DateTime.utc(2026, 10, 5)});
+    },
+  );
+
+  test('si no se pueden leer las entrevistas no frena nada: las filas quedan sin fecha', () async {
+    entrevistas.falla = StateError('la base no responde');
+    saldos.respuesta = {'p-1': 120000};
+    final (emitidos, errores) = await escuchar(TipoUbicacion.casa);
+
+    personas.de(espacio.id).add([ana]);
+    notas.controlador.add(null);
+    await pumpEventQueue();
+
+    expect(errores, isEmpty);
+    expect(emitidos.single.ultimaEntrevistaDe, isEmpty);
+    expect(emitidos.single.saldoDe('p-1'), 120000);
   });
 
   test('sin nota emite el contexto con nota null', () async {

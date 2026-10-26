@@ -13,6 +13,14 @@ abstract final class ClavesHojaCasa {
   static const subtitulo = Key('hoja_casa_subtitulo');
   static const persona = Key('hoja_casa_persona');
   static const cobrar = Key('hoja_casa_cobrar');
+  static const abrirPersona = Key('hoja_casa_abrir_persona');
+  static const asaDeLaLista = Key('hoja_casa_asa_de_la_lista');
+  static const pestanas = Key('hoja_casa_pestanas');
+  static const agregarPersona = Key('hoja_casa_agregar_persona');
+  static const sinPersonas = Key('hoja_casa_sin_personas');
+  static const personaGuardada = Key('hoja_casa_persona_guardada');
+  static const listaDePersonas = Key('hoja_casa_lista_de_personas');
+  static Key pestana(String id) => Key('hoja_casa_pestana_$id');
   static const nota = Key('hoja_casa_nota');
   static const registrarVisita = Key('hoja_casa_registrar_visita');
   static const cerrar = Key('hoja_casa_cerrar');
@@ -31,17 +39,24 @@ BoxDecoration _decoracionDeFila() => BoxDecoration(
   borderRadius: BorderRadius.circular(14),
 );
 
-/// La persona del lugar (C·01): su avatar con las iniciales, el nombre, lo que debe y, si debe,
+/// La persona del lugar (C·01 y C·02): su avatar con las iniciales, el nombre, lo que debe y, si debe,
 /// «$ Cobrar». Sin [alCobrar] no se dibuja el botón (no hay a dónde llevar: HU-UBI-003).
 ///
 /// [alCobrar] se dispara **una sola vez por vez** (lo decide quien arma la fila, que comparte la guarda
 /// con «Registrar visita»): acá solo se apaga el botón mientras [ocupada].
+///
+/// En la pestaña Personas (C·02) la fila puede llevar [detalle] (la línea de abajo, por ejemplo
+/// «Entrevista dada el 05/10», cuando no debe nada) y [alAbrir]: tocarla abre la ficha de la persona
+/// (vista 32 B). Con [alAbrir] la fila es un botón y, si no tiene «$ Cobrar», lleva el «›» del canvas;
+/// sin [alAbrir] no se puede tocar y no lleva «›».
 class FilaPersonaDeLaCasa extends StatelessWidget {
   const FilaPersonaDeLaCasa({
     super.key,
     required this.persona,
     this.saldoCentavos,
+    this.detalle,
     this.alCobrar,
+    this.alAbrir,
     this.ocupada = false,
   });
 
@@ -50,79 +65,117 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
   /// Lo que debe, en centavos; `null` si no debe o no se sabe (no se escribe «$ 0»).
   final int? saldoCentavos;
 
+  /// La línea de abajo cuando no debe nada; `null` = ninguna. Si debe, manda «Debe $ 1.200».
+  final String? detalle;
+
   /// «$ Cobrar»; `null` = no se ofrece.
   final VoidCallback? alCobrar;
 
-  /// Hay una acción en curso: «$ Cobrar» queda apagado.
+  /// Tocar la fila (abre la ficha); `null` = la fila no se toca.
+  final VoidCallback? alAbrir;
+
+  /// Hay una acción en curso: «$ Cobrar» y la fila quedan apagados.
   final bool ocupada;
 
   @override
   Widget build(BuildContext context) {
     final nombre = FormatoPersonas.nombreCompleto(persona);
     final debe = saldoCentavos == null ? null : TextosHojaCasa.debe(saldoCentavos!);
+    final linea = debe ?? detalle;
     final cobra = saldoCentavos != null && alCobrar != null;
     final grande = textoGrande(context);
-    final cuerpo = Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    final abre = alAbrir != null;
+    final avatar = ExcludeSemantics(
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: _navy, shape: BoxShape.circle),
+        child: Text(
+          FormatoPersonas.iniciales(persona),
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            height: 1,
+          ),
+        ),
+      ),
+    );
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        ExcludeSemantics(
-          child: Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: _navy, shape: BoxShape.circle),
-            child: Text(
-              FormatoPersonas.iniciales(persona),
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                height: 1,
-              ),
-            ),
+        Text(
+          nombre,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: ColoresLista.tinta,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Semantics(
-            key: ClavesHojaCasa.persona,
-            container: true,
-            label: debe == null ? nombre : '$nombre. $debe',
-            excludeSemantics: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  nombre,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: ColoresLista.tinta,
-                  ),
-                ),
-                if (debe != null)
-                  Text(
-                    debe,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      height: 1.4,
-                      color: ColoresLista.grisTexto,
-                    ),
-                  ),
-              ],
+        if (linea != null)
+          Text(
+            linea,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              height: 1.4,
+              color: ColoresLista.grisTexto,
             ),
           ),
-        ),
-        if (cobra && !grande) ...[
-          const SizedBox(width: 8),
-          _BotonCobrar(nombre: nombre, alPresionar: ocupada ? null : alCobrar),
-        ],
       ],
     );
+    final etiqueta = linea == null ? nombre : '$nombre. $linea';
+    final Widget izquierda = abre
+        ? Semantics(
+            key: ClavesHojaCasa.persona,
+            container: true,
+            button: true,
+            enabled: !ocupada,
+            label: etiqueta,
+            onTap: ocupada ? null : alAbrir,
+            excludeSemantics: true,
+            child: InkWell(
+              key: ClavesHojaCasa.abrirPersona,
+              borderRadius: BorderRadius.circular(10),
+              onTap: ocupada ? null : alAbrir,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Row(
+                  children: [
+                    avatar,
+                    const SizedBox(width: 12),
+                    Expanded(child: textos),
+                    if (!cobra) ...[
+                      const SizedBox(width: 8),
+                      const Text(
+                        '›',
+                        style: TextStyle(fontSize: 20, height: 1, color: ColoresLista.chevron),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          )
+        : Row(
+            children: [
+              avatar,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Semantics(
+                  key: ClavesHojaCasa.persona,
+                  container: true,
+                  label: etiqueta,
+                  excludeSemantics: true,
+                  child: textos,
+                ),
+              ),
+            ],
+          );
     // El texto de la persona y «$ Cobrar» son nodos aparte: el lector de pantalla tiene que poder
     // llegar al botón (un solo nodo con los hijos excluidos lo dejaría fuera).
     return Container(
@@ -135,11 +188,20 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
               children: [
-                cuerpo,
+                izquierda,
                 _BotonCobrar(nombre: nombre, alPresionar: ocupada ? null : alCobrar),
               ],
             )
-          : cuerpo,
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: izquierda),
+                if (cobra) ...[
+                  const SizedBox(width: 8),
+                  _BotonCobrar(nombre: nombre, alPresionar: ocupada ? null : alCobrar),
+                ],
+              ],
+            ),
     );
   }
 }
