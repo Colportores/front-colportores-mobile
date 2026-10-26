@@ -17,6 +17,7 @@ import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
+import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
@@ -56,6 +57,7 @@ part 'app_database.g.dart';
     Agendas,
     Visitas,
     HouseStatuses,
+    NotificacionesHistorial,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -81,10 +83,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 11: `agenda` y `visita` cuelgan del espacio (`espacio_id`), la persona es opcional, la agenda
   ///   usa los estados de la HU (`PROGRAMADA`, `CUMPLIDA`, `NO_CUMPLIDA`, `CANCELADA`) y la visita
   ///   suma el resultado `COBRANZA` (backend 0068 y 0069, #411).
+  /// - 12: `notificacion_historial`, el historial del centro de notificaciones, solo local
+  ///   (HU-NOT-005, #156).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 11;
+  static const int versionEsquema = 12;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -225,6 +229,11 @@ class AppDatabase extends _$AppDatabase {
       // `alterTable` vuelve a crear los índices que ya tenía cada tabla, no los nuevos.
       await m.createIndex(esquema.visitaEspacioIdx);
       await m.createIndex(esquema.agendaEspacioIdx);
+    },
+    // Solo crea el historial de avisos, vacío: nada de lo guardado cambia.
+    from11To12: (m, esquema) async {
+      await m.createTable(esquema.notificacionHistorial);
+      await m.createIndex(esquema.notificacionHistorialRecibidaIdx);
     },
   );
 }

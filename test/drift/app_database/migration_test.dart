@@ -15,6 +15,7 @@ import 'package:logger/logger.dart';
 import 'generated/schema.dart';
 import 'generated/schema_v10.dart' as v10;
 import 'generated/schema_v11.dart' as v11;
+import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -781,6 +782,51 @@ void main() {
           "updated_at, sync_version) VALUES ('vis-3', 'esp-1', 1, 'COBRANZA', 'col-1', 1, 1, 0)",
         );
         await nuevo.customStatement("UPDATE agenda SET estado = 'NO_CUMPLIDA' WHERE id = 'ag-1'");
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 11, cuando migra a la 12, no se pierde nada y aparece el '
+      'historial de avisos vacío y sin encolar nada', () async {
+    // #156: `notificacion_historial` es local-only (no se sincroniza): al migrar solo se crea.
+    const jornada = v11.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 11,
+      newVersion: 12,
+      createOld: v11.DatabaseAtV11.new,
+      createNew: v12.DatabaseAtV12.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(jornadas.single.syncVersion, 1);
+        expect(await nuevo.select(nuevo.notificacionHistorial).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nueva guarda un aviso y rechaza repetir el id.
+        await nuevo.customStatement(
+          'INSERT INTO notificacion_historial (id, tipo, titulo, recibida_en) '
+          "VALUES ('n-1', 'RECORDATORIO_VISITA', 'Cobranza a las 16:00', 1)",
+        );
+        await expectLater(
+          nuevo.customStatement(
+            'INSERT INTO notificacion_historial (id, tipo, titulo, recibida_en) '
+            "VALUES ('n-1', 'RECORDATORIO_VISITA', 'otro', 2)",
+          ),
+          throwsA(anything),
+        );
       },
     );
   });

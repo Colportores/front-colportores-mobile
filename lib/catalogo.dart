@@ -46,6 +46,9 @@ final specsDeLaApp = <SyncSpec>[
   // El cliente del colportor y sus notas: PII (Ley 18.331), solo en el teléfono.
   SyncSpec.local('persona'),
   SyncSpec.local('nota'),
+  // El historial del centro de notificaciones (HU-NOT-005): avisos de este teléfono, con la
+  // dirección de la visita en el texto; nunca sube.
+  SyncSpec.local('notificacion_historial'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).
