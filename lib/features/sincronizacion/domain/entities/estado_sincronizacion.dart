@@ -6,6 +6,7 @@ final class EstadoSincronizacion extends Equatable {
   const EstadoSincronizacion({
     this.pendientes = 0,
     this.invalidas = 0,
+    this.conflictos = 0,
     this.ultimoEnvio,
     this.ultimaActualizacion,
     this.ultimoRespaldo,
@@ -14,9 +15,13 @@ final class EstadoSincronizacion extends Equatable {
   });
 
   /// Operaciones que esperan para subir: las que todavía no salieron, las que van en camino y las
-  /// que esperan que se resuelva un conflicto (vista 10). Ninguna se pierde: salen solas cuando hay
-  /// conexión.
+  /// que esperan que se resuelva un conflicto (vista 10). Ninguna se pierde. Salen solas cuando hay
+  /// conexión, salvo las que esperan un conflicto ([conflictos]).
   final int pendientes;
+
+  /// De las [pendientes], las que esperan que la persona resuelva un conflicto (vista 10): no salen
+  /// solas hasta que lo resuelva, y la pantalla no puede prometer lo contrario.
+  final int conflictos;
 
   /// Operaciones que el servidor rechazó por su contenido. Nunca se reintentan solas: las reintenta
   /// la persona desde «Ver detalle» o «Reintentar» (HU-SYNC-007).
@@ -48,6 +53,7 @@ final class EstadoSincronizacion extends Equatable {
   List<Object?> get props => [
     pendientes,
     invalidas,
+    conflictos,
     ultimoEnvio,
     ultimaActualizacion,
     ultimoRespaldo,
@@ -124,7 +130,8 @@ final class ActualizacionCompleta extends ResultadoActualizacion {
   /// enviar»).
   final int rechazadas;
 
-  /// Operaciones que esperan que la persona resuelva un conflicto (vista 10).
+  /// Operaciones que esperan que la persona resuelva un conflicto (vista 10), contadas al terminar el
+  /// ciclo: incluye las que quedaron de ciclos anteriores.
   final int conflictos;
 
   @override

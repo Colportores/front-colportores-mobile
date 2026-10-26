@@ -100,6 +100,60 @@ void main() {
     });
   });
 
+  group('TextosSincronizacion con operaciones que esperan un conflicto', () {
+    test('should keep the promise only when nothing waits for a conflict', () {
+      expect(
+        TextosSincronizacion.pendientesDetalleDe(3, 0),
+        'Se envían solas cuando haya conexión.',
+      );
+    });
+
+    test('should not promise they leave on their own when all wait for a conflict', () {
+      expect(
+        TextosSincronizacion.pendientesDetalleDe(1, 1),
+        '1 espera que resuelvas un conflicto.',
+      );
+      expect(
+        TextosSincronizacion.pendientesDetalleDe(2, 2),
+        '2 esperan que resuelvas un conflicto.',
+      );
+    });
+
+    test('should tell apart the ones that wait from the ones that leave on their own', () {
+      expect(
+        TextosSincronizacion.pendientesDetalleDe(3, 2),
+        '2 esperan que resuelvas un conflicto. 1 se envía sola cuando haya conexión.',
+      );
+      expect(
+        TextosSincronizacion.pendientesDetalleDe(5, 1),
+        '1 espera que resuelvas un conflicto. 4 se envían solas cuando haya conexión.',
+      );
+    });
+
+    test('should say it also next to the rejected ones', () {
+      expect(
+        TextosSincronizacion.conErrorYPendientes(2, conflictos: 2),
+        'Hay 2 operaciones más sin enviar. 2 esperan que resuelvas un conflicto.',
+      );
+    });
+
+    test('should not say everything was up to date while something waits', () {
+      expect(
+        TextosSincronizacion.listo(const ActualizacionCompleta(conflictos: 2)),
+        'Listo: no había nada nuevo, pero 2 operaciones esperan que resuelvas un conflicto.',
+      );
+      expect(
+        TextosSincronizacion.listo(const ActualizacionCompleta(recibidas: 4, conflictos: 1)),
+        'Listo: recibimos 4 cambios, pero 1 operación espera que resuelvas un conflicto.',
+      );
+      expect(
+        TextosSincronizacion.listo(const ActualizacionCompleta(rechazadas: 1, conflictos: 1)),
+        'Listo: no había nada nuevo, pero 1 operación no se pudo enviar y 1 operación espera '
+        'que resuelvas un conflicto.',
+      );
+    });
+  });
+
   group('TextosSincronizacion nombres', () {
     test('should name the known tables and humanize the unknown ones', () {
       expect(TextosSincronizacion.nombreDeLaTabla('venta'), 'Venta');

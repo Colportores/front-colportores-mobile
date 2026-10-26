@@ -26,6 +26,20 @@ abstract final class TextosSincronizacion {
   static const alDiaConActualizacionEnEspera =
       'Tu avance llegó. Lo nuevo de tu coordinador espera al Wi-Fi.';
   static const pendientesDetalle = 'Se envían solas cuando haya conexión.';
+
+  /// Propuesta: de las [pendientes], [conflictos] esperan que la persona resuelva un conflicto
+  /// (vista 10) y no salen solas: no se promete lo contrario. Sin conflictos, [pendientesDetalle].
+  static String pendientesDetalleDe(int pendientes, int conflictos) {
+    if (conflictos <= 0) return pendientesDetalle;
+    final esperan = conflictos == 1
+        ? '1 espera que resuelvas un conflicto.'
+        : '$conflictos esperan que resuelvas un conflicto.';
+    final solas = pendientes - conflictos;
+    if (solas <= 0) return esperan;
+    final salen = solas == 1 ? '1 se envía sola' : '$solas se envían solas';
+    return '$esperan $salen cuando haya conexión.';
+  }
+
   static const actualizando = 'Actualizando…';
 
   /// Propuesta: la parte de bajar los cambios, cuando ya no queda nada por enviar.
@@ -42,9 +56,15 @@ abstract final class TextosSincronizacion {
       n == 1 ? '1 operación no se pudo enviar' : '$n operaciones no se pudieron enviar';
 
   /// Propuesta: hay rechazadas y además otras que todavía esperan salir.
-  static String conErrorYPendientes(int pendientes) => pendientes == 1
-      ? 'Hay 1 operación más esperando para enviarse.'
-      : 'Hay $pendientes operaciones más esperando para enviarse.';
+  static String conErrorYPendientes(int pendientes, {int conflictos = 0}) {
+    if (conflictos > 0) {
+      final mas = pendientes == 1 ? '1 operación más' : '$pendientes operaciones más';
+      return 'Hay $mas sin enviar. ${pendientesDetalleDe(pendientes, conflictos)}';
+    }
+    return pendientes == 1
+        ? 'Hay 1 operación más esperando para enviarse.'
+        : 'Hay $pendientes operaciones más esperando para enviarse.';
+  }
 
   // --- Las cifras ---
   static const filaUltimoEnvio = 'Último envío';
@@ -105,13 +125,21 @@ abstract final class TextosSincronizacion {
       if (r.recibidas > 0)
         r.recibidas == 1 ? 'recibimos 1 cambio' : 'recibimos ${r.recibidas} cambios',
     ];
-    final hecho = partes.isEmpty ? 'todo estaba al día' : partes.join(' y ');
-    if (r.rechazadas > 0) {
-      final no = r.rechazadas == 1
-          ? '1 operación no se pudo enviar'
-          : '${r.rechazadas} operaciones no se pudieron enviar';
-      return 'Listo: $hecho, pero $no.';
-    }
+    // Con operaciones esperando un conflicto no se dice «todo estaba al día»: no lo está.
+    final hecho = partes.isEmpty
+        ? (r.conflictos > 0 ? 'no había nada nuevo' : 'todo estaba al día')
+        : partes.join(' y ');
+    final peros = [
+      if (r.rechazadas > 0)
+        r.rechazadas == 1
+            ? '1 operación no se pudo enviar'
+            : '${r.rechazadas} operaciones no se pudieron enviar',
+      if (r.conflictos > 0)
+        r.conflictos == 1
+            ? '1 operación espera que resuelvas un conflicto'
+            : '${r.conflictos} operaciones esperan que resuelvas un conflicto',
+    ];
+    if (peros.isNotEmpty) return 'Listo: $hecho, pero ${peros.join(' y ')}.';
     return 'Listo: $hecho.';
   }
 

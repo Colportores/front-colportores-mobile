@@ -363,7 +363,10 @@ class _Estado extends ConsumerWidget {
         glifo: GlifoTarjeta.error,
         titulo: TextosSincronizacion.conError(estado.invalidas),
         detalle: estado.pendientes > 0
-            ? TextosSincronizacion.conErrorYPendientes(estado.pendientes)
+            ? TextosSincronizacion.conErrorYPendientes(
+                estado.pendientes,
+                conflictos: estado.conflictos,
+              )
             : TextosSincronizacion.conErrorDetalle,
         tituloKey: const Key('sincronizacion_titulo'),
         detalleKey: const Key('sincronizacion_detalle'),
@@ -374,7 +377,7 @@ class _Estado extends ConsumerWidget {
         glifo: GlifoTarjeta.pendientes,
         cantidad: estado.pendientes,
         titulo: TextosSincronizacion.pendientes(estado.pendientes),
-        detalle: TextosSincronizacion.pendientesDetalle,
+        detalle: TextosSincronizacion.pendientesDetalleDe(estado.pendientes, estado.conflictos),
         tituloKey: const Key('sincronizacion_titulo'),
         detalleKey: const Key('sincronizacion_detalle'),
       );

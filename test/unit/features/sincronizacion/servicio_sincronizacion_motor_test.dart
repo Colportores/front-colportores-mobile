@@ -36,6 +36,33 @@ _Banco _armar() {
   );
 }
 
+/// Un servidor que contesta «conflicto» a todo lo que sube: las operaciones quedan esperando que
+/// la persona resuelva un duplicado (vista 10).
+class _ServidorConConflicto implements SyncTransport {
+  @override
+  Future<PushResult> push(PushBatch batch) async => PushResult(
+    serverTime: DateTime.utc(2026, 10, 16),
+    results: [
+      for (final job in batch.jobs)
+        JobResult(
+          clientOpId: job.clientOpId,
+          outcome: JobOutcome.conflict,
+          code: '23505',
+          constraint: 'ubicacion_direccion_unica',
+        ),
+    ],
+  );
+
+  @override
+  Future<PullDelta> pull({required List<String> entities, String? watermark, int? limit}) async =>
+      PullDelta(
+        serverTime: DateTime.utc(2026, 10, 16),
+        watermark: watermark ?? '0',
+        hasMore: false,
+        rows: const {},
+      );
+}
+
 Future<void> _stage(SyncEngine motor, String entity, String id) =>
     motor.stage(entity, Op.insert, {'id': id}, clientOpId: 'op-$id');
 
@@ -171,6 +198,49 @@ void main() {
         final estado = await b.servicio.estado();
         expect(estado.invalidas, 1);
         expect(estado.pendientes, 0);
+      });
+    });
+
+    group('operaciones que esperan un conflicto', () {
+      late SyncEngine motor;
+      late ServicioSincronizacionMotor servicio;
+      late FakeConnectivityPort red;
+
+      setUp(() {
+        red = FakeConnectivityPort();
+        motor = SyncEngine(
+          specs: _registro(),
+          transport: _ServidorConConflicto(),
+          jobs: InMemoryJobStore(),
+          store: InMemoryLocalStore(),
+          connectivity: red,
+        );
+        servicio = ServicioSincronizacionMotor(motor);
+      });
+      tearDown(() async {
+        await motor.dispose();
+        await red.dispose();
+      });
+
+      test('should count them apart from the ones that leave on their own', () async {
+        await _stage(motor, 'venta', 'v-1');
+        await _stage(motor, 'visita', 'vi-1');
+        expect((await servicio.estado()).conflictos, 0);
+
+        await servicio.actualizarAhora();
+
+        final estado = await servicio.estado();
+        expect(estado.conflictos, greaterThan(0));
+        expect(estado.pendientes, estado.conflictos);
+      });
+
+      test('should keep reporting them on a later update that finds nothing new', () async {
+        await _stage(motor, 'venta', 'v-1');
+        await servicio.actualizarAhora();
+
+        final segundo = await servicio.actualizarAhora();
+
+        expect((segundo as ActualizacionCompleta).conflictos, greaterThan(0));
       });
     });
 

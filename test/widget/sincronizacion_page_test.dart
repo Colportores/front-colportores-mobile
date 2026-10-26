@@ -76,6 +76,46 @@ void main() {
       expect(textoDe(find.byKey(const Key('sincronizacion_pendientes'))), '3');
     });
 
+    testWidgets('should not promise they leave on their own when they wait for a conflict', (
+      tester,
+    ) async {
+      final t = TelefonoSync(estado: const EstadoSincronizacion(pendientes: 2, conflictos: 2));
+      await abrirSincronizacion(tester, t);
+
+      expect(textoDe(tarjetaTitulo), '2 operaciones sin enviar');
+      expect(textoDe(tarjetaDetalle), '2 esperan que resuelvas un conflicto.');
+    });
+
+    testWidgets('should tell the ones that wait apart from the ones that leave on their own', (
+      tester,
+    ) async {
+      final t = TelefonoSync(estado: const EstadoSincronizacion(pendientes: 3, conflictos: 1));
+      await abrirSincronizacion(tester, t);
+
+      expect(
+        textoDe(tarjetaDetalle),
+        '1 espera que resuelvas un conflicto. 2 se envían solas cuando haya conexión.',
+      );
+    });
+
+    testWidgets('should not say everything was up to date after an update with a conflict', (
+      tester,
+    ) async {
+      final t = TelefonoSync(estado: const EstadoSincronizacion(pendientes: 2, conflictos: 2));
+      t.servicio.resultado = const ActualizacionCompleta(conflictos: 2);
+      await abrirSincronizacion(tester, t);
+
+      await tocar(tester, botonActualizar);
+
+      expect(find.textContaining('todo estaba al día'), findsNothing);
+      expect(
+        find.text(
+          'Listo: no había nada nuevo, pero 2 operaciones esperan que resuelvas un conflicto.',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('should use the singular for one operation', (tester) async {
       final t = TelefonoSync(estado: const EstadoSincronizacion(pendientes: 1));
       await abrirSincronizacion(tester, t);

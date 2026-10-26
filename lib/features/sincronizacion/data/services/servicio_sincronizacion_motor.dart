@@ -20,6 +20,7 @@ final class ServicioSincronizacionMotor implements ServicioSincronizacion {
   static EstadoSincronizacion _traducir(SyncStatus s) => EstadoSincronizacion(
     pendientes: s.pending + s.inFlight + s.blocked + s.waiting,
     invalidas: s.invalid,
+    conflictos: s.blocked + s.waiting,
     ultimoEnvio: s.lastPushAt,
     ultimaActualizacion: s.lastPullAt,
     ultimoRespaldo: s.lastBackupAt,
@@ -42,11 +43,14 @@ final class ServicioSincronizacionMotor implements ServicioSincronizacion {
     if (salida.failure case final falla?) {
       return ActualizacionFallida(_motivo(falla), enviadas: salida.pushed);
     }
+    // Las que esperan un conflicto siguen ahí aunque este ciclo no haya encontrado ninguna nueva.
+    final esperando = await _motor.statusNow();
+    final enEspera = esperando.blocked + esperando.waiting;
     return ActualizacionCompleta(
       enviadas: salida.pushed,
       recibidas: salida.pulled,
       rechazadas: salida.invalidated,
-      conflictos: salida.conflicts,
+      conflictos: enEspera > salida.conflicts ? enEspera : salida.conflicts,
     );
   }
 
