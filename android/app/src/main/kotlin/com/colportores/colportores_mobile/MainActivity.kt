@@ -1,8 +1,11 @@
 package com.colportores.colportores_mobile
 
+import android.Manifest
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.StatFs
@@ -22,6 +25,97 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         registrarCanalSeguridadDispositivo(flutterEngine)
         registrarCanalAlmacenamientoTiles(flutterEngine)
+        registrarCanalNotificaciones(flutterEngine)
+    }
+
+    /**
+     * Canal `colportores/notificaciones` (HU-NOT-001, vista 24): el permiso de notificaciones del
+     * sistema. Del lado de Dart, `PermisoNotificacionesCanal`.
+     *
+     * - `estado` -> `"activadas"` o `"apagadas"` (`NotificationManager.areNotificationsEnabled`). Android
+     *   no distingue «nunca se preguntó» de «dijo que no»: eso lo recuerda la app.
+     * - `pedir` -> muestra el diálogo del sistema (Android 13 o más, `POST_NOTIFICATIONS`) y responde
+     *   cuando la persona contesta, con si quedaron activadas. Si el diálogo ya no se puede mostrar
+     *   (se negó dos veces) o el Android es anterior al 13, responde enseguida con el estado de ahora.
+     * - `abrirAjustes` -> abre los ajustes de notificaciones de la app y devuelve si pudo.
+     */
+    private fun registrarCanalNotificaciones(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_NOTIFICACIONES).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "estado" -> result.success(if (notificacionesActivadas()) "activadas" else "apagadas")
+                    "pedir" -> pedirPermisoNotificaciones(result)
+                    "abrirAjustes" -> result.success(abrirAjustesNotificaciones())
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("NOTIFICACIONES", e.javaClass.simpleName, null)
+            }
+        }
+    }
+
+    private fun notificacionesActivadas(): Boolean {
+        val administrador = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return administrador.areNotificationsEnabled()
+    }
+
+    /** El pedido de `pedir` que espera la respuesta del diálogo del sistema, si hay uno abierto. */
+    private var pedidoNotificaciones: MethodChannel.Result? = null
+
+    private fun pedirPermisoNotificaciones(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(notificacionesActivadas())
+            return
+        }
+        if (pedidoNotificaciones != null) {
+            // Ya hay un diálogo abierto: la app no pide dos veces, pero si llegara, no se cuelga.
+            result.error("NOTIFICACIONES", "EnCurso", null)
+            return
+        }
+        pedidoNotificaciones = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), CODIGO_NOTIFICACIONES)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != CODIGO_NOTIFICACIONES) return
+        val pedido = pedidoNotificaciones ?: return
+        pedidoNotificaciones = null
+        // El permiso concedido puede convivir con las notificaciones apagadas de la app en los ajustes:
+        // lo que vale es lo que el sistema dice ahora.
+        pedido.success(notificacionesActivadas())
+    }
+
+    /**
+     * Abre los ajustes de notificaciones de esta app (Android 8 o más) o, si no los tiene, los
+     * detalles de la app. `false` si ninguna abre.
+     */
+    private fun abrirAjustesNotificaciones(): Boolean {
+        val intentos = mutableListOf<Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intentos.add(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+            )
+        }
+        intentos.add(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)),
+        )
+        for (intento in intentos) {
+            try {
+                startActivity(intento.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                // Esa pantalla no existe en este equipo: se prueba la siguiente.
+            }
+        }
+        return false
     }
 
     /**
@@ -179,6 +273,8 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CANAL = "colportores/seguridad_dispositivo"
         private const val CANAL_TILES = "colportores/almacenamiento_tiles"
+        private const val CANAL_NOTIFICACIONES = "colportores/notificaciones"
+        private const val CODIGO_NOTIFICACIONES = 4711
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ALIAS_PRUEBA = "colportores_sonda_nivel_keystore"
     }

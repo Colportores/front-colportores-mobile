@@ -277,6 +277,10 @@ final class CustodiaClaveDb {
     ClaveSegura.zonasAvisadas,
     // Sigue siendo la misma instalación: el sync tiene que seguir diciendo el mismo id (§5.3).
     ClaveSegura.idInstalacion,
+    // Lo que se contestó del permiso de notificaciones (HU-NOT-001): recuperar los datos no vuelve
+    // a pedirlo ni a mostrar el aviso que ya se cerró.
+    ClaveSegura.permisoNotificaciones,
+    ClaveSegura.avisoNotificacionesCerrado,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -366,7 +370,8 @@ final class CustodiaClaveDb {
   /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado, la
   /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
   /// bloqueado, las zonas ya avisadas de cada inscripción y el id de la instalación (el sync estrena
-  /// uno, como en una reinstalación: la cola y la réplica también arrancan de cero).
+  /// uno, como en una reinstalación: la cola y la réplica también arrancan de cero) y lo contestado
+  /// del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir, HU-NOT-001).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -377,6 +382,8 @@ final class CustodiaClaveDb {
     ClaveSegura.bloqueoReenvioVerificacion,
     ClaveSegura.zonasAvisadas,
     ClaveSegura.idInstalacion,
+    ClaveSegura.permisoNotificaciones,
+    ClaveSegura.avisoNotificacionesCerrado,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

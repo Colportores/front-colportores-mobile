@@ -1,6 +1,7 @@
 import Flutter
 import LocalAuthentication
 import UIKit
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -15,6 +16,52 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     registrarCanalSeguridadDispositivo(engineBridge.pluginRegistry)
     registrarCanalAlmacenamientoTiles(engineBridge.pluginRegistry)
+    registrarCanalNotificaciones(engineBridge.pluginRegistry)
+  }
+
+  /// Canal `colportores/notificaciones` (HU-NOT-001, vista 24): el permiso de notificaciones del
+  /// sistema. Del lado de Dart, `PermisoNotificacionesCanal`.
+  ///
+  /// - `estado`: `"activadas"` (autorizadas o provisionales), `"sinPreguntar"` (iOS todavía no le
+  ///   preguntó a la persona) o `"apagadas"` (dijo que no, o las apagó en Ajustes).
+  /// - `pedir`: muestra el diálogo del sistema y responde cuando la persona contesta, con si
+  ///   quedaron activadas. Si iOS ya no puede preguntar, responde enseguida con lo que hay.
+  /// - `abrirAjustes`: abre los ajustes de la app (de ahí se llega a Notificaciones).
+  private func registrarCanalNotificaciones(_ registry: FlutterPluginRegistry) {
+    guard let registrar = registry.registrar(forPlugin: "PermisoNotificaciones") else { return }
+    let canal = FlutterMethodChannel(
+      name: "colportores/notificaciones",
+      binaryMessenger: registrar.messenger()
+    )
+    canal.setMethodCallHandler { call, result in
+      let centro = UNUserNotificationCenter.current()
+      switch call.method {
+      case "estado":
+        centro.getNotificationSettings { ajustes in
+          let estado: String
+          switch ajustes.authorizationStatus {
+          case .notDetermined: estado = "sinPreguntar"
+          case .denied: estado = "apagadas"
+          default: estado = "activadas"
+          }
+          DispatchQueue.main.async { result(estado) }
+        }
+      case "pedir":
+        centro.requestAuthorization(options: [.alert, .badge, .sound]) { concedido, _ in
+          DispatchQueue.main.async { result(concedido) }
+        }
+      case "abrirAjustes":
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+          result(false)
+          return
+        }
+        DispatchQueue.main.async {
+          UIApplication.shared.open(url, options: [:]) { abierta in result(abierta) }
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   /// Canal `colportores/almacenamiento_tiles` (HU-SYNC-010, #189): lo que la descarga de los mapas

@@ -456,6 +456,18 @@ void main() {
       expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1","insc-2":null}');
     });
 
+    test('conserva lo contestado sobre las notificaciones (HU-NOT-001): recuperar los datos no '
+        'vuelve a pedir el permiso ni a mostrar el aviso cerrado', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'ahora_no');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'ahora_no');
+      expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
+    });
+
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
           'marca", que se tomaría por una inicialización cortada (#81)', () async {
@@ -639,6 +651,29 @@ void main() {
 
       expect(almacen.contenido.containsKey(ClaveSegura.zonasAvisadas), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también lo contestado sobre las notificaciones (HU-NOT-001): la próxima persona '
+        'que entre en este teléfono ve el pedido', () async {
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'sistema');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.permisoNotificaciones), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.avisoNotificacionesCerrado), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'sistema');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'sistema');
+      expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca las zonas ya avisadas', () async {
