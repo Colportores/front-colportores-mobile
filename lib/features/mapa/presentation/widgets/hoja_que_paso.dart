@@ -153,6 +153,10 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
 
   String? _falla;
 
+  /// Donde vive el aviso de falla: para llevar la hoja hasta él (con texto grande la persona ya
+  /// bajó hasta el renglón que tocó).
+  final _lugarDeLaFalla = GlobalKey();
+
   Future<void> _elegir(OpcionQuePaso opcion) async {
     if (_corriendo != null || _cerrando) return;
     _corriendo = opcion;
@@ -175,6 +179,17 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
         setState(() {
           _corriendo = null;
           _falla = texto;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final lugar = _lugarDeLaFalla.currentContext;
+          if (!mounted || lugar == null) return;
+          unawaited(
+            Scrollable.ensureVisible(
+              lugar,
+              duration: const Duration(milliseconds: 150),
+              alignment: 0.05,
+            ),
+          );
         });
     }
   }
@@ -259,21 +274,26 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
               style: theme.textTheme.bodyMedium?.copyWith(color: _Canvas.ayuda, height: 1.5),
             ),
             const SizedBox(height: 16),
+            // Arriba de los renglones: con texto grande lo de abajo queda fuera de la vista y la
+            // persona no se enteraría de que falló.
+            if (_falla != null) ...[
+              KeyedSubtree(
+                key: _lugarDeLaFalla,
+                child: AvisoAlta(
+                  key: ClavesQuePaso.falla,
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _falla!,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             for (final fila in _filas()) ...[
               _Renglon(
                 fila: fila,
                 corriendo: _corriendo == fila.opcion,
                 apagado: ocupada,
                 alTocar: () => unawaited(_elegir(fila.opcion)),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (_falla != null) ...[
-              AvisoAlta(
-                key: ClavesQuePaso.falla,
-                color: ColoresAlta.rojo,
-                glyph: '!',
-                texto: _falla!,
               ),
               const SizedBox(height: 10),
             ],

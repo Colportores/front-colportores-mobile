@@ -44,9 +44,6 @@ const _guardadoRechazo = 'Guardado. Grecia 3307 quedó como «Rechazo».';
 
 Finder get _deshacer => find.text('Deshacer');
 
-/// Corre también los tests que documentan un hallazgo de QA (`skip` mientras no se arregle).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 /// Cuántos píxeles puede sobresalir un texto de la pantalla por redondeos.
 const _tolerancia = 0.6;
 
@@ -334,24 +331,19 @@ void main() {
   // El aviso de error tiene que verse sin que la persona deba adivinar que hay que desplazar.
   // ---------------------------------------------------------------------------------------------
   group('el aviso de falla queda a la vista', () {
-    // `hallazgo`: los casos que hoy fallan (hallazgo de QA #411). Se corren con
-    // `--dart-define=QA_HALLAZGOS=true`; el implementador saca el `skip` al arreglarlo.
     for (final caso in [
-      (cinco: false, tamano: t320x568, escala: 2.0, hallazgo: true),
-      (cinco: false, tamano: t320x568, escala: 3.0, hallazgo: true),
-      (cinco: true, tamano: t360x640, escala: 1.0, hallazgo: false),
-      (cinco: true, tamano: t360x640, escala: 1.3, hallazgo: false),
-      (cinco: true, tamano: t360x640, escala: 1.5, hallazgo: true),
-      (cinco: true, tamano: t360x640, escala: 2.0, hallazgo: true),
-      (cinco: true, tamano: t412x915, escala: 2.0, hallazgo: true),
+      (cinco: false, tamano: t320x568, escala: 2.0),
+      (cinco: false, tamano: t320x568, escala: 3.0),
+      (cinco: true, tamano: t360x640, escala: 1.0),
+      (cinco: true, tamano: t360x640, escala: 1.3),
+      (cinco: true, tamano: t360x640, escala: 1.5),
+      (cinco: true, tamano: t360x640, escala: 2.0),
+      (cinco: true, tamano: t412x915, escala: 2.0),
     ]) {
       testWidgets(
         '${caso.cinco ? 'cinco opciones' : 'dos opciones'} · ${sufijo411(caso.tamano, caso.escala)}: '
         'dado una falla al tocar «No contestó», cuando la hoja la muestra, el aviso rojo queda '
         'entero dentro de la pantalla sin desplazar',
-        // skip: QA #411 — con texto grande el aviso rojo queda debajo de los renglones y de la vista
-        // (no hay desplazamiento hacia él): la persona no se entera de que falló.
-        skip: caso.hallazgo && !_verHallazgos,
         (tester) async {
           final repo = AgendaRepositorioFalso()
             ..resultados.add(const FailureInesperado(causa: 'StateError'));
