@@ -514,9 +514,7 @@ void main() {
       await montarBajaConNombre(tester, 'Maximiliano Alejandro 🙂', 'Fernández de la Peña');
 
       sinTextoCortado(tester);
-      // skip: QA #143 — la fila de la baja corta con «…» un nombre de 45 caracteres a 200 % (maxLines 3,
-      // igual que la fila de un cliente activo, #140): no se lee quién es sin el lector.
-    }, skip: true);
+    });
 
     testWidgets('Mostrar bajas se anuncia como interruptor con su estado y mide al menos 48 dp', (
       tester,

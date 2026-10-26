@@ -452,8 +452,8 @@ class _FilaBaja extends StatelessWidget {
               children: [
                 Text(
                   nombre,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: _lineasDelNombre(context),
+                  overflow: _desborde(context),
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -598,8 +598,8 @@ class _FilaCliente extends StatelessWidget {
                 children: [
                   Text(
                     nombre,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: _lineasDelNombre(context),
+                    overflow: _desborde(context),
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
@@ -774,3 +774,12 @@ class _ErrorDeLectura extends StatelessWidget {
     );
   }
 }
+
+/// Cuántos renglones tiene el nombre de una fila: tres, salvo con el texto grande (más de 1,5×), donde
+/// no se corta nunca: sin el lector de pantalla no habría otra forma de saber quién es la persona.
+int? _lineasDelNombre(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(1) > 1.5 ? null : 3;
+
+/// Con el nombre sin recorte tampoco lleva «…».
+TextOverflow _desborde(BuildContext context) =>
+    _lineasDelNombre(context) == null ? TextOverflow.clip : TextOverflow.ellipsis;
