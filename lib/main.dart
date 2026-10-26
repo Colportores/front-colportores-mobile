@@ -39,6 +39,7 @@ import 'features/configuracion/data/repositories/aviso_privacidad_repository_imp
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -194,6 +195,15 @@ Future<void> main() async {
               colportorId: ref.read(sesionProvider).value?.usuarioId,
             );
           },
+        ),
+        // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
+        // el teléfono. La pestaña Historial se engancha con su HU (#446).
+        pestanaNotasDeLaCasaProvider.overrideWithValue(
+          (context, contexto) => PestanaNotasDeLaCasa(
+            ubicacionId: contexto.ubicacionId,
+            colportorId: contexto.colportorId,
+            soloLectura: contexto.esBaja,
+          ),
         ),
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),

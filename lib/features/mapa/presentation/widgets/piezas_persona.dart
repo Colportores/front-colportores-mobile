@@ -36,8 +36,9 @@ class AvisoPrivacidadPersona extends ConsumerStatefulWidget {
     this.texto = TextosPersonas.privacidad,
   });
 
-  /// UUID del usuario con la sesión iniciada: la preferencia es de su cuenta.
-  final String colportorId;
+  /// UUID del usuario con la sesión iniciada: la preferencia es de su cuenta. Sin él (`null`) no hay
+  /// de quién guardar la preferencia: el aviso se ve siempre y no ofrece esconderse.
+  final String? colportorId;
 
   /// El aviso: el de los datos de una persona, o el de sus notas («Estas notas viven solo en tu
   /// celular.», vista 32E). La preferencia de esconderlo es la misma para todos.
@@ -59,14 +60,13 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
   bool _fallo = false;
 
   Future<void> _noVolverAMostrar() async {
-    if (_guardando) return;
+    final cuenta = widget.colportorId;
+    if (_guardando || cuenta == null) return;
     _guardando = true;
     setState(() => _fallo = false);
     var guardado = false;
     try {
-      guardado = await ref
-          .read(avisoPrivacidadOcultoProvider(widget.colportorId).notifier)
-          .ocultar();
+      guardado = await ref.read(avisoPrivacidadOcultoProvider(cuenta).notifier).ocultar();
     } finally {
       _guardando = false;
     }
@@ -79,7 +79,10 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
 
   @override
   Widget build(BuildContext context) {
-    final oculto = ref.watch(avisoPrivacidadOcultoProvider(widget.colportorId)).value ?? false;
+    final cuenta = widget.colportorId;
+    final oculto = cuenta == null
+        ? false
+        : ref.watch(avisoPrivacidadOcultoProvider(cuenta)).value ?? false;
     if (oculto) {
       return _recienEscondido ? const _AvisoEscondido() : const SizedBox.shrink();
     }
@@ -120,7 +123,10 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
                         ),
                       ),
                     ),
-                    _NoVolverAMostrar(alTocar: _noVolverAMostrar, guardando: _guardando),
+                    if (cuenta != null)
+                      _NoVolverAMostrar(alTocar: _noVolverAMostrar, guardando: _guardando)
+                    else
+                      const SizedBox(height: 8),
                   ],
                 ),
               ),

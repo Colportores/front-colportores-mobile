@@ -1,5 +1,5 @@
 import '../domain/entities/contexto_notas_persona.dart';
-import '../domain/entities/nota_persona.dart';
+import '../domain/entities/nota_de_texto.dart';
 import '../domain/services/validador_nota.dart';
 
 /// Los textos de las vistas de las notas de una persona (vista 32E, HU-UBI-012). Los del canvas van
@@ -42,6 +42,13 @@ abstract final class TextosNotas {
   static const noPudimosRestaurar = 'No pudimos restaurar la nota. Probá de nuevo.';
   static const noPudimosDeshacer =
       'No pudimos deshacer el borrado. La nota sigue en «Ver borradas»: podés restaurarla desde ahí.';
+
+  /// Las notas de un lugar (vista 39, C·05). `notaDelLugar` es el del canvas; el resto, a confirmar.
+  static const notaDelLugar = '+ Nota del lugar';
+  static const tituloDelLugar = 'Notas del lugar';
+  static const noPudimosLeerDelLugar = 'No pudimos leer las notas del lugar en tu teléfono.';
+  static const soloLecturaDelLugar =
+      'Este lugar está dado de baja. Podés ver sus notas, pero no agregar, editar ni borrar ninguna.';
 
   static String titulo(String nombre) => 'Notas de $nombre';
 
@@ -104,21 +111,21 @@ abstract final class FormatoNotas {
   static String diaMes(DateTime fecha, DateTime ahora) => _dia(fecha.toLocal(), ahora.toLocal());
 
   /// «HOY 14:20» si se escribió hoy; «05/10» (o «05/10/25» de otro año) si no. Con la hora local.
-  static String fecha(NotaPersona nota, DateTime ahora) {
+  static String fecha(NotaDeTexto nota, DateTime ahora) {
     final local = nota.auditoria.createdAt.toLocal();
     final hoy = ahora.toLocal();
     return _esHoy(local, hoy) ? 'HOY ${_hora(local)}' : _dia(local, hoy);
   }
 
   /// Lo que lee el lector de pantalla: «hoy a las 14:20», «el 05/10».
-  static String fechaParaLector(NotaPersona nota, DateTime ahora) {
+  static String fechaParaLector(NotaDeTexto nota, DateTime ahora) {
     final local = nota.auditoria.createdAt.toLocal();
     final hoy = ahora.toLocal();
     return _esHoy(local, hoy) ? 'hoy a las ${_hora(local)}' : 'el ${_dia(local, hoy)}';
   }
 
   /// El título de la hoja de una nota: «Nota de hoy 14:20», «Nota del 05/10».
-  static String tituloDelMenu(NotaPersona nota, DateTime ahora) {
+  static String tituloDelMenu(NotaDeTexto nota, DateTime ahora) {
     final local = nota.auditoria.createdAt.toLocal();
     final hoy = ahora.toLocal();
     return _esHoy(local, hoy) ? 'Nota de hoy ${_hora(local)}' : 'Nota del ${_dia(local, hoy)}';
