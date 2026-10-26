@@ -273,6 +273,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('inicio_configuracion')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));

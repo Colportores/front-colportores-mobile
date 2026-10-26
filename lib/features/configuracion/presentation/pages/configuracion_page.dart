@@ -16,6 +16,8 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
+import '../../../sincronizacion/presentation/pages/sincronizacion_page.dart';
+import '../../../sincronizacion/presentation/textos_sincronizacion.dart';
 import '../providers/nombre_cuenta_provider.dart';
 import '../widgets/hoja_cerrar_sesion.dart';
 import 'borrar_datos_locales_page.dart';
@@ -242,6 +244,25 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () =>
                                 unawaited(Navigator.of(context).push(NotificacionesPage.ruta())),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      // Estado de la sincronización, «Actualizar ahora» y modo ahorro de datos
+                      // (HU-SYNC-007 y HU-SYNC-008, vista 25).
+                      const _TituloSeccion(TextosSincronizacion.seccionConfiguracion),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [
+                          ListTile(
+                            key: const Key('configuracion_sincronizacion'),
+                            minVerticalPadding: 12,
+                            leading: const Icon(Icons.sync),
+                            title: const Text(TextosSincronizacion.filaConfiguracion),
+                            subtitle: const Text(TextosSincronizacion.filaConfiguracionDetalle),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                unawaited(Navigator.of(context).push(SincronizacionPage.ruta())),
                           ),
                         ],
                       ),

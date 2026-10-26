@@ -18,6 +18,7 @@ import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
 import '../logging/app_logger.dart';
 import 'encolador_sync.dart';
+import 'modo_ahorro_providers.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
 // `packages/sync_engine`, `lib/datos/`, `lib/plataforma/`); esto lo arma con lo que la app ya tiene:
@@ -63,6 +64,10 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
     connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
   );
+  // El modo ahorro de datos (HU-SYNC-008): el motor arranca con lo guardado (el primer ciclo ya
+  // puede bajar por datos móviles) y sigue cada cambio de la pantalla de sincronización.
+  motor.setDataSaver(ref.read(modoAhorroProvider));
+  ref.listen(modoAhorroProvider, (_, activo) => motor.setDataSaver(activo));
   ref.onDispose(() => unawaited(motor.dispose()));
   return motor;
 });
