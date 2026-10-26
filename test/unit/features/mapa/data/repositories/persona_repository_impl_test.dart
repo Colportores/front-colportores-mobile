@@ -29,6 +29,30 @@ final class _Local implements PersonaLocalDataSource {
 
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) => const Stream.empty();
+
+  @override
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) => const Stream.empty();
+
+  @override
+  Future<Persona> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  }) async {
+    final error = lanza;
+    if (error != null) throw error;
+    return baja!;
+  }
+
+  @override
+  Future<Persona> reactivar({required String personaId, required DateTime ahora}) async {
+    final error = lanza;
+    if (error != null) throw error;
+    return baja!;
+  }
+
+  /// Lo que devuelven [darDeBaja] y [reactivar].
+  Persona? baja;
 }
 
 void main() {
@@ -89,6 +113,51 @@ void main() {
       expect('${falla.props}', isNot(contains('099')));
     },
   );
+
+  group('baja y reactivación (HU-UBI-011)', () {
+    test('dada una baja que sale bien, devuelve la persona', () async {
+      local.baja = persona;
+
+      final r = await repositorio.darDeBaja(personaId: 'per-1', ahora: t0, motivo: 'Se mudó');
+
+      expect(r.getOrElse(() => throw StateError('falló')), persona);
+    });
+
+    test(
+      'dada una persona de solo lectura, la baja devuelve una validación con el mensaje',
+      () async {
+        local.lanza = const PersonaRechazadaException(MotivoRechazoPersona.personaSoloLectura);
+
+        final r = await repositorio.darDeBaja(personaId: 'per-1', ahora: t0);
+
+        final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
+        expect(falla.campos['persona'], MotivoRechazoPersona.personaSoloLectura.mensaje);
+      },
+    );
+
+    test('dada una persona que ya no está, reactivar devuelve una validación', () async {
+      local.lanza = const PersonaRechazadaException(MotivoRechazoPersona.personaInexistente);
+
+      final r = await repositorio.reactivar(personaId: 'per-1', ahora: t0);
+
+      final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
+      expect(falla.campos['persona'], MotivoRechazoPersona.personaInexistente.mensaje);
+    });
+
+    test('dado un error inesperado con datos personales, la falla no los lleva', () async {
+      local.lanza = StateError('UPDATE persona SET nombre = Ana Martínez 099 123 456');
+
+      final baja = await repositorio.darDeBaja(personaId: 'per-1', ahora: t0, motivo: 'Secreto');
+      final reactivacion = await repositorio.reactivar(personaId: 'per-1', ahora: t0);
+
+      for (final r in [baja, reactivacion]) {
+        final falla = r.fold((f) => f, (_) => null);
+        expect(falla, isA<FailureInesperado>());
+        expect('${falla!.props}', isNot(contains('Martínez')));
+        expect('${falla.props}', isNot(contains('Secreto')));
+      }
+    });
+  });
 
   test('dado un vínculo, cuando se arma el payload de sync, lleva solo ids y auditoría', () {
     final json = EspacioPersonaModel.fromEntity(vinculo).toJson();

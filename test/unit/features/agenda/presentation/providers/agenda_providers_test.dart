@@ -4,6 +4,8 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/core/sync/sync_providers.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/house_status_providers.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -70,5 +72,54 @@ void main() {
     expect((await db.select(db.agendas).get()).single.id, 'age-1');
     expect(encolador.encolados.map((e) => e.entidad), ['agenda', 'house_status']);
     expect((await db.select(db.houseStatuses).get()).single.color, 'ENTREVISTA_PROGRAMADA');
+  });
+
+  test('con la DB abierta, el caso de uso del resultado guarda la visita con el reloj y los ids '
+      'del provider', () async {
+    await sembrarCasa(db);
+    var n = 0;
+    final c = ProviderContainer(
+      overrides: [
+        dbLocalProvider.overrideWith(() => _DbFija(db)),
+        encoladorSyncProvider.overrideWithValue(encolador),
+        generadorIdVisitaProvider.overrideWithValue(() => 'id-${++n}'),
+        relojVisitaProvider.overrideWithValue(() => DateTime.utc(2026, 10, 23, 16)),
+      ],
+    );
+    addTearDown(c.dispose);
+    final casoDeUso = c.read(registrarResultadoVisitaUseCaseProvider);
+
+    final r = await casoDeUso(
+      RegistrarResultadoVisitaParams(
+        ids: casoDeUso.nuevosIds(),
+        espacioId: 'esp-1',
+        espacioPersonaId: 'ep-1',
+        colportorId: 'col-1',
+        resultado: TipoResultadoVisita.rechazo,
+      ),
+    );
+
+    expect(r.isRight(), isTrue);
+    final visita = (await db.select(db.visitas).get()).single;
+    expect(
+      [visita.id, visita.tipoResultado, visita.fecha],
+      ['id-1', 'RECHAZO', DateTime.utc(2026, 10, 23, 16)],
+    );
+    expect((await db.select(db.houseStatuses).get()).single.color, 'RECHAZO');
+  });
+
+  test('sin la DB abierta, el caso de uso del resultado lanza', () {
+    final c = armar(conDb: false);
+
+    expect(
+      () => c.read(registrarResultadoVisitaUseCaseProvider),
+      throwsA(
+        isA<ProviderException>().having(
+          (e) => e.toString(),
+          'mensaje',
+          contains('La base de datos local no está abierta'),
+        ),
+      ),
+    );
   });
 }

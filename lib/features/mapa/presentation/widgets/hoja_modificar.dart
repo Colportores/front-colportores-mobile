@@ -21,6 +21,14 @@ import 'piezas_alta.dart';
 /// espacios…», «Las nuevas coordenadas están a …», «Esta ubicación está en baja…») salen del caso de
 /// uso y del `Failure`; los rótulos son los de «TEXTOS PROPUESTA» del canvas. Lo que el canvas no
 /// dice está marcado como provisorio (pendientes de #202).
+/// Los textos del aviso «¿Descartar lo que escribiste?» ([confirmarDescartarLoEscrito]).
+abstract final class TextosDescartar {
+  static const titulo = '¿Descartar lo que escribiste?';
+  static const cuerpo = 'Si salís ahora, lo que escribiste no se guarda.';
+  static const seguirEscribiendo = 'Seguir escribiendo';
+  static const descartar = 'Descartar';
+}
+
 abstract final class TextosModificar {
   // Canvas 07.
   static const tituloEditar = 'EDITAR UBICACIÓN';

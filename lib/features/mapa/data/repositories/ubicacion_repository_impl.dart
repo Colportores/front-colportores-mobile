@@ -5,6 +5,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
+import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
@@ -362,8 +363,8 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       )
       .map((modelos) => [for (final m in modelos) m.toEntity()]);
 
-  // Sin cache local de `house_status` (HU-VIS-005, #151): el estado no se sabe y se devuelve `null`
-  // en vez de afirmar «Sin visita» para todas. Cuando exista, se lee acá junto con los espacios.
+  // El estado sale de la cache local `house_status` (ADR-003), que se lee junto con los espacios: sin
+  // fila la casa es «Sin visita». Lo que la lista y el mapa dibujan sale de acá, en el mismo cuadro.
   @override
   Stream<List<UbicacionConResumen>> observarListaDelColportor({
     required String colportorId,
@@ -376,6 +377,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
             UbicacionConResumen(
               ubicacion: f.ubicacion.toEntity(),
               cantidadEspacios: f.cantidadEspacios,
+              estado: EstadoCasa.desdeColor(f.color),
               motivoBaja: f.motivoBaja,
             ),
         ],

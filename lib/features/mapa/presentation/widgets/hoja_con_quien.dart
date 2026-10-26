@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/persona_de_la_entrevista.dart';
 import '../../domain/entities/persona_del_espacio.dart';
@@ -38,17 +39,57 @@ Future<PersonaDeLaEntrevista?> mostrarHojaConQuien(
   required String espacioId,
   required String colportorId,
 }) async {
+  final r = await _abrir(
+    context,
+    espacioId: espacioId,
+    colportorId: colportorId,
+    paraProgramar: false,
+  );
+  return r is PersonaDeLaEntrevista ? r : null;
+}
+
+/// El mismo paso para **programar** una entrevista (vista 39, «Programar entrevista» → «¿Con quién es la
+/// entrevista?»): devuelve con quién queda la cita, o `null` si la colportora tocó «Volver» o cerró sin
+/// elegir. A diferencia de [mostrarHojaConQuien], la cita puede quedar sin persona:
+///
+/// - Sin personas: **no muestra nada** y devuelve [CitaSinPersona] (el nombre se pide al dar la
+///   entrevista, no al agendarla).
+/// - Con una sola: no muestra nada y devuelve [CitaConPersona] con ella.
+/// - Con varias: la lista con «Seguir», «+ Alguien nuevo» y «Todavía no sé con quién».
+Future<EleccionDeCita?> mostrarHojaConQuienParaProgramar(
+  BuildContext context, {
+  required String espacioId,
+  required String colportorId,
+}) async {
+  final r = await _abrir(
+    context,
+    espacioId: espacioId,
+    colportorId: colportorId,
+    paraProgramar: true,
+  );
+  return r is EleccionDeCita ? r : null;
+}
+
+Future<Object?> _abrir(
+  BuildContext context, {
+  required String espacioId,
+  required String colportorId,
+  required bool paraProgramar,
+}) async {
   // La lectura previa evita que, con una sola persona, la hoja se abra para cerrarse enseguida.
   try {
     final repo = ProviderScope.containerOf(context, listen: false).read(personaRepositoryProvider);
     final previas = await repo.observarDelEspacio(espacioId).first.timeout(_esperaPrevia);
     final paso = PasoConQuien.de(previas);
-    if (paso is UnaPersona) return paso.elegida;
+    if (paso is UnaPersona) {
+      return paraProgramar ? CitaConPersona(paso.elegida) : paso.elegida;
+    }
+    if (paso is SinPersonas && paraProgramar) return const CitaSinPersona();
   } on Object {
     // Sin lectura a tiempo o con una falla: la hoja lo muestra («cargando» o el aviso con «Reintentar»).
   }
   if (!context.mounted) return null;
-  return showModalBottomSheet<PersonaDeLaEntrevista>(
+  return showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -59,7 +100,8 @@ Future<PersonaDeLaEntrevista?> mostrarHojaConQuien(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => HojaConQuien(espacioId: espacioId, colportorId: colportorId),
+    builder: (_) =>
+        HojaConQuien(espacioId: espacioId, colportorId: colportorId, paraProgramar: paraProgramar),
   );
 }
 
@@ -76,13 +118,23 @@ enum _Modo { formulario, lista }
 /// - Mientras se guarda no se puede cerrar; si falla, el aviso rojo y la acción vuelve a quedar
 ///   habilitada con lo escrito.
 class HojaConQuien extends ConsumerStatefulWidget {
-  const HojaConQuien({super.key, required this.espacioId, required this.colportorId});
+  const HojaConQuien({
+    super.key,
+    required this.espacioId,
+    required this.colportorId,
+    this.paraProgramar = false,
+  });
 
   /// El espacio visitado. En un edificio es siempre el depto, nunca el edificio entero.
   final String espacioId;
 
   /// UUID del usuario con la sesión iniciada (`created_by`).
   final String colportorId;
+
+  /// El paso de **programar** una entrevista: la cita puede quedar sin persona (ver
+  /// [mostrarHojaConQuienParaProgramar]). Sale con un [EleccionDeCita] en vez de una
+  /// [PersonaDeLaEntrevista].
+  final bool paraProgramar;
 
   @override
   ConsumerState<HojaConQuien> createState() => _HojaConQuienState();
@@ -146,17 +198,21 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     );
   }
 
-  void _cerrarCon(PersonaDeLaEntrevista? resultado) {
+  /// Lo que entrega la hoja con [elegida]: la persona sola, o la cita con ella al programar.
+  Object _resultadoDe(PersonaDeLaEntrevista elegida) =>
+      widget.paraProgramar ? CitaConPersona(elegida) : elegida;
+
+  void _cerrarCon(Object? resultado) {
     if (_cerrando) return;
     _cerrando = true;
     Navigator.of(context).pop(resultado);
   }
 
   /// Con una sola persona el paso se salta: se cierra apenas termina el cuadro.
-  void _saltar(PersonaDeLaEntrevista elegida) {
+  void _saltar(Object resultado) {
     if (_cerrando) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _cerrarCon(elegida);
+      if (mounted) _cerrarCon(resultado);
     });
   }
 
@@ -239,6 +295,8 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     final personas = datos.value;
     if (_modo == null && personas != null) {
       switch (PasoConQuien.de(personas)) {
+        case SinPersonas() when widget.paraProgramar:
+          _saltar(const CitaSinPersona());
         case SinPersonas():
           _modo = _Modo.formulario;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -247,7 +305,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
         case VariasPersonas():
           _modo = _Modo.lista;
         case UnaPersona(:final elegida):
-          _saltar(elegida);
+          _saltar(_resultadoDe(elegida));
       }
     }
 
@@ -368,10 +426,26 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
           child: ListView.separated(
             shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-            itemCount: personas.length + 2,
+            itemCount: personas.length + (widget.paraProgramar ? 3 : 2),
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
-              if (i == 0) return const _Encabezado(titulo: TextosConQuien.tituloConPersonas);
+              if (i == 0) {
+                return _Encabezado(
+                  titulo: widget.paraProgramar
+                      ? TextosConQuien.tituloProgramar
+                      : TextosConQuien.tituloConPersonas,
+                );
+              }
+              if (widget.paraProgramar && i == personas.length + 2) {
+                // Solo al programar: la cita puede quedar sin nombre.
+                return _FilaOpcion(
+                  key: ClavesConQuien.todaviaNoSe,
+                  titulo: TextosConQuien.todaviaNoSe,
+                  etiquetaLector: TextosConQuien.todaviaNoSe,
+                  seleccionable: false,
+                  alTocar: _abriendoAlta ? null : () => _cerrarCon(const CitaSinPersona()),
+                );
+              }
               if (i == personas.length + 1) {
                 return _FilaOpcion(
                   titulo: TextosConQuien.alguienNuevo,
@@ -421,9 +495,12 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
                         // seguidos (elegir y empezar) no pueden devolver a la anterior.
                         _elegidaDe(
                           ref.read(personasDelEspacioProvider(widget.espacioId)).value ?? personas,
-                        )?.aLaEntrevista,
+                        )?.aLaEntrevista.paraLaHoja(paraProgramar: widget.paraProgramar),
                       ),
-                child: const Text(TextosConQuien.empezar, textAlign: TextAlign.center),
+                child: Text(
+                  widget.paraProgramar ? TextosConQuien.seguir : TextosConQuien.empezar,
+                  textAlign: TextAlign.center,
+                ),
               ),
               const SizedBox(height: 10),
               _BotonVolver(alTocar: () => _cerrarCon(null)),
@@ -489,6 +566,7 @@ class _Encabezado extends StatelessWidget {
 /// excluyentes; «+ Alguien nuevo» no se elige, abre el alta.
 class _FilaOpcion extends StatelessWidget {
   const _FilaOpcion({
+    super.key,
     required this.titulo,
     required this.etiquetaLector,
     required this.alTocar,
@@ -668,4 +746,14 @@ class _ErrorDeLectura extends StatelessWidget {
       ),
     );
   }
+}
+
+extension on PersonaDeLaEntrevista {
+  /// Lo que entrega la hoja al elegir a esta persona: ella sola, o la cita con ella al programar.
+  Object paraLaHoja({required bool paraProgramar}) => paraProgramar ? CitaConPersona(this) : this;
+}
+
+/// Las claves de la hoja «¿Con quién?» (para los tests y la QA).
+abstract final class ClavesConQuien {
+  static const todaviaNoSe = Key('con_quien_todavia_no_se');
 }

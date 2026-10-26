@@ -222,7 +222,7 @@ void main() {
         expect(resultado.conflicts, 0);
         expect((await cola()).pending, 0);
         final subida = servidor.rowsOf('agenda').single;
-        expect(subida['estado'], 'COMPLETADA');
+        expect(subida['estado'], 'CUMPLIDA');
         expect(subida['visita_id'], 'vis-1');
         expect(subida['es_estricta'], true);
         expect(servidor.rowsOf('visita').single['tipo_resultado'], 'ENTREVISTA');
@@ -236,7 +236,7 @@ void main() {
     );
 
     test(
-      'la visita espontánea sube con su agenda COMPLETADA: la visita primero y sin conflictos',
+      'la visita espontánea sube con su agenda CUMPLIDA: la visita primero y sin conflictos',
       () async {
         await agenda.registrarVisita(visitaDe('vis-1', creada: t0));
 
@@ -246,7 +246,7 @@ void main() {
         expect(resultado.conflicts, 0);
         expect((await cola()).pending, 0);
         final subida = servidor.rowsOf('agenda').single;
-        expect(subida['estado'], 'COMPLETADA');
+        expect(subida['estado'], 'CUMPLIDA');
         expect(subida['tipo'], 'ENTREVISTA');
         expect(subida['visita_id'], 'vis-1');
         expect(servidor.rowsOf('visita').single['id'], 'vis-1');
@@ -334,7 +334,7 @@ void main() {
 
       expect(resultado.ok, isTrue);
       expect((await cola()).pending, 0);
-      expect(servidor.rowsOf('agenda').single['estado'], 'COMPLETADA');
+      expect(servidor.rowsOf('agenda').single['estado'], 'CUMPLIDA');
       expect(servidor.rowsOf('house_status').single['color'], 'ENTREVISTA_SIN_VENTA');
     });
   });

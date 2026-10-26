@@ -159,8 +159,8 @@ abstract interface class UbicacionRepository {
   /// Reactivo: emite de nuevo ante cualquier cambio de ubicaciones o espacios. Trae las de baja solo
   /// si [incluirBajas].
   ///
-  /// `UbicacionConResumen.estado` es siempre `null` hasta que exista la cache local de
-  /// `house_status` (HU-VIS-005, #151).
+  /// `UbicacionConResumen.estado` sale de `house_status` (HU-VIS-005): una ubicación sin fila es
+  /// «Sin visita». También emite de nuevo cuando cambia el estado de una casa.
   ///
   /// Si la lectura falla, el stream termina con el error.
   Stream<List<UbicacionConResumen>> observarListaDelColportor({

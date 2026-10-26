@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
+import 'marcador_estado.dart';
 import 'modelo_mapa_base.dart' show ColoresMapa;
 
 /// La etiqueta de «cerca tuyo» (canvas 06C·01 y «Referencias»: «Cerca tuyo: crece y muestra el
@@ -13,9 +14,9 @@ import 'modelo_mapa_base.dart' show ColoresMapa;
 /// ubicaciones a menos de 60 m del GPS) en una imagen que la vista registra en el estilo, y una capa
 /// de símbolos la pone en cada punto, anclada por la punta (`icon-anchor: bottom`).
 ///
-/// Hoy todas las ubicaciones están «Sin visita» (los colores y glifos por estado llegan con
-/// HU-VIS-005): borde y círculo grises (`#6B7688`), el círculo vacío. Las medidas son las del canvas,
-/// en dp.
+/// El borde, la punta y el círculo toman el color y el símbolo del estado de la casa (vista 39,
+/// [VarianteMarcador]); «Sin visita», o una casa de la que no se sabe el estado, lleva el borde y el
+/// círculo grises (`#6B7688`) y el círculo vacío. Las medidas son las del canvas, en dp.
 abstract final class MarcadorCercano {
   /// Alto de la píldora, borde incluido.
   static const altoPildora = 32.0;
@@ -45,8 +46,12 @@ abstract final class MarcadorCercano {
   /// Aire alrededor de la píldora para la sombra (canvas: `0 2px 6px`): arriba y a los lados.
   static const margenSombra = 8.0;
 
-  /// El nombre con que la imagen de la etiqueta de [etiqueta] se registra en el estilo.
-  static String nombre(String etiqueta) => 'colportores:cercano:$etiqueta';
+  /// El nombre con que la imagen de la etiqueta de [etiqueta] se registra en el estilo. Hay una por
+  /// número y por estado: «Sin visita» (o [variante] `null`) conserva el nombre de siempre.
+  static String nombre(String etiqueta, [VarianteMarcador? variante]) =>
+      variante == null || variante == VarianteMarcador.sinVisita
+      ? 'colportores:cercano:$etiqueta'
+      : 'colportores:cercano:${variante.name}:$etiqueta';
 
   /// El color del borde, la punta y el círculo del estado «Sin visita».
   static const colorEstado = ColoresMapa.bordeContexto;
@@ -86,11 +91,15 @@ abstract final class MarcadorCercano {
   /// La etiqueta de [etiqueta] como PNG, con [escala] píxeles por dp (la imagen mide
   /// `medidas(etiqueta) * escala`): el mapa nativo la muestra con su tamaño en dp si [escala] es la
   /// de la pantalla.
-  static Future<Uint8List> dibujar(String etiqueta, {double escala = 1}) async {
+  static Future<Uint8List> dibujar(
+    String etiqueta, {
+    double escala = 1,
+    VarianteMarcador? variante,
+  }) async {
     final texto = _texto(etiqueta);
     final ui.Image imagen;
     try {
-      imagen = await _pintar(texto, escala);
+      imagen = await _pintar(texto, escala, variante ?? VarianteMarcador.sinVisita);
     } finally {
       texto.dispose();
     }
@@ -103,7 +112,8 @@ abstract final class MarcadorCercano {
     }
   }
 
-  static Future<ui.Image> _pintar(TextPainter texto, double escala) {
+  static Future<ui.Image> _pintar(TextPainter texto, double escala, VarianteMarcador variante) {
+    final color = variante == VarianteMarcador.sinVisita ? colorEstado : variante.borde;
     final medida = _medidas(texto.width);
     final ancho = (medida.width * escala).ceil();
     final alto = (medida.height * escala).ceil();
@@ -124,21 +134,15 @@ abstract final class MarcadorCercano {
     );
     // El borde y, adentro, el blanco.
     lienzo
-      ..drawRRect(exterior, ui.Paint()..color = colorEstado)
+      ..drawRRect(exterior, ui.Paint()..color = color)
       ..drawRRect(exterior.deflate(borde), ui.Paint()..color = const ui.Color(0xFFFFFFFF));
 
-    // El círculo del estado, vacío («Sin visita»).
+    // El círculo del estado: vacío en «Sin visita»; con el color y el símbolo en los demás.
     final centroCirculo = ui.Offset(
       pildora.left + borde + relleno + diametroCirculo / 2,
       pildora.center.dy,
     );
-    lienzo
-      ..drawCircle(centroCirculo, diametroCirculo / 2, ui.Paint()..color = colorEstado)
-      ..drawCircle(
-        centroCirculo,
-        diametroCirculo / 2 - bordeCirculo,
-        ui.Paint()..color = const ui.Color(0xFFFFFFFF),
-      );
+    MarcadorEstado.pintarInsignia(lienzo, centroCirculo, diametroCirculo, variante);
 
     // El número de puerta.
     texto.paint(
@@ -157,7 +161,7 @@ abstract final class MarcadorCercano {
         ..lineTo(x + anchoPunta / 2, pildora.bottom)
         ..lineTo(x, pildora.bottom + altoPunta)
         ..close(),
-      ui.Paint()..color = colorEstado,
+      ui.Paint()..color = color,
     );
 
     return grabador.endRecording().toImage(ancho, alto);

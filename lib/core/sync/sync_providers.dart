@@ -131,6 +131,14 @@ void _disparar(SyncEngine motor, SyncTrigger trigger) {
             'status': falla.status,
           });
         }
+        // HU-SYNC-008: con el ahorro de datos y sin Wi-Fi, el ciclo sube lo pendiente y deja el
+        // pull esperando; el motivo queda registrado (`data_saver_on_mobile`).
+        if (resultado.pausedReason case final motivo?) {
+          AppLogger.instance.info(LogModulo.sync, 'PULL_EN_PAUSA', 'el pull espera al Wi-Fi', {
+            'trigger': trigger.name,
+            'reason': motivo,
+          });
+        }
       },
       onError: (Object e, StackTrace st) => AppLogger.instance.error(
         LogModulo.sync,

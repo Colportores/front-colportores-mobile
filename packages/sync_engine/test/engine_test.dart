@@ -154,18 +154,25 @@ void main() {
   });
 
   group('ahorro de datos (HU-SYNC-008)', () {
-    test('bloquea los automáticos pero nunca el manual', () async {
-      final (:motor, :transport, jobs: _, store: _, red: _) = _armar();
+    test('con datos móviles sube igual y deja el pull; el manual baja', () async {
+      final (:motor, :transport, jobs: _, store: _, :red) = _armar();
       await motor.stage('venta', Op.insert, {'id': 'v1'}, clientOpId: 'op-1');
+      transport.seed('producto', [
+        {'id': 'p1'}
+      ]);
 
       motor.setDataSaver(true);
+      red.goMobile();
       final auto = await motor.trigger(SyncTrigger.appResumed);
-      expect(auto.skipped, isTrue);
-      expect(transport.batches, isEmpty);
+      expect(auto.pausedReason, kDataSaverOnMobile);
+      expect(transport.rowsOf('venta'), hasLength(1),
+          reason: 'lo que el colportor escribió no espera al Wi-Fi');
+      expect(transport.pulls, isEmpty);
 
       final manual = await motor.syncNow();
       expect(manual.ok, isTrue);
-      expect(transport.rowsOf('venta'), hasLength(1));
+      expect(manual.pausedReason, isNull);
+      expect(transport.pulls, isNotEmpty);
       await motor.dispose();
     });
   });

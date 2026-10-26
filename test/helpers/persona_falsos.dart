@@ -32,6 +32,18 @@ class PersonaRepositorioFalso implements PersonaRepository {
   final _guardadas = <PersonaDelEspacio>[];
   final _cambios = StreamController<List<PersonaDelEspacio>>.broadcast();
 
+  /// Las bajas y reactivaciones que le llegaron (HU-UBI-011).
+  final bajasRecibidas = <({String personaId, DateTime ahora, String? motivo})>[];
+  final reactivacionesRecibidas = <String>[];
+
+  /// Como [resultados], para [darDeBaja] y [reactivar]: `null` = éxito; una [Failure] = ese fallo.
+  final resultadosBaja = <Failure?>[];
+  final resultadosReactivar = <Failure?>[];
+
+  /// Si no es `null`, [darDeBaja] / [reactivar] esperan a que se complete (una escritura «en curso»).
+  Completer<void>? compuertaBaja;
+  Completer<void>? compuertaReactivar;
+
   @override
   Future<Either<Failure, Persona>> registrar({
     required Persona persona,
@@ -51,10 +63,65 @@ class PersonaRepositorioFalso implements PersonaRepository {
 
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) async* {
-    yield List.unmodifiable(_guardadas.where((g) => g.vinculo.espacioId == espacioId));
-    yield* _cambios.stream.map(
-      (l) => List.unmodifiable(l.where((g) => g.vinculo.espacioId == espacioId)),
+    bool activaDeEsteEspacio(PersonaDelEspacio g) =>
+        g.vinculo.espacioId == espacioId && !g.persona.estaBorrada;
+    yield List.unmodifiable(_guardadas.where(activaDeEsteEspacio));
+    yield* _cambios.stream.map((l) => List.unmodifiable(l.where(activaDeEsteEspacio)));
+  }
+
+  @override
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) async* {
+    bool deEsteEspacioYDeBaja(PersonaDelEspacio g) =>
+        g.vinculo.espacioId == espacioId && g.persona.estaBorrada;
+    yield List.unmodifiable(_guardadas.where(deEsteEspacioYDeBaja));
+    yield* _cambios.stream.map((l) => List.unmodifiable(l.where(deEsteEspacioYDeBaja)));
+  }
+
+  @override
+  Future<Either<Failure, Persona>> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  }) async {
+    bajasRecibidas.add((personaId: personaId, ahora: ahora, motivo: motivo));
+    await compuertaBaja?.future;
+    final resultado = resultadosBaja.isEmpty ? null : resultadosBaja.removeAt(0);
+    if (resultado != null) return Left(resultado);
+    return _cambiarBaja(personaId, ahora, deBaja: true);
+  }
+
+  @override
+  Future<Either<Failure, Persona>> reactivar({
+    required String personaId,
+    required DateTime ahora,
+  }) async {
+    reactivacionesRecibidas.add(personaId);
+    await compuertaReactivar?.future;
+    final resultado = resultadosReactivar.isEmpty ? null : resultadosReactivar.removeAt(0);
+    if (resultado != null) return Left(resultado);
+    return _cambiarBaja(personaId, ahora, deBaja: false);
+  }
+
+  Either<Failure, Persona> _cambiarBaja(String id, DateTime ahora, {required bool deBaja}) {
+    final i = _guardadas.indexWhere((g) => g.persona.id == id);
+    if (i < 0) {
+      return const Left(
+        FailureValidacion(campos: {'persona': 'La persona ya no está en tu teléfono.'}),
+      );
+    }
+    final actual = _guardadas[i];
+    if (actual.persona.estaBorrada == deBaja) return Right(actual.persona);
+    final p = actual.persona;
+    final cambiada = Persona(
+      id: p.id,
+      nombre: p.nombre,
+      apellido: p.apellido,
+      telefono: p.telefono,
+      auditoria: p.auditoria.copyWith(updatedAt: ahora, deletedAt: deBaja ? ahora : null),
     );
+    _guardadas[i] = PersonaDelEspacio(persona: cambiada, vinculo: actual.vinculo);
+    _cambios.add(List.unmodifiable(_guardadas));
+    return Right(cambiada);
   }
 
   /// Deja la lista inicial de personas, sin pasar por [registrar].
@@ -73,6 +140,23 @@ final class PersonaRepositorioQueNoLee implements PersonaRepository {
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) =>
       Stream.error(StateError('no se pudo leer'));
+
+  @override
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) =>
+      Stream.error(StateError('no se pudo leer'));
+
+  @override
+  Future<Either<Failure, Persona>> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  }) async => const Left(FailureInesperado());
+
+  @override
+  Future<Either<Failure, Persona>> reactivar({
+    required String personaId,
+    required DateTime ahora,
+  }) async => const Left(FailureInesperado());
 }
 
 /// [EspacioRepository] que solo sabe [buscar].
@@ -134,5 +218,35 @@ PersonaDelEspacio clienteDePersonas(
   return PersonaDelEspacio(
     persona: Persona(id: id, nombre: nombre, apellido: apellido, telefono: telefono, auditoria: a),
     vinculo: EspacioPersona(id: 'ep-$id', espacioId: 'esp-1', personaId: id, auditoria: a),
+  );
+}
+
+/// Una persona ya dada de baja el [baja] (por defecto el 22/10 de 2026, 15:00 UTC).
+PersonaDelEspacio clienteDeBajaDePersonas(
+  String id,
+  String nombre, {
+  String apellido = '',
+  String? telefono,
+  DateTime? baja,
+  int minutos = 0,
+}) {
+  final base = clienteDePersonas(
+    id,
+    nombre,
+    apellido: apellido,
+    telefono: telefono,
+    minutos: minutos,
+  );
+  final cuando = baja ?? DateTime.utc(2026, 10, 22, 15);
+  final p = base.persona;
+  return PersonaDelEspacio(
+    persona: Persona(
+      id: p.id,
+      nombre: p.nombre,
+      apellido: p.apellido,
+      telefono: p.telefono,
+      auditoria: p.auditoria.copyWith(updatedAt: cuando, deletedAt: cuando),
+    ),
+    vinculo: base.vinculo,
   );
 }

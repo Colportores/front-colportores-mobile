@@ -19,9 +19,9 @@ final class UbicacionConResumen extends Equatable {
   /// Espacios (deptos) sin baja de la ubicación.
   final int cantidadEspacios;
 
-  /// El estado de la casa según `house_status`. **`null` = no se sabe**: todavía no hay tabla local
-  /// de `house_status` (llega con HU-VIS-005, #151) y no se inventa «Sin visita» para todas. Cuando
-  /// la fuente exista, una ubicación sin fila es [EstadoCasa.sinVisita], no `null`.
+  /// El estado de la casa según `house_status`. Una ubicación sin fila (o con la fila dada de baja:
+  /// el cálculo la dejó sin nada que contar) es [EstadoCasa.sinVisita]. `null` solo si quien arma la
+  /// fila no conoce el estado (los tests de las pantallas).
   final EstadoCasa? estado;
 
   /// La hora de la entrevista agendada, para [EstadoCasa.entrevistaAgendada]. Sin agenda local

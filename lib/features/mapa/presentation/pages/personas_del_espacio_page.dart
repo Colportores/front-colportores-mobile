@@ -5,7 +5,9 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/persona_del_espacio.dart';
 import '../formato_ubicaciones.dart';
+import '../providers/baja_persona_providers.dart';
 import '../providers/personas_providers.dart';
+import '../textos_baja_persona.dart';
 import '../textos_personas.dart';
 import '../widgets/piezas_alta.dart';
 import 'alta_persona_page.dart';
@@ -21,6 +23,9 @@ import 'alta_persona_page.dart';
 /// - Cargando, vacío, error al leer y espacio que ya no está son estados propios.
 /// - Con el espacio dado de baja es de solo lectura: se ven los clientes y no se puede agregar.
 /// - Al volver del alta con una persona nueva muestra «Guardamos a Jorge en este teléfono.» (32A·05).
+/// - Con personas dadas de baja (HU-UBI-011) aparece «Mostrar bajas» (32D·04): las bajas se ven en gris,
+///   con la fecha y el saldo si se conoce, y «Reactivar» las vuelve a la lista (32D·05). Con el espacio
+///   dado de baja se ven pero no se reactivan.
 class PersonasDelEspacioPage extends ConsumerStatefulWidget {
   const PersonasDelEspacioPage({super.key, required this.espacioId, required this.colportorId});
 
@@ -46,6 +51,12 @@ class PersonasDelEspacioPage extends ConsumerStatefulWidget {
 class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage> {
   /// Ya se está abriendo el alta: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
+
+  /// «Mostrar bajas» (32D·04).
+  var _mostrarBajas = false;
+
+  /// Las personas que se están reactivando: un segundo toque sobre la misma no la pide dos veces.
+  final _reactivando = <String>{};
 
   Future<void> _agregar() async {
     if (_abriendoAlta) return;
@@ -76,13 +87,54 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
   void _reintentar() {
     ref
       ..invalidate(contextoEspacioProvider(widget.espacioId))
-      ..invalidate(personasDelEspacioProvider(widget.espacioId));
+      ..invalidate(personasDelEspacioProvider(widget.espacioId))
+      ..invalidate(bajasDelEspacioProvider(widget.espacioId));
+  }
+
+  void _avisar(String texto) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF0E1A2B),
+          content: Text(texto),
+        ),
+      );
+  }
+
+  /// «Reactivar» (32D·04): la persona vuelve a la lista y el aviso lo dice (32D·05). Si falla, el
+  /// botón vuelve a quedar tocable y el aviso dice qué hacer.
+  Future<void> _reactivar(PersonaDelEspacio baja) async {
+    final id = baja.persona.id;
+    if (_reactivando.contains(id)) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se reactiva a nadie.
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    final nombre = FormatoBajaPersona.nombreDePila(baja.persona);
+    setState(() => _reactivando.add(id));
+    var salio = false;
+    try {
+      final r = await ref.read(reactivarPersonaUseCaseProvider)(id);
+      r.fold((falla) {
+        if (mounted) {
+          _avisar(mensajeDeFallaDePersona(falla, TextosBajaPersona.noPudimosReactivar(nombre)));
+        }
+      }, (_) => salio = true);
+    } on Object {
+      if (mounted) _avisar(TextosBajaPersona.noPudimosReactivar(nombre));
+    } finally {
+      if (mounted) setState(() => _reactivando.remove(id));
+    }
+    if (salio && mounted) _avisar(TextosBajaPersona.activaDeNuevo(nombre));
   }
 
   @override
   Widget build(BuildContext context) {
     final contexto = ref.watch(contextoEspacioProvider(widget.espacioId));
     final personas = ref.watch(personasDelEspacioProvider(widget.espacioId));
+    final bajas = ref.watch(bajasDelEspacioProvider(widget.espacioId));
+    final saldosDeBajas =
+        ref.watch(saldosDeBajasDelEspacioProvider(widget.espacioId)).asData?.value ?? const {};
     final datos = contexto.asData?.value;
     final noEncontrado = contexto.hasValue && datos == null;
     final deBaja =
@@ -97,10 +149,21 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
       cuerpo = const _Mensaje(texto: TextosPersonas.espacioNoEncontrado);
     } else if (!contexto.hasValue || !personas.hasValue) {
       cuerpo = const _Cargando();
-    } else if (personas.requireValue.isEmpty) {
-      cuerpo = _ListaDeClientes(clientes: const [], deBaja: deBaja);
     } else {
-      cuerpo = _ListaDeClientes(clientes: personas.requireValue, deBaja: deBaja);
+      cuerpo = _ListaDeClientes(
+        clientes: personas.requireValue,
+        deBaja: deBaja,
+        bajas: bajas.asData?.value ?? const [],
+        bajasConError: bajas.hasError,
+        mostrarBajas: _mostrarBajas,
+        alCambiarMostrarBajas: (valor) => setState(() => _mostrarBajas = valor),
+        saldosDeBajas: saldosDeBajas,
+        reactivando: _reactivando,
+        // Con el espacio dado de baja es de solo lectura: las bajas se ven y no se reactivan.
+        alReactivar: puedeAgregar ? _reactivar : null,
+        alReintentarBajas: () => ref.invalidate(bajasDelEspacioProvider(widget.espacioId)),
+        ahora: ref.read(relojPersonaProvider)(),
+      );
     }
 
     return Scaffold(
@@ -237,10 +300,37 @@ class _EncabezadoClientes extends StatelessWidget {
 }
 
 class _ListaDeClientes extends StatelessWidget {
-  const _ListaDeClientes({required this.clientes, required this.deBaja});
+  const _ListaDeClientes({
+    required this.clientes,
+    required this.deBaja,
+    required this.bajas,
+    required this.bajasConError,
+    required this.mostrarBajas,
+    required this.alCambiarMostrarBajas,
+    required this.saldosDeBajas,
+    required this.reactivando,
+    required this.alReactivar,
+    required this.alReintentarBajas,
+    required this.ahora,
+  });
 
   final List<PersonaDelEspacio> clientes;
   final bool deBaja;
+
+  /// Las personas dadas de baja del espacio (32D·04).
+  final List<PersonaDelEspacio> bajas;
+  final bool bajasConError;
+  final bool mostrarBajas;
+  final ValueChanged<bool> alCambiarMostrarBajas;
+
+  /// Lo que debe cada baja, por `persona.id`; la que no está no tiene saldo conocido.
+  final Map<String, int> saldosDeBajas;
+  final Set<String> reactivando;
+
+  /// `null`: no se puede reactivar (el espacio está dado de baja).
+  final ValueChanged<PersonaDelEspacio>? alReactivar;
+  final VoidCallback alReintentarBajas;
+  final DateTime ahora;
 
   @override
   Widget build(BuildContext context) {
@@ -255,22 +345,207 @@ class _ListaDeClientes extends StatelessWidget {
             ),
           )
         : null;
-    // Avisos de arriba + filas + vacío + nota de privacidad: una sola lista que se desplaza.
-    final delante = avisoBaja == null ? 0 : 1;
-    final vacio = clientes.isEmpty ? 1 : 0;
+    // Avisos de arriba + filas + vacío + «Mostrar bajas» y las bajas + nota de privacidad: una sola
+    // lista que se desplaza.
+    final items = <Widget Function()>[
+      if (avisoBaja != null) () => avisoBaja,
+      if (clientes.isEmpty) () => const _SinClientes(),
+      for (final cliente in clientes) () => _FilaCliente(cliente: cliente),
+      if (bajas.isNotEmpty)
+        () => _MostrarBajas(valor: mostrarBajas, alCambiar: alCambiarMostrarBajas),
+      if (bajas.isNotEmpty && mostrarBajas)
+        for (final baja in bajas)
+          () => _FilaBaja(
+            baja: baja,
+            saldoCentavos: saldosDeBajas[baja.persona.id],
+            ahora: ahora,
+            reactivando: reactivando.contains(baja.persona.id),
+            alReactivar: alReactivar == null ? null : () => alReactivar!(baja),
+          ),
+      if (bajasConError) () => _ErrorDeBajas(alReintentar: alReintentarBajas),
+      () => const _NotaDePrivacidad(),
+    ];
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: delante + vacio + clientes.length + 1,
-      itemBuilder: (context, i) {
-        if (i < delante) return avisoBaja;
-        i -= delante;
-        if (vacio == 1) {
-          if (i == 0) return const _SinClientes();
-          i -= 1;
-        }
-        if (i < clientes.length) return _FilaCliente(cliente: clientes[i]);
-        return const _NotaDePrivacidad();
-      },
+      itemCount: items.length,
+      itemBuilder: (context, i) => items[i](),
+    );
+  }
+}
+
+/// «Mostrar bajas» (canvas 32D·04): el interruptor que muestra o esconde a las personas dadas de baja.
+class _MostrarBajas extends StatelessWidget {
+  const _MostrarBajas({required this.valor, required this.alCambiar});
+
+  final bool valor;
+  final ValueChanged<bool> alCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SwitchListTile(
+        value: valor,
+        onChanged: alCambiar,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        title: const Text(
+          TextosBajaPersona.mostrarBajas,
+          style: TextStyle(fontSize: 14, color: ColoresAlta.tinta),
+        ),
+      ),
+    );
+  }
+}
+
+/// Una persona dada de baja (canvas 32D·04): iniciales y nombre en gris, «Baja el 22/10 · saldo
+/// $ 1.200» y «Reactivar». Sin [alReactivar] (el espacio está dado de baja) se ve y no se toca.
+class _FilaBaja extends StatelessWidget {
+  const _FilaBaja({
+    required this.baja,
+    required this.saldoCentavos,
+    required this.ahora,
+    required this.reactivando,
+    required this.alReactivar,
+  });
+
+  final PersonaDelEspacio baja;
+  final int? saldoCentavos;
+  final DateTime ahora;
+  final bool reactivando;
+  final VoidCallback? alReactivar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final persona = baja.persona;
+    final nombre = FormatoPersonas.nombreCompleto(persona);
+    final desde = persona.auditoria.deletedAt;
+    final detalle = desde == null
+        ? ''
+        : TextosBajaPersona.bajaEl(desde, ahora, saldoCentavos: saldoCentavos);
+    // A 2× el botón no entra al lado del nombre: va debajo.
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final datos = Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: '$nombre. $detalle',
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: Color(0xFFF3F1EA), shape: BoxShape.circle),
+            child: Text(
+              FormatoPersonas.iniciales(persona),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: ColoresAlta.gris,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  nombre,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: ColoresAlta.gris,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(detalle, style: theme.textTheme.bodySmall?.copyWith(color: ColoresAlta.gris)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    final boton = alReactivar == null
+        ? null
+        : reactivando
+        ? const _Reactivando()
+        : TextButton(
+            onPressed: alReactivar,
+            style: TextButton.styleFrom(
+              foregroundColor: ColoresAlta.azul,
+              minimumSize: const Size(48, 48),
+              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            child: const Text(TextosBajaPersona.reactivar),
+          );
+    return Container(
+      constraints: const BoxConstraints(minHeight: 62),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: theme.extension<ColoresColportaje>()?.borde ?? ColoresAlta.grisFondo,
+          ),
+        ),
+      ),
+      child: grande || boton == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                datos,
+                if (boton != null) Align(alignment: Alignment.centerRight, child: boton),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: datos),
+                boton,
+              ],
+            ),
+    );
+  }
+}
+
+/// El lugar de «Reactivar» mientras se escribe: no se puede volver a tocar.
+class _Reactivando extends StatelessWidget {
+  const _Reactivando();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Semantics(
+        liveRegion: true,
+        label: TextosBajaPersona.reactivando,
+        child: const ExcludeSemantics(
+          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorDeBajas extends StatelessWidget {
+  const _ErrorDeBajas({required this.alReintentar});
+
+  final VoidCallback alReintentar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: AvisoAlta(
+        color: ColoresAlta.rojo,
+        glyph: '!',
+        texto: TextosBajaPersona.noPudimosLeerBajas,
+        acciones: Align(
+          alignment: Alignment.centerLeft,
+          child: EnlaceAlta(texto: TextosPersonas.reintentar, alPresionar: alReintentar),
+        ),
+      ),
     );
   }
 }

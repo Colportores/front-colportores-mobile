@@ -14,6 +14,8 @@ import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
+import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
+import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
 import '../providers/nombre_cuenta_provider.dart';
 import '../widgets/hoja_cerrar_sesion.dart';
 import 'borrar_datos_locales_page.dart';
@@ -227,7 +229,21 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                       const _TituloSeccion('Tu cuenta'),
                       const SizedBox(height: 8),
                       _Tarjeta(
-                        children: [_FilaCuenta(nombre: nombre, email: email)],
+                        children: [
+                          _FilaCuenta(nombre: nombre, email: email),
+                          const Divider(),
+                          // Las notificaciones (HU-NOT-001, vista 24): el permiso del teléfono, y
+                          // las opciones de los recordatorios cuando lleguen (HU-NOT-004).
+                          ListTile(
+                            key: const Key('configuracion_notificaciones'),
+                            minVerticalPadding: 12,
+                            leading: const Icon(Icons.notifications_none_outlined),
+                            title: const Text(TextosNotificaciones.filaConfiguracion),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                unawaited(Navigator.of(context).push(NotificacionesPage.ruta())),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),

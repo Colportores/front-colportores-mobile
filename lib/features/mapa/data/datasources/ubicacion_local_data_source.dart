@@ -1,3 +1,4 @@
+import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
@@ -17,11 +18,14 @@ typedef UnionLocal = ({
   bool conservadaPasoAEdificio,
 });
 
-/// Una ubicación con la cantidad de espacios sin baja que tiene y, si está de baja, el motivo con que
-/// se dio de baja (`audit_log` local), para la lista (HU-UBI-002, HU-UBI-005).
+/// Una ubicación con la cantidad de espacios sin baja que tiene, el color de su fila de
+/// `house_status` (`null` si no tiene: la casa es «Sin visita») y, si está de baja, el motivo con que
+/// se dio de baja (`audit_log` local), para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005,
+/// HU-VIS-005).
 typedef UbicacionConEspacios = ({
   UbicacionModel ubicacion,
   int cantidadEspacios,
+  ColorHouseStatus? color,
   String? motivoBaja,
 });
 
@@ -149,8 +153,9 @@ abstract interface class UbicacionLocalDataSource {
   });
 
   /// Lo mismo que [observarDelColportor] (sin filtro de ciudad), cada ubicación con la cantidad de
-  /// espacios sin baja que tiene y el motivo de su baja vigente: un solo `JOIN` con `COUNT` (HU-UBI-002,
-  /// HU-UBI-005).
+  /// espacios sin baja que tiene, el color de su `house_status` vigente y el motivo de su baja vigente:
+  /// un solo `JOIN` con `COUNT` (HU-UBI-002, HU-UBI-005, HU-VIS-005). Emite de nuevo cuando cambia
+  /// `house_status`: el mapa y la lista se repintan solos al guardar una visita.
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({
     required String colportorId,
     bool incluirBajas = false,

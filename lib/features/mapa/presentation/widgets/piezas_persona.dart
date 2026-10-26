@@ -11,14 +11,18 @@ import 'piezas_alta.dart';
 
 /// El candado de privacidad (canvas 32A): lo primero que se lee, antes de pedir datos de otra persona.
 class AvisoPrivacidadPersona extends StatelessWidget {
-  const AvisoPrivacidadPersona({super.key});
+  const AvisoPrivacidadPersona({super.key, this.texto = TextosPersonas.privacidad});
+
+  /// El aviso: el de los datos de una persona, o el de sus notas («Estas notas viven solo en tu
+  /// celular.», vista 32E).
+  final String texto;
 
   @override
   Widget build(BuildContext context) {
     final navy = Theme.of(context).colorScheme.primary;
     return Semantics(
       container: true,
-      label: TextosPersonas.privacidad,
+      label: texto,
       child: ExcludeSemantics(
         child: Container(
           width: double.infinity,
@@ -35,7 +39,7 @@ class AvisoPrivacidadPersona extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  TextosPersonas.privacidad,
+                  texto,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: navy, height: 1.4),
                 ),
               ),

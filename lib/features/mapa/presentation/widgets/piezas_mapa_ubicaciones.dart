@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/estado_casa.dart';
+import '../formato_lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
+import '../mapa_base/marcador_estado.dart' show MarcadorEstado, VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
 import '../providers/lista_ubicaciones_state.dart' show EstadoGpsLista;
 import 'piezas_alta.dart' show ColoresAlta;
@@ -25,6 +27,8 @@ abstract final class ClavesMapaUbicaciones {
   static const registrarPrimera = Key('mapa_registrar_primera');
   static const hojaReferencias = Key('mapa_hoja_referencias');
   static const cerrarReferencias = Key('mapa_referencias_cerrar');
+  static const muestraEdificio = Key('mapa_referencias_edificio');
+  static const muestraCuadrado = Key('mapa_referencias_cuadrado');
 
   /// La fila de la ubicación [id] en la hoja.
   static Key fila(String id) => Key('mapa_fila_$id');
@@ -195,9 +199,8 @@ Future<void> mostrarReferenciasMapa(BuildContext context) => showModalBottomShee
 );
 
 /// La leyenda de los marcadores de la vista 06. El canvas la dibuja entera y la marca «PROPUESTA»
-/// (con los ocho estados de la visita y la venta); acá van solo los marcadores que el mapa dibuja
-/// hoy: hasta que lleguen los colores por estado (HU-VIS-005) todas las ubicaciones se ven «Sin
-/// visita».
+/// (con los ocho estados de la visita y la venta). Desde la vista 39 (HU-VIS-005) el mapa dibuja los
+/// ocho —el color y el símbolo de cada estado—, y acá van todos, con los rótulos de la lista.
 class HojaReferenciasMapa extends StatelessWidget {
   const HojaReferenciasMapa({super.key});
 
@@ -226,6 +229,16 @@ class HojaReferenciasMapa extends StatelessWidget {
               muestra: InsigniaEstadoCasa(estado: EstadoCasa.sinVisita, tamano: 24),
               texto: TextosMapaUbicaciones.leyendaSinVisita,
             ),
+            for (final estado in EstadoCasa.values)
+              if (estado != EstadoCasa.sinVisita)
+                _FilaReferencia(
+                  muestra: InsigniaEstadoCasa(estado: estado, tamano: 24),
+                  texto: FormatoListaUbicaciones.estado(estado),
+                ),
+            const _FilaReferencia(
+              muestra: _MuestraEdificio(),
+              texto: TextosMapaUbicaciones.leyendaEdificio,
+            ),
             const _FilaReferencia(
               muestra: _MuestraGrupo(),
               texto: TextosMapaUbicaciones.leyendaAgrupadas,
@@ -233,6 +246,11 @@ class HojaReferenciasMapa extends StatelessWidget {
             const _FilaReferencia(
               muestra: _MuestraCerca(),
               texto: TextosMapaUbicaciones.leyendaCerca,
+            ),
+            const _FilaReferencia(
+              muestra: _MuestraCuadrado(),
+              etiquetaMuestra: TextosMapaUbicaciones.muestraCuadrado,
+              texto: TextosMapaUbicaciones.leyendaAcercar,
             ),
             const _FilaReferencia(
               muestra: _MuestraTuUbicacion(),
@@ -264,16 +282,19 @@ class HojaReferenciasMapa extends StatelessWidget {
 }
 
 class _FilaReferencia extends StatelessWidget {
-  const _FilaReferencia({required this.muestra, required this.texto});
+  const _FilaReferencia({required this.muestra, required this.texto, this.etiquetaMuestra});
 
   final Widget muestra;
   final String texto;
+
+  /// Lo que dice el lector de la muestra cuando no se explica sola (el cuadrado con su número).
+  final String? etiquetaMuestra;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: texto,
+      label: etiquetaMuestra == null ? texto : '$etiquetaMuestra. $texto',
       excludeSemantics: true,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
@@ -283,6 +304,69 @@ class _FilaReferencia extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(child: Text(texto, style: Theme.of(context).textTheme.bodyLarge)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El símbolo del edificio (▦), tal como lo dibuja el mapa de lejos: la misma insignia de 24 dp.
+class _MuestraEdificio extends StatelessWidget {
+  const _MuestraEdificio();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CustomPaint(
+      key: ClavesMapaUbicaciones.muestraEdificio,
+      size: Size.square(24),
+      painter: _PintorEdificio(),
+    );
+  }
+}
+
+class _PintorEdificio extends CustomPainter {
+  const _PintorEdificio();
+
+  @override
+  void paint(Canvas canvas, Size size) => MarcadorEstado.pintarInsignia(
+    canvas,
+    size.center(Offset.zero),
+    size.width,
+    VarianteMarcador.edificio,
+  );
+
+  @override
+  bool shouldRepaint(_PintorEdificio old) => false;
+}
+
+/// El cuadrado de la casa acercada (canvas 39, M·02): el número en dos renglones («20 / 44»). Va
+/// con el aspecto de «Sin visita»; el color y el símbolo del estado son los de las filas de arriba.
+class _MuestraCuadrado extends StatelessWidget {
+  const _MuestraCuadrado();
+
+  @override
+  Widget build(BuildContext context) {
+    const variante = VarianteMarcador.sinVisita;
+    return Container(
+      key: ClavesMapaUbicaciones.muestraCuadrado,
+      width: 36,
+      height: 36,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: variante.fondo,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: variante.borde, width: variante.grosorBorde),
+      ),
+      child: Text(
+        MarcadorEstado.numeroEnDosRenglones('2044'),
+        textAlign: TextAlign.center,
+        textScaler: TextScaler.noScaling,
+        style: TextStyle(
+          fontFamily: 'JetBrainsMono',
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: variante.tintaNumero,
+          height: 1.05,
         ),
       ),
     );
