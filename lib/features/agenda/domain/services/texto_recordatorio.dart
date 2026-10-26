@@ -3,7 +3,8 @@ import '../entities/tipo_agenda.dart';
 /// Lo que dice el recordatorio de una visita (HU-NOT-002): el tipo, la dirección y la hora. **Nunca
 /// el nombre del cliente** ni ningún otro dato de la persona: esta clase no los recibe.
 abstract final class TextoRecordatorio {
-  /// El título de la notificación (copy para confirmar: la HU solo fija el cuerpo).
+  /// El título de la notificación. La HU solo fija el cuerpo; este texto quedó decidido el 26/10
+  /// (mapa §2), coherente con «Recordatorios de tus visitas» de la vista 24.
   static const String titulo = 'Recordatorio de visita';
 
   /// «Entrevista en Av. Italia 1234 a las 14:00». La hora es la del teléfono (24 horas). Sin

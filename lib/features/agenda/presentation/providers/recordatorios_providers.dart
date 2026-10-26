@@ -27,7 +27,7 @@ final toquesDeRecordatoriosProvider = Provider<ToquesDeRecordatorios>(
 
 /// Abre el detalle de la visita [agendaId] (vista 23, 23C·01). Es el enganche de la vista 23: hasta
 /// que exista esa pantalla no hace nada y tocar un recordatorio solo abre la app. La pantalla del
-/// detalle lo reemplaza con su navegación.
+/// detalle (#409, 23C·01) lo reemplaza en `main.dart` con su navegación.
 final abridorDetalleAgendaProvider = Provider<void Function(String agendaId)>(
   (ref) =>
       (agendaId) => AppLogger.instance.info(

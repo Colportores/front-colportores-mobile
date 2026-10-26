@@ -11,7 +11,10 @@ enum ResultadoRecordatorio {
   sinPermiso,
 
   /// La hora del aviso ya pasó (la visita es en menos que la anticipación): no se programó y, si
-  /// había un recordatorio anterior de esa agenda, se canceló.
+  /// había un recordatorio anterior de esa agenda, se canceló. Es lo decidido el 26/10 (mapa §2): ni
+  /// aviso al instante ni a mitad de camino. Quien guarda la visita no promete un recordatorio que no
+  /// va a sonar: 23C·03 dice «Guardado. Falta menos de N min para la visita: no hay recordatorio.»,
+  /// con la anticipación real (#409).
   yaPaso,
 
   /// El teléfono no pudo programarlo (falló la plataforma). El recordatorio anterior de esa agenda,

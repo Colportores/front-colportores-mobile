@@ -25,7 +25,9 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
 
   /// Cómo se programa el aviso en Android: sin alarma exacta (`SCHEDULE_EXACT_ALARM` /
   /// `USE_EXACT_ALARM` están sujetos a permisos y a la política de la tienda). Con el teléfono en
-  /// reposo el aviso puede llegar con unos minutos de corrimiento.
+  /// reposo el aviso puede llegar con corrimiento (hasta una hora tarde en el peor caso de Android).
+  /// Si el aviso exacto vale un permiso más es una decisión abierta de Cristian
+  /// (`mobile-453-impl-p1-aviso-exacto`): mientras tanto, inexacto y sin permiso nuevo.
   static const AndroidScheduleMode modoAndroid = AndroidScheduleMode.inexactAllowWhileIdle;
 
   static const NotificationDetails _detalles = NotificationDetails(
