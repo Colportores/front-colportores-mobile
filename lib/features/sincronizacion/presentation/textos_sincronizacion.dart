@@ -168,7 +168,7 @@ abstract final class TextosSincronizacion {
   // --- La hoja de datos móviles (25-09) ---
   static const datosTitulo = '¿Actualizar con datos móviles?';
   static const datosTexto =
-      'Tenés el modo ahorro activo. Traer las actualizaciones puede gastar unos 2 MB; el respaldo '
+      'Tenés el modo ahorro activo. Traer las actualizaciones gasta datos móviles; el respaldo '
       'sigue esperando al Wi-Fi.';
   static const datosActualizarIgual = 'Actualizar igual';
   static const datosEsperarWifi = 'Esperar al Wi-Fi';
