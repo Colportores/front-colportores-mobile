@@ -115,7 +115,7 @@ void main() {
       expect(find.text('¿Dar de baja a Jorge?'), findsOneWidget);
       expect(
         find.text(
-          'Deja de aparecer en el depto. No se borra: lo ves en «Ver bajas» y lo podés reactivar.',
+          'Deja de aparecer en el depto. No se borra: queda en «Ver bajas» y se puede reactivar.',
         ),
         findsOneWidget,
       );
@@ -209,7 +209,7 @@ void main() {
       final repo = await bajasEn(tester, EstadoBajas.d05);
 
       expect(repo.reactivacionesRecibidas, ['p2']);
-      expect(find.text('María está activa de nuevo.'), findsOneWidget);
+      expect(find.text('Reactivamos a María.'), findsOneWidget);
       expect(find.text('María Fernández'), findsOneWidget);
       expect(find.text('CLIENTES · 2'), findsOneWidget);
       // Sin más bajas, el interruptor desaparece.

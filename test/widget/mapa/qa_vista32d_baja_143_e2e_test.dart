@@ -257,7 +257,7 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await asentar(tester);
 
-    expect(find.text('María está activa de nuevo.'), findsOneWidget);
+    expect(find.text('Reactivamos a María.'), findsOneWidget);
     expect(find.text('CLIENTES · 2'), findsOneWidget);
     expect(await bajaDe(tester, 'p2'), isNull);
     expect(encolador.encolados, isEmpty);
