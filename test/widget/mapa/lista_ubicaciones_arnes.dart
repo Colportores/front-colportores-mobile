@@ -41,7 +41,7 @@ Future<void> montarLista(
   bool activa = true,
   ValueNotifier<bool>? activaCambiante,
   ValueNotifier<bool>? montadaCambiante,
-  ValueChanged<String>? alAbrir,
+  AlAbrirUbicacion? alAbrir,
   Future<void> Function()? alRegistrar,
   Key? clave,
   Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,

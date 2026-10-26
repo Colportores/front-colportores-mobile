@@ -8,6 +8,7 @@ import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
@@ -650,19 +651,28 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   @override
-  Future<EspacioModel> actualizarNumeroDepto(
+  Future<EspacioModel> actualizarEspacio(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) => transaction(() async {
     final fila = await _espacioActivoOLanzar(id);
     await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: false);
-    if (fila.numeroDepto == numeroDepto) return _aModeloEspacio(fila);
+    if (fila.numeroDepto == numeroDepto && fila.piso == piso) return _aModeloEspacio(fila);
 
-    await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    // Solo un número nuevo se compara con los demás: cambiar el piso de un depto que ya estaba no
+    // tiene que fallar por un repetido que venía de antes (por ejemplo, de otro teléfono).
+    if (_claveDepto(fila.numeroDepto) != _claveDepto(numeroDepto)) {
+      await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    }
     return _escribirEspacio(
       id,
-      EspaciosCompanion(numeroDepto: Value(numeroDepto), updatedAt: Value(instanteMs(ahora))),
+      EspaciosCompanion(
+        numeroDepto: Value(numeroDepto),
+        piso: Value(piso),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
     );
   });
 
@@ -746,8 +756,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios en los
-  /// bordes ni distinción de mayúsculas). Un número `null` no se compara.
+  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios ni distinción
+  /// de mayúsculas: «3B» y «3 b» son el mismo). Un número `null` no se compara.
   Future<void> _exigirSinDuplicado(
     String ubicacionId,
     String? numeroDepto, {
@@ -763,10 +773,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  static String? _claveDepto(String? numeroDepto) {
-    final limpio = numeroDepto?.trim().toLowerCase();
-    return limpio == null || limpio.isEmpty ? null : limpio;
-  }
+  static String? _claveDepto(String? numeroDepto) => Espacio.claveDeNumero(numeroDepto);
 
   /// Aplica [cambios] a [id], lee la fila resultante y encola su `update` con la fila entera.
   Future<EspacioModel> _escribirEspacio(String id, EspaciosCompanion cambios) async {

@@ -87,7 +87,7 @@ Future<void> _montar(
   Size tamano = t390x844,
   ValueNotifier<double>? escala,
   bool lector = false,
-  ValueChanged<String>? alAbrir,
+  AlAbrirUbicacion? alAbrir,
 }) async {
   final esc = escala ?? ValueNotifier<double>(1);
   tester.view.physicalSize = tamano;
@@ -223,7 +223,7 @@ Future<RepoListaFalso> _llegarA(
     tamano: tamano,
     escala: ValueNotifier(escala),
     lector: e == _Estado.avisoConLector,
-    alAbrir: conAbrir ? (_) {} : null,
+    alAbrir: conAbrir ? (_, _) {} : null,
   );
   if (e == _Estado.listaConBajas) return repo;
 
@@ -584,7 +584,7 @@ void main() {
         'y cierra la hoja', (tester) async {
       final abiertas = <String>[];
       final repo = RepoListaFalso([_activa(), _baja()]);
-      await _montar(tester, repo, alAbrir: abiertas.add);
+      await _montar(tester, repo, alAbrir: (id, _) => abiertas.add(id));
       await _verFila(tester, _filaBaja);
       await _tocar(tester, _filaBaja);
       repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion(conservadaId: 'casa-1');

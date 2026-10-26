@@ -51,6 +51,10 @@ abstract final class TextosListaUbicaciones {
   static const nueva = 'Nueva';
 }
 
+/// Qué se hace al abrir una ubicación de la Lista: su `id` y la distancia que muestra su fila (la
+/// hoja de la ubicación dice «EDIFICIO · A 25 M» igual que desde el mapa), o `null` sin GPS.
+typedef AlAbrirUbicacion = void Function(String ubicacionId, double? distanciaMetros);
+
 /// La pestaña «Lista» (vista 05, HU-UBI-002): las ubicaciones del colportor con filtros combinables,
 /// contadores, orden por cercanía, «Mostrar bajas», buscador y carga de a 50.
 ///
@@ -75,7 +79,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// Qué pasa al tocar una fila. Por defecto abre la hoja de la casa, «la misma que en el mapa»
   /// (vista 39, C·01); una pantalla de destino propia (las ubicaciones del espacio, vista 11) la
   /// reemplaza.
-  final ValueChanged<String>? alAbrirUbicacion;
+  final AlAbrirUbicacion? alAbrirUbicacion;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
@@ -198,13 +202,23 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
+  /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
+  double? _distanciaDe(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
+    }
+    return null;
+  }
+
   /// Tocar una fila (vista 05): se abre la hoja de la casa de la vista 39, o el destino que se pasó en
   /// [ListaUbicacionesPage.alAbrirUbicacion]. Una casa dada de baja se abre igual, para ver lo que
   /// pasó; su «Reactivar» es el de la fila.
   Future<void> _abrirCasa(ItemListaUbicacion item) async {
     final destino = widget.alAbrirUbicacion;
     if (destino != null) {
-      destino(item.ubicacion.id);
+      destino(item.ubicacion.id, item.distanciaMetros);
       return;
     }
     if (_abriendoCasa) return;
@@ -245,7 +259,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId);
+        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
       case null:
         break;
     }
