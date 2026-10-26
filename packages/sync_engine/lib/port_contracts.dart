@@ -106,6 +106,20 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
       expect(estado.invalid, 0);
     });
 
+    test('status dice cuándo se cerró el último job (lastPushAt)', () async {
+      expect((await cola.status()).lastPushAt, isNull,
+          reason: 'sin nada enviado no hay fecha que mostrar');
+      final a = await cola.append(_job('op-1', minuto: 1));
+      final b = await cola.append(_job('op-2', minuto: 2));
+      await cola.claimPending(limit: 10);
+
+      await cola.markDone([b], at: _t0.add(const Duration(minutes: 5)));
+      await cola.markDone([a], at: _t0);
+
+      expect((await cola.status()).lastPushAt, _t0.add(const Duration(minutes: 5)),
+          reason: 'es el DONE más nuevo, no el último que se marcó');
+    });
+
     test('markPending devuelve el job a la cola tal cual', () async {
       final id = await cola.append(_job('op-1'));
       await cola.claimPending(limit: 10);
