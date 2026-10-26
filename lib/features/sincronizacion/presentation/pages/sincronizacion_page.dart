@@ -481,10 +481,13 @@ class _Estado extends ConsumerWidget {
                   ),
               ],
             ),
-            AsyncError() => Text(
-              TextosSincronizacion.errorAlLeerFallidas,
-              key: const Key('sincronizacion_error_fallidas'),
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+            AsyncError() => AvisoSincronizacion(
+              tono: TonoAvisoSincronizacion.error,
+              texto: TextosSincronizacion.errorAlLeerFallidas,
+              textoKey: const Key('sincronizacion_error_fallidas'),
+              textoAccion: TextosSincronizacion.reintentarLectura,
+              accionKey: const Key('sincronizacion_reintentar_fallidas'),
+              alAccionar: () => ref.invalidate(operacionesFallidasProvider),
             ),
             _ => Center(
               child: CircularProgressIndicator(

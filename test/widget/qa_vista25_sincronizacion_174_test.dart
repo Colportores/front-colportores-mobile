@@ -337,20 +337,27 @@ void main() {
     testWidgets(
       'no se pudo leer la lista de rechazadas: el aviso trae su acción para reintentar la lectura',
       (tester) async {
-        await llegar25(tester, Estado25.errorDeFallidas);
+        final t = await llegar25(tester, Estado25.errorDeFallidas);
         final aviso = find.byKey(const Key('sincronizacion_error_fallidas'));
         expect(aviso, findsOneWidget);
-        // El aviso dice qué pasó pero no hay botón "Reintentar" junto a él (el del pie reencola y
-        // actualiza, no vuelve a leer la lista).
-        final boton = find.descendant(
-          of: find.ancestor(of: aviso, matching: find.byType(Column)).first,
-          matching: find.widgetWithText(TextButton, 'Reintentar'),
-        );
+        final boton = find.byKey(const Key('sincronizacion_reintentar_fallidas'));
         expect(boton, findsOneWidget);
+        expect(
+          find.descendant(of: find.byType(AvisoSincronizacion), matching: boton),
+          findsOneWidget,
+        );
+
+        // Al reintentar, la lista se vuelve a leer: con el servicio recuperado aparecen las tarjetas
+        // y el aviso rojo desaparece.
+        t.servicio.fallaAlLeerFallidas = false;
+        await tester.ensureVisible(boton);
+        await tester.tap(boton);
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const Key('sincronizacion_error_fallidas')), findsNothing);
+        expect(find.byKey(const Key('sincronizacion_reintentar_fallidas')), findsNothing);
+        expect(tester.takeException(), isNull);
       },
-      // skip: QA #174 — el aviso «No pudimos mostrar las operaciones…» no trae «Reintentar» (error sin
-      // salida: el botón del pie reencola y actualiza, no vuelve a leer la lista).
-      skip: !_conHallazgos,
     );
 
     testWidgets('sesión sin renovar: dice qué hacer', (tester) async {

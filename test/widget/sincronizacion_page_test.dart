@@ -766,11 +766,14 @@ void main() {
       final t = TelefonoSync();
       await abrirSincronizacion(tester, t);
 
+      await tester.ensureVisible(interruptorAhorro);
+      await tester.pump();
       await tester.tap(interruptorAhorro);
       await tester.tap(interruptorAhorro, warnIfMissed: false);
       await asentar(tester);
 
       expect(t.guardado.guardados, lessThanOrEqualTo(2));
+      expect(t.guardado.guardados, greaterThanOrEqualTo(1));
       expect(tester.widget<SwitchListTile>(interruptorAhorro).value, t.guardado.activo);
     });
   });
