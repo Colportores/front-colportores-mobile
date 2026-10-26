@@ -262,7 +262,7 @@ class _NotasDePersonaPageState extends ConsumerState<NotasDePersonaPage> {
         ahora: ahora,
         alAbrirOpciones: soloLectura ? null : (n) => _abrirOpciones(n, ahora),
         alVerBorradas: _verBorradas,
-        avisoSoloLectura: soloLectura ? TextosNotas.soloLectura(datos!.nombre) : null,
+        avisoSoloLectura: soloLectura ? TextosNotas.soloLectura(datos!, ahora) : null,
       );
     }
 

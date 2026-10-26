@@ -41,7 +41,7 @@ NotaPersona notaDePrueba(
 class NotaPersonaRepositorioFalso implements NotaPersonaRepository {
   NotaPersonaRepositorioFalso({
     List<NotaPersona> notas = const [],
-    this.contexto = const ContextoNotasPersona(nombre: 'María', soloLectura: false),
+    this.contexto = const ContextoNotasPersona(nombre: 'María'),
   }) {
     _notas.addAll(notas);
   }

@@ -208,17 +208,22 @@ void main() {
   });
 
   group('solo lectura (persona o espacio dados de baja)', () {
-    NotaPersonaRepositorioFalso soloLectura() => NotaPersonaRepositorioFalso(
-      notas: notasDelCanvas(),
-      contexto: const ContextoNotasPersona(nombre: 'María', soloLectura: true),
-    );
+    NotaPersonaRepositorioFalso soloLectura([
+      ContextoNotasPersona contexto = const ContextoNotasPersona(
+        nombre: 'María',
+        causa: CausaSoloLectura.personaDeBaja,
+      ),
+    ]) => NotaPersonaRepositorioFalso(notas: notasDelCanvas(), contexto: contexto);
+
+    const ayuda = 'Podés ver sus notas, pero no agregar, editar ni borrar ninguna.';
 
     testWidgets(
       'dado una persona en solo lectura, cuando abro sus notas, las veo con el aviso y sin agregar ni opciones',
       (tester) async {
         await montarNotas(tester, repo: soloLectura());
 
-        expect(find.textContaining('Solo lectura: podés ver las notas de María'), findsOneWidget);
+        expect(find.textContaining('María está de baja.'), findsOneWidget);
+        expect(find.textContaining(ayuda), findsOneWidget);
         expect(find.text('+ Nueva nota'), findsNothing);
         expect(find.text('HOY 14:20'), findsOneWidget);
 
@@ -229,11 +234,71 @@ void main() {
     );
 
     testWidgets(
+      'dado una persona dada de baja el 22/10, cuando abro sus notas, el aviso dice desde cuándo (32B·04) y qué se puede hacer',
+      (tester) async {
+        final repo = soloLectura(
+          ContextoNotasPersona(
+            nombre: 'María',
+            causa: CausaSoloLectura.personaDeBaja,
+            bajaDesde: DateTime(2026, 10, 22, 9),
+          ),
+        );
+        await montarNotas(tester, repo: repo);
+
+        expect(find.text('María está de baja desde el 22/10. $ayuda'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que su depto está dado de baja, cuando abro sus notas, el aviso nombra el depto y la dirección (32B·08)',
+      (tester) async {
+        final repo = soloLectura(
+          const ContextoNotasPersona(
+            nombre: 'María',
+            causa: CausaSoloLectura.espacioDeBaja,
+            numeroDepto: '3B',
+            direccion: 'Mataojo 2044',
+          ),
+        );
+        await montarNotas(tester, repo: repo);
+
+        expect(find.text('El depto 3B de Mataojo 2044 está dado de baja. $ayuda'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado un espacio dado de baja sin número ni dirección conocidos, cuando abro sus notas, el aviso igual dice la causa',
+      (tester) async {
+        final repo = soloLectura(
+          const ContextoNotasPersona(nombre: 'María', causa: CausaSoloLectura.espacioDeBaja),
+        );
+        await montarNotas(tester, repo: repo);
+
+        expect(find.text('El espacio de María está dado de baja. $ayuda'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que ya no está en ningún depto activo, cuando abro sus notas, el aviso lo dice',
+      (tester) async {
+        final repo = soloLectura(
+          const ContextoNotasPersona(nombre: 'María', causa: CausaSoloLectura.sinEspacioActivo),
+        );
+        await montarNotas(tester, repo: repo);
+
+        expect(find.text('María ya no está en ningún depto activo. $ayuda'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'dado una persona en solo lectura con notas borradas, cuando las miro, no hay «Restaurar»',
       (tester) async {
         final repo = NotaPersonaRepositorioFalso(
           notas: [notaDePrueba('b1', 'Borrada', borrada: DateTime(2026, 10, 22, 14, 30))],
-          contexto: const ContextoNotasPersona(nombre: 'María', soloLectura: true),
+          contexto: const ContextoNotasPersona(
+            nombre: 'María',
+            causa: CausaSoloLectura.personaDeBaja,
+          ),
         );
         await montarNotas(tester, repo: repo);
 
@@ -566,6 +631,8 @@ void main() {
       await tester.enterText(find.byKey(ClavesNotas.campo), 'Cambio que no se guarda');
 
       await tester.tap(find.byTooltip('Cerrar'));
+      await asentar(tester);
+      await tester.tap(find.text('Descartar'));
       await asentar(tester);
 
       expect(find.text('Trabaja en la farmacia de Av. Italia de 9 a 13.'), findsOneWidget);

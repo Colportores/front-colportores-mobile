@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/persona_local_
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/motivo_rechazo_nota.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.dart';
@@ -515,6 +516,62 @@ void main() {
   });
 
   group('leerContexto', () {
+    test(
+      'dado una persona activa, cuando leo el contexto, no trae causa de solo lectura',
+      () async {
+        await sembrar();
+
+        final c = await local.leerContexto('per-1');
+
+        expect(c?.causa, isNull);
+        expect(c?.soloLectura, isFalse);
+      },
+    );
+
+    test(
+      'dado una persona de baja, cuando leo el contexto, la causa es la baja y trae desde cuándo (32B·04)',
+      () async {
+        await sembrar();
+        await db.customStatement('UPDATE persona SET deleted_at = ? WHERE id = ?', [
+          t0.millisecondsSinceEpoch,
+          'per-1',
+        ]);
+
+        final c = await local.leerContexto('per-1');
+
+        expect(c?.causa, CausaSoloLectura.personaDeBaja);
+        expect(c?.bajaDesde, t0);
+      },
+    );
+
+    test(
+      'dado que su depto está de baja, cuando leo el contexto, la causa trae el número y la dirección (32B·08)',
+      () async {
+        await sembrar(espacioDeBaja: t0);
+
+        final c = await local.leerContexto('per-1');
+
+        expect(c?.causa, CausaSoloLectura.espacioDeBaja);
+        expect(c?.numeroDepto, '3B');
+        expect(c?.direccion, 'Mataojo 2044');
+      },
+    );
+
+    test(
+      'dado que su vínculo está de baja y no tiene otro, cuando leo el contexto, la causa es que no tiene espacio activo',
+      () async {
+        await sembrar();
+        await db.customStatement('UPDATE espacio_persona SET deleted_at = ? WHERE id = ?', [
+          t0.millisecondsSinceEpoch,
+          'ep-1',
+        ]);
+
+        final c = await local.leerContexto('per-1');
+
+        expect(c?.causa, CausaSoloLectura.sinEspacioActivo);
+      },
+    );
+
     test(
       'dado una persona activa, cuando leo el contexto, trae su nombre y se puede escribir',
       () async {

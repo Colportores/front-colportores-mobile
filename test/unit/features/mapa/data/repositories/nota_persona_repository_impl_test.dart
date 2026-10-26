@@ -158,13 +158,16 @@ void main() {
   test(
     'dado una persona, cuando leo el contexto, devuelve el nombre y si es de solo lectura',
     () async {
-      local.contexto = const ContextoNotasPersona(nombre: 'María', soloLectura: true);
+      local.contexto = const ContextoNotasPersona(
+        nombre: 'María',
+        causa: CausaSoloLectura.personaDeBaja,
+      );
 
       final r = await repositorio.leerContexto('per-1');
 
       expect(
         r.getOrElse(() => null),
-        const ContextoNotasPersona(nombre: 'María', soloLectura: true),
+        const ContextoNotasPersona(nombre: 'María', causa: CausaSoloLectura.personaDeBaja),
       );
     },
   );
@@ -178,10 +181,7 @@ void main() {
   });
 
   test('dado un contexto, cuando se lo imprime, no muestra el nombre de la persona', () {
-    expect(
-      const ContextoNotasPersona(nombre: 'María', soloLectura: false).toString(),
-      isNot(contains('María')),
-    );
+    expect(const ContextoNotasPersona(nombre: 'María').toString(), isNot(contains('María')));
   });
 
   test('dado una nota, cuando se la imprime, no muestra su texto', () {

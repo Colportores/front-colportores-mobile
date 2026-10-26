@@ -11,6 +11,7 @@ import '../../domain/usecases/notas_persona_use_cases.dart';
 import '../providers/notas_persona_providers.dart';
 import '../providers/personas_providers.dart';
 import '../textos_notas.dart';
+import '../widgets/dialogos_modificar.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_notas.dart';
 import '../widgets/piezas_persona.dart';
@@ -30,6 +31,8 @@ typedef NotaGuardada = ({NotaPersona nota, bool esNueva});
 /// - Si guardar falla, el texto queda en el campo, el botón vuelve a habilitarse y pasa a decir
 ///   «Reintentar» (E·07).
 /// - Al editar, si el texto no cambió se cierra sin escribir nada (no se toca `updated_at`).
+/// - La ✕ y el atrás del sistema, con texto sin guardar, preguntan «¿Descartar lo que escribiste?»
+///   (mapa §2, P5 de #144); sin cambios cierran directo.
 ///
 /// Devuelve la [NotaGuardada] (o `null` si se cerró sin guardar).
 class NotaPersonaFormPage extends ConsumerStatefulWidget {
@@ -98,6 +101,36 @@ class _NotaPersonaFormPageState extends ConsumerState<NotaPersonaFormPage> {
   }
 
   bool get _sirve => ValidadorNota.problema(_texto.text) == null;
+
+  /// Hay algo escrito que se perdería al salir: una nota nueva con texto, o una edición distinta de la
+  /// nota original.
+  bool get _hayCambios {
+    final original = widget.nota;
+    final escrito = _texto.text;
+    if (original == null) return ValidadorNota.limpiar(escrito).isNotEmpty;
+    return ValidadorNota.limpiar(escrito) != original.texto;
+  }
+
+  /// Se está preguntando si se descarta (un segundo toque en la ✕ no abre otro aviso).
+  var _preguntando = false;
+
+  /// La ✕ y el atrás del sistema: sin cambios cierran directo; con texto sin guardar preguntan antes.
+  Future<void> _salir() async {
+    if (_enviando || _preguntando) return;
+    if (!_hayCambios) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _preguntando = true;
+    bool descartar;
+    try {
+      descartar = await confirmarDescartarLoEscrito(context);
+    } finally {
+      _preguntando = false;
+    }
+    if (!mounted || !descartar) return;
+    Navigator.of(context).pop();
+  }
 
   String? get _error {
     final problema = ValidadorNota.problema(_texto.text);
@@ -185,8 +218,11 @@ class _NotaPersonaFormPageState extends ConsumerState<NotaPersonaFormPage> {
     final muyLarga = ValidadorNota.superaElLimite(_texto.text);
 
     return PopScope(
-      // Mientras se guarda no se sale: el resultado se perdería.
-      canPop: !_enviando,
+      // Mientras se guarda no se sale (el resultado se perdería) y con texto sin guardar se pregunta.
+      canPop: !_enviando && !_hayCambios,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio && !_enviando) unawaited(_salir());
+      },
       child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -196,7 +232,7 @@ class _NotaPersonaFormPageState extends ConsumerState<NotaPersonaFormPage> {
                 child: CabeceraNotas(
                   icono: Icons.close,
                   tooltip: TextosNotas.cerrar,
-                  alTocar: _enviando ? null : () => Navigator.of(context).maybePop(),
+                  alTocar: _enviando ? null : _salir,
                 ),
               ),
               TituloNotas(titulo: _esEdicion ? TextosNotas.tituloEditar : TextosNotas.tituloNueva),

@@ -1,3 +1,4 @@
+import '../domain/entities/contexto_notas_persona.dart';
 import '../domain/entities/nota_persona.dart';
 import '../domain/services/validador_nota.dart';
 
@@ -48,8 +49,34 @@ abstract final class TextosNotas {
       ? 'No pudimos leer las notas en tu teléfono.'
       : 'No pudimos leer las notas de $nombre en tu teléfono.';
 
-  static String soloLectura(String nombre) =>
-      'Solo lectura: podés ver las notas de $nombre, pero no agregar, editar ni borrar ninguna.';
+  /// Lo que se puede hacer en solo lectura; va después de la causa.
+  static const soloLecturaAyuda = 'Podés ver sus notas, pero no agregar, editar ni borrar ninguna.';
+
+  /// El aviso de solo lectura (mapa §2, P3 de #144): la causa como la ficha (32B·04: «María está de baja
+  /// desde el 22/10.», 32B·08: «El depto 3B de Mataojo 2044 está dado de baja.») y qué se puede hacer.
+  /// «De baja» y no «dada de baja»: no depende del género de la persona.
+  static String soloLectura(ContextoNotasPersona contexto, DateTime ahora) {
+    final nombre = contexto.nombre;
+    final causa = switch (contexto.causa) {
+      CausaSoloLectura.personaDeBaja => () {
+        final desde = contexto.bajaDesde;
+        return desde == null
+            ? '$nombre está de baja.'
+            : '$nombre está de baja desde el ${FormatoNotas.diaMes(desde, ahora)}.';
+      }(),
+      CausaSoloLectura.espacioDeBaja => () {
+        final depto = contexto.numeroDepto;
+        final donde = contexto.direccion;
+        if (depto != null && donde != null) return 'El depto $depto de $donde está dado de baja.';
+        if (donde != null) return 'El espacio de $donde está dado de baja.';
+        if (depto != null) return 'El depto $depto está dado de baja.';
+        return 'El espacio de $nombre está dado de baja.';
+      }(),
+      CausaSoloLectura.sinEspacioActivo => '$nombre ya no está en ningún depto activo.',
+      null => '',
+    };
+    return '$causa $soloLecturaAyuda';
+  }
 
   static String verBorradas(int cantidad) => 'Ver borradas ($cantidad)';
 
@@ -72,6 +99,9 @@ abstract final class FormatoNotas {
     final base = '${_dos(local.day)}/${_dos(local.month)}';
     return local.year == ahora.year ? base : '$base/${_dos(local.year % 100)}';
   }
+
+  /// «22/10»: el día y el mes, con el año de dos dígitos si no es el actual.
+  static String diaMes(DateTime fecha, DateTime ahora) => _dia(fecha.toLocal(), ahora.toLocal());
 
   /// «HOY 14:20» si se escribió hoy; «05/10» (o «05/10/25» de otro año) si no. Con la hora local.
   static String fecha(NotaPersona nota, DateTime ahora) {

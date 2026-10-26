@@ -123,6 +123,8 @@ void main() {
 
       await tester.tap(find.byTooltip('Cerrar'));
       await asentar(tester);
+      await tester.tap(find.text('Descartar'));
+      await asentar(tester);
 
       expect(resultado.cierres, 1);
       expect(resultado.guardada, isNull);
@@ -136,6 +138,8 @@ void main() {
       await escribir(tester, 'Algo');
       await tester.tap(find.byTooltip('Cerrar'));
       await asentar(tester);
+      await tester.tap(find.text('Descartar'));
+      await asentar(tester);
 
       await tester.tap(find.text('abrir formulario'));
       await asentar(tester);
@@ -143,6 +147,169 @@ void main() {
       expect(resultado.cierres, 1);
       expect(tester.widget<TextField>(find.byKey(ClavesNotas.campo)).controller!.text, isEmpty);
     });
+  });
+
+  group('descartar lo escrito (mapa §2, P5)', () {
+    testWidgets('dado que no escribí nada, cuando toco la ✕, cierra directo sin preguntar', (
+      tester,
+    ) async {
+      final resultado = await montarFormulario(tester);
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await asentar(tester);
+
+      expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+      expect(resultado.cierres, 1);
+    });
+
+    testWidgets(
+      'dado que escribí solo espacios, cuando toco la ✕, cierra directo: no hay nada que perder',
+      (tester) async {
+        final resultado = await montarFormulario(tester);
+        await escribir(tester, '  \n ');
+
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(resultado.cierres, 1);
+      },
+    );
+
+    testWidgets(
+      'dado texto sin guardar, cuando toco la ✕, pregunta con «Seguir escribiendo» y «Descartar» y el texto sigue ahí',
+      (tester) async {
+        final resultado = await montarFormulario(tester);
+        await escribir(tester, 'Algo importante');
+
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+        expect(find.text('Seguir escribiendo'), findsOneWidget);
+        expect(find.text('Descartar'), findsOneWidget);
+        expect(resultado.cierres, 0);
+
+        await tester.tap(find.text('Seguir escribiendo'));
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+        expect(resultado.cierres, 0);
+        expect(
+          tester.widget<TextField>(find.byKey(ClavesNotas.campo)).controller!.text,
+          'Algo importante',
+        );
+      },
+    );
+
+    testWidgets(
+      'dado texto sin guardar, cuando uso el atrás del sistema, también pregunta; cerrar el aviso con atrás sigue escribiendo',
+      (tester) async {
+        final resultado = await montarFormulario(tester);
+        await escribir(tester, 'Algo importante');
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+        expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+        expect(resultado.cierres, 0);
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+        expect(resultado.cierres, 0);
+        expect(find.byKey(ClavesNotas.campo), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado texto sin guardar, cuando toco «Descartar», vuelve sin nota y no escribe nada',
+      (tester) async {
+        final repo = NotaPersonaRepositorioFalso();
+        final resultado = await montarFormulario(tester, repo: repo);
+        await escribir(tester, 'Algo importante');
+
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+        await tester.tap(find.text('Descartar'));
+        await asentar(tester);
+
+        expect(resultado.cierres, 1);
+        expect(resultado.guardada, isNull);
+        expect(repo.llamadas, isEmpty);
+      },
+    );
+
+    testWidgets('dado dos toques seguidos en la ✕, cuando se abre el aviso, se abre uno solo', (
+      tester,
+    ) async {
+      await montarFormulario(tester);
+      await escribir(tester, 'Algo');
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.tap(find.byTooltip('Cerrar'), warnIfMissed: false);
+      await asentar(tester);
+
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+    });
+
+    testWidgets(
+      'dado una edición sin cambios, cuando toco la ✕, cierra directo; con un cambio, pregunta',
+      (tester) async {
+        final original = notaDePrueba('n1', 'Texto original');
+        final resultado = await montarFormulario(
+          tester,
+          repo: NotaPersonaRepositorioFalso(notas: [original]),
+          nota: original,
+        );
+
+        await escribir(tester, 'Texto original  ');
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+        expect(resultado.cierres, 1);
+
+        await tester.tap(find.text('abrir formulario'));
+        await asentar(tester);
+        await escribir(tester, 'Texto cambiado');
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que guardar falló, cuando toco la ✕, el texto que no se pudo guardar también pregunta antes de perderse',
+      (tester) async {
+        final repo = NotaPersonaRepositorioFalso()
+          ..resultados['agregar'] = [const FailureInesperado()];
+        final resultado = await montarFormulario(tester, repo: repo);
+        await escribir(tester, 'No se puede perder');
+        await guardar(tester);
+
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+        expect(resultado.cierres, 0);
+      },
+    );
+
+    testWidgets(
+      'dado el texto al 200 % en un teléfono chico, cuando aparece el aviso, se ven los dos botones sin desbordes',
+      (tester) async {
+        await montarFormulario(tester, escala: 2, tamano: const Size(320, 568));
+        await escribir(tester, 'Algo');
+
+        await tester.tap(find.byTooltip('Cerrar'));
+        await asentar(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Seguir escribiendo'), findsOneWidget);
+        expect(find.text('Descartar'), findsOneWidget);
+      },
+    );
   });
 
   group('doble toque y acciones seguidas', () {
