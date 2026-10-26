@@ -124,6 +124,12 @@ Future<ProviderContainer> _montar(
     ],
   );
   addTearDown(container.dispose);
+  // La pantalla de los tests (800 × 600) no alcanza para ver «Cerrar sesión» sin desplazar con la fila
+  // «Mostrar el aviso de privacidad» (#445): se la alarga, salvo que el test ya haya elegido un tamaño.
+  if (tester.view.physicalSize == const Size(2400, 1800)) {
+    tester.view.physicalSize = const Size(2400, 3000);
+    addTearDown(tester.view.reset);
+  }
   await container.read(sesionProvider.future);
   await container
       .read(sesionProvider.notifier)
@@ -980,7 +986,7 @@ void main() {
       expect(find.text('Mostrar el aviso de privacidad'), findsOneWidget);
       expect(
         find.text(
-          'Sale cuando agregás una persona o una nota: tus datos solo viven en tu celular.',
+          'Sale cuando agregás una persona o una nota, para recordarte que esos datos solo viven en tu celular.',
         ),
         findsOneWidget,
       );

@@ -14,6 +14,7 @@ abstract final class ClavesHojaCasa {
   static const persona = Key('hoja_casa_persona');
   static const cobrar = Key('hoja_casa_cobrar');
   static const abrirPersona = Key('hoja_casa_abrir_persona');
+  static const asaDeLaLista = Key('hoja_casa_asa_de_la_lista');
   static const pestanas = Key('hoja_casa_pestanas');
   static const agregarPersona = Key('hoja_casa_agregar_persona');
   static const sinPersonas = Key('hoja_casa_sin_personas');

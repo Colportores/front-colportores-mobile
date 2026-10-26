@@ -363,7 +363,8 @@ class _FilaAvisoDePrivacidad extends StatelessWidget {
 abstract final class TextosConfiguracion {
   static const mostrarAvisoDePrivacidad = 'Mostrar el aviso de privacidad';
   static const mostrarAvisoDePrivacidadAyuda =
-      'Sale cuando agregás una persona o una nota: tus datos solo viven en tu celular.';
+      'Sale cuando agregás una persona o una nota, para recordarte que esos datos solo viven '
+      'en tu celular.';
   static const noPudimosGuardarElAviso = 'No pudimos guardar el cambio. Probá de nuevo.';
 }
 
