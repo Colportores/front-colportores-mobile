@@ -14,6 +14,11 @@
          recordatorios de las visitas (HU-NOT-002) y las push (HU-NOT-003) lo necesitan. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Recordatorios de las visitas (HU-NOT-002): al reiniciar el teléfono Android borra las
+         alarmas, y con este permiso el plugin vuelve a programar los avisos que seguían pendientes.
+         No se pide la alarma exacta (SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM): ver el PR. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
          1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin
             guarda el ciphertext en SharedPreferences —que Auto Backup sube a Drive— y la clave
@@ -70,6 +75,22 @@
                 <data android:scheme="io.supabase.colportores" android:host="login-callback"/>
             </intent-filter>
         </activity>
+        <!-- Recordatorios de las visitas (HU-NOT-002), de flutter_local_notifications: el primero
+             muestra el aviso a su hora; el segundo reprograma los pendientes tras reiniciar o
+             actualizar la app. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

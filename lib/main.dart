@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,6 +20,9 @@ import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
 import 'core/sync/sync_providers.dart';
+import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
+import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
+import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
@@ -105,6 +109,15 @@ Future<void> main() async {
     );
   }
 
+  // Recordatorios locales de las visitas (HU-NOT-002): el plugin se prepara antes de la primera
+  // pantalla para recoger el aviso que abrió la app, si lo hubo. Si no arranca, la app sigue.
+  final permisoNotificaciones = PermisoNotificacionesCanal();
+  final recordatorios = RecordatoriosLocales(
+    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin()),
+    permiso: permisoNotificaciones,
+  );
+  await recordatorios.iniciar();
+
   runApp(
     ProviderScope(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
@@ -143,7 +156,10 @@ Future<void> main() async {
         ),
         // El permiso de notificaciones (HU-NOT-001, vista 24): canal nativo propio (MainActivity.kt,
         // AppDelegate.swift) y, en el almacén seguro, si ya se le pidió y si cerró el aviso de Hoy.
-        permisoNotificacionesSistemaProvider.overrideWithValue(PermisoNotificacionesCanal()),
+        permisoNotificacionesSistemaProvider.overrideWithValue(permisoNotificaciones),
+        // Los avisos de las visitas agendadas (HU-NOT-002), con el plugin del teléfono.
+        recordatoriosProvider.overrideWithValue(recordatorios),
+        toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
         ),
