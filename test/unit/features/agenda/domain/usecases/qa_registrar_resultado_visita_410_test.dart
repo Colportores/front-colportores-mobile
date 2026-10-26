@@ -584,4 +584,90 @@ void main() {
       },
     );
   });
+
+  group('Ronda final: «No contestó» por error, «Deshacer» y volver a registrar', () {
+    test(
+      'NO_CONTESTO sobre la agenda → «Deshacer»: la agenda vuelve a PROGRAMADA sin visita, la casa '
+      'vuelve a la entrevista programada y la cola lleva el baja de la visita y el cambio de la '
+      'agenda',
+      () async {
+        await repositorio.agendar(agendaDe('age-1'));
+        encolador.encolados.clear();
+        final r = salio(await registrar(_R.noContesto, agendaId: 'age-1'));
+        expect(await colores(), ['SIN_CONTESTAR']);
+
+        final deshecha = await repositorio.deshacerVisita(
+          r.guardada.visita.id,
+          agendaAfectadaId: r.guardada.agendaAfectadaId,
+          ahora: reloj.add(const Duration(minutes: 1)),
+        );
+
+        expect(deshecha.isRight(), isTrue);
+        final agenda = (await agendas()).single;
+        expect([agenda.estado, agenda.visitaId], ['PROGRAMADA', null]);
+        expect(await colores(), ['ENTREVISTA_PROGRAMADA']);
+        expect(cola(), containsAll(['visita:insert', 'agenda:update', 'visita:delete']));
+      },
+    );
+
+    test(
+      'NO_CONTESTO por error, «Deshacer» y después ENTREVISTA sobre la misma agenda: la agenda queda '
+      'CUMPLIDA con la visita nueva y no se crea otra',
+      () async {
+        await repositorio.agendar(agendaDe('age-1'));
+        final primera = salio(await registrar(_R.noContesto, agendaId: 'age-1'));
+        await repositorio.deshacerVisita(
+          primera.guardada.visita.id,
+          agendaAfectadaId: primera.guardada.agendaAfectadaId,
+          ahora: reloj.add(const Duration(minutes: 1)),
+        );
+
+        final segunda = salio(await registrar(_R.entrevista, agendaId: 'age-1'));
+
+        expect(segunda.guardada.agendaIgnorada, isNull);
+        final agenda = (await agendas()).single;
+        expect([agenda.estado, agenda.visitaId], ['CUMPLIDA', segunda.guardada.visita.id]);
+        expect(await colores(), ['ENTREVISTA_SIN_VENTA']);
+      },
+    );
+
+    test(
+      '«Deshacer» dos veces seguidas tras NO_CONTESTO: la segunda no escribe ni encola nada',
+      () async {
+        await repositorio.agendar(agendaDe('age-1'));
+        final r = salio(await registrar(_R.noContesto, agendaId: 'age-1'));
+        final cuando = reloj.add(const Duration(minutes: 1));
+        await repositorio.deshacerVisita(
+          r.guardada.visita.id,
+          agendaAfectadaId: r.guardada.agendaAfectadaId,
+          ahora: cuando,
+        );
+        final antes = cola().length;
+
+        final otra = await repositorio.deshacerVisita(
+          r.guardada.visita.id,
+          agendaAfectadaId: r.guardada.agendaAfectadaId,
+          ahora: cuando.add(const Duration(minutes: 1)),
+        );
+
+        expect(otra.isRight(), isTrue);
+        expect(cola().length, antes);
+        expect((await agendas()).single.estado, 'PROGRAMADA');
+      },
+    );
+
+    test('R·01 de un toque: NO_CONTESTO sin persona y sin agenda deja la casa gris y la visita sin '
+        'vínculo; el payload no lleva ningún dato de persona', () async {
+      final r = salio(await registrar(_R.noContesto, vinculo: null));
+
+      expect(r.guardada.aviso, isNull);
+      expect((await visitas()).single.espacioPersonaId, isNull);
+      expect(await colores(), ['SIN_CONTESTAR']);
+      final payload = jsonEncode(
+        encolador.encolados.firstWhere((c) => c.entidad == 'visita').payload,
+      );
+      expect(payload, isNot(contains('nombre')));
+      expect(payload, isNot(contains('telefono')));
+    });
+  });
 }
