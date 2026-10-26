@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
@@ -11,6 +12,8 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
+    show ClaveDeLaCasa, ContextoDeCobro, ContextoDeVisita;
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_notifier.dart'
     show mapaUbicacionesProvider;
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_providers.dart';
@@ -23,6 +26,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
+import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/mapa_base_falso.dart';
 import '../../helpers/mapa_descargas_arnes.dart';
@@ -89,6 +93,10 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   SalidaAltaUbicacion? salidaAlta,
   bool asentar = true,
   List<Override> otrosOverrides = const [],
+  Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
+  List<ClaveDeLaCasa>? lecturasContexto,
+  FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
+  FutureOr<void> Function(ContextoDeCobro)? cobrar,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -105,6 +113,13 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
       overrides: <Override>[
         ...overridesLista(repo: montaje.repo, gps: montaje.gps, ciudades: ciudades),
         montaje.mapa.override,
+        // La hoja de la casa (vista 39) lee de la base; acá, de un contexto fijo (el del canvas).
+        ...overridesHojaCasa(
+          lectura: lecturaContexto,
+          lecturas: lecturasContexto,
+          registrarVisita: registrarVisita,
+          cobrar: cobrar,
+        ),
         ...otrosOverrides,
         if (arnes != null)
           ...arnes.overrides

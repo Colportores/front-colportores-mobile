@@ -5,8 +5,10 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
@@ -197,22 +199,53 @@ void main() {
     });
   });
   group('UbicacionRepositoryImpl.observarListaDelColportor', () {
-    test('devuelve entidades con sus espacios y sin estado (aún no hay house_status)', () async {
+    test(
+      'devuelve entidades con sus espacios y «Sin visita» si la casa no tiene house_status',
+      () async {
+        final modelo = UbicacionModel.fromEntity(ubicacion);
+        final local = _LocalFijo(
+          lista: Stream.value([
+            (ubicacion: modelo, cantidadEspacios: 3, color: null, motivoBaja: 'Ya no existe'),
+          ]),
+        );
+
+        final lista = await UbicacionRepositoryImpl(
+          local,
+        ).observarListaDelColportor(colportorId: 'col-1', incluirBajas: true).first;
+
+        expect(local.listaPedida, (colportorId: 'col-1', incluirBajas: true));
+        expect(lista.single.ubicacion, ubicacion);
+        expect(lista.single.cantidadEspacios, 3);
+        expect(lista.single.motivoBaja, 'Ya no existe');
+        expect(lista.single.estado, EstadoCasa.sinVisita);
+        expect(lista.single.proximaEntrevista, isNull);
+      },
+    );
+
+    test('el color de house_status pasa al estado de la casa, uno por uno', () async {
       final modelo = UbicacionModel.fromEntity(ubicacion);
+      final esperados = {
+        ColorHouseStatus.entregaYCobranzaPendiente: EstadoCasa.entregaYPago,
+        ColorHouseStatus.cobranzaPendiente: EstadoCasa.cobranzaPendiente,
+        ColorHouseStatus.entrevistaProgramada: EstadoCasa.entrevistaAgendada,
+        ColorHouseStatus.ventaCompleta: EstadoCasa.ventaCompleta,
+        ColorHouseStatus.entrevistaSinVenta: EstadoCasa.entrevistaHecha,
+        ColorHouseStatus.sinContestar: EstadoCasa.noContesto,
+        ColorHouseStatus.rechazo: EstadoCasa.rechazo,
+      };
+      expect(esperados.keys.toSet(), ColorHouseStatus.values.toSet());
       final local = _LocalFijo(
-        lista: Stream.value([(ubicacion: modelo, cantidadEspacios: 3, motivoBaja: 'Ya no existe')]),
+        lista: Stream.value([
+          for (final color in esperados.keys)
+            (ubicacion: modelo, cantidadEspacios: 1, color: color, motivoBaja: null),
+        ]),
       );
 
       final lista = await UbicacionRepositoryImpl(
         local,
-      ).observarListaDelColportor(colportorId: 'col-1', incluirBajas: true).first;
+      ).observarListaDelColportor(colportorId: 'col-1').first;
 
-      expect(local.listaPedida, (colportorId: 'col-1', incluirBajas: true));
-      expect(lista.single.ubicacion, ubicacion);
-      expect(lista.single.cantidadEspacios, 3);
-      expect(lista.single.motivoBaja, 'Ya no existe');
-      expect(lista.single.estado, isNull);
-      expect(lista.single.proximaEntrevista, isNull);
+      expect([for (final f in lista) f.estado], esperados.values.toList());
     });
 
     test('un error de lectura llega al stream', () async {

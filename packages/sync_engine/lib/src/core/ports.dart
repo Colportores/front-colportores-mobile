@@ -41,6 +41,17 @@ abstract interface class SyncTransport {
 abstract interface class ConnectivityPort {
   Stream<bool> get onlineChanges;
   Future<bool> get isOnline;
+
+  /// Hay red **y es Wi-Fi** (no datos móviles). Es lo que el ahorro de datos
+  /// (HU-SYNC-008) mira para decidir si baja el delta o lo deja esperar.
+  Future<bool> get isOnWifi;
+
+  /// Cada vez que se gana o se pierde el Wi-Fi: `true` al conectarse a uno.
+  ///
+  /// [onlineChanges] no alcanza para esto: pasar de datos móviles a Wi-Fi sigue
+  /// siendo «con red», no cambia y no avisa. Es la señal que despierta el pull
+  /// que el ahorro de datos dejó esperando.
+  Stream<bool> get wifiChanges;
 }
 
 /// `sync_queue` en la DB local (Drift).

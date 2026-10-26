@@ -42,3 +42,11 @@ final registrarResultadoVisitaUseCaseProvider = Provider<RegistrarResultadoVisit
     ahora: ref.watch(relojVisitaProvider),
   ),
 );
+
+/// El «Deshacer» del aviso «Guardado» (vista 39, R·01).
+final deshacerResultadoVisitaUseCaseProvider = Provider<DeshacerResultadoVisitaUseCase>(
+  (ref) => DeshacerResultadoVisitaUseCase(
+    ref.watch(agendaRepositoryProvider),
+    ahora: ref.watch(relojVisitaProvider),
+  ),
+);

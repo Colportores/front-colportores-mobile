@@ -112,6 +112,7 @@ void main() {
         '(las notas son filas de nota, ADR-017)', () {
       final visita = Visita(
         id: 'vis-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         fecha: DateTime(2026, 9, 18),
         tipoResultado: TipoResultadoVisita.entrevista,
@@ -120,6 +121,7 @@ void main() {
       );
       final agenda = Agenda(
         id: 'age-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         tipo: TipoAgenda.entrevista,
         fechaProgramada: DateTime(2026, 9, 20),

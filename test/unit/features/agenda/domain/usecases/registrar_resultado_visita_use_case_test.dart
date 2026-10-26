@@ -37,6 +37,41 @@ final class _RepositorioFalso implements AgendaRepository {
   @override
   Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora}) =>
       throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Agenda?>> agendaProgramadaDe(String espacioId) =>
+      throw UnimplementedError();
+
+  final deshechas = <({String visita, String? creada, String? afectada, DateTime ahora})>[];
+
+  /// Lo que devuelve la próxima llamada a [deshacerVisita] (si no, una visita cualquiera).
+  Either<Failure, Visita>? respuestaDeshacer;
+
+  @override
+  Future<Either<Failure, Visita>> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) async {
+    deshechas.add((
+      visita: visitaId,
+      creada: agendaCreadaId,
+      afectada: agendaAfectadaId,
+      ahora: ahora,
+    ));
+    return respuestaDeshacer ??
+        Right(
+          Visita(
+            id: visitaId,
+            espacioId: 'esp-1',
+            fecha: ahora,
+            tipoResultado: TipoResultadoVisita.noContesto,
+            colportorId: 'col-1',
+            auditoria: Auditoria(createdAt: ahora, updatedAt: ahora, createdBy: 'col-1'),
+          ),
+        );
+  }
 }
 
 void main() {
@@ -57,7 +92,8 @@ void main() {
 
   RegistrarResultadoVisitaParams params({
     TipoResultadoVisita resultado = TipoResultadoVisita.entrevista,
-    String espacioPersonaId = 'ep-1',
+    String espacioId = 'esp-1',
+    String? espacioPersonaId = 'ep-1',
     String colportorId = 'col-1',
     String? agendaId,
     String? jornadaId,
@@ -65,6 +101,7 @@ void main() {
     IdsResultadoVisita? ids,
   }) => RegistrarResultadoVisitaParams(
     ids: ids ?? casoDeUso.nuevosIds(),
+    espacioId: espacioId,
     espacioPersonaId: espacioPersonaId,
     colportorId: colportorId,
     resultado: resultado,
@@ -88,6 +125,7 @@ void main() {
       expect(r.isRight(), isTrue);
       final visita = repositorio.recibidas.single.visita;
       expect(visita.id, 'id-1');
+      expect(visita.espacioId, 'esp-1');
       expect(visita.espacioPersonaId, 'ep-1');
       expect(visita.colportorId, 'col-1');
       expect(visita.tipoResultado, TipoResultadoVisita.rechazo);
@@ -115,6 +153,22 @@ void main() {
       expect(nota.auditoria.createdBy, 'col-1');
     });
 
+    test(
+      'sin persona (No contestó, Rechazo, una cita sin nombre), guarda la visita igual',
+      () async {
+        for (final sinPersona in [null, '', '   ']) {
+          repositorio.recibidas.clear();
+          final r = await casoDeUso(
+            params(resultado: TipoResultadoVisita.noContesto, espacioPersonaId: sinPersona),
+          );
+
+          expect(r.isRight(), isTrue);
+          expect(repositorio.recibidas.single.visita.espacioPersonaId, isNull);
+          expect(repositorio.recibidas.single.visita.espacioId, 'esp-1');
+        }
+      },
+    );
+
     test('con una nota larga y con saltos de línea, no la corta', () async {
       final larga = List.generate(400, (i) => 'renglón $i').join('\n');
 
@@ -129,21 +183,29 @@ void main() {
       expect(repositorio.recibidas.single.agendaId, 'age-1');
     });
 
-    test('devuelve lo que guardó el repositorio con su aviso de la agenda', () async {
+    test('devuelve lo que guardó el repositorio con el aviso de su agenda y lo que tocó', () async {
       final visita = Visita(
         id: 'id-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         fecha: ahora,
         tipoResultado: TipoResultadoVisita.noContesto,
         colportorId: 'col-1',
         auditoria: Auditoria(createdAt: ahora, updatedAt: ahora, createdBy: 'col-1'),
       );
-      repositorio.respuesta = Right(VisitaGuardada(visita: visita, agendaQuedoPendiente: true));
+      repositorio.respuesta = Right(
+        VisitaGuardada(
+          visita: visita,
+          agendaIgnorada: MotivoAgendaIgnorada.cerrada,
+          agendaAfectadaId: 'age-1',
+        ),
+      );
 
       final r = await casoDeUso(params(resultado: TipoResultadoVisita.noContesto));
 
       final registrado = r.getOrElse(() => throw StateError('falló'));
-      expect(registrado.guardada.aviso, VisitaGuardada.avisoAgendaPendiente);
+      expect(registrado.guardada.aviso, MotivoAgendaIgnorada.cerrada.aviso);
+      expect(registrado.guardada.agendaAfectadaId, 'age-1');
       expect(registrado.seguimiento, SeguimientoDeVisita.ninguno);
     });
 
@@ -178,8 +240,8 @@ void main() {
     });
   });
 
-  group('dado el seguimiento de cada resultado (el enganche de la venta)', () {
-    test('solo VENTA sigue al flujo de venta', () async {
+  group('dado el seguimiento de cada resultado (el enganche de la venta y del cobro)', () {
+    test('VENTA sigue al flujo de venta y COBRANZA al cobro', () async {
       final seguimientos = <TipoResultadoVisita, SeguimientoDeVisita>{};
       for (final resultado in TipoResultadoVisita.values) {
         final r = await casoDeUso(params(resultado: resultado));
@@ -188,6 +250,7 @@ void main() {
 
       expect(seguimientos, {
         TipoResultadoVisita.venta: SeguimientoDeVisita.venta,
+        TipoResultadoVisita.cobranza: SeguimientoDeVisita.cobro,
         TipoResultadoVisita.noContesto: SeguimientoDeVisita.ninguno,
         TipoResultadoVisita.rechazo: SeguimientoDeVisita.ninguno,
         TipoResultadoVisita.entrevista: SeguimientoDeVisita.ninguno,
@@ -196,12 +259,11 @@ void main() {
   });
 
   group('dado un dato que falta, cuando se registra', () {
-    test('sin persona, no guarda nada y dice qué hacer (P3 de #151: sin persona vacía)', () async {
-      for (final vacia in ['', '   ']) {
-        final r = await casoDeUso(params(espacioPersonaId: vacia));
+    test('sin la casa, no guarda nada', () async {
+      for (final vacio in ['', '   ']) {
+        final r = await casoDeUso(params(espacioId: vacio));
 
-        expect(camposDe(r).keys, ['persona']);
-        expect(camposDe(r)['persona'], contains('Elegí'));
+        expect(camposDe(r).keys, ['espacio']);
       }
       expect(repositorio.recibidas, isEmpty);
     });
@@ -227,13 +289,67 @@ void main() {
     test('con todo mal, avisa de cada campo a la vez', () async {
       final r = await casoDeUso(
         params(
-          espacioPersonaId: '',
+          espacioId: '',
           colportorId: '',
           ids: const IdsResultadoVisita(visita: '', nota: ''),
         ),
       );
 
-      expect(camposDe(r).keys.toSet(), {'persona', 'colportorId', 'ids'});
+      expect(camposDe(r).keys.toSet(), {'espacio', 'colportorId', 'ids'});
+    });
+  });
+
+  group('DeshacerResultadoVisitaUseCase', () {
+    late DeshacerResultadoVisitaUseCase deshacer;
+
+    setUp(() => deshacer = DeshacerResultadoVisitaUseCase(repositorio, ahora: () => ahora));
+
+    test('pasa la visita y lo que tocó al repositorio, con el instante', () async {
+      final r = await deshacer(
+        const DeshacerResultadoVisitaParams(
+          visitaId: ' vis-1 ',
+          agendaCreadaId: 'age-n',
+          agendaAfectadaId: '  ',
+        ),
+      );
+
+      expect(r.isRight(), isTrue);
+      expect(repositorio.deshechas.single, (
+        visita: 'vis-1',
+        creada: 'age-n',
+        afectada: null,
+        ahora: ahora,
+      ));
+    });
+
+    test('se arma desde lo que devolvió el registro', () async {
+      final guardada = (await casoDeUso(params())).getOrElse(() => throw StateError('falló'));
+      final conAgenda = VisitaGuardada(
+        visita: guardada.guardada.visita,
+        agendaNoCumplida: true,
+        agendaAfectadaId: 'age-1',
+      );
+
+      await deshacer(DeshacerResultadoVisitaParams.de(conAgenda));
+
+      expect(repositorio.deshechas.single.visita, 'id-1');
+      expect(repositorio.deshechas.single.afectada, 'age-1');
+    });
+
+    test('sin identificador de la visita no toca nada y dice qué falta', () async {
+      final r = await deshacer(const DeshacerResultadoVisitaParams(visitaId: '  '));
+
+      final falla = r.swap().getOrElse(() => throw StateError('debía fallar'));
+      expect((falla as FailureValidacion).campos.keys, ['visita']);
+      expect(repositorio.deshechas, isEmpty);
+    });
+
+    test('lo que falla en el repositorio sale como Left, sin excepción', () async {
+      repositorio.respuestaDeshacer = const Left(FailureInesperado(causa: 'StateError'));
+
+      final r = await deshacer(const DeshacerResultadoVisitaParams(visitaId: 'vis-1'));
+
+      expect(r.isLeft(), isTrue);
     });
   });
 

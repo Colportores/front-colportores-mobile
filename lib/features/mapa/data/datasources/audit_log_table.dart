@@ -8,6 +8,10 @@ import '../../../../core/database/fecha_utc_converter.dart';
 abstract final class EventoAuditoriaLocal {
   /// La baja de una ubicación, con el motivo que eligió el colportor.
   static const ubicacionBaja = 'ubicacion_baja';
+
+  /// La baja de una persona (HU-UBI-011), con su motivo si lo hay. `uuid` es el `id` de la persona y
+  /// `creado_en` el mismo instante que su `deleted_at`.
+  static const personaBaja = 'persona_baja';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman

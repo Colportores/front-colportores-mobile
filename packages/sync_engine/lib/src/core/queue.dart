@@ -68,6 +68,11 @@ class SyncStatus {
     this.blocked = 0,
     this.waiting = 0,
     this.lastSuccessAt,
+    this.lastPushAt,
+    this.lastPullAt,
+    this.lastBackupAt,
+    this.pullPausedReason,
+    this.dataSaver = false,
     this.unauthorizedSince,
   });
 
@@ -87,7 +92,30 @@ class SyncStatus {
   /// Retenidos porque nombran una fila [blocked]. Ver [JobState.waiting].
   final int waiting;
 
+  /// Cuándo terminó el último ciclo completo (subió lo pendiente **y** bajó el
+  /// delta). Un ciclo con el pull en pausa por el ahorro de datos no cuenta.
   final DateTime? lastSuccessAt;
+
+  /// La última vez que el servidor confirmó una escritura del colportor
+  /// (HU-SYNC-007: «última fecha de push exitoso»). Sobrevive a reiniciar la
+  /// app mientras ese job siga en la cola (los `DONE` se compactan a los 7 días).
+  final DateTime? lastPushAt;
+
+  /// La última vez que se bajó el delta con éxito (HU-SYNC-007). Vive en
+  /// memoria: hasta el primer pull después de abrir la app es `null`.
+  final DateTime? lastPullAt;
+
+  /// El último backup que terminó bien desde que se abrió la app (HU-SYNC-007).
+  /// `null` hasta que corra uno.
+  final DateTime? lastBackupAt;
+
+  /// Por qué el último ciclo no bajó el delta, o `null` si lo bajó. Hoy es
+  /// [kDataSaverOnMobile]: el ahorro de datos está activo y no hay Wi-Fi
+  /// (HU-SYNC-008). Lo limpia el próximo pull que corre.
+  final String? pullPausedReason;
+
+  /// El ahorro de datos está activo (HU-SYNC-008).
+  final bool dataSaver;
 
   /// Desde cuándo el servidor viene contestando `401`, o null si la sesión
   /// funciona.
@@ -107,7 +135,66 @@ class SyncStatus {
   @override
   String toString() => 'SyncStatus(pending: $pending, inFlight: $inFlight, '
       'invalid: $invalid, blocked: $blocked, waiting: $waiting, '
-      'lastSuccessAt: $lastSuccessAt'
+      'lastSuccessAt: $lastSuccessAt, lastPushAt: $lastPushAt, '
+      'lastPullAt: $lastPullAt'
+      '${pullPausedReason == null ? '' : ', pull en pausa: $pullPausedReason'}'
       '${unauthorizedSince == null ? '' : ', sin sesión desde '
           '$unauthorizedSince'})';
+}
+
+/// El motivo con el que un ciclo deja el pull esperando por el ahorro de datos
+/// (HU-SYNC-008): el modo está activo y el teléfono solo tiene datos móviles.
+const kDataSaverOnMobile = 'data_saver_on_mobile';
+
+/// Una operación que el servidor rechazó, lista para mostrar en «Ver detalle»
+/// (HU-SYNC-007): qué tabla, cuándo, de qué tipo y por qué.
+///
+/// A propósito **no lleva el payload**: la fila puede tener datos personales
+/// (una dirección, una nota) y la pantalla solo necesita saber de qué se trata.
+/// Quien necesite la fila entera usa `SyncEngine.errorQueue`.
+class FailedOperation {
+  const FailedOperation({
+    required this.jobId,
+    required this.entity,
+    required this.op,
+    required this.createdAt,
+    required this.code,
+    required this.lastError,
+  });
+
+  /// El id que acepta `SyncEngine.requeue`.
+  final String jobId;
+
+  /// La tabla (nombre remoto).
+  final String entity;
+
+  final Op op;
+  final DateTime createdAt;
+
+  /// El código con el que el servidor la rechazó.
+  final String code;
+
+  /// El mensaje del servidor, sin datos personales (ver [sanitizarError]).
+  final String lastError;
+}
+
+/// Saca de un mensaje de error lo que podría ser un dato del colportor o de un
+/// cliente: el servidor devuelve cosas como `Key (email)=(a@b.com) already
+/// exists` o `invalid input syntax for type date: "Juan Pérez"`.
+///
+/// Es de mejor esfuerzo y a propósito agresivo: se pierde precisión del
+/// mensaje, no se filtra un valor. El `code` sigue siendo exacto. Lo que queda
+/// no pasa de [largoMaximo] caracteres.
+String sanitizarError(String mensaje, {int largoMaximo = 200}) {
+  var s = mensaje
+      // `Key (campo)=(valor)`: el valor va entre paréntesis.
+      .replaceAll(RegExp(r'\([^)]*\)'), '(…)')
+      // `...type date: "valor"` o `value: 'x'`.
+      .replaceAll(RegExp(r':\s*("[^"]*"|' "'[^']*'" r')'), ': «…»')
+      // Un correo suelto.
+      .replaceAll(RegExp(r'\S+@\S+'), '…')
+      // Teléfonos, documentos, ids largos de dígitos.
+      .replaceAll(RegExp(r'\d{6,}'), '…');
+  if (s.length > largoMaximo) s = '${s.substring(0, largoMaximo)}…';
+  return s;
 }

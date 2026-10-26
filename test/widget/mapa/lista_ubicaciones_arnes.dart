@@ -1,14 +1,20 @@
 // Arnés de los tests de la lista de ubicaciones (vista 05): monta la pestaña con los fakes de
 // `lista_ubicaciones_falsos.dart` y deja a mano las búsquedas más usadas.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
+    show ClaveDeLaCasa, ContextoDeVisita;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
+import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 
 /// Deja correr los fotogramas que hacen falta (la base emite en el turno siguiente y las hojas se
@@ -38,13 +44,19 @@ Future<void> montarLista(
   ValueChanged<String>? alAbrir,
   Future<void> Function()? alRegistrar,
   Key? clave,
+  Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
+  FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesLista(repo: repo ?? RepoListaFalso(), gps: gps, ciudades: ciudades),
+      overrides: [
+        ...overridesLista(repo: repo ?? RepoListaFalso(), gps: gps, ciudades: ciudades),
+        // La hoja de la casa (vista 39) lee de la base; acá, de un contexto fijo (el del canvas).
+        ...overridesHojaCasa(lectura: lecturaContexto, registrarVisita: registrarVisita),
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(

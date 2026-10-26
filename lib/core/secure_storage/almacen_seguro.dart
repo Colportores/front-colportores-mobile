@@ -85,7 +85,19 @@ enum ClaveSegura {
   /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
   /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
   /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) estrena uno nuevo.
-  idInstalacion('device_id');
+  idInstalacion('device_id'),
+
+  /// Qué pasó con el pedido del permiso de notificaciones en este teléfono (HU-NOT-001, vista 24):
+  /// `ahora_no` (tocó «Ahora no», el sistema todavía no le preguntó) o `sistema` (se le mostró el
+  /// diálogo del sistema; con las notificaciones apagadas después de eso, desde la app ya no se
+  /// pueden activar). Sin la clave, nunca se le pidió: el primer ingreso muestra el pedido, y no se
+  /// vuelve a mostrar. No es secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro
+  /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
+  permisoNotificaciones('notifications_permission'),
+
+  /// Marca de que la persona cerró con la ✕ el aviso «Notificaciones desactivadas» de Hoy (24A·03):
+  /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
+  avisoNotificacionesCerrado('notifications_banner_closed');
 
   const ClaveSegura(this.id);
 
