@@ -8,7 +8,9 @@ import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/persona_repository.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/criterio_otra_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_persona_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_persona_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/personas_del_espacio_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:flutter/material.dart';
@@ -87,6 +89,79 @@ Future<ResultadoAlta> montarAlta(
   );
   if (abrir) {
     await tester.tap(find.text('abrir alta'));
+    await asentar(tester);
+  }
+  return resultado;
+}
+
+/// Lo que la pantalla de arranque recibió al volver de la edición de una persona.
+final class ResultadoEdicion {
+  ResultadoEdicionPersona? resultado;
+  var cierres = 0;
+}
+
+/// La hora de los tests de la edición: la que el caso de uso le pasa al repositorio.
+final relojDeEdicion = DateTime.utc(2026, 10, 26, 12);
+
+/// Un criterio de «¿es otra persona?» que contesta siempre lo mismo (o lo que diga [decide]).
+final class CriterioOtraPersonaFijo implements CriterioOtraPersona {
+  CriterioOtraPersonaFijo({this.respuesta = true});
+
+  bool respuesta;
+  var consultas = 0;
+
+  @override
+  bool pareceOtraPersona(Persona antes, DatosDePersona despues) {
+    consultas += 1;
+    return respuesta;
+  }
+}
+
+/// Monta una pantalla con un botón «abrir edición» que abre [ModificarPersonaPage] para `per-1`, y la
+/// abre. `repo.contextos['per-1']` es la persona (por defecto, [contextoDeEdicion]).
+Future<ResultadoEdicion> montarEdicion(
+  WidgetTester tester, {
+  PersonaRepositorioFalso? repo,
+  CriterioOtraPersona? criterio,
+  DateTime? ahora,
+  EspacioConUbicacion? contexto,
+  double escala = 1,
+  Size tamano = const Size(390, 844),
+  bool abrir = true,
+}) async {
+  final resultado = ResultadoEdicion();
+  final repositorio = repo ?? PersonaRepositorioFalso();
+  repositorio.contextos.putIfAbsent('per-1', contextoDeEdicion);
+  _fijarTamano(tester, tamano);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        ..._overrides(repositorio, contexto ?? contextoActivo()),
+        if (criterio != null) criterioOtraPersonaProvider.overrideWithValue(criterio),
+        relojPersonaProvider.overrideWithValue(() => ahora ?? relojDeEdicion),
+      ],
+      child: _App(
+        escala: escala,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async {
+                  final r = await ModificarPersonaPage.abrir(context, personaId: 'per-1');
+                  resultado
+                    ..resultado = r
+                    ..cierres += 1;
+                },
+                child: const Text('abrir edición'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  if (abrir) {
+    await tester.tap(find.text('abrir edición'));
     await asentar(tester);
   }
   return resultado;

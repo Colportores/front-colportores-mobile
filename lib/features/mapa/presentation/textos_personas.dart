@@ -29,6 +29,41 @@ abstract final class TextosPersonas {
   /// El aviso que sigue a un alta (canvas 32A·05).
   static String guardada(String nombre) => 'Guardamos a $nombre en este teléfono.';
 
+  // Editar persona (32C, HU-UBI-010). Comparte el candado, los campos y «Reintentar» con el alta.
+  static const editarRotulo = 'EDITAR PERSONA';
+  static const editarTitulo = 'Editar persona';
+  static const guardarCambios = 'Guardar cambios';
+  static const guardarIgual = 'Guardar igual';
+  static const darDeBajaYCrearNueva = 'Dar de baja y crear nueva';
+
+  /// El aviso que sigue a una edición (canvas 32C·04).
+  static const cambiosGuardados = 'Cambios guardados en tu teléfono.';
+
+  /// A confirmar: lo que el canvas 32C no dibuja (cargar a la persona, que ya no esté, que esté en
+  /// solo lectura). La causa del solo lectura es la de la ficha (32B·04 y 32B·08).
+  static const cargandoPersona = 'Cargando a la persona';
+  static const noPudimosLeerPersona = 'No pudimos leer los datos de la persona en tu teléfono.';
+  static const personaNoEncontrada = 'La persona ya no está en tu teléfono. Volvé atrás.';
+  static const soloLecturaEdicionAyuda = 'Sus datos no se pueden editar.';
+
+  /// «Cambiaste nombre, apellido y teléfono.»: qué campos cambió (canvas 32C·03).
+  static String cambiaste(List<String> campos) {
+    final lista = campos.length <= 1
+        ? campos.join()
+        : '${campos.sublist(0, campos.length - 1).join(', ')} y ${campos.last}';
+    return 'Cambiaste $lista.';
+  }
+
+  /// El aviso «¿Es otra persona?» (canvas 32C·03): [campos] son los que cambió; [antes] y [despues]
+  /// los nombres de pila.
+  static String otraPersona({
+    required List<String> campos,
+    required String antes,
+    required String despues,
+  }) =>
+      '${cambiaste(campos)} Si es otra persona, conviene dar de baja a $antes y registrar a '
+      '$despues aparte, para no mezclar el historial.';
+
   // Los clientes del depto (11·04).
   static const agregarCliente = '+ Agregar cliente';
   static const sinTelefono = 'Sin teléfono';

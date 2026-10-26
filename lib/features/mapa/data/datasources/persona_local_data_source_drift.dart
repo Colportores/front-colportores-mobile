@@ -3,18 +3,22 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../domain/entities/contexto_edicion_persona.dart';
 import '../../domain/entities/espacio_persona.dart';
 import '../../domain/entities/motivo_rechazo_persona.dart';
 import '../../domain/entities/nota_persona.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/persona_del_espacio.dart';
+import '../../domain/repositories/persona_repository.dart' show ResultadoModificarPersona;
 import '../../domain/services/contador_personas_espacio.dart';
 import '../models/espacio_persona_model.dart';
+import 'audit_log_table.dart';
 import 'espacio_personas_table.dart';
 import 'espacios_table.dart';
 import 'notas_table.dart';
 import 'persona_local_data_source.dart';
 import 'personas_table.dart';
+import 'solo_lectura_persona.dart';
 import 'ubicaciones_table.dart';
 
 part 'persona_local_data_source_drift.g.dart';
@@ -85,6 +89,64 @@ final class PersonaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       ],
     );
   }
+
+  @override
+  Future<ContextoEdicionPersona?> leerParaEditar(String personaId) async {
+    final fila = await _fila(personaId);
+    if (fila == null) return null;
+    final lugar = await lugarDePersona(attachedDatabase, fila);
+    final causa = lugar.causa;
+    return ContextoEdicionPersona(
+      persona: _aPersona(fila),
+      espacioId: lugar.espacioId,
+      causa: causa?.causa,
+      bajaDesde: causa?.bajaDesde,
+      numeroDepto: causa?.numeroDepto,
+      direccion: causa?.direccion,
+    );
+  }
+
+  /// Leer, decidir y escribir van en una sola transacción (el mismo motivo que [registrar]): dos
+  /// guardados casi simultáneos se serializan y el segundo ve lo que dejó el primero. La persona es
+  /// local-only: no hay nada que encolar. El evento del `audit_log` lleva el id y nada más.
+  @override
+  Future<ResultadoModificarPersona> modificar({
+    required String personaId,
+    required String nombre,
+    required String apellido,
+    required String? telefono,
+    required DateTime ahora,
+  }) => transaction(() async {
+    final fila = await _fila(personaId);
+    if (fila == null) throw const PersonaRechazadaException(_Motivo.personaInexistente);
+    if ((await lugarDePersona(attachedDatabase, fila)).causa != null) {
+      throw const PersonaRechazadaException(_Motivo.personaSoloLectura);
+    }
+    if (fila.nombre == nombre && fila.apellido == apellido && fila.telefono == telefono) {
+      return (persona: _aPersona(fila), huboCambios: false);
+    }
+    // El reloj no retrocede: un `updated_at` nunca queda antes del que ya tenía la fila.
+    final cuando = ahora.isBefore(fila.updatedAt) ? fila.updatedAt : ahora;
+    await (update(personas)..where((p) => p.id.equals(personaId))).write(
+      PersonasCompanion(
+        nombre: Value(nombre),
+        apellido: Value(apellido),
+        telefono: Value(telefono),
+        updatedAt: Value(cuando),
+      ),
+    );
+    await into(attachedDatabase.auditLogLocal).insert(
+      AuditLogLocalCompanion.insert(
+        evento: EventoAuditoriaLocal.personaModificada,
+        uuid: personaId,
+        creadoEn: cuando,
+      ),
+    );
+    return (persona: _aPersona((await _fila(personaId))!), huboCambios: true);
+  });
+
+  Future<PersonaFila?> _fila(String id) =>
+      (select(personas)..where((p) => p.id.equals(id))).getSingleOrNull();
 
   @override
   Future<int> activasEn(String espacioId) async {
