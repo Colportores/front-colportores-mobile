@@ -12,12 +12,14 @@ import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
+import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 
-/// Estructura de la app una vez con sesión: la marca y el engranaje de Configuración arriba, la
-/// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
+/// Estructura de la app una vez con sesión: la marca, la campana de las notificaciones y el engranaje
+/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el
+/// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
 /// y en una lista (HU-UBI-003 y HU-UBI-002). Agenda y Ventas todavía no tienen pantalla: quedan con
@@ -82,6 +84,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         titleSpacing: 26,
         title: const _Marca(),
         actions: [
+          // El centro de notificaciones (HU-NOT-005, 24C·01), con el número de avisos sin leer.
+          const CampanaNotificaciones(),
           // Cerrar sesión (con confirmación) y borrar datos viven en Configuración (HU-AUTH-006/010).
           IconButton(
             key: const Key('inicio_configuracion'),
