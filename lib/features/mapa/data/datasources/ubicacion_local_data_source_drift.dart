@@ -8,6 +8,7 @@ import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacio_persona.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
@@ -17,6 +18,7 @@ import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
+import '../models/espacio_persona_model.dart';
 import '../models/ubicacion_model.dart';
 import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
 import 'audit_log_table.dart';
@@ -311,6 +313,74 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             ..orderBy([(e) => OrderingTerm.asc(e.createdAt), (e) => OrderingTerm.asc(e.id)]))
           .get();
 
+  /// La ubicación alternativa de cobranza en una unión (HU-UBI-013, `espacio_persona`): lo que nombra
+  /// a B ([duplicadaId]) pasa a nombrar a A ([conservadaId]), como hace el servidor al aplicar la
+  /// unión, para que la persona no quede con una alternativa «dada de baja» que en realidad es la
+  /// conservada. Si la alternativa queda siendo la ubicación de su propio espacio (la persona estaba
+  /// en una y cobraba en la otra, que ahora son una sola), se quita: la HU no admite la propia
+  /// ubicación como alternativa y no se pierde nada, porque la cobranza va ahí igual.
+  ///
+  /// Devuelve los vínculos que quedaron **sin** alternativa, que son los únicos que el servidor no
+  /// produce solo y por eso se encolan; el reapuntado lo aplica él.
+  Future<List<EspacioPersona>> _reapuntarCobranzaAlternativa({
+    required String duplicadaId,
+    required String conservadaId,
+    required DateTime instante,
+  }) async {
+    final vinculos = attachedDatabase.espacioPersonas;
+    final nombranA = await (attachedDatabase.select(
+      vinculos,
+    )..where((v) => v.ubicacionCobranzaAltId.equals(duplicadaId))).get();
+    for (final vinculo in nombranA) {
+      await (attachedDatabase.update(vinculos)..where((v) => v.id.equals(vinculo.id))).write(
+        EspacioPersonasCompanion(
+          ubicacionCobranzaAltId: Value(conservadaId),
+          updatedAt: Value(_noRetrocede(instante, vinculo.updatedAt)),
+        ),
+      );
+    }
+
+    final espaciosDeA = selectOnly(espacios)
+      ..addColumns([espacios.id])
+      ..where(espacios.ubicacionId.equals(conservadaId));
+    final propias =
+        await (attachedDatabase.select(vinculos)..where(
+              (v) =>
+                  v.ubicacionCobranzaAltId.equals(conservadaId) &
+                  v.espacioId.isInQuery(espaciosDeA),
+            ))
+            .get();
+    final sinAlternativa = <EspacioPersona>[];
+    for (final vinculo in propias) {
+      final cuando = _noRetrocede(instante, vinculo.updatedAt);
+      await (attachedDatabase.update(vinculos)..where((v) => v.id.equals(vinculo.id))).write(
+        EspacioPersonasCompanion(
+          ubicacionCobranzaAltId: const Value(null),
+          updatedAt: Value(cuando),
+        ),
+      );
+      sinAlternativa.add(
+        EspacioPersona(
+          id: vinculo.id,
+          espacioId: vinculo.espacioId,
+          personaId: vinculo.personaId,
+          auditoria: Auditoria(
+            createdAt: vinculo.createdAt,
+            updatedAt: cuando,
+            createdBy: vinculo.createdBy,
+            deletedAt: vinculo.deletedAt,
+            syncVersion: vinculo.syncVersion,
+          ),
+        ),
+      );
+    }
+    return sinAlternativa;
+  }
+
+  /// El reloj no retrocede: un `updated_at` nunca queda antes del que ya tenía la fila.
+  static DateTime _noRetrocede(DateTime instante, DateTime actual) =>
+      instante.isBefore(actual) ? actual : instante;
+
   /// La unión de un par de duplicados (HU-UBI-006), espejo local de la RPC `marcar_como_duplicado`
   /// (backend-supabase 0026), en una sola transacción:
   ///
@@ -320,6 +390,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   ///   más viejo de A (el de B queda de baja) o, si A no tiene, pasa a serlo.
   /// - **A casa con más de un espacio** pasa a edificio ("Unir tipos"); un negocio sigue negocio.
   /// - **B** queda de baja con `duplicado_de_<A>` en el `audit_log` local (no se sincroniza).
+  /// - **Cobranza alternativa**: los vínculos que nombraban a B pasan a nombrar a A (ver
+  ///   [_reapuntarCobranzaAlternativa]); los que quedan sin alternativa se encolan como `update`.
   /// - **Encolado**: la actualización de A solo si cambió de tipo (es una fila común, que sale antes
   ///   que el trabajo) y el trabajo «marcar como duplicado». No se encolan los espacios movidos ni
   ///   el tombstone de B: los aplica el servidor al correr el trabajo (su forma y qué más viaja es
@@ -382,6 +454,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       }
     }
 
+    // Quien cobraba en B ahora cobra en A (el servidor hace lo mismo al aplicar la unión).
+    final vinculosSinAlternativa = await _reapuntarCobranzaAlternativa(
+      duplicadaId: duplicadaId,
+      conservadaId: conservadaId,
+      instante: instante,
+    );
+
     // "Unir tipos": una casa que queda con más de un espacio pasa a edificio sola.
     final pasoAEdificio = tipoA == TipoUbicacion.casa && deA.length + pasados > 1;
     if (pasoAEdificio) {
@@ -412,6 +491,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (pasoAEdificio) {
       final guardada = await _ubicacionPorId(conservadaId);
       await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
+    }
+    for (final vinculo in vinculosSinAlternativa) {
+      await _encolador.encolar(
+        'espacio_persona',
+        OperacionSync.update,
+        EspacioPersonaModel.fromEntity(vinculo).toJson(),
+      );
     }
     await _marcarDuplicado.encolarMarcarDuplicado(
       duplicadaId: duplicadaId,
