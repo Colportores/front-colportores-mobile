@@ -110,13 +110,20 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         _db.agendas,
       )..where((a) => a.visitaId.equals(visita.id) & a.deletedAt.isNull())).get();
       final vinculada = vinculadas.isEmpty ? null : vinculadas.first;
-      final afectada = vinculada != null && agendaId != null && vinculada.id == agendaId;
+      // Con un reintento ya no se sabe cuál agenda se pasó la primera vez (la cita que la visita
+      // cumplió dejó de estar programada), así que se lee de las filas: la agenda que creó la visita
+      // nace con ella (mismo instante de alta); una cita de antes es anterior a la visita.
+      final laCreoLaVisita =
+          vinculada != null &&
+          vinculada.createdAt == existente.createdAt &&
+          vinculada.estado == EstadoAgenda.cumplida.codigo;
+      final afectada = vinculada != null && !laCreoLaVisita;
       return (
         visita: _aVisita(existente),
         yaEstaba: true,
         agendaIgnorada: null,
         agendaNoCumplida: vinculada != null && vinculada.estado == EstadoAgenda.noCumplida.codigo,
-        agendaCreadaId: vinculada != null && !afectada ? vinculada.id : null,
+        agendaCreadaId: laCreoLaVisita ? vinculada.id : null,
         agendaAfectadaId: afectada ? vinculada.id : null,
       );
     }

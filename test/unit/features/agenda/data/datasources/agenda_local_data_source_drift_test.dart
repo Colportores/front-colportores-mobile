@@ -705,6 +705,43 @@ void main() {
       },
     );
 
+    test(
+      'un reintento con los mismos ids sobre una visita que cumplió la cita: sigue diciendo que la '
+      'cumplió (no que la creó) y «Deshacer» la vuelve a «Programada», sin darla de baja',
+      () async {
+        await local.agendar(agendaDe('age-1'));
+        await local.registrarVisita(visitaDe('vis-1', creada: t1), agendaId: 'age-1');
+
+        // El reintento ya no encuentra la cita programada: llega sin agendaId.
+        final r = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+
+        expect(r.yaEstaba, isTrue);
+        expect([r.agendaAfectadaId, r.agendaCreadaId], ['age-1', null]);
+        encolador.encolados.clear();
+
+        await local.deshacerVisita(
+          'vis-1',
+          agendaCreadaId: r.agendaCreadaId,
+          agendaAfectadaId: r.agendaAfectadaId,
+          ahora: t2,
+        );
+
+        final agenda = (await agendas()).single;
+        expect([agenda.estado, agenda.visitaId, agenda.deletedAt], ['PROGRAMADA', null, null]);
+        expect(cola(), containsAll(['visita:delete', 'agenda:update']));
+        expect(cola(), isNot(contains('agenda:delete')));
+      },
+    );
+
+    test('un reintento con los mismos ids sobre una visita espontánea: sigue diciendo que creó su '
+        'agenda y «Deshacer» la da de baja', () async {
+      final primera = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+      final r = await local.registrarVisita(visitaDe('vis-1', creada: t1));
+
+      expect(r.yaEstaba, isTrue);
+      expect([r.agendaCreadaId, r.agendaAfectadaId], [primera.agendaCreadaId, null]);
+    });
+
     test('un «No contestó» sobre la agenda de la casa: al deshacer, la agenda vuelve a '
         '«Programada»', () async {
       await local.agendar(agendaDe('age-1'));
