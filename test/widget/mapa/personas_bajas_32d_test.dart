@@ -1,5 +1,5 @@
 // HU-UBI-011 / vista 32D, artboards 04 y 05: «Mostrar bajas» en los clientes del depto, la fila de una
-// persona dada de baja con su fecha y su saldo, «Reactivar» y el aviso «… está activa de nuevo.»; y los
+// persona dada de baja con su fecha y su saldo, «Reactivar» y el aviso «Reactivamos a …»; y los
 // estados que el canvas no dibuja (espacio de baja, error al leer las bajas, falla al reactivar) con sus
 // casos límite (doble toque, dos reactivaciones seguidas, listas largas, textScaler 2.0, volver y reentrar).
 import 'dart:async';
@@ -162,7 +162,7 @@ void main() {
 
   group('32D·05 · reactivar', () {
     testWidgets('cuando toca «Reactivar», la persona vuelve a la lista, deja las bajas y el aviso '
-        'dice que está activa de nuevo', (tester) async {
+        'dice que la reactivamos', (tester) async {
       final repo = _conJorgeYMariaDeBaja();
       await montarClientes(tester, repo: repo, otrosOverrides: _extras());
       await _mostrarLasBajas(tester);
@@ -171,7 +171,7 @@ void main() {
       await asentar(tester);
 
       expect(repo.reactivacionesRecibidas, ['p2']);
-      expect(find.text('María está activa de nuevo.'), findsOneWidget);
+      expect(find.text('Reactivamos a María.'), findsOneWidget);
       expect(find.text('CLIENTES · 2'), findsOneWidget);
       expect(find.text('María Fernández'), findsOneWidget);
       expect(_reactivar, findsNothing);
@@ -207,7 +207,7 @@ void main() {
 
         repo.compuertaReactivar!.complete();
         await asentar(tester);
-        expect(find.text('María está activa de nuevo.'), findsOneWidget);
+        expect(find.text('Reactivamos a María.'), findsOneWidget);
       },
     );
 
@@ -231,7 +231,7 @@ void main() {
         await asentar(tester);
 
         expect(repo.reactivacionesRecibidas, ['p2', 'p2']);
-        expect(find.text('María está activa de nuevo.'), findsOneWidget);
+        expect(find.text('Reactivamos a María.'), findsOneWidget);
         expect(find.text('CLIENTES · 2'), findsOneWidget);
       },
     );

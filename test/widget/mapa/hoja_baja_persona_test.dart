@@ -34,7 +34,7 @@ void main() {
         expect(find.text('¿Dar de baja a Jorge?'), findsOneWidget);
         expect(
           find.text(
-            'Deja de aparecer en el depto. No se borra: lo ves en «Ver bajas» y lo podés reactivar.',
+            'Deja de aparecer en el depto. No se borra: queda en «Ver bajas» y se puede reactivar.',
           ),
           findsOneWidget,
         );

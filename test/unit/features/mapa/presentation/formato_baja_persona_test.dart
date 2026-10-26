@@ -49,13 +49,13 @@ void main() {
       expect(TextosBajaPersona.titulo('Jorge'), '¿Dar de baja a Jorge?');
       expect(
         TextosBajaPersona.cuerpoSinSaldo,
-        'Deja de aparecer en el depto. No se borra: lo ves en «Ver bajas» y lo podés reactivar.',
+        'Deja de aparecer en el depto. No se borra: queda en «Ver bajas» y se puede reactivar.',
       );
       expect(
         TextosBajaPersona.deudaSigue('María', 120000),
         'La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja.',
       );
-      expect(TextosBajaPersona.activaDeNuevo('María'), 'María está activa de nuevo.');
+      expect(TextosBajaPersona.activaDeNuevo('María'), 'Reactivamos a María.');
     });
 
     test('el resumen dice la deuda y las entregas pendientes en singular y plural', () {

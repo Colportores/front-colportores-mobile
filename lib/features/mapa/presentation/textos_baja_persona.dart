@@ -7,7 +7,7 @@ import '../domain/services/cuenta_de_persona.dart';
 abstract final class TextosBajaPersona {
   // Canvas 32D·01 a 32D·03.
   static const cuerpoSinSaldo =
-      'Deja de aparecer en el depto. No se borra: lo ves en «Ver bajas» y lo podés reactivar.';
+      'Deja de aparecer en el depto. No se borra: queda en «Ver bajas» y se puede reactivar.';
   static const darDeBaja = 'Dar de baja';
   static const darDeBajaIgual = 'Dar de baja igual';
   static const cancelar = 'Cancelar';
@@ -54,7 +54,7 @@ abstract final class TextosBajaPersona {
   static const reactivar = 'Reactivar';
   static const reactivando = 'Reactivando…';
 
-  static String activaDeNuevo(String nombre) => '$nombre está activa de nuevo.';
+  static String activaDeNuevo(String nombre) => 'Reactivamos a $nombre.';
 
   /// «Baja el 22/10», o «Baja el 22/10/2025» si no fue este año; con saldo conocido, «· saldo $ 1.200».
   static String bajaEl(DateTime baja, DateTime ahora, {int? saldoCentavos}) {
