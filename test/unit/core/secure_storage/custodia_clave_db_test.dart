@@ -467,6 +467,18 @@ void main() {
       expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'ahora_no');
       expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
+    test(
+      'conserva quién escondió el aviso de privacidad (#445): recuperar los datos no lo vuelve a '
+      'mostrar',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.avisoPrivacidadOculto], '["u-1"]');
+      },
+    );
 
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
@@ -675,6 +687,18 @@ void main() {
       expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'sistema');
       expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
+    test(
+      'borra también quién escondió el aviso de privacidad (#445): es de la persona que se va',
+      () async {
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+        await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+        await custodia.olvidarDatosDelUsuario();
+
+        expect(almacen.contenido.containsKey(ClaveSegura.avisoPrivacidadOculto), isFalse);
+        expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+      },
+    );
 
     test('«Empezar de nuevo» (olvidar) no toca las zonas ya avisadas', () async {
       await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');

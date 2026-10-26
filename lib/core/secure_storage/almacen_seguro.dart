@@ -81,6 +81,15 @@ enum ClaveSegura {
   /// de datos locales (HU-AUTH-010) también lo borra.
   zonasAvisadas('zones_notified'),
 
+  /// Las cuentas que escondieron el aviso «Estos datos solo viven en tu celular…» con «No volver a
+  /// mostrar» (decisión de Cristian, 23/10, «Aviso privado», front-colportores-mobile#445 y #447): un
+  /// JSON con la lista de ids (UUID) de usuario, nada más. Es por cuenta y vale para los dos lugares
+  /// donde sale (el alta de persona y las notas); se vuelve a encender desde Configuración, «Mostrar
+  /// el aviso de privacidad». No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro
+  /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) también lo borra: sin datos del
+  /// teléfono, el aviso vuelve a verse.
+  avisoPrivacidadOculto('privacy_notice_hidden'),
+
   /// El id de esta instalación (UUID v7) que viaja en el sobre de cada push y pull del motor de
   /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
   /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
