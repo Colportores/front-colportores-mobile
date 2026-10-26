@@ -11,6 +11,7 @@ import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -95,6 +96,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         children: [
           // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
           _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
+          if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
           Expanded(
             child: IndexedStack(
               index: _actual.index,
@@ -146,6 +149,18 @@ class _AvisosDeZona extends ConsumerWidget {
       avisos: avisos,
       onCerrar: (aviso) => unawaited(ref.read(provider.notifier).cerrar(aviso)),
     );
+  }
+}
+
+/// El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03). Con el teclado abierto gana el campo
+/// que se escribe, como con los avisos de zona: se oculta y vuelve al cerrarlo.
+class _AvisoNotificaciones extends StatelessWidget {
+  const _AvisoNotificaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
+    return const AvisoNotificacionesApagadas();
   }
 }
 

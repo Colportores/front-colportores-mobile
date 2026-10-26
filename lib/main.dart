@@ -13,6 +13,8 @@ import 'core/dispositivo/dispositivo_providers.dart';
 import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notificaciones/notificaciones_providers.dart';
+import 'core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
@@ -31,6 +33,8 @@ import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
+import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
 import 'plataforma/identidad_instalacion.dart';
@@ -136,6 +140,12 @@ Future<void> main() async {
         // #251): un cambio de zona se avisa una sola vez, aunque se cierre la app.
         zonasAvisadasRepositoryProvider.overrideWithValue(
           ZonasAvisadasRepositoryImpl(almacenSeguro),
+        ),
+        // El permiso de notificaciones (HU-NOT-001, vista 24): canal nativo propio (MainActivity.kt,
+        // AppDelegate.swift) y, en el almacén seguro, si ya se le pidió y si cerró el aviso de Hoy.
+        permisoNotificacionesSistemaProvider.overrideWithValue(PermisoNotificacionesCanal()),
+        permisoNotificacionesRepositoryProvider.overrideWithValue(
+          PermisoNotificacionesRepositoryImpl(almacenSeguro),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),

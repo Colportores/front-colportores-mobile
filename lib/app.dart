@@ -28,6 +28,8 @@ import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
+import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
+import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -177,7 +179,13 @@ class _RevisionAlVolverState extends ConsumerState<_RevisionAlVolver> {
   void initState() {
     super.initState();
     _ciclo = AppLifecycleListener(
-      onResume: () => unawaited(ref.read(sesionProvider.notifier).revisarVigencia()),
+      onResume: () {
+        unawaited(ref.read(sesionProvider.notifier).revisarVigencia());
+        // Las notificaciones pudieron activarse o apagarse en los ajustes del teléfono (HU-NOT-001).
+        if (ref.exists(notificacionesProvider)) {
+          unawaited(ref.read(notificacionesProvider.notifier).refrescar());
+        }
+      },
     );
   }
 
@@ -305,6 +313,12 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
   @override
   Widget build(BuildContext context) {
     ref.watch(copiaNombreSesionProvider);
+    // HU-NOT-001: se lee desde el arranque, mientras se prepara la DB, para que el pedido del
+    // permiso (primer ingreso) aparezca sin un parpadeo de otra pantalla. Si no se puede leer, no se
+    // pide nada: el estado en error o cargando sigue de largo.
+    final pedirNotificaciones = ref.watch(
+      notificacionesProvider.select((estado) => estado.value?.debePedir ?? false),
+    );
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
@@ -313,6 +327,9 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;
+    // Primer ingreso, después de preparar el espacio seguro (vista 24, 24A·01): se pide una vez el
+    // permiso de notificaciones, antes de la pantalla principal; con «Activar» o «Ahora no» sigue.
+    if (pedirNotificaciones) return const PedidoPermisoNotificacionesPage();
     if (_mostrandoAsignada) {
       return CuentaAsignadaPage(onTerminar: () => setState(() => _mostrandoAsignada = false));
     }
