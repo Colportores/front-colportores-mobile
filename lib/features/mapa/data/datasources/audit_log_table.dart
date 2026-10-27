@@ -12,6 +12,11 @@ abstract final class EventoAuditoriaLocal {
   /// La baja de una persona (HU-UBI-011), con su motivo si lo hay. `uuid` es el `id` de la persona y
   /// `creado_en` el mismo instante que su `deleted_at`.
   static const personaBaja = 'persona_baja';
+
+  /// Una agenda modificada (HU-VIS-003, «Audit log local»): `uuid` es el `id` de la agenda y
+  /// `creado_en` el instante del cambio. Sin motivo: la nota y la hora son datos de la persona y no
+  /// se copian acá.
+  static const agendaModificada = 'agenda_modificada';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman
