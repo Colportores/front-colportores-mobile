@@ -77,6 +77,9 @@ abstract final class TextosNotificaciones {
   static const errorAlGuardar =
       'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
 
+  /// Los textos de esta sección que el canvas no dibuja (el singular, el «Guardado: …» sin visitas y
+  /// el error al leer) quedaron decididos el 27/10 (mapa §2).
+  ///
   /// 24B·03, con la cantidad real: «Reprogramamos 4 recordatorios: te avisamos 60 min antes.».
   /// Con uno, en singular. Sin ninguno (no hay visitas agendadas) no hay nada que contar: propuesta.
   static String anticipacionCambiada({required int reprogramados, required int minutos}) {

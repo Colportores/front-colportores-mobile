@@ -10,6 +10,9 @@ import '../../domain/repositories/preferencias_recordatorios_repository.dart';
 /// (`0` apagados; cualquier otra cosa o sin clave, prendidos) y `ClaveSegura.anticipacionRecordatorios`
 /// (minutos).
 ///
+/// Son globales del teléfono (no de la cuenta) hasta que suban al servidor con HU-NOT-003, y se
+/// borran con «Borrar datos locales» (decidido el 27/10, decisión «Notif. S8»).
+///
 /// Es también lo que lee `RecordatoriosLocales` al programar ([AnticipacionRecordatorios] y
 /// [RecordatoriosActivados]): una preferencia recién guardada vale para el próximo recordatorio.
 /// Serializa las operaciones: cada una espera a la anterior, así una lectura pedida después de un

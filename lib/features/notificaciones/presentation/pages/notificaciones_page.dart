@@ -154,7 +154,9 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     _ => const [],
   };
 
-  /// Las preferencias de los recordatorios (grupo B).
+  /// Las preferencias de los recordatorios (grupo B). Con el permiso del teléfono apagado se ven a
+  /// todo contraste, con el aviso de 24B·04 arriba y sin la opacidad .45 del canvas (decidido el
+  /// 27/10, mapa §2: un control tocable a 45 % no llega a AA).
   List<Widget> _preferencias(AsyncValue<EstadoPreferenciasRecordatorios> preferencias) =>
       switch (preferencias) {
         AsyncData(:final value) => [

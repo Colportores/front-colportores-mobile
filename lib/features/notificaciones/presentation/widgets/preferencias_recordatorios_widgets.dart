@@ -83,7 +83,8 @@ class TarjetaAnticipacion extends StatefulWidget {
   final bool habilitada;
   final ValueChanged<int> onGuardar;
 
-  /// El paso del lector de pantalla.
+  /// El paso del lector de pantalla (decidido el 27/10, mapa §2: de a 5 con el lector, de a 1 con el
+  /// dedo, siempre entre 5 y 120).
   static const int pasoAccesible = 5;
 
   @override
