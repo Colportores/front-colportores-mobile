@@ -93,8 +93,12 @@ class _ModificarAgendaPageState extends ConsumerState<ModificarAgendaPage> {
   late DateTime _cuando;
   FranjaHoraria? _franja;
 
-  /// La persona eligió (o sacó) la franja a mano: de ahí en más la hora no la cambia sola.
+  /// La persona eligió (o sacó) la franja a mano: de ahí en más la hora no la cambia sola. Arranca en
+  /// `true` si la franja guardada no es la que sugiere la hora guardada (la eligió a mano al agendar).
   var _franjaAMano = false;
+
+  /// Marca el aviso de falla (23C·07) para traerlo a la vista cuando el guardado falla.
+  final _claveAvisoFalla = GlobalKey();
 
   /// Hay un guardado en curso: no admite otro toque, no deja salir y bloquea los campos.
   var _enviando = false;
@@ -120,6 +124,7 @@ class _ModificarAgendaPageState extends ConsumerState<ModificarAgendaPage> {
     _tipo = agenda.tipo;
     _cuando = agenda.fechaProgramada.toLocal();
     _franja = FranjaHoraria.desdeCodigo(agenda.slotCodigo);
+    _franjaAMano = _franja != FranjaHoraria.sugeridaPara(_cuando.hour * 60 + _cuando.minute);
     _nota = TextEditingController(text: widget.detalle.nota ?? '');
     unawaited(_leerAvisos());
   }
@@ -231,7 +236,23 @@ class _ModificarAgendaPageState extends ConsumerState<ModificarAgendaPage> {
           _enviando = false;
           _falla = falla ?? const FailureInesperado();
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _mostrarElAvisoDeFalla());
     }
+  }
+
+  /// El aviso rojo va arriba del formulario: si la persona estaba abajo (texto grande, teclado) lo trae
+  /// a la vista para que vea por qué el botón pasó a «Reintentar».
+  void _mostrarElAvisoDeFalla() {
+    if (!mounted) return;
+    final contexto = _claveAvisoFalla.currentContext;
+    if (contexto == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        duration: const Duration(milliseconds: 200),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      ),
+    );
   }
 
   /// «Av. Italia 1234», con el depto si es un edificio: lo que lleva el aviso de la visita. Nunca el
@@ -400,7 +421,14 @@ class _ModificarAgendaPageState extends ConsumerState<ModificarAgendaPage> {
                         const SizedBox(height: 16),
                         KeyedSubtree(
                           key: ClavesModificarAgenda.avisoFalla,
-                          child: AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _textoFalla),
+                          child: KeyedSubtree(
+                            key: _claveAvisoFalla,
+                            child: AvisoAlta(
+                              color: ColoresAlta.rojo,
+                              glyph: '!',
+                              texto: _textoFalla,
+                            ),
+                          ),
                         ),
                       ],
                       const SizedBox(height: 16),

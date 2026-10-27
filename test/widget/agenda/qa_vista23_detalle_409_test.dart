@@ -356,9 +356,8 @@ void main() {
       skip: !_hallazgos,
     );
 
-    // skip: QA #409 — el aviso rojo de 23C·07 va arriba del formulario: con el formulario más alto que
-    // la pantalla (360x640) y la persona abajo, al fallar solo cambia el botón a «Reintentar» y el
-    // aviso queda fuera de vista (no hay scroll hacia él).
+    // Arreglado (QA #409): el aviso rojo de 23C·07 va arriba del formulario; con el formulario más alto
+    // que la pantalla (360x640) y la persona abajo, al fallar se lo trae a la vista.
     for (final escala in [1.0, 2.0]) {
       testWidgets(
         'al fallar el guardado con el formulario scrolleado abajo, el aviso de error queda a la vista '
@@ -382,8 +381,6 @@ void main() {
             reason: 'aviso en $aviso, zona visible $visible',
           );
         },
-        // A 1,0× el aviso entra en la zona visible: queda como regresión; a 2,0× es el hallazgo.
-        skip: escala > 1 && !_hallazgos,
       );
     }
 
@@ -423,8 +420,8 @@ void main() {
       skip: !_hallazgos,
     );
 
-    // skip: QA #409 — «Modificar» arranca con la franja en automático: cambiar la hora pisa en
-    // silencio la franja que la persona había elegido a mano al agendar.
+    // Arreglado (QA #409, P1): la franja guardada que no es la sugerida para su hora cuenta como
+    // elegida a mano y cambiar la hora no la pisa.
     testWidgets(
       'modificar la hora no pisa la franja que la persona había elegido a mano al agendar',
       (tester) async {
@@ -439,7 +436,6 @@ void main() {
         await tocar409(tester, guardar409);
         expect(arnes.repo.recibidos.single.slotCodigo, FranjaHoraria.finDeTarde.codigo);
       },
-      skip: !_hallazgos,
     );
   });
 }
