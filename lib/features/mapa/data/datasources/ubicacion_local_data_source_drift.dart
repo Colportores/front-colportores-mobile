@@ -408,6 +408,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     // Quien hace la unión es el dueño de las casas: el `created_by` de una fila de `house_status`
     // nueva. Las casas del par son suyas (el scan compara solo las propias).
     final colportorId = conservada.createdBy ?? duplicada.createdBy ?? '';
+    await _reapuntarAlternativas(duplicadaId, a: conservadaId, instante: instante);
     if (duplicada.deletedAt == null) {
       // Ya sin espacios activos ni nada colgado: su fila de `house_status` se da de baja con B
       // (el recálculo de una ubicación viva sin eventos), antes de marcar la baja.
@@ -445,6 +446,24 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       conservadaPasoAEdificio: pasoAEdificio,
     );
   });
+
+  /// Lo que nombraba a la ubicación [deB] como casa alternativa (`agenda.ubicacion_alt_id` y
+  /// `espacio_persona.ubicacion_cobranza_alt_id`) pasa a nombrar a [a]: B queda de baja y una
+  /// referencia a ella no llevaría a ningún lado (HU-UBI-006, «Venta ajena»: el servidor hace lo
+  /// mismo con las suyas). Sin encolar por fila, como el resto de la unión.
+  Future<void> _reapuntarAlternativas(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.agendas)..where((x) => x.ubicacionAltId.equals(deB))).write(
+      AgendasCompanion(ubicacionAltId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.espacioPersonas)..where((x) => x.ubicacionCobranzaAltId.equals(deB))).write(
+      EspacioPersonasCompanion(ubicacionCobranzaAltId: Value(a), updatedAt: Value(instante)),
+    );
+  }
 
   /// Repunta al espacio [a] lo que colgaba del espacio fundido [deB]: los vínculos con sus
   /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).

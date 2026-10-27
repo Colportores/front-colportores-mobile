@@ -241,7 +241,8 @@ final class UnirDuplicadosParams extends Equatable {
 ///    yaUnida`, sin encolar nada.
 ///
 /// Lo que colgaba del espacio único fundido de B (sus personas, visitas y agendas) pasa al único de
-/// A, y el color de A y el de B se recalculan, todo en la misma transacción. Las ventas, entregas
+/// A, lo que nombraba a B como casa alternativa pasa a nombrar a A, y el color de A y el de B se
+/// recalculan, todo en la misma transacción. Las ventas, entregas
 /// y cobranzas todavía no están en el teléfono (llegan con sus HU): hasta entonces las pasa solo el
 /// servidor cuando aplica el trabajo.
 final class UnirDuplicadosUseCase
