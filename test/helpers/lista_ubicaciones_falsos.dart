@@ -213,6 +213,7 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override

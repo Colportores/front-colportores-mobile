@@ -1199,7 +1199,7 @@ void main() {
       expect(find.text('Otra puerta en el mismo número'), findsOneWidget);
       expect(find.text('Local en planta baja'), findsOneWidget);
       expect(find.text('Otra unidad del edificio'), findsOneWidget);
-      expect(find.text('La ve tu coordinador.'), findsOneWidget);
+      expect(find.text('Queda guardada en tu teléfono.'), findsOneWidget);
       expect(find.text('0 / 200'), findsOneWidget);
       final crear = find.widgetWithText(FilledButton, 'Crear igual');
       expect(tester.widget<FilledButton>(crear).onPressed, isNull);

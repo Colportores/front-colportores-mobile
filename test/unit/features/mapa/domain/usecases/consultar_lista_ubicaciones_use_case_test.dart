@@ -53,6 +53,7 @@ final class _RepositorioReactivo
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 }
 

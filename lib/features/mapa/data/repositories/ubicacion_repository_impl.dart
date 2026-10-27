@@ -39,12 +39,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
     try {
       final insercion = await _local.insertar(
         UbicacionModel.fromEntity(ubicacion),
         espacio: espacio == null ? null : EspacioModel.fromEntity(espacio),
         duplicados: duplicados,
+        justificacion: justificacion,
       );
       if (insercion.yaEstaba) {
         _log.info(LogModulo.db, 'UBICACION_YA_REGISTRADA', 'el alta ya estaba hecha', {
@@ -73,13 +75,23 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         LogModulo.db,
         'UBICACION_ALTA_FAIL',
         'no se pudo guardar la ubicación',
-        {'ubicacion_id': ubicacion.id},
-        e,
+        _contextoDeFalla(ubicacion.id, e),
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  /// El contexto del log de una falla al escribir. Nunca el objeto de la excepción: una
+  /// `SqliteException` imprime la sentencia con los parámetros enlazados y, si falla el INSERT en
+  /// `audit_log`, entre ellos va la justificación de «Crear igual» (texto libre, R-UB09). Solo el
+  /// tipo y, de SQLite, el código.
+  static Map<String, Object?> _contextoDeFalla(String ubicacionId, Object e) => {
+    'ubicacion_id': ubicacionId,
+    'tipo': e.runtimeType.toString(),
+    if (e is SqliteException) 'result_code': e.resultCode,
+  };
 
   @override
   Future<Either<Failure, Ubicacion?>> obtener(String id) async {
@@ -126,6 +138,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
     try {
       final guardada = await _local.actualizar(
@@ -136,6 +149,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         espacioSiNoTiene: espacioSiNoTiene == null
             ? null
             : EspacioModel.fromEntity(espacioSiNoTiene),
+        justificacion: justificacion,
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,
@@ -178,8 +192,8 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         LogModulo.db,
         'UBICACION_MODIFICAR_FAIL',
         'no se pudo modificar la ubicación',
-        {'ubicacion_id': nueva.id},
-        e,
+        _contextoDeFalla(nueva.id, e),
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
