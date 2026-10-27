@@ -178,6 +178,48 @@ void main() {
     });
 
     test(
+      'dado que una agenda y un vínculo nombran a B como casa alternativa (y otros a una tercera), '
+      'cuando se une, pasan a nombrar a A y lo de la tercera no se toca ni se encola nada por fila',
+      () async {
+        await sembrarCasasConGente();
+        await ubicacion('ub-c', lat: -34.95);
+        await insertarAgenda(db, agendaDe('ag-alt', espacio: 'esp-a', vinculo: 'ep-a1'));
+        await insertarAgenda(db, agendaDe('ag-otra', espacio: 'esp-a', vinculo: 'ep-a1'));
+        await (db.update(db.agendas)..where((x) => x.id.equals('ag-alt'))).write(
+          const AgendasCompanion(ubicacionAltId: Value('ub-b')),
+        );
+        await (db.update(db.agendas)..where((x) => x.id.equals('ag-otra'))).write(
+          const AgendasCompanion(ubicacionAltId: Value('ub-c')),
+        );
+        await (db.update(db.espacioPersonas)..where((x) => x.id.equals('ep-a1'))).write(
+          const EspacioPersonasCompanion(ubicacionCobranzaAltId: Value('ub-b')),
+        );
+        await (db.update(db.espacioPersonas)..where((x) => x.id.equals('ep-b1'))).write(
+          const EspacioPersonasCompanion(ubicacionCobranzaAltId: Value('ub-c')),
+        );
+        encolador.encolados.clear();
+
+        await unirBAEnA();
+
+        final alternativasDeAgendas = {
+          for (final x in await db.select(db.agendas).get()) x.id: x.ubicacionAltId,
+        };
+        expect(alternativasDeAgendas['ag-alt'], 'ub-a');
+        expect(alternativasDeAgendas['ag-otra'], 'ub-c');
+        final alternativasDeVinculos = {
+          for (final x in await db.select(db.espacioPersonas).get()) x.id: x.ubicacionCobranzaAltId,
+        };
+        expect(alternativasDeVinculos['ep-a1'], 'ub-a');
+        expect(alternativasDeVinculos['ep-b1'], 'ub-c');
+        expect(
+          encolador.encolados.map((c) => c.entidad).toSet().difference({'house_status'}),
+          isEmpty,
+          reason: 'sin encolar por fila: el servidor reapunta las suyas con el trabajo',
+        );
+      },
+    );
+
+    test(
       'dado que la unión ya se hizo, cuando se repite, no mueve ni encola nada de más',
       () async {
         await sembrarCasasConGente();
