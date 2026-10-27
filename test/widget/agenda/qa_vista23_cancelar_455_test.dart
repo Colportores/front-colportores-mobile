@@ -54,28 +54,28 @@ void main() {
           }
 
           if (estado == Estado455.h07Error || estado == Estado455.h06YaNoSePuede) {
-            // skip: QA #455 — el aviso rojo va dentro de la zona que se desplaza, debajo del cuerpo: a
-            // 360x640 con texto 2,0 queda fuera de la vista y la persona no ve por qué no se canceló.
-            testWidgets(
-              '${estado.rotulo} · $sufijo · el aviso se ve sin desplazar',
-              (tester) async {
-                await llegarA455(tester, estado, tamano: tamano, escala: escala);
-                final aviso = find.text(
-                  estado == Estado455.h07Error ? errorAlGuardar455 : yaNoSePuede455,
-                );
-                expect(aviso, findsOneWidget);
-                final visible = tester.getRect(zonaDeLaHoja455);
-                final r = tester.getRect(aviso);
-                expect(
-                  r.top >= visible.top - 0.5 && r.bottom <= visible.bottom + 0.5,
-                  isTrue,
-                  reason:
-                      'aviso en ${r.top}–${r.bottom}, zona visible ${visible.top}–${visible.bottom}',
-                );
-                await desmontar455(tester);
-              },
-              skip: tamano == chico455 && escala == 2.0 ? !_verHallazgos : false,
-            );
+            // QA #455 (corregido): el aviso va FIJO sobre los botones, fuera de la zona que se
+            // desplaza, así que se ve entero sin tocar nada.
+            testWidgets('${estado.rotulo} · $sufijo · el aviso se ve sin desplazar', (
+              tester,
+            ) async {
+              await llegarA455(tester, estado, tamano: tamano, escala: escala);
+              final aviso = find.text(
+                estado == Estado455.h07Error ? errorAlGuardar455 : yaNoSePuede455,
+              );
+              expect(aviso, findsOneWidget);
+              final pantalla = tester.view.physicalSize / tester.view.devicePixelRatio;
+              final r = tester.getRect(aviso);
+              expect(
+                r.top >= 0 && r.bottom <= pantalla.height,
+                isTrue,
+                reason: 'aviso en ${r.top}–${r.bottom}, pantalla de ${pantalla.height}',
+              );
+              // Y no queda tapado por los botones: termina antes de que empiece el primero.
+              final primerBoton = confirmar455.evaluate().isNotEmpty ? confirmar455 : volver455;
+              expect(r.bottom, lessThanOrEqualTo(tester.getRect(primerBoton).top + 0.5));
+              await desmontar455(tester);
+            });
           }
         }
       }
