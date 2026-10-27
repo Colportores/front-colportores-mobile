@@ -116,7 +116,15 @@ enum ClaveSegura {
 
   /// «Anticipación» de los recordatorios, en minutos (de 5 a 120; sin la clave, 30). Mismo trato que
   /// [recordatoriosActivados].
-  anticipacionRecordatorios('reminders_lead_minutes');
+  anticipacionRecordatorios('reminders_lead_minutes'),
+
+  /// Hasta qué instante el historial de avisos (HU-NOT-005) ya revisó los recordatorios de las
+  /// visitas que sonaron: milisegundos desde la época, en UTC. Es lo que impide que «Borrar todas»
+  /// se deshaga solo (una visita agendada sigue pendiente después de que su aviso sonó) y que una
+  /// agenda que llega de la nube pase por un aviso que este teléfono nunca mostró. Sin la clave, la
+  /// primera revisión solo la fija. No es secreto ni dato personal; se conserva al recuperar los
+  /// datos (la tabla del historial también se conserva) y se borra con el borrado de datos locales.
+  ultimaConciliacionRecordatorios('reminders_reconciled_at');
 
   const ClaveSegura(this.id);
 

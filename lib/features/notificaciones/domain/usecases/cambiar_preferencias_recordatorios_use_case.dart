@@ -62,12 +62,20 @@ typedef CambioGuardado = ({PreferenciasRecordatorios preferencias, int reprogram
 /// **Todo o nada**: si no se puede guardar, o no se pueden reprogramar los recordatorios, las
 /// preferencias vuelven a como estaban (la pantalla dice «El interruptor volvió a como estaba») y se
 /// intenta dejar los recordatorios como antes. Solo escribe lo que cambió.
+///
+/// Antes de escribir nada llama a [_antesDeCambiar]: el historial de avisos (HU-NOT-005) guarda lo que
+/// sonó con las preferencias de antes. Si eso falla, el cambio sigue.
 class CambiarPreferenciasRecordatoriosUseCase {
-  CambiarPreferenciasRecordatoriosUseCase(this._repositorio, this._reprogramar, {AppLogger? logger})
-    : _log = logger ?? AppLogger.instance;
+  CambiarPreferenciasRecordatoriosUseCase(
+    this._repositorio,
+    this._reprogramar, {
+    this._antesDeCambiar,
+    AppLogger? logger,
+  }) : _log = logger ?? AppLogger.instance;
 
   final PreferenciasRecordatoriosRepository _repositorio;
   final ReprogramarRecordatoriosUseCase _reprogramar;
+  final Future<void> Function(String colportorId)? _antesDeCambiar;
   final AppLogger _log;
 
   /// Pasa de [previas] a [nuevas]. [colportorId] es quien tiene las agendas; sin él no hay nada que
@@ -78,6 +86,18 @@ class CambiarPreferenciasRecordatoriosUseCase {
     required PreferenciasRecordatorios nuevas,
   }) async {
     final escritas = <Future<void> Function()>[];
+    if (colportorId != null) {
+      try {
+        await _antesDeCambiar?.call(colportorId);
+      } on Object catch (e) {
+        _log.warn(
+          LogModulo.push,
+          'PREF_RECORDATORIOS_ANTES',
+          'no se pudo guardar lo que sonó antes de cambiar las preferencias',
+          {'error': e.runtimeType.toString()},
+        );
+      }
+    }
     try {
       if (nuevas.activados != previas.activados) {
         await _repositorio.guardarActivados(activados: nuevas.activados);

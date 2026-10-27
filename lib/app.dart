@@ -30,6 +30,7 @@ import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
+import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
@@ -327,6 +328,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(cicloDeVidaSyncProvider);
     // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
     ref.watch(aperturasDesdeRecordatorioProvider);
+    // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
+    ref.watch(conciliacionRecordatoriosProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

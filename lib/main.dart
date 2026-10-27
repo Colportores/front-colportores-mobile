@@ -40,8 +40,10 @@ import 'features/configuracion/presentation/providers/aviso_privacidad_providers
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
+import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -172,6 +174,10 @@ Future<void> main() async {
         recordatoriosProvider.overrideWithValue(recordatorios),
         toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
         preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferenciasRecordatorios),
+        // Hasta dónde se guardaron en el historial los recordatorios que sonaron (HU-NOT-005).
+        marcaConciliacionRecordatoriosProvider.overrideWithValue(
+          MarcaConciliacionRecordatoriosImpl(almacenSeguro),
+        ),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
         ),
