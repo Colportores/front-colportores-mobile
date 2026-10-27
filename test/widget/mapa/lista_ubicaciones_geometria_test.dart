@@ -96,7 +96,7 @@ void main() {
             gps: GpsFalso(Right(lecturaGps(8))),
             tamano: tam,
             escala: escala,
-            alAbrir: (_) {},
+            alAbrir: (_, _) {},
           );
           await abrirHojaFiltros(tester);
           await tester.ensureVisible(find.byKey(const Key('hoja_filtros_bajas')));
@@ -119,7 +119,7 @@ void main() {
             gps: GpsFalso(Right(lecturaGps(8))),
             tamano: tam,
             escala: escala,
-            alAbrir: (_) {},
+            alAbrir: (_, _) {},
           );
           await tester.tap(botonOrden);
           await asentarLista(tester);

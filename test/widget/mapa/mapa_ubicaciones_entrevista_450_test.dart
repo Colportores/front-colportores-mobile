@@ -13,7 +13,7 @@ void main() {
   setUp(() => entrevista = MontajeEntrevista());
 
   testWidgets('sin entrevista en curso el mapa se ve como siempre', (tester) async {
-    await montarMapaUbicaciones(tester, overridesExtra: entrevista.overrides);
+    await montarMapaUbicaciones(tester, otrosOverrides: entrevista.overrides);
 
     expect(find.byKey(ClavesEntrevista.avisoFijo), findsNothing);
     expect(chipReferencias, findsOneWidget);
@@ -23,7 +23,7 @@ void main() {
     tester,
   ) async {
     await entrevista.almacen.guardar(entrevistaDePrueba());
-    await montarMapaUbicaciones(tester, overridesExtra: entrevista.overrides);
+    await montarMapaUbicaciones(tester, otrosOverrides: entrevista.overrides);
     await asentarLista(tester);
 
     final aviso = tester.getRect(find.byKey(ClavesEntrevista.avisoFijo));
@@ -36,7 +36,7 @@ void main() {
 
   testWidgets('«Referencias» sigue respondiendo con el aviso a la vista', (tester) async {
     await entrevista.almacen.guardar(entrevistaDePrueba());
-    await montarMapaUbicaciones(tester, overridesExtra: entrevista.overrides);
+    await montarMapaUbicaciones(tester, otrosOverrides: entrevista.overrides);
     await asentarLista(tester);
 
     await tester.tap(chipReferencias);
@@ -47,7 +47,7 @@ void main() {
 
   testWidgets('el aviso lleva de vuelta a la hoja de la entrevista', (tester) async {
     await entrevista.almacen.guardar(entrevistaDePrueba());
-    await montarMapaUbicaciones(tester, overridesExtra: entrevista.overrides);
+    await montarMapaUbicaciones(tester, otrosOverrides: entrevista.overrides);
     await asentarLista(tester);
 
     await tester.tap(find.byKey(ClavesEntrevista.avisoFijo));
@@ -60,7 +60,7 @@ void main() {
     await entrevista.almacen.guardar(entrevistaDePrueba());
     await montarMapaUbicaciones(
       tester,
-      overridesExtra: entrevista.overrides,
+      otrosOverrides: entrevista.overrides,
       escala: 2,
       tamano: const Size(320, 568),
     );

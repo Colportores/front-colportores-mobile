@@ -2,13 +2,14 @@ import '../../../mapa/data/models/auditoria_json.dart';
 import '../../domain/entities/agenda.dart';
 
 /// DTO de [Agenda]: la entidad más su payload de sync. [toJson] usa los nombres de columna de
-/// `public.agenda` (`backend-supabase`, migración 0001) y las fechas en ISO-8601 UTC: es la fila
+/// `public.agenda` (`backend-supabase`, migraciones 0001 y 0068) y las fechas en ISO-8601 UTC: es la fila
 /// entera, lo que se encola. Un test fija la lista exacta de claves contra las columnas de la tabla
 /// local para que no se cuele ninguna (y menos una nota, que es local-only).
 final class AgendaModel extends Agenda {
   AgendaModel({
     required super.id,
-    required super.espacioPersonaId,
+    required super.espacioId,
+    super.espacioPersonaId,
     required super.tipo,
     required super.fechaProgramada,
     super.slotCodigo,
@@ -22,6 +23,7 @@ final class AgendaModel extends Agenda {
 
   factory AgendaModel.fromEntity(Agenda agenda) => AgendaModel(
     id: agenda.id,
+    espacioId: agenda.espacioId,
     espacioPersonaId: agenda.espacioPersonaId,
     tipo: agenda.tipo,
     fechaProgramada: agenda.fechaProgramada,
@@ -36,6 +38,7 @@ final class AgendaModel extends Agenda {
 
   Map<String, Object?> toJson() => {
     'id': id,
+    'espacio_id': espacioId,
     'espacio_persona_id': espacioPersonaId,
     'tipo': tipo.codigo,
     'fecha_programada': fechaProgramada.toIso8601String(),

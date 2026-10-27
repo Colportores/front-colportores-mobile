@@ -10,7 +10,9 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/formato_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_estado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_mapa_ubicaciones.dart';
@@ -102,10 +104,13 @@ void main() {
         expect(punto(mapa, id).estilo, EstiloPunto.cercano, reason: id);
         expect(punto(mapa, id).etiqueta, numero, reason: id);
       }
+      // Las que están lejos son la insignia de su estado (vista 39, M·01), sin número.
       for (final id in ['d', 'e', 'f']) {
-        expect(punto(mapa, id).estilo, EstiloPunto.contexto, reason: id);
+        expect(punto(mapa, id).estilo, EstiloPunto.conEstado, reason: id);
         expect(punto(mapa, id).etiqueta, isNull, reason: id);
       }
+      // Y la cercana también lleva el color y el símbolo de su estado.
+      expect(punto(mapa, 'a').variante, VarianteMarcador.cobranzaPendiente);
       expect(punto(mapa, 'gps').estilo, EstiloPunto.gps);
       expect(mapa.config!.precision!.radioMetros, 6);
       expect(mapa.config!.cercania!.radioMetros, 60);
@@ -257,9 +262,10 @@ void main() {
 
       expect(altoHoja(tester), closeTo(844 / 3, 1));
       expect(vistaPrevia, findsOneWidget);
-      expect(find.text('CASA · 2 ESPACIOS · A 40 M'), findsOneWidget);
+      // La hoja de la casa (vista 39, C·01): la dirección y una línea con el tipo, el estado y la
+      // distancia.
       expect(find.text('Av. Italia 1234'), findsOneWidget);
-      expect(find.text('Cobranza pendiente'), findsOneWidget);
+      expect(find.text('Casa · Cobranza pendiente · a 40 m de vos'), findsOneWidget);
       expect(fila('a'), findsNothing);
       // El marcador se ve con el aro; su número sigue visible.
       expect(punto(m.mapa, 'a').estilo, EstiloPunto.seleccionado);
@@ -271,7 +277,7 @@ void main() {
       expect(centro.lon, closeTo(ubicacion.lon, 1e-9));
     });
 
-    testWidgets('el rótulo no inventa la distancia sin GPS', (tester) async {
+    testWidgets('el subtítulo no inventa la distancia sin GPS', (tester) async {
       final m = await montarMapaUbicaciones(
         tester,
         repo: RepoListaFalso(canvas()),
@@ -281,8 +287,8 @@ void main() {
       m.mapa.tocarPunto('d');
       await asentarLista(tester);
 
-      expect(find.text('NEGOCIO · 1 ESPACIO'), findsOneWidget);
-      expect(find.textContaining(' A '), findsNothing);
+      expect(find.text('Negocio · Entrevista agendada'), findsOneWidget);
+      expect(find.textContaining('de vos'), findsNothing);
     });
 
     testWidgets('la ✕ cierra la vista previa y vuelve a la lista, en la misma altura', (
@@ -342,16 +348,19 @@ void main() {
       expect(hayPunto(m.mapa, 'a'), isFalse);
     });
 
-    testWidgets('los botones y la cuota de la vista previa llegan con sus HU: no se dibujan '
-        '(HU-VIS-001/002 y HU-COB-005)', (tester) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      m.mapa.tocarPunto('a');
-      await asentarLista(tester);
+    testWidgets(
+      'sin destino enganchado, los botones de la hoja (Registrar visita, \$ Cobrar) no se '
+      'dibujan: llegan con #411 y #440; «Agendar» y «Detalle» no son de esta hoja',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        m.mapa.tocarPunto('a');
+        await asentarLista(tester);
 
-      for (final texto in ['Registrar visita', 'Agendar', 'Detalle']) {
-        expect(find.text(texto), findsNothing, reason: texto);
-      }
-    });
+        for (final texto in ['Registrar visita', 'Agendar', 'Detalle']) {
+          expect(find.text(texto), findsNothing, reason: texto);
+        }
+      },
+    );
   });
 
   group('06C·05 / 06C·06 · sin conexión y sin mapa descargado', () {
@@ -478,6 +487,62 @@ void main() {
       await tester.tap(find.byKey(ClavesMapaUbicaciones.cerrarReferencias));
       await asentarLista(tester);
       expect(hojaReferencias, findsNothing);
+    });
+
+    testWidgets('dado un edificio y un cuadrado con número en el mapa, cuando se abre la leyenda, '
+        'entonces explica el ▦ «Edificio» tras los ocho estados y «Al acercar» tras «Cerca tuyo» '
+        '(decisión del 23/10, #467)', (tester) async {
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      double arriba(String texto) {
+        final f = find.descendant(of: hojaReferencias, matching: find.text(texto));
+        expect(f, findsOneWidget, reason: texto);
+        return tester.getTopLeft(f).dy;
+      }
+
+      final ultimoEstado = arriba(FormatoListaUbicaciones.estado(EstadoCasa.values.last));
+      expect(arriba('Edificio'), greaterThan(ultimoEstado));
+      expect(arriba('Edificio'), lessThan(arriba('Agrupadas')));
+      expect(
+        arriba('Al acercar: cada casa muestra su número'),
+        greaterThan(arriba('Cerca tuyo: crece y muestra el número')),
+      );
+      expect(arriba('Al acercar: cada casa muestra su número'), lessThan(arriba('Tu ubicación')));
+    });
+
+    testWidgets('dado el cuadrado de muestra, cuando se abre la leyenda, entonces lleva un número '
+        'de ejemplo en dos renglones («20 / 44») y el lector lo lee como «Casa con su número de '
+        'puerta»', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      expect(find.descendant(of: hojaReferencias, matching: find.text('20\n44')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          'Casa con su número de puerta. Al acercar: cada casa muestra su número',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(ClavesMapaUbicaciones.muestraCuadrado), findsOneWidget);
+      semantica.dispose();
+    });
+
+    testWidgets('dado el edificio de la leyenda, cuando se pinta, entonces es el mismo símbolo que '
+        'dibuja el mapa de lejos', (tester) async {
+      await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+
+      await tester.tap(chipReferencias);
+      await asentarLista(tester);
+
+      final pintura = find.byKey(ClavesMapaUbicaciones.muestraEdificio);
+      expect(pintura, findsOneWidget);
+      expect(tester.getSize(pintura), const Size.square(24));
     });
   });
 

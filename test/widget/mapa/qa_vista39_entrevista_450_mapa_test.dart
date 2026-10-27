@@ -58,7 +58,7 @@ void main() {
         await entrevista.almacen.guardar(entrevistaDePrueba());
         await montarMapaUbicaciones(
           tester,
-          overridesExtra: entrevista.overrides,
+          otrosOverrides: entrevista.overrides,
           escala: escala,
           tamano: tamano,
         );
@@ -80,7 +80,7 @@ void main() {
         await entrevista.almacen.guardar(entrevistaDePrueba());
         await montarMapaUbicaciones(
           tester,
-          overridesExtra: entrevista.overrides,
+          otrosOverrides: entrevista.overrides,
           escala: escala,
           tamano: tamano,
         );

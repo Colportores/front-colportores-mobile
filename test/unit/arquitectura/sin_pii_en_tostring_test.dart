@@ -20,6 +20,9 @@ import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.da
 import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/registrar_persona_use_case.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/destino_notificacion.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/notificacion.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/tipo_notificacion.dart';
 import 'package:equatable/equatable.dart';
 import 'package:test/test.dart';
 
@@ -112,6 +115,7 @@ void main() {
         '(las notas son filas de nota, ADR-017)', () {
       final visita = Visita(
         id: 'vis-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         fecha: DateTime(2026, 9, 18),
         tipoResultado: TipoResultadoVisita.entrevista,
@@ -120,6 +124,7 @@ void main() {
       );
       final agenda = Agenda(
         id: 'age-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         tipo: TipoAgenda.entrevista,
         fechaProgramada: DateTime(2026, 9, 20),
@@ -240,6 +245,25 @@ void main() {
 
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
+    });
+
+    test('dado una Notificacion con la dirección y el nombre de quien se visita, cuando se '
+        'interpola, no aparece nada de lo que mostraba', () {
+      final aviso = Notificacion(
+        id: 'n-1',
+        tipo: TipoNotificacion.recordatorioVisita,
+        titulo: 'Cobranza a Rosalia Techera',
+        detalle: 'Av. Italia 2810 apto 402',
+        destino: const DestinoAgenda('age-1'),
+        recibidaEn: DateTime.utc(2026, 10, 23, 19),
+      );
+
+      final texto = '$aviso';
+
+      expect(texto, isNot(contains('Rosalia')));
+      expect(texto, isNot(contains('Techera')));
+      expect(texto, isNot(contains('Italia')));
+      expect(texto, isNot(contains('402')));
     });
   });
 }

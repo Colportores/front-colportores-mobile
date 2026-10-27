@@ -17,6 +17,7 @@ import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
+import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
@@ -56,6 +57,7 @@ part 'app_database.g.dart';
     Agendas,
     Visitas,
     HouseStatuses,
+    NotificacionesHistorial,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -78,10 +80,15 @@ class AppDatabase extends _$AppDatabase {
   /// - 8: `sync_queue` y `sync_watermark`, la cola y los watermarks del motor de sync (#178).
   /// - 9: `persona` y `nota`, solo locales, y `espacio_persona`, que sube solo con ids (HU-UBI-008, #140).
   /// - 10: `agenda` y `visita`, que suben, y la cache `house_status`, que también (BACK-HU-VIS-001, #404).
+  /// - 11: `agenda` y `visita` cuelgan del espacio (`espacio_id`), la persona es opcional, la agenda
+  ///   usa los estados de la HU (`PROGRAMADA`, `CUMPLIDA`, `NO_CUMPLIDA`, `CANCELADA`) y la visita
+  ///   suma el resultado `COBRANZA` (backend 0068 y 0069, #411).
+  /// - 12: `notificacion_historial`, el historial del centro de notificaciones, solo local
+  ///   (HU-NOT-005, #156).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 10;
+  static const int versionEsquema = 12;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -189,6 +196,44 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.visitaColportorIdx);
       await m.createIndex(esquema.visitaEspacioPersonaIdx);
       await m.createTable(esquema.houseStatus);
+    },
+    // Reescribe `visita` y `agenda` (SQLite no cambia un NOT NULL ni un CHECK): conserva todas las
+    // filas. El `espacio_id` sale del vínculo que ya tenían (`espacio_persona.espacio_id`); un
+    // vínculo que todavía no llegó al teléfono deja el espacio vacío (no se inventa uno). Los
+    // estados viejos de la agenda pasan a los de la HU. Nada se encola al migrar.
+    from10To11: (m, esquema) async {
+      const espacioDelVinculo = CustomExpression<String>(
+        'COALESCE((SELECT ep.espacio_id FROM espacio_persona ep '
+        "WHERE ep.id = espacio_persona_id), '')",
+      );
+      await m.alterTable(
+        TableMigration(
+          esquema.visita,
+          newColumns: [esquema.visita.espacioId],
+          columnTransformer: {esquema.visita.espacioId: espacioDelVinculo},
+        ),
+      );
+      await m.alterTable(
+        TableMigration(
+          esquema.agenda,
+          newColumns: [esquema.agenda.espacioId],
+          columnTransformer: {
+            esquema.agenda.espacioId: espacioDelVinculo,
+            esquema.agenda.estado: const CustomExpression<String>(
+              "CASE estado WHEN 'PENDIENTE' THEN 'PROGRAMADA' "
+              "WHEN 'COMPLETADA' THEN 'CUMPLIDA' ELSE estado END",
+            ),
+          },
+        ),
+      );
+      // `alterTable` vuelve a crear los índices que ya tenía cada tabla, no los nuevos.
+      await m.createIndex(esquema.visitaEspacioIdx);
+      await m.createIndex(esquema.agendaEspacioIdx);
+    },
+    // Solo crea el historial de avisos, vacío: nada de lo guardado cambia.
+    from11To12: (m, esquema) async {
+      await m.createTable(esquema.notificacionHistorial);
+      await m.createIndex(esquema.notificacionHistorialRecibidaIdx);
     },
   );
 }

@@ -127,7 +127,7 @@ void main() {
   Future<void> montar(
     WidgetTester tester, {
     Size tamano = t390x844,
-    ValueChanged<String>? alAbrir,
+    AlAbrirUbicacion? alAbrir,
   }) async {
     tester.view.physicalSize = tamano;
     tester.view.devicePixelRatio = 1;
@@ -292,7 +292,7 @@ void main() {
           ubicacion('viva', calle: 'Av. Italia', numero: '1240', metrosAlNorte: 30),
         );
       });
-      await montar(tester, alAbrir: abiertas.add);
+      await montar(tester, alAbrir: (id, _) => abiertas.add(id));
       final antes = await guardada(tester, 'baja-1');
       final filasAntes = (await auditoria(tester)).length;
       // Hay dos filas con la misma dirección; la de baja lleva «BAJA».
@@ -329,7 +329,7 @@ void main() {
           ubicacion('cerca', calle: 'AV. ITALIA', numero: '1240', metrosAlNorte: 15),
         );
       });
-      await montar(tester, alAbrir: abiertas.add);
+      await montar(tester, alAbrir: (id, _) => abiertas.add(id));
       await tocar(tester, bajaDeItalia());
       await tocar(tester, botonReactivar());
 
@@ -348,7 +348,7 @@ void main() {
           ubicacion('ub-a', calle: 'Orinoco', numero: '5031', metrosAlNorte: 400),
         );
       });
-      await montar(tester, alAbrir: abiertas.add);
+      await montar(tester, alAbrir: (id, _) => abiertas.add(id));
       await tocar(tester, baja1240());
       final antes = await guardada(tester, 'baja-1');
       // Llega la unión (el motivo de la auditoría pasa a `duplicado_de_ub-a`).
@@ -419,7 +419,7 @@ void main() {
           ubicacion('viva', calle: 'Av. Italia', numero: '1240', metrosAlNorte: 30),
         );
       });
-      await montar(tester, alAbrir: (_) {});
+      await montar(tester, alAbrir: (_, _) {});
       await tocar(tester, bajaDeItalia());
 
       await tocar(tester, botonReactivar());

@@ -12,6 +12,7 @@ void main() {
     Auditoria? auditoriaPropia,
   }) => Visita(
     id: 'vis-1',
+    espacioId: 'esp-1',
     espacioPersonaId: 'ep-1',
     fecha: DateTime(2026, 9, 18),
     tipoResultado: tipo,
@@ -42,7 +43,7 @@ void main() {
       expect(construir(jornadaId: null).jornadaId, isNull);
     });
 
-    test('dado el catalogo de resultados, cuando se listan los valores, cubre los 4 del esquema '
+    test('dado el catalogo de resultados, cuando se listan los valores, cubre los 5 del esquema '
         'con el codigo de la columna', () {
       expect(
         {for (final t in TipoResultadoVisita.values) t: t.codigo},
@@ -51,6 +52,7 @@ void main() {
           TipoResultadoVisita.noContesto: 'NO_CONTESTO',
           TipoResultadoVisita.rechazo: 'RECHAZO',
           TipoResultadoVisita.entrevista: 'ENTREVISTA',
+          TipoResultadoVisita.cobranza: 'COBRANZA',
         },
       );
     });
@@ -70,6 +72,7 @@ void main() {
           TipoResultadoVisita.entrevista: true,
           TipoResultadoVisita.noContesto: false,
           TipoResultadoVisita.rechazo: false,
+          TipoResultadoVisita.cobranza: false,
         },
       );
     });
@@ -82,13 +85,14 @@ void main() {
           TipoResultadoVisita.venta: true,
           TipoResultadoVisita.entrevista: true,
           TipoResultadoVisita.rechazo: true,
+          TipoResultadoVisita.cobranza: true,
           TipoResultadoVisita.noContesto: false,
         },
       );
     });
 
     test('dado un codigo que no existe, cuando se lee, lanza ArgumentError', () {
-      expect(() => TipoResultadoVisita.desdeCodigo('COBRANZA'), throwsArgumentError);
+      expect(() => TipoResultadoVisita.desdeCodigo('VISITA'), throwsArgumentError);
     });
 
     test('dado que auditoria.deletedAt tiene valor, cuando se consulta estaBorrada, es true', () {

@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
-import '../formato_ubicaciones.dart';
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
 import '../providers/mapa_ubicaciones_state.dart';
+import 'estados_hoja_casa.dart' show ElegirUbicacionDelPunto;
+import 'hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import 'piezas_lista_ubicaciones.dart';
 import 'piezas_mapa_ubicaciones.dart';
@@ -68,7 +69,9 @@ enum AlturaHoja {
 }
 
 /// La hoja del mapa de ubicaciones (vista 06): la pestaña «Cercanía N» y, debajo, la lista de las
-/// ubicaciones de la más cercana a la más lejana, o la vista previa de la que se tocó. Se arrastra
+/// ubicaciones de la más cercana a la más lejana, o la hoja de la casa que se tocó (vista 39, C·01).
+/// Si el toque cayó sobre varias ubicaciones que ni el zoom máximo separa, primero se elige cuál
+/// (vista 39, E·06). Se arrastra
 /// entre las tres [AlturaHoja]; tocar el asa también la cambia (para quien no puede arrastrar).
 class HojaMapaUbicaciones extends StatefulWidget {
   const HojaMapaUbicaciones({
@@ -81,9 +84,11 @@ class HojaMapaUbicaciones extends StatefulWidget {
     required this.alCambiarAltura,
     required this.alElegir,
     required this.alCerrarVistaPrevia,
+    required this.alElegirDelPunto,
     required this.alReintentar,
     required this.alActivarGps,
     required this.alRegistrar,
+    this.colportorId,
   });
 
   final MapaUbicacionesState estado;
@@ -100,9 +105,15 @@ class HojaMapaUbicaciones extends StatefulWidget {
   /// Una fila de la lista: se elige la ubicación (vista previa y mapa centrado en ella).
   final ValueChanged<String> alElegir;
   final VoidCallback alCerrarVistaPrevia;
+
+  /// Una fila de «Elegí cuál» (E·06): se abre la hoja de esa ubicación.
+  final ValueChanged<String> alElegirDelPunto;
   final VoidCallback alReintentar;
   final VoidCallback alActivarGps;
   final VoidCallback alRegistrar;
+
+  /// El colportor con la sesión iniciada: sin él la hoja de la casa no ofrece «+ Agregar persona».
+  final String? colportorId;
 
   @override
   State<HojaMapaUbicaciones> createState() => _HojaMapaUbicacionesState();
@@ -163,7 +174,9 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
     final estado = widget.estado;
     final altura = widget.altura;
     final seleccionada = estado.seleccionada;
-    final conVistaPrevia = seleccionada != null && altura != AlturaHoja.minimizada;
+    final candidatas = estado.candidatas;
+    final conVistaPrevia =
+        (seleccionada != null || candidatas.isNotEmpty) && altura != AlturaHoja.minimizada;
     final arrastrando = _vivo != null;
 
     return AnimatedContainer(
@@ -192,11 +205,22 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
           if (altura != AlturaHoja.minimizada)
             Expanded(
               child: conVistaPrevia
-                  ? VistaPreviaUbicacion(
-                      item: seleccionada,
-                      ahora: widget.ahora,
-                      alCerrar: widget.alCerrarVistaPrevia,
-                    )
+                  ? (seleccionada != null
+                        ? HojaCasa(
+                            // Otra casa es otra hoja: no hereda el botón ocupado ni el aviso de la anterior.
+                            key: ValueKey('hoja_casa_${seleccionada.ubicacion.id}'),
+                            item: seleccionada,
+                            ahora: widget.ahora,
+                            alCerrar: widget.alCerrarVistaPrevia,
+                            // C·02: con la hoja a la mitad se ven las pestañas; más abajo, el resumen.
+                            arriba: altura == AlturaHoja.mitad,
+                            colportorId: widget.colportorId,
+                          )
+                        : _ElegirDelPunto(
+                            candidatas: candidatas,
+                            alElegir: widget.alElegirDelPunto,
+                            alCerrar: widget.alCerrarVistaPrevia,
+                          ))
                   : _Contenido(
                       estado: estado,
                       ahora: widget.ahora,
@@ -641,112 +665,53 @@ class _BuscandoGps extends StatelessWidget {
   }
 }
 
-/// La vista previa de la ubicación que se tocó (canvas, 06C·04): el rótulo («CASA · 2 ESPACIOS · A
-/// 40 M»), la dirección y, si se conoce, el estado de la casa. Los botones («Registrar visita»,
-/// «Agendar», «Detalle») llegan con sus pantallas: las visitas (HU-VIS-001 y HU-VIS-002) y el
-/// detalle de la ubicación (#211).
-class VistaPreviaUbicacion extends StatelessWidget {
-  const VistaPreviaUbicacion({
-    super.key,
-    required this.item,
-    required this.ahora,
-    required this.alCerrar,
-  });
+/// «3 ubicaciones acá» y «Elegí cuál» (vista 39, E·06) con la ✕ de la vista previa: cerrarla vuelve
+/// a la lista. Las filas son de [ElegirUbicacionDelPunto]; tocar una abre su hoja.
+class _ElegirDelPunto extends StatelessWidget {
+  const _ElegirDelPunto({required this.candidatas, required this.alElegir, required this.alCerrar});
 
-  final ItemListaUbicacion item;
-  final DateTime ahora;
+  final List<ItemListaUbicacion> candidatas;
+  final ValueChanged<String> alElegir;
   final VoidCallback alCerrar;
 
   @override
   Widget build(BuildContext context) {
-    final estado = item.estado;
-    return SingleChildScrollView(
-      child: Semantics(
-        container: true,
-        liveRegion: true,
-        label: TextosMapaUbicaciones.vistaPrevia,
-        child: Padding(
-          key: ClavesMapaUbicaciones.vistaPrevia,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            spacing: 10,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      FormatoMapaUbicaciones.rotuloVistaPrevia(item),
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 10,
-                        letterSpacing: 1.4,
-                        color: Color(0xFF5B6B82),
-                      ),
-                    ),
-                  ),
-                  Semantics(
-                    button: true,
-                    label: TextosMapaUbicaciones.cerrarVistaPrevia,
-                    onTap: alCerrar,
-                    child: ExcludeSemantics(
-                      child: InkResponse(
-                        key: ClavesMapaUbicaciones.cerrarVistaPrevia,
-                        onTap: alCerrar,
-                        radius: 24,
-                        child: const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Icon(Icons.close, size: 20, color: ColoresLista.grisTexto),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                FormatoUbicaciones.direccion(item.ubicacion),
-                style: const TextStyle(
-                  fontFamily: 'SourceSerif4',
-                  fontSize: 23,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                ),
-              ),
-              if (estado != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: ColoresLista.azulFondo,
-                    border: Border.all(color: ColoresLista.azul, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    spacing: 10,
-                    children: [
-                      InsigniaEstadoCasa(estado: estado, tamano: 26),
-                      Expanded(
-                        child: Text(
-                          FormatoMapaUbicaciones.estadoVistaPrevia(
-                            estado,
-                            item.proximaEntrevista,
-                            ahora,
-                          ),
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w600,
-                            color: ColoresMapa.aroSeleccion,
-                          ),
-                        ),
-                      ),
-                    ],
+    return Padding(
+      key: ClavesMapaUbicaciones.vistaPrevia,
+      padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Semantics(
+              button: true,
+              label: TextosMapaUbicaciones.cerrarVistaPrevia,
+              onTap: alCerrar,
+              child: ExcludeSemantics(
+                child: InkResponse(
+                  key: ClavesMapaUbicaciones.cerrarVistaPrevia,
+                  onTap: alCerrar,
+                  radius: 24,
+                  child: const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Icon(Icons.close, size: 20, color: ColoresLista.grisTexto),
                   ),
                 ),
-            ],
+              ),
+            ),
           ),
-        ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElegirUbicacionDelPunto(
+                ubicaciones: candidatas,
+                alElegir: (elegida) => alElegir(elegida.ubicacion.id),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

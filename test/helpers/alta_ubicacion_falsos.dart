@@ -242,6 +242,8 @@ CandidataDuplicado candidata(
 ///
 /// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesParaAltaSinFuente`,
 /// el de producción hoy): un provider no se puede sobrescribir dos veces en el mismo contenedor.
+/// [generadorId] reemplaza los ids secuenciales (`id-1`…) por otro generador, por ejemplo el UUID v7
+/// de producción.
 List<Override> overridesAlta({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
@@ -255,6 +257,7 @@ List<Override> overridesAlta({
   FuenteMapa? fuente,
   SituacionMapa? situacion,
   bool situacionReal = false,
+  String Function()? generadorId,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
@@ -266,7 +269,7 @@ List<Override> overridesAlta({
     ubicacionRepositoryProvider.overrideWithValue(repo ?? RepoAltaFalso()),
     ubicadorZonaProvider.overrideWithValue(ubicadorSinZonas()),
     esperaPuntoAltaProvider.overrideWithValue(espera),
-    generadorIdUbicacionProvider.overrideWithValue(() => 'id-${++secuencia}'),
+    generadorIdUbicacionProvider.overrideWithValue(generadorId ?? () => 'id-${++secuencia}'),
     relojAltaUbicacionProvider.overrideWithValue(() => ahora ?? DateTime.utc(2026, 10, 2, 14, 35)),
     marcadoresCercanosProvider.overrideWith((ref, consulta) => Stream.value(marcadores)),
     // MapLibre no se dibuja en `flutter test`: el mapa es la vista falsa.

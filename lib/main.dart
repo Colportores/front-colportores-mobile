@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,10 +14,16 @@ import 'core/dispositivo/dispositivo_providers.dart';
 import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notificaciones/notificaciones_providers.dart';
+import 'core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
 import 'core/sync/sync_providers.dart';
+import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
+import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
+import 'features/agenda/presentation/flujo_agendar_visita.dart';
+import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'features/auth/data/datasources/registro_enlaces_auth.dart';
@@ -28,7 +35,20 @@ import 'features/auth/data/repositories/ultimo_envio_recuperacion_repository_imp
 import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
+import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
+import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
+import 'features/mapa/presentation/flujo_registrar_visita.dart';
+import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
+import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
+import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
+import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
+import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
+import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
 import 'plataforma/identidad_instalacion.dart';
 
@@ -98,6 +118,20 @@ Future<void> main() async {
     );
   }
 
+  // Recordatorios locales de las visitas (HU-NOT-002): el plugin se prepara antes de la primera
+  // pantalla para recoger el aviso que abrió la app, si lo hubo. Si no arranca, la app sigue.
+  final permisoNotificaciones = PermisoNotificacionesCanal();
+  // Las preferencias de los recordatorios (HU-NOT-004) viven en el almacén seguro; el mismo objeto
+  // las lee al programar cada aviso (si están prendidos y con cuánta anticipación).
+  final preferenciasRecordatorios = PreferenciasRecordatoriosRepositoryImpl(almacenSeguro);
+  final recordatorios = RecordatoriosLocales(
+    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin()),
+    permiso: permisoNotificaciones,
+    anticipacion: preferenciasRecordatorios,
+    activados: preferenciasRecordatorios,
+  );
+  await recordatorios.iniciar();
+
   runApp(
     ProviderScope(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
@@ -134,6 +168,25 @@ Future<void> main() async {
         zonasAvisadasRepositoryProvider.overrideWithValue(
           ZonasAvisadasRepositoryImpl(almacenSeguro),
         ),
+        // El permiso de notificaciones (HU-NOT-001, vista 24): canal nativo propio (MainActivity.kt,
+        // AppDelegate.swift) y, en el almacén seguro, si ya se le pidió y si cerró el aviso de Hoy.
+        permisoNotificacionesSistemaProvider.overrideWithValue(permisoNotificaciones),
+        // Los avisos de las visitas agendadas (HU-NOT-002), con el plugin del teléfono.
+        recordatoriosProvider.overrideWithValue(recordatorios),
+        toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
+        preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferenciasRecordatorios),
+        // Hasta dónde se guardaron en el historial los recordatorios que sonaron (HU-NOT-005).
+        marcaConciliacionRecordatoriosProvider.overrideWithValue(
+          MarcaConciliacionRecordatoriosImpl(almacenSeguro),
+        ),
+        permisoNotificacionesRepositoryProvider.overrideWithValue(
+          PermisoNotificacionesRepositoryImpl(almacenSeguro),
+        ),
+        // Qué cuentas escondieron el aviso de privacidad con «No volver a mostrar» (#445, #447): es
+        // por cuenta y se vuelve a encender desde Configuración.
+        avisoPrivacidadRepositoryProvider.overrideWithValue(
+          AvisoPrivacidadRepositoryImpl(almacenSeguro),
+        ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
         // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en
@@ -145,10 +198,48 @@ Future<void> main() async {
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
         monitorConectividadProvider.overrideWithValue(conectividad),
+        // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
+        // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
+        // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.
+        registrarVisitaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoRegistrarVisita.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Programar entrevista» (vista 39, R·02): «Agendar visita» (vista 23 A, #408) con la casa y,
+        // si se sabe, la persona ya resueltas. Vuelve a la hoja de la casa con la casa en amarillo.
+        programarEntrevistaDesdeLaCasaProvider.overrideWith(
+          (ref) => (cita) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarVisita.abrir(
+              contexto,
+              espacioId: cita.espacioId,
+              espacioPersonaId: cita.espacioPersonaId,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
+        // el teléfono. La pestaña Historial se engancha con su HU (#446).
+        pestanaNotasDeLaCasaProvider.overrideWithValue(
+          (context, contexto) => PestanaNotasDeLaCasa(
+            ubicacionId: contexto.ubicacionId,
+            colportorId: contexto.colportorId,
+            soloLectura: contexto.esBaja,
+          ),
+        ),
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
           sondaArchivoTilesProvider.overrideWithValue(tiles.sonda),
+          medidorEspacioDiscoProvider.overrideWithValue(tiles.espacio),
         ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de

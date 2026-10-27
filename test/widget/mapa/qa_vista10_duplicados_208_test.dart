@@ -147,6 +147,13 @@ Future<void> _montar(
   addTearDown(tester.view.reset);
   addTearDown(datos.cerrar);
   await cargarFuentes208(tester);
+  // El lector se enciende en la plataforma (también lo ve el `ScaffoldMessenger`).
+  if (lector) {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  }
   await tester.pumpWidget(
     ProviderScope(
       overrides: overridesDuplicados(datos, conMapa: true, situacion: situacion),
@@ -155,9 +162,7 @@ Future<void> _montar(
         child: MaterialApp(
           theme: temaClaro(),
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(escala), accessibleNavigation: lector),
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
             child: child!,
           ),
           home: Builder(
@@ -620,24 +625,29 @@ void main() {
       expect(find.byKey(const Key('duplicados_reintentar_union')), findsOneWidget);
     });
 
-    _prueba('con lector de pantalla el aviso con "Deshacer" no se cierra solo antes de los 8 s '
-        'y se va cuando la unión se hace', (tester) async {
-      final datos = _datosCanvas();
-      await _montar(tester, datos, lector: true);
-      await _revisarPar(tester, _parItalia);
-      await _tocar(tester, _conservarYUnir);
+    // #384 (decisión de Cristian 21/10, «Deshacer AA»): con lector la unión no corre contra los 8 s; se
+    // hace al cerrar el aviso (ver `deshacer_con_lector_384_test.dart`).
+    _prueba(
+      'con lector de pantalla el aviso con "Deshacer" no se cierra solo y la unión no se hace a '
+      'los 8 s',
+      (tester) async {
+        final datos = _datosCanvas();
+        await _montar(tester, datos, lector: true);
+        await _revisarPar(tester, _parItalia);
+        await _tocar(tester, _conservarYUnir);
 
-      await tester.pump(const Duration(seconds: 7));
-      expect(_deshacer, findsOneWidget);
-      expect(datos.uniones, isEmpty);
+        await tester.pump(const Duration(seconds: 7));
+        expect(_deshacer, findsOneWidget);
+        expect(datos.uniones, isEmpty);
 
-      await tester.pump(const Duration(milliseconds: 1500));
-      await _asentar(tester);
-      await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(milliseconds: 1500));
+        await _asentar(tester);
+        await tester.pump(const Duration(seconds: 1));
 
-      expect(datos.uniones, hasLength(1));
-      expect(_deshacer, findsNothing, reason: 'no queda un "Deshacer" de una unión ya hecha');
-    });
+        expect(datos.uniones, isEmpty);
+        expect(_deshacer, findsOneWidget, reason: 'sigue hasta que la persona lo cierra');
+      },
+    );
 
     _prueba('"Deshacer" tocado a los 7,9 s evita la unión', (tester) async {
       final datos = _datosCanvas();

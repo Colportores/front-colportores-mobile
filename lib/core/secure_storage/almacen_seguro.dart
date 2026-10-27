@@ -81,11 +81,50 @@ enum ClaveSegura {
   /// de datos locales (HU-AUTH-010) también lo borra.
   zonasAvisadas('zones_notified'),
 
+  /// Las cuentas que escondieron el aviso «Estos datos solo viven en tu celular…» con «No volver a
+  /// mostrar» (decisión de Cristian, 23/10, «Aviso privado», front-colportores-mobile#445 y #447): un
+  /// JSON con la lista de ids (UUID) de usuario, nada más. Es por cuenta y vale para los dos lugares
+  /// donde sale (el alta de persona y las notas); se vuelve a encender desde Configuración, «Mostrar
+  /// el aviso de privacidad». No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro
+  /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) también lo borra: sin datos del
+  /// teléfono, el aviso vuelve a verse.
+  avisoPrivacidadOculto('privacy_notice_hidden'),
+
   /// El id de esta instalación (UUID v7) que viaja en el sobre de cada push y pull del motor de
   /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
   /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
   /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) estrena uno nuevo.
   idInstalacion('device_id'),
+
+  /// Qué pasó con el pedido del permiso de notificaciones en este teléfono (HU-NOT-001, vista 24):
+  /// `ahora_no` (tocó «Ahora no», el sistema todavía no le preguntó) o `sistema` (se le mostró el
+  /// diálogo del sistema; con las notificaciones apagadas después de eso, desde la app ya no se
+  /// pueden activar). Sin la clave, nunca se le pidió: el primer ingreso muestra el pedido, y no se
+  /// vuelve a mostrar. No es secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro
+  /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
+  permisoNotificaciones('notifications_permission'),
+
+  /// Marca de que la persona cerró con la ✕ el aviso «Notificaciones desactivadas» de Hoy (24A·03):
+  /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
+  avisoNotificacionesCerrado('notifications_banner_closed'),
+
+  /// «Recordatorios de agenda» (HU-NOT-004, vista 24 grupo B): `0` si los apagó; sin la clave (o con
+  /// cualquier otro valor) están prendidos. En el S8 las preferencias no suben al servidor. No es
+  /// secreto ni dato personal; se conserva al recuperar los datos y se borra con el borrado de datos
+  /// locales.
+  recordatoriosActivados('reminders_enabled'),
+
+  /// «Anticipación» de los recordatorios, en minutos (de 5 a 120; sin la clave, 30). Mismo trato que
+  /// [recordatoriosActivados].
+  anticipacionRecordatorios('reminders_lead_minutes'),
+
+  /// Hasta qué instante el historial de avisos (HU-NOT-005) ya revisó los recordatorios de las
+  /// visitas que sonaron: milisegundos desde la época, en UTC. Es lo que impide que «Borrar todas»
+  /// se deshaga solo (una visita agendada sigue pendiente después de que su aviso sonó) y que una
+  /// agenda que llega de la nube pase por un aviso que este teléfono nunca mostró. Sin la clave, la
+  /// primera revisión solo la fija. No es secreto ni dato personal; se conserva al recuperar los
+  /// datos (la tabla del historial también se conserva) y se borra con el borrado de datos locales.
+  ultimaConciliacionRecordatorios('reminders_reconciled_at'),
 
   /// La entrevista que cada colportora tiene en curso (vista 39, R·05; decisión de Cristian, 23/10,
   /// front-colportores-mobile#450): un JSON `{"<id del colportor>": {...}}` con **solo ids** y la

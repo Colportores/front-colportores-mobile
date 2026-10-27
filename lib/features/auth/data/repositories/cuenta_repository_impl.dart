@@ -9,8 +9,8 @@ import '../datasources/auth_remote_data_source.dart';
 import '../datasources/estado_cuenta_local_data_source.dart';
 import '../datasources/estado_cuenta_remote_data_source.dart';
 
-/// [CuentaRepository] sobre el BFF, recordando en el equipo el último estado que informó
-/// (HU-AUTH-008), para que el colportor que abre la app sin señal no quede afuera.
+/// [CuentaRepository] sobre la RPC `estado_cuenta()`, recordando en el equipo el último estado que
+/// informó (HU-AUTH-008), para que el colportor que abre la app sin señal no quede afuera.
 ///
 /// Una respuesta que llega tarde (pasó el tope de 15 s de la pantalla) no se recuerda si en el medio
 /// cambió quién tiene la sesión o se borraron los datos del teléfono (#319): el lugar donde se
@@ -52,7 +52,7 @@ final class CuentaRepositoryImpl implements CuentaRepository {
     } on SinConexionException {
       return const Left(FailureSinConexion());
     } on ServidorException catch (e) {
-      _log.warn(LogModulo.auth, 'ESTADO_CUENTA_FAIL', 'el BFF respondió con error', {
+      _log.warn(LogModulo.auth, 'ESTADO_CUENTA_FAIL', 'el servidor respondió con error', {
         'status': e.status,
       });
       final mensaje = e.mensaje;

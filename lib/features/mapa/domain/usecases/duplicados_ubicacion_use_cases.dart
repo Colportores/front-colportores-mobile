@@ -80,8 +80,7 @@ final class ConsultarParesDuplicadosUseCase
 }
 
 /// Un par para revisar con lo que la pantalla muestra al lado de cada ubicación: cuántos espacios
-/// tiene y, si se sabe, en qué estado está la casa. Las visitas todavía no están en el teléfono
-/// (HU-VIS-005, #151) y no se inventan: el estado es `null` hasta que exista `house_status`.
+/// tiene y en qué estado está la casa (`house_status`, HU-VIS-005; sin fila es «Sin visita»).
 final class ParaRevisar extends Equatable {
   const ParaRevisar({
     required this.par,
@@ -241,8 +240,11 @@ final class UnirDuplicadosParams extends Equatable {
 /// 3. Si no, el resultado de la unión. Si B ya estaba unida y de baja, `ResultadoUnionDuplicados.
 ///    yaUnida`, sin encolar nada.
 ///
-/// Todavía no se mueven las personas, visitas, ventas y cobranzas de B (no hay tablas locales
-/// todavía: llegan con sus HU, #330); el servidor sí las pasa cuando aplica el trabajo.
+/// Lo que colgaba del espacio único fundido de B (sus personas, visitas y agendas) pasa al único de
+/// A, lo que nombraba a B como casa alternativa pasa a nombrar a A, y el color de A y el de B se
+/// recalculan, todo en la misma transacción. Las ventas, entregas
+/// y cobranzas todavía no están en el teléfono (llegan con sus HU): hasta entonces las pasa solo el
+/// servidor cuando aplica el trabajo.
 final class UnirDuplicadosUseCase
     implements UseCase<ResultadoUnionDuplicados, UnirDuplicadosParams> {
   UnirDuplicadosUseCase(this._ubicaciones, {DateTime Function()? ahora})

@@ -102,6 +102,12 @@ void main() {
       expect(ClaveSegura.ultimoEnvioRecuperacion.id, 'last_recovery_request');
       expect(ClaveSegura.bloqueoReenvioVerificacion.id, 'verification_resend_locks');
       expect(ClaveSegura.zonasAvisadas.id, 'zones_notified');
+      expect(ClaveSegura.permisoNotificaciones.id, 'notifications_permission');
+      expect(ClaveSegura.avisoNotificacionesCerrado.id, 'notifications_banner_closed');
+      expect(ClaveSegura.recordatoriosActivados.id, 'reminders_enabled');
+      expect(ClaveSegura.anticipacionRecordatorios.id, 'reminders_lead_minutes');
+      expect(ClaveSegura.ultimaConciliacionRecordatorios.id, 'reminders_reconciled_at');
+      expect(ClaveSegura.avisoPrivacidadOculto.id, 'privacy_notice_hidden');
       expect(ClaveSegura.entrevistaEnCurso.id, 'interview_in_progress');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });

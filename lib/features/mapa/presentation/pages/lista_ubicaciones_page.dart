@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -18,8 +19,10 @@ import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/uniones_pendientes_notifier.dart';
+import '../widgets/aviso_con_deshacer.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
+import '../widgets/mostrar_hoja_casa.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import '../widgets/piezas_lista_ubicaciones.dart';
 import '../widgets/textos_posibles_duplicados.dart';
@@ -49,6 +52,10 @@ abstract final class TextosListaUbicaciones {
   static const nueva = 'Nueva';
 }
 
+/// Qué se hace al abrir una ubicación de la Lista: su `id` y la distancia que muestra su fila (la
+/// hoja de la ubicación dice «EDIFICIO · A 25 M» igual que desde el mapa), o `null` sin GPS.
+typedef AlAbrirUbicacion = void Function(String ubicacionId, double? distanciaMetros);
+
 /// La pestaña «Lista» (vista 05, HU-UBI-002): las ubicaciones del colportor con filtros combinables,
 /// contadores, orden por cercanía, «Mostrar bajas», buscador y carga de a 50.
 ///
@@ -70,9 +77,10 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// La pestaña está a la vista.
   final bool activa;
 
-  /// Qué pasa al tocar una fila. `null` mientras no haya una pantalla de destino (las ubicaciones
-  /// del espacio, vista 11): las filas se ven igual pero no se tocan.
-  final ValueChanged<String>? alAbrirUbicacion;
+  /// Qué pasa al tocar una fila. Por defecto abre la hoja de la casa, «la misma que en el mapa»
+  /// (vista 39, C·01); una pantalla de destino propia (las ubicaciones del espacio, vista 11) la
+  /// reemplaza.
+  final AlAbrirUbicacion? alAbrirUbicacion;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
@@ -99,6 +107,9 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   String? _reactivandoId;
   var _abriendoAlta = false;
   var _abriendoDuplicados = false;
+
+  /// Una sola hoja de la casa a la vez: un segundo toque (o dos filas seguidas) no abre otra encima.
+  var _abriendoCasa = false;
 
   ListaUbicacionesNotifier get _notificador =>
       ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
@@ -192,6 +203,39 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
+  /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
+  double? _distanciaDe(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
+    }
+    return null;
+  }
+
+  /// Tocar una fila (vista 05): se abre la hoja de la casa de la vista 39, o el destino que se pasó en
+  /// [ListaUbicacionesPage.alAbrirUbicacion]. Una casa dada de baja se abre igual, para ver lo que
+  /// pasó; su «Reactivar» es el de la fila.
+  Future<void> _abrirCasa(ItemListaUbicacion item) async {
+    final destino = widget.alAbrirUbicacion;
+    if (destino != null) {
+      destino(item.ubicacion.id, item.distanciaMetros);
+      return;
+    }
+    if (_abriendoCasa) return;
+    _abriendoCasa = true;
+    try {
+      await mostrarHojaCasa(
+        context,
+        colportorId: widget.colportorId,
+        item: item,
+        alReactivar: _reactivar,
+      );
+    } finally {
+      _abriendoCasa = false;
+    }
+  }
+
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
   /// choca con otra casa activa (D1), la hoja lo dice y ofrece «Abrir la existente» solo si la Lista
   /// tiene a dónde abrirla ([ListaUbicacionesPage.alAbrirUbicacion]).
@@ -216,7 +260,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId);
+        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
       case null:
         break;
     }
@@ -234,42 +278,14 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final darDeBaja = ref.read(darDeBajaUbicacionUseCaseProvider);
     final direccion = FormatoUbicaciones.direccion(reactivada);
     final mediaQuery = MediaQuery.of(context);
-    // Con el texto grande «Deshacer» va debajo del aviso, no al lado: Flutter mide la acción sin la
-    // escala del texto y la deja en una columna angosta que parte «reactivada»; y `actionOverflowThreshold`
-    // tampoco alcanza (reserva el 40 % del ancho aunque la acción baje, y el aviso mide ~300 de 640).
-    final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
-    final texto = Text(
-      TextosReactivar.reactivada(direccion),
-      style: const TextStyle(fontSize: 13.5, color: Colors.white),
+    mostrarAvisoConDeshacer(
+      mensajero,
+      mediaQuery: mediaQuery,
+      texto: TextosReactivar.reactivada(direccion),
+      etiquetaDeshacer: TextosReactivar.deshacer,
+      duracion: TextosReactivar.duracionDeshacer,
+      alDeshacer: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
     );
-    final deshacer = SnackBarAction(
-      label: TextosReactivar.deshacer,
-      textColor: const Color(0xFFC9D6EA),
-      onPressed: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
-    );
-    mensajero
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: TextosReactivar.duracionDeshacer,
-          // Con un lector de pantalla el aviso no se cierra solo (WCAG 2.2.1): quien navega con
-          // TalkBack/VoiceOver no llega a «Deshacer» en 8 s. Sin lector dura 8 s, como en el canvas
-          // (sin `action` Flutter no lo deja abierto, y con `action` lo dejaría abierto para todos).
-          persist: mediaQuery.accessibleNavigation,
-          backgroundColor: ColoresLista.tinta,
-          content: textoGrande
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    texto,
-                    Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
-                  ],
-                )
-              : texto,
-          action: textoGrande ? null : deshacer,
-        ),
-      );
   }
 
   Future<void> _deshacer(
@@ -306,6 +322,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   Future<void> _registrar() async {
     if (_abriendoAlta) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoAlta = true;
     try {
       final personalizado = widget.alRegistrar;
@@ -323,6 +341,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// ver los pares: el aviso de una unión que falló fuera de la pantalla se da por leído.
   Future<void> _revisarDuplicados() async {
     if (_abriendoDuplicados) return;
+    // Con la cuenta restringida no se abre otra revisión de duplicados.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoDuplicados = true;
     try {
       ref.read(unionesFallidasFueraDePantallaProvider.notifier).olvidar();
@@ -442,7 +462,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                           // texto al 200 % el encabezado ya ocupa casi toda la pantalla y la franja no
                           // entra (QA de #357).
                           avisoDuplicados: fija ? null : franja,
-                          alAbrirUbicacion: widget.alAbrirUbicacion,
+                          alAbrirUbicacion: (item) => unawaited(_abrirCasa(item)),
                           alReactivar: (item) => unawaited(_reactivar(item)),
                           reactivandoId: _reactivandoId,
                           alRegistrar: () => unawaited(_registrar()),
@@ -799,7 +819,7 @@ class _Cuerpo extends StatelessWidget {
   /// «3 posibles duplicados · Revisar» (o el de la falla): va arriba de lo que se desplaza. No se
   /// muestra mientras se lee la lista por primera vez ni cuando esa lectura falla.
   final Widget? avisoDuplicados;
-  final ValueChanged<String>? alAbrirUbicacion;
+  final ValueChanged<ItemListaUbicacion> alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
 
   /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
@@ -959,7 +979,7 @@ class _Cuerpo extends StatelessWidget {
           item: item,
           lista: lista,
           ahora: ahora,
-          alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
+          alTocar: () => alAbrirUbicacion(item),
           // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
           // se toca (HU-UBI-005, «Reactivar»).
           alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,

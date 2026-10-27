@@ -12,14 +12,22 @@ typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
 typedef AgendaCancelada = ({Agenda agenda, bool escribio});
 
 /// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba, si la
-/// agenda indicada no servía, por qué se guardó sin ella y si la agenda sirve pero el resultado no
-/// la cumple (`agendaQuedoPendiente`).
+/// agenda indicada no servía, por qué se guardó sin ella, si la agenda sirve pero el resultado no la
+/// cumple (`agendaNoCumplida`: pasó a `NO_CUMPLIDA`) y qué agenda tocó: la que **creó** la visita
+/// espontánea (`agendaCreadaId`) o la **existente** que cumplió o no cumplió (`agendaAfectadaId`).
+/// Esos dos ids son lo que necesita [AgendaLocalDataSource.deshacerVisita].
 typedef VisitaRegistrada = ({
   Visita visita,
   bool yaEstaba,
   MotivoAgendaIgnorada? agendaIgnorada,
-  bool agendaQuedoPendiente,
+  bool agendaNoCumplida,
+  String? agendaCreadaId,
+  String? agendaAfectadaId,
 });
+
+/// Resultado de [AgendaLocalDataSource.deshacerVisita]: la visita como quedó (dada de baja) y si esta
+/// llamada escribió (`false` si ya estaba deshecha).
+typedef VisitaDeshecha = ({Visita visita, bool escribio});
 
 /// Persistencia local de las agendas y las visitas (BACK-HU-VIS-001), sobre las tablas `agenda`,
 /// `visita` y `nota` de la DB cifrada. La implementa `AgendaLocalDataSourceDrift`.
@@ -41,17 +49,34 @@ abstract interface class AgendaLocalDataSource {
   Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora});
 
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
-  /// `COMPLETADA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,
+  /// `CUMPLIDA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,
   /// no escribe nada y la devuelve con `yaEstaba: true`.
   ///
   /// Un resultado que no cumple la agenda (`TipoResultadoVisita.cumpleLaAgenda`, hoy `NO_CONTESTO`)
-  /// guarda la visita y deja la agenda como estaba, sin crear una agenda cumplida de más:
-  /// `agendaQuedoPendiente: true`.
+  /// guarda la visita y pasa la agenda a `NO_CUMPLIDA` (apuntando a la visita), sin crear una agenda
+  /// cumplida de más: `agendaNoCumplida: true`.
   ///
-  /// Lanza [AgendaRechazadaException] si el vínculo de la visita no está en el teléfono. Si la
-  /// agenda no existe, es de otra persona o ya no está pendiente, la visita se guarda igual como
-  /// espontánea, sin tocar esa agenda, y el resultado trae el motivo en `agendaIgnorada`.
+  /// Lanza [AgendaRechazadaException] si el espacio de la visita, o su persona (si la hay), no están
+  /// en el teléfono. Si la agenda no existe, es de otra casa o de otra persona, o ya no está
+  /// programada, la visita se guarda igual como espontánea, sin tocar esa agenda, y el resultado trae
+  /// el motivo en `agendaIgnorada`.
   Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota});
+
+  /// Deshace [visitaId] (el «Deshacer» de R·01): da de baja la visita y sus notas, vuelve a
+  /// `PROGRAMADA` la agenda existente que la visita cumplió o no cumplió ([agendaAfectadaId]) o da de
+  /// baja la que creó ([agendaCreadaId]), y recalcula el color de la casa, todo en una transacción.
+  /// Si ya estaba deshecha, no escribe nada (`escribio: false`). Lanza [AgendaRechazadaException] si
+  /// la visita no está en el teléfono.
+  Future<VisitaDeshecha> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  });
+
+  /// La agenda de entrevista que sigue `PROGRAMADA` en [espacioId] (la más próxima), o `null` si no
+  /// hay ninguna. La visita que se registra en esa casa es la que viene a cumplirla.
+  Future<Agenda?> agendaProgramadaDe(String espacioId);
 
   /// La agenda [id], o `null` si no está en el teléfono.
   Future<Agenda?> obtenerAgenda(String id);

@@ -7,7 +7,9 @@ import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/agenda_local_data_source_drift.dart';
 import '../../data/repositories/agenda_repository_impl.dart';
 import '../../domain/repositories/agenda_repository.dart';
+import '../../domain/usecases/agendar_visita_use_case.dart';
 import '../../domain/usecases/registrar_resultado_visita_use_case.dart';
+import 'recordatorios_providers.dart';
 
 // Cableado de las agendas y las visitas (BACK-HU-VIS-001). Presentation conoce domain; data se
 // inyecta acá. Las pantallas (vista 23) y los casos de uso de HU-VIS-001 y HU-VIS-005 se apoyan en
@@ -38,6 +40,25 @@ final relojVisitaProvider = Provider<DateTime Function()>((ref) => DateTime.now)
 final registrarResultadoVisitaUseCaseProvider = Provider<RegistrarResultadoVisitaUseCase>(
   (ref) => RegistrarResultadoVisitaUseCase(
     ref.watch(agendaRepositoryProvider),
+    generarId: ref.watch(generadorIdVisitaProvider),
+    ahora: ref.watch(relojVisitaProvider),
+  ),
+);
+
+/// El «Deshacer» del aviso «Guardado» (vista 39, R·01).
+final deshacerResultadoVisitaUseCaseProvider = Provider<DeshacerResultadoVisitaUseCase>(
+  (ref) => DeshacerResultadoVisitaUseCase(
+    ref.watch(agendaRepositoryProvider),
+    ahora: ref.watch(relojVisitaProvider),
+  ),
+);
+
+/// HU-VIS-001: agendar una visita y programar su recordatorio. La pantalla de agendar (vista 23 A,
+/// #408) lo usa.
+final agendarVisitaUseCaseProvider = Provider<AgendarVisitaUseCase>(
+  (ref) => AgendarVisitaUseCase(
+    ref.watch(agendaRepositoryProvider),
+    ref.watch(recordatoriosProvider),
     generarId: ref.watch(generadorIdVisitaProvider),
     ahora: ref.watch(relojVisitaProvider),
   ),

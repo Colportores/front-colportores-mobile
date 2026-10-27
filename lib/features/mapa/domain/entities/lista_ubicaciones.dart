@@ -24,8 +24,7 @@ final class ItemListaUbicacion extends Equatable {
   /// Espacios (deptos) sin baja de la ubicación.
   final int cantidadEspacios;
 
-  /// Estado de la casa (`house_status`); `null` si todavía no se sabe: ver
-  /// `UbicacionConResumen.estado`.
+  /// Estado de la casa (`house_status`): ver `UbicacionConResumen.estado`.
   final EstadoCasa? estado;
 
   /// Hora de la entrevista agendada, si el estado es [EstadoCasa.entrevistaAgendada] y se conoce.
@@ -104,7 +103,8 @@ final class ListaUbicaciones extends Equatable {
   final int totalBajas;
 
   /// Al menos una ubicación del colportor trae su estado: la vista ofrece el filtro por estado y
-  /// muestra el estado de cada fila. Sin esto (todavía no hay `house_status` local) se ocultan.
+  /// muestra el estado de cada fila. Con la lista leída de `house_status` (HU-VIS-005) es `true`
+  /// apenas hay una ubicación.
   final bool estadosConocidos;
 
   /// Hay más ubicaciones que las devueltas: la vista puede pedir la página siguiente.

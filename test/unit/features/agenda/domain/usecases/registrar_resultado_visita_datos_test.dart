@@ -55,13 +55,15 @@ void main() {
 
   Future<Either<Failure, ResultadoVisitaRegistrado>> registrar(
     _R resultado, {
-    String vinculo = 'ep-1',
+    String espacio = 'esp-1',
+    String? vinculo = 'ep-1',
     String? agendaId,
     String nota = '',
     IdsResultadoVisita? formulario,
   }) => casoDeUso(
     RegistrarResultadoVisitaParams(
       ids: formulario ?? casoDeUso.nuevosIds(),
+      espacioId: espacio,
       espacioPersonaId: vinculo,
       colportorId: 'col-1',
       resultado: resultado,
@@ -94,27 +96,29 @@ void main() {
 
       expect(r.guardada.aviso, isNull);
       expect((await visitas()).map((v) => (v.id, v.tipoResultado)), [('id-1', 'NO_CONTESTO')]);
-      expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('COMPLETADA', 'id-1')]);
+      expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('CUMPLIDA', 'id-1')]);
       expect(await colores(), ['SIN_CONTESTAR']);
       expect(cola(), ['visita:insert', 'agenda:insert', 'house_status:insert']);
     });
 
-    test('dado que la casa tenía una agenda, cuando registro NO_CONTESTO, la visita se guarda y la '
-        'agenda sigue PENDIENTE (no cumplida espera la decisión P1 de #151), con un aviso que '
-        'guía', () async {
-      await repositorio.agendar(agendaDe('age-1'));
-      encolador.encolados.clear();
+    test(
+      'dado que la casa tenía una agenda, cuando registro NO_CONTESTO, la visita se guarda y la '
+      'agenda pasa a NO_CUMPLIDA apuntando a la visita (decisión «No cumplida», 23/10)',
+      () async {
+        await repositorio.agendar(agendaDe('age-1'));
+        encolador.encolados.clear();
 
-      final r = salio(await registrar(_R.noContesto, agendaId: 'age-1'));
+        final r = salio(await registrar(_R.noContesto, agendaId: 'age-1'));
 
-      expect(r.guardada.agendaQuedoPendiente, isTrue);
-      expect(r.guardada.aviso, VisitaGuardada.avisoAgendaPendiente);
-      expect((await visitas()).single.tipoResultado, 'NO_CONTESTO');
-      expect((await agendas()).map((a) => (a.id, a.estado, a.visitaId)), [
-        ('age-1', 'PENDIENTE', null),
-      ]);
-      expect(cola(), ['visita:insert']);
-    });
+        expect(r.guardada.agendaNoCumplida, isTrue);
+        expect(r.guardada.aviso, isNull);
+        expect((await visitas()).single.tipoResultado, 'NO_CONTESTO');
+        expect((await agendas()).map((a) => (a.id, a.estado, a.visitaId)), [
+          ('age-1', 'NO_CUMPLIDA', 'id-1'),
+        ]);
+        expect(cola(), ['visita:insert', 'agenda:update', 'house_status:update']);
+      },
+    );
   });
 
   group('Escenario: Registrar RECHAZO', () {
@@ -148,7 +152,7 @@ void main() {
 
         await registrar(_R.rechazo, agendaId: 'age-1');
 
-        expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('COMPLETADA', 'id-1')]);
+        expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('CUMPLIDA', 'id-1')]);
         expect(await colores(), ['RECHAZO']);
       },
     );
@@ -162,7 +166,7 @@ void main() {
       expect(r.guardada.agendaIgnorada, isNull);
       expect(await todo(), [
         'v:id-1:ENTREVISTA',
-        'a:age-esp-1:COMPLETADA:id-1',
+        'a:age-esp-1:CUMPLIDA:id-1',
         'ENTREVISTA_SIN_VENTA',
       ]);
     });
@@ -185,7 +189,7 @@ void main() {
 
         expect(bien.isRight(), isTrue);
         expect((await visitas()).map((v) => v.id), ['id-1']);
-        expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('COMPLETADA', 'id-1')]);
+        expect((await agendas()).map((a) => (a.estado, a.visitaId)), [('CUMPLIDA', 'id-1')]);
         expect((await notas()).map((x) => x.id), ['id-2']);
         expect(await colores(), ['ENTREVISTA_SIN_VENTA']);
       });
@@ -198,8 +202,8 @@ void main() {
       'el servidor, son 2 presentaciones y la visita sin respuesta no cuenta',
       () async {
         await registrar(_R.venta);
-        await registrar(_R.entrevista, vinculo: 'ep-2');
-        await registrar(_R.noContesto, vinculo: 'ep-2');
+        await registrar(_R.entrevista, espacio: 'esp-2', vinculo: 'ep-2');
+        await registrar(_R.noContesto, espacio: 'esp-2', vinculo: 'ep-2');
 
         final guardadas = [
           for (final v in await visitas()) TipoResultadoVisita.desdeCodigo(v.tipoResultado),
@@ -271,7 +275,7 @@ void main() {
         expect(avisos, [null, MotivoAgendaIgnorada.cerrada]);
         expect((await visitas()).length, 2);
         final agenda = (await agendas()).firstWhere((a) => a.id == 'age-1');
-        expect([agenda.estado, agenda.visitaId], ['COMPLETADA', 'id-1']);
+        expect([agenda.estado, agenda.visitaId], ['CUMPLIDA', 'id-1']);
         expect((await agendas()).length, 2);
       },
     );
@@ -288,7 +292,7 @@ void main() {
 
     test('dado el vínculo de otro depto del edificio, cuando se registra, la casa se pinta por el '
         'resultado', () async {
-      await registrar(_R.rechazo, vinculo: 'ep-2');
+      await registrar(_R.rechazo, espacio: 'esp-2', vinculo: 'ep-2');
 
       expect(await colores(), ['RECHAZO']);
       expect((await visitas()).single.espacioPersonaId, 'ep-2');
@@ -309,14 +313,31 @@ void main() {
       },
     );
 
-    test('dado que no se eligió a la persona, cuando se registra, no se guarda nada (sin persona '
-        'vacía, P3 de #151)', () async {
+    test('dado que no se eligió a la persona, cuando se registra, la visita queda en la casa sin '
+        'persona (decisión «Sin persona», 23/10)', () async {
       final r = await registrar(_R.noContesto, vinculo: '');
 
-      expect(r.isLeft(), isTrue);
-      expect(await todo(), isEmpty);
-      expect(cola(), isEmpty);
+      expect(r.isRight(), isTrue);
+      final v = (await visitas()).single;
+      expect([v.espacioId, v.espacioPersonaId], ['esp-1', null]);
+      expect(cola(), contains('visita:insert'));
     });
+
+    test(
+      'dado un espacio que no está en el teléfono, cuando se registra, no se guarda nada',
+      () async {
+        final r = await registrar(_R.noContesto, espacio: 'esp-que-no-llego', vinculo: null);
+
+        expect(
+          (r.swap().getOrElse(() => throw StateError('debía fallar')) as FailureValidacion)
+              .campos
+              .keys,
+          ['espacio'],
+        );
+        expect(await todo(), isEmpty);
+        expect(cola(), isEmpty);
+      },
+    );
 
     test('dado una nota larga y con tildes, cuando se registra, se guarda entera', () async {
       final larga = List.generate(300, (i) => 'Atiende ñandú $i, volver mañana').join('\n');

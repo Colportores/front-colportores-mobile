@@ -99,7 +99,7 @@ void main() {
     });
 
     test('una agenda cumplida, cancelada o dada de baja: no cuenta', () async {
-      await insertarAgenda(db, agendaDe('age-1', estado: EstadoAgenda.completada));
+      await insertarAgenda(db, agendaDe('age-1', estado: EstadoAgenda.cumplida));
       await insertarAgenda(db, agendaDe('age-2', estado: EstadoAgenda.cancelada));
       await insertarAgenda(db, agendaDe('age-3', borrada: t1));
 
@@ -177,7 +177,7 @@ void main() {
       encolador.encolados.clear();
       await (db.update(
         db.agendas,
-      )).write(AgendasCompanion(estado: Value(EstadoAgenda.completada.codigo)));
+      )).write(AgendasCompanion(estado: Value(EstadoAgenda.cumplida.codigo)));
       await insertarVisita(db, visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto));
 
       await updater.recalcular('ub-1', ahora: t1, colportorId: 'col-1');
@@ -282,7 +282,12 @@ void main() {
       await insertarAgenda(db, agendaDe('age-1'));
       await insertarVisita(
         db,
-        visitaDe('vis-1', vinculo: 'ep-2', resultado: TipoResultadoVisita.rechazo),
+        visitaDe(
+          'vis-1',
+          espacio: 'esp-2',
+          vinculo: 'ep-2',
+          resultado: TipoResultadoVisita.rechazo,
+        ),
       );
 
       await recalcular();
@@ -294,7 +299,12 @@ void main() {
     test('un depto dado de baja no pinta el edificio', () async {
       await insertarVisita(
         db,
-        visitaDe('vis-1', vinculo: 'ep-2', resultado: TipoResultadoVisita.entrevista),
+        visitaDe(
+          'vis-1',
+          espacio: 'esp-2',
+          vinculo: 'ep-2',
+          resultado: TipoResultadoVisita.entrevista,
+        ),
       );
       await (db.update(
         db.espacios,

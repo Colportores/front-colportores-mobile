@@ -24,8 +24,8 @@ import '../models/ubicacion_model.dart';
 /// suya.
 ///
 /// Mira solo los **espacios activos** de la ubicación (la baja de un depto saca sus visitas del
-/// color, no del historial) y todos los vínculos de esos espacios, aunque alguno esté dado de baja:
-/// una visita que ya pasó sigue contando. Las agendas y visitas dadas de baja no cuentan.
+/// color, no del historial): una visita que ya pasó sigue contando aunque su persona esté dada de
+/// baja o no tenga persona. Las agendas y visitas dadas de baja no cuentan.
 final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
   HouseStatusUpdaterDrift(this._db, {required this._encolador});
@@ -104,20 +104,19 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     return _encolar(OperacionSync.update, ubicacionId);
   });
 
-  /// Los vínculos persona ↔ espacio de los espacios activos de [ubicacionId], como subconsulta.
-  JoinedSelectStatement<HasResultSet, dynamic> _vinculosDe(String ubicacionId) =>
-      _db.selectOnly(_db.espacioPersonas).join([
-          innerJoin(_db.espacios, _db.espacios.id.equalsExp(_db.espacioPersonas.espacioId)),
-        ])
-        ..addColumns([_db.espacioPersonas.id])
+  /// Los espacios activos de [ubicacionId], como subconsulta. Las agendas y las visitas cuelgan del
+  /// espacio (migración 0068/0069), con o sin persona.
+  JoinedSelectStatement<HasResultSet, dynamic> _espaciosDe(String ubicacionId) =>
+      _db.selectOnly(_db.espacios)
+        ..addColumns([_db.espacios.id])
         ..where(_db.espacios.ubicacionId.equals(ubicacionId) & _db.espacios.deletedAt.isNull());
 
   Future<List<TipoAgenda>> _agendasPendientes(String ubicacionId) async {
     final filas =
         await (_db.select(_db.agendas)..where(
               (a) =>
-                  a.espacioPersonaId.isInQuery(_vinculosDe(ubicacionId)) &
-                  a.estado.equals(EstadoAgenda.pendiente.codigo) &
+                  a.espacioId.isInQuery(_espaciosDe(ubicacionId)) &
+                  a.estado.equals(EstadoAgenda.programada.codigo) &
                   a.deletedAt.isNull(),
             ))
             .get();
@@ -125,11 +124,9 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
   }
 
   Future<List<TipoResultadoVisita>> _resultadosDeVisitas(String ubicacionId) async {
-    final filas =
-        await (_db.select(_db.visitas)..where(
-              (v) => v.espacioPersonaId.isInQuery(_vinculosDe(ubicacionId)) & v.deletedAt.isNull(),
-            ))
-            .get();
+    final filas = await (_db.select(
+      _db.visitas,
+    )..where((v) => v.espacioId.isInQuery(_espaciosDe(ubicacionId)) & v.deletedAt.isNull())).get();
     return [for (final fila in filas) TipoResultadoVisita.desdeCodigo(fila.tipoResultado)];
   }
 

@@ -4,9 +4,9 @@ import '../../../../core/database/fecha_utc_converter.dart';
 
 /// Tabla `agenda` de la DB local cifrada (esquema-datos.md §Operaciones de campo).
 ///
-/// Es la misma tabla que `public.agenda` del cloud (`backend-supabase`, migración 0001) —"modelo
-/// único", esquema-datos.md §Principios 1—: mismo nombre, mismas columnas y los mismos `CHECK`. Las
-/// diferencias son las del motor, igual que en `jornada` y `ubicacion`:
+/// Es la misma tabla que `public.agenda` del cloud (`backend-supabase`, migraciones 0001 y 0068)
+/// —"modelo único", esquema-datos.md §Principios 1—: mismo nombre, mismas columnas y los mismos
+/// `CHECK`. Las diferencias son las del motor, igual que en `jornada` y `ubicacion`:
 ///
 /// - Fechas en epoch ms UTC ([FechaUtcConverter]) en vez de `timestamptz`.
 /// - Sin claves foráneas: `espacio_persona`, `ubicacion` y `visita` pueden llegar al teléfono en
@@ -17,11 +17,14 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// local-only, ADR-017). Por eso la fila entera sube: nada de lo que hay acá es personal.
 ///
 /// Los nombres de columna son las claves de `AgendaModel.toJson()` —el payload de sync—; un test
-/// fija que coincidan. Los `CHECK` de `tipo` y `estado` son los del servidor, tal cual (pendiente
-/// P1 de #151: la HU habla de otros nombres de estado).
+/// fija que coincidan. Los `CHECK` de `tipo` y `estado` son los del servidor, tal cual (estados de
+/// la HU, decisión del 23/10, «No cumplida»). **Cuelga del espacio** (`espacio_id`) y la persona es
+/// opcional («Sin persona»). Las columnas de 0068 que nadie usa todavía (`venta_id`, `entrega_id`,
+/// `monto_previsto` y el tipo `ENTREGA`) las suma la HU que las necesita.
 @DataClassName('AgendaFila')
 @TableIndex(name: 'agenda_colportor_idx', columns: {#colportorId, #fechaProgramada})
 @TableIndex(name: 'agenda_espacio_persona_idx', columns: {#espacioPersonaId})
+@TableIndex(name: 'agenda_espacio_idx', columns: {#espacioId})
 class Agendas extends Table {
   @override
   String get tableName => 'agenda';
@@ -29,7 +32,11 @@ class Agendas extends Table {
   /// UUID v7 generado en el dispositivo (esquema-datos.md §Principios 2).
   TextColumn get id => text()();
 
-  TextColumn get espacioPersonaId => text()();
+  /// La casa o el depto de la cita.
+  TextColumn get espacioId => text()();
+
+  /// Con quién es; `null` = sin persona.
+  TextColumn get espacioPersonaId => text().nullable()();
 
   /// `ENTREVISTA` o `COBRANZA`.
   TextColumn get tipo => text()();
@@ -42,8 +49,8 @@ class Agendas extends Table {
 
   TextColumn get ubicacionAltId => text().nullable()();
 
-  /// `PENDIENTE`, `COMPLETADA` o `CANCELADA`.
-  TextColumn get estado => text().withDefault(const Constant('PENDIENTE'))();
+  /// `PROGRAMADA`, `CUMPLIDA`, `NO_CUMPLIDA` o `CANCELADA`.
+  TextColumn get estado => text().withDefault(const Constant('PROGRAMADA'))();
 
   TextColumn get colportorId => text()();
 
@@ -67,6 +74,6 @@ class Agendas extends Table {
   @override
   List<String> get customConstraints => const [
     "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
-    "CHECK (estado IN ('PENDIENTE', 'COMPLETADA', 'CANCELADA'))",
+    "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
   ];
 }

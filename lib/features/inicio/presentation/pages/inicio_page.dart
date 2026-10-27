@@ -10,13 +10,20 @@ import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
+    show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
+import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
+import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
+import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 
-/// Estructura de la app una vez con sesión: la marca y el engranaje de Configuración arriba, la
-/// barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el medio la pestaña elegida.
+/// Estructura de la app una vez con sesión: la marca, la campana de las notificaciones y el engranaje
+/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el
+/// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
 /// y en una lista (HU-UBI-003 y HU-UBI-002). Agenda y Ventas todavía no tienen pantalla: quedan con
@@ -38,6 +45,36 @@ class _InicioPageState extends ConsumerState<InicioPage> {
 
   void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
 
+  /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
+  var _abriendoUbicacion = false;
+
+  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
+  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
+  /// baja) la Lista lo ve sola al releer.
+  Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
+    if (_abriendoUbicacion) return;
+    _abriendoUbicacion = true;
+    try {
+      var id = ubicacionId;
+      var distancia = distanciaMetros;
+      while (mounted) {
+        final salida = await mostrarHojaUbicacion(
+          context,
+          colportorId: widget.sesion.usuarioId,
+          ubicacionId: id,
+          distanciaMetros: distancia,
+        );
+        if (salida is! UbicacionExistenteElegida) break;
+        id = salida.ubicacionId;
+        // La distancia era la de la otra ubicación: de esta no se conoce desde acá.
+        distancia = null;
+      }
+    } finally {
+      _abriendoUbicacion = false;
+    }
+  }
+
   /// Configuración devuelve la pestaña elegida en su barra inferior (vista 16), o `null` si se
   /// salió con "volver".
   Future<void> _abrirConfiguracion() async {
@@ -56,7 +93,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         ref.watch(
           mapaUbicacionesProvider(
             widget.sesion.usuarioId,
-          ).select((estado) => estado.seleccionada != null),
+          ).select((estado) => estado.hayVistaPrevia),
         );
     return PopScope(
       canPop: _actual == PestanaInicio.hoy,
@@ -81,6 +118,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         titleSpacing: 26,
         title: const _Marca(),
         actions: [
+          // El centro de notificaciones (HU-NOT-005, 24C·01), con el número de avisos sin leer.
+          const CampanaNotificaciones(),
           // Cerrar sesión (con confirmación) y borrar datos viven en Configuración (HU-AUTH-006/010).
           IconButton(
             key: const Key('inicio_configuracion'),
@@ -95,6 +134,11 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         children: [
           // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
           _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
+          // nada, abre su hoja cuando corresponde.
+          SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
+          // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
+          if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
           Expanded(
             child: IndexedStack(
               index: _actual.index,
@@ -113,6 +157,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
+                      alAbrirUbicacion: (id, distancia) =>
+                          unawaited(_abrirUbicacion(id, distancia)),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },
@@ -146,6 +192,18 @@ class _AvisosDeZona extends ConsumerWidget {
       avisos: avisos,
       onCerrar: (aviso) => unawaited(ref.read(provider.notifier).cerrar(aviso)),
     );
+  }
+}
+
+/// El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03). Con el teclado abierto gana el campo
+/// que se escribe, como con los avisos de zona: se oculta y vuelve al cerrarlo.
+class _AvisoNotificaciones extends StatelessWidget {
+  const _AvisoNotificaciones();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
+    return const AvisoNotificacionesApagadas();
   }
 }
 

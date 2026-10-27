@@ -24,6 +24,10 @@ class InMemoryJobStore implements JobStorePort {
 
   int _n = 0;
 
+  /// Cuándo se cerró el último job (`SyncStatus.lastPushAt`). Incremental, como
+  /// los contadores.
+  DateTime? _ultimoDone;
+
   /// Orden de llegada de cada job: el desempate de [_enOrden].
   final Map<String, int> _llegada = {};
 
@@ -73,6 +77,10 @@ class InMemoryJobStore implements JobStorePort {
   Future<void> markDone(Iterable<String> jobIds, {required DateTime at}) async {
     for (final id in jobIds) {
       _reemplazar(byId(id).copyWith(state: JobState.done, doneAt: at));
+    }
+    if (jobIds.isNotEmpty &&
+        (_ultimoDone == null || at.isAfter(_ultimoDone!))) {
+      _ultimoDone = at;
     }
   }
 
@@ -258,6 +266,7 @@ class InMemoryJobStore implements JobStorePort {
         invalid: _cuenta[JobState.invalid]!,
         blocked: _cuenta[JobState.blocked]!,
         waiting: _cuenta[JobState.waiting]!,
+        lastPushAt: _ultimoDone,
       );
 
   @override

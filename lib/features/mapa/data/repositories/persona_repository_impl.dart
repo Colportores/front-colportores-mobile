@@ -56,4 +56,60 @@ final class PersonaRepositoryImpl implements PersonaRepository {
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) =>
       _local.observarDelEspacio(espacioId);
+
+  @override
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) =>
+      _local.observarBajasDelEspacio(espacioId);
+
+  @override
+  Future<Either<Failure, Persona>> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  }) => _escribir(
+    'PERSONA_BAJA',
+    personaId,
+    () => _local.darDeBaja(personaId: personaId, ahora: ahora, motivo: motivo),
+  );
+
+  @override
+  Future<Either<Failure, Persona>> reactivar({
+    required String personaId,
+    required DateTime ahora,
+  }) => _escribir(
+    'PERSONA_REACTIVAR',
+    personaId,
+    () => _local.reactivar(personaId: personaId, ahora: ahora),
+  );
+
+  /// Una escritura sobre una persona que ya existe: traduce el rechazo de la persistencia a un
+  /// `FailureValidacion` y cualquier otra excepción a `FailureInesperado`. Al log va solo el id y el
+  /// tipo (convenciones §7.5): ni el nombre, ni el teléfono, ni el motivo.
+  Future<Either<Failure, Persona>> _escribir(
+    String evento,
+    String personaId,
+    Future<Persona> Function() escribir,
+  ) async {
+    final contexto = {'persona_id': personaId};
+    try {
+      return Right(await escribir());
+    } on PersonaRechazadaException catch (e) {
+      _log.info(LogModulo.db, '${evento}_RECHAZADA', 'escritura de persona rechazada', {
+        ...contexto,
+        'motivo': e.motivo.name,
+      });
+      return Left(FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}));
+    } on Object catch (e, st) {
+      final tipo = e.runtimeType.toString();
+      _log.error(
+        LogModulo.db,
+        '${evento}_FAIL',
+        'falló una escritura de persona',
+        {...contexto, 'tipo': tipo},
+        null,
+        st,
+      );
+      return Left(FailureInesperado(causa: tipo));
+    }
+  }
 }
