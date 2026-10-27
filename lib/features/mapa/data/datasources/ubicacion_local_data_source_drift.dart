@@ -16,10 +16,12 @@ import '../../domain/entities/motivo_rechazo_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/services/encolador_marcar_duplicado.dart';
+import '../../domain/services/house_status_updater.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
 import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
+import '../services/house_status_updater_drift.dart';
 import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
@@ -43,14 +45,21 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10). El trabajo
   /// «marcar como duplicado» entra por [_marcarDuplicado]: sin motor de sync (#178), falla.
+  /// [estadoDeLasCasas] recalcula el color de las dos casas al unirlas (R-UB08); sin él se usa el
+  /// de siempre (`HouseStatusUpdaterDrift`, con este mismo encolador).
   UbicacionLocalDataSourceDrift(
     super.attachedDatabase, {
     required this._encolador,
     this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
-  });
+    HouseStatusUpdater? estadoDeLasCasas,
+  }) : _estadoInyectado = estadoDeLasCasas;
 
   final EncoladorSync _encolador;
   final EncoladorMarcarDuplicado _marcarDuplicado;
+  final HouseStatusUpdater? _estadoInyectado;
+
+  late final HouseStatusUpdater _estadoDeLasCasas =
+      _estadoInyectado ?? HouseStatusUpdaterDrift(attachedDatabase, encolador: _encolador);
 
   /// Metros por grado de latitud (y de longitud en el ecuador).
   static const _metrosPorGrado = 111320.0;
@@ -370,6 +379,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     var fundidos = 0;
     for (final e in deB) {
       if (unePorUnico && esUnico(e) && unicoDeA != null) {
+        // Lo que colgaba del espacio de B (sus personas, visitas y agendas) pasa al único de A
+        // antes de dar de baja el de B: no se borra ni se deja huérfano nada.
+        await _pasarLoQueCuelgaDe(e.id, a: unicoDeA, instante: instante);
         await (update(espacios)..where((x) => x.id.equals(e.id))).write(
           EspaciosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
         );
@@ -394,7 +406,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       );
     }
 
+    // Quien hace la unión es el dueño de las casas: el `created_by` de una fila de `house_status`
+    // nueva. Las casas del par son suyas (el scan compara solo las propias).
+    final colportorId = conservada.createdBy ?? duplicada.createdBy ?? '';
     if (duplicada.deletedAt == null) {
+      // Ya sin espacios activos ni nada colgado: su fila de `house_status` se da de baja con B
+      // (el recálculo de una ubicación viva sin eventos), antes de marcar la baja.
+      await _estadoDeLasCasas.recalcular(duplicadaId, ahora: ahora, colportorId: colportorId);
       await (update(ubicaciones)..where((u) => u.id.equals(duplicadaId))).write(
         UbicacionesCompanion(updatedAt: Value(instante), deletedAt: Value(instante)),
       );
@@ -414,6 +432,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       final guardada = await _ubicacionPorId(conservadaId);
       await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
     }
+    // El color de A se recalcula con todo lo que ahora cuelga de ella (lo suyo y lo de B), con la
+    // prioridad de siempre y en la misma transacción (R-UB08, ADR-003).
+    await _estadoDeLasCasas.recalcular(conservadaId, ahora: ahora, colportorId: colportorId);
     await _marcarDuplicado.encolarMarcarDuplicado(
       duplicadaId: duplicadaId,
       conservadaId: conservadaId,
@@ -425,6 +446,29 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       conservadaPasoAEdificio: pasoAEdificio,
     );
   });
+
+  /// Repunta al espacio [a] lo que colgaba del espacio fundido [deB]: los vínculos con sus
+  /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).
+  /// Las filas siguen con su vínculo y su persona; solo cambia el espacio al que pertenecen. No se
+  /// encola nada por fila: el servidor repite la unión cuando le llega el trabajo «marcar como
+  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, entregas y
+  /// cobranzas todavía no están en el teléfono.
+  Future<void> _pasarLoQueCuelgaDe(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.espacioPersonas)..where((x) => x.espacioId.equals(deB))).write(
+      EspacioPersonasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.visitas)..where((x) => x.espacioId.equals(deB))).write(
+      VisitasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.agendas)..where((x) => x.espacioId.equals(deB))).write(
+      AgendasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+  }
 
   @override
   Stream<List<UbicacionModel>> observarDelColportor({
