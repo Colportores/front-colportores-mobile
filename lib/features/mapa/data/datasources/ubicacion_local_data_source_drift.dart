@@ -25,6 +25,7 @@ import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
 import 'house_status_table.dart';
+import 'notas_table.dart' show TipoObjetivoNota;
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
 
@@ -409,6 +410,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     // nueva. Las casas del par son suyas (el scan compara solo las propias).
     final colportorId = conservada.createdBy ?? duplicada.createdBy ?? '';
     await _reapuntarAlternativas(duplicadaId, a: conservadaId, instante: instante);
+    await _pasarNotasDelLugar(duplicadaId, a: conservadaId, instante: instante);
     if (duplicada.deletedAt == null) {
       // Ya sin espacios activos ni nada colgado: su fila de `house_status` se da de baja con B
       // (el recálculo de una ubicación viva sin eventos), antes de marcar la baja.
@@ -446,6 +448,21 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       conservadaPasoAEdificio: pasoAEdificio,
     );
   });
+
+  /// Las notas del lugar de [deB] (`nota` con `target_type = UBICACION`) pasan al lugar [a], también
+  /// las dadas de baja: la hoja de A muestra las de las dos y nada se pierde. Cuelgan de la
+  /// ubicación y no del espacio, así que pasan aunque el único de B no se funda. Son solo locales
+  /// (`SyncSpec.local`): no hay nada que encolar.
+  Future<void> _pasarNotasDelLugar(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.notas)
+          ..where((x) => x.targetType.equals(TipoObjetivoNota.ubicacion) & x.targetId.equals(deB)))
+        .write(NotasCompanion(targetId: Value(a), updatedAt: Value(instante)));
+  }
 
   /// Lo que nombraba a la ubicación [deB] como casa alternativa (`agenda.ubicacion_alt_id` y
   /// `espacio_persona.ubicacion_cobranza_alt_id`) pasa a nombrar a [a]: B queda de baja y una
