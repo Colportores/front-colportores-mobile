@@ -10,6 +10,8 @@ import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_si
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/data/recordatorios/fakes/recordatorios_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -67,6 +69,14 @@ final class AgendaRepositorioQueAgenda implements AgendaRepository {
 
   @override
   Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) =>
       throw UnimplementedError();
 
   @override

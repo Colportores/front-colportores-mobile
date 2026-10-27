@@ -23,6 +23,7 @@ import 'core/sync/sync_providers.dart';
 import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
 import 'features/agenda/presentation/flujo_agendar_visita.dart';
+import 'features/agenda/presentation/flujo_detalle_agenda.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -226,6 +227,9 @@ Future<void> main() async {
             );
           },
         ),
+        // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
+        // del centro de notificaciones y la fila de la pestaña Agenda.
+        ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
         // el teléfono. La pestaña Historial se engancha con su HU (#446).
         pestanaNotasDeLaCasaProvider.overrideWithValue(
