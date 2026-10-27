@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
@@ -117,6 +119,14 @@ final class AgendaRepositorioFalso implements AgendaRepository {
     if (falla != null) return Left(falla);
     return Right(agendaCanceladaFalsa(agendaId, ahora));
   }
+
+  @override
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) =>
+      throw UnimplementedError();
 }
 
 /// La agenda de [id] como queda al cancelarla en [ahora].

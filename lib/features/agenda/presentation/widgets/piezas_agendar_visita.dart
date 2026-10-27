@@ -539,48 +539,51 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
   }
 }
 
-/// La hoja «Esa hora ya pasó» (23A·03). Devuelve `true` con «Agendar igual», `false` con «Cambiar la
-/// hora» y `null` si se la cerró sin elegir (no se agenda nada).
-Future<bool?> mostrarHojaHoraPasada(BuildContext context, {required String texto}) =>
-    showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: _formaHoja,
-      builder: (contexto) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Semantics(
-                header: true,
-                liveRegion: true,
-                child: Text(
-                  TextosAgendarVisita.horaPasadaCorta,
-                  style: Theme.of(contexto).textTheme.titleLarge,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(texto, style: Theme.of(contexto).textTheme.bodyLarge),
-              const SizedBox(height: 20),
-              FilledButton(
-                key: ClavesAgendarVisita.horaPasadaAgendarIgual,
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-                onPressed: () => Navigator.of(contexto).pop(true),
-                child: const Text(TextosAgendarVisita.agendarIgual),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                key: ClavesAgendarVisita.horaPasadaCambiar,
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-                onPressed: () => Navigator.of(contexto).pop(false),
-                child: const Text(TextosAgendarVisita.cambiarLaHora),
-              ),
-            ],
+/// La hoja «Esa hora ya pasó» (23A·03). Devuelve `true` con «Agendar igual» (o [confirmar]), `false`
+/// con «Cambiar la hora» y `null` si se la cerró sin elegir (no se guarda nada).
+Future<bool?> mostrarHojaHoraPasada(
+  BuildContext context, {
+  required String texto,
+  String confirmar = TextosAgendarVisita.agendarIgual,
+}) => showModalBottomSheet<bool>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  backgroundColor: Colors.white,
+  shape: _formaHoja,
+  builder: (contexto) => SafeArea(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            header: true,
+            liveRegion: true,
+            child: Text(
+              TextosAgendarVisita.horaPasadaCorta,
+              style: Theme.of(contexto).textTheme.titleLarge,
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          Text(texto, style: Theme.of(contexto).textTheme.bodyLarge),
+          const SizedBox(height: 20),
+          FilledButton(
+            key: ClavesAgendarVisita.horaPasadaAgendarIgual,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+            onPressed: () => Navigator.of(contexto).pop(true),
+            child: Text(confirmar),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            key: ClavesAgendarVisita.horaPasadaCambiar,
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+            onPressed: () => Navigator.of(contexto).pop(false),
+            child: const Text(TextosAgendarVisita.cambiarLaHora),
+          ),
+        ],
       ),
-    );
+    ),
+  ),
+);

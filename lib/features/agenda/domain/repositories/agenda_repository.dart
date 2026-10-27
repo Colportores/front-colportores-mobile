@@ -2,6 +2,8 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../entities/agenda.dart';
+import '../entities/cambios_de_agenda.dart';
+import '../entities/detalle_de_agenda.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/visita.dart';
 import '../entities/visita_guardada.dart';
@@ -25,6 +27,17 @@ abstract interface class AgendaRepository {
   /// cancelada no escribe nada y devuelve la agenda. Una agenda cumplida o inexistente es un
   /// `FailureValidacion` con el campo `agenda`.
   Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora});
+
+  /// Aplica [cambios] a la agenda `PROGRAMADA` [CambiosDeAgenda.agendaId] (HU-VIS-003): tipo, día y
+  /// hora, franja y nota. Escribe la fila, la encola para el sync, deja el registro en el `audit_log`
+  /// local, guarda la nota y recalcula el color de la casa, todo en una transacción. Si nada cambió,
+  /// no escribe nada y devuelve la agenda (idempotente ante doble toque y reintento). Una agenda
+  /// cumplida, no cumplida, cancelada o inexistente es un `FailureValidacion` con el campo `agenda`.
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora});
+
+  /// La agenda [agendaId] con su nota y la visita que la cerró (23C·01), o `null` si no está en el
+  /// teléfono o está dada de baja. Solo lee.
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId);
 
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
   /// `CUMPLIDA` en la misma transacción. Si ya hay una visita con ese `id`, no escribe nada y
