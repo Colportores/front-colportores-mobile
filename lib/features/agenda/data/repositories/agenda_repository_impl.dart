@@ -3,6 +3,8 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
 import '../../domain/entities/visita_guardada.dart';
@@ -34,6 +36,16 @@ final class AgendaRepositoryImpl implements AgendaRepository {
     {'agenda_id': agendaId},
     () async => (await _local.cancelar(agendaId, ahora: ahora)).agenda,
   );
+
+  @override
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      _correr('AGENDA_MODIFICAR', {
+        'agenda_id': cambios.agendaId,
+      }, () async => (await _local.modificar(cambios, ahora: ahora)).agenda);
+
+  @override
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) =>
+      _correr('AGENDA_DETALLE', {'agenda_id': agendaId}, () => _local.obtenerDetalle(agendaId));
 
   @override
   Future<Either<Failure, VisitaGuardada>> registrarVisita(

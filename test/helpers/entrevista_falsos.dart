@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/data/repositories/entrevista_en_curso_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_en_curso.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -84,6 +86,14 @@ final class AgendaFalsa implements AgendaRepository {
 
   @override
   Future<Either<Failure, Agenda?>> agendaProgramadaDe(String espacioId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) =>
       throw UnimplementedError();
 
   @override
