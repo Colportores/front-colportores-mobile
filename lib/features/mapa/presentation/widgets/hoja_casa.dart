@@ -216,6 +216,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       final resuelta = await destino((
         ubicacionId: widget.item.ubicacion.id,
         espacioId: contexto.espacioId,
+        agendaId: null,
       ));
       // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa muestra el color nuevo.
       if (resuelta == true && mounted) widget.alCerrar();

@@ -175,7 +175,7 @@ void main() {
       await tester.tap(_registrar);
       await tester.pump();
 
-      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: 'esp-1')]);
+      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('«\$ Cobrar» lleva la ubicación, el espacio y la persona que debe', (tester) async {
@@ -279,7 +279,7 @@ void main() {
       await tester.tap(_registrar);
       await tester.pump();
       // En un edificio el contexto es el depto: sin uno elegido, el espacio llega vacío.
-      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: null)]);
+      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: null, agendaId: null)]);
     });
 
     testWidgets(
