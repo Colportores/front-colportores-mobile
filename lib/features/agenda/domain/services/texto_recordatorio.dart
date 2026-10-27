@@ -26,6 +26,13 @@ abstract final class TextoRecordatorio {
     return lugar.isEmpty ? '$etiqueta a las $hh:$mm' : '$etiqueta en $lugar a las $hh:$mm';
   }
 
+  /// «Av. Italia 1234»: la [calle] y el [numero] unidos por un espacio; solo uno si falta el otro,
+  /// vacía si faltan los dos (la dirección que va en el aviso de una visita).
+  static String direccionDe(String? calle, String? numero) => [
+    for (final parte in [calle, numero])
+      if (parte != null && parte.trim().isNotEmpty) parte.trim(),
+  ].join(' ');
+
   /// El dato que viaja con la notificación para saber qué visita abrir al tocarla: solo el id.
   static String payloadDe(String agendaId) => '$_prefijo$agendaId';
 

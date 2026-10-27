@@ -41,7 +41,9 @@ import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
+import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -116,9 +118,14 @@ Future<void> main() async {
   // Recordatorios locales de las visitas (HU-NOT-002): el plugin se prepara antes de la primera
   // pantalla para recoger el aviso que abrió la app, si lo hubo. Si no arranca, la app sigue.
   final permisoNotificaciones = PermisoNotificacionesCanal();
+  // Las preferencias de los recordatorios (HU-NOT-004) viven en el almacén seguro; el mismo objeto
+  // las lee al programar cada aviso (si están prendidos y con cuánta anticipación).
+  final preferenciasRecordatorios = PreferenciasRecordatoriosRepositoryImpl(almacenSeguro);
   final recordatorios = RecordatoriosLocales(
     motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin()),
     permiso: permisoNotificaciones,
+    anticipacion: preferenciasRecordatorios,
+    activados: preferenciasRecordatorios,
   );
   await recordatorios.iniciar();
 
@@ -164,6 +171,7 @@ Future<void> main() async {
         // Los avisos de las visitas agendadas (HU-NOT-002), con el plugin del teléfono.
         recordatoriosProvider.overrideWithValue(recordatorios),
         toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
+        preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferenciasRecordatorios),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
         ),

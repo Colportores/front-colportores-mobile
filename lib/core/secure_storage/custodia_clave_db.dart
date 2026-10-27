@@ -282,6 +282,10 @@ final class CustodiaClaveDb {
     // a pedirlo ni a mostrar el aviso que ya se cerró.
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
+    // Las preferencias de los recordatorios (HU-NOT-004): recuperar los datos no las vuelve a los
+    // valores de siempre.
+    ClaveSegura.recordatoriosActivados,
+    ClaveSegura.anticipacionRecordatorios,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -387,6 +391,8 @@ final class CustodiaClaveDb {
     ClaveSegura.idInstalacion,
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
+    ClaveSegura.recordatoriosActivados,
+    ClaveSegura.anticipacionRecordatorios,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

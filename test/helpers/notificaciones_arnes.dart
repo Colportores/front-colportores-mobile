@@ -9,17 +9,22 @@ import 'package:colportores_mobile/core/notificaciones/fakes/permiso_notificacio
 import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/data/recordatorios/fakes/recordatorios_en_memoria.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
+import 'package:colportores_mobile/features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'package:colportores_mobile/features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'agendas_para_recordar_falsas.dart';
 import 'db_local_repository_en_memoria.dart';
 
 /// El teléfono: lo que dice el sistema, lo que la app recuerda, la sesión y la conexión.
@@ -32,7 +37,16 @@ final class Telefono {
   final sesionGuardada = AuthLocalDataSourceEnMemoria();
   final conexion = _Conexion();
 
+  /// Las preferencias de los recordatorios (HU-NOT-004), los recordatorios del teléfono y las agendas
+  /// que esperan el suyo.
+  final preferencias = PreferenciasRecordatoriosRepositoryEnMemoria();
+  final recordatorios = RecordatoriosEnMemoria();
+  final agendas = AgendasParaRecordarEnMemoria();
+
   List<Override> get overrides => [
+    preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferencias),
+    recordatoriosProvider.overrideWithValue(recordatorios),
+    agendasParaRecordarProvider.overrideWithValue(agendas),
     permisoNotificacionesSistemaProvider.overrideWithValue(sistema),
     permisoNotificacionesRepositoryProvider.overrideWithValue(recuerdo),
     monitorConectividadProvider.overrideWithValue(conexion),
@@ -72,6 +86,8 @@ const textoToastSinConexion =
     'Activadas. Los recordatorios ya funcionan; los avisos de tu coordinador empiezan a llegar '
     'cuando haya conexión.';
 const textoAviso = 'Notificaciones desactivadas. Activá en Configuración.';
+const textoApagadas =
+    'Las notificaciones están apagadas en el teléfono. Estas opciones valen cuando las actives.';
 const textoBloqueadas =
     'Las notificaciones están bloqueadas en los ajustes del teléfono. Desde la app no las '
     'podemos activar.';
