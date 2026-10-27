@@ -7,9 +7,9 @@
 
 import 'package:sync_engine/sync_engine.dart';
 
-/// Las tablas de la DB local que **no** son entidades del contrato: la cola y los watermarks del
-/// motor. No se declaran ni se sincronizan.
-const tablasDelMotor = {'sync_queue', 'sync_watermark'};
+/// Las tablas de la DB local que **no** son entidades del contrato: la cola, los watermarks y los
+/// metadatos del motor. No se declaran ni se sincronizan.
+const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta'};
 
 /// Lo que dice §2 para cada tabla local.
 final specsDeLaApp = <SyncSpec>[

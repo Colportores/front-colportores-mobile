@@ -25,6 +25,7 @@ dart test        # ~1 s
 | §2.2 — «en espera»: `BLOCKED`/`WAITING`, compactación y el mismo lote | ✅ [`core/retenidas.dart`](lib/src/core/retenidas.dart), [formato de cable](docs/formato-de-cable.md#en-espera-22) |
 | RF-SY06 — `engine.errorQueue()`: la cola de error, con código y job | ✅ |
 | HU-SYNC-007 — `engine.statusNow()` (conteos, última subida/bajada/backup), `failedOperations()` («Ver detalle», sin PII), `requeueAllInvalid()`, `syncNow()` | ✅ [`test/estado_y_ahorro_test.dart`](test/estado_y_ahorro_test.dart) |
+| HU-SYNC-007 — la última bajada, el último backup y la red del último envío (`SyncStatus.lastPushNetwork`: Wi-Fi o datos) sobreviven a reiniciar: el motor los anota en un `SyncMetaPort` (`sync_meta`, aparte de `sync_watermark`) | ✅ [`test/meta_persistente_test.dart`](test/meta_persistente_test.dart) |
 | HU-SYNC-008 — `setDataSaver()`: con datos móviles sube igual, el pull espera al Wi-Fi (`data_saver_on_mobile`), realtime y `syncNow()` siguen; `automaticBackupAllowed()` | ✅ [`test/estado_y_ahorro_test.dart`](test/estado_y_ahorro_test.dart) |
 | §5.2 — triggers: conectividad, app resumed, escritura crítica. Sin timer | ✅ |
 | §5.3 — idempotencia por `client_op_id` + PK v7 | ✅ |

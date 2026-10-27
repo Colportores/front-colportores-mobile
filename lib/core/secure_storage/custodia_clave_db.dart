@@ -289,6 +289,8 @@ final class CustodiaClaveDb {
     // Hasta dónde se revisaron los recordatorios que sonaron (HU-NOT-005): el historial se conserva,
     // y sin esta marca la revisión siguiente volvería a guardar lo que la persona ya borró.
     ClaveSegura.ultimaConciliacionRecordatorios,
+    // La DB sigue y la entrevista apunta a sus filas: no se pierde la hora de inicio (#450).
+    ClaveSegura.entrevistaEnCurso,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -378,9 +380,10 @@ final class CustodiaClaveDb {
   /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado, la
   /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
   /// bloqueado, las zonas ya avisadas de cada inscripción, las cuentas que escondieron el aviso de
-  /// privacidad y el id de la instalación (el sync estrena uno, como en una reinstalación: la cola y
-  /// la réplica también arrancan de cero) y lo contestado del permiso de notificaciones (el primer
-  /// ingreso siguiente lo vuelve a pedir, HU-NOT-001).
+  /// privacidad, la entrevista en curso (apunta a filas que se borran) y el id de la instalación (el
+  /// sync estrena uno, como en una reinstalación: la cola y la réplica también arrancan de cero) y lo
+  /// contestado del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir,
+  /// HU-NOT-001).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -392,6 +395,7 @@ final class CustodiaClaveDb {
     ClaveSegura.zonasAvisadas,
     ClaveSegura.avisoPrivacidadOculto,
     ClaveSegura.idInstalacion,
+    ClaveSegura.entrevistaEnCurso,
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
     ClaveSegura.recordatoriosActivados,

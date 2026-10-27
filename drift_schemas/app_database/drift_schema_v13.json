@@ -1306,6 +1306,43 @@
       "references": [],
       "type": "table",
       "data": {
+        "name": "sync_meta",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "clave",
+            "getter_name": "clave",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "valor",
+            "getter_name": "valor",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "clave"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "references": [],
+      "type": "table",
+      "data": {
         "name": "persona",
         "was_declared_in_moor": false,
         "columns": [
@@ -1431,7 +1468,7 @@
       }
     },
     {
-      "id": 12,
+      "id": 13,
       "references": [],
       "type": "table",
       "data": {
@@ -1550,7 +1587,7 @@
       }
     },
     {
-      "id": 13,
+      "id": 14,
       "references": [],
       "type": "table",
       "data": {
@@ -1679,7 +1716,7 @@
       }
     },
     {
-      "id": 14,
+      "id": 15,
       "references": [],
       "type": "table",
       "data": {
@@ -1879,7 +1916,7 @@
       }
     },
     {
-      "id": 15,
+      "id": 16,
       "references": [],
       "type": "table",
       "data": {
@@ -2034,7 +2071,7 @@
       }
     },
     {
-      "id": 16,
+      "id": 17,
       "references": [],
       "type": "table",
       "data": {
@@ -2178,7 +2215,7 @@
       }
     },
     {
-      "id": 17,
+      "id": 18,
       "references": [],
       "type": "table",
       "data": {
@@ -2273,714 +2310,7 @@
       }
     },
     {
-      "id": 18,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "producto",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "nombre",
-            "getter_name": "nombre",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "descripcion",
-            "getter_name": "descripcion",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "tipo",
-            "getter_name": "tipo",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "es_bonificable",
-            "getter_name": "esBonificable",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"es_bonificable\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"es_bonificable\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "es_misionero",
-            "getter_name": "esMisionero",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"es_misionero\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"es_misionero\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "precio_base_compra",
-            "getter_name": "precioBaseCompra",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "casa_editora",
-            "getter_name": "casaEditora",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "imagen_url",
-            "getter_name": "imagenUrl",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0)"
-        ],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
       "id": 19,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "coleccion",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "nombre",
-            "getter_name": "nombre",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "libros_a_elegir",
-            "getter_name": "librosAElegir",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK (libros_a_elegir >= 0)"
-        ],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 20,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "producto_coleccion",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "producto_id",
-            "getter_name": "productoId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "coleccion_id",
-            "getter_name": "coleccionId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "cantidad",
-            "getter_name": "cantidad",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('1')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK (cantidad > 0)"
-        ],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 21,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "precio_por_ciudad",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "producto_id",
-            "getter_name": "productoId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "coleccion_id",
-            "getter_name": "coleccionId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "campania_ciudad_id",
-            "getter_name": "campaniaCiudadId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "precio_venta",
-            "getter_name": "precioVenta",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "valido_desde",
-            "getter_name": "validoDesde",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "valido_hasta",
-            "getter_name": "validoHasta",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK ((producto_id IS NULL) <> (coleccion_id IS NULL))",
-          "CHECK (precio_venta >= 0)",
-          "CHECK (valido_hasta IS NULL OR valido_hasta >= valido_desde)"
-        ],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 22,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "precio_general",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "producto_id",
-            "getter_name": "productoId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "coleccion_id",
-            "getter_name": "coleccionId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "precio_venta",
-            "getter_name": "precioVenta",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "valido_desde",
-            "getter_name": "validoDesde",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "valido_hasta",
-            "getter_name": "validoHasta",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK ((producto_id IS NULL) <> (coleccion_id IS NULL))",
-          "CHECK (precio_venta >= 0)",
-          "CHECK (valido_hasta IS NULL OR valido_hasta >= valido_desde)"
-        ],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 23,
       "references": [
         0
       ],
@@ -3003,7 +2333,7 @@
       }
     },
     {
-      "id": 24,
+      "id": 20,
       "references": [
         1
       ],
@@ -3026,7 +2356,7 @@
       }
     },
     {
-      "id": 25,
+      "id": 21,
       "references": [
         2
       ],
@@ -3045,7 +2375,7 @@
       }
     },
     {
-      "id": 26,
+      "id": 22,
       "references": [
         4
       ],
@@ -3064,7 +2394,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 23,
       "references": [
         5
       ],
@@ -3083,7 +2413,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 24,
       "references": [
         6
       ],
@@ -3106,7 +2436,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 25,
       "references": [
         8
       ],
@@ -3129,7 +2459,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 26,
       "references": [
         9
       ],
@@ -3156,7 +2486,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 27,
       "references": [
         9
       ],
@@ -3179,7 +2509,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 28,
       "references": [
         9
       ],
@@ -3202,13 +2532,13 @@
       }
     },
     {
-      "id": 33,
+      "id": 29,
       "references": [
-        12
+        13
       ],
       "type": "index",
       "data": {
-        "on": 12,
+        "on": 13,
         "name": "espacio_persona_espacio_idx",
         "sql": null,
         "unique": false,
@@ -3221,13 +2551,13 @@
       }
     },
     {
-      "id": 34,
+      "id": 30,
       "references": [
-        12
+        13
       ],
       "type": "index",
       "data": {
-        "on": 12,
+        "on": 13,
         "name": "espacio_persona_persona_idx",
         "sql": null,
         "unique": false,
@@ -3240,13 +2570,13 @@
       }
     },
     {
-      "id": 35,
+      "id": 31,
       "references": [
-        13
+        14
       ],
       "type": "index",
       "data": {
-        "on": 13,
+        "on": 14,
         "name": "nota_objetivo_idx",
         "sql": null,
         "unique": false,
@@ -3263,13 +2593,13 @@
       }
     },
     {
-      "id": 36,
+      "id": 32,
       "references": [
-        14
+        15
       ],
       "type": "index",
       "data": {
-        "on": 14,
+        "on": 15,
         "name": "agenda_colportor_idx",
         "sql": null,
         "unique": false,
@@ -3286,13 +2616,13 @@
       }
     },
     {
-      "id": 37,
+      "id": 33,
       "references": [
-        14
+        15
       ],
       "type": "index",
       "data": {
-        "on": 14,
+        "on": 15,
         "name": "agenda_espacio_persona_idx",
         "sql": null,
         "unique": false,
@@ -3305,13 +2635,13 @@
       }
     },
     {
-      "id": 38,
+      "id": 34,
       "references": [
-        14
+        15
       ],
       "type": "index",
       "data": {
-        "on": 14,
+        "on": 15,
         "name": "agenda_espacio_idx",
         "sql": null,
         "unique": false,
@@ -3324,13 +2654,13 @@
       }
     },
     {
-      "id": 39,
+      "id": 35,
       "references": [
-        15
+        16
       ],
       "type": "index",
       "data": {
-        "on": 15,
+        "on": 16,
         "name": "visita_colportor_idx",
         "sql": null,
         "unique": false,
@@ -3347,13 +2677,13 @@
       }
     },
     {
-      "id": 40,
+      "id": 36,
       "references": [
-        15
+        16
       ],
       "type": "index",
       "data": {
-        "on": 15,
+        "on": 16,
         "name": "visita_espacio_persona_idx",
         "sql": null,
         "unique": false,
@@ -3366,13 +2696,13 @@
       }
     },
     {
-      "id": 41,
+      "id": 37,
       "references": [
-        15
+        16
       ],
       "type": "index",
       "data": {
-        "on": 15,
+        "on": 16,
         "name": "visita_espacio_idx",
         "sql": null,
         "unique": false,
@@ -3385,133 +2715,19 @@
       }
     },
     {
-      "id": 42,
+      "id": 38,
       "references": [
-        17
+        18
       ],
       "type": "index",
       "data": {
-        "on": 17,
+        "on": 18,
         "name": "notificacion_historial_recibida_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
             "column": "recibida_en",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 43,
-      "references": [
-        20
-      ],
-      "type": "index",
-      "data": {
-        "on": 20,
-        "name": "producto_coleccion_coleccion_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "coleccion_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 44,
-      "references": [
-        21
-      ],
-      "type": "index",
-      "data": {
-        "on": 21,
-        "name": "precio_por_ciudad_campania_ciudad_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "campania_ciudad_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 45,
-      "references": [
-        21
-      ],
-      "type": "index",
-      "data": {
-        "on": 21,
-        "name": "precio_por_ciudad_producto_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "producto_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 46,
-      "references": [
-        21
-      ],
-      "type": "index",
-      "data": {
-        "on": 21,
-        "name": "precio_por_ciudad_coleccion_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "coleccion_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 47,
-      "references": [
-        22
-      ],
-      "type": "index",
-      "data": {
-        "on": 22,
-        "name": "precio_general_producto_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "producto_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 48,
-      "references": [
-        22
-      ],
-      "type": "index",
-      "data": {
-        "on": 22,
-        "name": "precio_general_coleccion_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "coleccion_id",
             "order_by": null
           }
         ]
@@ -3619,6 +2835,15 @@
       ]
     },
     {
+      "name": "sync_meta",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"sync_meta\" (\"clave\" TEXT NOT NULL, \"valor\" TEXT NOT NULL, PRIMARY KEY (\"clave\"));"
+        }
+      ]
+    },
+    {
       "name": "persona",
       "sql": [
         {
@@ -3678,51 +2903,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TABLE IF NOT EXISTS \"notificacion_historial\" (\"id\" TEXT NOT NULL, \"tipo\" TEXT NOT NULL, \"titulo\" TEXT NOT NULL, \"detalle\" TEXT NULL, \"destino\" TEXT NULL, \"recibida_en\" INTEGER NOT NULL, \"leida_en\" INTEGER NULL, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "producto",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
-        }
-      ]
-    },
-    {
-      "name": "coleccion",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"coleccion\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"libros_a_elegir\" INTEGER NOT NULL DEFAULT 0, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (libros_a_elegir >= 0));"
-        }
-      ]
-    },
-    {
-      "name": "producto_coleccion",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto_coleccion\" (\"id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"coleccion_id\" TEXT NOT NULL, \"cantidad\" INTEGER NOT NULL DEFAULT 1, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad > 0));"
-        }
-      ]
-    },
-    {
-      "name": "precio_por_ciudad",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"precio_por_ciudad\" (\"id\" TEXT NOT NULL, \"producto_id\" TEXT NULL, \"coleccion_id\" TEXT NULL, \"campania_ciudad_id\" TEXT NOT NULL, \"precio_venta\" INTEGER NOT NULL, \"valido_desde\" TEXT NOT NULL, \"valido_hasta\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK ((producto_id IS NULL) <> (coleccion_id IS NULL)), CHECK (precio_venta >= 0), CHECK (valido_hasta IS NULL OR valido_hasta >= valido_desde));"
-        }
-      ]
-    },
-    {
-      "name": "precio_general",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"precio_general\" (\"id\" TEXT NOT NULL, \"producto_id\" TEXT NULL, \"coleccion_id\" TEXT NULL, \"precio_venta\" INTEGER NOT NULL, \"valido_desde\" TEXT NOT NULL, \"valido_hasta\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK ((producto_id IS NULL) <> (coleccion_id IS NULL)), CHECK (precio_venta >= 0), CHECK (valido_hasta IS NULL OR valido_hasta >= valido_desde));"
         }
       ]
     },
@@ -3903,60 +3083,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX notificacion_historial_recibida_idx ON notificacion_historial (recibida_en)"
-        }
-      ]
-    },
-    {
-      "name": "producto_coleccion_coleccion_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX producto_coleccion_coleccion_idx ON producto_coleccion (coleccion_id)"
-        }
-      ]
-    },
-    {
-      "name": "precio_por_ciudad_campania_ciudad_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX precio_por_ciudad_campania_ciudad_idx ON precio_por_ciudad (campania_ciudad_id)"
-        }
-      ]
-    },
-    {
-      "name": "precio_por_ciudad_producto_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX precio_por_ciudad_producto_idx ON precio_por_ciudad (producto_id)"
-        }
-      ]
-    },
-    {
-      "name": "precio_por_ciudad_coleccion_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX precio_por_ciudad_coleccion_idx ON precio_por_ciudad (coleccion_id)"
-        }
-      ]
-    },
-    {
-      "name": "precio_general_producto_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX precio_general_producto_idx ON precio_general (producto_id)"
-        }
-      ]
-    },
-    {
-      "name": "precio_general_coleccion_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX precio_general_coleccion_idx ON precio_general (coleccion_id)"
         }
       ]
     }

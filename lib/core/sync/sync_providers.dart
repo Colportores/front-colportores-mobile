@@ -9,6 +9,7 @@ import 'package:sync_engine/sync_engine.dart';
 import '../../catalogo.dart';
 import '../../datos/drift_job_store.dart';
 import '../../datos/drift_local_store.dart';
+import '../../datos/drift_sync_meta.dart';
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import '../../plataforma/conectividad_del_motor.dart';
@@ -70,6 +71,7 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
     transport: ref.watch(transporteSyncProvider),
     jobs: DriftJobStore(db),
+    meta: DriftSyncMeta(db),
     store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
     connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
     realtime: ref.watch(realtimeSyncProvider),

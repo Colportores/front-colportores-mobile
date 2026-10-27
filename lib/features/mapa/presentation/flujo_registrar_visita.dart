@@ -9,6 +9,8 @@ import '../../agenda/domain/entities/visita.dart';
 import '../../agenda/domain/entities/visita_guardada.dart';
 import '../../agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import '../../agenda/presentation/providers/agenda_providers.dart';
+import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
+import '../../jornada/presentation/providers/jornada_providers.dart';
 import '../domain/entities/eleccion_de_cita.dart';
 import '../domain/entities/persona_de_la_entrevista.dart';
 import 'formato_ubicaciones.dart';
@@ -30,6 +32,10 @@ import 'widgets/hoja_que_paso.dart';
 ///   flujos de sus propias HU: aparecen cuando esos destinos están enganchados
 ///   ([programarEntrevistaDesdeLaCasaProvider], [entrevistaDadaDesdeLaCasaProvider],
 ///   [cobrarDesdeLaCasaProvider]); sin destino no se dibujan.
+///
+/// Las visitas que guarda este flujo («No contestó», «Rechazo» y «Cobranza») llevan el `jornada_id` de
+/// la jornada abierta de la colportora, si tiene una (#475); si no, van sin jornada. La «Entrevista
+/// dada» la guarda su propio flujo (#450), que es quien completa el suyo.
 ///
 /// Los ids de la visita se generan una vez por opción y se repiten en los reintentos: un doble toque o
 /// un reintento tras una falla no guarda la visita dos veces.
@@ -89,12 +95,17 @@ abstract final class FlujoRegistrarVisita {
       final resultado = opcion == OpcionQuePaso.noContesto
           ? TipoResultadoVisita.noContesto
           : TipoResultadoVisita.rechazo;
-      // Mejor esfuerzo: sin la lectura la visita se guarda igual, como espontánea.
-      String? agendaId;
-      try {
-        agendaId = (await agendas.agendaProgramadaDe(espacioId)).fold((_) => null, (a) => a?.id);
-      } on Object {
-        agendaId = null;
+      // Desde una fila de la agenda (23B) viene la agenda tocada: es esa, no «la más antigua» de la
+      // casa. Si ya no se puede cumplir (se canceló, se cerró) el repositorio guarda la visita como
+      // espontánea y no toca la agenda. Desde la hoja de la casa se lee la programada del espacio, de
+      // mejor esfuerzo: sin la lectura la visita se guarda igual, como espontánea.
+      var agendaId = datos.agendaId;
+      if (agendaId == null) {
+        try {
+          agendaId = (await agendas.agendaProgramadaDe(espacioId)).fold((_) => null, (a) => a?.id);
+        } on Object {
+          agendaId = null;
+        }
       }
       final r = await registrar(
         RegistrarResultadoVisitaParams(
@@ -103,6 +114,7 @@ abstract final class FlujoRegistrarVisita {
           colportorId: colportor,
           resultado: resultado,
           agendaId: agendaId,
+          jornadaId: await _jornadaAbierta(contenedor, colportor),
         ),
       );
       return r.fold(
@@ -191,6 +203,7 @@ abstract final class FlujoRegistrarVisita {
           espacioPersonaId: cobro.espacioPersonaId,
           colportorId: colportor,
           resultado: TipoResultadoVisita.cobranza,
+          jornadaId: await _jornadaAbierta(contenedor, colportor),
         ),
       );
       return r.fold(
@@ -233,6 +246,22 @@ abstract final class FlujoRegistrarVisita {
       );
     }
     return resuelta;
+  }
+
+  /// La jornada abierta de [colportorId] **en el momento de guardar** (no al abrir la hoja: la
+  /// colportora pudo iniciarla o cerrarla mientras tanto), o `null` si no tiene ninguna.
+  ///
+  /// Mejor esfuerzo, como la agenda: si la lectura falla la visita se guarda igual, sin jornada (el
+  /// campo es opcional en el servidor); nunca se inventa una ni se frena el guardado.
+  static Future<String?> _jornadaAbierta(ProviderContainer contenedor, String colportorId) async {
+    try {
+      final r = await contenedor.read(obtenerJornadaActivaUseCaseProvider)(
+        ObtenerJornadaActivaParams(colportorId: colportorId),
+      );
+      return r.fold((_) => null, (jornada) => jornada?.id);
+    } on Object {
+      return null;
+    }
   }
 
   /// Quién de la casa debe más, para la ayuda de «Cobranza»; `null` si nadie debe (la opción no se

@@ -26,6 +26,9 @@ abstract final class FormatoAgendarVisita {
   /// «Jueves 24/10».
   static String diaLargo(DateTime t) => '${_diasLargos[t.weekday - 1]} ${diaYMes(t)}';
 
+  /// «Jue 24/10»: el día en el detalle de la agenda (23C·01).
+  static String diaCortoYMes(DateTime t) => '${_diasCortos[t.weekday - 1]} ${diaYMes(t)}';
+
   /// «Jue 24»: el chip de un día de la semana que viene.
   static String diaCorto(DateTime t) => '${_diasCortos[t.weekday - 1]} ${t.day}';
 

@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../agenda/presentation/providers/entrevista_providers.dart';
+import '../../../agenda/presentation/widgets/flujo_entrevista.dart';
+import '../../../agenda/presentation/widgets/hoja_termino_entrevista.dart' show EntrevistaGuardada;
 import '../../../auth/domain/entities/sesion.dart';
 import '../../domain/entities/jornada.dart';
 import '../../domain/jornada_sin_cerrar.dart';
@@ -63,6 +66,10 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// Cuántos minutos hacia atrás eligió el colportor para el fin (0 = ahora).
   DateTime? _horaFin;
   bool _finalizando = false;
+
+  /// Mientras se termina la entrevista que estaba abierta (antes de cerrar la jornada): un segundo
+  /// toque en «Finalizar jornada» no abre otra hoja encima.
+  bool _terminandoEntrevista = false;
   String? _errorFin;
 
   /// El "ahora" con el que se armó la pantalla que el colportor está viendo (lo actualiza cada
@@ -168,8 +175,34 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// "ahora". Absoluta, como la de inicio: no se corre si cambia el minuto.
   DateTime? _horaElegidaFin(Jornada jornada, DateTime ahora) => _horaFin;
 
+  /// `true` si no hay una entrevista en curso o si la colportora la terminó (con «No, guardar y
+  /// volver al mapa»); `false` si la dejó abierta o eligió registrar la venta, que sigue por su lado
+  /// (R44: si la venta no se completa el resultado no se guarda).
+  Future<bool> _terminarEntrevistaAbierta() async {
+    final colportorId = widget.sesion.usuarioId;
+    final estado = await ref.read(entrevistaEnCursoProvider(colportorId).notifier).esperarLectura();
+    if (!estado.hayEntrevista) return true;
+    if (!mounted) return false;
+    final salida = await FlujoEntrevista.terminar(
+      context,
+      ref,
+      colportorId: colportorId,
+      pedirSalida: true,
+    );
+    return salida is EntrevistaGuardada;
+  }
+
   Future<void> _finalizar(Jornada jornada) async {
-    if (_finalizando) return;
+    if (_finalizando || _terminandoEntrevista) return;
+    // Una entrevista abierta se termina antes de cerrar la jornada, y su hora de salida se le pide a
+    // la colportora: nunca se inventa (decisión de Cristian, 23/10, #450). Si no la termina, la
+    // jornada sigue abierta y la entrevista también: no se pierde nada. Todavía no se muestra
+    // «Finalizando…»: la hoja de la entrevista es lo que tiene la atención.
+    _terminandoEntrevista = true;
+    final entrevistaTerminada = await _terminarEntrevistaAbierta();
+    _terminandoEntrevista = false;
+    if (!entrevistaTerminada || !mounted) return;
+
     final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _finalizando = true;

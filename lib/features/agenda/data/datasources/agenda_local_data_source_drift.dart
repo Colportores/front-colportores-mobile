@@ -5,9 +5,12 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/data/datasources/notas_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
@@ -96,6 +99,119 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       });
 
   @override
+  Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      _db.transaction(() async {
+        final fila = await _agendaPorId(cambios.agendaId);
+        if (fila == null || fila.deletedAt != null) {
+          throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+        }
+        // Solo se edita una agenda que sigue esperando su visita (HU-VIS-003): se mira DENTRO de la
+        // transacción, porque entre abrir el formulario y guardar pudo cumplirse, cancelarse o
+        // llegar cancelada del servidor.
+        if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
+          throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+        }
+
+        final instante = instanteMs(ahora);
+        final cuando = instanteMs(cambios.fechaProgramada);
+        final cambiaLaFila =
+            fila.tipo != cambios.tipo.codigo ||
+            fila.fechaProgramada != cuando ||
+            fila.slotCodigo != cambios.slotCodigo;
+        final cambiaLaNota = await _guardarNotaEditada(cambios, instante, fila.colportorId);
+        if (!cambiaLaFila && !cambiaLaNota) return (agenda: _aAgenda(fila), escribio: false);
+
+        var agenda = _aAgenda(fila);
+        if (cambiaLaFila) {
+          agenda = await _escribirAgenda(
+            cambios.agendaId,
+            AgendasCompanion(
+              tipo: Value(cambios.tipo.codigo),
+              fechaProgramada: Value(cuando),
+              slotCodigo: Value(cambios.slotCodigo),
+              updatedAt: Value(instante),
+            ),
+          );
+          await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+        }
+        // «Audit log local» (HU-VIS-003): una fila por modificación, solo con el id de la agenda.
+        await _db
+            .into(_db.auditLogLocal)
+            .insert(
+              AuditLogLocalCompanion.insert(
+                evento: EventoAuditoriaLocal.agendaModificada,
+                uuid: cambios.agendaId,
+                creadoEn: instante,
+              ),
+            );
+        return (agenda: agenda, escribio: true);
+      });
+
+  /// Deja la nota de la agenda como la pide [cambios] y devuelve si cambió algo. `nota == null`: no
+  /// se toca. En blanco: se da de baja la vigente. Con texto: se cambia la vigente o se crea una con
+  /// `idNota`.
+  Future<bool> _guardarNotaEditada(CambiosDeAgenda cambios, DateTime instante, String autor) async {
+    final pedida = cambios.nota?.trim();
+    if (pedida == null) return false;
+    final actual = await _notaVigente(cambios.agendaId);
+    if (pedida.isEmpty) {
+      if (actual == null) return false;
+      await (_db.update(_db.notas)..where((n) => n.id.equals(actual.id))).write(
+        NotasCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+      return true;
+    }
+    if (actual == null) {
+      await _guardarNota(
+        NotaDeCampo(
+          id: cambios.idNota,
+          texto: pedida,
+          auditoria: Auditoria(createdAt: instante, updatedAt: instante, createdBy: autor),
+        ),
+        TipoObjetivoNota.agenda,
+        cambios.agendaId,
+      );
+      return true;
+    }
+    if (actual.texto == pedida) return false;
+    await (_db.update(_db.notas)..where((n) => n.id.equals(actual.id))).write(
+      NotasCompanion(texto: Value(pedida), updatedAt: Value(instante)),
+    );
+    return true;
+  }
+
+  /// La nota vigente (sin baja) de la agenda [agendaId]: la más antigua si por algún motivo hay más
+  /// de una.
+  Future<NotaFila?> _notaVigente(String agendaId) async {
+    final filas =
+        await (_db.select(_db.notas)
+              ..where(
+                (n) =>
+                    n.targetType.equals(TipoObjetivoNota.agenda) &
+                    n.targetId.equals(agendaId) &
+                    n.deletedAt.isNull(),
+              )
+              ..orderBy([(n) => OrderingTerm.asc(n.createdAt), (n) => OrderingTerm.asc(n.id)])
+              ..limit(1))
+            .get();
+    return filas.isEmpty ? null : filas.first;
+  }
+
+  @override
+  Future<DetalleDeAgenda?> obtenerDetalle(String id) async {
+    final fila = await _agendaPorId(id);
+    if (fila == null || fila.deletedAt != null) return null;
+    final nota = await _notaVigente(id);
+    final visitaId = fila.visitaId;
+    final visita = visitaId == null ? null : await _visitaPorId(visitaId);
+    return DetalleDeAgenda(
+      agenda: _aAgenda(fila),
+      nota: nota?.texto,
+      visita: visita == null || visita.deletedAt != null ? null : _aVisita(visita),
+    );
+  }
+
+  @override
   Future<VisitaRegistrada> registrarVisita(
     Visita visita, {
     String? agendaId,
@@ -160,7 +276,19 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         ),
       );
     }
-    if (nota != null) await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    if (nota != null) {
+      // La entrevista en curso fue guardando su nota como borrador, con este mismo `id` y atada a esta
+      // visita (vista 39, #450): el texto final la reemplaza. Solo ese borrador; una nota ajena con
+      // el mismo `id` sigue haciendo fallar el alta, como siempre.
+      await (_db.delete(_db.notas)..where(
+            (n) =>
+                n.id.equals(nota.id) &
+                n.targetType.equals(TipoObjetivoNota.visita) &
+                n.targetId.equals(visita.id),
+          ))
+          .go();
+      await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    }
     await _recalcular(
       visita.espacioId,
       ahora: visita.auditoria.updatedAt,

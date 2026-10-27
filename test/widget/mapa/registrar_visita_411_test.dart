@@ -180,6 +180,23 @@ void main() {
       },
     );
 
+    testWidgets(
+      'dado dos entrevistas programadas en la casa y la segunda tocada en la agenda, cuando se toca '
+      '«No contestó», la visita cierra esa y no la más antigua',
+      (tester) async {
+        final repo = AgendaRepositorioFalso()
+          ..programada = agendaDe('age-1')
+          ..agendaNoCumplida = true
+          ..agendaAfectadaId = 'age-2';
+        final a = await montarQuePaso(tester, repo: repo, agendaId: 'age-2');
+
+        await elegir(tester, OpcionQuePaso.noContesto);
+
+        expect(a.repo.recibidas.single.agendaId, 'age-2');
+        expect(find.text(_guardadoNoContesto), findsOneWidget);
+      },
+    );
+
     testWidgets('dado que no se pudo leer la agenda de la casa, cuando se toca «No contestó», la '
         'visita se guarda igual, sin agenda', (tester) async {
       final repo = AgendaRepositorioFalso()..fallaLaLecturaDeLaAgenda = true;

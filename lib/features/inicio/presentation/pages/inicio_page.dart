@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/presentation/pages/agenda_page.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../auth/presentation/providers/avisos_zona_notifier.dart';
 import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
@@ -10,7 +11,10 @@ import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
+import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
+    show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
@@ -23,8 +27,8 @@ export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 /// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
-/// y en una lista (HU-UBI-003 y HU-UBI-002). Agenda y Ventas todavía no tienen pantalla: quedan con
-/// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue la HU de cada una. El atrás
+/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002). Ventas todavía no tiene pantalla: queda con
+/// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue su HU. El atrás
 /// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
@@ -41,6 +45,36 @@ class _InicioPageState extends ConsumerState<InicioPage> {
   PestanaInicio _actual = PestanaInicio.hoy;
 
   void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+
+  /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
+  var _abriendoUbicacion = false;
+
+  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
+  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
+  /// baja) la Lista lo ve sola al releer.
+  Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
+    if (_abriendoUbicacion) return;
+    _abriendoUbicacion = true;
+    try {
+      var id = ubicacionId;
+      var distancia = distanciaMetros;
+      while (mounted) {
+        final salida = await mostrarHojaUbicacion(
+          context,
+          colportorId: widget.sesion.usuarioId,
+          ubicacionId: id,
+          distanciaMetros: distancia,
+        );
+        if (salida is! UbicacionExistenteElegida) break;
+        id = salida.ubicacionId;
+        // La distancia era la de la otra ubicación: de esta no se conoce desde acá.
+        distancia = null;
+      }
+    } finally {
+      _abriendoUbicacion = false;
+    }
+  }
 
   /// Configuración devuelve la pestaña elegida en su barra inferior (vista 16), o `null` si se
   /// salió con "volver".
@@ -124,6 +158,14 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
+                      alAbrirUbicacion: (id, distancia) =>
+                          unawaited(_abrirUbicacion(id, distancia)),
+                    ),
+                    // La agenda de hoy y los próximos 7 días (HU-VIS-002, vista 23B).
+                    PestanaInicio.agenda => AgendaPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.agenda,
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },

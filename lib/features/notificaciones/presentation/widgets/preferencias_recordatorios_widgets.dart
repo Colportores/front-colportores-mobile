@@ -152,22 +152,27 @@ class _TarjetaAnticipacionState extends State<TarjetaAnticipacion> {
                   ? () => _ajustar(-TarjetaAnticipacion.pasoAccesible)
                   : null,
               child: ExcludeSemantics(
-                child: Slider(
-                  key: const Key('pref_anticipacion_slider'),
-                  value: _visible.toDouble(),
-                  min: AnticipacionRecordatorio.minimo.toDouble(),
-                  max: AnticipacionRecordatorio.maximo.toDouble(),
-                  divisions: AnticipacionRecordatorio.maximo - AnticipacionRecordatorio.minimo,
-                  onChanged: widget.habilitada
-                      ? (v) => setState(() => _arrastre = v.round())
-                      : null,
-                  onChangeEnd: widget.habilitada
-                      ? (v) {
-                          final elegido = v.round();
-                          setState(() => _arrastre = null);
-                          if (elegido != widget.minutos) widget.onGuardar(elegido);
-                        }
-                      : null,
+                // El tramo sin recorrer en el gris del borde del canvas (#E3E7EE): el de Material
+                // (blanco) no se distingue de la tarjeta (1,05:1).
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(inactiveTrackColor: colores.borde),
+                  child: Slider(
+                    key: const Key('pref_anticipacion_slider'),
+                    value: _visible.toDouble(),
+                    min: AnticipacionRecordatorio.minimo.toDouble(),
+                    max: AnticipacionRecordatorio.maximo.toDouble(),
+                    divisions: AnticipacionRecordatorio.maximo - AnticipacionRecordatorio.minimo,
+                    onChanged: widget.habilitada
+                        ? (v) => setState(() => _arrastre = v.round())
+                        : null,
+                    onChangeEnd: widget.habilitada
+                        ? (v) {
+                            final elegido = v.round();
+                            setState(() => _arrastre = null);
+                            if (elegido != widget.minutos) widget.onGuardar(elegido);
+                          }
+                        : null,
+                  ),
                 ),
               ),
             ),
