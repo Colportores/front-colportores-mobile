@@ -7,6 +7,7 @@ import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_table.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/nota_ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
@@ -176,6 +177,119 @@ void main() {
       expect((await visitas())['vis-vieja'], 'esp-a');
       expect((await agendas())['ag-vieja'], 'esp-a');
     });
+
+    test(
+      'dado que una agenda y un vínculo nombran a B como casa alternativa (y otros a una tercera), '
+      'cuando se une, pasan a nombrar a A y lo de la tercera no se toca ni se encola nada por fila',
+      () async {
+        await sembrarCasasConGente();
+        await ubicacion('ub-c', lat: -34.95);
+        await insertarAgenda(db, agendaDe('ag-alt', espacio: 'esp-a', vinculo: 'ep-a1'));
+        await insertarAgenda(db, agendaDe('ag-otra', espacio: 'esp-a', vinculo: 'ep-a1'));
+        await (db.update(db.agendas)..where((x) => x.id.equals('ag-alt'))).write(
+          const AgendasCompanion(ubicacionAltId: Value('ub-b')),
+        );
+        await (db.update(db.agendas)..where((x) => x.id.equals('ag-otra'))).write(
+          const AgendasCompanion(ubicacionAltId: Value('ub-c')),
+        );
+        await (db.update(db.espacioPersonas)..where((x) => x.id.equals('ep-a1'))).write(
+          const EspacioPersonasCompanion(ubicacionCobranzaAltId: Value('ub-b')),
+        );
+        await (db.update(db.espacioPersonas)..where((x) => x.id.equals('ep-b1'))).write(
+          const EspacioPersonasCompanion(ubicacionCobranzaAltId: Value('ub-c')),
+        );
+        encolador.encolados.clear();
+
+        await unirBAEnA();
+
+        final alternativasDeAgendas = {
+          for (final x in await db.select(db.agendas).get()) x.id: x.ubicacionAltId,
+        };
+        expect(alternativasDeAgendas['ag-alt'], 'ub-a');
+        expect(alternativasDeAgendas['ag-otra'], 'ub-c');
+        final alternativasDeVinculos = {
+          for (final x in await db.select(db.espacioPersonas).get()) x.id: x.ubicacionCobranzaAltId,
+        };
+        expect(alternativasDeVinculos['ep-a1'], 'ub-a');
+        expect(alternativasDeVinculos['ep-b1'], 'ub-c');
+        expect(
+          encolador.encolados.map((c) => c.entidad).toSet().difference({'house_status'}),
+          isEmpty,
+          reason: 'sin encolar por fila: el servidor reapunta las suyas con el trabajo',
+        );
+      },
+    );
+
+    test(
+      'dado que A y B tienen notas del lugar, cuando se une, la hoja de A muestra las de las dos '
+      '(también la dada de baja) y las notas de otros objetos no se tocan ni se encola nada',
+      () async {
+        await sembrarCasasConGente();
+        Future<void> nota(String id, String tipo, String objetivo, {DateTime? borrada}) => db
+            .into(db.notas)
+            .insert(
+              NotasCompanion.insert(
+                id: id,
+                targetType: tipo,
+                targetId: objetivo,
+                texto: 'texto $id',
+                createdAt: t0.add(Duration(minutes: id.length)),
+                updatedAt: t0,
+                deletedAt: Value(borrada),
+              ),
+            );
+        await nota('n-a', 'UBICACION', 'ub-a');
+        await nota('n-b1', 'UBICACION', 'ub-b');
+        await nota('n-b22', 'UBICACION', 'ub-b');
+        await nota('n-b333', 'UBICACION', 'ub-b', borrada: t0);
+        await nota('n-pb', 'PERSONA', 'ub-b');
+        encolador.encolados.clear();
+
+        await unirBAEnA();
+
+        final deA = await NotaUbicacionLocalDataSourceDrift(db).observar('ub-a').first;
+        expect({for (final n in deA) n.id}, {'n-a', 'n-b1', 'n-b22', 'n-b333'});
+        expect(await NotaUbicacionLocalDataSourceDrift(db).observar('ub-b').first, isEmpty);
+        final todas = {
+          for (final n in await db.select(db.notas).get()) n.id: (n.targetType, n.targetId),
+        };
+        expect(todas['n-b333'], ('UBICACION', 'ub-a'), reason: 'la de baja pasa igual');
+        expect(todas['n-pb'], ('PERSONA', 'ub-b'), reason: 'solo las del lugar');
+        expect(
+          encolador.encolados.map((c) => c.entidad).toSet().difference({'house_status'}),
+          isEmpty,
+          reason: 'la nota es solo local: no se encola',
+        );
+      },
+    );
+
+    test(
+      'dado que B es un edificio con notas del lugar (su espacio no se funde), cuando se une, las '
+      'notas pasan igual a A',
+      () async {
+        await ubicacion('ub-a');
+        await ubicacion('ub-b', tipo: 'EDIFICIO', lat: -34.9001);
+        await sembrarEspacio(db, id: 'esp-a', ubicacionId: 'ub-a');
+        await sembrarEspacio(db, id: 'dep-1', ubicacionId: 'ub-b', numeroDepto: '1A');
+        await db
+            .into(db.notas)
+            .insert(
+              NotasCompanion.insert(
+                id: 'n-b',
+                targetType: 'UBICACION',
+                targetId: 'ub-b',
+                texto: 'portero amable',
+                createdAt: t0,
+                updatedAt: t0,
+              ),
+            );
+
+        await unirBAEnA();
+
+        final deA = await NotaUbicacionLocalDataSourceDrift(db).observar('ub-a').first;
+        expect([for (final n in deA) n.id], ['n-b']);
+      },
+    );
 
     test(
       'dado que la unión ya se hizo, cuando se repite, no mueve ni encola nada de más',
