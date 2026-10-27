@@ -313,6 +313,7 @@ class BotonAccionPersona extends StatelessWidget {
     required this.enviando,
     required this.alTocar,
     this.etiquetaEnviando = TextosPersonas.guardando,
+    this.habilitado = true,
   });
 
   final String etiqueta;
@@ -320,6 +321,9 @@ class BotonAccionPersona extends StatelessWidget {
   final bool enviando;
   final VoidCallback alTocar;
   final String etiquetaEnviando;
+
+  /// `false`: el botón no admite toques (no es el «apagado» de [aspectoApagado], que sí los admite).
+  final bool habilitado;
 
   @override
   Widget build(BuildContext context) {
@@ -336,7 +340,7 @@ class BotonAccionPersona extends StatelessWidget {
         ? FilledButton.styleFrom(backgroundColor: gris, foregroundColor: Colors.white)
         : null;
     return FilledButton(
-      onPressed: enviando ? null : alTocar,
+      onPressed: enviando || !habilitado ? null : alTocar,
       style:
           estilo?.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(56))) ??
           FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),

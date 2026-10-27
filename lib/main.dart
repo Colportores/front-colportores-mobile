@@ -22,6 +22,7 @@ import 'core/secure_storage/secure_storage_providers.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
+import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -199,7 +200,7 @@ Future<void> main() async {
         monitorConectividadProvider.overrideWithValue(conectividad),
         // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
         // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
-        // cierra. «Programar entrevista», «Entrevista dada» y «Cobranza» se enganchan con sus HU.
+        // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.
         registrarVisitaDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;
@@ -207,6 +208,20 @@ Future<void> main() async {
             return FlujoRegistrarVisita.abrir(
               contexto,
               datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Programar entrevista» (vista 39, R·02): «Agendar visita» (vista 23 A, #408) con la casa y,
+        // si se sabe, la persona ya resueltas. Vuelve a la hoja de la casa con la casa en amarillo.
+        programarEntrevistaDesdeLaCasaProvider.overrideWith(
+          (ref) => (cita) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarVisita.abrir(
+              contexto,
+              espacioId: cita.espacioId,
+              espacioPersonaId: cita.espacioPersonaId,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
             );
           },
