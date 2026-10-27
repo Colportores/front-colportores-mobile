@@ -107,7 +107,12 @@ void main() {
       'corrige el número, el update sube sin ese texto y la fila local no lo pierde', () async {
     await sembrarConTextoHeredado();
 
-    final editado = await local.actualizarNumeroDepto('e-viejo', numeroDepto: '3C', ahora: t1);
+    final editado = await local.actualizarEspacio(
+      'e-viejo',
+      numeroDepto: '3C',
+      piso: '3',
+      ahora: t1,
+    );
 
     final subido = deptosEncolados().single;
     expect(subido.operacion, OperacionSync.update);
