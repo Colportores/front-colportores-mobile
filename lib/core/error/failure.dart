@@ -809,3 +809,48 @@ final class FailureSincronizacionNoDisponible extends Failure {
         codigo: 'SYNC_NO_DISPONIBLE',
       );
 }
+
+/// El número de talonario ya está en una venta del mismo colportor en el mismo año (HU-VEN-001,
+/// «Talonario duplicado»; vista 27, 27A·11). El año es el de la fecha de la venta en hora de
+/// Uruguay, y la regla es la misma en el teléfono y en el servidor (backend 0071).
+///
+/// El texto es el del canvas. El número de talonario no es un dato personal.
+final class FailureTalonarioRepetido extends Failure {
+  FailureTalonarioRepetido({required this.numero, required this.ventaDel})
+    : super(
+        mensaje:
+            'Ya usaste el talonario $numero este año (venta del '
+            '${ventaDel.day.toString().padLeft(2, '0')}/'
+            '${ventaDel.month.toString().padLeft(2, '0')}). Revisá el número.',
+        codigo: 'VENTA_TALONARIO_REPETIDO',
+      );
+
+  /// El número tal como lo escribió la colportora (sin los espacios de los bordes).
+  final String numero;
+
+  /// El día de Montevideo en que se hizo la venta que ya lo usó.
+  final DateTime ventaDel;
+
+  @override
+  List<Object?> get props => [...super.props, numero, ventaDel];
+}
+
+/// La venta no se pudo guardar en el teléfono (vista 27, 27A·13). No se perdió nada de lo cargado:
+/// la pantalla sigue como estaba y se puede reintentar.
+///
+/// El texto es el del canvas.
+final class FailureVentaNoGuardada extends Failure {
+  const FailureVentaNoGuardada({this.causa})
+    : super(
+        mensaje:
+            'No pudimos guardar la venta en tu teléfono. No se perdió nada de lo que cargaste: '
+            'probá de nuevo.',
+        codigo: 'VENTA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}

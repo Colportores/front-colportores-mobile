@@ -48,6 +48,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     final color = CalculadorColorCasa.calcular(
       agendasPendientes: await _agendasPendientes(ubicacionId),
       resultadosDeVisitas: await _resultadosDeVisitas(ubicacionId),
+      montosDeVentas: await _montosDeVentas(ubicacionId),
     );
     final existente = await _fila(ubicacionId);
 
@@ -128,6 +129,18 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
       _db.visitas,
     )..where((v) => v.espacioId.isInQuery(_espaciosDe(ubicacionId)) & v.deletedAt.isNull())).get();
     return [for (final fila in filas) TipoResultadoVisita.desdeCodigo(fila.tipoResultado)];
+  }
+
+  /// Lo que se cobra por cada venta viva de la casa (HU-VEN-001): las ventas cuelgan del vínculo
+  /// persona ↔ espacio, y el espacio tiene que seguir activo.
+  Future<List<int>> _montosDeVentas(String ubicacionId) async {
+    final vinculos = _db.selectOnly(_db.espacioPersonas)
+      ..addColumns([_db.espacioPersonas.id])
+      ..where(_db.espacioPersonas.espacioId.isInQuery(_espaciosDe(ubicacionId)));
+    final filas = await (_db.select(
+      _db.ventas,
+    )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
+    return [for (final fila in filas) fila.montoTotal];
   }
 
   Future<HouseStatusFila?> _fila(String ubicacionId) => (_db.select(

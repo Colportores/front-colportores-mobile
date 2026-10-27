@@ -18,6 +18,9 @@ import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
+import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/venta_items_table.dart';
+import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
@@ -59,6 +62,8 @@ part 'app_database.g.dart';
     Visitas,
     HouseStatuses,
     NotificacionesHistorial,
+    Ventas,
+    VentaItems,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -91,7 +96,7 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 13;
+  static const int versionEsquema = 14;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -242,6 +247,14 @@ class AppDatabase extends _$AppDatabase {
     // motor anote algo, la vista de estado dice «Todavía no hubo».
     from12To13: (m, esquema) async {
       await m.createTable(esquema.syncMeta);
+    },
+    // Solo crea las ventas y sus ítems, vacíos: nada de lo guardado cambia ni se encola al migrar.
+    from13To14: (m, esquema) async {
+      await m.createTable(esquema.venta);
+      await m.createIndex(esquema.ventaColportorIdx);
+      await m.createIndex(esquema.ventaEspacioPersonaIdx);
+      await m.createTable(esquema.ventaItem);
+      await m.createIndex(esquema.ventaItemVentaIdx);
     },
   );
 }
