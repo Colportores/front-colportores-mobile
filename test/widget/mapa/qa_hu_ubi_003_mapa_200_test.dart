@@ -27,6 +27,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_cas
     show ContextoDeCobro, ContextoDeVisita;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart'
     show ColoresLista;
@@ -307,6 +308,9 @@ void main() {
 
       expect(tester.widget<BotonMiUbicacion>(botonMiUbicacion).alPresionar, isNull);
       expect(hayPunto(m.mapa, 'gps'), isFalse);
+      // La cámara inicial es el país, que ya contiene las 50 casas: encuadrar es acercarse.
+      expect(m.mapa.camara!.zoom, greaterThan(MapaAlta.zoomPais));
+      expect(m.mapa.camara!.zoom, lessThanOrEqualTo(MapaAlta.zoomCalle));
       final area = ProyeccionMercator.areaVisible(m.mapa.camara!, ancho: 390, alto: 844);
       for (final fila in _casas(50)) {
         final c = fila.ubicacion.coordenadas;
