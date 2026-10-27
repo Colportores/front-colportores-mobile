@@ -106,6 +106,7 @@ void main() {
       expect(ClaveSegura.avisoNotificacionesCerrado.id, 'notifications_banner_closed');
       expect(ClaveSegura.recordatoriosActivados.id, 'reminders_enabled');
       expect(ClaveSegura.anticipacionRecordatorios.id, 'reminders_lead_minutes');
+      expect(ClaveSegura.ultimaConciliacionRecordatorios.id, 'reminders_reconciled_at');
       expect(ClaveSegura.avisoPrivacidadOculto.id, 'privacy_notice_hidden');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });

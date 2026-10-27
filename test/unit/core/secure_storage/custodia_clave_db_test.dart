@@ -470,6 +470,18 @@ void main() {
       },
     );
 
+    test(
+      'conserva hasta dónde se revisaron los recordatorios (HU-NOT-005) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.ultimaConciliacionRecordatorios], '1790000000000');
+      },
+    );
+
     test('conserva lo contestado sobre las notificaciones (HU-NOT-001): recuperar los datos no '
         'vuelve a pedir el permiso ni a mostrar el aviso cerrado', () async {
       final dek = custodia.generarDek();
@@ -701,6 +713,16 @@ void main() {
 
       expect(almacen.contenido.containsKey(ClaveSegura.recordatoriosActivados), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.anticipacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también hasta dónde se revisaron los recordatorios (HU-NOT-005)', () async {
+      await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimaConciliacionRecordatorios), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
     });
 

@@ -56,6 +56,9 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   bool fallaAlMarcar = false;
   bool fallaAlMarcarTodas = false;
   bool fallaAlBorrar = false;
+
+  /// Si no es `null`, registrar un aviso cuyo id empieza con esto falla (el resto se guarda).
+  String? prefijoQueFallaAlRegistrar;
   Object? errorAlObservar;
 
   /// Puertas: la operación espera a que se complete antes de hacer nada.
@@ -111,6 +114,10 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
     Notificacion notificacion, {
     required DateTime ahora,
   }) async {
+    final prefijo = prefijoQueFallaAlRegistrar;
+    if (prefijo != null && notificacion.id.startsWith(prefijo)) {
+      return const Left(FailureInesperado());
+    }
     if (_filas.any((f) => f.id == notificacion.id)) return const Right(false);
     llegaUno(notificacion);
     return const Right(true);

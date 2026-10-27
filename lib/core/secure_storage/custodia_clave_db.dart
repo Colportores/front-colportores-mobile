@@ -286,6 +286,9 @@ final class CustodiaClaveDb {
     // valores de siempre.
     ClaveSegura.recordatoriosActivados,
     ClaveSegura.anticipacionRecordatorios,
+    // Hasta dónde se revisaron los recordatorios que sonaron (HU-NOT-005): el historial se conserva,
+    // y sin esta marca la revisión siguiente volvería a guardar lo que la persona ya borró.
+    ClaveSegura.ultimaConciliacionRecordatorios,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -393,6 +396,7 @@ final class CustodiaClaveDb {
     ClaveSegura.avisoNotificacionesCerrado,
     ClaveSegura.recordatoriosActivados,
     ClaveSegura.anticipacionRecordatorios,
+    ClaveSegura.ultimaConciliacionRecordatorios,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].
