@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:ui' show CheckedState;
 
+import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/lugar_de_trabajo.dart';
@@ -11,6 +12,7 @@ import 'package:colportores_mobile/features/tiles/domain/services/fuente_lugar_d
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:colportores_mobile/features/tiles/presentation/pages/mapas_offline_page.dart';
 import 'package:colportores_mobile/features/tiles/presentation/providers/mapas_offline_providers.dart';
+import 'package:colportores_mobile/features/tiles/presentation/providers/tiles_providers.dart';
 import 'package:dartz/dartz.dart' hide State;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -387,6 +389,121 @@ void main() {
 
       expect(arnes.servidor.pedidos, [0]);
     });
+
+    testWidgets(
+      'mientras esperan los encabezados HTTP ya se ve la tarjeta y no se puede volver a pedir',
+      (tester) async {
+        final arnes = ArnesMapa(catalogo: [_ciudadReal], servirPaqueteMontevideo: false)
+          ..servidor.archivos[_ciudadReal.origen] = _bytes
+          ..servidor.esperaAntesDeContestar = Completer<void>();
+        await _montar(tester, arnes: arnes, lugar: const Right(_sinZona));
+
+        await tester.tap(_clave('mapas_offline_descargar'));
+        await _asentar(tester);
+
+        expect(find.text('MAPAS OFFLINE · 02'), findsOneWidget);
+        expect(_clave('mapas_offline_tarjeta_ciudad-montevideo'), findsOneWidget);
+        expect(_clave('mapas_offline_descargar'), findsNothing);
+        expect(find.text('Descargando'), findsWidgets);
+        expect(arnes.servidor.pedidos, [0]);
+
+        arnes.servidor.esperaAntesDeContestar!.complete();
+        await _asentar(tester);
+
+        expect(find.text('Descargado'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      '«Reintentar» tras una falla muestra la descarga apenas se pide, sin esperar bytes',
+      (tester) async {
+        final arnes = ArnesMapa(catalogo: [_ciudadReal], servirPaqueteMontevideo: false)
+          ..servidor.archivos[_ciudadReal.origen] = _bytes
+          ..servidor.statusError = 500;
+        await _montar(tester, arnes: arnes, lugar: const Right(_sinZona));
+        await tester.tap(_clave('mapas_offline_descargar'));
+        await _asentar(tester);
+        expect(_clave('mapas_offline_falla_ciudad-montevideo'), findsOneWidget);
+
+        arnes.servidor
+          ..statusError = null
+          ..esperaAntesDeContestar = Completer<void>();
+        await tester.tap(_clave('mapas_offline_reintentar_ciudad-montevideo'));
+        await _asentar(tester);
+
+        expect(_clave('mapas_offline_falla_ciudad-montevideo'), findsNothing);
+        expect(_clave('mapas_offline_reintentar_ciudad-montevideo'), findsNothing);
+        expect(find.text('Descargando'), findsWidgets);
+
+        arnes.servidor.esperaAntesDeContestar!.complete();
+        await _asentar(tester);
+        expect(find.text('Descargado'), findsWidgets);
+      },
+    );
+
+    testWidgets('«Seguir» tras una pausa muestra la descarga apenas se pide, sin esperar bytes', (
+      tester,
+    ) async {
+      final arnes = ArnesMapa(catalogo: [_ciudadReal], servirPaqueteMontevideo: false)
+        ..servidor.archivos[_ciudadReal.origen] = _bytes
+        ..servidor.retenerDespuesDe = 2000;
+      await _montar(tester, arnes: arnes, lugar: const Right(_sinZona));
+      await tester.tap(_clave('mapas_offline_descargar'));
+      await _asentar(tester);
+      await tester.tap(_clave('mapas_offline_pausar_ciudad-montevideo'));
+      await _asentar(tester);
+      expect(find.text('En pausa'), findsOneWidget);
+
+      arnes.servidor
+        ..retenerDespuesDe = null
+        ..esperaAntesDeContestar = Completer<void>();
+      await tester.tap(_clave('mapas_offline_seguir_ciudad-montevideo'));
+      await _asentar(tester);
+
+      expect(find.text('En pausa'), findsNothing);
+      expect(_clave('mapas_offline_seguir_ciudad-montevideo'), findsNothing);
+      expect(_clave('mapas_offline_pausar_ciudad-montevideo'), findsOneWidget);
+
+      arnes.servidor.esperaAntesDeContestar!.complete();
+      await _asentar(tester);
+      expect(find.text('Descargado'), findsWidgets);
+    });
+
+    testWidgets(
+      'sin descargador cableado (carpeta de mapas no preparada) la pantalla abre y no se queda esperando',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final arnes = ArnesMapa(catalogo: [_ciudad86], servirPaqueteMontevideo: false);
+        addTearDown(() => unawaited(arnes.cerrar()));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              monitorConectividadProvider.overrideWithValue(arnes.conectividad),
+              paquetesTilesRepositoryProvider.overrideWithValue(arnes.repositorio),
+              fuenteLugarDeTrabajoProvider.overrideWithValue(_FuenteFalsa(const Right(_sinZona))),
+              medidorEspacioDiscoProvider.overrideWithValue(EspacioFalso()),
+            ],
+            child: MaterialApp(theme: temaClaro(), home: const MapasOfflinePage()),
+          ),
+        );
+        await _asentar(tester);
+
+        expect(find.text('Revisando los mapas…'), findsNothing);
+        expect(find.text('Montevideo · 86 MB'), findsOneWidget);
+
+        await tester.tap(_clave('mapas_offline_descargar'));
+        await _asentar(tester);
+
+        expect(_clave('mapas_offline_falla'), findsOneWidget);
+        expect(
+          tester.widget<ButtonStyleButton>(_clave('mapas_offline_descargar')).onPressed,
+          isNotNull,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('falla al empezar: dice por qué, el botón vuelve a estar habilitado y reintenta', (
       tester,

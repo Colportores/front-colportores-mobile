@@ -10,6 +10,7 @@ import '../../domain/entities/cobertura_tiles.dart';
 import '../../domain/entities/estado_descarga.dart';
 import '../../domain/entities/lugar_de_trabajo.dart';
 import '../../domain/entities/paquete_tiles.dart';
+import '../../domain/services/descargador_paquetes_tiles.dart';
 import '../../domain/services/fuente_lugar_de_trabajo.dart';
 import '../../domain/services/puertos_descarga.dart';
 import '../../domain/usecases/descarga_paquete_tiles_use_cases.dart';
@@ -279,10 +280,11 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
       (nueva) => state = state.copiar(conexion: nueva),
       onError: (Object _) {},
     );
-    final descargador = ref.read(descargadorPaquetesTilesProvider);
+    final descargador = _descargador();
     final descargas = <String, EstadoDescarga>{};
     final enMarcha = <String, PaqueteTiles>{};
     void mirar(String id) {
+      if (descargador == null) return;
       final estado = descargador.estadoDe(id);
       final paquete = descargador.paqueteDe(id);
       if (estado == null || paquete == null) return;
@@ -298,7 +300,7 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
     for (final descargado in cobertura.otrosDescargados) {
       mirar(descargado.id);
     }
-    if (descargador.paqueteEnMarchaQueCubre(ambito) case final propio?) mirar(propio.id);
+    if (descargador?.paqueteEnMarchaQueCubre(ambito) case final propio?) mirar(propio.id);
     state = state.copiar(
       cargando: false,
       lugar: lugar.fold((_) => null, (l) => l),
@@ -310,6 +312,36 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
       conexion: conexion,
       descargas: descargas,
       paquetesEnMarcha: enMarcha,
+    );
+  }
+
+  /// El descargador, o `null` si la app no lo cableó (la carpeta de mapas no se pudo preparar): la
+  /// pantalla igual abre y dice qué falta, en vez de quedarse esperando.
+  DescargadorPaquetesTiles? _descargador() {
+    try {
+      return ref.read(descargadorPaquetesTilesProvider);
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Entre el pedido y el primer `DescargaEnCurso` (los encabezados HTTP pueden tardar hasta 30 s)
+  /// el descargador ya está ocupado pero todavía no emitió nada: se muestra la tarjeta en «0 %» para
+  /// que el colportor vea que la descarga arrancó y no vuelva a tocar el botón.
+  void _marcarArrancando(PaqueteTiles paquete) {
+    if (!ref.mounted) return;
+    final id = paquete.id;
+    if (_descargador()?.estaDescargando(id) != true) return;
+    final actual = state.descargas[id];
+    if (actual is DescargaEnCurso || actual is DescargaVerificando) return;
+    _muestras.remove(id);
+    state = state.copiar(
+      descargas: {
+        ...state.descargas,
+        id: DescargaEnCurso(id, recibidos: 0, total: paquete.tamanoBytes),
+      },
+      paquetesEnMarcha: {...state.paquetesEnMarcha, id: paquete},
+      restante: {...state.restante}..remove(id),
     );
   }
 
@@ -408,7 +440,7 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
         return;
       case DescargaFallida(:final failure):
         descargas[id] = estado;
-        final conocido = ref.read(descargadorPaquetesTilesProvider).paqueteDe(id);
+        final conocido = _descargador()?.paqueteDe(id);
         if (conocido != null) enMarcha[id] = conocido;
         state = state.copiar(descargas: descargas, paquetesEnMarcha: enMarcha, falla: failure);
         return;
@@ -420,7 +452,7 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
         restante.remove(id);
         descargas[id] = estado;
     }
-    final paquete = ref.read(descargadorPaquetesTilesProvider).paqueteDe(id);
+    final paquete = _descargador()?.paqueteDe(id);
     if (paquete != null) enMarcha[id] = paquete;
     state = state.copiar(descargas: descargas, paquetesEnMarcha: enMarcha, restante: restante);
   }
@@ -518,6 +550,8 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
       if (resultado.isLeft()) {
         _sobrantes.remove(paquete.id);
         if (ref.mounted) state = state.copiar(falla: resultado.fold((f) => f, (_) => null));
+      } else {
+        _marcarArrancando(paquete);
       }
     } on Object {
       _sobrantes.remove(paquete.id);
@@ -550,6 +584,8 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
       );
       if (resultado.isLeft() && ref.mounted) {
         state = state.copiar(falla: resultado.fold((f) => f, (_) => null));
+      } else {
+        _marcarArrancando(nuevo);
       }
     } on Object {
       if (ref.mounted) state = state.copiar(falla: const FailureInesperado());
@@ -578,6 +614,8 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
       );
       if (resultado.isLeft() && ref.mounted) {
         state = state.copiar(falla: resultado.fold((f) => f, (_) => null));
+      } else {
+        _marcarArrancando(paquete);
       }
     } on Object {
       if (ref.mounted) state = state.copiar(falla: const FailureInesperado());
