@@ -483,6 +483,21 @@ final class FailureCiudadesNoDisponibles extends Failure {
       );
 }
 
+/// No se pudo saber en qué zona y ciudad trabaja el colportor, que es lo que «Mapas offline» necesita
+/// para ofrecerle su mapa (HU-SYNC-010): la base local no se pudo leer o todavía no existe de dónde
+/// leerlo (`FuenteLugarDeTrabajoSinFuente`, hasta la réplica local de front-colportores-mobile#274).
+/// Es **otra cosa** que «no tenés zona asignada»: aquí no se sabe, y afirmarlo mandaría al colportor
+/// a reclamar una zona que quizá tiene. Se puede reintentar.
+///
+/// La HU no trae texto: el de acá es de mapa §2 (texto que guía), a confirmar.
+final class FailureLugarDeTrabajoNoDisponible extends Failure {
+  const FailureLugarDeTrabajoNoDisponible()
+    : super(
+        mensaje: 'No pudimos saber en qué zona y ciudad trabajás. Probá de nuevo.',
+        codigo: 'TILES_LUGAR_NO_DISPONIBLE',
+      );
+}
+
 /// No se pudo revisar lo que la ubicación tiene pendiente (visitas, ventas, cobranza) antes de ofrecer
 /// «Dar de baja» (vista 09, HU-UBI-005): la base local no se pudo leer o todavía no existe de dónde
 /// leerlo (`PendientesUbicacionSinFuente`, hasta los adaptadores reales de

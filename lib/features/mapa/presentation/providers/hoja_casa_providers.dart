@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart' show BuildContext, Widget;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
+import '../../data/datasources/entrevistas_de_personas_local_data_source_drift.dart';
 import '../../data/datasources/nota_del_lugar_local_data_source_drift.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/persona_de_la_entrevista.dart';
 import '../../domain/entities/ubicacion.dart';
+import '../../domain/services/lector_entrevistas_de_personas.dart';
 import '../../domain/services/lector_notas_del_lugar.dart';
 import '../../domain/usecases/observar_contexto_de_la_casa_use_case.dart';
 import 'personas_providers.dart';
@@ -22,12 +25,22 @@ final lectorNotasDelLugarProvider = Provider<LectorNotasDelLugar>((ref) {
   return NotaDelLugarLocalDataSourceDrift(db);
 });
 
+/// Las visitas de entrevista de la DB local (`visita`), de donde sale «Entrevista dada el 05/10» de
+/// cada persona. Sin DB abierta no hay dónde leer: lanza, y la hoja lo muestra como «No pudimos leer
+/// esta casa en tu teléfono.».
+final lectorEntrevistasDePersonasProvider = Provider<LectorEntrevistasDePersonas>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return EntrevistasDePersonasLocalDataSourceDrift(db);
+});
+
 final observarContextoDeLaCasaUseCaseProvider = Provider<ObservarContextoDeLaCasaUseCase>(
   (ref) => ObservarContextoDeLaCasaUseCase(
     espacios: ref.watch(espacioRepositoryProvider),
     personas: ref.watch(personaRepositoryProvider),
     saldos: ref.watch(saldosDePersonasProvider),
     notas: ref.watch(lectorNotasDelLugarProvider),
+    entrevistas: ref.watch(lectorEntrevistasDePersonasProvider),
   ),
 );
 
@@ -98,3 +111,36 @@ final entrevistaDadaDesdeLaCasaProvider =
 final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeCobro)?>(
   (ref) => null,
 );
+
+/// Lo que recibe «Ver la ficha» de una persona de la pestaña Personas (vista 39 C·02: «Tocar una
+/// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos.
+typedef ContextoDeFicha = ({String personaId, String espacioId});
+
+/// A dónde lleva tocar una persona de la pestaña Personas (la ficha de la persona, vista 32 B,
+/// HU-UBI-009). **Sin destino**: mientras sea `null` la fila no se puede tocar y no lleva «›»
+/// (HU-UBI-003: los botones no se muestran mientras no tengan a dónde llevar). Cuando la persona
+/// vuelve, la hoja de la casa sigue abierta donde estaba.
+final fichaDePersonaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeFicha)?>(
+  (ref) => null,
+);
+
+/// Lo que recibe el contenido de una pestaña de la hoja arriba (Historial o Notas) para dibujarse: la
+/// casa y el espacio ya resueltos, el colportor con la sesión iniciada y si la casa está dada de baja
+/// (solo lectura).
+typedef ContextoDePestana = ({
+  String ubicacionId,
+  String espacioId,
+  String? colportorId,
+  bool esBaja,
+});
+
+/// Arma el contenido de una pestaña de la hoja arriba.
+typedef ConstructorDePestana = Widget Function(BuildContext context, ContextoDePestana contexto);
+
+/// La pestaña **Historial** de la hoja arriba (C·03 y C·04, #446). **Sin contenido**: mientras sea
+/// `null` la pestaña no se ofrece (llega con su issue; no se dibuja una pestaña vacía).
+final pestanaHistorialDeLaCasaProvider = Provider<ConstructorDePestana?>((ref) => null);
+
+/// La pestaña **Notas** de la hoja arriba (C·05, #447). **Sin contenido**: mientras sea `null` la
+/// pestaña no se ofrece.
+final pestanaNotasDeLaCasaProvider = Provider<ConstructorDePestana?>((ref) => null);

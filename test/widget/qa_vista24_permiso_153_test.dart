@@ -167,7 +167,7 @@ void main() {
         ..estado = EstadoSistemaNotificaciones.activadas;
       await tester.tap(find.byKey(const Key('notificaciones_reintentar')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('notificaciones_activadas')), findsOneWidget);
+      expect(find.byKey(const Key('pref_recordatorios_interruptor')), findsOneWidget);
       await cerrar(tester);
     });
 

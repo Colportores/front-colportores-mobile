@@ -47,20 +47,53 @@ abstract final class TextosNotificaciones {
       'No pudimos abrir los ajustes. Buscá «Colportaje» en los ajustes del teléfono, en '
       'Notificaciones.';
 
-  /// Configuración › Notificaciones, con el permiso sin pedir (24B·04 sin la mención a las
-  /// opciones, que llegan con HU-NOT-004).
-  static const apagadas = 'Las notificaciones están apagadas en el teléfono.';
+  /// 24B·04: Configuración › Notificaciones con el permiso del teléfono sin pedir.
+  static const apagadas =
+      'Las notificaciones están apagadas en el teléfono. Estas opciones valen cuando las actives.';
   static const activarCorto = 'Activar';
-
-  /// Configuración › Notificaciones con todo activado. Propuesta: el canvas de este grupo no lo
-  /// dibuja; las opciones llegan con HU-NOT-004.
-  static const activadasEstado = 'Las notificaciones están activadas en este teléfono.';
 
   /// No se pudo leer el estado. Propuesta.
   static const errorAlLeer = 'No pudimos revisar las notificaciones.';
   static const reintentar = 'Reintentar';
 
   static const filaConfiguracion = 'Notificaciones';
+
+  // Vista 24, grupo B (preferencias, HU-NOT-004). Salen del canvas salvo los marcados «propuesta».
+  static const seccionRecordatorios = 'RECORDATORIOS';
+  static const recordatoriosTitulo = 'Recordatorios de agenda';
+  static const recordatoriosDetalle = 'Antes de cada visita agendada';
+  static const anticipacionTitulo = 'Anticipación';
+  static const anticipacionMin = '5 min';
+  static const anticipacionMax = '120 min';
+
+  /// «30 min antes».
+  static String anticipacionValor(int minutos) => '$minutos min antes';
+
+  /// 24B·02.
+  static const recordatoriosApagados =
+      'Dejamos de programar los recordatorios, también los de las visitas que ya agendaste.';
+
+  /// 24B·06.
+  static const errorAlGuardar =
+      'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
+
+  /// 24B·06 cuando lo que no se guardó es la anticipación, o más de un cambio (decidido el 27/10, mapa
+  /// §2: el aviso dice lo que volvió; «Reintentar» repite todo).
+  static const errorAlGuardarVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
+
+  /// Los textos de esta sección que el canvas no dibuja (el singular, el «Guardado: …» sin visitas y
+  /// el error al leer) quedaron decididos el 27/10 (mapa §2).
+  ///
+  /// 24B·03, con la cantidad real: «Reprogramamos 4 recordatorios: te avisamos 60 min antes.».
+  /// Con uno, en singular. Sin ninguno (no hay visitas agendadas) no hay nada que contar: propuesta.
+  static String anticipacionCambiada({required int reprogramados, required int minutos}) {
+    if (reprogramados == 0) return 'Guardado: te avisamos $minutos min antes.';
+    final recordatorios = reprogramados == 1 ? '1 recordatorio' : '$reprogramados recordatorios';
+    return 'Reprogramamos $recordatorios: te avisamos $minutos min antes.';
+  }
+
+  /// No se pudieron leer las preferencias. Propuesta: el canvas no lo dibuja.
+  static const errorAlLeerPreferencias = 'No pudimos leer tus preferencias de recordatorios.';
 }
 
 enum TonoAviso { info, advertencia, error }

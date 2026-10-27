@@ -77,7 +77,8 @@ final class MontajeMapaUbicaciones {
 /// `IndexedStack`). Con [arnes] el aviso sale de la conexión y del catálogo reales del arnés del
 /// aviso; sin él, el mapa no tiene tiles ni aviso ([situacion] lo cambia). [ambito] es la ciudad del
 /// mapa, fija (por defecto ninguna, como hoy: #274); con [ciudades] la ciudad sale, como en la app,
-/// del puerto `CiudadesParaAlta` (y [ambito] no cuenta).
+/// del puerto `CiudadesParaAlta` (y [ambito] no cuenta). Con [altaReal] el dedo mantenido abre la
+/// pantalla del alta de verdad (sus puertos van en [otrosOverrides]) y no el doble de [salidaAlta].
 Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -92,6 +93,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   bool activa = true,
   SalidaAltaUbicacion? salidaAlta,
   bool asentar = true,
+  bool altaReal = false,
   List<Override> otrosOverrides = const [],
   Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
   List<ClaveDeLaCasa>? lecturasContexto,
@@ -147,7 +149,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
               key: const Key('pestana_mapa'),
               colportorId: 'col-1',
               activa: estaActiva,
-              alAbrirAlta: montaje.abrirAlta,
+              alAbrirAlta: altaReal ? null : montaje.abrirAlta,
             ),
           ),
         ),

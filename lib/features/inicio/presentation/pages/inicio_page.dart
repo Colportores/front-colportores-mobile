@@ -13,6 +13,7 @@ import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
+import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -100,6 +101,9 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         children: [
           // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
           _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
+          // nada, abre su hoja cuando corresponde.
+          SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
           // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
           if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
           Expanded(

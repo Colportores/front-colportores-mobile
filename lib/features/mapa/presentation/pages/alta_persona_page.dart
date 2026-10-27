@@ -251,7 +251,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      const AvisoPrivacidadPersona(),
+                      AvisoPrivacidadPersona(colportorId: widget.colportorId),
                       const SizedBox(height: 20),
                       CampoPersona(
                         etiqueta: TextosPersonas.etiquetaNombre,
