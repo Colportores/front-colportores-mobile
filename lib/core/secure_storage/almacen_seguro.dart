@@ -124,7 +124,16 @@ enum ClaveSegura {
   /// agenda que llega de la nube pase por un aviso que este teléfono nunca mostró. Sin la clave, la
   /// primera revisión solo la fija. No es secreto ni dato personal; se conserva al recuperar los
   /// datos (la tabla del historial también se conserva) y se borra con el borrado de datos locales.
-  ultimaConciliacionRecordatorios('reminders_reconciled_at');
+  ultimaConciliacionRecordatorios('reminders_reconciled_at'),
+
+  /// La entrevista que cada colportora tiene en curso (vista 39, R·05; decisión de Cristian, 23/10,
+  /// front-colportores-mobile#450): un JSON `{"<id del colportor>": {...}}` con **solo ids** y la
+  /// hora de inicio (ISO 8601, UTC), sin nombres ni direcciones. Hace que la entrevista siga en
+  /// curso al salir de la hoja o cerrar la app y que la hora de inicio no se pierda. Vive acá, junto a
+  /// `zonasAvisadas`, para no sumar otro almacenamiento ni una migración de la DB; se conserva al
+  /// reconstruir el almacén (la DB sigue) y se borra con el borrado de datos locales (HU-AUTH-010),
+  /// que se lleva los espacios a los que apunta.
+  entrevistaEnCurso('interview_in_progress');
 
   const ClaveSegura(this.id);
 
