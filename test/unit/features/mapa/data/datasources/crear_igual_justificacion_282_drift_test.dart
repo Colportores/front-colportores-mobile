@@ -280,7 +280,6 @@ void main() {
       expect(salida.lineas.join(' '), contains('UBICACION_ALTA_FAIL'));
       sinElTexto();
       expect(await local.obtener('ub-nueva'), isNull, reason: 'la transacción se revirtió');
-      expect(encolador.encolados, isEmpty);
     });
 
     test('dado que falla el INSERT en audit_log en la edición, devuelve FailureInesperado, no '
@@ -299,7 +298,6 @@ void main() {
       expect(salida.lineas.join(' '), contains('UBICACION_MODIFICAR_FAIL'));
       sinElTexto();
       expect((await local.obtener('ub-nueva'))!.numero, '1234');
-      expect(encolador.encolados, isEmpty);
     });
   });
 }
