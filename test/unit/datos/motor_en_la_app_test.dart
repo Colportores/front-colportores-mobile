@@ -146,6 +146,88 @@ void main() {
     expect((await ubicaciones.obtener(_ubi))!.calle, 'Rivera 3');
   });
 
+  group('HU-UBI-004 · edición concurrente con sync entrante', () {
+    /// Lo que el coordinador dejó en el servidor mientras el colportor editaba: la misma
+    /// ubicación, una versión más y un `updated_at` posterior.
+    Map<String, Object?> filaDelCoordinador({String calle = 'Rivera (coordinador)'}) => {
+      ..._ubicacion.toJson(),
+      'calle': calle,
+      'updated_at': DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+      'sync_version': 2,
+    };
+
+    Future<UbicacionModel> editarEnElTelefono(String calle) async {
+      final actual = (await ubicaciones.obtener(_ubi))!;
+      return ubicaciones.actualizar(
+        UbicacionModel.fromJson({
+          ...actual.toJson(),
+          'calle': calle,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }),
+        baseUpdatedAt: actual.auditoria.updatedAt,
+      );
+    }
+
+    test(
+      'dado que el coordinador editó la ubicación y llega después de mi edición local, cuando '
+      'sincroniza, queda la fila del servidor, la cola se vacía y la versión se reconcilia',
+      () async {
+        await ubicaciones.insertar(_ubicacion);
+        await motor.syncNow();
+        servidor.seed('ubicacion', [filaDelCoordinador()]);
+
+        await editarEnElTelefono('Rivera (colportor)');
+        final resultado = await motor.syncNow();
+
+        expect(resultado.conflicts, 1, reason: 'el servidor tiene una versión más nueva (§5.4)');
+        expect((await cola()).pending, 0, reason: 'el job se cierra: no es un error del colportor');
+        final local = (await ubicaciones.obtener(_ubi))!;
+        expect(local.calle, 'Rivera (coordinador)');
+        expect(
+          local.auditoria.syncVersion,
+          2,
+          reason: 'la versión local alcanza a la del servidor',
+        );
+        expect(servidor.rowsOf('ubicacion').single['calle'], 'Rivera (coordinador)');
+      },
+    );
+
+    test('dado el conflicto resuelto, cuando el colportor repite su corrección sobre la fila '
+        'nueva, sube sin chocar', () async {
+      await ubicaciones.insertar(_ubicacion);
+      await motor.syncNow();
+      servidor.seed('ubicacion', [filaDelCoordinador()]);
+      await editarEnElTelefono('Rivera (colportor)');
+      await motor.syncNow();
+
+      await editarEnElTelefono('Rivera 5678');
+      final resultado = await motor.syncNow();
+
+      expect(resultado.conflicts, 0);
+      expect((await cola()).pending, 0);
+      expect(servidor.rowsOf('ubicacion').single['calle'], 'Rivera 5678');
+      expect((await ubicaciones.obtener(_ubi))!.auditoria.syncVersion, 3);
+    });
+
+    test('dado que edito sin señal y el coordinador también, cuando vuelve la red, el conflicto '
+        'se resuelve igual y la edición no se pierde en silencio', () async {
+      await ubicaciones.insertar(_ubicacion);
+      await motor.syncNow();
+      servidor.offline();
+      await editarEnElTelefono('Rivera (colportor)');
+      expect((await motor.syncNow()).ok, isFalse);
+      expect((await cola()).pending, 1, reason: 'sin red la edición espera en la cola');
+      servidor.seed('ubicacion', [filaDelCoordinador()]);
+
+      servidor.online();
+      final resultado = await motor.syncNow();
+
+      expect(resultado.conflicts, 1);
+      expect((await cola()).pending, 0);
+      expect((await ubicaciones.obtener(_ubi))!.calle, 'Rivera (coordinador)');
+    });
+  });
+
   test('la jornada sube al iniciarla y al cerrarla, y no se reabre en el teléfono', () async {
     await jornadas.insertar(_jornada);
     await motor.syncNow();
