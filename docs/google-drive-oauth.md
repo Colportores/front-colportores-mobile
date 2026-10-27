@@ -8,7 +8,7 @@ Este documento deja lo que hace falta para que Google apruebe la app. El alta en
 
 | Dato | Valor |
 |---|---|
-| Alcance (scope) | `https://www.googleapis.com/auth/drive.appdata` y ningún otro |
+| Alcance (scope) | `https://www.googleapis.com/auth/drive.appdata` para Drive, más los básicos de identidad `openid`, `email` y `profile` que agrega `google_sign_in` (HU-SYNC-004); no se pide `drive` ni `drive.file`. La lista exacta se confirma en #184 según cómo se configure el plugin. |
 | Qué da ese alcance | Ver, crear y borrar **solo los archivos de la propia app** en la carpeta oculta `appDataFolder` del Drive de la usuaria. No ve ni toca sus otros archivos. |
 | Clasificación | No sensible, según la tabla de alcances de Drive API (confirmarlo en la consola, sección «Acceso a los datos»). Con solo alcances no sensibles no hay revisión de seguridad ni video de demostración: queda la verificación de marca (nombre, logo, página de inicio y política de privacidad). |
 | Tipo de usuario | Externo (cualquier cuenta de Google) |
@@ -16,11 +16,11 @@ Este documento deja lo que hace falta para que Google apruebe la app. El alta en
 
 ### Justificación del alcance (texto para el formulario)
 
-> Colportores guarda en el teléfono datos de las personas visitadas (nombre, teléfono, notas). Esos datos no suben a nuestros servidores. Para que la colportora no los pierda si pierde o cambia de teléfono, la app guarda una copia en su propio Google Drive. La copia se cifra en el teléfono, antes de subirla, con una clave que solo conoce la usuaria: Google ni la organización pueden leerla. Usamos únicamente `drive.appdata`, que da acceso a una carpeta oculta que pertenece a la app, sin acceso a ningún otro archivo del Drive. No pedimos `drive` ni `drive.file`.
+> Colportores guarda en el teléfono datos de las personas visitadas (nombre, teléfono, notas). Esos datos no suben a nuestros servidores. Para que la colportora no los pierda si pierde o cambia de teléfono, la app guarda una copia en su propio Google Drive. La copia se cifra en el teléfono, antes de subirla, con una clave que solo conoce la usuaria: Google ni la organización pueden leerla. Para Drive usamos únicamente `drive.appdata`, que da acceso a una carpeta oculta que pertenece a la app, sin acceso a ningún otro archivo del Drive; no pedimos `drive` ni `drive.file`. Además leemos el correo y el identificador de la cuenta, solo para avisarle a la usuaria si el teléfono pasa a usar otra cuenta de Google distinta de la que autorizó el respaldo.
 
 ### Uso de los datos (para la pantalla de consentimiento)
 
-- La app no recibe ni guarda el correo, el nombre ni la foto de la cuenta de Google: usa la cuenta solo para obtener permiso sobre `appDataFolder`. La sesión de la app sigue siendo correo y contraseña.
+- De la cuenta de Google la app lee el identificador y el correo (los alcances básicos `openid`, `email` y `profile` que pide `google_sign_in`), y solo para saber qué cuenta autorizó la usuaria y advertirle si después el teléfono usa otra distinta (HU-SYNC-004). No se usan para iniciar sesión (la sesión de la app es correo y contraseña), no se envían a servidores de la organización y no se comparten con terceros. Dónde se guarda ese dato en el teléfono lo define #184; no se pide ni se usa la foto.
 - Los archivos subidos son cifrados (AES-GCM, ADR-006). La organización no tiene copia de la clave.
 - La usuaria puede desconectar Drive desde Configuración; los archivos ya subidos quedan en su Drive y los borra ella o la propia app (HU-AUTH-010).
 - Texto previo al consentimiento dentro de la app (HU-SYNC-004): «La app va a guardar archivos cifrados (no legibles para Google) en una carpeta oculta de tu Drive. Solo esta app puede leerlos.»
@@ -36,7 +36,7 @@ Este documento deja lo que hace falta para que Google apruebe la app. El alta en
    - Logo: 120 × 120 px, el ícono de la app.
    - Página de inicio y **política de privacidad**: la dirección pública de la política (ver «Lo que falta de afuera»).
    - Dominios autorizados: el dominio de esas páginas.
-4. **Acceso a los datos:** agregar solo `.../auth/drive.appdata` y pegar la justificación de arriba.
+4. **Acceso a los datos:** agregar `.../auth/drive.appdata` más `openid`, `email` y `profile` (los básicos de identidad), sin ningún otro, y pegar la justificación de arriba.
 5. **Clientes** (credenciales OAuth 2.0), uno por plataforma:
    - **Android:** paquete `com.colportores.colportores_mobile` y la huella SHA-1 de la clave de firma. Hoy la app firma el release con la clave de debug (`android/app/build.gradle.kts`): hace falta la huella de la clave de firma real (la de la subida a Play y, si se usa Play App Signing, la que Google asigna) y la de debug para desarrollo. Cada huella es un cliente Android.
    - **iOS:** bundle id `com.colportores.colportoresMobile`. Anotar el ID de cliente y el «esquema URL invertido»: van en `ios/Runner/Info.plist` (riesgo R29 de HU-SYNC-004).
