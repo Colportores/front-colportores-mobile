@@ -51,6 +51,9 @@ final class CuentaRepositoryImpl implements CuentaRepository {
       estado = await _remote.consultar();
     } on SinConexionException {
       return const Left(FailureSinConexion());
+    } on SesionRevocadaException {
+      _log.warn(LogModulo.auth, 'ESTADO_CUENTA_SESION', 'el servidor ya no acepta la sesión');
+      return const Left(FailureSesionRevocada());
     } on ServidorException catch (e) {
       _log.warn(LogModulo.auth, 'ESTADO_CUENTA_FAIL', 'el servidor respondió con error', {
         'status': e.status,

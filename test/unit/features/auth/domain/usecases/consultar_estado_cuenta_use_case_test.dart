@@ -64,6 +64,20 @@ void main() {
     );
   });
 
+  test(
+    'al entrar con la sesión rechazada por el servidor, no se apoya en el último estado',
+    () async {
+      cuenta
+        ..respuesta = const Left(FailureSesionRevocada())
+        ..ultimo = EstadoCuenta.activa;
+
+      expect(
+        await consultar(params(admite: true)),
+        const Left<Failure, EstadoCuenta>(FailureSesionRevocada()),
+      );
+    },
+  );
+
   test('al entrar sin red y sin estado conocido, no inventa uno: devuelve la falla', () async {
     cuenta.respuesta = const Left(FailureSinConexion());
 

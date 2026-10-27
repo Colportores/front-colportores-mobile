@@ -16,7 +16,9 @@ import 'estado_cuenta_remote_data_source.dart';
 ///
 /// Traducción de las fallas (sin PII en el log: solo códigos):
 /// - red caída, corte o tiempo agotado → [SinConexionException];
-/// - `42501` (sin sesión válida) → `ServidorException(status: 401)`;
+/// - `42501` (sin usuario autenticado) o una sesión que no se pudo renovar → [SesionRevocadaException]:
+///   sigue el flujo de sesión revocada de HU-AUTH-007 (cierre y login con su aviso), sin texto nuevo
+///   (decisión del agente de decisiones, 27/10, PR #495);
 /// - `P0002` (perfil no encontrado) → `ServidorException(status: 404)`;
 /// - cualquier otro error del servidor, o un valor que la app no conoce → [ServidorException].
 final class EstadoCuentaSupabase implements EstadoCuentaRemoteDataSource {
@@ -42,7 +44,7 @@ final class EstadoCuentaSupabase implements EstadoCuentaRemoteDataSource {
       _log.warn(LogModulo.auth, 'ESTADO_CUENTA_FAIL', 'la sesión no sirvió para consultar', {
         'code': e.code,
       });
-      throw const ServidorException(status: 401);
+      throw const SesionRevocadaException();
     } on Object catch (e) {
       if (_esFallaDeRed(e)) throw const SinConexionException();
       rethrow;
@@ -67,12 +69,12 @@ final class EstadoCuentaSupabase implements EstadoCuentaRemoteDataSource {
     throw const ServidorException(status: 200);
   }
 
-  ServidorException _traducir(PostgrestException e) {
+  AuthRemoteException _traducir(PostgrestException e) {
     _log.warn(LogModulo.auth, 'ESTADO_CUENTA_FAIL', 'la RPC estado_cuenta respondió con error', {
       'code': e.code,
     });
     return switch (e.code) {
-      '42501' => const ServidorException(status: 401),
+      '42501' => const SesionRevocadaException(),
       'P0002' => const ServidorException(status: 404),
       final String codigo => ServidorException(status: int.tryParse(codigo)),
       null => const ServidorException(),

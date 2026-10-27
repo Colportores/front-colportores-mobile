@@ -51,11 +51,11 @@ void main() {
   });
 
   group('dado que la llamada falla', () {
-    test('cuando no hay sesión válida (42501), entonces es un error del servidor 401', () async {
+    test('cuando no hay sesión válida (42501), entonces la sesión está revocada', () async {
       final fuente = _fuente(
         () async => throw const PostgrestException(message: 'permission denied', code: '42501'),
       );
-      await expectLater(fuente.consultar(), throwsA(_servidorConStatus(401)));
+      await expectLater(fuente.consultar(), throwsA(isA<SesionRevocadaException>()));
     });
 
     test('cuando no existe el perfil (P0002), entonces es un error del servidor 404', () async {
@@ -103,9 +103,9 @@ void main() {
       });
     });
 
-    test('cuando la sesión no se pudo renovar por otra causa, entonces es un error 401', () async {
+    test('cuando la sesión no se pudo renovar por otra causa, entonces está revocada', () async {
       final fuente = _fuente(() async => throw const AuthException('vencida', code: 'bad_jwt'));
-      await expectLater(fuente.consultar(), throwsA(_servidorConStatus(401)));
+      await expectLater(fuente.consultar(), throwsA(isA<SesionRevocadaException>()));
     });
 
     test('cuando falla algo que no es de red ni del servidor, sube tal cual', () async {

@@ -254,17 +254,20 @@ void main() {
       });
     }
 
-    test('42501 (sin sesión válida): HTTP 403 con el código en el cuerpo → error 401', () async {
-      final servidor = _Servidor(
-        (_) async => _json(403, {
-          'code': '42501',
-          'message': 'estado_cuenta requiere un usuario autenticado',
-          'details': null,
-          'hint': null,
-        }),
-      );
-      await expectLater(servidor.consultar(), throwsA(_servidorConStatus(401)));
-    });
+    test(
+      '42501 (sin sesión válida): HTTP 403 con el código en el cuerpo → sesión revocada',
+      () async {
+        final servidor = _Servidor(
+          (_) async => _json(403, {
+            'code': '42501',
+            'message': 'estado_cuenta requiere un usuario autenticado',
+            'details': null,
+            'hint': null,
+          }),
+        );
+        await expectLater(servidor.consultar(), throwsA(isA<SesionRevocadaException>()));
+      },
+    );
 
     test('P0002 (usuario sin perfil): HTTP 404 → error 404', () async {
       final servidor = _Servidor(
@@ -402,7 +405,7 @@ void main() {
         () async => throw const AuthException('token de lucia@ejemplo.uy vencido', code: 'bad_jwt'),
         logger: logger,
       );
-      await expectLater(fuente.consultar(), throwsA(_servidorConStatus(401)));
+      await expectLater(fuente.consultar(), throwsA(isA<SesionRevocadaException>()));
       final texto = salida.buffer.expand((e) => e.lines).join('\n');
       expect(texto, contains('bad_jwt'));
       expect(texto, isNot(contains('lucia')));
@@ -500,24 +503,39 @@ void main() {
       },
     );
 
+    // Decisión del agente de decisiones (27/10, PR #495): una sesión que el servidor ya no acepta
+    // sigue el flujo de sesión revocada (HU-AUTH-007): login con su aviso, sin texto nuevo.
     for (final (nombre, falla) in <(String, Object)>[
       ('42501 (sesión no válida)', const PostgrestException(message: 'x', code: '42501')),
-      ('P0002 (sin perfil)', const PostgrestException(message: 'x', code: 'P0002')),
       ('AuthException de la sesión', const AuthException('vencida', code: 'bad_jwt')),
     ]) {
-      testWidgets('$nombre: aviso de error con «Reintentar» (el usuario tiene salida)', (
+      testWidgets('$nombre: se cierra como sesión revocada, de vuelta al login con su aviso', (
         tester,
       ) async {
         await _montar(tester);
         _rpc.siguiente = () async => throw falla;
         await _entrar(tester);
 
-        expect(find.text(_textoError), findsOneWidget);
-        expect(_actualizar, findsOneWidget);
-        expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+        expect(_login, findsOneWidget);
+        expect(find.text(const FailureSesionRevocada().mensaje), findsOneWidget);
+        expect(find.text(_textoError), findsNothing);
         expect(_principal, findsNothing);
+        expect(_titulo, findsNothing);
       });
     }
+
+    testWidgets('P0002 (sin perfil): aviso de error con «Reintentar» (el usuario tiene salida)', (
+      tester,
+    ) async {
+      await _montar(tester);
+      _rpc.siguiente = () async => throw const PostgrestException(message: 'x', code: 'P0002');
+      await _entrar(tester);
+
+      expect(find.text(_textoError), findsOneWidget);
+      expect(_actualizar, findsOneWidget);
+      expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+      expect(_principal, findsNothing);
+    });
 
     for (final raro in <Object?>['SOFT_DELETED', 'activa', '', null, 7]) {
       testWidgets('valor desconocido del servidor ($raro): ni entra ni dice «Esperando»', (

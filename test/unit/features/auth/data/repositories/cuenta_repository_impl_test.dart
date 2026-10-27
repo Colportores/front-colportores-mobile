@@ -97,7 +97,21 @@ void main() {
     expect(await repo.ultimoConocido('ana'), EstadoCuenta.pendienteAsignacion);
   });
 
-  test('con el BFF en error, FailureServidor con su mensaje si lo trae', () async {
+  test(
+    'con la sesión rechazada por el servidor, FailureSesionRevocada y no toca lo recordado',
+    () async {
+      await repo.consultar('ana');
+      remoto.falla = const SesionRevocadaException();
+
+      expect(
+        await repo.consultar('ana'),
+        const Left<Failure, EstadoCuenta>(FailureSesionRevocada()),
+      );
+      expect(await repo.ultimoConocido('ana'), EstadoCuenta.pendienteAsignacion);
+    },
+  );
+
+  test('con el servidor en error, FailureServidor con su mensaje si lo trae', () async {
     remoto.falla = const ServidorException(status: 503);
     expect(
       await repo.consultar('ana'),

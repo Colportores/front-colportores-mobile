@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
@@ -10,6 +12,7 @@ import '../../data/datasources/estado_cuenta_remote_data_source_supabase.dart';
 import '../../data/datasources/fakes/estado_cuenta_en_memoria.dart';
 import '../../data/repositories/cuenta_repository_impl.dart';
 import '../../domain/entities/estado_cuenta.dart';
+import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/cuenta_repository.dart';
 import '../../domain/usecases/consultar_estado_cuenta_use_case.dart';
 import 'asignacion_campania_providers.dart';
@@ -82,7 +85,21 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
             _aplicarRespuestaTardia(arranque, pedido, sesion.usuarioId, estado),
       ),
     );
-    return resultado.fold((falla) => throw falla, (estado) => estado);
+    return resultado.fold((falla) {
+      _siEsSesionRechazada(sesion, falla);
+      throw falla;
+    }, (estado) => estado);
+  }
+
+  /// El servidor ya no acepta la sesión (`42501` o un token que no se pudo renovar): se cierra como
+  /// cualquier sesión revocada (HU-AUTH-007), con el aviso del login. Mientras se cierra, la raíz
+  /// muestra el error y no los módulos de campo.
+  void _siEsSesionRechazada(Sesion sesion, Failure falla) {
+    if (falla is! FailureSesionRevocada) return;
+    scheduleMicrotask(() {
+      if (!ref.mounted) return;
+      unawaited(ref.read(sesionProvider.notifier).sesionRechazadaPorElServidor(sesion));
+    });
   }
 
   /// La respuesta que llegó después del tope de 15 s del arranque (decisiones del agente de
@@ -129,6 +146,7 @@ class EstadoCuentaNotifier extends _$EstadoCuentaNotifier {
     }
     return resultado.fold(
       (falla) {
+        _siEsSesionRechazada(sesion, falla);
         if (state.hasError) state = AsyncError<EstadoCuenta?>(falla, StackTrace.current);
         return falla;
       },

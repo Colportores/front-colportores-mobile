@@ -413,6 +413,15 @@ class SesionNotifier extends _$SesionNotifier {
     }
   }
 
+  /// El servidor contestó, al consultar otra cosa (el estado de la cuenta, HU-AUTH-008), que ya no
+  /// acepta [sesion]: mismo fin que cuando lo dice el refresh (HU-AUTH-007), con el aviso de sesión
+  /// revocada en el login. Solo si [sesion] sigue siendo la que está abierta: la respuesta de una
+  /// sesión anterior no cierra la nueva.
+  Future<void> sesionRechazadaPorElServidor(Sesion sesion) async {
+    if (!ref.mounted || !identical(state.value, sesion)) return;
+    await _alExpirar(MotivoExpiracion.revocada);
+  }
+
   /// Borra los datos del teléfono y cierra la sesión (HU-AUTH-010). Mismo contrato que
   /// [cerrarSesion]: con `Left` (el borrado falló, o la sesión guardada no se pudo borrar) el
   /// estado **no** se toca — el usuario sigue adentro y la pantalla ofrece reintentar.

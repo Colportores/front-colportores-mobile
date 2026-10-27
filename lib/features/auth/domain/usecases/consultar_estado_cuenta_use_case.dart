@@ -58,6 +58,8 @@ final class ConsultarEstadoCuentaUseCase
   Future<Either<Failure, EstadoCuenta>> call(ConsultarEstadoCuentaParams params) async {
     final consultado = await _consultarConLimite(params);
     if (consultado.isRight() || !params.admiteUltimoConocido) return consultado;
+    // Una sesión que el servidor ya no acepta no puede apoyarse en un estado viejo: se cierra.
+    if (consultado case Left(value: FailureSesionRevocada())) return consultado;
     final ultimo = await _repository.ultimoConocido(params.usuarioId);
     return ultimo == null ? consultado : Right(ultimo);
   }
