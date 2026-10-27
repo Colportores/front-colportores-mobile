@@ -80,8 +80,7 @@ void main() {
         h.dispose();
         expect(sinTap, isEmpty, reason: 'sin acción de tocar para el lector: $sinTap');
       },
-      skip: _verHallazgos,
-    ); // skip: QA #408 — las 6 franjas no tienen SemanticsAction.tap.
+    ); // arreglado en 20262f7: antes sin SemanticsAction.tap (las 6 franjas no tienen SemanticsAction.tap)
 
     testWidgets(
       'dada la hoja Día y hora, cuando se recorre, entonces todos sus controles tienen tap',
@@ -104,8 +103,7 @@ void main() {
         h.dispose();
         expect(sinTap, isEmpty, reason: 'sin acción de tocar para el lector: $sinTap');
       },
-      skip: _verHallazgos,
-    ); // skip: QA #408 — los 5 chips de día de la hoja no tienen SemanticsAction.tap.
+    ); // arreglado en 20262f7: antes sin SemanticsAction.tap (los 5 chips de día de la hoja no tienen SemanticsAction.tap)
 
     testWidgets(
       'dada la hoja Esa hora ya pasó, cuando se recorre, entonces sus botones tienen tap',
