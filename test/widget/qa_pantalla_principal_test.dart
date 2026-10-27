@@ -425,11 +425,17 @@ void main() {
       await _montar(tester, _DataSource());
       await tester.pumpAndSettle();
 
-      // «Mapa» (HU-UBI-003) y «Lista» (HU-UBI-002) ya tienen contenido: lo cubren sus propios tests.
+      // «Mapa» (HU-UBI-003), «Lista» (HU-UBI-002) y «Agenda» (HU-VIS-002) ya tienen contenido: lo
+      // cubren sus propios tests.
       for (final pestana
           in PestanaInicio.values
               .skip(1)
-              .where((p) => p != PestanaInicio.mapa && p != PestanaInicio.lista)) {
+              .where(
+                (p) =>
+                    p != PestanaInicio.mapa &&
+                    p != PestanaInicio.lista &&
+                    p != PestanaInicio.agenda,
+              )) {
         await _tocar(tester, 'inicio_pestana_${pestana.name}');
         final seccion = find.byKey(Key('pestana_${pestana.name}'));
         expect(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/presentation/pages/agenda_page.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../auth/presentation/providers/avisos_zona_notifier.dart';
 import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
@@ -26,8 +27,8 @@ export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 /// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
-/// y en una lista (HU-UBI-003 y HU-UBI-002). Agenda y Ventas todavía no tienen pantalla: quedan con
-/// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue la HU de cada una. El atrás
+/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002). Ventas todavía no tiene pantalla: queda con
+/// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue su HU. El atrás
 /// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
@@ -159,6 +160,12 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       activa: _actual == PestanaInicio.lista,
                       alAbrirUbicacion: (id, distancia) =>
                           unawaited(_abrirUbicacion(id, distancia)),
+                    ),
+                    // La agenda de hoy y los próximos 7 días (HU-VIS-002, vista 23B).
+                    PestanaInicio.agenda => AgendaPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.agenda,
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },
