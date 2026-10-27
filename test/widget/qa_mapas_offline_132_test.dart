@@ -67,6 +67,35 @@ void main() {
   });
 
   group('QA #132 · casos límite', () {
+    testWidgets('doble toque en «Borrar mapa» abre una sola hoja y no borra hasta confirmar', (
+      tester,
+    ) async {
+      final arnes = ArnesMapa(catalogo: [qaCiudad86], servirPaqueteMontevideo: false);
+      await arnes.repositorio.registrar(descargadoDe(qaCiudad86));
+      await qaMontar(tester, arnes: arnes);
+
+      await tester.tap(qaClave('mapas_offline_borrar_ciudad-montevideo'));
+      await tester.tap(qaClave('mapas_offline_borrar_ciudad-montevideo'), warnIfMissed: false);
+      await qaAsentar(tester);
+
+      expect(qaClave('mapas_offline_hoja_borrar'), findsOneWidget);
+      expect(find.text('¿Borrar el mapa de Montevideo?'), findsOneWidget);
+      expect(arnes.repositorio.registrados, isNotEmpty);
+
+      await tester.tap(qaClave('mapas_offline_borrar_cancelar'));
+      await qaAsentar(tester);
+      expect(qaClave('mapas_offline_hoja_borrar'), findsNothing);
+      expect(arnes.repositorio.registrados, isNotEmpty);
+      expect(qaClave('mapas_offline_tarjeta_ciudad-montevideo'), findsOneWidget);
+
+      await tester.tap(qaClave('mapas_offline_borrar_ciudad-montevideo'));
+      await qaAsentar(tester);
+      await tester.tap(qaClave('mapas_offline_borrar_confirmar'));
+      await qaAsentar(tester);
+      expect(arnes.repositorio.registrados, isEmpty);
+      expect(qaClave('mapas_offline_falla'), findsNothing);
+    });
+
     testWidgets('doble toque en «Actualizar» pide la versión nueva una sola vez', (tester) async {
       final v1 = paqueteDe(
         qaBytes,

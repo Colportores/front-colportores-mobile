@@ -191,7 +191,21 @@ Future<void> qaTocar(WidgetTester tester, String clave) async {
 }
 
 /// Los artboards de la vista 35 (más los estados que el canvas no dibuja) que son la pantalla.
-enum QaEstado { e01, e02, e03, e04, e05, e06, e07, e08, e09, sinCatalogo, sinLugar, fallaDescarga }
+enum QaEstado {
+  e01,
+  e02,
+  e03,
+  e04,
+  e05,
+  e06,
+  e07,
+  e08,
+  e09,
+  sinCatalogo,
+  sinLugar,
+  fallaDescarga,
+  hojaBorrar,
+}
 
 Future<void> qaLlegar(
   WidgetTester tester,
@@ -262,6 +276,11 @@ Future<void> qaLlegar(
       final arnes = ArnesMapa(catalogo: [qaCiudad86], servirPaqueteMontevideo: false);
       await arnes.repositorio.registrar(descargadoDe(qaCiudad86));
       await qaMontar(tester, arnes: arnes, tamano: tamano, escala: escala);
+    case QaEstado.hojaBorrar:
+      final arnes = ArnesMapa(catalogo: [qaCiudad86], servirPaqueteMontevideo: false);
+      await arnes.repositorio.registrar(descargadoDe(qaCiudad86));
+      await qaMontar(tester, arnes: arnes, tamano: tamano, escala: escala);
+      await qaTocar(tester, 'mapas_offline_borrar_ciudad-montevideo');
     case QaEstado.e08:
       final nueva = qaPaquete(
         'ciudad-montevideo',
