@@ -467,7 +467,11 @@ void main() {
       tester,
     ) async {
       final abiertas = <String>[];
-      await montarLista(tester, repo: RepoListaFalso([casa()]), alAbrir: abiertas.add);
+      await montarLista(
+        tester,
+        repo: RepoListaFalso([casa()]),
+        alAbrir: (id, _) => abiertas.add(id),
+      );
 
       await tester.tap(find.text('Rivadavia 100'));
       await asentarLista(tester);
