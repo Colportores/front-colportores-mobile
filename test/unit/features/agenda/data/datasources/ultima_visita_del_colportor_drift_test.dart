@@ -22,6 +22,7 @@ void main() {
     DateTime? borrada,
   }) => Visita(
     id: id,
+    espacioId: 'esp-1',
     espacioPersonaId: 'ep-1',
     fecha: fecha,
     tipoResultado: TipoResultadoVisita.noContesto,

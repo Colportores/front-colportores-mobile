@@ -162,6 +162,7 @@ Future<Recorrido> montar(
                             context,
                             ref,
                             colportorId: 'col-1',
+                            espacioId: 'esp-1',
                             espacioPersonaId: 'ep-1',
                             direccion: 'Grecia 3307',
                             persona: 'Pedro Gómez',

@@ -9,7 +9,9 @@ import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
 import 'package:colportores_mobile/features/agenda/domain/repositories/agenda_repository.dart';
+import 'package:colportores_mobile/features/agenda/domain/repositories/borrador_de_nota_de_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/domain/repositories/entrevista_en_curso_repository.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/domain/services/ultima_visita_del_colportor.dart';
 import 'package:colportores_mobile/features/agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
@@ -79,6 +81,18 @@ final class AgendaFalsa implements AgendaRepository {
   @override
   Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora}) =>
       throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Agenda?>> agendaProgramadaDe(String espacioId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Either<Failure, Visita>> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) => throw UnimplementedError();
 }
 
 /// Un repositorio de entrevistas que se puede romper o trabar.
@@ -122,21 +136,95 @@ final class UltimaVisitaFalsa implements UltimaVisitaDelColportor {
   }
 }
 
+/// Dónde cuelga hoy la visita: por defecto, donde empezó la entrevista (la persona y el espacio
+/// siguen). Un test lo cambia para la persona unida, dada de baja o la casa que ya no está.
+final class DestinoFalso implements ResolverDestinoDeEntrevista {
+  /// Si no es `null`, es lo que devuelve (`sinDestino` para «ya no hay dónde»).
+  DestinoDeEntrevista? destino;
+
+  /// Que devuelva `null`: ni la casa ni el depto siguen en el teléfono.
+  bool sinDestino = false;
+  bool falla = false;
+  final consultas = <({String espacioId, String espacioPersonaId})>[];
+
+  @override
+  Future<DestinoDeEntrevista?> resolver({
+    required String espacioId,
+    required String espacioPersonaId,
+  }) async {
+    consultas.add((espacioId: espacioId, espacioPersonaId: espacioPersonaId));
+    if (falla) throw StateError('no se puede leer');
+    if (sinDestino) return null;
+    return destino ?? DestinoDeEntrevista(espacioId: espacioId, espacioPersonaId: espacioPersonaId);
+  }
+}
+
+/// El borrador de la nota de la entrevista (la base local cifrada): en un mapa, y se puede romper.
+final class BorradorFalso implements BorradorDeNotaDeEntrevista {
+  /// `notaId → texto`.
+  final textos = <String, String>{};
+
+  /// Cada escritura, en orden (`''` es un borrado por texto en blanco).
+  final escrituras = <String>[];
+  final borrados = <String>[];
+  bool fallaAlLeer = false;
+  bool fallaAlGuardar = false;
+
+  /// Si no es `null`, la escritura espera a que se complete.
+  Completer<void>? compuerta;
+
+  @override
+  Future<String> leer(String notaId) async {
+    if (fallaAlLeer) throw StateError('no se puede leer');
+    return textos[notaId] ?? '';
+  }
+
+  @override
+  Future<void> guardar({
+    required String notaId,
+    required String visitaId,
+    required String colportorId,
+    required String texto,
+    required DateTime ahora,
+  }) async {
+    if (compuerta case final c?) await c.future;
+    if (fallaAlGuardar) throw StateError('no se puede guardar');
+    escrituras.add(texto);
+    if (texto.trim().isEmpty) {
+      textos.remove(notaId);
+    } else {
+      textos[notaId] = texto;
+    }
+  }
+
+  @override
+  Future<void> borrar(String notaId) async {
+    borrados.add(notaId);
+    textos.remove(notaId);
+  }
+}
+
 /// Lo que un test de pantalla necesita de la entrevista.
 final class MontajeEntrevista {
   MontajeEntrevista({
     EntrevistaEnCursoEnMemoria? almacen,
     AgendaFalsa? agenda,
     UltimaVisitaFalsa? ultimaVisita,
+    DestinoFalso? destino,
+    BorradorFalso? borrador,
     DateTime Function()? reloj,
   }) : almacen = almacen ?? EntrevistaEnCursoEnMemoria(),
        agenda = agenda ?? AgendaFalsa(),
        ultimaVisita = ultimaVisita ?? UltimaVisitaFalsa(),
+       destino = destino ?? DestinoFalso(),
+       borrador = borrador ?? BorradorFalso(),
        reloj = reloj ?? (() => ahoraEntrevista);
 
   final EntrevistaEnCursoEnMemoria almacen;
   final AgendaFalsa agenda;
   final UltimaVisitaFalsa ultimaVisita;
+  final DestinoFalso destino;
+  final BorradorFalso borrador;
   DateTime Function() reloj;
 
   /// El lugar y la persona que se leen de la DB al mostrar la entrevista.
@@ -149,6 +237,8 @@ final class MontajeEntrevista {
     entrevistaEnCursoRepositoryProvider.overrideWithValue(rota),
     agendaRepositoryProvider.overrideWithValue(agenda),
     ultimaVisitaDelColportorProvider.overrideWithValue(ultimaVisita),
+    destinoDeEntrevistaProvider.overrideWithValue(destino),
+    borradorDeNotaDeEntrevistaProvider.overrideWithValue(borrador),
     rotuloDeEntrevistaProvider.overrideWith((ref, entrevista) async => rotulo),
     relojEntrevistaProvider.overrideWithValue(() => reloj()),
     relojVisitaProvider.overrideWithValue(() => reloj().toUtc()),

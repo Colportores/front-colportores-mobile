@@ -3,7 +3,12 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_en_curso.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
+import 'package:colportores_mobile/features/agenda/domain/usecases/finalizar_entrevista_use_case.dart'
+    show entrevistaSinLugar;
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -233,5 +238,207 @@ void main() {
 
     notificador().escribirNota('hola');
     expect(estado().notaBorrador, 'hola');
+  });
+
+  group('la nota cifrada en el teléfono («Nota entrev.», 25/10)', () {
+    Future<void> asentar() => Future<void>.delayed(Duration.zero);
+
+    Future<EntrevistaEnCurso> empezada() async {
+      await notificador().esperarLectura();
+      final r = await notificador().empezar(espacioId: 'esp-1', espacioPersonaId: 'ep-1');
+      return r.getOrElse(() => throw StateError('falló'));
+    }
+
+    test('lo que escribe queda en la base con los ids de la visita y de la nota', () async {
+      final entrevista = await empezada();
+
+      notificador().escribirNota('perro suelto, tocar timbre');
+      await asentar();
+
+      expect(montaje.borrador.textos[entrevista.ids.nota], 'perro suelto, tocar timbre');
+    });
+
+    test('al cerrar la app y volver, la nota sigue ahí junto a la entrevista', () async {
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      montaje.borrador.textos['not-1'] = 'perro suelto, tocar timbre';
+
+      final e = await notificador().esperarLectura();
+
+      expect(e.recuperada, isTrue);
+      expect(e.notaBorrador, 'perro suelto, tocar timbre');
+    });
+
+    test('lo que escribió antes de que termine la lectura no se pisa con lo guardado', () async {
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      montaje.borrador.textos['not-1'] = 'vieja';
+
+      final lectura = notificador().esperarLectura();
+      notificador().escribirNota('nueva');
+      final e = await lectura;
+
+      expect(e.notaBorrador, 'nueva');
+    });
+
+    test('si la nota no se puede leer, la entrevista vuelve igual y sin nota', () async {
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      montaje.borrador.fallaAlLeer = true;
+
+      final e = await notificador().esperarLectura();
+
+      expect(e.entrevista, isNotNull);
+      expect(e.notaBorrador, isEmpty);
+    });
+
+    test('escribir y borrar todo no deja una nota vacía en la base', () async {
+      final entrevista = await empezada();
+
+      notificador().escribirNota('hola');
+      await asentar();
+      notificador().escribirNota('');
+      await asentar();
+
+      expect(montaje.borrador.textos.containsKey(entrevista.ids.nota), isFalse);
+    });
+
+    test(
+      'teclear seguido guarda en orden y la última queda: una vieja nunca pisa a una nueva',
+      () async {
+        final entrevista = await empezada();
+        montaje.borrador.compuerta = Completer<void>();
+
+        notificador()
+          ..escribirNota('a')
+          ..escribirNota('ab')
+          ..escribirNota('abc');
+        await asentar();
+        expect(montaje.borrador.escrituras, isEmpty, reason: 'la primera escritura está en vuelo');
+
+        montaje.borrador.compuerta!.complete();
+        await asentar();
+        await asentar();
+
+        expect(montaje.borrador.escrituras.last, 'abc');
+        expect(montaje.borrador.textos[entrevista.ids.nota], 'abc');
+      },
+    );
+
+    test(
+      'si la base falla, la nota sigue en memoria y se vuelve a guardar con lo próximo',
+      () async {
+        final entrevista = await empezada();
+        montaje.borrador.fallaAlGuardar = true;
+
+        notificador().escribirNota('hola');
+        await asentar();
+        expect(estado().notaBorrador, 'hola');
+        expect(montaje.borrador.textos, isEmpty);
+
+        montaje.borrador.fallaAlGuardar = false;
+        notificador().escribirNota('hola mundo');
+        await asentar();
+        expect(montaje.borrador.textos[entrevista.ids.nota], 'hola mundo');
+      },
+    );
+
+    test('sin entrevista en curso la nota queda solo en memoria (R·07)', () async {
+      await notificador().esperarLectura();
+
+      notificador().escribirNota('hola');
+      await asentar();
+
+      expect(montaje.borrador.escrituras, isEmpty);
+    });
+
+    test('al guardar la visita, su nota es el texto final y la entrevista se suelta', () async {
+      final entrevista = await empezada();
+      notificador().escribirNota('perro suelto');
+      // Sin esperar la escritura: el guardado la espera antes de seguir.
+      final r = await notificador().finalizar(
+        entrada: DateTime(2026, 10, 23, 14, 23),
+        salida: DateTime(2026, 10, 23, 14, 41),
+      );
+
+      expect(r!.isRight(), isTrue);
+      expect(montaje.agenda.recibidas.single.nota!.id, entrevista.ids.nota);
+      expect(montaje.agenda.recibidas.single.nota!.texto, 'perro suelto');
+      expect(estado().notaBorrador, isEmpty);
+      await asentar();
+      // Nada más se escribió después de guardar la visita.
+      expect(montaje.borrador.escrituras, ['perro suelto']);
+    });
+
+    test('lo que se escribe mientras se guarda la visita no pisa su nota', () async {
+      await empezada();
+      montaje.agenda.compuerta = Completer<void>();
+      notificador().escribirNota('final');
+
+      final guardando = notificador().finalizar(
+        entrada: DateTime(2026, 10, 23, 14, 23),
+        salida: DateTime(2026, 10, 23, 14, 41),
+      );
+      await asentar();
+      notificador().escribirNota('tarde');
+      await asentar();
+      montaje.agenda.compuerta!.complete();
+      await guardando;
+
+      expect(montaje.agenda.recibidas.single.nota!.texto, 'final');
+      expect(montaje.borrador.escrituras, ['final']);
+    });
+
+    test('si guardar la visita falla, la nota sigue en el borrador y en el estado', () async {
+      final entrevista = await empezada();
+      notificador().escribirNota('perro suelto');
+      montaje.agenda.falla = const FailureInesperado();
+
+      final r = await notificador().finalizar(
+        entrada: DateTime(2026, 10, 23, 14, 23),
+        salida: DateTime(2026, 10, 23, 14, 41),
+      );
+
+      expect(r!.isLeft(), isTrue);
+      expect(estado().notaBorrador, 'perro suelto');
+      expect(montaje.borrador.textos[entrevista.ids.nota], 'perro suelto');
+      expect(estado().hayEntrevista, isTrue);
+    });
+  });
+
+  group('«Sin salida» (25/10)', () {
+    Future<void> empezada() async {
+      await notificador().esperarLectura();
+      await notificador().empezar(espacioId: 'esp-1', espacioPersonaId: 'ep-1');
+    }
+
+    test('la persona dada de baja: se guarda sin persona y la entrevista se suelta', () async {
+      await empezada();
+      montaje.destino.destino = const DestinoDeEntrevista(espacioId: 'esp-1');
+
+      final r = await notificador().finalizar(
+        entrada: DateTime(2026, 10, 23, 14, 23),
+        salida: DateTime(2026, 10, 23, 14, 41),
+      );
+
+      expect(r!.isRight(), isTrue);
+      expect(montaje.agenda.recibidas.single.visita.espacioPersonaId, isNull);
+      expect(estado().hayEntrevista, isFalse);
+    });
+
+    test('sin casa donde guardarla: devuelve el aviso y la entrevista deja de estar en curso '
+        '(el cierre de la jornada no queda trabado)', () async {
+      await empezada();
+      montaje.destino.sinDestino = true;
+      notificador().escribirNota('perro suelto');
+
+      final r = await notificador().finalizar(
+        entrada: DateTime(2026, 10, 23, 14, 23),
+        salida: DateTime(2026, 10, 23, 14, 41),
+      );
+
+      expect(r, const Left<Failure, Object?>(entrevistaSinLugar));
+      expect(estado().hayEntrevista, isFalse);
+      expect(estado().notaBorrador, isEmpty);
+      expect(montaje.agenda.recibidas, isEmpty);
+      expect(montaje.borrador.textos, isEmpty);
+    });
   });
 }

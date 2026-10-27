@@ -3,6 +3,7 @@
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/flujo_entrevista.dart';
@@ -77,6 +78,7 @@ void main() {
                               context,
                               ref,
                               colportorId: 'col-1',
+                              espacioId: 'esp-1',
                               espacioPersonaId: 'ep-1',
                               direccion: 'Grecia 3307',
                               persona: 'Pedro Gómez',
@@ -424,6 +426,75 @@ void main() {
 
       expect(find.text('Terminó la entrevista'), findsNothing);
       expect(ultimaSalida, isNull);
+    });
+  });
+
+  group('«Sin salida» y la nota cifrada (25/10)', () {
+    testWidgets('cerró la app con una nota escrita: al volver la encuentra en R·05', (
+      tester,
+    ) async {
+      montaje.borrador.textos['not-1'] = 'perro suelto, tocar timbre';
+      await empezada(tester);
+
+      await tocarKey(tester, const Key('abrir'));
+
+      expect(find.text('perro suelto, tocar timbre'), findsOneWidget);
+    });
+
+    testWidgets('lo que escribe en R·05 queda guardado en la base mientras sigue en curso', (
+      tester,
+    ) async {
+      await empezada(tester);
+
+      await tocarKey(tester, const Key('abrir'));
+      await tocarKey(tester, ClavesEntrevista.botonNota);
+      await tester.enterText(find.byKey(ClavesEntrevista.campoNota), 'tocar timbre');
+      await tester.pumpAndSettle();
+
+      expect(montaje.borrador.textos['not-1'], 'tocar timbre');
+    });
+
+    testWidgets('la persona ya no está: se guarda igual, sin persona, y avisa como siempre', (
+      tester,
+    ) async {
+      montaje.destino.destino = const DestinoDeEntrevista(espacioId: 'esp-1');
+      await empezada(tester);
+
+      await tocarKey(tester, const Key('abrir'));
+      await tocarKey(tester, ClavesEntrevista.finalizar);
+      await tocarKey(tester, ClavesEntrevista.filaSalida);
+      await tester.tap(find.byKey(const Key('hoja_hora_menos')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar')));
+      await tester.pumpAndSettle();
+      await tocarKey(tester, ClavesEntrevista.guardarYVolver);
+
+      expect(ultimaSalida, isA<EntrevistaGuardada>());
+      expect(montaje.agenda.recibidas.single.visita.espacioPersonaId, isNull);
+      expect(montaje.almacen.guardadas, isEmpty);
+      expect(find.text('Guardado. Grecia 3307 quedó como «Entrevista dada».'), findsOneWidget);
+    });
+
+    testWidgets('la casa ya no está: la hoja se cierra con el aviso, la entrevista se suelta y el '
+        'cierre de la jornada puede seguir', (tester) async {
+      montaje.destino.sinDestino = true;
+      await empezada(tester);
+
+      await tocarKey(tester, const Key('abrir'));
+      await tocarKey(tester, ClavesEntrevista.finalizar);
+      await tocarKey(tester, ClavesEntrevista.filaSalida);
+      await tester.tap(find.byKey(const Key('hoja_hora_menos')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar')));
+      await tester.pumpAndSettle();
+      await tocarKey(tester, ClavesEntrevista.guardarYVolver);
+
+      expect(ultimaSalida, isA<EntrevistaGuardada>());
+      expect(find.text(TextosEntrevista.sinLugar), findsOneWidget);
+      expect(find.text('Guardado. Grecia 3307 quedó como «Entrevista dada».'), findsNothing);
+      expect(montaje.agenda.recibidas, isEmpty);
+      expect(montaje.almacen.guardadas, isEmpty);
+      expect(find.byKey(ClavesEntrevista.avisoFijo), findsNothing);
     });
   });
 

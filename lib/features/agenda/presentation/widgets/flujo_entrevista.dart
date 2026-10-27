@@ -65,6 +65,10 @@ abstract final class FlujoEntrevista {
     final reloj = ref.read(relojEntrevistaProvider);
     final salida = pedirSalida ? null : reloj();
     final mensajero = ScaffoldMessenger.maybeOf(context);
+    // «Sin salida» (25/10): si la casa ya no está en el teléfono no hay dónde guardar la visita; la
+    // entrevista se suelta y la hoja se cierra con un aviso, para no dejar trabado el cierre de la
+    // jornada.
+    var sinLugar = false;
     final resultado = await mostrarHojaTerminoEntrevista(
       context,
       direccion: rotulo.direccion,
@@ -77,12 +81,22 @@ abstract final class FlujoEntrevista {
         final guardado = await notificador.finalizar(entrada: entrada, salida: salida);
         // `null`: ya había un guardado en curso (no pasa con la hoja, que lo impide).
         if (guardado == null) return const FailureInesperado();
-        return guardado.fold<Failure?>((falla) => falla, (_) => null);
+        return guardado.fold<Failure?>((falla) {
+          if (falla != entrevistaSinLugar) return falla;
+          sinLugar = true;
+          return null;
+        }, (_) => null);
       },
     );
     if (resultado is EntrevistaGuardada) {
       mensajero?.showSnackBar(
-        SnackBar(content: Text(TextosEntrevista.guardada(_lugar(rotulo.direccion)))),
+        SnackBar(
+          content: Text(
+            sinLugar
+                ? TextosEntrevista.sinLugar
+                : TextosEntrevista.guardada(_lugar(rotulo.direccion)),
+          ),
+        ),
       );
     }
     return resultado;
@@ -96,6 +110,7 @@ abstract final class FlujoEntrevista {
     BuildContext context,
     WidgetRef ref, {
     required String colportorId,
+    required String espacioId,
     required String espacioPersonaId,
     required String direccion,
     required String persona,
@@ -120,6 +135,7 @@ abstract final class FlujoEntrevista {
         final guardado = await notificador.finalizarSinInicio(
           FinalizarEntrevistaParams(
             ids: ids,
+            espacioId: espacioId,
             espacioPersonaId: espacioPersonaId,
             colportorId: colportorId,
             entrada: entrada,

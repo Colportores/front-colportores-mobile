@@ -9,10 +9,14 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
+import '../../data/datasources/borrador_de_nota_de_entrevista_drift.dart';
+import '../../data/datasources/destino_de_entrevista_drift.dart';
 import '../../data/datasources/ultima_visita_del_colportor_drift.dart';
 import '../../data/repositories/entrevista_en_curso_repository_almacen.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
+import '../../domain/repositories/borrador_de_nota_de_entrevista.dart';
 import '../../domain/repositories/entrevista_en_curso_repository.dart';
+import '../../domain/services/destino_de_entrevista.dart';
 import '../../domain/services/ultima_visita_del_colportor.dart';
 import '../../domain/usecases/empezar_entrevista_use_case.dart';
 import '../../domain/usecases/finalizar_entrevista_use_case.dart';
@@ -40,10 +44,28 @@ final empezarEntrevistaUseCaseProvider = Provider<EmpezarEntrevistaUseCase>(
   ),
 );
 
+/// Dónde cuelga hoy la visita de una entrevista que empezó antes (la persona o la casa pueden
+/// haberse unido o dado de baja). Sin DB abierta no hay de dónde leerlo: lanza.
+final destinoDeEntrevistaProvider = Provider<ResolverDestinoDeEntrevista>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return DestinoDeEntrevistaDrift(db);
+});
+
+/// Dónde queda la nota de la entrevista mientras sigue en curso: la base local cifrada (nunca
+/// sube). Sin DB abierta no hay de dónde leerla: lanza, y la nota queda solo en memoria.
+final borradorDeNotaDeEntrevistaProvider = Provider<BorradorDeNotaDeEntrevista>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return BorradorDeNotaDeEntrevistaDrift(db);
+});
+
 final finalizarEntrevistaUseCaseProvider = Provider<FinalizarEntrevistaUseCase>(
   (ref) => FinalizarEntrevistaUseCase(
     ref.watch(registrarResultadoVisitaUseCaseProvider),
     ref.watch(entrevistaEnCursoRepositoryProvider),
+    ref.watch(destinoDeEntrevistaProvider),
+    ref.watch(borradorDeNotaDeEntrevistaProvider),
     ahora: ref.watch(relojEntrevistaProvider),
   ),
 );
@@ -75,8 +97,9 @@ final class EstadoEntrevista extends Equatable {
   /// empezó. La hora de salida **no se supone**: se le pide (decisión de Cristian, 23/10, #450).
   final bool recuperada;
 
-  /// La nota de la visita que va escribiendo. Solo en memoria: dónde guardarla si se cierra la app
-  /// espera una decisión (ver el archivo de pendientes del #450).
+  /// La nota de la visita que va escribiendo. Mientras la entrevista sigue en curso también queda
+  /// en la base local cifrada ([BorradorDeNotaDeEntrevista], decisión de Cristian, 25/10): si cierra
+  /// la app, la encuentra al volver. Nunca sube.
   final String notaBorrador;
 
   bool get hayEntrevista => entrevista != null;
@@ -116,6 +139,12 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
   Future<Either<Failure, EntrevistaEnCurso>>? _empezando;
   bool _finalizando = false;
 
+  /// La nota que falta guardar en la base (siempre la última que escribió) y si hay una escritura en
+  /// vuelo: de a una por vez, así una nota vieja nunca pisa a una nueva y teclear no apila escrituras.
+  String? _notaPorGuardar;
+  bool _escribiendoNota = false;
+  Future<void> _escrituraDeNota = Future<void>.value();
+
   /// Se completa cuando terminó la primera lectura del almacén (o el provider se descartó).
   Completer<void> _lectura = Completer<void>();
 
@@ -152,13 +181,33 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
         {'tipo': e.runtimeType.toString()},
       );
     }
+    // La nota que dejó escrita: la entrevista guarda en la base el borrador de su nota (mismo id).
+    var nota = '';
+    if (guardada != null) {
+      try {
+        nota = await ref.read(borradorDeNotaDeEntrevistaProvider).leer(guardada.ids.nota);
+      } on Object catch (e) {
+        AppLogger.instance.warn(
+          LogModulo.agenda,
+          'ENTREVISTA_NOTA_LEER',
+          'no se pudo leer la nota de la entrevista en curso',
+          {'tipo': e.runtimeType.toString()},
+        );
+      }
+    }
     if (!ref.mounted) return;
     // Si en esta sesión ya empezó una mientras se leía, manda lo que está en el estado.
     if (state.hayEntrevista) {
       state = state.copiar(cargando: false);
       return;
     }
-    state = state.copiar(cargando: false, entrevista: () => guardada, recuperada: guardada != null);
+    state = state.copiar(
+      cargando: false,
+      entrevista: () => guardada,
+      recuperada: guardada != null,
+      // Lo que ya escribió en esta sesión (si empezó a teclear mientras se leía) manda.
+      notaBorrador: state.notaBorrador.isEmpty ? nota : null,
+    );
   }
 
   /// «Empezar entrevista». Devuelve la entrevista (la que ya estaba en curso, si la había) o la
@@ -219,10 +268,48 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
     }
   }
 
-  /// Guarda la nota que escribe (en memoria).
+  /// Guarda la nota que escribe: en el estado y, si hay una entrevista en curso, también en la base
+  /// local cifrada (decisión de Cristian, 25/10), para que sobreviva a cerrar la app. Si la base
+  /// falla, la nota sigue en memoria y se vuelve a intentar con lo próximo que escriba.
   void escribirNota(String texto) {
     if (state.notaBorrador == texto) return;
     state = state.copiar(notaBorrador: texto);
+    final entrevista = state.entrevista;
+    // Mientras se guarda la visita la nota viaja con ella: una escritura tardía no la pisa.
+    if (entrevista == null || _finalizando) return;
+    _notaPorGuardar = texto;
+    if (_escribiendoNota) return;
+    _escribiendoNota = true;
+    _escrituraDeNota = _vaciarNotaPendiente(entrevista);
+  }
+
+  Future<void> _vaciarNotaPendiente(EntrevistaEnCurso entrevista) async {
+    try {
+      while (_notaPorGuardar != null && ref.mounted) {
+        final texto = _notaPorGuardar!;
+        _notaPorGuardar = null;
+        try {
+          await ref
+              .read(borradorDeNotaDeEntrevistaProvider)
+              .guardar(
+                notaId: entrevista.ids.nota,
+                visitaId: entrevista.ids.visita,
+                colportorId: entrevista.colportorId,
+                texto: texto,
+                ahora: ref.read(relojEntrevistaProvider)(),
+              );
+        } on Object catch (e) {
+          AppLogger.instance.warn(
+            LogModulo.agenda,
+            'ENTREVISTA_NOTA_GUARDAR',
+            'no se pudo guardar la nota de la entrevista en curso',
+            {'tipo': e.runtimeType.toString()},
+          );
+        }
+      }
+    } finally {
+      _escribiendoNota = false;
+    }
   }
 
   /// «No, guardar y volver al mapa». Un segundo toque mientras guarda no guarda otra vez: devuelve
@@ -236,6 +323,8 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
     if (_finalizando) return null;
     _finalizando = true;
     try {
+      // La última nota ya está en la base antes de que la visita la reemplace con el texto final.
+      await _escrituraDeNota;
       final resultado = await ref.read(finalizarEntrevistaUseCaseProvider)(
         FinalizarEntrevistaParams.de(
           entrevista,
@@ -245,10 +334,13 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
         ),
       );
       if (ref.mounted) {
-        resultado.fold<void>(
-          (_) {},
-          (_) => state = state.copiar(entrevista: () => null, recuperada: false, notaBorrador: ''),
-        );
+        // Guardada, o descartada porque ya no hay casa («Sin salida»): en los dos casos la entrevista
+        // se soltó del teléfono y no queda en curso.
+        void soltar() =>
+            state = state.copiar(entrevista: () => null, recuperada: false, notaBorrador: '');
+        resultado.fold<void>((falla) {
+          if (falla == entrevistaSinLugar) soltar();
+        }, (_) => soltar());
       }
       return resultado;
     } on Object catch (e) {

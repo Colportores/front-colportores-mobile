@@ -75,6 +75,12 @@ abstract final class TextosEntrevista {
   static const noPudimosGuardar =
       'No pudimos guardar la entrevista. Probá de nuevo; no perdiste nada.';
 
+  /// Propuesta («Sin salida», 25/10): la casa de la entrevista ya no está en el teléfono, no hay dónde
+  /// guardar la visita. Dice qué pasó y que puede seguir.
+  static const sinLugar =
+      'La casa de esta entrevista ya no está en tu teléfono, así que la entrevista se cerró sin '
+      'guardar. Podés seguir.';
+
   /// Propuesta: ya no hay entrevista (otro toque la terminó).
   static const yaNoHayEntrevista = 'Esta entrevista ya no está en curso.';
 

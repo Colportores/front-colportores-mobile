@@ -5,6 +5,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
@@ -191,5 +192,49 @@ void main() {
 
     expect(find.text(TextosEntrevista.noPudimosGuardar), findsOneWidget);
     expect(jornadaAbierta(), isTrue);
+  });
+
+  Future<void> elegirSalidaYGuardar(WidgetTester tester) async {
+    await tester.tap(find.byKey(ClavesEntrevista.filaSalida));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('hoja_hora_menos')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('hoja_hora_usar')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
+    await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
+    await tester.pumpAndSettle();
+  }
+
+  group('«Sin salida» (25/10): la jornada nunca queda trabada', () {
+    testWidgets('la persona de la entrevista ya no está: se guarda sin persona y la jornada se '
+        'cierra', (tester) async {
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      montaje.destino.destino = const DestinoDeEntrevista(espacioId: 'esp-1');
+      await montar(tester);
+
+      await finalizarJornada(tester);
+      await elegirSalidaYGuardar(tester);
+
+      final visita = montaje.agenda.recibidas.single.visita;
+      expect(visita.tipoResultado, TipoResultadoVisita.entrevista);
+      expect(visita.espacioPersonaId, isNull);
+      expect(montaje.almacen.guardadas, isEmpty);
+      expect(jornadaAbierta(), isFalse);
+    });
+
+    testWidgets('la casa ya no está: la entrevista se suelta con un aviso y la jornada se '
+        'cierra', (tester) async {
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      montaje.destino.sinDestino = true;
+      await montar(tester);
+
+      await finalizarJornada(tester);
+      await elegirSalidaYGuardar(tester);
+
+      expect(montaje.agenda.recibidas, isEmpty);
+      expect(montaje.almacen.guardadas, isEmpty);
+      expect(jornadaAbierta(), isFalse);
+    });
   });
 }

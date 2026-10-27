@@ -4,9 +4,11 @@
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/data/repositories/entrevista_en_curso_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/domain/usecases/empezar_entrevista_use_case.dart';
 import 'package:colportores_mobile/features/agenda/domain/usecases/finalizar_entrevista_use_case.dart';
 import 'package:colportores_mobile/features/agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../../helpers/entrevista_falsos.dart';
@@ -16,6 +18,8 @@ void main() {
   late EntrevistaEnCursoEnMemoria memoria;
   late EntrevistaEnCursoRota almacen;
   late AgendaFalsa agenda;
+  late DestinoFalso destino;
+  late BorradorFalso borrador;
   var contador = 0;
   var reloj = ahoraEntrevista;
 
@@ -28,6 +32,8 @@ void main() {
     memoria = EntrevistaEnCursoEnMemoria();
     almacen = EntrevistaEnCursoRota(memoria);
     agenda = AgendaFalsa();
+    destino = DestinoFalso();
+    borrador = BorradorFalso();
     empezar = EmpezarEntrevistaUseCase(
       almacen,
       generarId: () => 'id-${++contador}',
@@ -41,6 +47,8 @@ void main() {
         ahora: () => reloj.toUtc(),
       ),
       almacen,
+      destino,
+      borrador,
       ahora: () => reloj,
       logger: loggerMudo(),
     );
@@ -258,6 +266,7 @@ void main() {
       final r = await finalizar(
         FinalizarEntrevistaParams(
           ids: const IdsResultadoVisita(visita: 'v', nota: 'n'),
+          espacioId: 'esp-1',
           espacioPersonaId: ' ',
           colportorId: 'col-1',
           entrada: entrada,
@@ -267,6 +276,102 @@ void main() {
 
       expect(r.isLeft(), isTrue);
       expect(agenda.recibidas, isEmpty);
+    });
+
+    group('«Sin salida» (25/10): se guarda igual', () {
+      test('la visita cuelga del espacio y de la persona que encontró el resolvedor', () async {
+        await conEntrevistaEnCurso();
+        // La unión de duplicados movió a la persona al espacio que quedó.
+        destino.destino = const DestinoDeEntrevista(
+          espacioId: 'esp-que-quedo',
+          espacioPersonaId: 'ep-1',
+        );
+
+        final r = await finalizar(finalizando());
+
+        expect(r.isRight(), isTrue);
+        expect(agenda.recibidas.single.visita.espacioId, 'esp-que-quedo');
+        expect(agenda.recibidas.single.visita.espacioPersonaId, 'ep-1');
+        expect(destino.consultas.single, (espacioId: 'esp-1', espacioPersonaId: 'ep-1'));
+        expect(memoria.guardadas, isEmpty);
+      });
+
+      test(
+        'la persona dada de baja: la visita queda de la casa, sin persona, con su nota',
+        () async {
+          await conEntrevistaEnCurso();
+          destino.destino = const DestinoDeEntrevista(espacioId: 'esp-1');
+
+          final r = await finalizar(finalizando(nota: 'perro suelto'));
+
+          expect(r.isRight(), isTrue);
+          final recibida = agenda.recibidas.single;
+          expect(recibida.visita.espacioId, 'esp-1');
+          expect(recibida.visita.espacioPersonaId, isNull);
+          expect(recibida.visita.tipoResultado, TipoResultadoVisita.entrevista);
+          expect(recibida.nota!.texto, 'perro suelto');
+          expect(memoria.guardadas, isEmpty);
+        },
+      );
+
+      test('sin casa ni depto donde colgarla: la entrevista se suelta con su borrador y no '
+          'queda trabada', () async {
+        await conEntrevistaEnCurso();
+        destino.sinDestino = true;
+        borrador.textos['not-1'] = 'perro suelto';
+
+        final r = await finalizar(finalizando(nota: 'perro suelto'));
+
+        expect(r, const Left<Failure, Object?>(entrevistaSinLugar));
+        expect(agenda.recibidas, isEmpty);
+        expect(memoria.guardadas, isEmpty);
+        expect(borrador.borrados, ['not-1']);
+        expect(borrador.textos, isEmpty);
+      });
+
+      test('si no se puede soltar la entrevista, devuelve la falla y sigue en curso', () async {
+        await conEntrevistaEnCurso();
+        destino.sinDestino = true;
+        almacen.fallaAlBorrar = true;
+
+        final r = await finalizar(finalizando());
+
+        expect(
+          r.swap().getOrElse(() => throw StateError('debía fallar')),
+          isA<FailureInesperado>(),
+        );
+        expect(memoria.guardadas, hasLength(1));
+
+        almacen.fallaAlBorrar = false;
+        final reintento = await finalizar(finalizando());
+        expect(reintento, const Left<Failure, Object?>(entrevistaSinLugar));
+        expect(memoria.guardadas, isEmpty);
+      });
+
+      test('si no se puede leer dónde cuelga, no guarda nada y la entrevista sigue', () async {
+        await conEntrevistaEnCurso();
+        destino.falla = true;
+
+        final r = await finalizar(finalizando());
+
+        expect(
+          r.swap().getOrElse(() => throw StateError('debía fallar')),
+          isA<FailureInesperado>(),
+        );
+        expect(agenda.recibidas, isEmpty);
+        expect(memoria.guardadas, hasLength(1));
+
+        destino.falla = false;
+        expect((await finalizar(finalizando())).isRight(), isTrue);
+      });
+
+      test('las horas inválidas no llegan a buscar el destino', () async {
+        await conEntrevistaEnCurso();
+
+        await finalizar(finalizando(s: DateTime(2026, 10, 23, 14, 10)));
+
+        expect(destino.consultas, isEmpty);
+      });
     });
   });
 }
