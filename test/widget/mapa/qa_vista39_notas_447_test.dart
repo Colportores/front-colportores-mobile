@@ -2,8 +2,7 @@
 // real y el enganche de `main.dart`: criterios de la HU, cinco estados, matriz de tamaños y escalas sin
 // desbordes, casos límite (acciones superpuestas, fallas, entrada de texto) y privacidad.
 //
-// Las capturas (`--dart-define=QA_CAPTURAS=true`) van a `.dart_tool/qa_capturas/` y no se commitean. Los
-// tests que documentan un hallazgo van con `skip` y corren con `--dart-define=QA_HALLAZGOS=true`.
+// Las capturas (`--dart-define=QA_CAPTURAS=true`) van a `.dart_tool/qa_capturas/` y no se commitean.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -18,8 +17,6 @@ import '../../helpers/qa_vista39_447_arnes.dart';
 
 const _tamanos = [t360x640, t412x915];
 const _escalas = [1.0, 2.0];
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   setUpAll(() {});
@@ -314,8 +311,7 @@ void main() {
       return r.bottom > 0 && r.top < pantalla.height;
     }
 
-    // skip: QA #447: con muchas notas el aviso va arriba de la lista y queda fuera de la vista; quien borró
-    // la última no ve «Nota borrada. Deshacer» ni «No pudimos borrar la nota».
+    // QA #447 (arreglado): con muchas notas el aviso va arriba de la lista; la pestaña lo trae a la vista.
     for (final falla in [false, true]) {
       testWidgets(
         'dado 60 notas y que bajo hasta la última, cuando la borro${falla ? ' y falla' : ''}, el aviso '
@@ -347,7 +343,6 @@ void main() {
             reason: 'el aviso está arriba de la lista y la persona está al final',
           );
         },
-        skip: !_verHallazgos,
       );
     }
 
@@ -376,7 +371,6 @@ void main() {
         expect(find.byKey(ClavesNotasDelLugar.aviso), findsOneWidget);
         expect(aLaVista(tester, find.byKey(ClavesNotasDelLugar.aviso)), isTrue);
       },
-      skip: !_verHallazgos,
     );
   });
 

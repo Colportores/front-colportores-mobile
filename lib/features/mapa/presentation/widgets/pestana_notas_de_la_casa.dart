@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -90,10 +92,26 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
 
   _AvisoDeNotas? _aviso;
 
+  /// Para traer el aviso a la vista cuando se muestra (la hoja es un solo desplazamiento).
+  final _claveDelAviso = GlobalKey();
+
   bool get _puedeEscribir => !widget.soloLectura && widget.colportorId != null;
 
   void _avisar(_AvisoDeNotas? aviso) {
-    if (mounted) setState(() => _aviso = aviso);
+    if (!mounted) return;
+    setState(() => _aviso = aviso);
+    if (aviso != null) _mostrarElAviso();
+  }
+
+  /// La hoja es un solo desplazamiento y el aviso va arriba de la lista: si quien borró o sumó una nota
+  /// estaba abajo, se lo trae a la vista para que vea el «Deshacer», la falla con su «Reintentar» o que
+  /// se guardó (QA #447).
+  void _mostrarElAviso() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveDelAviso.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(Scrollable.ensureVisible(contexto, duration: const Duration(milliseconds: 150)));
+    });
   }
 
   Future<void> _nueva() async {
@@ -305,21 +323,24 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
             texto: TextosNotas.soloLecturaDelLugar,
           ),
         if (aviso != null)
-          AvisoAlta(
-            key: ClavesNotasDelLugar.aviso,
-            color: aviso.color,
-            glyph: aviso.glyph,
-            texto: aviso.texto,
-            acciones: aviso.etiquetaAccion == null
-                ? null
-                : Align(
-                    alignment: Alignment.centerLeft,
-                    child: EnlaceAlta(
-                      key: ClavesNotasDelLugar.deshacer,
-                      texto: aviso.etiquetaAccion!,
-                      alPresionar: aviso.alAccion,
+          KeyedSubtree(
+            key: _claveDelAviso,
+            child: AvisoAlta(
+              key: ClavesNotasDelLugar.aviso,
+              color: aviso.color,
+              glyph: aviso.glyph,
+              texto: aviso.texto,
+              acciones: aviso.etiquetaAccion == null
+                  ? null
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: EnlaceAlta(
+                        key: ClavesNotasDelLugar.deshacer,
+                        texto: aviso.etiquetaAccion!,
+                        alPresionar: aviso.alAccion,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ...cuerpo,
       ],
