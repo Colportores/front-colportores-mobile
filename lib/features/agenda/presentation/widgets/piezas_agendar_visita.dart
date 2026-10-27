@@ -288,6 +288,8 @@ class ChipsFranja extends StatelessWidget {
                 button: true,
                 label: TextosAgendarVisita.lectorFranja(f.etiqueta, f.rango, elegida: f == elegida),
                 excludeSemantics: true,
+                // Con `excludeSemantics` se descarta la acción del chip: se declara acá.
+                onTap: bloqueado || alElegir == null ? null : () => alElegir!(f),
                 child: ChoiceChip(
                   key: ClavesAgendarVisita.franja(f),
                   label: Text(f.etiqueta),
@@ -390,6 +392,8 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
         button: true,
         excludeSemantics: true,
         label: texto,
+        // Con `excludeSemantics` se descarta la acción del chip: se declara acá.
+        onTap: () => setState(() => _dia = dia),
         child: ChoiceChip(
           key: clave,
           label: Text(texto),

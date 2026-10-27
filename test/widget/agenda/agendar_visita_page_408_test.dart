@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
@@ -186,6 +187,34 @@ void main() {
   });
 
   group('23A·02 · Día y hora', () {
+    testWidgets(
+      'dado el lector de pantalla, cuando se recorren los chips de franja y de día, entonces todos tienen la acción tocar y funciona',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final a = await montarAgendar(tester);
+        final franja = find.byKey(ClavesAgendarVisita.franja(FranjaHoraria.primeraTarde));
+        expect(
+          tester.getSemantics(franja).getSemanticsData().hasAction(SemanticsAction.tap),
+          isTrue,
+        );
+        tester.semantics.tap(find.semantics.byLabel('Primera tarde, 16:30 a 18:00'));
+        await asentarAgendar(tester);
+        expect(tester.widget<ChoiceChip>(franja).selected, isTrue);
+
+        await _abrirHoja(tester);
+        for (var i = 0; i < diasDeAtajo; i++) {
+          final semanticaDia = tester.getSemantics(find.byKey(ClavesAgendarVisita.dia(i)));
+          expect(semanticaDia.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+        }
+        tester.semantics.tap(find.semantics.byLabel('Lun 26'));
+        await asentarAgendar(tester);
+        await _listo(tester);
+        expect(find.text('Lunes 26/10 · 10:00'), findsOneWidget);
+        expect(a.repo.recibidas, isEmpty);
+        semantica.dispose();
+      },
+    );
+
     testWidgets('dada la hoja, cuando se abre, entonces muestra los días, la hora y la franja', (
       tester,
     ) async {
