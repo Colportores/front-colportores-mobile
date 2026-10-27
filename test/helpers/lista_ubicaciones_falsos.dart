@@ -168,7 +168,6 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     String? motivo,
     String? conservadaId,
     CriterioDuplicadoUbicacion? duplicados,
-    String? justificacion,
   }) async {
     cambiosDeBaja.add((id: id, baja: baja, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoCambioDeBaja;

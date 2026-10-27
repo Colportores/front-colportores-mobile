@@ -40,7 +40,6 @@ mixin UbicacionRepositorySinModificar {
     String? motivo,
     String? conservadaId,
     CriterioDuplicadoUbicacion? duplicados,
-    String? justificacion,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConResumen>> observarListaDelColportor({
@@ -71,7 +70,6 @@ mixin UbicacionLocalSinModificar {
     String? motivo,
     String? conservadaId,
     CriterioDuplicadoUbicacion? duplicados,
-    String? justificacion,
   }) => throw UnimplementedError();
 
   Future<UbicacionModel> actualizar(

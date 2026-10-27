@@ -216,7 +216,6 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     String? motivo,
     String? conservadaId,
     CriterioDuplicadoUbicacion? duplicados,
-    String? justificacion,
   }) async {
     bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoBaja;
