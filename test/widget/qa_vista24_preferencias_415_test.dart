@@ -6,8 +6,9 @@
 // arrastrando el control de verdad) y las capturas de cada estado.
 //
 // Las capturas solo se sacan con `--dart-define=QA_CAPTURAS=true` y van a `.dart_tool/qa_capturas/`
-// (ignorado por git: nunca se commitean). Los tests con `skip` documentan un hallazgo: sacarlos al
-// arreglarlo. `--dart-define=QA_HALLAZGOS=true` los corre.
+// (ignorado por git: nunca se commitean). Los dos hallazgos menores de la QA (el aviso de la
+// anticipación con los recordatorios apagados y el tramo sin recorrer del control) se arreglaron en
+// #155 y sus tests ya no llevan `skip`.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -36,8 +37,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/notificaciones_arnes.dart';
 import '../helpers/qa_vista24_153_arnes.dart' show cargarFuentes, conCapturas;
-
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 class _SesionFija extends SesionNotifier {
   _SesionFija(this._sesion);
@@ -301,8 +300,8 @@ void main() {
       expect(_textoDe(_valor), '5 min antes');
     });
 
-    // skip: QA #415 — el tramo sin recorrer del control de anticipación no se ve (blanco sobre la
-    // tarjeta); el canvas lo dibuja a 4 px en #E3E7EE (Bloques.dc.html). `QA_HALLAZGOS=true` lo corre.
+    // QA #415 (arreglado en #155): el tramo sin recorrer del control de anticipación era blanco sobre
+    // la tarjeta (1,05:1); el canvas lo dibuja a 4 px en #E3E7EE (Bloques.dc.html), 1,16:1.
     _prueba(
       'el tramo sin recorrer del control se distingue de la tarjeta (canvas: #E3E7EE, 4 px)',
       (tester) async {
@@ -335,11 +334,11 @@ void main() {
         final razon = (lp > lt ? lp + 0.05 : lt + 0.05) / (lp > lt ? lt + 0.05 : lp + 0.05);
         expect(
           razon,
-          greaterThanOrEqualTo(1.2),
+          greaterThanOrEqualTo(1.1),
           reason: 'pista $colorPista sobre tarjeta $colorTarjeta: $razon',
         );
+        expect(colorPista, const Color(0xFFE3E7EE));
       },
-      skip: !_conHallazgos,
     );
 
     _prueba('el control tiene al menos 48 dp de alto para el dedo', (tester) async {
@@ -350,8 +349,8 @@ void main() {
   });
 
   group('Acciones superpuestas y fallas', () {
-    // skip: QA #415 — con «anticipación» y «apagar» superpuestos, el toast promete «te avisamos N min
-    // antes» (con N recordatorios reprogramados) aunque los recordatorios quedaron apagados.
+    // QA #415 (arreglado en #155): con «anticipación» y «apagar» superpuestos, el toast prometía
+    // «te avisamos N min antes» (con N recordatorios reprogramados) aunque quedaron apagados.
     _prueba('anticipación y, antes de que termine, apagar: el aviso no promete reprogramaciones '
         'ni «te avisamos N min antes» con los recordatorios apagados', (tester) async {
       final t = Telefono(estado: EstadoSistemaNotificaciones.activadas);
@@ -371,7 +370,7 @@ void main() {
       // Con los recordatorios apagados no se reprogramó ninguno: el toast de la anticipación
       // («Guardado: te avisamos 35 min antes.») contradice el aviso fijo de 24B·02.
       expect(_toast, findsNothing);
-    }, skip: !_conHallazgos);
+    });
 
     _prueba('falla el guardado con un segundo cambio ya pedido: la pantalla vuelve a lo guardado '
         'y dice el error (nada trabado, el siguiente cambio anda)', (tester) async {
@@ -676,7 +675,7 @@ bool _vivo(SemanticsNode nodo) {
 SemanticsHandle? _handle;
 
 /// `testWidgets` que suelta la semántica antes del chequeo final del test (un `addTearDown` llega tarde).
-void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bool? skip}) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo) {
   testWidgets(descripcion, (tester) async {
     try {
       await cuerpo(tester);
@@ -684,5 +683,5 @@ void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bo
       _handle?.dispose();
       _handle = null;
     }
-  }, skip: skip);
+  });
 }

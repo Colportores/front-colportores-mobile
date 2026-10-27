@@ -26,6 +26,7 @@ final class _RepoFalso implements EspacioRepository {
   Espacio? agregado;
   String? idRecibido;
   String? numeroRecibido;
+  String? pisoRecibido;
   DateTime? ahoraRecibido;
   bool? incluirBajasRecibido;
 
@@ -40,11 +41,13 @@ final class _RepoFalso implements EspacioRepository {
   Future<Either<Failure, Espacio>> modificar(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) async {
     llamadas.add('modificar');
     idRecibido = id;
     numeroRecibido = numeroDepto;
+    pisoRecibido = piso;
     ahoraRecibido = ahora;
     return respuestaEscritura!;
   }
@@ -153,6 +156,37 @@ void main() {
       expect(r, _ok(repo.agregado));
     });
 
+    test(
+      'dado un piso con espacios, cuando agrega, lo guarda sin espacios en los bordes',
+      () async {
+        await useCase(
+          const AgregarEspacioParams(
+            id: 'esp-1',
+            ubicacionId: 'ub-1',
+            colportorId: 'col-1',
+            numeroDepto: '101',
+            piso: ' 1 ',
+          ),
+        );
+
+        expect(repo.agregado!.piso, '1');
+      },
+    );
+
+    test('dado un piso en blanco, cuando agrega, el espacio queda sin piso', () async {
+      await useCase(
+        const AgregarEspacioParams(
+          id: 'esp-1',
+          ubicacionId: 'ub-1',
+          colportorId: 'col-1',
+          numeroDepto: '101',
+          piso: '   ',
+        ),
+      );
+
+      expect(repo.agregado!.piso, isNull);
+    });
+
     test('dado el número en blanco y sin id, ubicación ni colportor, cuando agrega, devuelve '
         'la validación de cada campo y no llama al repositorio', () async {
       final r = await useCase(
@@ -225,6 +259,16 @@ void main() {
       expect(repo.numeroRecibido, '5C');
       expect(repo.ahoraRecibido, t0);
       expect(r, _ok(espacio(numeroDepto: '5C')));
+    });
+
+    test('dado un piso, cuando modifica, lo pasa limpio; en blanco lo deja sin piso', () async {
+      repo.respuestaEscritura = _ok(espacio());
+
+      await useCase(const ModificarEspacioParams(id: 'esp-1', numeroDepto: '5C', piso: ' 2 '));
+      expect(repo.pisoRecibido, '2');
+
+      await useCase(const ModificarEspacioParams(id: 'esp-1', numeroDepto: '5C', piso: ' '));
+      expect(repo.pisoRecibido, isNull);
     });
 
     test(

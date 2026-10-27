@@ -375,7 +375,11 @@ void main() {
     testWidgets('dado «Mostrar bajas» activo, entonces la baja se ve con su etiqueta y sin flecha, '
         'no abre la ubicación (se reactiva); el contador suma las bajas', (tester) async {
       final abiertas = <String>[];
-      await montarLista(tester, repo: RepoListaFalso(conBaja), alAbrir: abiertas.add);
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(conBaja),
+        alAbrir: (id, _) => abiertas.add(id),
+      );
       expect(find.text('Gral. Flores 1500'), findsNothing);
       expect(find.text('3 de 3'), findsOneWidget);
 
@@ -1097,13 +1101,38 @@ void main() {
       'dado un destino, cuando toca una fila, entonces avisa cuál; una sola vez por toque',
       (tester) async {
         final abiertas = <String>[];
-        await montarLista(tester, repo: RepoListaFalso(_muestra()), alAbrir: abiertas.add);
+        await montarLista(
+          tester,
+          repo: RepoListaFalso(_muestra()),
+          alAbrir: (id, _) => abiertas.add(id),
+        );
 
         await tester.tap(find.text('Colonia 2020'));
         await tester.pump();
 
         expect(abiertas, ['neg-1']);
         expect(find.text('›'), findsNWidgets(3));
+      },
+    );
+
+    testWidgets(
+      'entrega también la distancia que muestra la fila (el rótulo de la hoja la repite)',
+      (tester) async {
+        final abiertas = <(String, double?)>[];
+        await montarLista(
+          tester,
+          repo: RepoListaFalso([
+            filaLista('casa-1', calle: 'Rivadavia', numero: '100', metrosAlNorte: 40),
+          ]),
+          alAbrir: (id, distancia) => abiertas.add((id, distancia)),
+        );
+
+        await tester.tap(find.text('Rivadavia 100'));
+        await tester.pump();
+
+        expect(abiertas, hasLength(1));
+        expect(abiertas.single.$1, 'casa-1');
+        expect(abiertas.single.$2, closeTo(40, 1));
       },
     );
 
