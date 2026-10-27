@@ -19,7 +19,7 @@ const _cuerpoEntrevista =
     'casa vuelve a su estado anterior.';
 const _cuerpoCobranza =
     'Queda como cancelada (la ves con el filtro «Canceladas») y se borra el recordatorio.';
-const _noPudimos = 'No pudimos cancelar la agenda. Sigue como estaba. Probá de nuevo.';
+const _noPudimos = 'No pudimos guardar el cambio. La agenda sigue como estaba.';
 
 void main() {
   Future<void> abrirHoja(WidgetTester tester) async {
