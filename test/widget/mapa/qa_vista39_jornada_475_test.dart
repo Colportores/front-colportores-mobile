@@ -131,6 +131,7 @@ void main() {
                     await FlujoRegistrarVisita.abrir(navegador.currentContext!, (
                       ubicacionId: 'ub-1',
                       espacioId: 'esp-1',
+                      agendaId: null,
                     ), colportorId: 'col-1'),
                   );
                 },
