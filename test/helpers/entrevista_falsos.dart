@@ -233,16 +233,25 @@ final class MontajeEntrevista {
   late final EntrevistaEnCursoRota rota = EntrevistaEnCursoRota(almacen);
   var _contador = 0;
 
+  /// Un test de QA cambia con esto un doble por lo real (la base en memoria) sin repetir el override.
+  AgendaRepository? agendaPropia;
+  ResolverDestinoDeEntrevista? destinoPropio;
+  BorradorDeNotaDeEntrevista? borradorPropio;
+
+  /// Más overrides, al final de la lista (de providers que la lista de arriba no nombra).
+  final extra = <Override>[];
+
   List<Override> get overrides => [
     entrevistaEnCursoRepositoryProvider.overrideWithValue(rota),
-    agendaRepositoryProvider.overrideWithValue(agenda),
+    agendaRepositoryProvider.overrideWithValue(agendaPropia ?? agenda),
     ultimaVisitaDelColportorProvider.overrideWithValue(ultimaVisita),
-    destinoDeEntrevistaProvider.overrideWithValue(destino),
-    borradorDeNotaDeEntrevistaProvider.overrideWithValue(borrador),
+    destinoDeEntrevistaProvider.overrideWithValue(destinoPropio ?? destino),
+    borradorDeNotaDeEntrevistaProvider.overrideWithValue(borradorPropio ?? borrador),
     rotuloDeEntrevistaProvider.overrideWith((ref, entrevista) async => rotulo),
     relojEntrevistaProvider.overrideWithValue(() => reloj()),
     relojVisitaProvider.overrideWithValue(() => reloj().toUtc()),
     generadorIdEntrevistaProvider.overrideWithValue(() => 'id-${++_contador}'),
     generadorIdVisitaProvider.overrideWithValue(() => 'idv-${++_contador}'),
+    ...extra,
   ];
 }
