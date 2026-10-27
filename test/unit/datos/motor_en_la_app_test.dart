@@ -46,7 +46,6 @@ final _espacio = EspacioModel.fromJson(const {
   'ubicacion_id': _ubi,
   'numero_depto': null,
   'piso': null,
-  'descripcion': null,
   'created_at': '2026-10-16T12:00:00.000Z',
   'updated_at': '2026-10-16T12:00:00.000Z',
   'created_by': 'col-1',

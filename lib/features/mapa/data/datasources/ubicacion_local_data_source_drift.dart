@@ -609,7 +609,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: e.ubicacionId,
     numeroDepto: Value(e.numeroDepto),
     piso: Value(e.piso),
-    descripcion: Value(e.descripcion),
     createdAt: e.auditoria.createdAt,
     updatedAt: e.auditoria.updatedAt,
     createdBy: Value(e.auditoria.createdBy),
@@ -781,7 +780,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: fila.ubicacionId,
     numeroDepto: fila.numeroDepto,
     piso: fila.piso,
-    descripcion: fila.descripcion,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
