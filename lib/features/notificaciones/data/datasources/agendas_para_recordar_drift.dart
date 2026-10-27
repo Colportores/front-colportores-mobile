@@ -69,8 +69,10 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
   }
 
   /// Si el recordatorio de [agenda] valía a la hora de su aviso (HU-NOT-005, #416):
-  /// - `PROGRAMADA`: la agenda no se guardó ni se cambió después del aviso (si no, esa visita nunca
-  ///   tuvo recordatorio: «Falta menos de N min para la visita: no hay recordatorio»).
+  /// - `PROGRAMADA`: la agenda ya existía a la hora del aviso (`created_at`); si se guardó después,
+  ///   esa visita nunca tuvo recordatorio: «Falta menos de N min para la visita: no hay
+  ///   recordatorio». Editarla después del aviso (una nota, un cambio que llega por sync) no la
+  ///   descarta (decisión del 27/10, QA P2).
   /// - `CUMPLIDA` / `NO_CUMPLIDA`: ya existía a la hora del aviso y su resultado se guardó después
   ///   (el instante de la visita que la cumple o, sin ella, el último cambio de la agenda). Una
   ///   `CANCELADA` nunca cuenta.
@@ -80,7 +82,7 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
     Map<String, DateTime> resultados,
   ) {
     final avisoEn = agenda.fechaProgramada.subtract(anticipacion);
-    if (agenda.estado == EstadoAgenda.programada.codigo) return agenda.updatedAt.isBefore(avisoEn);
+    if (agenda.estado == EstadoAgenda.programada.codigo) return agenda.createdAt.isBefore(avisoEn);
     final resultadoEn = resultados[agenda.visitaId] ?? agenda.updatedAt;
     return agenda.createdAt.isBefore(avisoEn) && resultadoEn.isAfter(avisoEn);
   }

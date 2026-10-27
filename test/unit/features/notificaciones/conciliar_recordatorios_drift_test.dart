@@ -205,6 +205,17 @@ void main() {
       expect(await ids(), isEmpty);
     });
 
+    test('dado una agenda programada que se editó después del aviso (una nota, un cambio por '
+        'sync), la devuelve igual: el recordatorio sí sonó', () async {
+      await insertarAgenda(db, agenda('editada'));
+      await (db.update(db.agendas)..where((a) => a.id.equals('editada'))).write(
+        AgendasCompanion(updatedAt: Value(DateTime.utc(2026, 10, 27, 14, 50))),
+      );
+      await insertarAgenda(db, agenda('tarde', guardada: DateTime.utc(2026, 10, 27, 14, 40)));
+
+      expect(await ids(), ['editada']);
+    });
+
     test('dado otra anticipación, el aviso cae en otra hora', () async {
       await insertarAgenda(db, agenda('age-1'));
 
