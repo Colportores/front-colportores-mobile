@@ -456,6 +456,20 @@ void main() {
       expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1","insc-2":null}');
     });
 
+    test(
+      'conserva las preferencias de los recordatorios (HU-NOT-004) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+        await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '90');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+        expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '90');
+      },
+    );
+
     test('conserva lo contestado sobre las notificaciones (HU-NOT-001): recuperar los datos no '
         'vuelve a pedir el permiso ni a mostrar el aviso cerrado', () async {
       final dek = custodia.generarDek();
@@ -676,6 +690,28 @@ void main() {
       expect(almacen.contenido.containsKey(ClaveSegura.permisoNotificaciones), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.avisoNotificacionesCerrado), isFalse);
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también las preferencias de los recordatorios (HU-NOT-004)', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.recordatoriosActivados), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.anticipacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca las preferencias de los recordatorios', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+      expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '60');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {

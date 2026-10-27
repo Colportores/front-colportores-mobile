@@ -106,7 +106,17 @@ enum ClaveSegura {
 
   /// Marca de que la persona cerró con la ✕ el aviso «Notificaciones desactivadas» de Hoy (24A·03):
   /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
-  avisoNotificacionesCerrado('notifications_banner_closed');
+  avisoNotificacionesCerrado('notifications_banner_closed'),
+
+  /// «Recordatorios de agenda» (HU-NOT-004, vista 24 grupo B): `0` si los apagó; sin la clave (o con
+  /// cualquier otro valor) están prendidos. En el S8 las preferencias no suben al servidor. No es
+  /// secreto ni dato personal; se conserva al recuperar los datos y se borra con el borrado de datos
+  /// locales.
+  recordatoriosActivados('reminders_enabled'),
+
+  /// «Anticipación» de los recordatorios, en minutos (de 5 a 120; sin la clave, 30). Mismo trato que
+  /// [recordatoriosActivados].
+  anticipacionRecordatorios('reminders_lead_minutes');
 
   const ClaveSegura(this.id);
 

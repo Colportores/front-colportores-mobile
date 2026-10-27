@@ -24,6 +24,7 @@ final class RecordatoriosLocales implements Recordatorios, ToquesDeRecordatorios
     required this._motor,
     required this._permiso,
     this._anticipacion = const AnticipacionFija(),
+    this._activados = const RecordatoriosSiempreActivados(),
     DateTime Function()? ahora,
     AppLogger? logger,
   }) : _ahora = ahora ?? DateTime.now,
@@ -32,6 +33,7 @@ final class RecordatoriosLocales implements Recordatorios, ToquesDeRecordatorios
   final MotorDeAvisos _motor;
   final PermisoNotificacionesSistema _permiso;
   final AnticipacionRecordatorios _anticipacion;
+  final RecordatoriosActivados _activados;
   final DateTime Function() _ahora;
   final AppLogger _log;
 
@@ -81,6 +83,11 @@ final class RecordatoriosLocales implements Recordatorios, ToquesDeRecordatorios
 
   Future<ResultadoRecordatorio> _programar(RecordatorioDeVisita visita) async {
     final id = idDeAviso(visita.agendaId);
+    if (!await _estanActivados()) {
+      // Apagados: ni se programa ni queda un aviso viejo sonando.
+      await _cancelarSinFallar(id, visita.agendaId, 'RECORDATORIO_APAGADOS');
+      return ResultadoRecordatorio.apagados;
+    }
     final minutos = await _minutos();
     final avisarEn = visita.fechaProgramada.subtract(Duration(minutes: minutos));
     if (!avisarEn.isAfter(_ahora())) {
@@ -115,6 +122,22 @@ final class RecordatoriosLocales implements Recordatorios, ToquesDeRecordatorios
     return await puedeAvisar()
         ? ResultadoRecordatorio.programado
         : ResultadoRecordatorio.sinPermiso;
+  }
+
+  /// Sin poder leer la preferencia se asume prendida: es mejor avisar de más que dejar a alguien sin
+  /// recordatorio sin saberlo.
+  Future<bool> _estanActivados() async {
+    try {
+      return await _activados.estan();
+    } on Object catch (e) {
+      _log.warn(
+        LogModulo.agenda,
+        'RECORDATORIO_PREFERENCIA',
+        'no se pudo leer si los recordatorios están activados; se asume que sí',
+        {'error': e.runtimeType.toString()},
+      );
+      return true;
+    }
   }
 
   Future<int> _minutos() async {
