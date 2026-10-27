@@ -5,8 +5,8 @@ import '../../../agenda/domain/entities/recordatorio_de_visita.dart';
 abstract interface class AgendasConAvisoVencido {
   /// Las agendas de [colportorId], sin baja, cuyo aviso (la visita menos [anticipacionMinutos]) cae
   /// después de [desde] y hasta [hasta] inclusive, y cuyo recordatorio **valía a la hora del
-  /// aviso**: una `PROGRAMADA` que ya existía y no se cambió después (una agenda guardada con menos
-  /// tiempo que la anticipación nunca tuvo recordatorio), o una `CUMPLIDA` / `NO_CUMPLIDA` cuyo
+  /// aviso**: una `PROGRAMADA` que ya existía (una agenda guardada con menos tiempo que la
+  /// anticipación nunca tuvo recordatorio; editarla después no la descarta), o una `CUMPLIDA` / `NO_CUMPLIDA` cuyo
   /// resultado se guardó después del aviso. Una `CANCELADA` nunca. Con la dirección que va en el
   /// aviso. Lanza si no se puede leer.
   Future<List<RecordatorioDeVisita>> conAvisoEntre({
