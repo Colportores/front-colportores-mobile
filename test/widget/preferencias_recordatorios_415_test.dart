@@ -44,6 +44,7 @@ final _bajar = find.semantics.byAction(SemanticsAction.decrease);
 const _textoApagados =
     'Dejamos de programar los recordatorios, también los de las visitas que ya agendaste.';
 const _textoError = 'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
+const _textoErrorVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
 
 final _sesion = Sesion(
   usuarioId: 'col-1',
@@ -456,7 +457,8 @@ void main() {
       tester.semantics.performAction(_subir, SemanticsAction.increase);
       await tester.pumpAndSettle();
       expect(_texto(_valor).data, '30 min antes');
-      expect(find.text(_textoError), findsOneWidget);
+      expect(find.text(_textoErrorVarios), findsOneWidget);
+      expect(find.text(_textoError), findsNothing);
       expect(_toast, findsNothing);
 
       telefono.preferencias.fallaAlGuardar = false;
@@ -465,6 +467,41 @@ void main() {
 
       expect(_texto(_valor).data, '35 min antes');
       expect(find.text('Reprogramamos 2 recordatorios: te avisamos 35 min antes.'), findsOneWidget);
+      semantica.dispose();
+    });
+
+    testWidgets('si fallan dos cambios juntos, el aviso dice que volvieron los dos y «Reintentar» '
+        'repite los dos', (tester) async {
+      final telefono = _activado();
+      _conVisitas(telefono, 2);
+      final demora = telefono.preferencias.guardadoDemorado = Completer<void>();
+      final semantica = tester.ensureSemantics();
+      await _abrir(tester, telefono);
+
+      tester.semantics.performAction(_subir, SemanticsAction.increase);
+      await tester.pump();
+      await tester.tap(_interruptor);
+      await tester.pump();
+      telefono.preferencias.fallaAlGuardar = true;
+      demora.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text(_textoErrorVarios), findsOneWidget);
+      expect(_switchEncendido(tester), isTrue);
+      expect(_texto(_valor).data, '30 min antes');
+
+      telefono.preferencias
+        ..fallaAlGuardar = false
+        ..guardadoDemorado = null;
+      await tester.tap(_reintentarGuardar);
+      await tester.pumpAndSettle();
+
+      expect(_errorGuardar, findsNothing);
+      expect(
+        telefono.preferencias.preferencias,
+        const PreferenciasRecordatorios(activados: false, anticipacionMinutos: 35),
+      );
+      expect(_switchEncendido(tester), isFalse);
       semantica.dispose();
     });
 

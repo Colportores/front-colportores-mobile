@@ -154,6 +154,10 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     _ => const [],
   };
 
+  /// El cambio que no se pudo guardar tocaba solo el interruptor (y no la anticipación).
+  static bool _soloElInterruptor(EstadoPreferenciasRecordatorios estado) =>
+      estado.falla?.anticipacionMinutos == estado.preferencias.anticipacionMinutos;
+
   /// Las preferencias de los recordatorios (grupo B). Con el permiso del teléfono apagado se ven a
   /// todo contraste, con el aviso de 24B·04 arriba y sin la opacidad .45 del canvas (decidido el
   /// 27/10, mapa §2: un control tocable a 45 % no llega a AA).
@@ -169,7 +173,10 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
           if (value.falla != null)
             AvisoNotificaciones(
               tono: TonoAviso.error,
-              texto: TextosNotificaciones.errorAlGuardar,
+              // Solo el interruptor: el texto del canvas; si no, el aviso dice que volvió todo.
+              texto: _soloElInterruptor(value)
+                  ? TextosNotificaciones.errorAlGuardar
+                  : TextosNotificaciones.errorAlGuardarVarios,
               textoKey: const Key('pref_error_guardar'),
               textoAccion: TextosNotificaciones.reintentar,
               accionKey: const Key('pref_error_reintentar'),

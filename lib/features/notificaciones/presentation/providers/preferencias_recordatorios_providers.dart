@@ -67,7 +67,8 @@ final class EstadoPreferenciasRecordatorios extends Equatable {
   /// puede guardar, vuelve a como estaba).
   final PreferenciasRecordatorios preferencias;
 
-  /// El último cambio que no se pudo guardar (24B·06), con lo que se quiso dejar, para «Reintentar».
+  /// El último cambio que no se pudo guardar (24B·06), con lo último que se quiso dejar (juntando todo lo
+  /// pedido mientras se guardaba), para «Reintentar».
   final PreferenciasRecordatorios? falla;
 
   @override
@@ -166,9 +167,12 @@ class PreferenciasRecordatoriosNotifier extends AsyncNotifier<EstadoPreferencias
               'PREF_RECORDATORIOS',
               'no se pudo guardar el cambio de las preferencias de los recordatorios',
             );
+            // «Reintentar» repite lo último que se pidió (con todos los cambios que se juntaron
+            // mientras tanto), no solo el que estaba guardándose.
+            final pedido = _deseadas;
             _deseadas = _guardadas;
             state = AsyncData(
-              EstadoPreferenciasRecordatorios(preferencias: _guardadas, falla: objetivo),
+              EstadoPreferenciasRecordatorios(preferencias: _guardadas, falla: pedido),
             );
           },
           (cambio) {

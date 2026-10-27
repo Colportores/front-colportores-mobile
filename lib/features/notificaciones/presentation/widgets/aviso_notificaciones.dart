@@ -77,6 +77,10 @@ abstract final class TextosNotificaciones {
   static const errorAlGuardar =
       'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
 
+  /// 24B·06 cuando lo que no se guardó es la anticipación, o más de un cambio (decidido el 27/10, mapa
+  /// §2: el aviso dice lo que volvió; «Reintentar» repite todo).
+  static const errorAlGuardarVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
+
   /// Los textos de esta sección que el canvas no dibuja (el singular, el «Guardado: …» sin visitas y
   /// el error al leer) quedaron decididos el 27/10 (mapa §2).
   ///

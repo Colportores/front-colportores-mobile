@@ -389,17 +389,31 @@ void main() {
 
       expect(_errorGuardar, findsOneWidget);
       expect(_reintentarGuardar, findsOneWidget);
+      // Decisión del 27/10 (mapa §2): el aviso dice lo que volvió (dos cambios) y «Reintentar» los
+      // repite a los dos.
+      expect(
+        find.text('No pudimos guardar los cambios. Volvieron a como estaban.'),
+        findsOneWidget,
+      );
       expect(_encendido(tester), t.preferencias.preferencias.activados);
       expect(_valorSlider(tester), t.preferencias.preferencias.anticipacionMinutos.toDouble());
 
       t.preferencias
         ..fallaAlGuardar = false
         ..guardadoDemorado = null;
-      await tester.tap(_interruptor);
+      await tester.tap(_reintentarGuardar);
       await tester.pumpAndSettle();
       expect(_errorGuardar, findsNothing);
       expect(_encendido(tester), isFalse);
       expect(t.preferencias.preferencias.activados, isFalse);
+      expect(t.preferencias.preferencias.anticipacionMinutos, 35);
+      expect(_valorSlider(tester), 35);
+
+      // Y el siguiente cambio sigue andando.
+      await tester.tap(_interruptor);
+      await tester.pumpAndSettle();
+      expect(_encendido(tester), isTrue);
+      expect(t.preferencias.preferencias.activados, isTrue);
     });
 
     _prueba('10 toques seguidos al interruptor: lo que se ve es lo que quedó guardado', (
