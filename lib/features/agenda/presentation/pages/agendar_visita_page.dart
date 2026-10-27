@@ -111,6 +111,10 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
   /// La última falla al guardar (23A·06); `null` si no hay.
   Failure? _falla;
 
+  /// La hora que la persona ya confirmó con «Agendar igual». Mientras no cambien el día ni la hora, un
+  /// «Reintentar» tras una falla no vuelve a preguntar; si cambian, la hoja vuelve a aparecer.
+  DateTime? _horaConfirmada;
+
   /// Los ids de la agenda, creados con el primer intento y repetidos en los siguientes.
   IdsAgendarVisita? _ids;
 
@@ -230,6 +234,7 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
     // El primer renglón de la defensa contra el doble toque: la bandera se levanta antes de cualquier
     // `await`, así que el segundo toque ya la ve.
     if (_enviando) return;
+    if (confirmoHoraPasada) _horaConfirmada = _cuando;
     setState(() {
       _enviando = true;
       _falla = null;
@@ -251,7 +256,7 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
           franja: _franja,
           nota: _nota.text,
           direccion: contexto == null ? '' : _direccionDelAviso(contexto),
-          confirmoHoraPasada: confirmoHoraPasada,
+          confirmoHoraPasada: confirmoHoraPasada || _horaConfirmada == _cuando,
         ),
       );
       respuesta.fold((f) => falla = f, (r) => resultado = r);
@@ -341,6 +346,7 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
         ? null
         : ref.watch(personasDelEspacioProvider(widget.espacioId));
     final conFalla = _falla != null;
+    final casaAusente = contexto.hasValue && contexto.value == null;
     final sinPermiso = _puedeAvisar == false && _recordatoriosPrendidos;
     final bloqueadas =
         ref.watch(notificacionesProvider).value?.permiso == EstadoPermisoNotificaciones.bloqueadas;
@@ -392,7 +398,7 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
                       ),
                       const SizedBox(height: 16),
                       _tarjeta(contexto, personas),
-                      if (contexto.hasError || (contexto.hasValue && contexto.value == null)) ...[
+                      if (contexto.hasError || casaAusente) ...[
                         const SizedBox(height: 12),
                         AvisoAlta(
                           color: ColoresAlta.rojo,
@@ -483,13 +489,21 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: BotonAccionPersona(
-                  key: ClavesAgendarVisita.botonAgendar,
-                  etiqueta: conFalla ? TextosAgendarVisita.reintentar : TextosAgendarVisita.agendar,
-                  etiquetaEnviando: TextosAgendarVisita.agendando,
-                  aspectoApagado: false,
-                  enviando: _enviando,
-                  alTocar: () => unawaited(_agendar()),
+                // Con la casa ausente no hay nada que agendar: el botón se apaga y el lector de
+                // pantalla dice por qué.
+                child: Semantics(
+                  hint: casaAusente ? TextosAgendarVisita.casaNoEstaMas : null,
+                  child: BotonAccionPersona(
+                    key: ClavesAgendarVisita.botonAgendar,
+                    etiqueta: conFalla
+                        ? TextosAgendarVisita.reintentar
+                        : TextosAgendarVisita.agendar,
+                    etiquetaEnviando: TextosAgendarVisita.agendando,
+                    aspectoApagado: false,
+                    habilitado: !casaAusente,
+                    enviando: _enviando,
+                    alTocar: () => unawaited(_agendar()),
+                  ),
                 ),
               ),
             ],

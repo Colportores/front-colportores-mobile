@@ -167,7 +167,22 @@ class SelectorTipoAgenda extends StatelessWidget {
         const SizedBox(height: 6),
         SegmentedButton<TipoAgenda>(
           showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(minimumSize: const Size(0, 48)),
+          // El elegido se ve igual con el selector bloqueado (23A·04): pinta navy con texto blanco
+          // (el apagado por defecto lo dejaba blanco sobre claro, a 1,05:1) y así se ve qué tipo se
+          // está guardando.
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (estados) => estados.contains(WidgetState.selected)
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (estados) => estados.contains(WidgetState.selected)
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : ColoresAlta.tinta,
+            ),
+          ),
           segments: const [
             ButtonSegment(
               value: TipoAgenda.entrevista,

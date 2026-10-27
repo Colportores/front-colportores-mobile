@@ -420,6 +420,41 @@ void main() {
     );
 
     testWidgets(
+      'dado Agendar igual con una falla al guardar, cuando se toca Reintentar con la misma hora, entonces no vuelve a preguntar',
+      (tester) async {
+        final repo = AgendaRepositorioQueAgenda()..fallas.add(const FailureInesperado());
+        final a = await montarAgendar(tester, repo: repo);
+        await _hoyALas11(tester);
+        await _tocar(tester, _boton);
+        await _tocar(tester, find.byKey(ClavesAgendarVisita.horaPasadaAgendarIgual));
+        expect(find.byKey(ClavesAgendarVisita.avisoFalla), findsOneWidget);
+        await _tocar(tester, _boton);
+        expect(find.byKey(ClavesAgendarVisita.horaPasadaAgendarIgual), findsNothing);
+        expect(repo.cuantasQuedaron, 1);
+        expect(a.resultados, [true]);
+        expect(a.recordatorios.llamadas, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'dado Agendar igual con una falla al guardar, cuando se cambia la hora y se toca Reintentar, entonces vuelve a preguntar',
+      (tester) async {
+        final repo = AgendaRepositorioQueAgenda()..fallas.add(const FailureInesperado());
+        await montarAgendar(tester, repo: repo);
+        await _hoyALas11(tester);
+        await _tocar(tester, _boton);
+        await _tocar(tester, find.byKey(ClavesAgendarVisita.horaPasadaAgendarIgual));
+        await _abrirHoja(tester);
+        await _repetir(tester, ClavesAgendarVisita.hojaMas, 1);
+        await _listo(tester);
+        expect(find.text('Hoy · 11:05'), findsOneWidget);
+        await _tocar(tester, _boton);
+        expect(find.byKey(ClavesAgendarVisita.horaPasadaAgendarIgual), findsOneWidget);
+        expect(repo.cuantasQuedaron, 0);
+      },
+    );
+
+    testWidgets(
       'dada la pregunta cerrada sin elegir, cuando se vuelve, entonces no se guardó y se puede reintentar',
       (tester) async {
         final a = await montarAgendar(tester);
@@ -948,6 +983,10 @@ void main() {
         find.text('Esta casa ya no está en tu teléfono. Volvé al mapa y elegila de nuevo.'),
         findsOneWidget,
       );
+      final boton = tester.widget<FilledButton>(
+        find.descendant(of: _boton, matching: find.byType(FilledButton)),
+      );
+      expect(boton.onPressed, isNull);
     });
 
     testWidgets(

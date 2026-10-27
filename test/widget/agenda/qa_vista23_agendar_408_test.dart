@@ -559,12 +559,20 @@ void main() {
     );
 
     testWidgets(
-      'dada una casa que no está en la base, cuando se agenda, entonces avisa, no cierra y se puede salir',
+      'dada una casa que no está en la base, cuando se abre, entonces «Agendar» queda deshabilitado, avisa y se puede salir',
       (tester) async {
-        final a = await montar408(tester, repoReal: repo);
-        await tocar408(tester, boton408);
+        final a = await montar408(tester, repoReal: repo, sinCasa: true);
+        final boton = tester.widget<FilledButton>(
+          find.descendant(of: boton408, matching: find.byType(FilledButton)),
+        );
+        expect(boton.onPressed, isNull);
+        expect(
+          find.text('Esta casa ya no está en tu teléfono. Volvé al mapa y elegila de nuevo.'),
+          findsWidgets,
+        );
+        await tester.tap(boton408, warnIfMissed: false);
+        await asentarAgendar(tester);
         expect(a.resultados, isEmpty);
-        expect(find.byKey(ClavesAgendarVisita.avisoFalla), findsOneWidget);
         expect((await tester.runAsync(() => db.select(db.agendas).get()))!, isEmpty);
         // La X sigue disponible: no queda trabada.
         await tocar408(tester, find.byKey(ClavesAgendarVisita.cerrar));

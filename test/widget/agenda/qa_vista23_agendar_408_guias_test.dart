@@ -1,14 +1,12 @@
 // Guías de accesibilidad de Flutter sobre cada estado de «Agendar una visita» (vista 23 A, #408), en
 // 360x640 y 412x915, con texto 1,0 y 2,0. Va aparte del resto del QA: la guía de contraste lee los
 // colores de la captura y con las fuentes reales da falsos negativos (con las cajas de Ahem lee el color
-// de verdad). Los que fallan van con `skip` (`--dart-define=QA_HALLAZGOS=true` los corre).
+// de verdad).
 import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista23_408_arnes.dart';
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _sufijo(Size t, double e) => '${t.width.toInt()}x${t.height.toInt()}_x$e';
 
@@ -42,9 +40,7 @@ void main() {
             await llegarA(tester, estado, tamano: tamano, escala: escala);
             await expectLater(tester, meetsGuideline(textContrastGuideline));
             h.dispose();
-            // skip: QA #408 — en 23A·04 el «Entrevista» elegido queda a 1,05:1 (el segmento apagado pinta
-            // blanco sobre claro) y la persona no ve qué tipo se está guardando.
-          }, skip: estado == Estado408.e04Agendando && !_hallazgos);
+          });
         });
       }
     }
