@@ -536,9 +536,12 @@ void main() {
       await _abrirHojaDeBaja(tester);
       await _elegirMotivo(tester, 'Ya no existe');
 
-      // Dos toques sin `pump` entre medio: prueban la guarda síncrona.
-      await tester.tap(_botonBaja);
-      await tester.tap(_botonBaja, warnIfMissed: false);
+      // Dos toques sin `pump` entre medio, llamando al `onPressed` de ANTES del primero: un
+      // `tester.tap` no llega al segundo (el primero ya apagó el botón al `pump`ear), así que solo
+      // así se prueba la guarda síncrona `_enviando` de la hoja.
+      final alTocar = tester.widget<FilledButton>(_botonBaja).onPressed!;
+      alTocar();
+      alTocar();
       await _asentar(tester);
 
       expect(t.salidas.single, isA<UbicacionBajaRealizada>());
