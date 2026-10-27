@@ -608,6 +608,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     alReintentar: _notificador.reintentar,
                     alActivarGps: () => unawaited(_notificador.activarGps()),
                     alRegistrar: () => unawaited(_abrirAlta()),
+                    colportorId: widget.colportorId,
                   ),
                 ],
               ),

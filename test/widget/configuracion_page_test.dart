@@ -20,8 +20,10 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
+import 'package:colportores_mobile/features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/borrar_datos_locales_page.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/configuracion_page.dart';
+import 'package:colportores_mobile/features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/widgets/hoja_cerrar_sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
@@ -122,6 +124,12 @@ Future<ProviderContainer> _montar(
     ],
   );
   addTearDown(container.dispose);
+  // La pantalla de los tests (800 × 600) no alcanza para ver «Cerrar sesión» sin desplazar con la fila
+  // «Mostrar el aviso de privacidad» (#445): se la alarga, salvo que el test ya haya elegido un tamaño.
+  if (tester.view.physicalSize == const Size(2400, 1800)) {
+    tester.view.physicalSize = const Size(2400, 3000);
+    addTearDown(tester.view.reset);
+  }
   await container.read(sesionProvider.future);
   await container
       .read(sesionProvider.notifier)
@@ -184,6 +192,7 @@ void main() {
       final container = await _montar(tester);
       expect(find.text('ana@example.com'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       expect(
@@ -213,6 +222,7 @@ void main() {
       );
       final container = await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -231,6 +241,7 @@ void main() {
       expect(container.read(sesionProvider).value, isNotNull, reason: 'cancelar no cierra nada');
       expect(find.byType(ConfiguracionPage), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cerrar sesión igual'));
@@ -242,6 +253,7 @@ void main() {
       final container = await _montar(tester);
       _remote.simularSinConexion = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -271,6 +283,7 @@ void main() {
       final container = await _montar(tester, local: local);
       local.fallar = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -292,9 +305,11 @@ void main() {
       _datos.demoraResumen = Completer<void>();
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
       expect(find.byKey(const Key('configuracion_cerrando')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
 
@@ -392,6 +407,7 @@ void main() {
 
         expect(find.byType(ConfiguracionPage), findsOneWidget);
         expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -407,6 +423,7 @@ void main() {
       setUp(() => local = _LocalQueNoBorra());
 
       Future<void> abrirHoja(WidgetTester tester) async {
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
       }
@@ -827,6 +844,7 @@ void main() {
       );
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -843,6 +861,7 @@ void main() {
       final local = _LocalQueNoBorra()..fallar = true;
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -862,6 +881,7 @@ void main() {
       final local = _LocalQueNoBorra()..demora = Completer<void>();
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -942,6 +962,125 @@ void main() {
       expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
       expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Aviso de privacidad (#445) — «Mostrar el aviso de privacidad»', () {
+    final interruptor = find.byKey(const Key('configuracion_aviso_privacidad'));
+
+    bool encendido(WidgetTester tester) => tester.widget<SwitchListTile>(interruptor).value;
+
+    Future<({ProviderContainer container, AvisoPrivacidadEnMemoria repo, String cuenta})> abrir(
+      WidgetTester tester, {
+      bool escondidoAntes = false,
+      void Function(AvisoPrivacidadEnMemoria repo)? preparar,
+    }) async {
+      final repo = AvisoPrivacidadEnMemoria();
+      preparar?.call(repo);
+      final container = await _montar(
+        tester,
+        extras: [avisoPrivacidadRepositoryProvider.overrideWithValue(repo)],
+      );
+      final cuenta = container.read(sesionProvider).value!.usuarioId;
+      if (escondidoAntes) {
+        await repo.ocultar(cuenta);
+        container.invalidate(avisoPrivacidadOcultoProvider(cuenta));
+        await tester.pumpAndSettle();
+      }
+      return (container: container, repo: repo, cuenta: cuenta);
+    }
+
+    testWidgets('por defecto el aviso se muestra: el interruptor está encendido y dice qué hace', (
+      tester,
+    ) async {
+      await abrir(tester);
+
+      expect(find.text('Mostrar el aviso de privacidad'), findsOneWidget);
+      expect(
+        find.text(
+          'Sale cuando agregás una persona o una nota, para recordarte que esos datos solo viven en tu celular.',
+        ),
+        findsOneWidget,
+      );
+      expect(encendido(tester), isTrue);
+    });
+
+    testWidgets('apagarlo esconde el aviso de esta cuenta y lo guarda', (tester) async {
+      final a = await abrir(tester);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(encendido(tester), isFalse);
+      expect(a.repo.ocultas, {a.cuenta});
+    });
+
+    testWidgets('si la cuenta lo había escondido, el interruptor aparece apagado y encenderlo lo '
+        'vuelve a mostrar', (tester) async {
+      final a = await abrir(tester, escondidoAntes: true);
+      expect(encendido(tester), isFalse);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(encendido(tester), isTrue);
+      expect(a.repo.ocultas, isEmpty);
+    });
+
+    testWidgets('falla a mitad: avisa que no se guardó, el interruptor queda como estaba y se '
+        'puede reintentar', (tester) async {
+      final a = await abrir(tester, preparar: (repo) => repo.fallaAlEscribir = true);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('configuracion_aviso_privacidad_falla')), findsOneWidget);
+      expect(find.text('No pudimos guardar el cambio. Probá de nuevo.'), findsOneWidget);
+      expect(encendido(tester), isTrue, reason: 'no cambió nada');
+      expect(a.repo.ocultas, isEmpty);
+      expect(
+        tester.widget<SwitchListTile>(interruptor).onChanged,
+        isNotNull,
+        reason: 'nada quedó trabado',
+      );
+
+      a.repo.fallaAlEscribir = false;
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+      expect(encendido(tester), isFalse);
+      expect(a.repo.ocultas, {a.cuenta});
+    });
+
+    testWidgets('doble toque: mientras guarda el interruptor se apaga y se guarda una sola vez', (
+      tester,
+    ) async {
+      final compuerta = Completer<void>();
+      final a = await abrir(tester, preparar: (repo) => repo.compuerta = compuerta);
+
+      await tester.tap(interruptor);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(interruptor).onChanged, isNull);
+      await tester.tap(interruptor, warnIfMissed: false);
+      await tester.pump();
+
+      compuerta.complete();
+      await tester.pumpAndSettle();
+
+      expect(a.repo.escrituras, 1);
+      expect(encendido(tester), isFalse);
+    });
+
+    testWidgets('a 360 px y texto 2.0 no desborda y el interruptor mide al menos 48', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 740));
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await abrir(tester);
+      await tester.scrollUntilVisible(interruptor, 200, scrollable: find.byType(Scrollable).first);
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(interruptor).height, greaterThanOrEqualTo(48));
     });
   });
 }

@@ -760,9 +760,19 @@ void main() {
           100,
           scrollable: find.byType(Scrollable).first,
         );
+        // El aviso de privacidad ahora lleva «No volver a mostrar»: la lista es más alta y el último
+        // renglón puede quedar bajo el botón fijo: se lo trae a la vista y se espera al fotograma siguiente.
+        await tester.ensureVisible(find.text('Ver borradas (1)'));
+        await asentar(tester);
         await tester.tap(find.text('Ver borradas (1)'));
         await asentar(tester);
 
+        // Con el aviso más alto (lleva «No volver a mostrar»), «Restaurar» queda más abajo en la lista.
+        await tester.scrollUntilVisible(
+          find.text('Restaurar'),
+          100,
+          scrollable: find.byType(Scrollable).first,
+        );
         expect(tester.takeException(), isNull);
         expect(find.text('Restaurar'), findsOneWidget);
       },

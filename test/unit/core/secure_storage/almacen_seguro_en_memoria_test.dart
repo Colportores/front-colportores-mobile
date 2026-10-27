@@ -104,6 +104,7 @@ void main() {
       expect(ClaveSegura.zonasAvisadas.id, 'zones_notified');
       expect(ClaveSegura.permisoNotificaciones.id, 'notifications_permission');
       expect(ClaveSegura.avisoNotificacionesCerrado.id, 'notifications_banner_closed');
+      expect(ClaveSegura.avisoPrivacidadOculto.id, 'privacy_notice_hidden');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });
