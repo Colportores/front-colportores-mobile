@@ -498,6 +498,22 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
       );
 }
 
+/// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
+/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
+/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
+/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
+/// Se puede reintentar.
+///
+/// El texto es el del canvas (26·10).
+final class FailurePreciosNoDisponibles extends Failure {
+  const FailurePreciosNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer los precios guardados en tu teléfono.',
+        codigo: 'CAT_PRECIOS_NO_DISPONIBLES',
+      );
+}
+
 /// No se pudo revisar lo que la ubicación tiene pendiente (visitas, ventas, cobranza) antes de ofrecer
 /// «Dar de baja» (vista 09, HU-UBI-005): la base local no se pudo leer o todavía no existe de dónde
 /// leerlo (`PendientesUbicacionSinFuente`, hasta los adaptadores reales de

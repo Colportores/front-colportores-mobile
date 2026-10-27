@@ -7,6 +7,8 @@ import '../../../agenda/presentation/pages/agenda_page.dart';
 import '../../../auth/domain/entities/sesion.dart';
 import '../../../auth/presentation/providers/avisos_zona_notifier.dart';
 import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
+import '../../../catalogo/presentation/formato_precios.dart' show TextosPrecios;
+import '../../../catalogo/presentation/pages/precios_page.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
@@ -73,6 +75,24 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       }
     } finally {
       _abriendoUbicacion = false;
+    }
+  }
+
+  /// Evita abrir dos veces «Precios» con dos toques seguidos.
+  var _abriendoPrecios = false;
+
+  /// «Precios» (vista 26, HU-CAT-006), desde la pestaña Ventas. Como Configuración, devuelve la
+  /// pestaña elegida en su barra inferior, o `null` con «volver».
+  Future<void> _abrirPrecios() async {
+    if (_abriendoPrecios) return;
+    _abriendoPrecios = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(PreciosPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoPrecios = false;
     }
   }
 
@@ -167,6 +187,12 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.agenda,
                     ),
+                    // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
+                    PestanaInicio.ventas => PestanaProvisoria(
+                      key: Key('pestana_${pestana.name}'),
+                      pestana: pestana,
+                      alAbrirPrecios: () => unawaited(_abrirPrecios()),
+                    ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },
               ],
@@ -243,9 +269,13 @@ class _EstadoTeclado extends InheritedWidget {
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
 /// pronto.», sin contenido inventado. Se reemplaza en el issue de cada HU.
 class PestanaProvisoria extends StatelessWidget {
-  const PestanaProvisoria({super.key, required this.pestana});
+  const PestanaProvisoria({super.key, required this.pestana, this.alAbrirPrecios});
 
   final PestanaInicio pestana;
+
+  /// Solo Ventas: abre la consulta de precios (vista 26, «Ventas → Precios»), que es lo único que
+  /// tiene esa pestaña hasta que llegue su pantalla (vista 27). `null`: sin botón.
+  final VoidCallback? alAbrirPrecios;
 
   @override
   Widget build(BuildContext context) {
@@ -271,6 +301,13 @@ class PestanaProvisoria extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (alAbrirPrecios != null)
+                OutlinedButton(
+                  key: const Key('ventas_precios'),
+                  onPressed: alAbrirPrecios,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosPrecios.titulo),
+                ),
             ],
           ),
         ),
