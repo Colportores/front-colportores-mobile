@@ -106,12 +106,12 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
         .anticipacionMinutos;
     final reprogramados = await accion(notificador);
     if (reprogramados == null || !mounted) return;
-    final minutos = ref
-        .read(preferenciasRecordatoriosProvider)
-        .value
-        ?.preferencias
-        .anticipacionMinutos;
+    final preferencias = ref.read(preferenciasRecordatoriosProvider).value?.preferencias;
+    final minutos = preferencias?.anticipacionMinutos;
     if (minutos == null || (!siempre && minutos == antes)) return;
+    // Si mientras se guardaba se apagaron los recordatorios (dos cambios que comparten el
+    // guardado), no se reprogramó ninguno: el aviso fijo de 24B·02 ya lo dice y este lo contradiría.
+    if (!preferencias!.activados) return;
     mensajero
       ..clearSnackBars()
       ..showSnackBar(
