@@ -43,6 +43,7 @@ import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
+import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
 import 'plataforma/identidad_instalacion.dart';
 
@@ -209,6 +210,7 @@ Future<void> main() async {
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
           sondaArchivoTilesProvider.overrideWithValue(tiles.sonda),
+          medidorEspacioDiscoProvider.overrideWithValue(tiles.espacio),
         ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de

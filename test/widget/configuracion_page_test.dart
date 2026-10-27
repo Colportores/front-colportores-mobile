@@ -27,6 +27,9 @@ import 'package:colportores_mobile/features/configuracion/presentation/providers
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/widgets/hoja_cerrar_sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
+import 'package:colportores_mobile/features/tiles/presentation/providers/mapas_offline_providers.dart';
+import 'package:colportores_mobile/features/tiles/presentation/providers/tiles_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -35,6 +38,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/db_local_repository_en_memoria.dart';
+import '../helpers/mapa_descargas_arnes.dart';
+import '../helpers/tiles_falsos.dart';
 
 const _resumenBase = ResumenDatosLocales(
   personas: 12,
@@ -364,12 +369,91 @@ void main() {
         expect(find.text('A'), findsOneWidget);
       });
 
-      testWidgets('la fila «Mapas offline» no está hasta que exista la pantalla (#190)', (
+      testWidgets(
+        'vista 35 (#132): la sección «Mapas» con la fila «Mapas offline» va entre «Tu cuenta» y «Privacidad y datos»',
+        (tester) async {
+          await _montar(tester);
+
+          expect(find.text('Mapas'), findsOneWidget);
+          expect(find.text('Mapas offline'), findsOneWidget);
+          final cuenta = tester.getTopLeft(find.text('Tu cuenta')).dy;
+          final mapas = tester.getTopLeft(find.text('Mapas')).dy;
+          final privacidad = tester.getTopLeft(find.text('Privacidad y datos')).dy;
+          expect(mapas, greaterThan(cuenta));
+          expect(mapas, lessThan(privacidad));
+        },
+      );
+
+      testWidgets('la fila «Mapas offline» no afirma nada mientras no se sabe qué hay descargado', (
         tester,
       ) async {
         await _montar(tester);
 
-        expect(find.text('Mapas offline'), findsNothing);
+        final resumen = tester.widget<Text>(
+          find.byKey(const Key('configuracion_mapas_offline_resumen')),
+        );
+        expect(resumen.data, isEmpty);
+      });
+
+      testWidgets(
+        'la fila «Mapas offline» dice «Sin mapas descargados» y luego el mapa que se baja',
+        (tester) async {
+          final repositorio = RepositorioTilesEnMemoria();
+          await _montar(
+            tester,
+            extras: [paquetesTilesRepositoryProvider.overrideWithValue(repositorio)],
+          );
+          Text resumen() =>
+              tester.widget<Text>(find.byKey(const Key('configuracion_mapas_offline_resumen')));
+
+          expect(resumen().data, 'Sin mapas descargados');
+
+          await repositorio.registrar(descargadoDe(paqueteDe(bytesDePrueba(1500000))));
+          await tester.pumpAndSettle();
+
+          expect(resumen().data, 'Centro descargado · 2 MB');
+
+          await repositorio.registrar(
+            descargadoDe(
+              paqueteDe(bytesDePrueba(3000000), id: 'zona-2', nivel: NivelCobertura.zona),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(resumen().data, '2 mapas descargados · 5 MB');
+        },
+      );
+
+      testWidgets('tocar la fila «Mapas offline» abre la pantalla de la vista 35 y se vuelve', (
+        tester,
+      ) async {
+        final arnes = ArnesMapa(servirPaqueteMontevideo: false);
+        addTearDown(() => unawaited(arnes.cerrar()));
+        await _montar(
+          tester,
+          extras: [
+            ...arnes.overrides,
+            medidorEspacioDiscoProvider.overrideWithValue(EspacioFalso()),
+          ],
+        );
+
+        await tester.tap(find.byKey(const Key('configuracion_mapas_offline')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('mapas_offline_pagina')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('mapas_offline_atras')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('configuracion_mapas_offline')), findsOneWidget);
+      });
+
+      testWidgets('con la cuenta pendiente de asignación la sección «Mapas» no se muestra', (
+        tester,
+      ) async {
+        await _montar(tester, estado: EstadoCuenta.pendienteAsignacion);
+
+        expect(find.byKey(const Key('configuracion_mapas_offline')), findsNothing);
         expect(find.text('Mapas'), findsNothing);
       });
 

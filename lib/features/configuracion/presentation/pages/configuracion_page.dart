@@ -16,6 +16,9 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
+import '../../../tiles/presentation/pages/mapas_offline_page.dart';
+import '../../../tiles/presentation/providers/resumen_mapas_providers.dart';
+import '../../../tiles/presentation/textos_mapas_offline.dart';
 import '../providers/aviso_privacidad_providers.dart';
 import '../providers/nombre_cuenta_provider.dart';
 import '../widgets/hoja_cerrar_sesion.dart';
@@ -23,9 +26,10 @@ import 'borrar_datos_locales_page.dart';
 
 /// Configuración de la cuenta en este teléfono (vista 16 del diseño): «Tu cuenta», «Privacidad y
 /// datos» con el borrado de datos locales (HU-AUTH-010) y «Cerrar sesión» al pie (HU-AUTH-006),
-/// con la confirmación en una hoja inferior. La fila «Mapas offline» no se muestra hasta que exista
-/// esa pantalla (#190). La barra de pestañas es la de la pantalla principal; con una cuenta que
-/// todavía no accede a los módulos de campo no se muestra (vista 18 la arma bloqueada).
+/// con la confirmación en una hoja inferior. La sección «Mapas» lleva a «Mapas offline» (vista 35) y
+/// se oculta con la cuenta pendiente de asignación. La barra de pestañas es la de la pantalla
+/// principal; con una cuenta que todavía no accede a los módulos de campo no se muestra (vista 18
+/// la arma bloqueada).
 class ConfiguracionPage extends ConsumerStatefulWidget {
   const ConfiguracionPage({super.key});
 
@@ -282,6 +286,30 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ),
                         ],
                       ),
+                      // La sección «Mapas» (vista 16): con la cuenta pendiente de asignación se oculta
+                      // (vista 16, nota; vista 18).
+                      if (accede) ...[
+                        const SizedBox(height: 24),
+                        const _TituloSeccion(TextosMapasOffline.seccionConfiguracion),
+                        const SizedBox(height: 8),
+                        _Tarjeta(
+                          children: [
+                            ListTile(
+                              key: const Key('configuracion_mapas_offline'),
+                              minVerticalPadding: 12,
+                              leading: const Icon(Icons.map_outlined),
+                              title: const Text(TextosMapasOffline.filaConfiguracion),
+                              subtitle: Text(
+                                ref.watch(resumenMapasDescargadosProvider),
+                                key: const Key('configuracion_mapas_offline_resumen'),
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () =>
+                                  unawaited(Navigator.of(context).push(MapasOfflinePage.ruta())),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),
