@@ -71,6 +71,7 @@ class SyncStatus {
     this.lastPushAt,
     this.lastPullAt,
     this.lastBackupAt,
+    this.lastPushNetwork,
     this.pullPausedReason,
     this.dataSaver = false,
     this.unauthorizedSince,
@@ -101,13 +102,20 @@ class SyncStatus {
   /// app mientras ese job siga en la cola (los `DONE` se compactan a los 7 días).
   final DateTime? lastPushAt;
 
-  /// La última vez que se bajó el delta con éxito (HU-SYNC-007). Vive en
-  /// memoria: hasta el primer pull después de abrir la app es `null`.
+  /// La última vez que se bajó el delta con éxito (HU-SYNC-007). Se guarda en
+  /// el teléfono ([SyncMetaPort]): sobrevive a cerrar la app y a reiniciar el
+  /// celular. `null` solo si todavía no hubo ninguna (instalación nueva).
   final DateTime? lastPullAt;
 
-  /// El último backup que terminó bien desde que se abrió la app (HU-SYNC-007).
-  /// `null` hasta que corra uno.
+  /// El último backup que terminó bien (HU-SYNC-007). Se guarda en el teléfono
+  /// como [lastPullAt]. `null` solo si todavía no hubo ninguno.
   final DateTime? lastBackupAt;
+
+  /// Con qué red salió el último envío ([lastPushAt]): Wi-Fi o datos móviles.
+  /// La vista de estado lo dibuja como «· por datos». `null` si no se sabe: un
+  /// envío anterior a que el motor lo anotara, o un motor sin puerto de
+  /// conectividad. Nunca se inventa un Wi-Fi.
+  final SyncNetwork? lastPushNetwork;
 
   /// Por qué el último ciclo no bajó el delta, o `null` si lo bajó. Hoy es
   /// [kDataSaverOnMobile]: el ahorro de datos está activo y no hay Wi-Fi
@@ -137,9 +145,54 @@ class SyncStatus {
       'invalid: $invalid, blocked: $blocked, waiting: $waiting, '
       'lastSuccessAt: $lastSuccessAt, lastPushAt: $lastPushAt, '
       'lastPullAt: $lastPullAt'
+      '${lastPushNetwork == null ? '' : ', red del envío: ${lastPushNetwork!.name}'}'
       '${pullPausedReason == null ? '' : ', pull en pausa: $pullPausedReason'}'
       '${unauthorizedSince == null ? '' : ', sin sesión desde '
           '$unauthorizedSince'})';
+}
+
+/// Con qué red salió un envío (HU-SYNC-007, canvas 25-08).
+enum SyncNetwork {
+  wifi,
+
+  /// Datos móviles.
+  mobile;
+
+  /// Cómo se guarda en [SyncMetaPort].
+  String get wire => name;
+
+  /// Lo contrario de [wire]; `null` si el valor no es de este motor.
+  static SyncNetwork? fromWire(String? valor) {
+    for (final red in values) {
+      if (red.name == valor) return red;
+    }
+    return null;
+  }
+}
+
+/// Lo que el motor se acuerda entre una apertura de la app y la siguiente
+/// (HU-SYNC-007): las fechas de la última bajada y del último respaldo, y el
+/// último envío con la red por la que salió.
+///
+/// Es de **solo sumar** (regla R1): cada campo `null` es «todavía no hubo» y
+/// nunca borra uno guardado.
+class SyncMeta {
+  const SyncMeta({
+    this.lastPullAt,
+    this.lastBackupAt,
+    this.lastPushAt,
+    this.lastPushNetwork,
+  });
+
+  final DateTime? lastPullAt;
+  final DateTime? lastBackupAt;
+  final DateTime? lastPushAt;
+  final SyncNetwork? lastPushNetwork;
+
+  @override
+  String toString() =>
+      'SyncMeta(lastPullAt: $lastPullAt, lastBackupAt: $lastBackupAt, '
+      'lastPushAt: $lastPushAt, lastPushNetwork: $lastPushNetwork)';
 }
 
 /// El motivo con el que un ciclo deja el pull esperando por el ahorro de datos

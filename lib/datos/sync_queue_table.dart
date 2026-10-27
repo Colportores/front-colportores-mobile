@@ -101,3 +101,25 @@ class SyncWatermarks extends Table {
   @override
   Set<Column<Object>> get primaryKey => {scope};
 }
+
+/// `sync_meta`: lo que el motor se acuerda entre una apertura de la app y la siguiente (HU-SYNC-007,
+/// #486): cuándo bajó el delta por última vez, cuándo hizo el último respaldo y por qué red salió el
+/// último envío. Es lo que muestra la vista de estado de sync después de reiniciar el celular.
+///
+/// **Aparte de [SyncWatermarks] a propósito**: un watermark es un cursor del pull que se le manda al
+/// servidor; esto es información para la pantalla y no sale del teléfono. Una fila por dato
+/// (`last_pull_at`, `last_backup_at`, `last_push_at`, `last_push_network`), con la fecha en ISO 8601
+/// UTC y la red por su nombre (`wifi` o `mobile`): se lee a ojo en un dump de sqlite. Solo local e
+/// infraestructura: no es una entidad del contrato, no se registra en el `SpecRegistry` y no sube.
+@DataClassName('SyncMetaFila')
+class SyncMetas extends Table {
+  @override
+  String get tableName => 'sync_meta';
+
+  TextColumn get clave => text()();
+
+  TextColumn get valor => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {clave};
+}
