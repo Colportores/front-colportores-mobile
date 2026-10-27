@@ -237,6 +237,10 @@ final Map<String, Armar144> estados144 = {
     await _escribir(t, 'Prefiere que la llamen antes de pasar.');
     await t.tap(find.text('Guardar nota'));
     await asentar(t);
+    // El aviso de privacidad lleva «No volver a mostrar»: al enfocar el campo la lista se desplaza y el
+    // enlace queda recortado por el borde; la guía de tamaño de toque lo mide recortado. Se vuelve arriba.
+    await t.drag(find.byType(SingleChildScrollView), const Offset(0, 800));
+    await asentar(t);
   },
   'editar_nota': (t, c) => montarPantalla144(
     t,

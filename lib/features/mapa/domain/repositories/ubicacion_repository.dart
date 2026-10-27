@@ -129,7 +129,9 @@ abstract interface class UbicacionRepository {
   /// [conservadaId] los espacios de [duplicadaId] (los únicos se funden en el de la conservada), la
   /// conservada pasa a edificio si es una casa y queda con más de un espacio, la duplicada queda de
   /// baja con el motivo `duplicado_de_<conservadaId>` en la auditoría local y se encola el trabajo
-  /// «marcar como duplicado». Ver `UnirDuplicadosUseCase`.
+  /// «marcar como duplicado». Lo que colgaba de un espacio fundido (personas, visitas, agendas) pasa
+  /// al único de la conservada, y el `house_status` de las dos se recalcula en la misma transacción.
+  /// Ver `UnirDuplicadosUseCase`.
   ///
   /// - [conservadaId] no existe, o [duplicadaId] no existe: `Left(FailureUbicacionInexistente)`.
   /// - [conservadaId] de baja: `Left(FailureConservadaDeBaja)`; no cambia nada.

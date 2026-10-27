@@ -439,7 +439,7 @@ void main() {
           expect(e.id, 'esp-nuevo');
           expect(e.ubicacionId, 'ub-1');
           expect(e.numeroDepto, isNull);
-          expect((e.piso, e.descripcion, e.estaBorrada), (null, null, false));
+          expect((e.piso, e.estaBorrada), (null, false));
           expect(e.auditoria.createdAt, t1);
           expect(e.auditoria.updatedAt, repo.escrituras.single.nueva.auditoria.updatedAt);
           expect(e.auditoria.createdBy, 'col-1');

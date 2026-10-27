@@ -73,7 +73,7 @@ abstract interface class UbicacionLocalDataSource {
   ///   `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA`, S17), **dentro de la
   ///   misma transacción** se cuentan los espacios sin baja: con dos o más no escribe nada y lanza
   ///   [UbicacionConEspaciosException]; con exactamente uno, a ese espacio se le quita el
-  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
+  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso` y el resto quedan
   ///   igual) y se encola su `update` con la fila entera, después del de la ubicación. Si ya no
   ///   tenía número, no se escribe ni se encola nada del espacio. Los espacios dados de baja no
   ///   cuentan ni se tocan. Con **ninguno** y con [espacioSiNoTiene] (el caso de uso lo manda al

@@ -7,6 +7,8 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/consulta_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart'
+    show AlAbrirUbicacion;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_reactivar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +49,7 @@ Future<RepoListaFalso> _montarConBajas(
   Size tamano = const Size(390, 844),
   ValueNotifier<bool>? activaCambiante,
   ValueNotifier<bool>? montadaCambiante,
-  ValueChanged<String>? alAbrir,
+  AlAbrirUbicacion? alAbrir,
 }) async {
   final r = repo ?? RepoListaFalso(filas ?? [_activa(), _baja()]);
   await montarLista(
@@ -1057,7 +1059,7 @@ void main() {
     testWidgets('dado que choca y la Lista sabe abrir una ubicación, entonces ofrece «Abrir la '
         'existente» y «Cancelar», y «Abrir la existente» abre la otra casa', (tester) async {
       final abiertas = <String>[];
-      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      final repo = await _montarConBajas(tester, alAbrir: (id, _) => abiertas.add(id));
       repo.fallaAlCambiarBaja = _chocaConRivadavia;
       await _abrirReactivar(tester);
       await _tocar(tester, _botonReactivar);
@@ -1078,7 +1080,7 @@ void main() {
       tester,
     ) async {
       final abiertas = <String>[];
-      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      final repo = await _montarConBajas(tester, alAbrir: (id, _) => abiertas.add(id));
       repo.fallaAlCambiarBaja = _chocaConRivadavia;
       await _abrirReactivar(tester);
       await _tocar(tester, _botonReactivar);
@@ -1094,7 +1096,7 @@ void main() {
       tester,
     ) async {
       final abiertas = <String>[];
-      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      final repo = await _montarConBajas(tester, alAbrir: (id, _) => abiertas.add(id));
       repo.fallaAlCambiarBaja = _chocaConRivadavia;
       await _abrirReactivar(tester);
       await _tocar(tester, _botonReactivar);
@@ -1169,7 +1171,7 @@ void main() {
         '(una carrera: la Lista no deja tocar una unión), entonces dice «No se puede reactivar» con '
         'el texto de la unión y «Abrir la existente» abre la conservada', (tester) async {
       final abiertas = <String>[];
-      final repo = await _montarConBajas(tester, alAbrir: abiertas.add);
+      final repo = await _montarConBajas(tester, alAbrir: (id, _) => abiertas.add(id));
       repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion(conservadaId: 'casa-1');
       await _abrirReactivar(tester);
 
@@ -1195,7 +1197,7 @@ void main() {
       'dado que la baja se unió a otra que ya no está activa (o la Lista no sabe abrirla), '
       'entonces solo ofrece «Entendido»',
       (tester) async {
-        final repo = await _montarConBajas(tester, alAbrir: (_) {});
+        final repo = await _montarConBajas(tester, alAbrir: (_, _) {});
         repo.fallaAlCambiarBaja = const FailureReactivacionDeUnion();
         await _abrirReactivar(tester);
 
@@ -1236,7 +1238,7 @@ void main() {
           tester,
           escala: 2.0,
           tamano: const Size(360, 640),
-          alAbrir: (_) {},
+          alAbrir: (_, _) {},
         );
         const larga = 'Avenida General Don José Gervasio Artigas y Pablo de María 12345 bis';
         repo.fallaAlCambiarBaja = const FailureReactivacionChocaConActiva(
@@ -1282,7 +1284,7 @@ void main() {
           tester,
           tamano: tamano,
           escala: escala,
-          alAbrir: conAbrir ? (_) {} : null,
+          alAbrir: conAbrir ? (_, _) {} : null,
         );
         repo.fallaAlCambiarBaja = _chocaConRivadavia;
         await _abrirReactivar(tester);

@@ -360,7 +360,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
             ayuda: TextosConQuien.ayudaSinPersonas(donde),
           ),
           const SizedBox(height: 16),
-          const AvisoPrivacidadPersona(),
+          AvisoPrivacidadPersona(colportorId: widget.colportorId),
           const SizedBox(height: 16),
           CampoPersona(
             etiqueta: TextosPersonas.etiquetaNombre,
