@@ -30,6 +30,8 @@ Future<void> sembrarUbicacion(
   String tipo = 'CASA',
   double lat = -34.9,
   double lon = -56.16,
+  String? calle,
+  String? numero,
   DateTime? borrada,
 }) => db
     .into(db.ubicaciones)
@@ -37,6 +39,8 @@ Future<void> sembrarUbicacion(
       UbicacionesCompanion.insert(
         id: id,
         tipo: tipo,
+        calle: Value(calle),
+        numero: Value(numero),
         lat: lat,
         lon: lon,
         ciudadId: 'ciu-1',
@@ -70,6 +74,7 @@ Future<void> sembrarVinculo(
   String id = 'ep-1',
   String espacioId = 'esp-1',
   String personaId = 'per-1',
+  String? ubicacionCobranzaAltId,
   DateTime? borrado,
 }) => db
     .into(db.espacioPersonas)
@@ -78,6 +83,7 @@ Future<void> sembrarVinculo(
         id: id,
         espacioId: espacioId,
         personaId: personaId,
+        ubicacionCobranzaAltId: Value(ubicacionCobranzaAltId),
         createdAt: t0,
         updatedAt: t0,
         deletedAt: Value(borrado),
@@ -111,6 +117,7 @@ Agenda agendaDe(
   String? visitaId,
   bool esEstricta = false,
   String? slot,
+  String? ubicacionAlt,
 }) => Agenda(
   id: id,
   espacioId: espacio,
@@ -119,6 +126,7 @@ Agenda agendaDe(
   fechaProgramada: DateTime.utc(2026, 10, 25, 14),
   slotCodigo: slot,
   esEstricta: esEstricta,
+  ubicacionAltId: ubicacionAlt,
   estado: estado,
   colportorId: 'col-1',
   visitaId: visitaId,
