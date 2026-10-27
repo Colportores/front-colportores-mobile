@@ -125,41 +125,34 @@ void main() {
       return {for (final c in cajas) c.top.round()}.length;
     }
 
-    testWidgets('la fecha de una atrasada («25/10») no se parte, de 1,0× a 2,0× salvo 1,3×', (
-      tester,
-    ) async {
+    testWidgets('la fecha de una atrasada («25/10») no se parte, de 1,0× a 2,0×', (tester) async {
       for (var paso = 0; paso <= 10; paso++) {
-        if (paso == 3) continue; // 1,3×: hallazgo, abajo
         final escala = 1 + paso / 10;
         await llegarA(tester, Estado148.atrasadas, escala: escala);
         final texto = find.textContaining('25/10');
         expect(texto, findsOneWidget, reason: '$escala×');
-        // Apilada (más de 1,3×) va «25/10 · 11:00» en una línea; sin apilar, «25/10» y «11:00».
-        expect(lineasDe(tester, texto), escala > 1.3 ? 1 : 2, reason: 'se parte a $escala×');
+        // Apilada (desde 1,3×) va «25/10 · 11:00» en una línea; sin apilar, «25/10» y «11:00».
+        expect(lineasDe(tester, texto), escala >= 1.3 ? 1 : 2, reason: 'se parte a $escala×');
         await tester.pumpWidget(const SizedBox.shrink());
       }
     });
 
-    // skip: QA #148 — con el texto al 130 % (el «Grande» de Android) la hora y la fecha de las
-    // atrasadas se parten letra por letra en 4 líneas («25/1», «0», «11:0», «0») dentro de los 44 dp:
-    // `textoGrande` usa `> 13` y 1,3 × 10 es justo 13, así que no apila. Se ve con QA_HALLAZGOS=true.
-    testWidgets(
-      'la fecha de una atrasada («25/10») no se parte a 1,3× (el «Grande» de Android)',
-      (tester) async {
-        await llegarA(tester, Estado148.atrasadas, escala: 1.3);
-        final texto = find.textContaining('25/10');
+    // QA #148 (arreglado): con el texto al 130 % (el «Grande» de Android) la hora y la fecha de las
+    // atrasadas se partían letra por letra dentro de los 44 dp; ahora la fila apila desde 1,3×.
+    testWidgets('la fecha de una atrasada («25/10») no se parte a 1,3× (el «Grande» de Android)', (
+      tester,
+    ) async {
+      await llegarA(tester, Estado148.atrasadas, escala: 1.3);
+      final texto = find.textContaining('25/10');
 
-        expect(lineasDe(tester, texto), lessThanOrEqualTo(2));
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-      skip: !verHallazgos,
-    );
+      expect(lineasDe(tester, texto), lessThanOrEqualTo(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
 
-    testWidgets('la hora de cada fila («16:00») queda en una línea, de 1,0× a 2,0× salvo 1,3×', (
+    testWidgets('la hora de cada fila («16:00») queda en una línea, de 1,0× a 2,0×', (
       tester,
     ) async {
       for (var paso = 0; paso <= 10; paso++) {
-        if (paso == 3) continue; // 1,3×: hallazgo, abajo
         final escala = 1 + paso / 10;
         await llegarA(tester, Estado148.e01, escala: escala);
         expect(lineasDe(tester, find.textContaining('16:00')), 1, reason: '16:00 a $escala×');
@@ -167,8 +160,8 @@ void main() {
       }
     });
 
-    // skip: QA #148 — con el texto al 130 % (el «Grande» de Android) la hora de TODAS las filas
-    // («16:00») se parte en dos líneas dentro de los 44 dp de su columna. Se ve con QA_HALLAZGOS=true.
+    // QA #148 (arreglado): con el texto al 130 % (el «Grande» de Android) la hora de TODAS las filas
+    // («16:00») se partía en dos líneas dentro de los 44 dp de su columna.
     testWidgets(
       'la hora de cada fila («16:00») queda en una línea a 1,3× (el «Grande» de Android)',
       (tester) async {
@@ -178,7 +171,6 @@ void main() {
         expect(lineasDe(tester, find.textContaining('16:00')), 1);
         await tester.pumpWidget(const SizedBox.shrink());
       },
-      skip: !verHallazgos,
     );
   });
 
@@ -277,12 +269,10 @@ void main() {
     });
   });
 
-  group('Hallazgos de QA (skip: se corren con --dart-define=QA_HALLAZGOS=true)', () {
-    // skip: QA #148 — los cuatro chips de filtro (Todas / Entrevistas / Cobranzas / Estado ▾) quedan
-    // uno debajo del otro, cada uno a todo el ancho, en lugar de una sola fila como en 23B·01 a 23B·09.
-    // Causa: el `Container(alignment: center)` dentro del `Center(widthFactor: 1)` de `ChipAgenda`
-    // se estira al máximo del `Wrap`. A 360×640 con texto 2,0× el encabezado y los chips llenan la
-    // pantalla y no se ve ninguna agenda sin desplazar.
+  group('Hallazgos de QA (el de «+ Agendar» sigue con skip: QA_HALLAZGOS=true)', () {
+    // QA #148 (arreglado): los cuatro chips de filtro quedaban uno debajo del otro, cada uno a todo
+    // el ancho, en lugar de una sola fila como en 23B·01 a 23B·09 (el `Container(alignment)` se
+    // estiraba al ancho del `Wrap`).
     for (final tamano in tamanos) {
       probar(
         'los chips de filtro van en una sola fila (23B·01) a ${tamano.width.toInt()}×${tamano.height.toInt()}',
@@ -296,7 +286,6 @@ void main() {
           expect(cobranzas.top, todas.top, reason: 'Cobranzas debajo de Todas');
           expect(todas.width, lessThan(tamano.width / 2), reason: 'chip a todo el ancho');
         },
-        skip: !verHallazgos,
       );
     }
 

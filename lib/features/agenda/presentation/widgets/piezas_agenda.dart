@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../mapa/domain/entities/estado_casa.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show ColoresAlta, EnlaceAlta;
-import '../../../mapa/presentation/widgets/piezas_lista_ubicaciones.dart'
-    show InsigniaEstadoCasa, textoGrande;
+import '../../../mapa/presentation/widgets/piezas_lista_ubicaciones.dart' show InsigniaEstadoCasa;
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
 import '../../domain/entities/tipo_agenda.dart';
@@ -67,6 +66,10 @@ class CabeceraAgenda extends StatelessWidget {
   }
 }
 
+/// `true` desde el 130 % (el «Grande» de Android): la columna de 44 dp de la hora ya no alcanza
+/// para «16:00» ni para el día y la hora, y la fila los pasa arriba del título.
+bool _textoGrandeAgenda(BuildContext context) => MediaQuery.textScalerOf(context).scale(10) >= 13;
+
 /// Un chip de filtro de la agenda: alto mínimo 38 (área táctil de 48), borde de 1,5 y, elegido, navy
 /// con texto blanco.
 class ChipAgenda extends StatelessWidget {
@@ -103,7 +106,6 @@ class ChipAgenda extends StatelessWidget {
               child: Container(
                 constraints: const BoxConstraints(minHeight: 38),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: elegido ? ColoresAgenda.navy : Colors.white,
                   borderRadius: BorderRadius.circular(999),
@@ -112,13 +114,18 @@ class ChipAgenda extends StatelessWidget {
                     width: 1.5,
                   ),
                 ),
-                child: Text(
-                  texto,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: elegido ? Colors.white : ColoresAgenda.tinta,
+                // `widthFactor: 1`: el chip mide lo que su texto; un `alignment` en el `Container`
+                // lo estiraría al ancho del `Wrap` y cada chip quedaría en su propia fila.
+                child: Align(
+                  widthFactor: 1,
+                  child: Text(
+                    texto,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: elegido ? Colors.white : ColoresAgenda.tinta,
+                    ),
                   ),
                 ),
               ),
@@ -220,7 +227,7 @@ class FilaAgenda extends StatelessWidget {
     final vencida = item.estaVencida(ahora);
     final cerrada = item.agenda.estado != EstadoAgenda.programada;
     final cancelada = item.agenda.estado == EstadoAgenda.cancelada;
-    final apilada = textoGrande(context);
+    final apilada = _textoGrandeAgenda(context);
     final subtitulo = FormatoAgenda.subtitulo(item);
     final cierre = FormatoAgenda.cierre(item);
     final conRegistrar = vencida && alRegistrar != null;
