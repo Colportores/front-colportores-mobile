@@ -39,12 +39,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
     try {
       final insercion = await _local.insertar(
         UbicacionModel.fromEntity(ubicacion),
         espacio: espacio == null ? null : EspacioModel.fromEntity(espacio),
         duplicados: duplicados,
+        justificacion: justificacion,
       );
       if (insercion.yaEstaba) {
         _log.info(LogModulo.db, 'UBICACION_YA_REGISTRADA', 'el alta ya estaba hecha', {
@@ -126,6 +128,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
     try {
       final guardada = await _local.actualizar(
@@ -136,6 +139,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         espacioSiNoTiene: espacioSiNoTiene == null
             ? null
             : EspacioModel.fromEntity(espacioSiNoTiene),
+        justificacion: justificacion,
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,

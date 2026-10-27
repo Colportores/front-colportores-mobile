@@ -168,6 +168,7 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     String? motivo,
     String? conservadaId,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
     cambiosDeBaja.add((id: id, baja: baja, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoCambioDeBaja;
@@ -213,6 +214,7 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override
