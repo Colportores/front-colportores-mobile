@@ -3,6 +3,7 @@
 // ubicación, en la misma transacción que el alta, y nunca en la cola de sync ni en una columna.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_table.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
@@ -183,6 +184,23 @@ void main() {
       expect(filas.single.motivo, texto);
       expect(filas.single.creadoEn, t1);
       expect('${encolador.encolados.map((c) => c.payload)}', isNot(contains(texto)));
+    });
+
+    test('la fila de auditoría no viaja por el sync: solo se encola el update de la ubicación, '
+        'sin la justificación ni el motivo', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+
+      await local.actualizar(
+        ubicacion(numero: '1236', actualizada: t1),
+        baseUpdatedAt: t0,
+        justificacion: texto,
+      );
+
+      expect(encolador.encolados.map((c) => (c.entidad, c.operacion)), [
+        ('ubicacion', OperacionSync.update),
+      ]);
+      expect(encolador.encolados.single.payload.keys, isNot(contains('motivo')));
     });
 
     test('dado que la ubicación cambió desde que se leyó, no escribe ni la '
