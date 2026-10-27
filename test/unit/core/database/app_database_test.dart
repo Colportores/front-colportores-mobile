@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 12);
+      expect(db.schemaVersion, 13);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -68,6 +68,17 @@ void main() {
           'table house_status',
           'table notificacion_historial',
           'index notificacion_historial_recibida_idx',
+          'table producto',
+          'table coleccion',
+          'table producto_coleccion',
+          'index producto_coleccion_coleccion_idx',
+          'table precio_por_ciudad',
+          'index precio_por_ciudad_campania_ciudad_idx',
+          'index precio_por_ciudad_producto_idx',
+          'index precio_por_ciudad_coleccion_idx',
+          'table precio_general',
+          'index precio_general_producto_idx',
+          'index precio_general_coleccion_idx',
         ]),
       );
     });
@@ -75,7 +86,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":12}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":13}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -115,7 +126,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 12);
+      expect(fila.read<int>('user_version'), 13);
       expect(
         await _esquema(db),
         containsAll([
@@ -133,9 +144,14 @@ void main() {
           'table visita',
           'table house_status',
           'table notificacion_historial',
+          'table producto',
+          'table coleccion',
+          'table producto_coleccion',
+          'table precio_por_ciudad',
+          'table precio_general',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":12}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":13}']);
     });
   });
 }
