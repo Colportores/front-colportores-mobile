@@ -160,7 +160,19 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         ),
       );
     }
-    if (nota != null) await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    if (nota != null) {
+      // La entrevista en curso fue guardando su nota como borrador, con este mismo `id` y atada a esta
+      // visita (vista 39, #450): el texto final la reemplaza. Solo ese borrador; una nota ajena con
+      // el mismo `id` sigue haciendo fallar el alta, como siempre.
+      await (_db.delete(_db.notas)..where(
+            (n) =>
+                n.id.equals(nota.id) &
+                n.targetType.equals(TipoObjetivoNota.visita) &
+                n.targetId.equals(visita.id),
+          ))
+          .go();
+      await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    }
     await _recalcular(
       visita.espacioId,
       ahora: visita.auditoria.updatedAt,
