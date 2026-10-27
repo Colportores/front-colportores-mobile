@@ -72,6 +72,64 @@ void main() {
 
   const porDefecto = PreferenciasRecordatorios();
 
+  group('Antes de cambiar (historial de avisos, HU-NOT-005)', () {
+    CambiarPreferenciasRecordatoriosUseCase conGancho(Future<void> Function(String) gancho) =>
+        CambiarPreferenciasRecordatoriosUseCase(
+          preferencias,
+          ReprogramarRecordatoriosUseCase(
+            agendas,
+            recordatorios,
+            ahora: () => ahora,
+            logger: loggerMudo(),
+          ),
+          antesDeCambiar: gancho,
+          logger: loggerMudo(),
+        );
+
+    test('dado un cambio, primero guarda lo que sonó con las preferencias de antes y recién '
+        'después escribe las nuevas', () async {
+      final orden = <String>[];
+      final caso = conGancho((colportorId) async {
+        orden.add('antes:$colportorId:${(await preferencias.leer()).anticipacionMinutos}');
+      });
+
+      await caso(
+        colportorId: 'col-1',
+        previas: porDefecto,
+        nuevas: porDefecto.copyWith(anticipacionMinutos: 60),
+      );
+
+      expect(orden, ['antes:col-1:30']);
+      expect((await preferencias.leer()).anticipacionMinutos, 60);
+    });
+
+    test('dado que lo de antes falla, el cambio se guarda igual', () async {
+      final caso = conGancho((_) async => throw StateError('sin base'));
+
+      final r = await caso(
+        colportorId: 'col-1',
+        previas: porDefecto,
+        nuevas: porDefecto.copyWith(anticipacionMinutos: 60),
+      );
+
+      expect(r.isRight(), isTrue);
+      expect((await preferencias.leer()).anticipacionMinutos, 60);
+    });
+
+    test('dado que no hay quién tenga agendas (sin sesión), no llama a lo de antes', () async {
+      var llamadas = 0;
+      final caso = conGancho((_) async => llamadas++);
+
+      await caso(
+        colportorId: null,
+        previas: porDefecto,
+        nuevas: porDefecto.copyWith(anticipacionMinutos: 60),
+      );
+
+      expect(llamadas, 0);
+    });
+  });
+
   group('Escenario: Toggle recordatorios locales apagado', () {
     test(
       'dado que apago «Recordatorios de agenda», cuando tengo visitas agendadas, no se programan '

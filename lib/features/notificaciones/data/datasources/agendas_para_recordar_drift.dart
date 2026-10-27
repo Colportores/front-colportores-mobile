@@ -46,21 +46,52 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
       (agendas) =>
           agendas.fechaProgramada.isBiggerThanValue(conversor.toSql(desde.add(anticipacion))) &
           agendas.fechaProgramada.isSmallerOrEqualValue(conversor.toSql(hasta.add(anticipacion))),
+      estados: const [EstadoAgenda.programada, EstadoAgenda.cumplida, EstadoAgenda.noCumplida],
     );
+    // Cuándo se guardó el resultado de las que ya se resolvieron (la visita que las cumple).
+    final visitaIds = {
+      for (final f in filas)
+        if (f.agenda.estado != EstadoAgenda.programada.codigo && f.agenda.visitaId != null)
+          f.agenda.visitaId!,
+    };
+    final resultados = visitaIds.isEmpty
+        ? const <String, DateTime>{}
+        : {
+            for (final v in await (_db.select(
+              _db.visitas,
+            )..where((v) => v.id.isIn(visitaIds))).get())
+              v.id: v.fecha,
+          };
     return [
       for (final (:agenda, :direccion) in filas)
-        // Una agenda guardada o cambiada después de la hora de su aviso no llegó a tener recordatorio.
-        if (agenda.updatedAt.isBefore(agenda.fechaProgramada.subtract(anticipacion)))
-          _visita(agenda, direccion),
+        if (_sonoSegunLaAgenda(agenda, anticipacion, resultados)) _visita(agenda, direccion),
     ];
   }
 
-  /// Las agendas `PROGRAMADA` y sin baja de [colportorId] que cumplen [filtro], por fecha, con la
-  /// dirección de cada una.
+  /// Si el recordatorio de [agenda] valía a la hora de su aviso (HU-NOT-005, #416):
+  /// - `PROGRAMADA`: la agenda no se guardó ni se cambió después del aviso (si no, esa visita nunca
+  ///   tuvo recordatorio: «Falta menos de N min para la visita: no hay recordatorio»).
+  /// - `CUMPLIDA` / `NO_CUMPLIDA`: ya existía a la hora del aviso y su resultado se guardó después
+  ///   (el instante de la visita que la cumple o, sin ella, el último cambio de la agenda). Una
+  ///   `CANCELADA` nunca cuenta.
+  static bool _sonoSegunLaAgenda(
+    AgendaFila agenda,
+    Duration anticipacion,
+    Map<String, DateTime> resultados,
+  ) {
+    final avisoEn = agenda.fechaProgramada.subtract(anticipacion);
+    if (agenda.estado == EstadoAgenda.programada.codigo) return agenda.updatedAt.isBefore(avisoEn);
+    final resultadoEn = resultados[agenda.visitaId] ?? agenda.updatedAt;
+    return agenda.createdAt.isBefore(avisoEn) && resultadoEn.isAfter(avisoEn);
+  }
+
+  /// Las agendas de [colportorId] en alguno de [estados] (`PROGRAMADA` por defecto), sin baja, que
+  /// cumplen [filtro], por fecha, con la dirección de cada una.
   Future<List<({AgendaFila agenda, String direccion})>> _leer(
     String colportorId,
-    Expression<bool> Function($AgendasTable agendas) filtro,
-  ) async {
+    Expression<bool> Function($AgendasTable agendas) filtro, {
+    List<EstadoAgenda> estados = const [EstadoAgenda.programada],
+  }) async {
     final agendas = _db.agendas;
     final espacios = _db.espacios;
     final propia = _db.ubicaciones;
@@ -73,7 +104,7 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
           ])
           ..where(
             agendas.colportorId.equals(colportorId) &
-                agendas.estado.equals(EstadoAgenda.programada.codigo) &
+                agendas.estado.isIn([for (final e in estados) e.codigo]) &
                 agendas.deletedAt.isNull() &
                 filtro(agendas),
           )

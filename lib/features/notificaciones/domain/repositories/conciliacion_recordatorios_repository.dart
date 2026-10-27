@@ -3,11 +3,12 @@ import '../../../agenda/domain/entities/recordatorio_de_visita.dart';
 /// Las visitas agendadas cuyo recordatorio ya tuvo que sonar (HU-NOT-005: «cada recordatorio local
 /// se guarda al dispararse»). Solo lee.
 abstract interface class AgendasConAvisoVencido {
-  /// Las agendas `PROGRAMADA` de [colportorId], sin baja, cuyo aviso (la visita menos
-  /// [anticipacionMinutos]) cae después de [desde] y hasta [hasta] inclusive, y que **ya existían
-  /// cuando ese aviso tenía que sonar**: una agenda guardada (o cambiada) después de la hora de su
-  /// aviso nunca tuvo recordatorio («Falta menos de N min para la visita: no hay recordatorio»).
-  /// Con la dirección que va en el aviso. Lanza si no se puede leer.
+  /// Las agendas de [colportorId], sin baja, cuyo aviso (la visita menos [anticipacionMinutos]) cae
+  /// después de [desde] y hasta [hasta] inclusive, y cuyo recordatorio **valía a la hora del
+  /// aviso**: una `PROGRAMADA` que ya existía y no se cambió después (una agenda guardada con menos
+  /// tiempo que la anticipación nunca tuvo recordatorio), o una `CUMPLIDA` / `NO_CUMPLIDA` cuyo
+  /// resultado se guardó después del aviso. Una `CANCELADA` nunca. Con la dirección que va en el
+  /// aviso. Lanza si no se puede leer.
   Future<List<RecordatorioDeVisita>> conAvisoEntre({
     required String colportorId,
     required DateTime desde,

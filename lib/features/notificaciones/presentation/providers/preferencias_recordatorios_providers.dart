@@ -14,6 +14,7 @@ import '../../data/repositories/preferencias_recordatorios_repository_impl.dart'
 import '../../domain/entities/preferencias_recordatorios.dart';
 import '../../domain/repositories/preferencias_recordatorios_repository.dart';
 import '../../domain/usecases/cambiar_preferencias_recordatorios_use_case.dart';
+import 'conciliacion_recordatorios_providers.dart';
 
 // Cableado de las preferencias de los recordatorios (HU-NOT-004, vista 24 grupo B).
 
@@ -53,6 +54,7 @@ final cambiarPreferenciasRecordatoriosUseCaseProvider =
       (ref) => CambiarPreferenciasRecordatoriosUseCase(
         ref.watch(preferenciasRecordatoriosRepositoryProvider),
         ref.watch(reprogramarRecordatoriosUseCaseProvider),
+        antesDeCambiar: ref.watch(conciliarAntesDeCambiarPreferenciasProvider),
       ),
     );
 

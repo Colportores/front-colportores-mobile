@@ -4,6 +4,7 @@
 // sonar, se reprograma, la revisión corre dos veces, «Borrar todas» no se deshace.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/database/fecha_utc_converter.dart';
+import 'package:colportores_mobile/features/agenda/data/recordatorios/fakes/recordatorios_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
@@ -13,6 +14,7 @@ import 'package:colportores_mobile/features/notificaciones/data/repositories/his
 import 'package:colportores_mobile/features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/usecases/cambiar_preferencias_recordatorios_use_case.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/usecases/conciliar_recordatorios_use_case.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/usecases/historial_notificaciones_use_cases.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
@@ -130,8 +132,8 @@ void main() {
       expect(await ids(), ['en-hasta']);
     });
 
-    test('dado agendas cumplidas, no cumplidas, canceladas, con baja o de otro colportor, no las '
-        'devuelve', () async {
+    test('dado agendas cumplidas o no cumplidas antes del aviso, canceladas, con baja o de otro '
+        'colportor, no las devuelve', () async {
       await insertarAgenda(db, agenda('programada'));
       await insertarAgenda(db, agenda('cumplida', estado: EstadoAgenda.cumplida));
       await insertarAgenda(db, agenda('no-cumplida', estado: EstadoAgenda.noCumplida));
@@ -148,6 +150,59 @@ void main() {
       await insertarAgenda(db, agenda('justo', guardada: DateTime.utc(2026, 10, 27, 14, 29)));
 
       expect(await ids(), ['justo']);
+    });
+
+    test('dado una agenda cumplida o no cumplida con el resultado guardado después del aviso, la '
+        'devuelve; con el resultado anterior al aviso o cancelada, no', () async {
+      // Agenda creada el 26/10; el aviso es a las 14:30 del 27/10.
+      Future<void> resuelta(
+        String id,
+        EstadoAgenda estado,
+        DateTime cambio, {
+        String? visita,
+      }) async {
+        await insertarAgenda(db, agenda(id, estado: estado, guardada: creada));
+        await (db.update(db.agendas)..where((a) => a.id.equals(id))).write(
+          AgendasCompanion(updatedAt: Value(cambio), visitaId: Value(visita)),
+        );
+      }
+
+      await resuelta('cumplida-despues', EstadoAgenda.cumplida, DateTime.utc(2026, 10, 27, 15, 20));
+      await resuelta(
+        'no-cumplida-despues',
+        EstadoAgenda.noCumplida,
+        DateTime.utc(2026, 10, 27, 16),
+      );
+      await resuelta('cumplida-antes', EstadoAgenda.cumplida, DateTime.utc(2026, 10, 27, 13));
+      await resuelta(
+        'cancelada-despues',
+        EstadoAgenda.cancelada,
+        DateTime.utc(2026, 10, 27, 15, 20),
+      );
+      // Con visita: manda el instante de la visita y no el último cambio de la agenda (que pudo ser
+      // un toque de sync posterior).
+      await insertarVisita(db, visitaDe('vis-1', creada: DateTime.utc(2026, 10, 27, 13)));
+      await resuelta(
+        'visita-antes',
+        EstadoAgenda.cumplida,
+        DateTime.utc(2026, 10, 27, 16),
+        visita: 'vis-1',
+      );
+
+      expect(await ids(), unorderedEquals(['cumplida-despues', 'no-cumplida-despues']));
+    });
+
+    test('dado una agenda cumplida que no existía a la hora del aviso, no la devuelve', () async {
+      await insertarAgenda(
+        db,
+        agenda(
+          'tarde',
+          estado: EstadoAgenda.cumplida,
+          guardada: DateTime.utc(2026, 10, 27, 14, 40),
+        ),
+      );
+
+      expect(await ids(), isEmpty);
     });
 
     test('dado otra anticipación, el aviso cae en otra hora', () async {
@@ -234,6 +289,58 @@ void main() {
       expect(await idsDelHistorial(), [
         'recordatorio-age-1-${DateTime.utc(2026, 10, 27, 16, 30).millisecondsSinceEpoch}',
       ]);
+    });
+
+    test('dado una visita que suena con la app abierta y se cumple en la misma sesión, cuando se '
+        'revisa después, el aviso queda en el historial', () async {
+      // La app se abrió a las 12:00 (la marca). El aviso de las 14:30 suena con la app abierta y a las
+      // 15:20 se registra la visita: la agenda ya no está PROGRAMADA cuando se revisa.
+      await insertarAgenda(db, agenda('age-1'));
+      await (db.update(db.agendas)..where((a) => a.id.equals('age-1'))).write(
+        AgendasCompanion(
+          estado: Value(EstadoAgenda.cumplida.codigo),
+          updatedAt: Value(DateTime.utc(2026, 10, 27, 15, 20)),
+        ),
+      );
+      ahora = DateTime.utc(2026, 10, 27, 15, 25);
+
+      await conciliar('col-1');
+
+      expect(await idsDelHistorial(), ['recordatorio-age-1-${aviso.millisecondsSinceEpoch}']);
+    });
+
+    test('dado un cambio de anticipación con un aviso ya sonado, cuando se cambia, el aviso queda '
+        'guardado con la anticipación de antes', () async {
+      await insertarAgenda(db, agenda('age-1'));
+      final cambiar = CambiarPreferenciasRecordatoriosUseCase(
+        preferencias,
+        ReprogramarRecordatoriosUseCase(
+          agendas,
+          RecordatoriosEnMemoria(),
+          ahora: () => ahora,
+          logger: loggerMudo(),
+        ),
+        antesDeCambiar: (colportorId) async {
+          await conciliar(colportorId);
+        },
+        logger: loggerMudo(),
+      );
+
+      await cambiar(
+        colportorId: 'col-1',
+        previas: const PreferenciasRecordatorios(),
+        nuevas: const PreferenciasRecordatorios(anticipacionMinutos: 60),
+      );
+
+      // Sonó a las 14:30 (30 minutos), no a las 14:00 (los 60 de ahora).
+      expect(await idsDelHistorial(), ['recordatorio-age-1-${aviso.millisecondsSinceEpoch}']);
+      expect(marca.marca, ahora);
+      expect((await preferencias.leer()).anticipacionMinutos, 60);
+
+      // Y con los 60 nuevos, la revisión siguiente no inventa el aviso de las 14:00.
+      ahora = ahora.add(const Duration(minutes: 5));
+      await conciliar('col-1');
+      expect(await idsDelHistorial(), hasLength(1));
     });
 
     test('dado que la revisión corre dos veces, el aviso queda una sola vez', () async {

@@ -10,6 +10,7 @@ import '../../domain/entities/destino_notificacion.dart';
 import '../../domain/entities/notificacion.dart';
 import '../../domain/usecases/historial_notificaciones_use_cases.dart';
 import '../formato_centro_notificaciones.dart';
+import '../providers/conciliacion_recordatorios_providers.dart';
 import '../providers/historial_notificaciones_providers.dart';
 import '../widgets/aviso_notificaciones.dart';
 import '../widgets/fila_notificacion.dart';
@@ -47,6 +48,9 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     // Mantenimiento: lo que pasó de los 90 días se borra al abrir el centro. Lo vencido ya no se lee
     // aunque esto falle.
     unawaited(_purgar());
+    // Los recordatorios que sonaron desde la última vez se guardan antes de mostrar la lista (HU-NOT-005,
+    // #416). La lista se actualiza sola cuando llegan.
+    unawaited(ref.read(conciliadorRecordatoriosProvider)?.pedir());
   }
 
   Future<void> _purgar() async {

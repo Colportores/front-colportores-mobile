@@ -196,6 +196,30 @@ void main() {
     lectura.close();
   });
 
+  test('dado el conciliador, sin DB abierta o sin sesión no hay quién pida revisiones; con las '
+      'dos, el centro de notificaciones puede pedir una revisión más', () async {
+    expect(
+      armar(conDb: false).read(conciliadorRecordatoriosProvider),
+      isNull,
+      reason: 'sin DB abierta',
+    );
+    final sinSesionC = armar(sinSesion: true);
+    await sinSesionC.read(sesionProvider.future);
+    expect(sinSesionC.read(conciliadorRecordatoriosProvider), isNull, reason: 'sin sesión');
+
+    await agendaConAviso('age-1', DateTime.utc(2026, 10, 27, 15));
+    final c = armar();
+    await c.read(sesionProvider.future);
+    final conciliador = c.read(conciliadorRecordatoriosProvider);
+    expect(conciliador, isNotNull);
+    await asentar();
+
+    await conciliador!.pedir();
+
+    expect(await filasDelHistorial(), 1);
+    expect(marca.marca, ahora);
+  });
+
   group('ConciliadorSerie', () {
     test('dado un pedido mientras otra revisión corre, hace otra al terminar y nunca dos a la '
         'vez', () async {
