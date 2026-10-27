@@ -206,6 +206,35 @@ abstract interface class JobStorePort {
   Future<int> purgeDone(DateTime before);
 }
 
+/// Lo que el motor se acuerda entre aperturas de la app (HU-SYNC-007): cuándo
+/// bajó el delta, cuándo hizo el último respaldo y por qué red salió el último
+/// envío.
+///
+/// Vive en un lugar propio de la DB local (la tabla `sync_meta`), **no** en
+/// `sync_watermark`: un watermark es un cursor de pull y se le pasa al servidor;
+/// esto es información para la pantalla de estado y no se manda a ningún lado.
+/// Sin él, al reiniciar el celular la vista decía «Todavía no hubo» aunque
+/// hubiera habido.
+///
+/// Fallar acá nunca debe tumbar un ciclo: el motor atrapa el error y sigue.
+abstract interface class SyncMetaPort {
+  /// Lo guardado. Un campo `null` es que nunca se anotó.
+  Future<SyncMeta> read();
+
+  /// Anota los campos que no sean `null`; los demás quedan como estaban.
+  ///
+  /// [lastPushAt] y [lastPushNetwork] van juntos: la red es la de ese envío. Si
+  /// viene [lastPushAt], [lastPushNetwork] reemplaza a la de antes aunque sea
+  /// `null` («no se sabe»): la red del envío anterior no es la de este. Una
+  /// fecha más vieja que la guardada no la pisa.
+  Future<void> write({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  });
+}
+
 /// La DB local, del lado de las tablas de negocio.
 abstract interface class LocalStorePort {
   /// Aplica el delta y guarda el watermark **en una sola transacción** (§10).

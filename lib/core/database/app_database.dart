@@ -51,6 +51,7 @@ part 'app_database.g.dart';
     AuditLogLocal,
     SyncQueue,
     SyncWatermarks,
+    SyncMetas,
     Personas,
     EspacioPersonas,
     Notas,
@@ -85,10 +86,12 @@ class AppDatabase extends _$AppDatabase {
   ///   suma el resultado `COBRANZA` (backend 0068 y 0069, #411).
   /// - 12: `notificacion_historial`, el historial del centro de notificaciones, solo local
   ///   (HU-NOT-005, #156).
+  /// - 13: `sync_meta`, lo que el motor se acuerda entre aperturas: última bajada, último respaldo y
+  ///   la red del último envío (HU-SYNC-007, #486).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 12;
+  static const int versionEsquema = 13;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -234,6 +237,11 @@ class AppDatabase extends _$AppDatabase {
     from11To12: (m, esquema) async {
       await m.createTable(esquema.notificacionHistorial);
       await m.createIndex(esquema.notificacionHistorialRecibidaIdx);
+    },
+    // Solo crea la tabla de metadatos del motor, vacía: nada de lo guardado cambia. Hasta que el
+    // motor anote algo, la vista de estado dice «Todavía no hubo».
+    from12To13: (m, esquema) async {
+      await m.createTable(esquema.syncMeta);
     },
   );
 }
