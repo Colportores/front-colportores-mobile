@@ -602,9 +602,52 @@ void main() {
       await tester.tap(_clave('mapas_offline_borrar_ciudad-montevideo'));
       await _asentar(tester);
 
+      expect(_clave('mapas_offline_hoja_borrar'), findsOneWidget);
+      expect(find.text('¿Borrar el mapa de Montevideo?'), findsOneWidget);
+      expect(find.text('Para volver a tenerlo vas a necesitar Wi-Fi.'), findsOneWidget);
+      expect(arnes.repositorio.registrados, isNotEmpty);
+
+      await tester.tap(_clave('mapas_offline_borrar_confirmar'));
+      await _asentar(tester);
+
       expect(arnes.repositorio.registrados, isEmpty);
       expect(find.text('Mapa borrado. Liberaste 86 MB.'), findsOneWidget);
       expect(find.text('MAPAS OFFLINE · 01'), findsOneWidget);
+    });
+
+    testWidgets('«Cancelar» en la hoja de borrar deja el mapa y la tarjeta como estaban', (
+      tester,
+    ) async {
+      final arnes = ArnesMapa(catalogo: [_ciudad86], servirPaqueteMontevideo: false);
+      await arnes.repositorio.registrar(descargadoDe(_ciudad86));
+      await _montar(tester, arnes: arnes);
+
+      await tester.tap(_clave('mapas_offline_borrar_ciudad-montevideo'));
+      await _asentar(tester);
+      await tester.tap(_clave('mapas_offline_borrar_cancelar'));
+      await _asentar(tester);
+
+      expect(_clave('mapas_offline_hoja_borrar'), findsNothing);
+      expect(arnes.repositorio.registrados, isNotEmpty);
+      expect(find.text('Mapa borrado. Liberaste 86 MB.'), findsNothing);
+      expect(
+        tester.widget<TextButton>(_clave('mapas_offline_borrar_ciudad-montevideo')).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('cerrar la hoja de borrar tocando afuera no borra nada', (tester) async {
+      final arnes = ArnesMapa(catalogo: [_ciudad86], servirPaqueteMontevideo: false);
+      await arnes.repositorio.registrar(descargadoDe(_ciudad86));
+      await _montar(tester, arnes: arnes);
+
+      await tester.tap(_clave('mapas_offline_borrar_ciudad-montevideo'));
+      await _asentar(tester);
+      await tester.tapAt(const Offset(195, 20));
+      await _asentar(tester);
+
+      expect(_clave('mapas_offline_hoja_borrar'), findsNothing);
+      expect(arnes.repositorio.registrados, isNotEmpty);
     });
 
     testWidgets('si no se puede borrar lo dice y el mapa sigue ahí', (tester) async {
@@ -614,6 +657,8 @@ void main() {
       await _montar(tester, arnes: arnes);
 
       await tester.tap(_clave('mapas_offline_borrar_ciudad-montevideo'));
+      await _asentar(tester);
+      await tester.tap(_clave('mapas_offline_borrar_confirmar'));
       await _asentar(tester);
 
       expect(_clave('mapas_offline_falla'), findsOneWidget);

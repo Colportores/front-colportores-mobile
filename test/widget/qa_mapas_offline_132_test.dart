@@ -2,11 +2,7 @@
 // artboard y en los dos teléfonos de la matriz (360x640 y 412x915), y los casos límite que los
 // tests de la implementación no cubren. Va con la fuente de prueba (bloques llenos): con la real el
 // suavizado de los trazos finos da falsos rojos en el contraste.
-import 'dart:async';
-
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
-import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:dartz/dartz.dart' hide State;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,31 +32,24 @@ void main() {
   }
 
   group('QA #132 · opción elegida de la pantalla 01', () {
-    // skip: QA #132 — la opción elegida pinta primaryContainer (en este tema es el navy lleno:
-    // `ColorScheme.light` no define primaryContainer y cae a `primary`) con el título en onSurface
-    // (tinta oscura): texto ilegible. Las guías de Flutter no lo ven porque la opción usa
-    // `excludeSemantics`.
-    testWidgets(
-      'el título y el detalle de «Mi zona» elegida se leen (contraste >= 4,5:1)',
-      skip: true,
-      (tester) async {
-        await qaLlegar(tester, QaEstado.e01);
-        final titulo = tester.widget<Text>(find.text('Mi zona'));
-        final detalle = tester.widget<Text>(find.text('Cerro Norte · 14 MB'));
-        final fondo = tester
-            .widget<Material>(
-              find.ancestor(of: find.text('Mi zona'), matching: find.byType(Material)).first,
-            )
-            .color!;
-        expect(qaContraste(titulo.style!.color!, fondo), greaterThanOrEqualTo(4.5));
-        expect(qaContraste(detalle.style!.color!, fondo), greaterThanOrEqualTo(4.5));
-      },
-    );
-
-    // skip: QA #132 — mismo hallazgo: el radio elegido (primary) sobre primaryContainer (= primary).
-    testWidgets('el ícono de la opción elegida se distingue del fondo (>= 3:1)', skip: true, (
+    // La opción elegida usa un fondo tenue explícito: las guías de Flutter no ven su contraste
+    // porque la opción usa `excludeSemantics`, por eso se mide acá.
+    testWidgets('el título y el detalle de «Mi zona» elegida se leen (contraste >= 4,5:1)', (
       tester,
     ) async {
+      await qaLlegar(tester, QaEstado.e01);
+      final titulo = tester.widget<Text>(find.text('Mi zona'));
+      final detalle = tester.widget<Text>(find.text('Cerro Norte · 14 MB'));
+      final fondo = tester
+          .widget<Material>(
+            find.ancestor(of: find.text('Mi zona'), matching: find.byType(Material)).first,
+          )
+          .color!;
+      expect(qaContraste(titulo.style!.color!, fondo), greaterThanOrEqualTo(4.5));
+      expect(qaContraste(detalle.style!.color!, fondo), greaterThanOrEqualTo(4.5));
+    });
+
+    testWidgets('el ícono de la opción elegida se distingue del fondo (>= 3:1)', (tester) async {
       await qaLlegar(tester, QaEstado.e01);
       final icono = tester.widget<Icon>(find.byIcon(Icons.radio_button_checked));
       final fondo = tester
@@ -113,7 +102,9 @@ void main() {
       await qaMontar(tester, arnes: arnes);
 
       await tester.tap(qaClave('mapas_offline_borrar_ciudad-montevideo'));
-      await tester.tap(qaClave('mapas_offline_borrar_ciudad-montevideo'), warnIfMissed: false);
+      await qaAsentar(tester);
+      await tester.tap(qaClave('mapas_offline_borrar_confirmar'));
+      await tester.tap(qaClave('mapas_offline_borrar_confirmar'), warnIfMissed: false);
       await qaAsentar(tester);
 
       expect(arnes.repositorio.registrados, isEmpty);

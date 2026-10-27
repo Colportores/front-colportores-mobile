@@ -368,24 +368,22 @@ Future<ArnesMapa> qaMontarSugerencia(
   final inscripciones = InscripcionesConZonaEnMemoria()..publicar([qaInscripcion]);
   final almacen = AlmacenSeguroEnMemoria();
   await tester.pumpWidget(
-    RepaintBoundary(
-      key: qaRaiz,
-      child: ProviderScope(
-        overrides: [
-          ...arnes.overrides,
-          fuenteLugarDeTrabajoProvider.overrideWithValue(QaFuenteFalsa(const Right(qaLugarNorte))),
-          medidorEspacioDiscoProvider.overrideWithValue(
-            EspacioFalso()..libres = 1000 * 1000 * 1000,
-          ),
-          inscripcionesConZonaDataSourceProvider.overrideWithValue(inscripciones),
-          zonasAvisadasRepositoryProvider.overrideWithValue(
-            ZonasAvisadasRepositoryImpl(almacen, logger: loggerMudo()),
-          ),
-          jornadaLocalDataSourceProvider.overrideWithValue(JornadaLocalDataSourceEnMemoria()),
-          disparadorBackupProvider.overrideWithValue(QaBackupFalso()),
-          relojJornadaProvider.overrideWithValue(() => qaAhora),
-          ...overridesPestanaMapa(),
-        ],
+    ProviderScope(
+      overrides: [
+        ...arnes.overrides,
+        fuenteLugarDeTrabajoProvider.overrideWithValue(QaFuenteFalsa(const Right(qaLugarNorte))),
+        medidorEspacioDiscoProvider.overrideWithValue(EspacioFalso()..libres = 1000 * 1000 * 1000),
+        inscripcionesConZonaDataSourceProvider.overrideWithValue(inscripciones),
+        zonasAvisadasRepositoryProvider.overrideWithValue(
+          ZonasAvisadasRepositoryImpl(almacen, logger: loggerMudo()),
+        ),
+        jornadaLocalDataSourceProvider.overrideWithValue(JornadaLocalDataSourceEnMemoria()),
+        disparadorBackupProvider.overrideWithValue(QaBackupFalso()),
+        relojJornadaProvider.overrideWithValue(() => qaAhora),
+        ...overridesPestanaMapa(),
+      ],
+      child: RepaintBoundary(
+        key: qaRaiz,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: temaClaro(),

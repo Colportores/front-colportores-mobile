@@ -48,6 +48,9 @@ abstract final class TextosMapasOffline {
   static const pausadaPorVos = 'Pausada. Tocá Seguir para continuar.';
   static const cambiarCobertura = 'Cambiar cobertura';
   static const borrarMapa = 'Borrar mapa';
+  static const borrar = 'Borrar';
+  static const borrarTexto = 'Para volver a tenerlo vas a necesitar Wi-Fi.';
+  static String borrarTitulo(String nombre) => '¿Borrar el mapa de $nombre?';
   static const actualizar = 'Actualizar';
   static const cancelar = 'Cancelar';
   static const ahoraNo = 'Ahora no';

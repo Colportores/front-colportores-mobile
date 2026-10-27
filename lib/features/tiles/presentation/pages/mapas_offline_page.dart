@@ -11,6 +11,7 @@ import '../../domain/services/puertos_descarga.dart';
 import '../providers/mapas_offline_providers.dart';
 import '../textos_mapas_offline.dart';
 import '../widgets/hoja_achicar_cobertura.dart';
+import '../widgets/hoja_borrar_mapa.dart';
 
 /// «Mapas offline» (vista 35, pantallas 01 y 02, HU-SYNC-010): elegir cuánto mapa bajar (zona,
 /// ciudad, departamento o Uruguay), ver cómo avanza la descarga, pausarla, borrar un mapa, bajar la
@@ -60,6 +61,23 @@ class _MapasOfflinePageState extends ConsumerState<MapasOfflinePage> {
       _preguntando = false;
     }
     if (confirmo ?? false) await notificador.descargar(achicar: plan);
+  }
+
+  /// «Borrar mapa»: pregunta antes (se pierde el mapa y para volver a tenerlo hace falta Wi-Fi). El
+  /// segundo toque mientras la hoja está abierta no hace nada.
+  Future<void> _borrar(TarjetaMapa tarjeta, EstadoMapasOffline estado) async {
+    if (_preguntando) return;
+    _preguntando = true;
+    bool? confirmo;
+    try {
+      confirmo = await mostrarHojaBorrarMapa(
+        context,
+        nombre: TextosMapasOffline.nombreDe(tarjeta.paquete, nombreZona: estado.lugar?.zonaNombre),
+      );
+    } finally {
+      _preguntando = false;
+    }
+    if (confirmo ?? false) await ref.read(mapasOfflineProvider.notifier).borrar(tarjeta);
   }
 
   @override
@@ -130,7 +148,7 @@ class _MapasOfflinePageState extends ConsumerState<MapasOfflinePage> {
               child: estado.cargando
                   ? const _Revisando()
                   : lista
-                  ? _ListaDeMapas(estado: estado)
+                  ? _ListaDeMapas(estado: estado, alBorrar: (t) => _borrar(t, estado))
                   : _EleccionDeCobertura(estado: estado, alDescargar: () => _descargar(estado)),
             ),
           ],
@@ -391,7 +409,7 @@ class _OpcionDeCobertura extends StatelessWidget {
       excludeSemantics: true,
       onTap: habilitada ? alTocar : null,
       child: Material(
-        color: seleccionada ? esquema.primaryContainer : esquema.surface,
+        color: seleccionada ? _fondoInfo : esquema.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
@@ -445,9 +463,10 @@ class _OpcionDeCobertura extends StatelessWidget {
 // ---------------------------------------------------------------------------------------------
 
 class _ListaDeMapas extends ConsumerWidget {
-  const _ListaDeMapas({required this.estado});
+  const _ListaDeMapas({required this.estado, required this.alBorrar});
 
   final EstadoMapasOffline estado;
+  final Future<void> Function(TarjetaMapa tarjeta) alBorrar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -469,7 +488,7 @@ class _ListaDeMapas extends ConsumerWidget {
             ocupado: estado.pidiendo,
             alPausar: () => unawaited(notificador.pausar(tarjeta.paquete.id)),
             alSeguir: () => unawaited(notificador.seguir(tarjeta)),
-            alBorrar: () => unawaited(notificador.borrar(tarjeta)),
+            alBorrar: () => unawaited(alBorrar(tarjeta)),
             alActualizar: () => unawaited(notificador.actualizar(tarjeta)),
           ),
           const SizedBox(height: 12),
@@ -706,6 +725,13 @@ class _TarjetaDeMapa extends StatelessWidget {
 
 enum _TipoBanner { info, error }
 
+// Fondos tenues de las etiquetas del canvas (35-07, 35-08), como los avisos de las vistas 06 y 37.
+// El tema no define primaryContainer ni errorContainer (Flutter los iguala a primary y error, navy y
+// rojo llenos): con texto oscuro encima no se leían (QA #132). Tinta sobre cada fondo >= 4,5:1.
+const _fondoInfo = Color(0xFFE6EEF8);
+const _fondoError = Color(0xFFFBE9E6);
+const _tintaError = Color(0xFF8A1C12);
+
 class _Banner extends StatelessWidget {
   const _Banner({
     required this.tipo,
@@ -726,8 +752,8 @@ class _Banner extends StatelessWidget {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
     final error = tipo == _TipoBanner.error;
-    final fondo = error ? esquema.errorContainer : esquema.primaryContainer;
-    final color = error ? esquema.onErrorContainer : esquema.onPrimaryContainer;
+    final fondo = error ? _fondoError : _fondoInfo;
+    final color = error ? _tintaError : esquema.onSurface;
     return Semantics(
       key: clave,
       liveRegion: true,
@@ -756,7 +782,9 @@ class _Banner extends StatelessWidget {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: alAccionar,
-                    style: TextButton.styleFrom(foregroundColor: color),
+                    style: TextButton.styleFrom(
+                      foregroundColor: error ? _tintaError : esquema.primary,
+                    ),
                     child: Text(accion!),
                   ),
                 ),
