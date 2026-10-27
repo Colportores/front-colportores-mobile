@@ -3,19 +3,31 @@
 // ubicación, en la misma transacción que el alta, y nunca en la cola de sync ni en una columna.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_table.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:drift/native.dart';
+import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
+
+final class _SalidaEnMemoria extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
+}
 
 void main() {
   final t0 = DateTime.utc(2026, 10, 6, 9, 30, 15, 250);
@@ -228,6 +240,66 @@ void main() {
       );
 
       expect(await auditoria(), isEmpty);
+    });
+  });
+
+  group('Falla al guardar la justificación: el texto no sale en el log', () {
+    const privado = 'La familia García de la casa azul';
+    late _SalidaEnMemoria salida;
+    late UbicacionRepositoryImpl repositorio;
+
+    setUp(() {
+      salida = _SalidaEnMemoria();
+      repositorio = UbicacionRepositoryImpl(local, logger: AppLogger(output: salida));
+    });
+
+    Future<void> fallarElInsertEnAudit() => db.customStatement(
+      'CREATE TRIGGER falla_audit BEFORE INSERT ON audit_log '
+      "BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+    );
+
+    void sinElTexto() {
+      final log = salida.lineas.join(' ');
+      expect(log, contains('SqliteException'), reason: 'el tipo sí');
+      expect(log, contains('result_code'), reason: 'el código sí');
+      expect(log, isNot(contains('García')));
+      expect(log, isNot(contains('INSERT INTO "audit_log"')), reason: 'ni la sentencia');
+    }
+
+    test('dado que falla el INSERT en audit_log en el alta, devuelve FailureInesperado, no queda '
+        'nada a medias y el log no lleva la justificación', () async {
+      await fallarElInsertEnAudit();
+
+      final r = await repositorio.registrar(
+        ubicacion().toEntity(),
+        origen: OrigenCoordenadas.gps,
+        justificacion: privado,
+      );
+
+      expect(r.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      expect(salida.lineas.join(' '), contains('UBICACION_ALTA_FAIL'));
+      sinElTexto();
+      expect(await local.obtener('ub-nueva'), isNull, reason: 'la transacción se revirtió');
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado que falla el INSERT en audit_log en la edición, devuelve FailureInesperado, no '
+        'cambia la ubicación y el log no lleva la justificación', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+      await fallarElInsertEnAudit();
+
+      final r = await repositorio.modificar(
+        ubicacion(numero: '1236', actualizada: t1).toEntity(),
+        baseUpdatedAt: t0,
+        justificacion: privado,
+      );
+
+      expect(r.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      expect(salida.lineas.join(' '), contains('UBICACION_MODIFICAR_FAIL'));
+      sinElTexto();
+      expect((await local.obtener('ub-nueva'))!.numero, '1234');
+      expect(encolador.encolados, isEmpty);
     });
   });
 }
