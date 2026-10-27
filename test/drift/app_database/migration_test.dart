@@ -16,6 +16,7 @@ import 'generated/schema.dart';
 import 'generated/schema_v10.dart' as v10;
 import 'generated/schema_v11.dart' as v11;
 import 'generated/schema_v12.dart' as v12;
+import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -824,6 +825,50 @@ void main() {
           nuevo.customStatement(
             'INSERT INTO notificacion_historial (id, tipo, titulo, recibida_en) '
             "VALUES ('n-1', 'RECORDATORIO_VISITA', 'otro', 2)",
+          ),
+          throwsA(anything),
+        );
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 12, cuando migra a la 13, no se pierde nada y aparece la '
+      'tabla de metadatos del motor vacía y sin encolar nada', () async {
+    // #486: `sync_meta` es solo local (infraestructura del motor): al migrar solo se crea. La vista
+    // de estado de sync dice «Todavía no hubo» hasta que el motor anote algo.
+    const jornada = v12.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 12,
+      newVersion: 13,
+      createOld: v12.DatabaseAtV12.new,
+      createNew: v13.DatabaseAtV13.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(jornadas.single.syncVersion, 1);
+        expect(await nuevo.select(nuevo.syncMeta).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nueva guarda un dato y rechaza repetir la clave.
+        await nuevo.customStatement(
+          "INSERT INTO sync_meta (clave, valor) VALUES ('last_pull_at', '2026-10-27T08:00:00.000Z')",
+        );
+        await expectLater(
+          nuevo.customStatement(
+            "INSERT INTO sync_meta (clave, valor) VALUES ('last_pull_at', 'otro')",
           ),
           throwsA(anything),
         );
