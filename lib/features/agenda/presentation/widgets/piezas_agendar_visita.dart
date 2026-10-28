@@ -185,18 +185,22 @@ class SelectorTipoAgenda extends StatelessWidget {
                   : ColoresAlta.tinta,
             ),
           ),
-          segments: [
-            const ButtonSegment(
-              value: TipoAgenda.entrevista,
-              label: Text(TextosAgendarVisita.entrevista),
-            ),
-            const ButtonSegment(
-              value: TipoAgenda.cobranza,
-              label: Text(TextosAgendarVisita.cobranza),
-            ),
-            if (tipo == TipoAgenda.entrega)
-              const ButtonSegment(value: TipoAgenda.entrega, label: Text(TextosAgenda.tagEntrega)),
-          ],
+          // Una cita de entrega (HU-VEN-003) no cambia de tipo: se ve sola, elegida. Con tres
+          // segmentos, a 2,0× las etiquetas se parten a la mitad (QA #433); con uno entra siempre.
+          segments: tipo == TipoAgenda.entrega
+              ? const [
+                  ButtonSegment(value: TipoAgenda.entrega, label: Text(TextosAgenda.tagEntrega)),
+                ]
+              : const [
+                  ButtonSegment(
+                    value: TipoAgenda.entrevista,
+                    label: Text(TextosAgendarVisita.entrevista),
+                  ),
+                  ButtonSegment(
+                    value: TipoAgenda.cobranza,
+                    label: Text(TextosAgendarVisita.cobranza),
+                  ),
+                ],
           selected: {tipo},
           onSelectionChanged: bloqueado || alCambiar == null || tipo == TipoAgenda.entrega
               ? null

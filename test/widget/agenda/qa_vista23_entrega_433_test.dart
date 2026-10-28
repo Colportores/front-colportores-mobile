@@ -71,10 +71,17 @@ void main() {
       expect(selector.onSelectionChanged, isNull, reason: 'el tipo de una entrega no se elige');
       expect(
         [for (final s in selector.segments) s.value],
-        [TipoAgenda.entrevista, TipoAgenda.cobranza, TipoAgenda.entrega],
+        [TipoAgenda.entrega],
+        reason: 'una cita de entrega se ve sola: con tres segmentos las etiquetas se parten a 2,0×',
       );
 
-      await tester.tap(find.text('Cobranza'), warnIfMissed: false);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SegmentedButton<TipoAgenda>),
+          matching: find.text('Entrega'),
+        ),
+        warnIfMissed: false,
+      );
       await tester.pump();
       expect(
         tester
@@ -105,7 +112,6 @@ void main() {
 
   group('el selector de tipo de una entrega con el texto al doble', () {
     for (final tamano in [chico455, grande455]) {
-      // skip: QA #433 — con tres segmentos, a 2,0× «Entrevista», «Cobranza» y «Entrega» se parten a la mitad
       testWidgets('ninguna etiqueta se parte por la mitad · ${sufijo455(tamano, 2)}', (
         tester,
       ) async {
@@ -129,7 +135,7 @@ void main() {
 
         expect(partidas, isEmpty, reason: 'etiquetas en varios renglones: $partidas');
         await desmontar455(tester);
-      }, skip: true);
+      });
     }
   });
 
