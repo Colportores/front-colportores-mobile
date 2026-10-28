@@ -21,8 +21,8 @@ typedef ResultadoDeVisitaFechado = ({TipoResultadoVisita resultado, DateTime fec
 /// encima de cualquiera de los tres. El resultado sigue sin depender del orden en que llegan los
 /// datos: la fecha de la visita decide, y a igual instante gana la de número más chico.
 ///
-/// Aportan las agendas, las visitas y las ventas (prioridades 1, 3, 5, 6 y 7). La entrega y la cobranza
-/// (HU-VEN-002, HU-COB-001) suman las 2 y 4: un parámetro nuevo acá, sin tocar a quien ya llama.
+/// Aportan las agendas, las visitas, las ventas y sus entregas (prioridades 1 a 7). La cobranza
+/// (HU-COB-001) suma el saldo real: hoy el saldo de una venta es su monto entero.
 abstract final class CalculadorColorCasa {
   /// El color de una casa con [agendasPendientes] (los tipos de sus agendas que siguen esperando
   /// su visita) y [resultadosDeVisitas] (el resultado y la fecha de cada una de sus visitas), o
@@ -32,20 +32,19 @@ abstract final class CalculadorColorCasa {
   /// - Una agenda pendiente **de entrevista** → 3, entrevista programada. La de **cobranza** no
   ///   pinta nada acá: «cobranza pendiente» (2) depende de que haya una venta con saldo (S9).
   /// - Una visita `ENTREVISTA` → 5, `NO_CONTESTO` → 6, `RECHAZO` → 7, y de todas esas **vale la
-  ///   más reciente**. La `VENTA` no aporta por sí sola (pinta la venta, [montosDeVentas]) y no
-  ///   desplaza a ninguna de las tres. La `COBRANZA` tampoco: pinta el cobro (S9), no la visita.
-  /// - Una venta con monto mayor a cero → 1 hasta que haya entrega y cobro (ver arriba).
+  ///   más reciente**. La `VENTA` no aporta por sí sola (pinta la venta, [ventas]) y no desplaza a
+  ///   ninguna de las tres. La `COBRANZA` tampoco: pinta el cobro (S9), no la visita.
+  /// - Una venta ([VentaParaElColor]) pinta según su saldo y su entrega: con saldo y sin entregar →
+  ///   1 (entrega y cobranza pendientes); con saldo y entregada → 2 (cobranza pendiente); sin saldo y
+  ///   entregada → 4 (venta completa). Sin saldo y sin entregar no pinta por sí sola (la venta de
+  ///   $ 0 todavía sin entregar espera la decisión de Cristian, #531 P2).
   static ColorHouseStatus? calcular({
     Iterable<TipoAgenda> agendasPendientes = const [],
     Iterable<ResultadoDeVisitaFechado> resultadosDeVisitas = const [],
-    Iterable<int> montosDeVentas = const [],
+    Iterable<VentaParaElColor> ventas = const [],
   }) => ColorHouseStatus.elDeMayorPrioridad(
     [
-      // Una venta con algo para cobrar, sin entrega ni cobro registrados todavía (esas tablas llegan
-      // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (todo lo
-      // regalado) no pide cobrar nada y no pinta por sí sola.
-      for (final monto in montosDeVentas)
-        if (monto > 0) ColorHouseStatus.entregaYCobranzaPendiente,
+      for (final venta in ventas) venta.color,
       for (final tipo in agendasPendientes)
         if (tipo == TipoAgenda.entrevista) ColorHouseStatus.entrevistaProgramada,
       _colorDeLaUltimaVisita(resultadosDeVisitas),
@@ -74,5 +73,27 @@ abstract final class CalculadorColorCasa {
       }
     }
     return color;
+  }
+}
+
+/// Lo que el color de la casa necesita saber de una venta viva (ADR-003 §8.4, HU-VEN-002).
+final class VentaParaElColor {
+  const VentaParaElColor({required this.saldoCentavos, required this.entregada});
+
+  /// Lo que falta cobrar, en centavos. Hasta que existan los cobros (HU-COB-001) es el monto de la
+  /// venta entero.
+  final int saldoCentavos;
+
+  /// Se entregó todo: la venta tiene filas de entrega y ninguna sigue pendiente.
+  final bool entregada;
+
+  /// El color que aporta esta venta, o `null` si no pinta por sí sola.
+  ColorHouseStatus? get color {
+    if (saldoCentavos > 0) {
+      return entregada
+          ? ColorHouseStatus.cobranzaPendiente
+          : ColorHouseStatus.entregaYCobranzaPendiente;
+    }
+    return entregada ? ColorHouseStatus.ventaCompleta : null;
   }
 }

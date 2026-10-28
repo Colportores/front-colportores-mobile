@@ -24,6 +24,7 @@ import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/entregas_table.dart';
 import '../../features/ventas/data/datasources/venta_items_table.dart';
 import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
@@ -74,6 +75,7 @@ part 'app_database.g.dart';
     PreciosGenerales,
     Ventas,
     VentaItems,
+    Entregas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -105,10 +107,12 @@ class AppDatabase extends _$AppDatabase {
   ///   la red del último envío (HU-SYNC-007, #486).
   /// - 14: las réplicas del catálogo de ventas, `producto`, `coleccion`, `producto_coleccion`,
   ///   `precio_por_ciudad` y `precio_general` (HU-SYNC-002, HU-SYNC-003, HU-CAT-007, #180).
+  /// - 15: `venta` y `venta_item`, que suben sin dato del cliente (HU-VEN-001, #423).
+  /// - 16: `entrega`, una fila por producto de la venta, que sube (HU-VEN-002, #430).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 15;
+  static const int versionEsquema = 16;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -283,6 +287,12 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.ventaEspacioPersonaIdx);
       await m.createTable(esquema.ventaItem);
       await m.createIndex(esquema.ventaItemVentaIdx);
+    },
+    // Solo crea las entregas, vacías: nada de lo guardado cambia ni se encola al migrar. Las ventas
+    // que ya estaban quedan sin entrega registrada, o sea por entregar.
+    from15To16: (m, esquema) async {
+      await m.createTable(esquema.entrega);
+      await m.createIndex(esquema.entregaVentaIdx);
     },
   );
 }

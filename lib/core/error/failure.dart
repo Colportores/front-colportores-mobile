@@ -854,3 +854,38 @@ final class FailureVentaNoGuardada extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// La entrega no se pudo guardar en el teléfono (vista 27, 27B·01). No se perdió nada de lo marcado:
+/// la pantalla sigue como estaba y se puede reintentar.
+///
+/// El texto adapta el aviso de error de la vista (27A·13) a la entrega: a confirmar.
+final class FailureEntregaNoGuardada extends Failure {
+  const FailureEntregaNoGuardada({this.causa})
+    : super(
+        mensaje:
+            'No pudimos guardar la entrega en tu teléfono. No se perdió nada de lo que marcaste: '
+            'probá de nuevo.',
+        codigo: 'VENTA_ENTREGA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer lo que se vendió o lo que ya se entregó (vista 27, 27B·01): la base local no se
+/// pudo leer o todavía no existe de dónde leer los nombres del catálogo
+/// (`FuenteDeProductosDeLaEntregaSinFuente`, hasta la réplica local de front-colportores-mobile#180
+/// y su adaptador en #274). Es **otra cosa** que «no hay nada para entregar»: aquí no se sabe. Se
+/// puede reintentar.
+///
+/// El texto es a confirmar (el canvas no dibuja este estado).
+final class FailureEntregaNoDisponible extends Failure {
+  const FailureEntregaNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer lo que vendiste en tu teléfono. Probá de nuevo.',
+        codigo: 'VENTA_ENTREGA_NO_DISPONIBLE',
+      );
+}

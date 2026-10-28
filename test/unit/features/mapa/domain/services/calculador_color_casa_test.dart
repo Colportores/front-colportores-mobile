@@ -131,7 +131,7 @@ void main() {
         'cobranza pendientes (1) y gana a todo lo demás (HU-VEN-001)', () {
       expect(
         CalculadorColorCasa.calcular(
-          montosDeVentas: [150000],
+          ventas: [_sinEntregar(150000)],
           agendasPendientes: [TipoAgenda.entrevista],
           resultadosDeVisitas: [_v(_R.venta, 0), _v(_R.rechazo, 1)],
         ),
@@ -142,16 +142,56 @@ void main() {
     test(
       'dado una venta de \$ 0 (todo regalado), cuando se calcula, no pinta nada por sí sola',
       () {
-        expect(CalculadorColorCasa.calcular(montosDeVentas: [0]), isNull);
+        expect(CalculadorColorCasa.calcular(ventas: [_sinEntregar(0)]), isNull);
         expect(
           CalculadorColorCasa.calcular(
-            montosDeVentas: [0],
+            ventas: [_sinEntregar(0)],
             resultadosDeVisitas: [_v(_R.rechazo, 0)],
           ),
           _C.rechazo,
         );
       },
     );
+
+    test('dado una venta entregada con saldo, cuando se calcula, queda en cobranza pendiente (2) '
+        '(HU-VEN-002)', () {
+      expect(
+        CalculadorColorCasa.calcular(
+          ventas: [const VentaParaElColor(saldoCentavos: 250000, entregada: true)],
+          resultadosDeVisitas: [_v(_R.rechazo, 0)],
+        ),
+        _C.cobranzaPendiente,
+      );
+    });
+
+    test('dado una venta entregada y sin saldo, cuando se calcula, es venta completa (4) '
+        '(HU-VEN-002)', () {
+      expect(
+        CalculadorColorCasa.calcular(
+          ventas: [const VentaParaElColor(saldoCentavos: 0, entregada: true)],
+          resultadosDeVisitas: [_v(_R.entrevista, 0)],
+        ),
+        _C.ventaCompleta,
+      );
+      // La agenda de una entrevista (3) todavía le gana: ADR-003 §8.4.
+      expect(
+        CalculadorColorCasa.calcular(
+          ventas: [const VentaParaElColor(saldoCentavos: 0, entregada: true)],
+          agendasPendientes: [TipoAgenda.entrevista],
+        ),
+        _C.entrevistaProgramada,
+      );
+    });
+
+    test('dado dos ventas, una entregada con saldo y otra sin entregar, cuando se calcula, gana '
+        'la que más falta (1)', () {
+      expect(
+        CalculadorColorCasa.calcular(
+          ventas: [const VentaParaElColor(saldoCentavos: 100, entregada: true), _sinEntregar(100)],
+        ),
+        _C.entregaYCobranzaPendiente,
+      );
+    });
 
     test('dado una agenda pendiente y un rechazo, cuando se calcula, gana la agenda (3 antes que '
         '7)', () {
@@ -303,3 +343,6 @@ void main() {
     });
   });
 }
+
+VentaParaElColor _sinEntregar(int saldo) =>
+    VentaParaElColor(saldoCentavos: saldo, entregada: false);

@@ -19,6 +19,7 @@ import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
+import 'generated/schema_v16.dart' as v16;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -966,4 +967,53 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado lo guardado en la versión 15, cuando migra a la 16, no se pierde la venta y aparece la '
+    'entrega vacía, con su CHECK de cantidad y sin encolar nada',
+    () async {
+      // HU-VEN-002 (#430): `entrega` sube por el motor; al migrar solo se crea, vacía.
+      const venta = v15.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1758700000000,
+        colportorId: 'col-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 1,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 15,
+        newVersion: 16,
+        createOld: v15.DatabaseAtV15.new,
+        createNew: v16.DatabaseAtV16.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.entrega).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO entrega (id, venta_id, producto_id, cantidad, fecha_entrega, pendiente, '
+              'created_at, updated_at) VALUES ';
+          await nuevo.customStatement("$columnas('e-1', 'v-1', 'p-1', 2, 1, 0, 1, 1)");
+          // Sin fecha y pendiente: bien (queda para otro día). Cantidad cero o negativa: no.
+          await nuevo.customStatement("$columnas('e-2', 'v-1', 'p-2', 1, NULL, 1, 1, 1)");
+          for (final malo in [
+            "('e-3', 'v-1', 'p-3', 0, 1, 0, 1, 1)",
+            "('e-4', 'v-1', 'p-4', -1, 1, 0, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+          final filas = await nuevo.select(nuevo.entrega).get();
+          expect(filas.map((f) => f.id), unorderedEquals(['e-1', 'e-2']));
+        },
+      );
+    },
+  );
 }

@@ -49,7 +49,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     final color = CalculadorColorCasa.calcular(
       agendasPendientes: await _agendasPendientes(ubicacionId),
       resultadosDeVisitas: await _resultadosDeVisitas(ubicacionId),
-      montosDeVentas: await _montosDeVentas(ubicacionId),
+      ventas: await _ventasDeLaCasa(ubicacionId),
     );
     final existente = await _fila(ubicacionId);
 
@@ -135,16 +135,33 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     ];
   }
 
-  /// Lo que se cobra por cada venta viva de la casa (HU-VEN-001): las ventas cuelgan del vínculo
-  /// persona ↔ espacio, y el espacio tiene que seguir activo.
-  Future<List<int>> _montosDeVentas(String ubicacionId) async {
+  /// Cada venta viva de la casa con su saldo y si ya se entregó (HU-VEN-001, HU-VEN-002): las ventas
+  /// cuelgan del vínculo persona ↔ espacio, y el espacio tiene que seguir activo. Está entregada si
+  /// tiene filas de `entrega` vivas y ninguna sigue pendiente.
+  Future<List<VentaParaElColor>> _ventasDeLaCasa(String ubicacionId) async {
     final vinculos = _db.selectOnly(_db.espacioPersonas)
       ..addColumns([_db.espacioPersonas.id])
       ..where(_db.espacioPersonas.espacioId.isInQuery(_espaciosDe(ubicacionId)));
-    final filas = await (_db.select(
+    final ventas = await (_db.select(
       _db.ventas,
     )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
-    return [for (final fila in filas) fila.montoTotal];
+    if (ventas.isEmpty) return const [];
+    final entregas = await (_db.select(
+      _db.entregas,
+    )..where((e) => e.ventaId.isIn([for (final v in ventas) v.id]) & e.deletedAt.isNull())).get();
+    final conEntrega = {for (final e in entregas) e.ventaId};
+    final conPendiente = {
+      for (final e in entregas)
+        if (e.pendiente) e.ventaId,
+    };
+    return [
+      for (final v in ventas)
+        VentaParaElColor(
+          // Hasta los cobros (HU-COB-001, #436) el saldo es el monto entero.
+          saldoCentavos: v.montoTotal,
+          entregada: conEntrega.contains(v.id) && !conPendiente.contains(v.id),
+        ),
+    ];
   }
 
   Future<HouseStatusFila?> _fila(String ubicacionId) => (_db.select(
