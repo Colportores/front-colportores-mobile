@@ -386,17 +386,20 @@ void main() {
       expect(await color(), 'COBRANZA_PENDIENTE');
     });
 
-    test('sin ids, marcar de nuevo lo ya entregado responde que ya estaba (no es un error)', () async {
-      await dejadaParaElSabado();
-      await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
-      encolador.encolados.clear();
+    test(
+      'sin ids, marcar de nuevo lo ya entregado responde que ya estaba (no es un error)',
+      () async {
+        await dejadaParaElSabado();
+        await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+        encolador.encolados.clear();
 
-      final r = await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-y');
+        final r = await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-y');
 
-      expect(r.yaEstaba, isTrue);
-      expect(r.entregadas, isEmpty);
-      expect(encolador.encolados, isEmpty);
-    });
+        expect(r.yaEstaba, isTrue);
+        expect(r.entregadas, isEmpty);
+        expect(encolador.encolados, isEmpty);
+      },
+    );
 
     test(
       'parcial con fecha nueva: lo marcado se entrega y la cita se mueve a lo que queda',
