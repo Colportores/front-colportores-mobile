@@ -7,7 +7,7 @@ import 'tipo_agenda.dart';
 
 /// Visita planificada (esquema-datos.md §Operaciones de campo, tabla `agenda`).
 ///
-/// Son las columnas de `public.agenda` (backend-supabase 0001), que la app sube enteras. **No lleva
+/// Son las columnas de `public.agenda` (backend-supabase 0001 y 0068), que la app sube enteras. **No lleva
 /// notas**: las de una agenda son filas de `nota` (`target_type = AGENDA`, local-only, ADR-017), así
 /// que acá no hay ningún dato personal: solo ids.
 class Agenda extends Equatable {
@@ -23,6 +23,8 @@ class Agenda extends Equatable {
     this.estado = EstadoAgenda.programada,
     required this.colportorId,
     this.visitaId,
+    this.ventaId,
+    this.entregaId,
     required this.auditoria,
   }) : fechaProgramada = instanteMs(fechaProgramada);
 
@@ -58,6 +60,13 @@ class Agenda extends Equatable {
   /// FK a `visita.id`: se completa al registrar la visita que la cumple.
   final String? visitaId;
 
+  /// FK opcional a `venta.id`: la venta de la que sale la cita (backend 0068). Una entrega para otro
+  /// día la lleva; una entrevista no.
+  final String? ventaId;
+
+  /// FK opcional a `entrega.id`: la entrega que se agenda, solo en una cita `ENTREGA` (backend 0068).
+  final String? entregaId;
+
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
@@ -78,6 +87,8 @@ class Agenda extends Equatable {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    entregaId,
     auditoria,
   ];
 }
