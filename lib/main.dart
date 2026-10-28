@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/conectividad/monitor_conectividad_plus.dart';
+import 'core/config/config_google.dart';
 import 'core/config/config_supabase.dart';
 import 'core/database/database_helper.dart';
 import 'core/database/database_providers.dart';
@@ -48,6 +49,10 @@ import 'features/notificaciones/data/repositories/preferencias_recordatorios_rep
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
+import 'features/respaldo/data/services/servicio_google.dart';
+import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -187,6 +192,15 @@ Future<void> main() async {
         // por cuenta y se vuelve a encender desde Configuración.
         avisoPrivacidadRepositoryProvider.overrideWithValue(
           AvisoPrivacidadRepositoryImpl(almacenSeguro),
+        ),
+        // El respaldo en el Drive de la persona (HU-SYNC-004): sin los identificadores de cliente de
+        // Google (`--dart-define`, docs/google-drive-oauth.md) no se puede conectar y la fila
+        // «Cuenta Drive» lo dice con «No pudimos conectar tu Drive».
+        respaldoDriveRepositoryProvider.overrideWithValue(
+          RespaldoDriveRepositoryImpl(
+            almacenSeguro,
+            ConfigGoogle.configurada ? ServicioGoogleSignIn() : const ServicioGoogleSinConfigurar(),
+          ),
         ),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
