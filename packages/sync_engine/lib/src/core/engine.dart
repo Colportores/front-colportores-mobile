@@ -397,11 +397,51 @@ class SyncEngine {
     if (destino.state != JobState.pending || destino.job.op == Op.delete) {
       return null;
     }
-    await _jobs.replacePayload(destino.id, {
-      ...destino.job.payload,
-      ...job.payload,
-    });
+    final fundido = {...destino.job.payload, ...job.payload};
+    await _jobs.replacePayload(destino.id, fundido);
+    await _pasarDetrasDeLoQueNombra(destino, fundido, job.createdAt);
     return destino.id;
+  }
+
+  /// El payload fundido de [destino] puede nombrar una fila cuyo alta se
+  /// encoló **después** de él: la agenda que se agenda y más tarde se cumple
+  /// con una visita funde el cumplimiento en su alta, y ahora lleva `visita_id`
+  /// aunque el alta de la visita viaje detrás. El servidor aplica el lote en
+  /// orden y comprueba cada FK en el momento (`23503`): la agenda quedaba
+  /// `INVALID` y la cita cumplida no subía nunca.
+  ///
+  /// Si pasa, [destino] se reubica detrás de esas altas, con lo que cuelga de
+  /// él (el mismo criterio de [_absorber]). Si no nombra nada que vaya
+  /// después, no se mueve: conserva su lugar en la cola.
+  ///
+  /// Solo cuentan las altas de entidades con PK propia (`id`): `house_status`
+  /// se identifica con el id de la ubicación y nadie lo nombra, así que su PK
+  /// no es una referencia posible (y confundiría a la ubicación con su propio
+  /// color).
+  Future<void> _pasarDetrasDeLoQueNombra(
+    QueuedJob destino,
+    Map<String, Object?> payload,
+    DateTime ahora,
+  ) async {
+    final pendientes = await _jobs.listPending();
+    final lugar = pendientes.indexWhere((q) => q.id == destino.id);
+    if (lugar < 0) return;
+    final propia = _specs.of(destino.job.entity).pk;
+    final detras = <String>{};
+    for (final q in pendientes.skip(lugar + 1)) {
+      if (q.job.op != Op.insert || _specs.of(q.job.entity).pk != 'id') continue;
+      if (pkDe(_specs, q.job) case final pk?) detras.add(pk);
+    }
+    if (detras.isEmpty) return;
+    final nombra = payload.entries.any(
+      (e) => e.key != propia && e.value is String && detras.contains(e.value),
+    );
+    if (!nombra) return;
+    final cuelgan = _pendientesQueCuelgan([destino], pendientes);
+    await _jobs.release([
+      destino.id,
+      for (final q in _enOrdenDeCreacion(cuelgan)) q.id,
+    ], at: ahora);
   }
 
   /// Las `sync_version` que el servidor les dio a las filas de un lote vuelven
