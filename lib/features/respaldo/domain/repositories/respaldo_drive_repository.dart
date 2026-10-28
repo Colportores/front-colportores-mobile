@@ -28,6 +28,12 @@ abstract interface class RespaldoDriveRepository {
   /// (`Left(FailureAlmacenSeguro)`) si la cuenta guardada no se pudo olvidar.
   Future<Either<Failure, Unit>> desconectar(String usuarioId);
 
+  /// Le pide a Google que retire el permiso de Drive de esta app, **sin** tocar la cuenta
+  /// guardada ni los archivos que ya estén en el Drive. Es lo que usa el borrado de datos
+  /// locales (HU-AUTH-010): los datos del teléfono se van, el permiso también, pero el respaldo
+  /// en Drive solo se borra si la persona lo pidió. De mejor esfuerzo: nunca lanza.
+  Future<void> retirarPermisoGoogle();
+
   /// Mira si Google todavía tiene el permiso de [usuarioId]. Sin permiso lo deja en
   /// [DrivePermisoRevocado]. Sin red, o si Google no contesta, no concluye nada: devuelve el estado
   /// como estaba.
@@ -35,7 +41,13 @@ abstract interface class RespaldoDriveRepository {
 
   /// El respaldo recibió `401` de Drive (HU-SYNC-004, «Edge — usuario revoca el permiso»): pasa a
   /// [DrivePermisoRevocado]. Sin cuenta conectada no hace nada. Lo llama el motor de backup.
-  Future<Either<Failure, EstadoRespaldoDrive>> marcarPermisoRevocado(String usuarioId);
+  ///
+  /// Con [cuentaId], solo marca si la cuenta guardada sigue siendo esa: una mirada lenta al
+  /// permiso no puede marcar como revocada una conexión nueva (otra cuenta) hecha mientras tanto.
+  Future<Either<Failure, EstadoRespaldoDrive>> marcarPermisoRevocado(
+    String usuarioId, {
+    String? cuentaId,
+  });
 
   /// Drive contestó que no hay espacio (16D·10): pasa a [DriveSinEspacio]. Sin cuenta conectada no
   /// hace nada. Lo llama el motor de backup.

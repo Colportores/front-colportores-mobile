@@ -40,11 +40,11 @@ abstract final class TextosRespaldoDrive {
   // La hoja de conectar (16D·02, 03, 08, 09).
   static const tituloConectar = 'Respaldo en tu Google Drive';
 
-  /// El literal de HU-SYNC-004: «UI muestra antes del consent». El canvas lo redacta distinto; se
-  /// usa el de la HU (mapa §2, texto).
+  /// Texto previo al consentimiento, el de 16D·02 (decisión del agente de decisiones, regla R3:
+  /// el canvas precisa a HU-SYNC-004, que se ajusta con docs#76).
   static const explicacionCifrado =
-      'La app va a guardar archivos cifrados (no legibles para Google) en una carpeta oculta de tu '
-      'Drive. Solo esta app puede leerlos.';
+      'Guardamos una copia de tus datos en una carpeta oculta de tu Drive. Los archivos van '
+      'cifrados, Google no los puede leer, y solo esta app los puede acceder.';
   static const cadaNoche = 'Se respalda cada noche. Podés desconectarlo cuando quieras.';
   static const conectarConGoogle = 'Conectar con Google';
   static const conectando = 'Conectando…';

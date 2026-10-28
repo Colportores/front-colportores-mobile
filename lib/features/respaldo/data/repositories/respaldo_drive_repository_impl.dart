@@ -203,16 +203,22 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     return const Right(unit);
   });
 
+  @override
+  Future<void> retirarPermisoGoogle() => _encolar(_retirarPermiso);
+
   Future<Either<Failure, EstadoRespaldoDrive>> _cambiarEstado(
     String usuarioId,
     String nuevo, {
     String? soloDesde,
+    String? cuentaId,
   }) => _encolar(() async {
     try {
       final todo = await _leerTodo();
       final fila = todo[usuarioId];
       if (fila == null) return const Right(DriveSinConectar());
-      if (fila['estado'] == nuevo || (soloDesde != null && fila['estado'] != soloDesde)) {
+      if (fila['estado'] == nuevo ||
+          (soloDesde != null && fila['estado'] != soloDesde) ||
+          (cuentaId != null && fila['id'] != cuentaId)) {
         return Right(_aEstado(fila));
       }
       final cambiada = {...fila, 'estado': nuevo};
@@ -225,8 +231,10 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   });
 
   @override
-  Future<Either<Failure, EstadoRespaldoDrive>> marcarPermisoRevocado(String usuarioId) =>
-      _cambiarEstado(usuarioId, _revocada);
+  Future<Either<Failure, EstadoRespaldoDrive>> marcarPermisoRevocado(
+    String usuarioId, {
+    String? cuentaId,
+  }) => _cambiarEstado(usuarioId, _revocada, cuentaId: cuentaId);
 
   @override
   Future<Either<Failure, EstadoRespaldoDrive>> marcarSinEspacio(String usuarioId) =>
@@ -242,6 +250,7 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     final estadoActual = actual.fold<EstadoRespaldoDrive?>((_) => null, (e) => e);
     // Solo se mira donde el permiso se supone vigente: ni sin cuenta, ni ya revocado.
     if (estadoActual is! DriveConectada && estadoActual is! DriveSinEspacio) return actual;
+    final cuentaId = (estadoActual as DriveConCuenta).cuentaId;
     final String? token;
     try {
       token = await _google.tokenSilencioso();
@@ -250,11 +259,13 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       _log.info(LogModulo.backup, 'DRIVE_VERIFICAR', 'no se pudo ver el permiso de Drive', {
         'error': e.runtimeType.toString(),
       });
-      return actual;
+      return estado(usuarioId);
     }
-    if (token != null) return actual;
+    // El token pudo tardar: la persona pudo desconectar o conectar otra cuenta mientras tanto. Se
+    // devuelve lo que hay ahora, no lo que había al empezar, y solo se marca la cuenta que se miró.
+    if (token != null) return estado(usuarioId);
     _log.warn(LogModulo.backup, 'DRIVE_REVOCADO', 'Google ya no tiene el permiso de Drive');
-    return marcarPermisoRevocado(usuarioId);
+    return marcarPermisoRevocado(usuarioId, cuentaId: cuentaId);
   }
 
   @override
@@ -262,9 +273,10 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     final actual = await estado(usuarioId);
     final estadoActual = actual.fold<EstadoRespaldoDrive?>((_) => null, (e) => e);
     if (estadoActual is! DriveConectada && estadoActual is! DriveSinEspacio) return null;
+    final cuentaId = (estadoActual as DriveConCuenta).cuentaId;
     try {
       final token = await _google.tokenSilencioso();
-      if (token == null) await marcarPermisoRevocado(usuarioId);
+      if (token == null) await marcarPermisoRevocado(usuarioId, cuentaId: cuentaId);
       return token;
     } on Object catch (e) {
       _log.info(LogModulo.backup, 'DRIVE_TOKEN', 'no se pudo pedir el token de Drive', {

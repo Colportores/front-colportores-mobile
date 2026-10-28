@@ -88,6 +88,10 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
   /// que cortar el segundo toque aunque llegue antes de que se vuelva a dibujar.
   bool _enCurso = false;
 
+  /// Sube con cada conexión o desconexión. Una lectura lenta del permiso que empezó antes de un
+  /// cambio así vio un estado que ya no existe: su resultado se descarta.
+  int _generacion = 0;
+
   String? _usuarioId;
 
   RespaldoDriveRepository get _repo => ref.read(respaldoDriveRepositoryProvider);
@@ -115,8 +119,9 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
   }
 
   Future<void> _verificarPermiso(String usuarioId) async {
+    final generacion = _generacion;
     final resultado = await ref.read(respaldoDriveRepositoryProvider).verificarPermiso(usuarioId);
-    if (!ref.mounted || _usuarioId != usuarioId) return;
+    if (!ref.mounted || _usuarioId != usuarioId || _generacion != generacion) return;
     resultado.fold((_) {}, (estado) {
       // Una conexión o desconexión en curso es más nueva que esta mirada.
       if (!_enCurso && state.value != estado) state = AsyncData(estado);
@@ -137,6 +142,7 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
     final usuarioId = _usuarioId;
     if (_enCurso || usuarioId == null) return const DriveOcupado();
     _enCurso = true;
+    _generacion++;
     try {
       final resultado = await _repo.conectar(usuarioId);
       return resultado.fold(DriveNoQuedoConectado.new, (conexion) {
@@ -147,6 +153,7 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
       return const DriveNoQuedoConectado(FailureDriveNoConectado());
     } finally {
       _enCurso = false;
+      _generacion++;
     }
   }
 
@@ -156,6 +163,7 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
     final usuarioId = _usuarioId;
     if (_enCurso || usuarioId == null) return const DriveOcupado();
     _enCurso = true;
+    _generacion++;
     try {
       final resultado = await _repo.desconectar(usuarioId);
       return resultado.fold(DriveNoQuedoDesconectado.new, (_) {
@@ -166,6 +174,7 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
       return const DriveNoQuedoDesconectado(FailureInesperado());
     } finally {
       _enCurso = false;
+      _generacion++;
     }
   }
 

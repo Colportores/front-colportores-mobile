@@ -5,6 +5,7 @@ import '../../../../core/config/config_supabase.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../data/datasources/almacen_sesion_supabase.dart';
 import '../../data/datasources/auth_local_data_source.dart';
 import '../../data/datasources/auth_remote_data_source.dart';
@@ -174,6 +175,7 @@ DatosLocalesRepository datosLocalesRepository(Ref ref) => DatosLocalesRepository
   () => ref.read(dbLocalProvider.notifier).cerrar(),
   ref.watch(custodiaClaveDbProvider),
   ref.watch(backupDriveDataSourceProvider),
+  retirarPermisoDrive: () => ref.read(respaldoDriveRepositoryProvider).retirarPermisoGoogle(),
 );
 
 @Riverpod(keepAlive: true)

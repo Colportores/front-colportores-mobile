@@ -185,6 +185,25 @@ void main() {
     },
   );
 
+  for (final (nombre, token) in [('con permiso', 'ya29.token'), ('sin permiso', null)]) {
+    test('desconectar mientras Google tarda en contestar la verificación ($nombre): '
+        'la fila queda sin conectar', () async {
+      final c = armar();
+      await a.repo.conectar('u-1');
+      final compuerta = Completer<void>();
+      a.google.compuertaToken = compuerta;
+      a.google.token = token;
+
+      expect(await leer(c), isA<DriveConectada>());
+      await pumpEventQueue();
+      expect(await notifier(c).desconectar(), isA<DriveQuedoDesconectado>());
+      compuerta.complete();
+      await pumpEventQueue();
+
+      expect(c.read(estadoRespaldoDriveProvider).value, isA<DriveSinConectar>());
+    });
+  }
+
   test('el motor de respaldo marca permiso revocado, sin espacio y guardado', () async {
     final c = armar();
     await leer(c);

@@ -210,6 +210,20 @@ void main() {
       expect(_estado(await a.repo.estado('u-1')), isA<DriveSinConectar>());
     });
 
+    test('retirarPermisoGoogle pide el retiro a Google y deja la cuenta guardada', () async {
+      await a.repo.conectar('u-1');
+      await a.repo.retirarPermisoGoogle();
+
+      expect(a.google.desconexiones, 1);
+      expect(_estado(await a.repo.estado('u-1')), isA<DriveConectada>());
+    });
+
+    test('retirarPermisoGoogle no lanza si Google falla', () async {
+      a.google.errorAlDesconectar = const SocketException('sin red');
+      await a.repo.retirarPermisoGoogle();
+      expect(a.google.desconexiones, 1, reason: 'lo intentó, falló y no lanzó');
+    });
+
     test('desconectar sin haber conectado no falla', () async {
       expect((await a.repo.desconectar('u-1')).isRight(), isTrue);
     });
@@ -288,6 +302,48 @@ void main() {
       await a.repo.conectar('u-1');
       a.google.errorAlPedirToken = const SocketException('sin red');
       expect(_estado(await a.repo.verificarPermiso('u-1')), isA<DriveConectada>());
+    });
+
+    test(
+      'si desconectaron mientras Google tardaba, devuelve lo de ahora y no resucita nada',
+      () async {
+        await a.repo.conectar('u-1');
+        final compuerta = Completer<void>();
+        a.google.compuertaToken = compuerta;
+        final verificacion = a.repo.verificarPermiso('u-1');
+        await pumpEventQueue();
+
+        await a.repo.desconectar('u-1');
+        compuerta.complete();
+
+        expect(_estado(await verificacion), isA<DriveSinConectar>());
+        expect(_estado(await a.repo.estado('u-1')), isA<DriveSinConectar>());
+      },
+    );
+
+    test('sin token tras una conexión nueva con otra cuenta: no marca la cuenta nueva', () async {
+      await a.repo.conectar('u-1');
+      final compuerta = Completer<void>();
+      a.google.compuertaToken = compuerta;
+      a.google.token = null;
+      final verificacion = a.repo.verificarPermiso('u-1');
+      await pumpEventQueue();
+
+      await a.repo.desconectar('u-1');
+      a.google.cuenta = const CuentaGoogle(id: 'g-200', email: 'otra@gmail.com');
+      await a.repo.conectar('u-1');
+      compuerta.complete();
+
+      final resultado = _estado(await verificacion);
+      expect(resultado, isA<DriveConectada>());
+      expect((resultado as DriveConectada).cuentaId, 'g-200');
+      expect(_estado(await a.repo.estado('u-1')), isA<DriveConectada>());
+    });
+
+    test('marcarPermisoRevocado con otra cuenta no toca la guardada', () async {
+      await a.repo.conectar('u-1');
+      final r = _estado(await a.repo.marcarPermisoRevocado('u-1', cuentaId: 'g-999'));
+      expect(r, isA<DriveConectada>());
     });
 
     test('sin cuenta o ya revocado no le pregunta a Google', () async {

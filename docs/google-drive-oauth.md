@@ -22,8 +22,8 @@ Este documento deja lo que hace falta para que Google apruebe la app. El alta en
 
 - De la cuenta de Google la app lee el identificador y el correo (los alcances básicos `openid`, `email` y `profile` que pide `google_sign_in`), y solo para saber qué cuenta autorizó la usuaria y advertirle si después el teléfono usa otra distinta (HU-SYNC-004). No se usan para iniciar sesión (la sesión de la app es correo y contraseña), no se envían a servidores de la organización y no se comparten con terceros. En el teléfono se guarda en el almacén seguro (Keystore/Keychain), por usuario de la app, junto al estado del respaldo; no se pide ni se usa la foto.
 - Los archivos subidos son cifrados (AES-GCM, ADR-006). La organización no tiene copia de la clave.
-- La usuaria puede desconectar Drive desde Configuración; los archivos ya subidos quedan en su Drive y los borra ella o la propia app (HU-AUTH-010).
-- Texto previo al consentimiento dentro de la app (HU-SYNC-004): «La app va a guardar archivos cifrados (no legibles para Google) en una carpeta oculta de tu Drive. Solo esta app puede leerlos.»
+- La usuaria puede desconectar Drive desde Configuración; los archivos ya subidos quedan en su Drive y los borra ella o la propia app (HU-AUTH-010). Al borrar los datos locales la app también retira el permiso de Google (de mejor esfuerzo), pero solo borra el respaldo si la persona lo pidió.
+- Texto previo al consentimiento dentro de la app (HU-SYNC-004): «Guardamos una copia de tus datos en una carpeta oculta de tu Drive. Los archivos van cifrados, Google no los puede leer, y solo esta app los puede acceder.» (el de la vista 16, artboard 16D·02; HU-SYNC-004 se ajusta con docs#76)
 
 ## Pasos para Cristian (alta en Google Cloud)
 

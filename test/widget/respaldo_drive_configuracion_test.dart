@@ -158,8 +158,8 @@ void main() {
       expect(
         _dentro(
           _hojaConectar,
-          'La app va a guardar archivos cifrados (no legibles para Google) en una carpeta oculta de '
-          'tu Drive. Solo esta app puede leerlos.',
+          'Guardamos una copia de tus datos en una carpeta oculta de tu Drive. Los archivos van '
+          'cifrados, Google no los puede leer, y solo esta app los puede acceder.',
         ),
         findsOneWidget,
       );

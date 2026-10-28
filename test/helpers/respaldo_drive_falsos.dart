@@ -31,6 +31,10 @@ final class ServicioGoogleFalso implements ServicioGoogle {
   /// El token que da [tokenSilencioso]; `null` = Google ya no tiene el permiso.
   String? token = 'ya29.token';
 
+  /// Si no es `null`, el próximo [tokenSilencioso] espera a que el test la complete (Google tarda en
+  /// contestar) y la suelta: solo frena un pedido. El token se lee **al contestar**.
+  Completer<void>? compuertaToken;
+
   /// Si no es `null`, [tokenSilencioso] lo lanza (sin red, Google caído).
   Object? errorAlPedirToken;
 
@@ -52,6 +56,9 @@ final class ServicioGoogleFalso implements ServicioGoogle {
   @override
   Future<String?> tokenSilencioso() async {
     pedidosDeToken++;
+    final compuerta = compuertaToken;
+    compuertaToken = null;
+    await compuerta?.future;
     if (errorAlPedirToken case final e?) throw e;
     return token;
   }
