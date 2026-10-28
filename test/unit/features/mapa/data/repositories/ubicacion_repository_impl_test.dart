@@ -37,13 +37,16 @@ final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocal
   ({String colportorId, bool incluirBajas})? listaPedida;
   CriterioDuplicadoUbicacion? duplicadosRecibido;
   EspacioModel? espacioRecibido;
+  String? justificacionRecibida;
 
   @override
   Future<InsercionUbicacion> insertar(
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
+    justificacionRecibida = justificacion;
     duplicadosRecibido = duplicados;
     espacioRecibido = espacio;
     final e = error;
@@ -171,6 +174,22 @@ void main() {
       ).registrar(ubicacion, origen: OrigenCoordenadas.gps, duplicados: alSeguirIgual);
 
       expect(salida.lineas.single, contains('"crear_igual":true'));
+    });
+
+    test('dado "Crear igual" con justificación, se la pasa al almacenamiento y el log no la '
+        'imprime', () async {
+      const texto = 'Es la casa de Juan Pérez, la de al lado';
+      final local = _LocalFijo();
+
+      await repositorio(local).registrar(
+        ubicacion,
+        origen: OrigenCoordenadas.gps,
+        duplicados: criterio.alSeguirIgual,
+        justificacion: texto,
+      );
+
+      expect(local.justificacionRecibida, texto);
+      expect(salida.lineas.join(), isNot(contains('Juan')));
     });
 
     test(

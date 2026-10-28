@@ -153,14 +153,23 @@ class _HojaCancelarAgendaState extends ConsumerState<HojaCancelarAgenda> {
                           context,
                         ).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta, height: 1.5),
                       ),
-                      if (_falla != null) ...[
-                        const SizedBox(height: 12),
-                        AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
-                      ],
                     ],
                   ),
                 ),
               ),
+              // El aviso va FIJO sobre los botones, fuera de lo que se desplaza: con texto grande en
+              // una pantalla chica quedaba bajo el cuerpo y se veía cortado (QA de #455).
+              if (_falla != null) ...[
+                const SizedBox(height: 12),
+                AvisoAlta(
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _falla!,
+                  // Tope: con texto enorme en una pantalla chica el aviso no deja sin lugar a los
+                  // botones; si no entra, se desplaza él solo.
+                  alturaMaxima: MediaQuery.sizeOf(context).height * .35,
+                ),
+              ],
               const SizedBox(height: 14),
               if (!_sinReintento) _principal(),
               const SizedBox(height: 4),

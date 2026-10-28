@@ -29,6 +29,7 @@ mixin UbicacionRepositorySinModificar {
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
@@ -77,6 +78,7 @@ mixin UbicacionLocalSinModificar {
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({

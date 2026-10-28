@@ -567,13 +567,14 @@ void main() {
         await _tocar(tester, find.widgetWithText(FilledButton, TextosDuplicado.crearIgual));
 
         final id = (t.salidas.single! as UbicacionCreada).ubicacion.id;
-        final auditoria = await _sql(tester, t, 'SELECT uuid, motivo FROM audit_log');
-        expect(auditoria.where((f) => f['uuid'] == id && f['motivo'] == motivo), hasLength(1));
+        final auditoria = await _sql(tester, t, 'SELECT evento, uuid, motivo FROM audit_log');
+        final filas = auditoria.where((f) => f['uuid'] == id && f['motivo'] == motivo);
+        expect(filas.map((f) => f['evento']), ['ubicacion_crear_igual']);
+        // Solo local: ni la cola de sync ni ninguna columna de la ubicación llevan el texto.
         expect('${t.cola.encolados.map((c) => c.payload)}', isNot(contains(motivo)));
+        expect(t.cola.encolados.map((c) => c.entidad).toSet(), {'ubicacion', 'espacio'});
+        expect('${await _sql(tester, t, 'SELECT * FROM ubicacion')}', isNot(contains(motivo)));
       },
-      // Hoy el texto se valida y se descarta, y la ayuda sigue diciendo «La ve tu coordinador.»:
-      // front-colportores-mobile#282 (decisión de Cristian, 06/10). Se activa con ese issue.
-      skip: true,
     );
   });
 

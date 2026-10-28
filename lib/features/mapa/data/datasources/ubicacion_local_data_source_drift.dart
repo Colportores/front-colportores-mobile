@@ -73,6 +73,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => transaction(() async {
     final existente = await (select(
       ubicaciones,
@@ -90,6 +91,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacio));
       await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
     }
+    await _guardarJustificacion(ubicacion.id, justificacion, ubicacion.auditoria.updatedAt);
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
@@ -133,6 +135,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -193,8 +196,29 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacioSiNoTiene!));
       await _encolador.encolar('espacio', OperacionSync.insert, espacioSiNoTiene.toJson());
     }
+    await _guardarJustificacion(guardada.id, justificacion, guardada.auditoria.updatedAt);
     return guardada;
   });
+
+  /// La justificación de «Crear igual» (HU-UBI-001, #282) en la auditoría local, dentro de la
+  /// transacción que escribe la ubicación. Sin texto (o en blanco) no escribe nada. Nunca entra a
+  /// la cola de sync ni a una columna de `ubicacion`.
+  Future<void> _guardarJustificacion(
+    String ubicacionId,
+    String? justificacion,
+    DateTime cuando,
+  ) async {
+    final texto = justificacion?.trim();
+    if (texto == null || texto.isEmpty) return;
+    await into(auditLogLocal).insert(
+      AuditLogLocalCompanion.insert(
+        evento: EventoAuditoriaLocal.ubicacionCrearIgual,
+        uuid: ubicacionId,
+        motivo: Value(texto),
+        creadoEn: cuando,
+      ),
+    );
+  }
 
   @override
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(

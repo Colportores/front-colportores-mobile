@@ -14,6 +14,7 @@ import '../../../mapa/presentation/widgets/piezas_alta.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/franja_horaria.dart';
+import '../../domain/usecases/cancelar_agenda_use_case.dart';
 import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_detalle_agenda.dart';
 import '../providers/agenda_providers.dart';
@@ -105,6 +106,18 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     if (mounted) ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
   }
 
+  /// La agenda se canceló (23C·05): el detalle se cierra y la lista —que lee en vivo— ya no la
+  /// muestra entre las pendientes; el aviso «Agenda cancelada.» lo pone el enlace. Si el detalle no
+  /// se pudiera cerrar, queda con la agenda ya cancelada.
+  void _alCancelar(ResultadoCancelarAgenda _) {
+    ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
+    unawaited(Navigator.of(context).maybePop());
+  }
+
+  /// La hoja de cancelar se cerró sin cancelar: la agenda pudo cumplirse mientras estaba abierta
+  /// (23C·06), así que se vuelve a leer.
+  void _alVolverSinCancelar() => ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
+
   @override
   Widget build(BuildContext context) {
     final detalle = ref.watch(detalleDeAgendaProvider(widget.agendaId));
@@ -139,6 +152,8 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
                         detalle: d,
                         alModificar: () => unawaited(_modificar(d)),
                         alRegistrar: (ubicacionId) => unawaited(_registrar(d, ubicacionId)),
+                        alCancelar: _alCancelar,
+                        alVolverSinCancelar: _alVolverSinCancelar,
                       ),
               ),
             ),
@@ -220,11 +235,19 @@ class _ConAviso extends StatelessWidget {
 }
 
 class _Cuerpo extends ConsumerWidget {
-  const _Cuerpo({required this.detalle, required this.alModificar, required this.alRegistrar});
+  const _Cuerpo({
+    required this.detalle,
+    required this.alModificar,
+    required this.alRegistrar,
+    required this.alCancelar,
+    required this.alVolverSinCancelar,
+  });
 
   final DetalleDeAgenda detalle;
   final VoidCallback alModificar;
   final ValueChanged<String> alRegistrar;
+  final ValueChanged<ResultadoCancelarAgenda> alCancelar;
+  final VoidCallback alVolverSinCancelar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -336,7 +359,13 @@ class _Cuerpo extends ConsumerWidget {
               child: const Text(TextosDetalleAgenda.modificar),
             ),
             const SizedBox(height: 16),
-            EnlaceCancelarAgenda(agendaId: agenda.id, tipo: agenda.tipo, estado: agenda.estado),
+            EnlaceCancelarAgenda(
+              agendaId: agenda.id,
+              tipo: agenda.tipo,
+              estado: agenda.estado,
+              alCancelar: alCancelar,
+              alVolverSinCancelar: alVolverSinCancelar,
+            ),
           ],
         ],
       ),

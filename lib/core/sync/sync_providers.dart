@@ -14,6 +14,7 @@ import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
+import '../../plataforma/realtime_de_supabase.dart';
 import '../conectividad/conectividad_providers.dart';
 import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
@@ -50,6 +51,15 @@ final transporteSyncProvider = Provider<SyncTransport>((ref) {
   );
 });
 
+/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto` o de
+/// `precio_por_ciudad`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
+/// pull, no lo reemplaza. Sin Supabase configurado (tests, demo) no hay servidor que avise: `null`,
+/// y el motor sigue solo con los triggers del sistema.
+final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
+  if (!ConfigSupabase.configurada) return null;
+  return RealtimeDeSupabase(FuenteDeCambiosSupabase(Supabase.instance.client));
+});
+
 /// El motor, mientras la DB local está abierta (`dbLocalProvider`); `null` sin DB.
 ///
 /// La cola vive en esa DB, así que el motor se arma con ella y se tira cuando se cierra (cerrar
@@ -64,6 +74,7 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     meta: DriftSyncMeta(db),
     store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
     connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+    realtime: ref.watch(realtimeSyncProvider),
   );
   ref.onDispose(() => unawaited(motor.dispose()));
   return motor;

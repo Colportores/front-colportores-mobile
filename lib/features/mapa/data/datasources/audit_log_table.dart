@@ -9,6 +9,11 @@ abstract final class EventoAuditoriaLocal {
   /// La baja de una ubicación, con el motivo que eligió el colportor.
   static const ubicacionBaja = 'ubicacion_baja';
 
+  /// La justificación de «Crear igual» (HU-UBI-001, #282): `uuid` es el `id` de la ubicación nueva
+  /// (o la que se está editando y se deja igual, HU-UBI-004), `motivo` lo que escribió el colportor y
+  /// `creado_en` el `updated_at` con que quedó guardada. Solo local: no se sincroniza.
+  static const ubicacionCrearIgual = 'ubicacion_crear_igual';
+
   /// La baja de una persona (HU-UBI-011), con su motivo si lo hay. `uuid` es el `id` de la persona y
   /// `creado_en` el mismo instante que su `deleted_at`.
   static const personaBaja = 'persona_baja';

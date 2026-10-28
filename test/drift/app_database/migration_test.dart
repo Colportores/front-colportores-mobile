@@ -19,6 +19,7 @@ import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
+import 'generated/schema_v16.dart' as v16;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -878,9 +879,8 @@ void main() {
     );
   });
 
-  test('dado lo guardado en la versión 13, cuando migra a la 14, no se pierde nada y aparecen la venta '
-      'y sus ítems vacíos, con los CHECK del servidor y sin encolar nada', () async {
-    // HU-VEN-001 (#423): `venta` y `venta_item` suben por el motor; al migrar solo se crean.
+  test('dado la versión 13, cuando migra a la 14, crea las réplicas del catálogo vacías y no toca '
+      'lo guardado', () async {
     const jornada = v13.JornadaData(
       id: 'jor-1',
       colportorId: 'col-1',
@@ -898,6 +898,40 @@ void main() {
       newVersion: 14,
       createOld: v13.DatabaseAtV13.new,
       createNew: v14.DatabaseAtV14.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.producto).get(), isEmpty);
+        expect(await nuevo.select(nuevo.coleccion).get(), isEmpty);
+        expect(await nuevo.select(nuevo.productoColeccion).get(), isEmpty);
+        expect(await nuevo.select(nuevo.precioPorCiudad).get(), isEmpty);
+        expect(await nuevo.select(nuevo.precioGeneral).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 14, cuando migra a la 15, no se pierde nada y aparecen la venta '
+      'y sus ítems vacíos, con los CHECK del servidor y sin encolar nada', () async {
+    // HU-VEN-001 (#423): `venta` y `venta_item` suben por el motor; al migrar solo se crean.
+    const jornada = v14.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 14,
+      newVersion: 15,
+      createOld: v14.DatabaseAtV14.new,
+      createNew: v15.DatabaseAtV15.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
       validateItems: (nuevo) async {
@@ -935,11 +969,11 @@ void main() {
   });
 
   test(
-    'dado lo guardado en la versión 14, cuando migra a la 15, no se pierde la venta y aparece la '
+    'dado lo guardado en la versión 15, cuando migra a la 16, no se pierde la venta y aparece la '
     'entrega vacía, con su CHECK de cantidad y sin encolar nada',
     () async {
       // HU-VEN-002 (#430): `entrega` sube por el motor; al migrar solo se crea, vacía.
-      const venta = v14.VentaData(
+      const venta = v15.VentaData(
         id: 'v-1',
         espacioPersonaId: 'ep-1',
         numeroTalonario: '0042',
@@ -952,10 +986,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 14,
-        newVersion: 15,
-        createOld: v14.DatabaseAtV14.new,
-        createNew: v15.DatabaseAtV15.new,
+        oldVersion: 15,
+        newVersion: 16,
+        createOld: v15.DatabaseAtV15.new,
+        createNew: v16.DatabaseAtV16.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
         validateItems: (nuevo) async {
