@@ -21,7 +21,7 @@ final class SeguimientoDeLaVenta {
 ///
 /// Los grupos ENTREGA y COBRO se muestran solo si [conEntrega] / [conCobro]: sus destinos (la
 /// entrega, HU-VEN-002; el cobro, la vista 28) todavía no existen, y ofrecer un botón que no lleva a
-/// ningún lado sería mentir. Sin ninguno de los dos, la pantalla no se usa.
+/// ningún lado sería mentir. Sin ninguno de los dos queda solo la confirmación, con un botón.
 class VentaRegistradaPage extends StatefulWidget {
   const VentaRegistradaPage({
     super.key,
@@ -48,6 +48,10 @@ class _VentaRegistradaPageState extends State<VentaRegistradaPage> {
   MomentoDeEntrega? _entrega;
   var _cobrar = false;
   var _enCurso = false;
+
+  /// Sin entrega ni cobro todavía (sus pantallas no existen) no hay nada que elegir: queda la
+  /// confirmación con un solo botón que vuelve (decisión P7 de #158).
+  bool get _sinSeguimiento => !widget.conEntrega && !widget.conCobro;
 
   void _continuar() {
     if (_enCurso) return;
@@ -113,19 +117,30 @@ class _VentaRegistradaPageState extends State<VentaRegistradaPage> {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: BotonDeVenta(texto: TextosVenta.continuar, alPresionar: _continuar),
-              ),
-              TextButton(
-                key: const Key('venta_terminar'),
-                onPressed: _terminar,
-                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                child: const Text(
-                  TextosVenta.terminarSinNada,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+              if (_sinSeguimiento)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: BotonDeVenta(
+                    key: const Key('venta_terminar'),
+                    texto: TextosVenta.listo,
+                    alPresionar: _terminar,
+                  ),
+                )
+              else ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: BotonDeVenta(texto: TextosVenta.continuar, alPresionar: _continuar),
                 ),
-              ),
+                TextButton(
+                  key: const Key('venta_terminar'),
+                  onPressed: _terminar,
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(
+                    TextosVenta.terminarSinNada,
+                    style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
             ],
           ),

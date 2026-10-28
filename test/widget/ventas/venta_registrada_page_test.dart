@@ -108,14 +108,28 @@ void main() {
     expect(s.continuo, isEmpty);
   });
 
-  testWidgets('sin destinos todavía (entrega y cobro no existen) no ofrece esos grupos', (
+  testWidgets('sin destinos todavía (entrega y cobro no existen): confirmación con un solo botón', (
     tester,
   ) async {
-    await _montar(tester, conEntrega: false, conCobro: false);
+    final s = await _montar(tester, conEntrega: false, conCobro: false);
 
     expect(find.text('ENTREGA'), findsNothing);
     expect(find.text('COBRO'), findsNothing);
-    expect(find.text('Terminar sin entregar ni cobrar'), findsOneWidget);
+    expect(find.text('Continuar'), findsNothing);
+    expect(find.text('Terminar sin entregar ni cobrar'), findsNothing);
+    expect(find.text('Listo'), findsOneWidget);
+    expect(find.text('VENTA 0042'), findsOneWidget);
+    await tocar(tester, find.text('Listo'));
+    expect(s.termino, hasLength(1));
+    expect(s.continuo, isEmpty);
+  });
+
+  testWidgets('con solo un grupo disponible se ofrece ese y «Continuar»', (tester) async {
+    await _montar(tester, conEntrega: false);
+
+    expect(find.text('ENTREGA'), findsNothing);
+    expect(find.text('COBRO'), findsOneWidget);
+    expect(find.text('Continuar'), findsOneWidget);
   });
 
   testWidgets('volver con el gesto no la cierra: la venta ya está guardada y hay que elegir', (
