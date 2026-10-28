@@ -21,8 +21,8 @@ typedef ResultadoDeVisitaFechado = ({TipoResultadoVisita resultado, DateTime fec
 /// encima de cualquiera de los tres. El resultado sigue sin depender del orden en que llegan los
 /// datos: la fecha de la visita decide, y a igual instante gana la de número más chico.
 ///
-/// Hoy aportan las agendas y las visitas (prioridades 3, 5, 6 y 7). La venta, la entrega y la
-/// cobranza (S9) suman las 1, 2 y 4: un parámetro nuevo acá, sin tocar a quien ya llama.
+/// Aportan las agendas, las visitas y las ventas (prioridades 1, 3, 5, 6 y 7). La entrega y la cobranza
+/// (HU-VEN-002, HU-COB-001) suman las 2 y 4: un parámetro nuevo acá, sin tocar a quien ya llama.
 abstract final class CalculadorColorCasa {
   /// El color de una casa con [agendasPendientes] (los tipos de sus agendas que siguen esperando
   /// su visita) y [resultadosDeVisitas] (el resultado y la fecha de cada una de sus visitas), o
@@ -32,14 +32,20 @@ abstract final class CalculadorColorCasa {
   /// - Una agenda pendiente **de entrevista** → 3, entrevista programada. La de **cobranza** no
   ///   pinta nada acá: «cobranza pendiente» (2) depende de que haya una venta con saldo (S9).
   /// - Una visita `ENTREVISTA` → 5, `NO_CONTESTO` → 6, `RECHAZO` → 7, y de todas esas **vale la
-  ///   más reciente**. La `VENTA` no aporta nada hasta que la venta exista (S9: 4 si el saldo es 0,
-  ///   1 o 2 si falta cobrar o entregar) y no desplaza a ninguna de las tres. La `COBRANZA`
-  ///   tampoco: pinta el cobro (S9), no la visita.
+  ///   más reciente**. La `VENTA` no aporta por sí sola (pinta la venta, [montosDeVentas]) y no
+  ///   desplaza a ninguna de las tres. La `COBRANZA` tampoco: pinta el cobro (S9), no la visita.
+  /// - Una venta con monto mayor a cero → 1 hasta que haya entrega y cobro (ver arriba).
   static ColorHouseStatus? calcular({
     Iterable<TipoAgenda> agendasPendientes = const [],
     Iterable<ResultadoDeVisitaFechado> resultadosDeVisitas = const [],
+    Iterable<int> montosDeVentas = const [],
   }) => ColorHouseStatus.elDeMayorPrioridad(
     [
+      // Una venta con algo para cobrar, sin entrega ni cobro registrados todavía (esas tablas llegan
+      // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (solo
+      // misioneros, que no cuentan como venta) no pinta por sí sola: la casa queda «entrevista dada».
+      for (final monto in montosDeVentas)
+        if (monto > 0) ColorHouseStatus.entregaYCobranzaPendiente,
       for (final tipo in agendasPendientes)
         if (tipo == TipoAgenda.entrevista) ColorHouseStatus.entrevistaProgramada,
       _colorDeLaUltimaVisita(resultadosDeVisitas),

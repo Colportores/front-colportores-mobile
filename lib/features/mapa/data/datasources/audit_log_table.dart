@@ -22,6 +22,12 @@ abstract final class EventoAuditoriaLocal {
   /// `creado_en` el instante del cambio. Sin motivo: la nota y la hora son datos de la persona y no
   /// se copian acá.
   static const agendaModificada = 'agenda_modificada';
+
+  /// Una venta con el total cambiado a mano (HU-VEN-001, S38): `uuid` es el `id` de la venta,
+  /// `creado_en` el instante de la venta y `motivo` la diferencia (`diferencia_centavos:-40000`, el
+  /// cobrado menos el calculado). El texto que escribió la colportora no se copia acá: viaja con la
+  /// venta (`motivo_monto_manual`).
+  static const ventaMontoManual = 'venta_monto_manual';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman

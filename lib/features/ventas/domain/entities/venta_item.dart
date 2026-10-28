@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
+import 'componente_vendido.dart';
 
 /// Línea de venta (esquema-datos.md §Operaciones de campo, tabla `venta_item`).
 ///
@@ -13,6 +14,8 @@ class VentaItem extends Equatable {
     required this.id,
     required this.ventaId,
     required this.productoId,
+    this.coleccionId,
+    this.componentes,
     required this.cantidad,
     required this.precioUnitarioCentavos,
     required this.subtotalCentavos,
@@ -24,8 +27,17 @@ class VentaItem extends Equatable {
   /// FK a `venta.id`.
   final String ventaId;
 
-  /// FK a `producto.id` (Catálogo, fuera del alcance de #8 — se referencia por id).
-  final String productoId;
+  /// FK a `producto.id` (Catálogo, fuera del alcance de #8 — se referencia por id). `null` si el
+  /// ítem es un combo: exactamente uno de [productoId] y [coleccionId] (backend 0056).
+  final String? productoId;
+
+  /// FK a `coleccion.id`: el combo vendido como un solo ítem; `null` si es un producto.
+  final String? coleccionId;
+
+  /// Lo que traía **una unidad** del combo al venderse (lo fijo y lo que eligió la colportora),
+  /// copiado en el ítem: cambiar el combo después no toca la venta. Va en un combo y solo en un
+  /// combo (backend 0071).
+  final List<ComponenteVendido>? componentes;
 
   final int cantidad;
 
@@ -44,6 +56,8 @@ class VentaItem extends Equatable {
     id,
     ventaId,
     productoId,
+    coleccionId,
+    componentes,
     cantidad,
     precioUnitarioCentavos,
     subtotalCentavos,

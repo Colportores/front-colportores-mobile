@@ -529,6 +529,22 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
       );
 }
 
+/// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
+/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
+/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
+/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
+/// Se puede reintentar.
+///
+/// El texto es el del canvas (26·10).
+final class FailurePreciosNoDisponibles extends Failure {
+  const FailurePreciosNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer los precios guardados en tu teléfono.',
+        codigo: 'CAT_PRECIOS_NO_DISPONIBLES',
+      );
+}
+
 /// No se pudo revisar lo que la ubicación tiene pendiente (visitas, ventas, cobranza) antes de ofrecer
 /// «Dar de baja» (vista 09, HU-UBI-005): la base local no se pudo leer o todavía no existe de dónde
 /// leerlo (`PendientesUbicacionSinFuente`, hasta los adaptadores reales de
@@ -823,4 +839,49 @@ final class FailureSincronizacionNoDisponible extends Failure {
             'subir tus operaciones y borrar los datos.',
         codigo: 'SYNC_NO_DISPONIBLE',
       );
+}
+
+/// El número de talonario ya está en una venta del mismo colportor en el mismo año (HU-VEN-001,
+/// «Talonario duplicado»; vista 27, 27A·11). El año es el de la fecha de la venta en hora de
+/// Uruguay, y la regla es la misma en el teléfono y en el servidor (backend 0071).
+///
+/// El texto es el del canvas. El número de talonario no es un dato personal.
+final class FailureTalonarioRepetido extends Failure {
+  FailureTalonarioRepetido({required this.numero, required this.ventaDel})
+    : super(
+        mensaje:
+            'Ya usaste el talonario $numero este año (venta del '
+            '${ventaDel.day.toString().padLeft(2, '0')}/'
+            '${ventaDel.month.toString().padLeft(2, '0')}). Revisá el número.',
+        codigo: 'VENTA_TALONARIO_REPETIDO',
+      );
+
+  /// El número tal como lo escribió la colportora (sin los espacios de los bordes).
+  final String numero;
+
+  /// El día de Montevideo en que se hizo la venta que ya lo usó.
+  final DateTime ventaDel;
+
+  @override
+  List<Object?> get props => [...super.props, numero, ventaDel];
+}
+
+/// La venta no se pudo guardar en el teléfono (vista 27, 27A·13). No se perdió nada de lo cargado:
+/// la pantalla sigue como estaba y se puede reintentar.
+///
+/// El texto es el del canvas.
+final class FailureVentaNoGuardada extends Failure {
+  const FailureVentaNoGuardada({this.causa})
+    : super(
+        mensaje:
+            'No pudimos guardar la venta en tu teléfono. No se perdió nada de lo que cargaste: '
+            'probá de nuevo.',
+        codigo: 'VENTA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
 }

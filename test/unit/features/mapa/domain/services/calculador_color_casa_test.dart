@@ -127,6 +127,32 @@ void main() {
       expect(CalculadorColorCasa.calcular(resultadosDeVisitas: [_v(_R.venta, 0)]), isNull);
     });
 
+    test('dado una venta con algo para cobrar, cuando se calcula, la casa queda en entrega y '
+        'cobranza pendientes (1) y gana a todo lo demás (HU-VEN-001)', () {
+      expect(
+        CalculadorColorCasa.calcular(
+          montosDeVentas: [150000],
+          agendasPendientes: [TipoAgenda.entrevista],
+          resultadosDeVisitas: [_v(_R.venta, 0), _v(_R.rechazo, 1)],
+        ),
+        _C.entregaYCobranzaPendiente,
+      );
+    });
+
+    test(
+      'dado una venta de \$ 0 (todo regalado), cuando se calcula, no pinta nada por sí sola',
+      () {
+        expect(CalculadorColorCasa.calcular(montosDeVentas: [0]), isNull);
+        expect(
+          CalculadorColorCasa.calcular(
+            montosDeVentas: [0],
+            resultadosDeVisitas: [_v(_R.rechazo, 0)],
+          ),
+          _C.rechazo,
+        );
+      },
+    );
+
     test('dado una agenda pendiente y un rechazo, cuando se calcula, gana la agenda (3 antes que '
         '7)', () {
       expect(

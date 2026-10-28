@@ -29,6 +29,11 @@ final specsDeLaApp = <SyncSpec>[
   // son filas de `nota` (ADR-017) y la fila no lleva dato personal. Sin `alsoPull`: un solo escritor.
   SyncSpec.push('agenda'),
   SyncSpec.push('visita'),
+  // La venta y sus ítems (HU-VEN-001, #423): suben sin dato del cliente (`espacio_persona_id` es un id
+  // opaco, ADR-004). `venta.motivo_monto_manual` es la única excepción de texto libre (decisión de
+  // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('venta'),
+  SyncSpec.push('venta_item'),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).

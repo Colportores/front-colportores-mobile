@@ -20,6 +20,7 @@ import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v16.dart' as v16;
+import 'generated/schema_v17.dart' as v17;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -1017,6 +1018,62 @@ void main() {
         expect(await nuevo.select(nuevo.ciudad).get(), isEmpty);
         expect(await nuevo.select(nuevo.campania).get(), isEmpty);
         expect(await nuevo.select(nuevo.campaniaColportor).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 16, cuando migra a la 17, no se pierde nada y aparecen la venta '
+      'y sus ítems vacíos, con los CHECK del servidor y sin encolar nada', () async {
+    // HU-VEN-001 (#423): `venta` y `venta_item` suben por el motor; al migrar solo se crean.
+    const jornada = v16.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 16,
+      newVersion: 17,
+      createOld: v16.DatabaseAtV16.new,
+      createNew: v17.DatabaseAtV17.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.venta).get(), isEmpty);
+        expect(await nuevo.select(nuevo.ventaItem).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        const venta =
+            'INSERT INTO venta (id, espacio_persona_id, numero_talonario, monto_total, fecha, '
+            "colportor_id, created_at, updated_at) VALUES ('v-1', 'ep-1', '0042', 1200, 1, 'col-1', 1, 1)";
+        await nuevo.customStatement(venta);
+        // Un producto suelto: bien. Un combo sin `componentes`, o un ítem con producto y combo, no.
+        const columnas =
+            'INSERT INTO venta_item (id, venta_id, producto_id, coleccion_id, cantidad, '
+            'precio_unitario, subtotal, componentes, created_at, updated_at) VALUES ';
+        await nuevo.customStatement(
+          "$columnas('i-1', 'v-1', 'p-1', NULL, 2, 600, 1200, NULL, 1, 1)",
+        );
+        for (final malo in [
+          "('i-2', 'v-1', NULL, 'c-1', 1, 600, 600, NULL, 1, 1)",
+          "('i-3', 'v-1', 'p-1', 'c-1', 1, 600, 600, '[]', 1, 1)",
+          "('i-4', 'v-1', 'p-1', NULL, 2, 600, 999, NULL, 1, 1)",
+          "('i-5', 'v-1', 'p-1', NULL, 0, 600, 0, NULL, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+        }
+        await expectLater(
+          nuevo.customStatement(venta.replaceFirst("'v-1'", "'v-2'").replaceFirst('1200', '-1')),
+          throwsA(anything),
+        );
       },
     );
   });
