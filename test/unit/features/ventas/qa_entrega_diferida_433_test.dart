@@ -220,7 +220,6 @@ void main() {
       },
     );
 
-    // skip: QA #433: el segundo toque a «Entregado hoy» sin ids devuelve una falla y no «ya estaba».
     test(
       'el segundo toque a «Entregado hoy» (todo lo pendiente) no muestra un error: ya estaba entregado',
       () async {
@@ -240,7 +239,6 @@ void main() {
               'escribe nada»); con ids lo cumple, sin ids devuelve ${r.map((x) => x.fold((f) => f.mensaje, (_) => 'ok'))}',
         );
       },
-      skip: 'QA #433: marcar de nuevo, sin ids, devuelve una validación en vez de «ya estaba»',
     );
   });
 

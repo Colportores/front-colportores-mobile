@@ -208,9 +208,8 @@ final class EntregaLocalDataSourceDrift {
         if (fila.pendiente && (entregaIds == null || entregaIds.contains(fila.id))) fila,
     ];
     if (aEntregar.isEmpty) {
-      // Sin nada pendiente que se haya pedido entregar: o ya estaba entregado (un segundo toque o un
-      // reintento) o no hay nada que entregar.
-      if (entregaIds == null) throw const EntregaSinPendientesException();
+      // Sin nada pendiente que se haya pedido entregar: ya estaba entregado (un segundo toque o un
+      // reintento), con ids o sin ellos. «Marcar de nuevo lo hecho» no es un error (QA #433, P2).
       return EntregaCumplida(
         entregas: previas,
         entregadas: const [],

@@ -386,14 +386,16 @@ void main() {
       expect(await color(), 'COBRANZA_PENDIENTE');
     });
 
-    test('sin ids, marcar de nuevo lo ya entregado dice que no hay nada pendiente', () async {
+    test('sin ids, marcar de nuevo lo ya entregado responde que ya estaba (no es un error)', () async {
       await dejadaParaElSabado();
       await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+      encolador.encolados.clear();
 
-      await expectLater(
-        local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-y'),
-        throwsA(isA<EntregaSinPendientesException>()),
-      );
+      final r = await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-y');
+
+      expect(r.yaEstaba, isTrue);
+      expect(r.entregadas, isEmpty);
+      expect(encolador.encolados, isEmpty);
     });
 
     test(
