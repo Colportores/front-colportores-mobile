@@ -133,7 +133,18 @@ enum ClaveSegura {
   /// `zonasAvisadas`, para no sumar otro almacenamiento ni una migración de la DB; se conserva al
   /// reconstruir el almacén (la DB sigue) y se borra con el borrado de datos locales (HU-AUTH-010),
   /// que se lleva los espacios a los que apunta.
-  entrevistaEnCurso('interview_in_progress');
+  entrevistaEnCurso('interview_in_progress'),
+
+  /// Qué cuenta de Google autorizó el respaldo en Drive de cada usuario de este teléfono y en qué
+  /// estado está (HU-SYNC-004, vista 16 «Cuenta Drive»): un JSON que por cada id de usuario de la app
+  /// guarda `email` (el correo de Google), `id` (el id de la cuenta de Google) y `estado`
+  /// (`conectada`, `revocada` o `sin_espacio`). **No guarda ningún token**: `google_sign_in` 7 no entrega el refresh token y
+  /// el de acceso (una hora) se pide en silencio cada vez que hace falta. Sin la entrada de un
+  /// usuario, su Drive no está conectado: otra persona que use el teléfono no hereda el respaldo
+  /// de esta. No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro almacenamiento;
+  /// se conserva al reconstruir el almacén (la DB sigue y su respaldo también) y se borra con el
+  /// borrado de datos locales (HU-AUTH-010).
+  respaldoDrive('drive_backup_account');
 
   const ClaveSegura(this.id);
 

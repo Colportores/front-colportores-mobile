@@ -876,6 +876,13 @@ void main() {
         ...CustodiaClaveDb.quedanFueraDelBorradoDeDatos,
       ], unorderedEquals(ClaveSegura.values));
     });
+
+    test('la cuenta de Drive del respaldo (HU-SYNC-004) sobrevive a reconstruir el almacén y se '
+        'va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.respaldoDrive)));
+    });
   });
 
   group('CustodiaClaveDb — invariantes de seguridad', () {

@@ -109,6 +109,7 @@ void main() {
       expect(ClaveSegura.ultimaConciliacionRecordatorios.id, 'reminders_reconciled_at');
       expect(ClaveSegura.avisoPrivacidadOculto.id, 'privacy_notice_hidden');
       expect(ClaveSegura.entrevistaEnCurso.id, 'interview_in_progress');
+      expect(ClaveSegura.respaldoDrive.id, 'drive_backup_account');
       expect(ClaveSegura.values.map((c) => c.id).toSet(), hasLength(ClaveSegura.values.length));
     });
   });
