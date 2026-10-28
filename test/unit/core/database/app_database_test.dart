@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 14);
+      expect(db.schemaVersion, 15);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -79,6 +79,8 @@ void main() {
           'table precio_general',
           'index precio_general_producto_idx',
           'index precio_general_coleccion_idx',
+          'table stock',
+          'index stock_usuario_idx',
           'table sync_meta',
         ]),
       );
@@ -87,7 +89,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":14}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":15}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -127,7 +129,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 14);
+      expect(fila.read<int>('user_version'), 15);
       expect(
         await _esquema(db),
         containsAll([
@@ -150,10 +152,11 @@ void main() {
           'table producto_coleccion',
           'table precio_por_ciudad',
           'table precio_general',
+          'table stock',
           'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":14}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":15}']);
     });
   });
 }

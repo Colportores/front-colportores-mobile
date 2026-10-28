@@ -18,6 +18,7 @@ import 'generated/schema_v11.dart' as v11;
 import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
+import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -906,6 +907,37 @@ void main() {
         expect(await nuevo.select(nuevo.productoColeccion).get(), isEmpty);
         expect(await nuevo.select(nuevo.precioPorCiudad).get(), isEmpty);
         expect(await nuevo.select(nuevo.precioGeneral).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado la versión 14, cuando migra a la 15, crea la réplica del stock vacía y no toca '
+      'lo guardado', () async {
+    const jornada = v14.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 14,
+      newVersion: 15,
+      createOld: v14.DatabaseAtV14.new,
+      createNew: v15.DatabaseAtV15.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.stock).get(), isEmpty);
+        // Nada se encola al migrar: el stock es una réplica de solo lectura.
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
       },
     );
   });
