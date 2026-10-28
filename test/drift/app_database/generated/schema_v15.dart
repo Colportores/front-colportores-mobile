@@ -11900,11 +11900,11 @@ class PrecioGeneralCompanion extends UpdateCompanion<PrecioGeneralData> {
   }
 }
 
-class Venta extends Table with TableInfo<Venta, VentaData> {
+class Stock extends Table with TableInfo<Stock, StockData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  Venta(this.attachedDatabase, [this._alias]);
+  Stock(this.attachedDatabase, [this._alias]);
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
     'id',
     aliasedName,
@@ -11913,648 +11913,8 @@ class Venta extends Table with TableInfo<Venta, VentaData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<String> espacioPersonaId = GeneratedColumn<String>(
-    'espacio_persona_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> numeroTalonario = GeneratedColumn<String>(
-    'numero_talonario',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> montoTotal = GeneratedColumn<int>(
-    'monto_total',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> fecha = GeneratedColumn<int>(
-    'fecha',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
-    'colportor_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> visitaId = GeneratedColumn<String>(
-    'visita_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> motivoMontoManual =
-      GeneratedColumn<String>(
-        'motivo_monto_manual',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        $customConstraints: 'NULL',
-      );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    espacioPersonaId,
-    numeroTalonario,
-    montoTotal,
-    fecha,
-    colportorId,
-    visitaId,
-    motivoMontoManual,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'venta';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  VentaData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VentaData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      espacioPersonaId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}espacio_persona_id'],
-      )!,
-      numeroTalonario: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}numero_talonario'],
-      )!,
-      montoTotal: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}monto_total'],
-      )!,
-      fecha: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}fecha'],
-      )!,
-      colportorId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}colportor_id'],
-      )!,
-      visitaId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}visita_id'],
-      ),
-      motivoMontoManual: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}motivo_monto_manual'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  Venta createAlias(String alias) {
-    return Venta(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const [
-    'PRIMARY KEY(id)',
-    'CHECK(monto_total >= 0)',
-  ];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class VentaData extends DataClass implements Insertable<VentaData> {
-  final String id;
-  final String espacioPersonaId;
-  final String numeroTalonario;
-  final int montoTotal;
-  final int fecha;
-  final String colportorId;
-  final String? visitaId;
-  final String? motivoMontoManual;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const VentaData({
-    required this.id,
-    required this.espacioPersonaId,
-    required this.numeroTalonario,
-    required this.montoTotal,
-    required this.fecha,
-    required this.colportorId,
-    this.visitaId,
-    this.motivoMontoManual,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['espacio_persona_id'] = Variable<String>(espacioPersonaId);
-    map['numero_talonario'] = Variable<String>(numeroTalonario);
-    map['monto_total'] = Variable<int>(montoTotal);
-    map['fecha'] = Variable<int>(fecha);
-    map['colportor_id'] = Variable<String>(colportorId);
-    if (!nullToAbsent || visitaId != null) {
-      map['visita_id'] = Variable<String>(visitaId);
-    }
-    if (!nullToAbsent || motivoMontoManual != null) {
-      map['motivo_monto_manual'] = Variable<String>(motivoMontoManual);
-    }
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  VentaCompanion toCompanion(bool nullToAbsent) {
-    return VentaCompanion(
-      id: Value(id),
-      espacioPersonaId: Value(espacioPersonaId),
-      numeroTalonario: Value(numeroTalonario),
-      montoTotal: Value(montoTotal),
-      fecha: Value(fecha),
-      colportorId: Value(colportorId),
-      visitaId: visitaId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(visitaId),
-      motivoMontoManual: motivoMontoManual == null && nullToAbsent
-          ? const Value.absent()
-          : Value(motivoMontoManual),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory VentaData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VentaData(
-      id: serializer.fromJson<String>(json['id']),
-      espacioPersonaId: serializer.fromJson<String>(json['espacioPersonaId']),
-      numeroTalonario: serializer.fromJson<String>(json['numeroTalonario']),
-      montoTotal: serializer.fromJson<int>(json['montoTotal']),
-      fecha: serializer.fromJson<int>(json['fecha']),
-      colportorId: serializer.fromJson<String>(json['colportorId']),
-      visitaId: serializer.fromJson<String?>(json['visitaId']),
-      motivoMontoManual: serializer.fromJson<String?>(
-        json['motivoMontoManual'],
-      ),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'espacioPersonaId': serializer.toJson<String>(espacioPersonaId),
-      'numeroTalonario': serializer.toJson<String>(numeroTalonario),
-      'montoTotal': serializer.toJson<int>(montoTotal),
-      'fecha': serializer.toJson<int>(fecha),
-      'colportorId': serializer.toJson<String>(colportorId),
-      'visitaId': serializer.toJson<String?>(visitaId),
-      'motivoMontoManual': serializer.toJson<String?>(motivoMontoManual),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  VentaData copyWith({
-    String? id,
-    String? espacioPersonaId,
-    String? numeroTalonario,
-    int? montoTotal,
-    int? fecha,
-    String? colportorId,
-    Value<String?> visitaId = const Value.absent(),
-    Value<String?> motivoMontoManual = const Value.absent(),
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => VentaData(
-    id: id ?? this.id,
-    espacioPersonaId: espacioPersonaId ?? this.espacioPersonaId,
-    numeroTalonario: numeroTalonario ?? this.numeroTalonario,
-    montoTotal: montoTotal ?? this.montoTotal,
-    fecha: fecha ?? this.fecha,
-    colportorId: colportorId ?? this.colportorId,
-    visitaId: visitaId.present ? visitaId.value : this.visitaId,
-    motivoMontoManual: motivoMontoManual.present
-        ? motivoMontoManual.value
-        : this.motivoMontoManual,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  VentaData copyWithCompanion(VentaCompanion data) {
-    return VentaData(
-      id: data.id.present ? data.id.value : this.id,
-      espacioPersonaId: data.espacioPersonaId.present
-          ? data.espacioPersonaId.value
-          : this.espacioPersonaId,
-      numeroTalonario: data.numeroTalonario.present
-          ? data.numeroTalonario.value
-          : this.numeroTalonario,
-      montoTotal: data.montoTotal.present
-          ? data.montoTotal.value
-          : this.montoTotal,
-      fecha: data.fecha.present ? data.fecha.value : this.fecha,
-      colportorId: data.colportorId.present
-          ? data.colportorId.value
-          : this.colportorId,
-      visitaId: data.visitaId.present ? data.visitaId.value : this.visitaId,
-      motivoMontoManual: data.motivoMontoManual.present
-          ? data.motivoMontoManual.value
-          : this.motivoMontoManual,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VentaData(')
-          ..write('id: $id, ')
-          ..write('espacioPersonaId: $espacioPersonaId, ')
-          ..write('numeroTalonario: $numeroTalonario, ')
-          ..write('montoTotal: $montoTotal, ')
-          ..write('fecha: $fecha, ')
-          ..write('colportorId: $colportorId, ')
-          ..write('visitaId: $visitaId, ')
-          ..write('motivoMontoManual: $motivoMontoManual, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    espacioPersonaId,
-    numeroTalonario,
-    montoTotal,
-    fecha,
-    colportorId,
-    visitaId,
-    motivoMontoManual,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is VentaData &&
-          other.id == this.id &&
-          other.espacioPersonaId == this.espacioPersonaId &&
-          other.numeroTalonario == this.numeroTalonario &&
-          other.montoTotal == this.montoTotal &&
-          other.fecha == this.fecha &&
-          other.colportorId == this.colportorId &&
-          other.visitaId == this.visitaId &&
-          other.motivoMontoManual == this.motivoMontoManual &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class VentaCompanion extends UpdateCompanion<VentaData> {
-  final Value<String> id;
-  final Value<String> espacioPersonaId;
-  final Value<String> numeroTalonario;
-  final Value<int> montoTotal;
-  final Value<int> fecha;
-  final Value<String> colportorId;
-  final Value<String?> visitaId;
-  final Value<String?> motivoMontoManual;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const VentaCompanion({
-    this.id = const Value.absent(),
-    this.espacioPersonaId = const Value.absent(),
-    this.numeroTalonario = const Value.absent(),
-    this.montoTotal = const Value.absent(),
-    this.fecha = const Value.absent(),
-    this.colportorId = const Value.absent(),
-    this.visitaId = const Value.absent(),
-    this.motivoMontoManual = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  VentaCompanion.insert({
-    required String id,
-    required String espacioPersonaId,
-    required String numeroTalonario,
-    required int montoTotal,
-    required int fecha,
-    required String colportorId,
-    this.visitaId = const Value.absent(),
-    this.motivoMontoManual = const Value.absent(),
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       espacioPersonaId = Value(espacioPersonaId),
-       numeroTalonario = Value(numeroTalonario),
-       montoTotal = Value(montoTotal),
-       fecha = Value(fecha),
-       colportorId = Value(colportorId),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<VentaData> custom({
-    Expression<String>? id,
-    Expression<String>? espacioPersonaId,
-    Expression<String>? numeroTalonario,
-    Expression<int>? montoTotal,
-    Expression<int>? fecha,
-    Expression<String>? colportorId,
-    Expression<String>? visitaId,
-    Expression<String>? motivoMontoManual,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (espacioPersonaId != null) 'espacio_persona_id': espacioPersonaId,
-      if (numeroTalonario != null) 'numero_talonario': numeroTalonario,
-      if (montoTotal != null) 'monto_total': montoTotal,
-      if (fecha != null) 'fecha': fecha,
-      if (colportorId != null) 'colportor_id': colportorId,
-      if (visitaId != null) 'visita_id': visitaId,
-      if (motivoMontoManual != null) 'motivo_monto_manual': motivoMontoManual,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  VentaCompanion copyWith({
-    Value<String>? id,
-    Value<String>? espacioPersonaId,
-    Value<String>? numeroTalonario,
-    Value<int>? montoTotal,
-    Value<int>? fecha,
-    Value<String>? colportorId,
-    Value<String?>? visitaId,
-    Value<String?>? motivoMontoManual,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return VentaCompanion(
-      id: id ?? this.id,
-      espacioPersonaId: espacioPersonaId ?? this.espacioPersonaId,
-      numeroTalonario: numeroTalonario ?? this.numeroTalonario,
-      montoTotal: montoTotal ?? this.montoTotal,
-      fecha: fecha ?? this.fecha,
-      colportorId: colportorId ?? this.colportorId,
-      visitaId: visitaId ?? this.visitaId,
-      motivoMontoManual: motivoMontoManual ?? this.motivoMontoManual,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (espacioPersonaId.present) {
-      map['espacio_persona_id'] = Variable<String>(espacioPersonaId.value);
-    }
-    if (numeroTalonario.present) {
-      map['numero_talonario'] = Variable<String>(numeroTalonario.value);
-    }
-    if (montoTotal.present) {
-      map['monto_total'] = Variable<int>(montoTotal.value);
-    }
-    if (fecha.present) {
-      map['fecha'] = Variable<int>(fecha.value);
-    }
-    if (colportorId.present) {
-      map['colportor_id'] = Variable<String>(colportorId.value);
-    }
-    if (visitaId.present) {
-      map['visita_id'] = Variable<String>(visitaId.value);
-    }
-    if (motivoMontoManual.present) {
-      map['motivo_monto_manual'] = Variable<String>(motivoMontoManual.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VentaCompanion(')
-          ..write('id: $id, ')
-          ..write('espacioPersonaId: $espacioPersonaId, ')
-          ..write('numeroTalonario: $numeroTalonario, ')
-          ..write('montoTotal: $montoTotal, ')
-          ..write('fecha: $fecha, ')
-          ..write('colportorId: $colportorId, ')
-          ..write('visitaId: $visitaId, ')
-          ..write('motivoMontoManual: $motivoMontoManual, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class VentaItem extends Table with TableInfo<VentaItem, VentaItemData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  VentaItem(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> ventaId = GeneratedColumn<String>(
-    'venta_id',
+  late final GeneratedColumn<String> usuarioId = GeneratedColumn<String>(
+    'usuario_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -12564,50 +11924,28 @@ class VentaItem extends Table with TableInfo<VentaItem, VentaItemData> {
   late final GeneratedColumn<String> productoId = GeneratedColumn<String>(
     'producto_id',
     aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> coleccionId = GeneratedColumn<String>(
-    'coleccion_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> cantidad = GeneratedColumn<int>(
-    'cantidad',
-    aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> precioUnitario = GeneratedColumn<int>(
-    'precio_unitario',
+  late final GeneratedColumn<int> cantidadDisponible = GeneratedColumn<int>(
+    'cantidad_disponible',
     aliasedName,
     false,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> subtotal = GeneratedColumn<int>(
-    'subtotal',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> componentes = GeneratedColumn<String>(
-    'componentes',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
     requiredDuringInsert: false,
-    $customConstraints: 'NULL',
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  late final GeneratedColumn<int> cantidadReservada = GeneratedColumn<int>(
+    'cantidad_reservada',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
   );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
@@ -12653,13 +11991,10 @@ class VentaItem extends Table with TableInfo<VentaItem, VentaItemData> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
-    ventaId,
+    usuarioId,
     productoId,
-    coleccionId,
-    cantidad,
-    precioUnitario,
-    subtotal,
-    componentes,
+    cantidadDisponible,
+    cantidadReservada,
     createdAt,
     updatedAt,
     createdBy,
@@ -12670,45 +12005,33 @@ class VentaItem extends Table with TableInfo<VentaItem, VentaItemData> {
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'venta_item';
+  static const String $name = 'stock';
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  VentaItemData map(Map<String, dynamic> data, {String? tablePrefix}) {
+  StockData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VentaItemData(
+    return StockData(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
-      ventaId: attachedDatabase.typeMapping.read(
+      usuarioId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}venta_id'],
+        data['${effectivePrefix}usuario_id'],
       )!,
       productoId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}producto_id'],
-      ),
-      coleccionId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}coleccion_id'],
-      ),
-      cantidad: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}cantidad'],
       )!,
-      precioUnitario: attachedDatabase.typeMapping.read(
+      cantidadDisponible: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}precio_unitario'],
+        data['${effectivePrefix}cantidad_disponible'],
       )!,
-      subtotal: attachedDatabase.typeMapping.read(
+      cantidadReservada: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}subtotal'],
+        data['${effectivePrefix}cantidad_reservada'],
       )!,
-      componentes: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}componentes'],
-      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -12733,46 +12056,36 @@ class VentaItem extends Table with TableInfo<VentaItem, VentaItemData> {
   }
 
   @override
-  VentaItem createAlias(String alias) {
-    return VentaItem(attachedDatabase, alias);
+  Stock createAlias(String alias) {
+    return Stock(attachedDatabase, alias);
   }
 
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(id)',
-    'CHECK(cantidad > 0)',
-    'CHECK(precio_unitario >= 0)',
-    'CHECK(subtotal = cantidad * precio_unitario)',
-    'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
-    'CHECK((coleccion_id IS NULL)=(componentes IS NULL))',
+    'CHECK(cantidad_reservada >= 0)',
   ];
   @override
   bool get dontWriteConstraints => true;
 }
 
-class VentaItemData extends DataClass implements Insertable<VentaItemData> {
+class StockData extends DataClass implements Insertable<StockData> {
   final String id;
-  final String ventaId;
-  final String? productoId;
-  final String? coleccionId;
-  final int cantidad;
-  final int precioUnitario;
-  final int subtotal;
-  final String? componentes;
+  final String usuarioId;
+  final String productoId;
+  final int cantidadDisponible;
+  final int cantidadReservada;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
   final int? deletedAt;
   final int syncVersion;
-  const VentaItemData({
+  const StockData({
     required this.id,
-    required this.ventaId,
-    this.productoId,
-    this.coleccionId,
-    required this.cantidad,
-    required this.precioUnitario,
-    required this.subtotal,
-    this.componentes,
+    required this.usuarioId,
+    required this.productoId,
+    required this.cantidadDisponible,
+    required this.cantidadReservada,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -12783,19 +12096,10 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['venta_id'] = Variable<String>(ventaId);
-    if (!nullToAbsent || productoId != null) {
-      map['producto_id'] = Variable<String>(productoId);
-    }
-    if (!nullToAbsent || coleccionId != null) {
-      map['coleccion_id'] = Variable<String>(coleccionId);
-    }
-    map['cantidad'] = Variable<int>(cantidad);
-    map['precio_unitario'] = Variable<int>(precioUnitario);
-    map['subtotal'] = Variable<int>(subtotal);
-    if (!nullToAbsent || componentes != null) {
-      map['componentes'] = Variable<String>(componentes);
-    }
+    map['usuario_id'] = Variable<String>(usuarioId);
+    map['producto_id'] = Variable<String>(productoId);
+    map['cantidad_disponible'] = Variable<int>(cantidadDisponible);
+    map['cantidad_reservada'] = Variable<int>(cantidadReservada);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     if (!nullToAbsent || createdBy != null) {
@@ -12808,22 +12112,13 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
     return map;
   }
 
-  VentaItemCompanion toCompanion(bool nullToAbsent) {
-    return VentaItemCompanion(
+  StockCompanion toCompanion(bool nullToAbsent) {
+    return StockCompanion(
       id: Value(id),
-      ventaId: Value(ventaId),
-      productoId: productoId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(productoId),
-      coleccionId: coleccionId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(coleccionId),
-      cantidad: Value(cantidad),
-      precioUnitario: Value(precioUnitario),
-      subtotal: Value(subtotal),
-      componentes: componentes == null && nullToAbsent
-          ? const Value.absent()
-          : Value(componentes),
+      usuarioId: Value(usuarioId),
+      productoId: Value(productoId),
+      cantidadDisponible: Value(cantidadDisponible),
+      cantidadReservada: Value(cantidadReservada),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -12836,20 +12131,17 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
     );
   }
 
-  factory VentaItemData.fromJson(
+  factory StockData.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VentaItemData(
+    return StockData(
       id: serializer.fromJson<String>(json['id']),
-      ventaId: serializer.fromJson<String>(json['ventaId']),
-      productoId: serializer.fromJson<String?>(json['productoId']),
-      coleccionId: serializer.fromJson<String?>(json['coleccionId']),
-      cantidad: serializer.fromJson<int>(json['cantidad']),
-      precioUnitario: serializer.fromJson<int>(json['precioUnitario']),
-      subtotal: serializer.fromJson<int>(json['subtotal']),
-      componentes: serializer.fromJson<String?>(json['componentes']),
+      usuarioId: serializer.fromJson<String>(json['usuarioId']),
+      productoId: serializer.fromJson<String>(json['productoId']),
+      cantidadDisponible: serializer.fromJson<int>(json['cantidadDisponible']),
+      cantidadReservada: serializer.fromJson<int>(json['cantidadReservada']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -12862,13 +12154,10 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'ventaId': serializer.toJson<String>(ventaId),
-      'productoId': serializer.toJson<String?>(productoId),
-      'coleccionId': serializer.toJson<String?>(coleccionId),
-      'cantidad': serializer.toJson<int>(cantidad),
-      'precioUnitario': serializer.toJson<int>(precioUnitario),
-      'subtotal': serializer.toJson<int>(subtotal),
-      'componentes': serializer.toJson<String?>(componentes),
+      'usuarioId': serializer.toJson<String>(usuarioId),
+      'productoId': serializer.toJson<String>(productoId),
+      'cantidadDisponible': serializer.toJson<int>(cantidadDisponible),
+      'cantidadReservada': serializer.toJson<int>(cantidadReservada),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -12877,53 +12166,42 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
     };
   }
 
-  VentaItemData copyWith({
+  StockData copyWith({
     String? id,
-    String? ventaId,
-    Value<String?> productoId = const Value.absent(),
-    Value<String?> coleccionId = const Value.absent(),
-    int? cantidad,
-    int? precioUnitario,
-    int? subtotal,
-    Value<String?> componentes = const Value.absent(),
+    String? usuarioId,
+    String? productoId,
+    int? cantidadDisponible,
+    int? cantidadReservada,
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
-  }) => VentaItemData(
+  }) => StockData(
     id: id ?? this.id,
-    ventaId: ventaId ?? this.ventaId,
-    productoId: productoId.present ? productoId.value : this.productoId,
-    coleccionId: coleccionId.present ? coleccionId.value : this.coleccionId,
-    cantidad: cantidad ?? this.cantidad,
-    precioUnitario: precioUnitario ?? this.precioUnitario,
-    subtotal: subtotal ?? this.subtotal,
-    componentes: componentes.present ? componentes.value : this.componentes,
+    usuarioId: usuarioId ?? this.usuarioId,
+    productoId: productoId ?? this.productoId,
+    cantidadDisponible: cantidadDisponible ?? this.cantidadDisponible,
+    cantidadReservada: cantidadReservada ?? this.cantidadReservada,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
   );
-  VentaItemData copyWithCompanion(VentaItemCompanion data) {
-    return VentaItemData(
+  StockData copyWithCompanion(StockCompanion data) {
+    return StockData(
       id: data.id.present ? data.id.value : this.id,
-      ventaId: data.ventaId.present ? data.ventaId.value : this.ventaId,
+      usuarioId: data.usuarioId.present ? data.usuarioId.value : this.usuarioId,
       productoId: data.productoId.present
           ? data.productoId.value
           : this.productoId,
-      coleccionId: data.coleccionId.present
-          ? data.coleccionId.value
-          : this.coleccionId,
-      cantidad: data.cantidad.present ? data.cantidad.value : this.cantidad,
-      precioUnitario: data.precioUnitario.present
-          ? data.precioUnitario.value
-          : this.precioUnitario,
-      subtotal: data.subtotal.present ? data.subtotal.value : this.subtotal,
-      componentes: data.componentes.present
-          ? data.componentes.value
-          : this.componentes,
+      cantidadDisponible: data.cantidadDisponible.present
+          ? data.cantidadDisponible.value
+          : this.cantidadDisponible,
+      cantidadReservada: data.cantidadReservada.present
+          ? data.cantidadReservada.value
+          : this.cantidadReservada,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -12936,15 +12214,12 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
 
   @override
   String toString() {
-    return (StringBuffer('VentaItemData(')
+    return (StringBuffer('StockData(')
           ..write('id: $id, ')
-          ..write('ventaId: $ventaId, ')
+          ..write('usuarioId: $usuarioId, ')
           ..write('productoId: $productoId, ')
-          ..write('coleccionId: $coleccionId, ')
-          ..write('cantidad: $cantidad, ')
-          ..write('precioUnitario: $precioUnitario, ')
-          ..write('subtotal: $subtotal, ')
-          ..write('componentes: $componentes, ')
+          ..write('cantidadDisponible: $cantidadDisponible, ')
+          ..write('cantidadReservada: $cantidadReservada, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -12957,13 +12232,10 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
   @override
   int get hashCode => Object.hash(
     id,
-    ventaId,
+    usuarioId,
     productoId,
-    coleccionId,
-    cantidad,
-    precioUnitario,
-    subtotal,
-    componentes,
+    cantidadDisponible,
+    cantidadReservada,
     createdAt,
     updatedAt,
     createdBy,
@@ -12973,15 +12245,12 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is VentaItemData &&
+      (other is StockData &&
           other.id == this.id &&
-          other.ventaId == this.ventaId &&
+          other.usuarioId == this.usuarioId &&
           other.productoId == this.productoId &&
-          other.coleccionId == this.coleccionId &&
-          other.cantidad == this.cantidad &&
-          other.precioUnitario == this.precioUnitario &&
-          other.subtotal == this.subtotal &&
-          other.componentes == this.componentes &&
+          other.cantidadDisponible == this.cantidadDisponible &&
+          other.cantidadReservada == this.cantidadReservada &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -12989,30 +12258,24 @@ class VentaItemData extends DataClass implements Insertable<VentaItemData> {
           other.syncVersion == this.syncVersion);
 }
 
-class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
+class StockCompanion extends UpdateCompanion<StockData> {
   final Value<String> id;
-  final Value<String> ventaId;
-  final Value<String?> productoId;
-  final Value<String?> coleccionId;
-  final Value<int> cantidad;
-  final Value<int> precioUnitario;
-  final Value<int> subtotal;
-  final Value<String?> componentes;
+  final Value<String> usuarioId;
+  final Value<String> productoId;
+  final Value<int> cantidadDisponible;
+  final Value<int> cantidadReservada;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<int> rowid;
-  const VentaItemCompanion({
+  const StockCompanion({
     this.id = const Value.absent(),
-    this.ventaId = const Value.absent(),
+    this.usuarioId = const Value.absent(),
     this.productoId = const Value.absent(),
-    this.coleccionId = const Value.absent(),
-    this.cantidad = const Value.absent(),
-    this.precioUnitario = const Value.absent(),
-    this.subtotal = const Value.absent(),
-    this.componentes = const Value.absent(),
+    this.cantidadDisponible = const Value.absent(),
+    this.cantidadReservada = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -13020,15 +12283,12 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  VentaItemCompanion.insert({
+  StockCompanion.insert({
     required String id,
-    required String ventaId,
-    this.productoId = const Value.absent(),
-    this.coleccionId = const Value.absent(),
-    required int cantidad,
-    required int precioUnitario,
-    required int subtotal,
-    this.componentes = const Value.absent(),
+    required String usuarioId,
+    required String productoId,
+    this.cantidadDisponible = const Value.absent(),
+    this.cantidadReservada = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -13036,21 +12296,16 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
-       ventaId = Value(ventaId),
-       cantidad = Value(cantidad),
-       precioUnitario = Value(precioUnitario),
-       subtotal = Value(subtotal),
+       usuarioId = Value(usuarioId),
+       productoId = Value(productoId),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
-  static Insertable<VentaItemData> custom({
+  static Insertable<StockData> custom({
     Expression<String>? id,
-    Expression<String>? ventaId,
+    Expression<String>? usuarioId,
     Expression<String>? productoId,
-    Expression<String>? coleccionId,
-    Expression<int>? cantidad,
-    Expression<int>? precioUnitario,
-    Expression<int>? subtotal,
-    Expression<String>? componentes,
+    Expression<int>? cantidadDisponible,
+    Expression<int>? cantidadReservada,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -13060,13 +12315,10 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (ventaId != null) 'venta_id': ventaId,
+      if (usuarioId != null) 'usuario_id': usuarioId,
       if (productoId != null) 'producto_id': productoId,
-      if (coleccionId != null) 'coleccion_id': coleccionId,
-      if (cantidad != null) 'cantidad': cantidad,
-      if (precioUnitario != null) 'precio_unitario': precioUnitario,
-      if (subtotal != null) 'subtotal': subtotal,
-      if (componentes != null) 'componentes': componentes,
+      if (cantidadDisponible != null) 'cantidad_disponible': cantidadDisponible,
+      if (cantidadReservada != null) 'cantidad_reservada': cantidadReservada,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -13076,15 +12328,12 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
     });
   }
 
-  VentaItemCompanion copyWith({
+  StockCompanion copyWith({
     Value<String>? id,
-    Value<String>? ventaId,
-    Value<String?>? productoId,
-    Value<String?>? coleccionId,
-    Value<int>? cantidad,
-    Value<int>? precioUnitario,
-    Value<int>? subtotal,
-    Value<String?>? componentes,
+    Value<String>? usuarioId,
+    Value<String>? productoId,
+    Value<int>? cantidadDisponible,
+    Value<int>? cantidadReservada,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -13092,15 +12341,12 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
     Value<int>? syncVersion,
     Value<int>? rowid,
   }) {
-    return VentaItemCompanion(
+    return StockCompanion(
       id: id ?? this.id,
-      ventaId: ventaId ?? this.ventaId,
+      usuarioId: usuarioId ?? this.usuarioId,
       productoId: productoId ?? this.productoId,
-      coleccionId: coleccionId ?? this.coleccionId,
-      cantidad: cantidad ?? this.cantidad,
-      precioUnitario: precioUnitario ?? this.precioUnitario,
-      subtotal: subtotal ?? this.subtotal,
-      componentes: componentes ?? this.componentes,
+      cantidadDisponible: cantidadDisponible ?? this.cantidadDisponible,
+      cantidadReservada: cantidadReservada ?? this.cantidadReservada,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -13116,26 +12362,17 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (ventaId.present) {
-      map['venta_id'] = Variable<String>(ventaId.value);
+    if (usuarioId.present) {
+      map['usuario_id'] = Variable<String>(usuarioId.value);
     }
     if (productoId.present) {
       map['producto_id'] = Variable<String>(productoId.value);
     }
-    if (coleccionId.present) {
-      map['coleccion_id'] = Variable<String>(coleccionId.value);
+    if (cantidadDisponible.present) {
+      map['cantidad_disponible'] = Variable<int>(cantidadDisponible.value);
     }
-    if (cantidad.present) {
-      map['cantidad'] = Variable<int>(cantidad.value);
-    }
-    if (precioUnitario.present) {
-      map['precio_unitario'] = Variable<int>(precioUnitario.value);
-    }
-    if (subtotal.present) {
-      map['subtotal'] = Variable<int>(subtotal.value);
-    }
-    if (componentes.present) {
-      map['componentes'] = Variable<String>(componentes.value);
+    if (cantidadReservada.present) {
+      map['cantidad_reservada'] = Variable<int>(cantidadReservada.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
@@ -13160,15 +12397,12 @@ class VentaItemCompanion extends UpdateCompanion<VentaItemData> {
 
   @override
   String toString() {
-    return (StringBuffer('VentaItemCompanion(')
+    return (StringBuffer('StockCompanion(')
           ..write('id: $id, ')
-          ..write('ventaId: $ventaId, ')
+          ..write('usuarioId: $usuarioId, ')
           ..write('productoId: $productoId, ')
-          ..write('coleccionId: $coleccionId, ')
-          ..write('cantidad: $cantidad, ')
-          ..write('precioUnitario: $precioUnitario, ')
-          ..write('subtotal: $subtotal, ')
-          ..write('componentes: $componentes, ')
+          ..write('cantidadDisponible: $cantidadDisponible, ')
+          ..write('cantidadReservada: $cantidadReservada, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -13209,8 +12443,7 @@ class DatabaseAtV15 extends GeneratedDatabase {
   late final ProductoColeccion productoColeccion = ProductoColeccion(this);
   late final PrecioPorCiudad precioPorCiudad = PrecioPorCiudad(this);
   late final PrecioGeneral precioGeneral = PrecioGeneral(this);
-  late final Venta venta = Venta(this);
-  late final VentaItem ventaItem = VentaItem(this);
+  late final Stock stock = Stock(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -13315,17 +12548,9 @@ class DatabaseAtV15 extends GeneratedDatabase {
     'precio_general_coleccion_idx',
     'CREATE INDEX precio_general_coleccion_idx ON precio_general (coleccion_id)',
   );
-  late final Index ventaColportorIdx = Index(
-    'venta_colportor_idx',
-    'CREATE INDEX venta_colportor_idx ON venta (colportor_id, fecha)',
-  );
-  late final Index ventaEspacioPersonaIdx = Index(
-    'venta_espacio_persona_idx',
-    'CREATE INDEX venta_espacio_persona_idx ON venta (espacio_persona_id)',
-  );
-  late final Index ventaItemVentaIdx = Index(
-    'venta_item_venta_idx',
-    'CREATE INDEX venta_item_venta_idx ON venta_item (venta_id)',
+  late final Index stockUsuarioIdx = Index(
+    'stock_usuario_idx',
+    'CREATE INDEX stock_usuario_idx ON stock (usuario_id)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -13356,8 +12581,7 @@ class DatabaseAtV15 extends GeneratedDatabase {
     productoColeccion,
     precioPorCiudad,
     precioGeneral,
-    venta,
-    ventaItem,
+    stock,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,
@@ -13384,9 +12608,7 @@ class DatabaseAtV15 extends GeneratedDatabase {
     precioPorCiudadColeccionIdx,
     precioGeneralProductoIdx,
     precioGeneralColeccionIdx,
-    ventaColportorIdx,
-    ventaEspacioPersonaIdx,
-    ventaItemVentaIdx,
+    stockUsuarioIdx,
   ];
   @override
   int get schemaVersion => 15;
