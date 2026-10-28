@@ -42,6 +42,19 @@ final class _DriveFake implements BackupDriveDataSource {
   }
 }
 
+/// Drive que anota en [eventos] cuándo se le pidió borrar.
+final class _DriveQueAnota implements BackupDriveDataSource {
+  _DriveQueAnota(this.eventos);
+
+  final List<String> eventos;
+
+  @override
+  Future<bool> existe() async => true;
+
+  @override
+  Future<void> borrar() async => eventos.add('borrar respaldo');
+}
+
 void main() {
   late Directory directorio;
   late DatabaseHelper helper;
@@ -332,6 +345,95 @@ void main() {
           ResultadoBorradoDatosLocales.backupDriveNoBorrado,
         ),
       );
+    });
+
+    group('permiso de Drive en Google (#184)', () {
+      late List<String> eventos;
+      Object? fallaAlRetirar;
+
+      DatosLocalesRepositoryImpl conPermiso({bool localFalla = false}) {
+        return DatosLocalesRepositoryImpl(
+          helper,
+          () => db,
+          localFalla
+              ? () async => throw const DbLocalException(operacion: 'cerrar')
+              : () async {
+                  await helper.cerrar();
+                  db = null;
+                },
+          custodia,
+          drive,
+          retirarPermisoDrive: () async {
+            eventos.add('permiso');
+            if (fallaAlRetirar != null) throw fallaAlRetirar!;
+          },
+          logger: loggerMudo(),
+        );
+      }
+
+      setUp(() {
+        eventos = [];
+        fallaAlRetirar = null;
+      });
+
+      test(
+        'sin pedir borrar el respaldo, retira el permiso y NO borra lo que hay en Drive',
+        () async {
+          final r = await conPermiso().borrar(incluirBackupDrive: false);
+
+          expect(r.isRight(), isTrue);
+          expect(eventos, ['permiso']);
+          expect(drive.borrados, 0);
+        },
+      );
+
+      test('pidiendo borrar el respaldo, lo borra antes de retirar el permiso', () async {
+        final repoConPermiso = DatosLocalesRepositoryImpl(
+          helper,
+          () => db,
+          () async {
+            await helper.cerrar();
+            db = null;
+          },
+          custodia,
+          _DriveQueAnota(eventos),
+          retirarPermisoDrive: () async => eventos.add('permiso'),
+          logger: loggerMudo(),
+        );
+
+        final r = await repoConPermiso.borrar(incluirBackupDrive: true);
+
+        expect(r.isRight(), isTrue);
+        expect(eventos, ['borrar respaldo', 'permiso']);
+      });
+
+      test('si Google no deja retirar el permiso, el borrado igual termina completo', () async {
+        fallaAlRetirar = Exception('sin red');
+
+        final r = await conPermiso().borrar(incluirBackupDrive: false);
+
+        expect(
+          r,
+          const Right<Failure, ResultadoBorradoDatosLocales>(ResultadoBorradoDatosLocales.completo),
+        );
+        expect(eventos, ['permiso']);
+      });
+
+      test('si el borrado local falla, no retira el permiso: se reintenta entero', () async {
+        final r = await conPermiso(localFalla: true).borrar(incluirBackupDrive: false);
+
+        expect(r.isLeft(), isTrue);
+        expect(eventos, isEmpty);
+      });
+
+      test('con trabajo sin sincronizar se niega y no toca el permiso', () async {
+        await abrirConJornadas(1);
+
+        final r = await conPermiso().borrar(incluirBackupDrive: false);
+
+        expect(r.isLeft(), isTrue);
+        expect(eventos, isEmpty);
+      });
     });
 
     test('si el borrado local falla, devuelve Left', () async {

@@ -25,7 +25,8 @@ import '../models/ubicacion_model.dart';
 ///
 /// Mira solo los **espacios activos** de la ubicación (la baja de un depto saca sus visitas del
 /// color, no del historial): una visita que ya pasó sigue contando aunque su persona esté dada de
-/// baja o no tenga persona. Las agendas y visitas dadas de baja no cuentan.
+/// baja o no tenga persona. Las agendas y visitas dadas de baja no cuentan. De cada visita lleva
+/// el resultado y su `fecha`: entre entrevista dada, sin contestar y rechazo manda la más reciente.
 final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
   HouseStatusUpdaterDrift(this._db, {required this._encolador});
@@ -123,11 +124,14 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     return [for (final fila in filas) TipoAgenda.desdeCodigo(fila.tipo)];
   }
 
-  Future<List<TipoResultadoVisita>> _resultadosDeVisitas(String ubicacionId) async {
+  Future<List<ResultadoDeVisitaFechado>> _resultadosDeVisitas(String ubicacionId) async {
     final filas = await (_db.select(
       _db.visitas,
     )..where((v) => v.espacioId.isInQuery(_espaciosDe(ubicacionId)) & v.deletedAt.isNull())).get();
-    return [for (final fila in filas) TipoResultadoVisita.desdeCodigo(fila.tipoResultado)];
+    return [
+      for (final fila in filas)
+        (resultado: TipoResultadoVisita.desdeCodigo(fila.tipoResultado), fecha: fila.fecha),
+    ];
   }
 
   Future<HouseStatusFila?> _fila(String ubicacionId) => (_db.select(
