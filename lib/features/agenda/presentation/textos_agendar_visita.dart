@@ -61,7 +61,7 @@ abstract final class TextosAgendarVisita {
   // 23A·05: el aviso de éxito.
   static String agendada(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => 'Agendada. La casa queda como «Entrevista agendada».',
-    TipoAgenda.cobranza => 'Agendada.',
+    TipoAgenda.cobranza || TipoAgenda.entrega => 'Agendada.',
   };
 
   /// La visita quedó agendada, pero faltaba menos que la anticipación y no hay recordatorio.

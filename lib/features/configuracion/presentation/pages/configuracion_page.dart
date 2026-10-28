@@ -16,6 +16,10 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
+import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
+import '../../../respaldo/presentation/textos_respaldo_drive.dart';
+import '../../../respaldo/presentation/widgets/hojas_drive.dart';
+import '../../../respaldo/presentation/widgets/seccion_respaldo_drive.dart';
 import '../../../tiles/presentation/pages/mapas_offline_page.dart';
 import '../../../tiles/presentation/providers/resumen_mapas_providers.dart';
 import '../../../tiles/presentation/textos_mapas_offline.dart';
@@ -29,7 +33,8 @@ import 'borrar_datos_locales_page.dart';
 /// con la confirmación en una hoja inferior. La sección «Mapas» lleva a «Mapas offline» (vista 35) y
 /// se oculta con la cuenta pendiente de asignación. La barra de pestañas es la de la pantalla
 /// principal; con una cuenta que todavía no accede a los módulos de campo no se muestra (vista 18
-/// la arma bloqueada).
+/// la arma bloqueada). La sección «Respaldo» muestra la fila «Cuenta Drive» (HU-SYNC-004): conectar,
+/// ver y desconectar el respaldo en el Google Drive de la persona.
 class ConfiguracionPage extends ConsumerStatefulWidget {
   const ConfiguracionPage({super.key});
 
@@ -54,6 +59,55 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   /// Se está guardando «Mostrar el aviso de privacidad». Es un campo: corta el segundo toque aunque
   /// llegue antes de que se vuelva a dibujar.
   bool _cambiandoAviso = false;
+
+  /// Se está abriendo una hoja del respaldo en Drive. Es un campo: corta el segundo toque aunque
+  /// llegue antes de que la hoja termine de abrirse.
+  bool _abriendoHojaDrive = false;
+
+  /// «Conectar» / «Reconectar» de la fila «Cuenta Drive» (HU-SYNC-004): la hoja explica que los
+  /// archivos van cifrados y lleva a la pantalla de Google. Al volver avisa cómo salió.
+  Future<void> _conectarDrive() async {
+    if (_abriendoHojaDrive) return;
+    _abriendoHojaDrive = true;
+    final avisoCancelado = ref.read(avisoDriveCanceladoProvider.notifier)..ocultar();
+    try {
+      final resultado = await mostrarHojaConectarDrive(context);
+      if (!mounted) return;
+      switch (resultado) {
+        case DriveQuedoConectado(:final primerRespaldoHecho):
+          final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+          recordarAviso(
+            mensajero.showSnackBar(
+              SnackBar(
+                key: const Key('configuracion_drive_conectado'),
+                content: Text(
+                  primerRespaldoHecho
+                      ? TextosRespaldoDrive.exitoConPrimerRespaldo
+                      : TextosRespaldoDrive.exitoSinPrimerRespaldo,
+                ),
+              ),
+            ),
+          );
+        case DriveNoQuedoConectado():
+          avisoCancelado.mostrar();
+        case DriveOcupado() || null:
+          break;
+      }
+    } finally {
+      _abriendoHojaDrive = false;
+    }
+  }
+
+  /// Tocar la fila con Drive conectado: la hoja para desconectar.
+  Future<void> _desconectarDrive() async {
+    if (_abriendoHojaDrive) return;
+    _abriendoHojaDrive = true;
+    try {
+      await mostrarHojaDesconectarDrive(context);
+    } finally {
+      _abriendoHojaDrive = false;
+    }
+  }
 
   /// «Mostrar el aviso de privacidad» (decisión de Cristian, 23/10, «Aviso privado», #445): enciende
   /// o apaga el aviso «Estos datos solo viven en tu celular…» de esta cuenta, el mismo del alta de
@@ -209,6 +263,11 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
         cerrarAvisoAlTerminarElCuadro();
       }
     });
+    // El respaldo en Drive (HU-SYNC-004). El aviso de «cancelaste» se queda mientras esta pantalla
+    // esté abierta: se mira acá para que no se pierda entre una hoja y la otra.
+    final estadoDrive = ref.watch(estadoRespaldoDriveProvider);
+    final driveCancelado = ref.watch(avisoDriveCanceladoProvider);
+    final ultimoRespaldo = ref.watch(ultimoRespaldoDriveProvider).value;
     final conBarra = estadoCuenta is! AsyncLoading;
     final estado = estadoCuenta.value;
     final accede = estadoCuenta is AsyncData && (estado == null || estado.accedeAModulosDeCampo);
@@ -267,6 +326,12 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ],
                         ),
                       ),
+                      // El permiso de Drive se perdió, o se cerró la pantalla de Google (16D·06, 07).
+                      AvisoRespaldoDrive(
+                        estado: estadoDrive.value,
+                        cancelado: driveCancelado,
+                        alReconectar: () => unawaited(_conectarDrive()),
+                      ),
                       const _TituloSeccion('Tu cuenta'),
                       const SizedBox(height: 8),
                       _Tarjeta(
@@ -310,6 +375,16 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ],
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      SeccionRespaldoDrive(
+                        estado: estadoDrive,
+                        ultimoRespaldo: ultimoRespaldo,
+                        ahora: DateTime.now(),
+                        alConectar: () => unawaited(_conectarDrive()),
+                        alVerCuenta: () => unawaited(_desconectarDrive()),
+                        alReintentar: () =>
+                            unawaited(ref.read(estadoRespaldoDriveProvider.notifier).recargar()),
+                      ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),

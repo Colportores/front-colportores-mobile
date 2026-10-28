@@ -33,6 +33,7 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     this._cerrarDb,
     this._custodia,
     this._backupDrive, {
+    this.retirarPermisoDrive,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -41,6 +42,10 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   final Future<void> Function() _cerrarDb;
   final CustodiaClaveDb _custodia;
   final BackupDriveDataSource _backupDrive;
+
+  /// Retira el permiso de Drive en Google (#184, decisión del agente de decisiones). De mejor
+  /// esfuerzo; nunca borra el respaldo de Drive.
+  final Future<void> Function()? retirarPermisoDrive;
   final AppLogger _log;
 
   @override
@@ -118,6 +123,11 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
       }
     }
 
+    // 3. El permiso de Drive en Google. Va después de borrar el respaldo (hace falta el permiso
+    // para borrarlo) y no depende de `incluirBackupDrive`: sin datos en el teléfono el permiso no
+    // tiene para qué quedar. Los archivos que estén en el Drive no se tocan. Su falla no cuenta.
+    await _retirarPermiso();
+
     // `audit_log` todavía no existe en la DB (y la DB se acaba de borrar): el evento queda en el
     // log con los campos de la HU salvo `device_id`, que la app todavía no tiene.
     _log.info(LogModulo.db, 'local_data_wipe', 'datos locales borrados', {
@@ -126,6 +136,18 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
       'pendientes_descartados': pendientes,
     });
     return Right(resultado);
+  }
+
+  Future<void> _retirarPermiso() async {
+    final retirar = retirarPermisoDrive;
+    if (retirar == null) return;
+    try {
+      await retirar();
+    } on Object catch (e) {
+      _log.warn(LogModulo.backup, 'WIPE_PERMISO_DRIVE', 'no se pudo retirar el permiso de Drive', {
+        'error': e.runtimeType.toString(),
+      });
+    }
   }
 
   /// `null` si no se puede saber: el archivo está pero la DB no está abierta, o contar falló.

@@ -4,7 +4,7 @@ import '../../../../core/database/fecha_utc_converter.dart';
 
 /// Tabla `entrega` de la DB local cifrada (esquema-datos.md §Operaciones de campo).
 ///
-/// Es la misma tabla que `public.entrega` del cloud (`backend-supabase`, migración 0001), con las
+/// Es la misma tabla que `public.entrega` del cloud (`backend-supabase`, migraciones 0001 y 0068), con las
 /// diferencias de motor de [Ventas]: fechas en epoch ms UTC, sin claves foráneas y sin defaults de
 /// servidor. `stock_inconsistente` (migración 0118) la pone el servidor y la app no la escribe: no
 /// está acá.
@@ -31,7 +31,13 @@ class Entregas extends Table {
   /// Cuántas unidades cuenta la fila; siempre 1 o más.
   IntColumn get cantidad => integer()();
 
-  /// Cuándo se entregó de verdad; `null` mientras la fila está pendiente.
+  /// Cuándo se acordó entregar (backend 0068, HU-VEN-003); `null` si no hay fecha: la entrega
+  /// inmediata no la tiene y una entrega pendiente puede quedar sin fecha. La cita de esa fecha es una
+  /// fila de `agenda` tipo `ENTREGA`.
+  IntColumn get fechaPrevista => integer().nullable().map(const FechaUtcConverter())();
+
+  /// Cuándo se entregó de verdad (la fecha REAL; la acordada es [fechaPrevista]); `null` mientras la
+  /// fila está pendiente.
   IntColumn get fechaEntrega => integer().nullable().map(const FechaUtcConverter())();
 
   /// `true` = falta entregarlo (el valor por defecto del servidor); `false` = ya se entregó.

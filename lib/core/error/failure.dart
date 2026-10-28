@@ -112,6 +112,37 @@ final class FailureBackupDriveNoBorrado extends Failure {
       );
 }
 
+/// La persona cerró o rechazó la pantalla de Google al conectar el respaldo en Drive (HU-SYNC-004,
+/// vista 16, 16D·07). No es un error: la app dice que no se conectó y que puede hacerlo cuando
+/// quiera.
+final class FailureDriveCancelado extends Failure {
+  const FailureDriveCancelado()
+    : super(
+        mensaje: 'No conectamos tu Drive. Podés hacerlo cuando quieras.',
+        codigo: 'DRIVE_CANCELADO',
+      );
+}
+
+/// Google conectó la cuenta pero la persona no dejó marcado el permiso de Drive (HU-SYNC-004): sin
+/// él el respaldo no puede guardar nada, así que no se da por conectado.
+final class FailureDrivePermisoIncompleto extends Failure {
+  const FailureDrivePermisoIncompleto()
+    : super(
+        mensaje:
+            'Para guardar tu respaldo necesitamos el permiso de Drive. Probá de nuevo y dejá '
+            'marcado el permiso de Drive.',
+        codigo: 'DRIVE_PERMISO_INCOMPLETO',
+      );
+}
+
+/// No se pudo conectar el respaldo en Drive por una causa que la persona no puede arreglar sola
+/// (Google falló, la app no está registrada en Google, etc.). La causa va a los logs, nunca acá
+/// (HU-SYNC-004, vista 16, 16D·09).
+final class FailureDriveNoConectado extends Failure {
+  const FailureDriveNoConectado()
+    : super(mensaje: 'No pudimos conectar tu Drive. Probá de nuevo.', codigo: 'DRIVE_NO_CONECTADO');
+}
+
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
 /// `otp_expired`), así que la app tampoco: [mensaje] no afirma «expiró» sino las dos cosas

@@ -109,10 +109,12 @@ class AppDatabase extends _$AppDatabase {
   ///   `precio_por_ciudad` y `precio_general` (HU-SYNC-002, HU-SYNC-003, HU-CAT-007, #180).
   /// - 15: `venta` y `venta_item`, que suben sin dato del cliente (HU-VEN-001, #423).
   /// - 16: `entrega`, una fila por producto de la venta, que sube (HU-VEN-002, #430).
+  /// - 17: la entrega diferida (HU-VEN-003, #433): `entrega.fecha_prevista` y, en `agenda`, el tipo
+  ///   `ENTREGA` con lo que la origina (`venta_id`, `entrega_id`) (backend 0068).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 16;
+  static const int versionEsquema = 17;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -293,6 +295,20 @@ class AppDatabase extends _$AppDatabase {
     from15To16: (m, esquema) async {
       await m.createTable(esquema.entrega);
       await m.createIndex(esquema.entregaVentaIdx);
+    },
+    // Suma la fecha prevista a `entrega` (las filas que ya estaban quedan sin fecha acordada) y
+    // reescribe `agenda` (SQLite no cambia un CHECK): conserva todas las filas, suma `venta_id` y
+    // `entrega_id` en null y deja entrar el tipo `ENTREGA`. Nada se encola al migrar.
+    from16To17: (m, esquema) async {
+      await m.addColumn(esquema.entrega, esquema.entrega.fechaPrevista);
+      await m.alterTable(
+        TableMigration(
+          esquema.agenda,
+          newColumns: [esquema.agenda.ventaId, esquema.agenda.entregaId],
+        ),
+      );
+      // `alterTable` vuelve a crear los índices que ya tenía la tabla, no los nuevos.
+      await m.createIndex(esquema.agendaVentaIdx);
     },
   );
 }

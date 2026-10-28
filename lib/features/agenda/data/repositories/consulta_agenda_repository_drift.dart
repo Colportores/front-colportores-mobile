@@ -94,6 +94,8 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     estado: EstadoAgenda.desdeCodigo(fila.estado),
     colportorId: fila.colportorId,
     visitaId: fila.visitaId,
+    ventaId: fila.ventaId,
+    entregaId: fila.entregaId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

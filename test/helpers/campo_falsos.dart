@@ -111,17 +111,22 @@ Agenda agendaDe(
   String? visitaId,
   bool esEstricta = false,
   String? slot,
+  String? ventaId,
+  String? entregaId,
+  DateTime? fecha,
 }) => Agenda(
   id: id,
   espacioId: espacio,
   espacioPersonaId: vinculo,
   tipo: tipo,
-  fechaProgramada: DateTime.utc(2026, 10, 25, 14),
+  fechaProgramada: fecha ?? DateTime.utc(2026, 10, 25, 14),
   slotCodigo: slot,
   esEstricta: esEstricta,
   estado: estado,
   colportorId: 'col-1',
   visitaId: visitaId,
+  ventaId: ventaId,
+  entregaId: entregaId,
   auditoria: auditoriaDe(creada: creada, borrada: borrada),
 );
 

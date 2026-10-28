@@ -5,6 +5,7 @@ import '../../../mapa/presentation/widgets/campos_ubicacion.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
 import '../../domain/entities/franja_horaria.dart';
 import '../../domain/entities/tipo_agenda.dart';
+import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_agendar_visita.dart';
 import '../textos_agendar_visita.dart';
 
@@ -145,7 +146,8 @@ class _EsqueletoPersona extends StatelessWidget {
   }
 }
 
-/// «TIPO»: Entrevista o Cobranza.
+/// «TIPO»: Entrevista o Cobranza. La cita de una entrega (HU-VEN-003) se ve con su tipo y no se puede
+/// cambiar a otro: nace de una venta y su tipo no es una elección de quien la edita.
 class SelectorTipoAgenda extends StatelessWidget {
   const SelectorTipoAgenda({
     super.key,
@@ -183,15 +185,26 @@ class SelectorTipoAgenda extends StatelessWidget {
                   : ColoresAlta.tinta,
             ),
           ),
-          segments: const [
-            ButtonSegment(
-              value: TipoAgenda.entrevista,
-              label: Text(TextosAgendarVisita.entrevista),
-            ),
-            ButtonSegment(value: TipoAgenda.cobranza, label: Text(TextosAgendarVisita.cobranza)),
-          ],
+          // Una cita de entrega (HU-VEN-003) no cambia de tipo: se ve sola, elegida. Con tres
+          // segmentos, a 2,0× las etiquetas se parten a la mitad (QA #433); con uno entra siempre.
+          segments: tipo == TipoAgenda.entrega
+              ? const [
+                  ButtonSegment(value: TipoAgenda.entrega, label: Text(TextosAgenda.tagEntrega)),
+                ]
+              : const [
+                  ButtonSegment(
+                    value: TipoAgenda.entrevista,
+                    label: Text(TextosAgendarVisita.entrevista),
+                  ),
+                  ButtonSegment(
+                    value: TipoAgenda.cobranza,
+                    label: Text(TextosAgendarVisita.cobranza),
+                  ),
+                ],
           selected: {tipo},
-          onSelectionChanged: bloqueado || alCambiar == null ? null : (s) => alCambiar!(s.first),
+          onSelectionChanged: bloqueado || alCambiar == null || tipo == TipoAgenda.entrega
+              ? null
+              : (s) => alCambiar!(s.first),
         ),
       ],
     );

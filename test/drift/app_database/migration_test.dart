@@ -20,6 +20,7 @@ import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v16.dart' as v16;
+import 'generated/schema_v17.dart' as v17;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -1016,4 +1017,76 @@ void main() {
       );
     },
   );
+
+  test('dado lo guardado en la versión 16, cuando migra a la 17, conserva las entregas y las citas, '
+      'suma la fecha prevista y deja entrar la cita de entrega con lo que la origina', () async {
+    // HU-VEN-003 (#433): `entrega.fecha_prevista` y, en `agenda`, el tipo ENTREGA con `venta_id` y
+    // `entrega_id`. SQLite no cambia un CHECK: `agenda` se reescribe y no puede perder ninguna fila.
+    const entrega = v16.EntregaData(
+      id: 'e-1',
+      ventaId: 'v-1',
+      productoId: 'p-1',
+      cantidad: 2,
+      pendiente: 1,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      syncVersion: 1,
+    );
+    const agenda = v16.AgendaData(
+      id: 'a-1',
+      espacioId: 'esp-1',
+      tipo: 'COBRANZA',
+      fechaProgramada: 1758700000000,
+      esEstricta: 0,
+      estado: 'PROGRAMADA',
+      colportorId: 'col-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 16,
+      newVersion: 17,
+      createOld: v16.DatabaseAtV16.new,
+      createNew: v17.DatabaseAtV17.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.entrega, entrega);
+        batch.insert(viejo.agenda, agenda);
+      },
+      validateItems: (nuevo) async {
+        final entregas = await nuevo.select(nuevo.entrega).get();
+        expect(entregas.map((e) => [e.id, e.pendiente, e.fechaPrevista]), [
+          ['e-1', 1, null],
+        ]);
+        final agendas = await nuevo.select(nuevo.agenda).get();
+        expect(agendas.map((a) => [a.id, a.tipo, a.ventaId, a.entregaId]), [
+          ['a-1', 'COBRANZA', null, null],
+        ]);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        const columnas =
+            'INSERT INTO agenda (id, espacio_id, tipo, fecha_programada, es_estricta, estado, '
+            'colportor_id, venta_id, entrega_id, created_at, updated_at) VALUES ';
+        // La cita de entrega entra, con la venta y la entrega que la originan.
+        await nuevo.customStatement(
+          "$columnas('a-2', 'esp-1', 'ENTREGA', 1758800000000, 0, 'PROGRAMADA', 'col-1', 'v-1', "
+          "'e-1', 1, 1)",
+        );
+        // Otro tipo no entra, y una entrega solo cuelga de una cita de entrega.
+        for (final malo in [
+          "('a-3', 'esp-1', 'OTRO', 1, 0, 'PROGRAMADA', 'col-1', NULL, NULL, 1, 1)",
+          "('a-4', 'esp-1', 'COBRANZA', 1, 0, 'PROGRAMADA', 'col-1', 'v-1', 'e-1', 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+        }
+        // Y el índice por venta existe, para la lista de entregas pendientes.
+        final indices = await nuevo
+            .customSelect("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .get();
+        expect(indices.map((r) => r.read<String>('name')), contains('agenda_venta_idx'));
+      },
+    );
+  });
 }

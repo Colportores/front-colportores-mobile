@@ -18,6 +18,7 @@ abstract final class TextoRecordatorio {
     final etiqueta = switch (tipo) {
       TipoAgenda.entrevista => 'Entrevista',
       TipoAgenda.cobranza => 'Cobranza',
+      TipoAgenda.entrega => 'Entrega',
     };
     final hora = fechaProgramada.toLocal();
     final hh = hora.hour.toString().padLeft(2, '0');

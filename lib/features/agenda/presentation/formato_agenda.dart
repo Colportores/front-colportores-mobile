@@ -24,6 +24,10 @@ abstract final class TextosAgenda {
 
   static const tagEntrevista = 'Entrevista';
   static const tagCobranza = 'Cobranza';
+
+  /// La etiqueta de la cita de una entrega para otro día (HU-VEN-003). A confirmar: el canvas de la
+  /// agenda no la dibuja.
+  static const tagEntrega = 'Entrega';
   static const tagCumplida = 'Cumplida';
   static const tagNoCumplida = 'No cumplida';
   static const tagCancelada = 'Cancelada';
@@ -108,6 +112,7 @@ abstract final class FormatoAgenda {
   static String tipo(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => TextosAgenda.tagEntrevista,
     TipoAgenda.cobranza => TextosAgenda.tagCobranza,
+    TipoAgenda.entrega => TextosAgenda.tagEntrega,
   };
 
   /// La etiqueta de la fila: el tipo mientras está programada; el estado cuando ya se cerró.
