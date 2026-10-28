@@ -43,6 +43,12 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.pull('campania_ciudad'),
   SyncSpec.pull('zona'),
   SyncSpec.pull('zona_vertice'),
+  // pull: de dónde salen las ciudades de la campaña del colportor sin red (#274). `ciudad` y
+  // `campania` las baja cualquier autenticado (RLS de lectura abierta); `campania_colportor` baja
+  // solo las inscripciones propias (backend-supabase 0014: `columna_duenio`). La app nunca las escribe.
+  SyncSpec.pull('ciudad'),
+  SyncSpec.pull('campania'),
+  SyncSpec.pull('campania_colportor'),
 
   // pull: el catálogo de ventas (HU-CAT-007, #180). `realtime` solo en lo que HU-SYNC-003 pide
   // (producto y los precios de la ciudad): un cambio urgente llega sin esperar al próximo ciclo. El
