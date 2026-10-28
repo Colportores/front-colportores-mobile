@@ -18,6 +18,7 @@ import 'generated/schema_v11.dart' as v11;
 import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
+import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -932,4 +933,50 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado lo guardado en la versión 14, cuando migra a la 15, no se pierde nada y aparece el cobro '
+    'vacío, con los CHECK del servidor y sin encolar nada',
+    () async {
+      // HU-COB-001 (#436): `cobranza` sube por el motor; al migrar solo se crea.
+      const venta = v14.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 14,
+        newVersion: 15,
+        createOld: v14.DatabaseAtV14.new,
+        createNew: v15.DatabaseAtV15.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.cobranza).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO cobranza (id, venta_id, monto, medio, fecha, created_at, updated_at) '
+              'VALUES ';
+          await nuevo.customStatement("$columnas('c-1', 'v-1', 500, 'EFECTIVO', 1, 1, 1)");
+          for (final malo in [
+            "('c-2', 'v-1', 0, 'EFECTIVO', 1, 1, 1)",
+            "('c-3', 'v-1', -5, 'EFECTIVO', 1, 1, 1)",
+            "('c-4', 'v-1', 500, 'CHEQUE', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
 }

@@ -11,8 +11,8 @@ import '../entities/color_house_status.dart';
 /// de la cola ni de un reintento, y una agenda que se cancela o se cumple devuelve la casa al color
 /// que le corresponde sin mirar la historia.
 ///
-/// Aportan las agendas, las visitas y las ventas (prioridades 1, 3, 5, 6 y 7). La entrega y la cobranza
-/// (HU-VEN-002, HU-COB-001) suman las 2 y 4: un parámetro nuevo acá, sin tocar a quien ya llama.
+/// Aportan las agendas, las visitas, las ventas y sus cobros (prioridades 1, 3, 4, 5, 6 y 7). La
+/// entrega (HU-VEN-002) suma la 2 y afina la 4: un parámetro nuevo acá, sin tocar a quien ya llama.
 abstract final class CalculadorColorCasa {
   /// El color de una casa con [agendasPendientes] (los tipos de sus agendas que siguen esperando
   /// su visita) y [resultadosDeVisitas] (el resultado de cada una de sus visitas), o `null` si
@@ -28,8 +28,18 @@ abstract final class CalculadorColorCasa {
     Iterable<TipoAgenda> agendasPendientes = const [],
     Iterable<TipoResultadoVisita> resultadosDeVisitas = const [],
     Iterable<int> montosDeVentas = const [],
+    Iterable<({int montoCentavos, int cobradoCentavos})> ventas = const [],
   }) => ColorHouseStatus.elDeMayorPrioridad(
     [
+      // Una venta con cobros (HU-COB-001): con saldo sigue pendiente (1; la entrega todavía no se
+      // registra en el teléfono, así que no se distingue la cobranza sola, 2) y con el saldo en cero
+      // es una venta completa (4). Una venta de $ 0 no pinta.
+      for (final venta in ventas)
+        if (venta.montoCentavos > 0)
+          if (venta.cobradoCentavos >= venta.montoCentavos)
+            ColorHouseStatus.ventaCompleta
+          else
+            ColorHouseStatus.entregaYCobranzaPendiente,
       // Una venta con algo para cobrar, sin entrega ni cobro registrados todavía (esas tablas llegan
       // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (todo lo
       // regalado) no pide cobrar nada y no pinta por sí sola.

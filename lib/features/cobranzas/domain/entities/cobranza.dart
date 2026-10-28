@@ -25,7 +25,7 @@ class Cobranza extends Equatable {
     required this.medio,
     required DateTime fecha,
     this.ticketId,
-    required this.numeroCuota,
+    this.numeroCuota,
     required this.auditoria,
   }) : fecha = fecha.toUtc();
 
@@ -45,7 +45,8 @@ class Cobranza extends Equatable {
   /// FK opcional a `ticket.id` (esquema-datos.md: "ticket_id (FK opcional)").
   final String? ticketId;
 
-  final int numeroCuota;
+  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota (el servidor lo admite).
+  final int? numeroCuota;
 
   final Auditoria auditoria;
 

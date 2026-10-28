@@ -48,7 +48,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     final color = CalculadorColorCasa.calcular(
       agendasPendientes: await _agendasPendientes(ubicacionId),
       resultadosDeVisitas: await _resultadosDeVisitas(ubicacionId),
-      montosDeVentas: await _montosDeVentas(ubicacionId),
+      ventas: await _ventas(ubicacionId),
     );
     final existente = await _fila(ubicacionId);
 
@@ -131,16 +131,27 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     return [for (final fila in filas) TipoResultadoVisita.desdeCodigo(fila.tipoResultado)];
   }
 
-  /// Lo que se cobra por cada venta viva de la casa (HU-VEN-001): las ventas cuelgan del vínculo
-  /// persona ↔ espacio, y el espacio tiene que seguir activo.
-  Future<List<int>> _montosDeVentas(String ubicacionId) async {
+  /// Cada venta viva de la casa con lo que lleva cobrado (HU-VEN-001, HU-COB-001): las ventas cuelgan
+  /// del vínculo persona ↔ espacio, y el espacio tiene que seguir activo. Los cobros dados de baja
+  /// no cuentan.
+  Future<List<({int montoCentavos, int cobradoCentavos})>> _ventas(String ubicacionId) async {
     final vinculos = _db.selectOnly(_db.espacioPersonas)
       ..addColumns([_db.espacioPersonas.id])
       ..where(_db.espacioPersonas.espacioId.isInQuery(_espaciosDe(ubicacionId)));
     final filas = await (_db.select(
       _db.ventas,
     )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
-    return [for (final fila in filas) fila.montoTotal];
+    final salida = <({int montoCentavos, int cobradoCentavos})>[];
+    for (final fila in filas) {
+      final suma = _db.cobranzas.monto.sum();
+      final cobrado =
+          await (_db.selectOnly(_db.cobranzas)
+                ..addColumns([suma])
+                ..where(_db.cobranzas.ventaId.equals(fila.id) & _db.cobranzas.deletedAt.isNull()))
+              .getSingle();
+      salida.add((montoCentavos: fila.montoTotal, cobradoCentavos: cobrado.read(suma) ?? 0));
+    }
+    return salida;
   }
 
   Future<HouseStatusFila?> _fila(String ubicacionId) => (_db.select(

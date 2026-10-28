@@ -128,6 +128,40 @@ void main() {
       );
     });
 
+    test('dado una venta con cobros, cuando se calcula, con saldo sigue pendiente y con el saldo '
+        'en cero es una venta completa (HU-COB-001)', () {
+      expect(
+        CalculadorColorCasa.calcular(ventas: [(montoCentavos: 150000, cobradoCentavos: 50000)]),
+        _C.entregaYCobranzaPendiente,
+      );
+      expect(
+        CalculadorColorCasa.calcular(ventas: [(montoCentavos: 150000, cobradoCentavos: 150000)]),
+        _C.ventaCompleta,
+      );
+    });
+
+    test(
+      'dado una venta pagada y otra con saldo, cuando se calcula, manda la que debe (1 gana a 4)',
+      () {
+        expect(
+          CalculadorColorCasa.calcular(
+            ventas: [
+              (montoCentavos: 1000, cobradoCentavos: 1000),
+              (montoCentavos: 5000, cobradoCentavos: 0),
+            ],
+          ),
+          _C.entregaYCobranzaPendiente,
+        );
+      },
+    );
+
+    test('dado una venta de \$ 0 con cobros, cuando se calcula, no pinta nada por sí sola', () {
+      expect(
+        CalculadorColorCasa.calcular(ventas: [(montoCentavos: 0, cobradoCentavos: 0)]),
+        isNull,
+      );
+    });
+
     test(
       'dado una venta de \$ 0 (todo regalado), cuando se calcula, no pinta nada por sí sola',
       () {

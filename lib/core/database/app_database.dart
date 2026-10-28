@@ -4,6 +4,7 @@ import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
+import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -64,6 +65,7 @@ part 'app_database.g.dart';
     NotificacionesHistorial,
     Ventas,
     VentaItems,
+    Cobranzas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -93,10 +95,12 @@ class AppDatabase extends _$AppDatabase {
   ///   (HU-NOT-005, #156).
   /// - 13: `sync_meta`, lo que el motor se acuerda entre aperturas: última bajada, último respaldo y
   ///   la red del último envío (HU-SYNC-007, #486).
+  /// - 14: `venta` y `venta_item`, que suben (HU-VEN-001, #423).
+  /// - 15: `cobranza`, el cobro en efectivo, que sube (HU-COB-001, #436).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 14;
+  static const int versionEsquema = 15;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -255,6 +259,11 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.ventaEspacioPersonaIdx);
       await m.createTable(esquema.ventaItem);
       await m.createIndex(esquema.ventaItemVentaIdx);
+    },
+    // Solo crea los cobros, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from14To15: (m, esquema) async {
+      await m.createTable(esquema.cobranza);
+      await m.createIndex(esquema.cobranzaVentaIdx);
     },
   );
 }

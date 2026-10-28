@@ -34,6 +34,9 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('venta'),
   SyncSpec.push('venta_item'),
+  // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
+  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('cobranza', critical: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).
