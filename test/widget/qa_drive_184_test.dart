@@ -324,16 +324,14 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets(
-      'Google falla por almacén: el aviso de la hoja no manda a «reinstalar» la app',
-      (tester) async {
-        final m = await montar184(tester, Estado184.previa);
-        m.drive.almacen.alEscribir = true;
-        await tocar184(tester, conectar184);
-        expect(find.textContaining('reinstalar'), findsNothing);
-      },
-      skip: true,
-    ); // skip: QA #184 — el aviso de almacén dice «Consultá a soporte antes de reinstalar la app».
+    testWidgets('Google falla por almacén: el aviso de la hoja no manda a «reinstalar» la app', (
+      tester,
+    ) async {
+      final m = await montar184(tester, Estado184.previa);
+      m.drive.almacen.alEscribir = true;
+      await tocar184(tester, conectar184);
+      expect(find.textContaining('reinstalar'), findsNothing);
+    });
 
     testWidgets(
       'el aviso de «No conectamos tu Drive» queda a la vista a 360×640 con texto 2,0',
@@ -343,26 +341,24 @@ void main() {
         expect(enPantalla184(tester, avisoCancelado184), isTrue);
       },
       skip: !verHallazgos184,
-    ); // skip: QA #184 — el aviso está arriba de la página y queda fuera de vista.
+    ); // skip: decidido por el agente de decisiones (pendiente 184-qa P2): el aviso queda arriba, como en el canvas.
   });
 
   group('Texto grande: la fila se lee', () {
     for (final e in [Estado184.sinConectar, Estado184.revocado]) {
-      testWidgets(
-        '${e.rotulo}: «Cuenta Drive» no se parte en letras a 360×640 con texto 2,0',
-        (tester) async {
-          await montar184(tester, e, escala: 2);
-          final alto = tester.getSize(find.text('Cuenta Drive')).height;
-          final unRenglon =
-              Theme.of(tester.element(fila184)).textTheme.bodyLarge!.fontSize! * 2 * 1.6;
-          expect(
-            alto,
-            lessThan(unRenglon * 1.5),
-            reason: 'el título ocupa $alto dp: se parte por la mitad',
-          );
-        },
-        skip: !verHallazgos184,
-      );
+      testWidgets('${e.rotulo}: «Cuenta Drive» no se parte en letras a 360×640 con texto 2,0', (
+        tester,
+      ) async {
+        await montar184(tester, e, escala: 2);
+        final alto = tester.getSize(find.text('Cuenta Drive')).height;
+        final unRenglon =
+            Theme.of(tester.element(fila184)).textTheme.bodyLarge!.fontSize! * 2 * 1.6;
+        expect(
+          alto,
+          lessThan(unRenglon * 1.5),
+          reason: 'el título ocupa $alto dp: se parte por la mitad',
+        );
+      });
     }
   });
 
@@ -400,39 +396,33 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets(
-      'con Drive conectado la fila avisa que al tocarla se puede desconectar',
-      (tester) async {
-        final semantica = tester.ensureSemantics();
-        await montar184(tester, Estado184.desconectar);
-        await tocar184(tester, cancelar184);
-        await verFila184(tester);
-        final nodo = tester.getSemantics(fila184);
-        expect('${nodo.label} ${nodo.hint}', contains('esconectar'));
-        semantica.dispose();
-      },
-      skip: !verHallazgos184,
-    ); // skip: QA #184 — la fila conectada no dice que tocarla lleva a desconectar.
+    testWidgets('con Drive conectado la fila avisa que al tocarla se puede desconectar', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      await montar184(tester, Estado184.desconectar);
+      await tocar184(tester, cancelar184);
+      await verFila184(tester);
+      final nodo = tester.getSemantics(fila184);
+      expect('${nodo.label} ${nodo.hint}', contains('esconectar'));
+      semantica.dispose();
+    });
   });
 
   group('Privacidad', () {
-    test(
-      'ni el correo ni el id de Google salen en toString',
-      () {
-        const cuenta = CuentaGoogle(id: 'g-100', email: 'ana.gomez@gmail.com');
-        const estados = <Object>[
-          DriveConectada(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
-          DrivePermisoRevocado(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
-          DriveSinEspacio(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
-          cuenta,
-        ];
-        for (final o in estados) {
-          expect(o.toString(), isNot(contains('ana.gomez')), reason: o.runtimeType.toString());
-          expect(o.toString(), isNot(contains('g-100')), reason: o.runtimeType.toString());
-        }
-      },
-      skip: true,
-    ); // skip: QA #184 — `DriveConCuenta` y `CuentaGoogle` imprimen el correo en debug (Equatable stringify).
+    test('ni el correo ni el id de Google salen en toString', () {
+      const cuenta = CuentaGoogle(id: 'g-100', email: 'ana.gomez@gmail.com');
+      const estados = <Object>[
+        DriveConectada(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
+        DrivePermisoRevocado(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
+        DriveSinEspacio(email: 'ana.gomez@gmail.com', cuentaId: 'g-100'),
+        cuenta,
+      ];
+      for (final o in estados) {
+        expect(o.toString(), isNot(contains('ana.gomez')), reason: o.runtimeType.toString());
+        expect(o.toString(), isNot(contains('g-100')), reason: o.runtimeType.toString());
+      }
+    });
 
     test('los resultados y las fallas no llevan el correo en toString', () {
       for (final o in <Object>[

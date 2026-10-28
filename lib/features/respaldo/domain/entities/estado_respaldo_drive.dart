@@ -32,6 +32,10 @@ sealed class DriveConCuenta extends EstadoRespaldoDrive {
 
   @override
   List<Object?> get props => [email, cuentaId];
+
+  /// El correo es dato personal: va en [props] pero nunca en `toString` (convenciones §7.5).
+  @override
+  bool? get stringify => false;
 }
 
 /// Conectada y con permiso vigente (16D·04).

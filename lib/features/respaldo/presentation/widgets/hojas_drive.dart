@@ -100,10 +100,12 @@ class _HojaConectarDriveState extends ConsumerState<HojaConectarDrive> {
             TextosRespaldoDrive.explicacionCifrado,
             style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
           ),
-          Text(
-            TextosRespaldoDrive.cadaNoche,
-            style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
-          ),
+          // El canvas (16D·08 y 16D·09) cambia esta línea por el aviso.
+          if (!sinRed && !conError)
+            Text(
+              TextosRespaldoDrive.cadaNoche,
+              style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
+            ),
           if (sinRed)
             const AvisoDrive(
               key: Key('drive_hoja_sin_conexion'),

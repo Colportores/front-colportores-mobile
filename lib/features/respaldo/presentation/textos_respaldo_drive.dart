@@ -45,6 +45,9 @@ abstract final class TextosRespaldoDrive {
   static const explicacionCifrado =
       'Guardamos una copia de tus datos en una carpeta oculta de tu Drive. Los archivos van '
       'cifrados, Google no los puede leer, y solo esta app los puede acceder.';
+
+  /// Lo que dice el lector de pantalla de la fila con Drive conectado: tocarla abre las opciones.
+  static const pistaDesconectar = 'Abre las opciones para desconectar';
   static const cadaNoche = 'Se respalda cada noche. Podés desconectarlo cuando quieras.';
   static const conectarConGoogle = 'Conectar con Google';
   static const conectando = 'Conectando…';

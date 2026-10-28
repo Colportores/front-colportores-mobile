@@ -135,7 +135,7 @@ void main() {
     test('si el almacén no deja guardar, retira el permiso en Google y avisa', () async {
       final roto = RespaldoDriveArmado();
       roto.almacen.alEscribir = true;
-      expect(_falla(await roto.repo.conectar('u-1')), isA<FailureAlmacenSeguro>());
+      expect(_falla(await roto.repo.conectar('u-1')), isA<FailureDriveNoConectado>());
       expect(roto.google.desconexiones, 1, reason: 'no queda un permiso suelto en Google');
       expect(roto.almacen.contenido[ClaveSegura.respaldoDrive], isNull);
     });

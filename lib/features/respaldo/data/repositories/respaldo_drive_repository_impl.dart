@@ -138,7 +138,10 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       // Google ya dio el permiso pero la app no pudo anotarlo: se lo retira para no dejar un
       // permiso suelto que la app no recuerda.
       await _retirarPermiso();
-      return Left(_falloDelAlmacen('escribir', e));
+      // La causa va al log (sin datos). A la persona se le dice lo mismo que en cualquier otra falla
+      // de la conexión, no el aviso del almacén de la base de datos, que habla de reinstalar la app.
+      _falloDelAlmacen('escribir', e);
+      return const Left(FailureDriveNoConectado());
     }
 
     _log.info(LogModulo.backup, 'DRIVE_CONECTADO', 'respaldo en Drive conectado');

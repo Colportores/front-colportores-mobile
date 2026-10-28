@@ -172,14 +172,43 @@ class _Fila extends StatelessWidget {
         alTocar = null;
     }
 
-    return ListTile(
+    // Con la letra grande la acción de texto («Conectar», «Reconectar», «Reintentar») deja de
+    // ir a la derecha, donde se come la mitad del ancho y parte el título y el correo: pasa a un
+    // renglón propio de al menos 48 dp. A tamaño normal queda como en el canvas.
+    final letraGrande = MediaQuery.textScalerOf(context).scale(10) >= 13;
+    final accionAparte = letraGrande && trailing is Text;
+
+    Widget fila = ListTile(
       key: const Key('configuracion_drive_fila'),
       minVerticalPadding: 12,
       leading: ExcludeSemantics(child: leading),
       title: const Text(TextosRespaldoDrive.fila),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lineas),
-      trailing: trailing,
+      trailing: accionAparte ? null : trailing,
       onTap: alTocar,
+    );
+    // Quien usa lector de pantalla tiene que saber que tocar la fila conectada lleva a desconectar.
+    if (identical(trailing, chevron)) {
+      fila = Semantics(hint: TextosRespaldoDrive.pistaDesconectar, child: fila);
+    }
+    if (!accionAparte) return fila;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        fila,
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(end: 8, bottom: 4),
+            child: TextButton(
+              key: const Key('configuracion_drive_accion'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: alTocar,
+              child: Text(trailing.data!, style: accion),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

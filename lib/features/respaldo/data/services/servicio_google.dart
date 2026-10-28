@@ -9,6 +9,10 @@ final class CuentaGoogle extends Equatable {
 
   @override
   List<Object?> get props => [id, email];
+
+  /// El correo es dato personal: va en [props] pero nunca en `toString` (convenciones §7.5).
+  @override
+  bool? get stringify => false;
 }
 
 /// Google conectó la cuenta pero el token no trae el permiso de Drive: la persona desmarcó la

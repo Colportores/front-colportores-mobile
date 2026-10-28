@@ -119,7 +119,7 @@ void main() {
     final r = await notifier(c).conectar();
 
     expect(r, isA<DriveNoQuedoConectado>());
-    expect((r as DriveNoQuedoConectado).falla, isA<FailureAlmacenSeguro>());
+    expect((r as DriveNoQuedoConectado).falla, isA<FailureDriveNoConectado>());
   });
 
   test(

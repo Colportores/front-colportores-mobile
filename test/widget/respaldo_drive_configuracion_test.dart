@@ -322,6 +322,11 @@ void main() {
       expect(tester.widget<FilledButton>(_conectar).onPressed, isNull);
       expect(_ahoraNo, findsOneWidget);
       expect(drive.google.conexiones, 0);
+      expect(
+        _dentro(_hojaConectar, 'Se respalda cada noche. Podés desconectarlo cuando quieras.'),
+        findsNothing,
+        reason: 'el canvas cambia esa línea por el aviso',
+      );
     });
 
     prueba('si la red falla en pleno intento, lo dice y se puede reintentar', (tester) async {
@@ -357,6 +362,11 @@ void main() {
       );
       expect(_dentro(_hojaConectar, 'Reintentar'), findsOneWidget);
       expect(_ahoraNo, findsOneWidget);
+      expect(
+        _dentro(_hojaConectar, 'Se respalda cada noche. Podés desconectarlo cuando quieras.'),
+        findsNothing,
+        reason: 'el canvas cambia esa línea por el aviso',
+      );
       expect(
         tester.widget<FilledButton>(_conectar).onPressed,
         isNotNull,
