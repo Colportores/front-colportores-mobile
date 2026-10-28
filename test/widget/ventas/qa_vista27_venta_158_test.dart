@@ -158,11 +158,6 @@ void main() {
         await tocar(tester, find.text('Revistas'));
         expect(find.textContaining('coordinador'), findsOneWidget);
       },
-      // La HU: «un mensaje sugiere "Pedile al coordinador que configure el precio"». La pantalla dice
-      // «Si esperabas verlos, puede que no tengan precio en esta ciudad» (sin la salida) y, con el
-      // producto suelto sin precio dentro de una categoría con otros, no dice nada.
-      skip:
-          !conHallazgos, // skip: QA #158 — la HU pide sugerir «Pedile al coordinador que configure el precio»
     );
 
     testWidgets('Monto manual: queda la diferencia anotada y el aviso al coordinador', (
@@ -460,34 +455,32 @@ void main() {
       }
     });
 
-    testWidgets(
-      'quitar todo lo que se vende con el monto abierto y volver a agregar parte limpio',
-      (tester) async {
-        final e = EntornoDeVenta();
-        await montarNuevaVenta(tester, e);
-        await ventaConColeccion531(tester);
-        await tocar(tester, find.text('Cambiar el monto'));
-        await escribir(tester, campo531('venta_monto'), '8500');
-        await escribir(tester, campo531('venta_motivo'), 'descuento');
-        await tocar(tester, find.byTooltip(TextosVenta.quitar));
-        expect(find.text('Elegí al menos un producto para registrar la venta.'), findsNothing);
+    testWidgets('quitar todo lo que se vende con el monto abierto y volver a agregar parte limpio', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      await montarNuevaVenta(tester, e);
+      await ventaConColeccion531(tester);
+      await tocar(tester, find.text('Cambiar el monto'));
+      await escribir(tester, campo531('venta_monto'), '8500');
+      await escribir(tester, campo531('venta_motivo'), 'descuento');
+      await tocar(tester, find.byTooltip(TextosVenta.quitar));
+      expect(find.text('Elegí al menos un producto para registrar la venta.'), findsNothing);
 
-        await tocar(tester, find.text('Revistas'));
-        await tocar(tester, find.byTooltip('Uno más de Vida Feliz'));
-        await tocar(tester, find.text(TextosVenta.agregarALaVenta));
+      await tocar(tester, find.text('Revistas'));
+      await tocar(tester, find.byTooltip('Uno más de Vida Feliz'));
+      await tocar(tester, find.text(TextosVenta.agregarALaVenta));
 
-        // La revista vale $ 120: el monto de $ 8.500 de la venta anterior no puede cobrarse sin avisar.
-        final monto = find.byKey(const Key('venta_monto'));
-        if (monto.evaluate().isNotEmpty) {
-          expect(
-            tester.widget<TextField>(campo531('venta_monto')).controller!.text,
-            isNot('8500'),
-            reason: 'quedó el monto a mano de una venta que ya no existe',
-          );
-        }
-      },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — el monto a mano de una venta quitada queda abierto al agregar otra
+      // La revista vale $ 120: el monto de $ 8.500 de la venta anterior no puede cobrarse sin avisar.
+      final monto = find.byKey(const Key('venta_monto'));
+      if (monto.evaluate().isNotEmpty) {
+        expect(
+          tester.widget<TextField>(campo531('venta_monto')).controller!.text,
+          isNot('8500'),
+          reason: 'quedó el monto a mano de una venta que ya no existe',
+        );
+      }
+    });
 
     testWidgets('«Continuar» y «Terminar» de 27A·14: un segundo toque no repite la acción', (
       tester,

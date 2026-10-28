@@ -199,6 +199,8 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     final venta = ref.watch(nuevaVentaProvider(_args));
     ref.listen(nuevaVentaProvider(_args), (anterior, actual) {
       if (_monto.text != actual.montoTexto) _monto.text = actual.montoTexto;
+      // La venta quedó vacía: el motivo del monto a mano se borra con el resto.
+      if (actual.motivo.isEmpty && _motivo.text.isNotEmpty) _motivo.clear();
       if (anterior?.falla == null && actual.falla != null) _mostrarElAviso();
     });
     final id = _args.cliente.espacioPersonaId;
@@ -280,10 +282,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                TextosVenta.terminadaSub,
+              Text(
+                // Sin ninguna campaña vigente ni terminada, la salida es pedir que carguen los precios.
+                terminada == null ? TextosVenta.salidaSinPrecio : TextosVenta.terminadaSub,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: ColoresAgenda.gris, height: 1.4),
+                style: const TextStyle(fontSize: 14, color: ColoresAgenda.gris, height: 1.4),
               ),
             ],
           ),
@@ -333,10 +336,20 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           const Padding(
             key: Key('venta_sin_precios'),
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              TextosVenta.sinPreciosVigentes,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            child: Column(
+              children: [
+                Text(
+                  TextosVenta.sinPreciosVigentes,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  TextosVenta.salidaSinPrecio,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: ColoresAgenda.gris, height: 1.4),
+                ),
+              ],
             ),
           ),
         ],

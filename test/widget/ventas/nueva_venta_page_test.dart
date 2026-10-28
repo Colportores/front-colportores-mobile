@@ -501,6 +501,8 @@ void main() {
       await montarNuevaVenta(tester, EntornoDeVenta(precios: const SinCampaniaVigente()));
 
       expect(find.text('No tenés precios vigentes'), findsOneWidget);
+      expect(find.text('Pedile al coordinador que configure el precio.'), findsOneWidget);
+      expect(find.textContaining('Sus precios ya no se usan'), findsNothing);
     });
   });
 
@@ -817,6 +819,7 @@ void main() {
 
       expect(find.byKey(const Key('venta_sin_precios')), findsOneWidget);
       expect(find.text('No tenés precios vigentes'), findsOneWidget);
+      expect(find.text('Pedile al coordinador que configure el precio.'), findsOneWidget);
     });
 
     testWidgets('sin conexión se registra igual: la venta se guarda en el teléfono', (

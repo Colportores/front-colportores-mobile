@@ -301,8 +301,21 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
         renglones.add(nuevo);
       }
     }
-    state = state.copiar(renglones: renglones, sinFalla: true);
+    state = _conLista(renglones);
   }
+
+  /// Deja [renglones] como la lista de la venta. Mientras quede algo vendido, el monto a mano sigue
+  /// abierto con lo escrito y su motivo; si la lista queda vacía, vuelve al monto calculado y se
+  /// borran el monto y el motivo (así no se registra un monto de una venta que ya no existe).
+  NuevaVentaState _conLista(List<RenglonDeVenta> renglones) => renglones.isEmpty
+      ? state.copiar(
+          renglones: renglones,
+          editandoMonto: false,
+          montoTexto: '',
+          motivo: '',
+          sinFalla: true,
+        )
+      : state.copiar(renglones: renglones, sinFalla: true);
 
   /// Suma una colección armada (27A·04): la base que siempre va y los libros elegidos. Dos
   /// colecciones iguales son una con cantidad 2; con libros distintos son dos ítems de 1.
@@ -383,13 +396,10 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
     state = state.copiar(renglones: renglones, sinFalla: true);
   }
 
-  void quitar(String clave) => state = state.copiar(
-    renglones: [
-      for (final r in state.renglones)
-        if (r.clave != clave) r,
-    ],
-    sinFalla: true,
-  );
+  void quitar(String clave) => state = _conLista([
+    for (final r in state.renglones)
+      if (r.clave != clave) r,
+  ]);
 
   // --- Monto a mano ------------------------------------------------------------------------
 

@@ -136,6 +136,58 @@ void main() {
     });
   });
 
+  group('el monto a mano cuando cambia lo que se vende', () {
+    void conMontoAMano() {
+      notifier()
+        ..fijarProductos(const [
+          ProductoElegido(producto: _vidaFeliz, cantidad: 2),
+          ProductoElegido(producto: _deseado, cantidad: 1),
+        ])
+        ..cambiarElMonto()
+        ..escribirMonto('300')
+        ..escribirMotivo('descuento');
+    }
+
+    test('mientras quede algo vendido sigue abierto con lo escrito y su motivo', () {
+      conMontoAMano();
+
+      notifier().fijarProductos(const [ProductoElegido(producto: _deseado, cantidad: 0)]);
+      notifier().fijarProductos(const [ProductoElegido(producto: _vidaFeliz, cantidad: 3)]);
+
+      expect(estado().editandoMonto, isTrue);
+      expect(estado().montoTexto, '300');
+      expect(estado().motivo, 'descuento');
+      expect(estado().renglones, hasLength(1));
+    });
+
+    test('si la lista queda vacía vuelve al monto calculado y se borran monto y motivo', () {
+      conMontoAMano();
+
+      for (final r in [...estado().renglones]) {
+        notifier().quitar(r.clave);
+      }
+
+      expect(estado().renglones, isEmpty);
+      expect(estado().editandoMonto, isFalse);
+      expect(estado().montoTexto, isEmpty);
+      expect(estado().motivo, isEmpty);
+    });
+
+    test('vaciar con cantidad 0 también lo borra, y la venta nueva parte limpia', () {
+      conMontoAMano();
+
+      notifier().fijarProductos(const [
+        ProductoElegido(producto: _vidaFeliz, cantidad: 0),
+        ProductoElegido(producto: _deseado, cantidad: 0),
+      ]);
+      notifier().fijarProductos(const [ProductoElegido(producto: _vidaFeliz, cantidad: 1)]);
+
+      expect(estado().editandoMonto, isFalse);
+      expect(estado().motivo, isEmpty);
+      expect(estado().totalACobrar, 12000);
+    });
+  });
+
   group('una venta solo de misioneros: no cuenta como venta', () {
     Future<void> soloMisioneros() async {
       notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 2)]);

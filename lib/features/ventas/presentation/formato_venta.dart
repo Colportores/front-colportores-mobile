@@ -65,8 +65,9 @@ abstract final class TextosVenta {
   static const errorPrecios = 'No pudimos leer los precios guardados en tu teléfono.';
   static const sinPreciosVigentes = 'No tenés precios vigentes';
   static const sinProductosEnLaCategoria = 'No hay productos en esta categoría';
+  static const salidaSinPrecio = 'Pedile al coordinador que configure el precio.';
   static const sinProductosEnLaCategoriaSub =
-      'Si esperabas verlos, puede que no tengan precio en esta ciudad.';
+      'Si esperabas verlos, puede que no tengan precio en esta ciudad. $salidaSinPrecio';
   static const sinResultados = 'No encontramos ese libro';
   static const sinLibrosParaElegir = 'No hay libros para elegir en esta ciudad';
   static const quitar = 'Quitar de la venta';
