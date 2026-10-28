@@ -58,6 +58,12 @@ final specsDeLaApp = <SyncSpec>[
   // `realtime` se suma ese día, junto con la publicación del servidor.
   SyncSpec.pull('precio_general'),
 
+  // pull: el inventario del colportor (HU-STK-004, #545). Réplica de solo lectura: lo mueve el
+  // servidor (pedido recibido, entrega, devolución, transferencia) y el pull baja solo las filas del
+  // propio usuario. Sin `realtime` (ADR-012: solo catálogo y autorizaciones): baja en el ciclo. Si
+  // el servidor todavía no la publica (backend-supabase 0145), el pull ignora la entidad.
+  SyncSpec.pull('stock'),
+
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.

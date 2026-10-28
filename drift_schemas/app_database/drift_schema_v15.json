@@ -3021,270 +3021,12 @@
       "references": [],
       "type": "table",
       "data": {
-        "name": "ciudad",
+        "name": "stock",
         "was_declared_in_moor": false,
         "columns": [
           {
             "name": "id",
             "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "nombre",
-            "getter_name": "nombre",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "lat_centro",
-            "getter_name": "latCentro",
-            "moor_type": "double",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "lon_centro",
-            "getter_name": "lonCentro",
-            "moor_type": "double",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "zoom_inicial",
-            "getter_name": "zoomInicial",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('13')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 25,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "campania",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "nombre",
-            "getter_name": "nombre",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "fecha_inicio",
-            "getter_name": "fechaInicio",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "fecha_fin",
-            "getter_name": "fechaFin",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 26,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "campania_colportor",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "campania_id",
-            "getter_name": "campaniaId",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -3303,22 +3045,32 @@
             "dsl_features": []
           },
           {
-            "name": "zona_id",
-            "getter_name": "zonaId",
+            "name": "producto_id",
+            "getter_name": "productoId",
             "moor_type": "string",
-            "nullable": true,
+            "nullable": false,
             "customConstraints": null,
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
           },
           {
-            "name": "meta_libros",
-            "getter_name": "metaLibros",
+            "name": "cantidad_disponible",
+            "getter_name": "cantidadDisponible",
             "moor_type": "int",
-            "nullable": true,
+            "nullable": false,
             "customConstraints": null,
-            "default_dart": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "cantidad_reservada",
+            "getter_name": "cantidadReservada",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
             "default_client_dart": null,
             "dsl_features": []
           },
@@ -3388,7 +3140,7 @@
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [
-          "CHECK (meta_libros IS NULL OR meta_libros >= 0)"
+          "CHECK (cantidad_reservada >= 0)"
         ],
         "explicit_pk": [
           "id"
@@ -3396,7 +3148,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 25,
       "references": [
         0
       ],
@@ -3419,7 +3171,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 26,
       "references": [
         1
       ],
@@ -3442,7 +3194,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 27,
       "references": [
         2
       ],
@@ -3461,7 +3213,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 28,
       "references": [
         4
       ],
@@ -3480,7 +3232,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 29,
       "references": [
         5
       ],
@@ -3499,7 +3251,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 30,
       "references": [
         6
       ],
@@ -3522,7 +3274,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 31,
       "references": [
         8
       ],
@@ -3545,7 +3297,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 32,
       "references": [
         9
       ],
@@ -3572,7 +3324,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 33,
       "references": [
         9
       ],
@@ -3595,7 +3347,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 34,
       "references": [
         9
       ],
@@ -3618,7 +3370,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 35,
       "references": [
         13
       ],
@@ -3637,7 +3389,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 36,
       "references": [
         13
       ],
@@ -3656,7 +3408,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 37,
       "references": [
         14
       ],
@@ -3679,7 +3431,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 38,
       "references": [
         15
       ],
@@ -3702,7 +3454,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 39,
       "references": [
         15
       ],
@@ -3721,7 +3473,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 40,
       "references": [
         15
       ],
@@ -3740,7 +3492,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 41,
       "references": [
         16
       ],
@@ -3763,7 +3515,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 42,
       "references": [
         16
       ],
@@ -3782,7 +3534,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 43,
       "references": [
         16
       ],
@@ -3801,7 +3553,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 44,
       "references": [
         18
       ],
@@ -3820,7 +3572,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 45,
       "references": [
         21
       ],
@@ -3839,7 +3591,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 46,
       "references": [
         22
       ],
@@ -3858,7 +3610,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 47,
       "references": [
         22
       ],
@@ -3877,7 +3629,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 48,
       "references": [
         22
       ],
@@ -3896,7 +3648,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 49,
       "references": [
         23
       ],
@@ -3915,7 +3667,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 50,
       "references": [
         23
       ],
@@ -3934,14 +3686,14 @@
       }
     },
     {
-      "id": 53,
+      "id": 51,
       "references": [
-        26
+        24
       ],
       "type": "index",
       "data": {
-        "on": 26,
-        "name": "campania_colportor_usuario_idx",
+        "on": 24,
+        "name": "stock_usuario_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -4171,29 +3923,11 @@
       ]
     },
     {
-      "name": "ciudad",
+      "name": "stock",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"ciudad\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"lat_centro\" REAL NOT NULL, \"lon_centro\" REAL NOT NULL, \"zoom_inicial\" INTEGER NOT NULL DEFAULT 13, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "campania",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"campania\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"fecha_inicio\" TEXT NOT NULL, \"fecha_fin\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "campania_colportor",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"campania_colportor\" (\"id\" TEXT NOT NULL, \"campania_id\" TEXT NOT NULL, \"usuario_id\" TEXT NOT NULL, \"zona_id\" TEXT NULL, \"meta_libros\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (meta_libros IS NULL OR meta_libros >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"stock\" (\"id\" TEXT NOT NULL, \"usuario_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad_disponible\" INTEGER NOT NULL DEFAULT 0, \"cantidad_reservada\" INTEGER NOT NULL DEFAULT 0, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad_reservada >= 0));"
         }
       ]
     },
@@ -4432,11 +4166,11 @@
       ]
     },
     {
-      "name": "campania_colportor_usuario_idx",
+      "name": "stock_usuario_idx",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE INDEX campania_colportor_usuario_idx ON campania_colportor (usuario_id)"
+          "sql": "CREATE INDEX stock_usuario_idx ON stock (usuario_id)"
         }
       ]
     }
