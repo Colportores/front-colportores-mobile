@@ -3,6 +3,7 @@
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
@@ -208,6 +209,118 @@ void main() {
       final ganador = resultados.first ? fin : fin.add(const Duration(minutes: 1));
       expect((await db.select(db.jornadas).getSingle()).fin, ganador);
     });
+
+    // Sync del cierre (#543): la escritura y el job van juntos o ninguno (contrato-sync-engine §3).
+    List<CambioEncolado> cierresEncolados() => encolador.encolados
+        .where((c) => c.entidad == 'jornada' && c.operacion == OperacionSync.update)
+        .toList();
+
+    test('dado una jornada abierta, cuando se finaliza, encola exactamente un update de jornada '
+        'con la fila cerrada (con fin) y sin tocar el alta ya encolada', () async {
+      await local.insertar(jornada());
+      expect(encolador.encolados.map((c) => c.operacion), [OperacionSync.insert]);
+
+      await local.finalizar(cerrada());
+
+      final cierres = cierresEncolados();
+      expect(cierres, hasLength(1));
+      expect(encolador.encolados, hasLength(2));
+      expect(cierres.single.payload['id'], 'jor-1');
+      expect(cierres.single.payload['fin'], fin.toIso8601String());
+      expect(cierres.single.payload['updated_at'], cierre.toIso8601String());
+      // El payload es la fila como quedó en la DB, no la que armó el llamador.
+      final fila = await db.select(db.jornadas).getSingle();
+      expect(cierres.single.payload['sync_version'], fila.syncVersion);
+      expect(cierres.single.payload, cerrada().toJson());
+    });
+
+    test('dado una jornada que no estaba abierta, cuando se finaliza, lanza '
+        'JornadaNoAbiertaException y no encola nada', () async {
+      await local.insertar(jornada(fin: t0.add(const Duration(hours: 2))));
+      await local.insertar(jornada(id: 'borrada', deletedAt: t0));
+      final antes = encolador.encolados.length;
+
+      for (final intento in [cerrada(), cerrada(id: 'borrada'), cerrada(id: 'no-existe')]) {
+        await expectLater(local.finalizar(intento), throwsA(isA<JornadaNoAbiertaException>()));
+      }
+
+      expect(cierresEncolados(), isEmpty);
+      expect(encolador.encolados, hasLength(antes));
+    });
+
+    test(
+      'dado un cierre sin fin, cuando se finaliza, lanza ArgumentError y no encola nada',
+      () async {
+        await local.insertar(jornada());
+
+        await expectLater(local.finalizar(jornada()), throwsArgumentError);
+
+        expect(cierresEncolados(), isEmpty);
+        expect((await db.select(db.jornadas).getSingle()).fin, isNull);
+      },
+    );
+
+    test('dado que el motor rechaza el job, cuando se finaliza, la jornada sigue abierta: no queda '
+        'un cierre guardado sin su job', () async {
+      await local.insertar(jornada());
+      encolador.fallarCon = StateError('el motor está apagado');
+
+      await expectLater(local.finalizar(cerrada()), throwsStateError);
+
+      expect((await db.select(db.jornadas).getSingle()).fin, isNull);
+      expect(await local.obtenerActiva('u-1'), isNotNull);
+      expect(cierresEncolados(), isEmpty);
+
+      // Reintento con el motor de vuelta: el cierre se guarda y sube una sola vez.
+      encolador.fallarCon = null;
+      await local.finalizar(cerrada());
+      expect(cierresEncolados(), hasLength(1));
+      expect((await db.select(db.jornadas).getSingle()).fin, fin);
+    });
+
+    test('dado dos cierres simultáneos, cuando corren a la vez, solo el que se guardó encola su '
+        'job', () async {
+      await local.insertar(jornada());
+      final otro = JornadaModel.fromEntity(
+        jornada().finalizada(fin: fin.add(const Duration(minutes: 1)), actualizadaEn: cierre),
+      );
+
+      await Future.wait([
+        local.finalizar(cerrada()).then((_) {}, onError: (Object _) {}),
+        local.finalizar(otro).then((_) {}, onError: (Object _) {}),
+      ]);
+
+      final cierres = cierresEncolados();
+      expect(cierres, hasLength(1));
+      expect(
+        cierres.single.payload['fin'],
+        (await db.select(db.jornadas).getSingle()).fin!.toUtc().toIso8601String(),
+      );
+    });
+
+    test(
+      'dado el cierre por el repositorio, cuando la jornada estaba abierta, devuelve la '
+      'cerrada y deja su job en la cola; cuando ya no lo estaba, devuelve la falla y no encola',
+      () async {
+        final repositorio = JornadaRepositoryImpl(local, logger: loggerMudo());
+        await local.insertar(jornada());
+
+        final cerradaPorRepo = await repositorio.finalizar(
+          jornada().finalizada(fin: fin, actualizadaEn: cierre),
+        );
+        expect(cerradaPorRepo.isRight(), isTrue);
+        expect(cierresEncolados(), hasLength(1));
+
+        final segundo = await repositorio.finalizar(
+          jornada().finalizada(fin: fin, actualizadaEn: cierre),
+        );
+        expect(
+          segundo.swap().getOrElse(() => fail('se esperaba Left')),
+          isA<FailureSinJornadaActiva>(),
+        );
+        expect(cierresEncolados(), hasLength(1));
+      },
+    );
   });
 
   group('JornadaLocalDataSourceDrift.insertar', () {
