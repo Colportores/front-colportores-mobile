@@ -39,6 +39,19 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.pull('zona'),
   SyncSpec.pull('zona_vertice'),
 
+  // pull: el catálogo de ventas (HU-CAT-007, #180). `realtime` solo en lo que HU-SYNC-003 pide
+  // (producto y los precios de la ciudad): un cambio urgente llega sin esperar al próximo ciclo. El
+  // combo (`coleccion`, `producto_coleccion`) cambia poco y entra en el pull siguiente. El evento es
+  // un timbre: lo que entra es siempre el delta, así que cualquiera de los dos baja las cinco.
+  SyncSpec.pull('producto', realtime: true),
+  SyncSpec.pull('coleccion'),
+  SyncSpec.pull('producto_coleccion'),
+  SyncSpec.pull('precio_por_ciudad', realtime: true),
+  // El precio general todavía no lo publica el servidor (backend-supabase 0034: sin registrar en
+  // `sync.entidad`): el pull ignora lo que no conoce, así que baja solo el día que se registre. Su
+  // `realtime` se suma ese día, junto con la publicación del servidor.
+  SyncSpec.pull('precio_general'),
+
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.

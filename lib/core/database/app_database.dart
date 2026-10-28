@@ -4,6 +4,11 @@ import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
+import '../../features/catalogo/data/datasources/colecciones_table.dart';
+import '../../features/catalogo/data/datasources/precios_generales_table.dart';
+import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
+import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
+import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -59,6 +64,11 @@ part 'app_database.g.dart';
     Visitas,
     HouseStatuses,
     NotificacionesHistorial,
+    Productos,
+    Colecciones,
+    ProductoColecciones,
+    PreciosPorCiudad,
+    PreciosGenerales,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -88,10 +98,12 @@ class AppDatabase extends _$AppDatabase {
   ///   (HU-NOT-005, #156).
   /// - 13: `sync_meta`, lo que el motor se acuerda entre aperturas: última bajada, último respaldo y
   ///   la red del último envío (HU-SYNC-007, #486).
+  /// - 14: las réplicas del catálogo de ventas, `producto`, `coleccion`, `producto_coleccion`,
+  ///   `precio_por_ciudad` y `precio_general` (HU-SYNC-002, HU-SYNC-003, HU-CAT-007, #180).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 13;
+  static const int versionEsquema = 14;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -242,6 +254,22 @@ class AppDatabase extends _$AppDatabase {
     // motor anote algo, la vista de estado dice «Todavía no hubo».
     from12To13: (m, esquema) async {
       await m.createTable(esquema.syncMeta);
+    },
+    // Solo crea las réplicas del catálogo de ventas, vacías (las llena el pull, entero la primera
+    // vez): nada de lo guardado cambia. El servidor baja desde cero toda entidad que el watermark
+    // del teléfono no tiene, así que no hace falta tocar `sync_watermark`.
+    from13To14: (m, esquema) async {
+      await m.createTable(esquema.producto);
+      await m.createTable(esquema.coleccion);
+      await m.createTable(esquema.productoColeccion);
+      await m.createIndex(esquema.productoColeccionColeccionIdx);
+      await m.createTable(esquema.precioPorCiudad);
+      await m.createIndex(esquema.precioPorCiudadCampaniaCiudadIdx);
+      await m.createIndex(esquema.precioPorCiudadProductoIdx);
+      await m.createIndex(esquema.precioPorCiudadColeccionIdx);
+      await m.createTable(esquema.precioGeneral);
+      await m.createIndex(esquema.precioGeneralProductoIdx);
+      await m.createIndex(esquema.precioGeneralColeccionIdx);
     },
   );
 }
