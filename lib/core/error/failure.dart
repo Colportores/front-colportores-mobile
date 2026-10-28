@@ -469,8 +469,8 @@ final class FailureCiudadRequerida extends Failure {
 }
 
 /// No se pudieron leer las ciudades de la campaña del colportor (vista 03, «No pudimos leer las
-/// ciudades de tu campaña…»): la base local no se pudo leer o todavía no existe de dónde leerlas
-/// (`CiudadesParaAltaSinFuente`, hasta el adaptador real de front-colportores-mobile#274). Es **otra
+/// ciudades de tu campaña…»): la base local no se pudo leer, o el teléfono todavía no bajó el
+/// catálogo (`CiudadesParaAltaLocal`, front-colportores-mobile#274). Es **otra
 /// cosa** que una campaña sin ciudades: aquí no se sabe, y afirmar que no tiene mandaría al colportor
 /// a molestar al coordinador por algo que no es de la campaña. Se puede reintentar.
 ///

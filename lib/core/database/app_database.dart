@@ -12,6 +12,9 @@ import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
+import '../../features/mapa/data/datasources/campanias_colportor_table.dart';
+import '../../features/mapa/data/datasources/campanias_table.dart';
+import '../../features/mapa/data/datasources/ciudades_table.dart';
 import '../../features/mapa/data/datasources/espacio_personas_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
 import '../../features/mapa/data/datasources/geojson_converter.dart';
@@ -69,6 +72,9 @@ part 'app_database.g.dart';
     ProductoColecciones,
     PreciosPorCiudad,
     PreciosGenerales,
+    Ciudades,
+    Campanias,
+    CampaniasColportor,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -100,10 +106,12 @@ class AppDatabase extends _$AppDatabase {
   ///   la red del último envío (HU-SYNC-007, #486).
   /// - 14: las réplicas del catálogo de ventas, `producto`, `coleccion`, `producto_coleccion`,
   ///   `precio_por_ciudad` y `precio_general` (HU-SYNC-002, HU-SYNC-003, HU-CAT-007, #180).
+  /// - 15: las réplicas de `ciudad`, `campania` y `campania_colportor` (las inscripciones propias):
+  ///   de dónde salen las ciudades de la campaña del colportor sin red (#274).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 14;
+  static const int versionEsquema = 15;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -270,6 +278,14 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.precioGeneral);
       await m.createIndex(esquema.precioGeneralProductoIdx);
       await m.createIndex(esquema.precioGeneralColeccionIdx);
+    },
+    // Solo crea las réplicas de las ciudades y de las campañas del colportor, vacías (las llena el
+    // pull, entero la primera vez): nada de lo guardado cambia.
+    from14To15: (m, esquema) async {
+      await m.createTable(esquema.ciudad);
+      await m.createTable(esquema.campania);
+      await m.createTable(esquema.campaniaColportor);
+      await m.createIndex(esquema.campaniaColportorUsuarioIdx);
     },
   );
 }
