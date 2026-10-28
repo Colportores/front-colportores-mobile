@@ -180,12 +180,27 @@ class EntregasEnMemoria implements EntregaRepository {
 
   final _pendientes = StreamController<List<EntregaPendiente>>.broadcast();
 
-  /// Emite [lista] a quien esté mirando las entregas pendientes.
-  void emitirPendientes(List<EntregaPendiente> lista) => _pendientes.add(lista);
+  /// Lo último que se emitió: quien empieza a mirar lo recibe enseguida. `null`: todavía no hubo nada
+  /// y la lista queda «cargando».
+  List<EntregaPendiente>? pendientesActuales;
+
+  /// Si no es `null`, quien empieza a mirar las entregas pendientes recibe este error.
+  Object? errorDePendientes;
+
+  /// Emite [lista] a quien esté mirando las entregas pendientes (y a quien empiece después).
+  void emitirPendientes(List<EntregaPendiente> lista) {
+    pendientesActuales = lista;
+    _pendientes.add(lista);
+  }
 
   @override
-  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) =>
-      _pendientes.stream;
+  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) async* {
+    final error = errorDePendientes;
+    if (error != null) throw error;
+    final actual = pendientesActuales;
+    if (actual != null) yield actual;
+    yield* _pendientes.stream;
+  }
 
   @override
   Future<Either<Failure, EntregaRegistrada>> entregarAhora(
