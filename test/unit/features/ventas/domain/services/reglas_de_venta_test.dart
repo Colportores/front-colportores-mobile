@@ -38,12 +38,40 @@ void main() {
       expect(ReglasDeVenta.totalCalculado([regalo]), 0);
     });
 
+    test('solo misioneros: no cuenta como venta; con algo más, sí', () {
+      const regalo = LineaDeProducto(
+        productoId: 'm',
+        cantidad: 3,
+        precioCentavos: 0,
+        sinCobrar: true,
+      );
+      const libro = LineaDeProducto(productoId: 'l', cantidad: 1, precioCentavos: 5000);
+
+      expect(ReglasDeVenta.soloMisioneros([regalo, regalo]), isTrue);
+      expect(ReglasDeVenta.soloMisioneros([regalo, libro]), isFalse);
+      expect(ReglasDeVenta.soloMisioneros([libro]), isFalse);
+      expect(ReglasDeVenta.soloMisioneros(const []), isFalse);
+    });
+
     test('sin líneas el total es 0', () {
       expect(ReglasDeVenta.totalCalculado(const []), 0);
     });
   });
 
   group('motivo del monto a mano', () {
+    test('falta si el total cambió y el motivo está en blanco; con el calculado no hace falta', () {
+      bool falta(int? cobrado, String motivo) =>
+          ReglasDeVenta.faltaElMotivo(calculado: 8900, cobrado: cobrado, motivo: motivo);
+
+      expect(falta(8500, ''), isTrue);
+      expect(falta(8500, '  \n '), isTrue);
+      expect(falta(9000, ''), isTrue, reason: 'subir el total también es un cambio');
+      expect(falta(8500, 'descuento'), isFalse);
+      expect(falta(8500, ' x '), isFalse, reason: 'un solo carácter alcanza');
+      expect(falta(8900, ''), isFalse, reason: 'el monto calculado no es un cambio');
+      expect(falta(null, ''), isFalse);
+    });
+
     test('recorta los espacios y saltos de línea de los bordes', () {
       expect(
         ReglasDeVenta.motivo('  \n descuento por pago en efectivo \n '),

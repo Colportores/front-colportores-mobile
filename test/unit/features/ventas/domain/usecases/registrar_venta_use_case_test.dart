@@ -140,21 +140,44 @@ void main() {
       expect(recibida.diferencia, -15000);
     });
 
-    test('sin motivo se guarda igual, con null', () async {
-      await registrar(RegistrarVentaParams(venta: venta(cobrado: 100000, motivo: '   ')));
+    test('con el total cambiado, sin motivo no se guarda nada', () async {
+      for (final vacio in ['', '   ', '\n\t ']) {
+        final falla = await rechazada(venta(cobrado: 100000, motivo: vacio)) as FailureValidacion;
 
-      expect(repo.recibidas.single.venta.motivoMontoManual, isNull);
+        expect(falla.campos.keys, ['motivo']);
+        expect(falla.campos['motivo'], 'Escribí por qué cambiaste el monto');
+      }
+    });
+
+    test('con el total cambiado hacia arriba también pide el motivo', () async {
+      final falla = await rechazada(venta(cobrado: 160000)) as FailureValidacion;
+
+      expect(falla.campos.keys, ['motivo']);
+    });
+
+    test('con el monto calculado no hace falta motivo', () async {
+      await registrar(RegistrarVentaParams(venta: venta(cobrado: 150000)));
+      await registrar(
+        RegistrarVentaParams(
+          venta: venta(ventaId: 'v-2', talonario: 'T-2'),
+        ),
+      );
+
+      expect(repo.recibidas.map((r) => r.venta.motivoMontoManual), [null, null]);
+    });
+
+    test('un motivo de un solo carácter alcanza', () async {
+      await registrar(RegistrarVentaParams(venta: venta(cobrado: 100000, motivo: ' x ')));
+
+      expect(repo.recibidas.single.venta.motivoMontoManual, 'x');
       expect(repo.recibidas.single.venta.montoTotalCentavos, 100000);
     });
 
-    test(
-      'un motivo de más de 500 caracteres se corta: una venta nunca se rechaza por el motivo',
-      () async {
-        await registrar(RegistrarVentaParams(venta: venta(cobrado: 1, motivo: 'x' * 900)));
+    test('un motivo de más de 500 caracteres se corta: no se rechaza por largo', () async {
+      await registrar(RegistrarVentaParams(venta: venta(cobrado: 1, motivo: 'x' * 900)));
 
-        expect(repo.recibidas.single.venta.motivoMontoManual!.runes.length, 500);
-      },
-    );
+      expect(repo.recibidas.single.venta.motivoMontoManual!.runes.length, 500);
+    });
 
     test('un monto igual al calculado no es un cambio: sin diferencia ni motivo', () async {
       await registrar(RegistrarVentaParams(venta: venta(cobrado: 150000, motivo: 'por las dudas')));
@@ -164,13 +187,13 @@ void main() {
     });
 
     test('subir el monto también deja la diferencia (positiva)', () async {
-      await registrar(RegistrarVentaParams(venta: venta(cobrado: 160000)));
+      await registrar(RegistrarVentaParams(venta: venta(cobrado: 160000, motivo: 'redondeo')));
 
       expect(repo.recibidas.single.diferencia, 10000);
     });
 
     test('cobrar 0 a mano es válido: se regaló la venta', () async {
-      await registrar(RegistrarVentaParams(venta: venta(cobrado: 0)));
+      await registrar(RegistrarVentaParams(venta: venta(cobrado: 0, motivo: 'se regaló')));
 
       expect(repo.recibidas.single.venta.montoTotalCentavos, 0);
     });
@@ -198,6 +221,37 @@ void main() {
       expect(guardada.venta.montoTotalCentavos, 0);
       expect(guardada.items.single.precioUnitarioCentavos, 0);
       expect(guardada.items.single.subtotalCentavos, 0);
+    });
+
+    test('una venta solo de misioneros no admite monto a mano: vale 0 y no pide motivo', () async {
+      const regalo = LineaDeProducto(
+        productoId: 'm-1',
+        cantidad: 2,
+        precioCentavos: 0,
+        sinCobrar: true,
+      );
+
+      final r = await registrar(
+        RegistrarVentaParams(venta: venta(lineas: [regalo], cobrado: 50000)),
+      );
+
+      final guardada = r.getOrElse(() => throw StateError('falló'));
+      expect(guardada.venta.montoTotalCentavos, 0);
+      expect(guardada.venta.motivoMontoManual, isNull);
+      expect(repo.recibidas.single.diferencia, isNull);
+    });
+
+    test('misioneros junto a un libro: el monto a mano vale y pide su motivo', () async {
+      const regalo = LineaDeProducto(
+        productoId: 'm-1',
+        cantidad: 2,
+        precioCentavos: 0,
+        sinCobrar: true,
+      );
+
+      final falla = await rechazada(venta(lineas: [regalo, libros], cobrado: 100000));
+
+      expect((falla as FailureValidacion).campos.keys, ['motivo']);
     });
   });
 

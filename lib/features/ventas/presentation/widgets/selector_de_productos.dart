@@ -37,7 +37,6 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
   late CategoriaDePrecios _categoria;
   String? _comboId;
   late final Map<String, int> _cantidades;
-  late bool _sinCobrar;
 
   @override
   void initState() {
@@ -46,9 +45,6 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
       for (final item in widget.items)
         if (item is PrecioDeProducto) item.id: widget.actual.cantidadDe(item.id),
     };
-    _sinCobrar = widget.items.whereType<PrecioDeProducto>().any(
-      (p) => p.categoria == CategoriaDePrecios.misioneros && widget.actual.estaSinCobrar(p.id),
-    );
     _categoria = CategoriaDePrecios.values.firstWhere(
       (c) => ResolvedorDePrecios.deLaCategoria(widget.items, c).isNotEmpty,
       orElse: () => CategoriaDePrecios.colecciones,
@@ -69,20 +65,9 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
     };
     return [
       for (final e in _cantidades.entries)
-        if (_cambio(productos[e.key]!, e.value))
-          ProductoElegido(
-            producto: productos[e.key]!,
-            cantidad: e.value,
-            sinCobrar: productos[e.key]!.categoria == CategoriaDePrecios.misioneros && _sinCobrar,
-          ),
+        if (e.value != widget.actual.cantidadDe(e.key))
+          ProductoElegido(producto: productos[e.key]!, cantidad: e.value),
     ];
-  }
-
-  bool _cambio(PrecioDeProducto p, int cantidad) {
-    final antes = widget.actual.cantidadDe(p.id);
-    if (cantidad != antes) return true;
-    if (cantidad == 0 || p.categoria != CategoriaDePrecios.misioneros) return false;
-    return _sinCobrar != widget.actual.estaSinCobrar(p.id);
   }
 
   @override
@@ -150,7 +135,10 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
               padding: const EdgeInsets.only(bottom: 8),
               child: FilaDeCantidad(
                 titulo: item.nombre,
-                precio: FormatoVenta.monto(item.centavos),
+                // Un misionero no lleva precio de lista: va sin cobrar.
+                precio: item.categoria == CategoriaDePrecios.misioneros
+                    ? TextosVenta.sinCobrar
+                    : FormatoVenta.monto(item.centavos),
                 cantidad: _cantidades[item.id] ?? 0,
                 alCambiar: (n) => setState(() => _cantidades[item.id] = n),
                 etiqueta: switch (item.categoria) {
@@ -165,13 +153,6 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
                     ? const Color(0xFFDDE8D3)
                     : ColoresAgenda.ambarFondo,
               ),
-            ),
-          if (_categoria == CategoriaDePrecios.misioneros)
-            InterruptorDeVenta(
-              titulo: TextosVenta.entregarSinCobrar,
-              detalle: TextosVenta.noSumanAlTotal,
-              valor: _sinCobrar,
-              alCambiar: (v) => setState(() => _sinCobrar = v),
             ),
         ],
         const SizedBox(height: 12),

@@ -37,8 +37,7 @@ abstract final class TextosVenta {
 
   static const eyebrowAgregar = 'NUEVA VENTA · AGREGAR';
   static const tituloAgregar = 'Agregar productos';
-  static const entregarSinCobrar = 'Entregarlos sin cobrar';
-  static const noSumanAlTotal = 'No suman al total de la venta.';
+  static const sinCobrar = 'Sin cobrar';
 
   static const volver = 'Volver';
   static const tituloRegistrada = 'Venta registrada';
@@ -55,9 +54,10 @@ abstract final class TextosVenta {
 
   // --- De la decisión de Cristian (P3 de #158) ---
   static const avisoMotivo = 'Tu coordinador va a leer este motivo. No pongas datos del cliente.';
-  static const motivo = 'MOTIVO DEL CAMBIO (OPCIONAL)';
+  static const motivo = 'MOTIVO DEL CAMBIO';
 
   // --- A confirmar (mapa §2: texto) ---
+  static const motivoFalta = 'Escribí por qué cambiaste el monto.';
   static const montoInvalido = 'Escribí un monto válido, por ejemplo 8.500.';
   static const talonarioVacio = 'Escribí el número del talonario para registrar la venta.';
   static const sinProductos = 'Elegí al menos un producto para registrar la venta.';

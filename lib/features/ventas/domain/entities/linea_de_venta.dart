@@ -31,8 +31,9 @@ final class LineaDeProducto extends LineaDeVenta {
 
   final String productoId;
 
-  /// «Entregarlos sin cobrar» (27A·08): un ejemplar misionero que se regala. No suma al total y el
-  /// ítem queda con precio 0, porque lo que se cobró por él es nada (`subtotal = cantidad × precio`).
+  /// Un ejemplar misionero (27A·08): va siempre sin cobrar, sin precio de lista ni monto a voluntad
+  /// (decisión de Cristian, 28/10). No suma al total y el ítem queda con precio 0 (`subtotal =
+  /// cantidad × precio`); la entrega baja el stock como cualquier renglón.
   final bool sinCobrar;
 
   @override

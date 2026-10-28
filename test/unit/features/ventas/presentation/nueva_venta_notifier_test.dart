@@ -23,6 +23,13 @@ const _camino = PrecioDeProducto(
   tipo: TipoDeProducto.misionero,
   esMisionero: true,
 );
+const _deseado = PrecioDeProducto(
+  id: 'p-deseado',
+  nombre: 'El Deseado de todas las gentes',
+  centavos: 15000,
+  origen: OrigenDelPrecio.general,
+  tipo: TipoDeProducto.libro,
+);
 const _vidaFeliz = PrecioDeProducto(
   id: 'p-vf',
   nombre: 'Vida Feliz',
@@ -87,7 +94,7 @@ void main() {
     test('agregar suma al total; cantidad 0 saca; otra cantidad reemplaza', () {
       notifier().fijarProductos(const [
         ProductoElegido(producto: _vidaFeliz, cantidad: 2),
-        ProductoElegido(producto: _camino, cantidad: 1),
+        ProductoElegido(producto: _deseado, cantidad: 1),
       ]);
       expect(estado().totalCalculado, 39000);
 
@@ -96,28 +103,82 @@ void main() {
       expect(estado().cantidadDe('p-vf'), 3);
       expect(estado().totalCalculado, 51000);
 
-      notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 0)]);
+      notifier().fijarProductos(const [ProductoElegido(producto: _deseado, cantidad: 0)]);
       expect(estado().renglones.map((r) => r.titulo), ['Vida Feliz']);
     });
 
-    test('«sin cobrar» no suma pero queda en la venta', () {
-      notifier().fijarProductos(const [
-        ProductoElegido(producto: _camino, cantidad: 3, sinCobrar: true),
-      ]);
-
-      expect(estado().totalCalculado, 0);
-      expect(estado().estaSinCobrar('p-camino'), isTrue);
-      expect(estado().renglones, hasLength(1));
-    });
-
-    test('cambiar de «sin cobrar» a cobrado reemplaza el renglón, no lo duplica', () {
-      notifier().fijarProductos(const [
-        ProductoElegido(producto: _camino, cantidad: 3, sinCobrar: true),
-      ]);
+    test('un misionero va a \$ 0, sin el precio de lista, y queda en la venta', () {
       notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 3)]);
 
+      final linea = estado().renglones.single.linea as LineaDeProducto;
+      expect(linea.precioCentavos, 0, reason: 'no lleva el precio de lista');
+      expect(linea.sinCobrar, isTrue);
+      expect(estado().totalCalculado, 0);
+      expect(estado().cantidadDe('p-camino'), 3);
+    });
+
+    test('un misionero junto a lo que se cobra no suma al total', () {
+      notifier().fijarProductos(const [
+        ProductoElegido(producto: _camino, cantidad: 3),
+        ProductoElegido(producto: _vidaFeliz, cantidad: 2),
+      ]);
+
+      expect(estado().totalCalculado, 24000);
+      expect(estado().cobraAlgo, isTrue);
+    });
+
+    test('cambiar la cantidad de un misionero reemplaza el renglón, no lo duplica', () {
+      notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 3)]);
+      notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 5)]);
+
       expect(estado().renglones, hasLength(1));
-      expect(estado().totalCalculado, 45000);
+      expect(estado().cantidadDe('p-camino'), 5);
+    });
+  });
+
+  group('una venta solo de misioneros: no cuenta como venta', () {
+    Future<void> soloMisioneros() async {
+      notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 2)]);
+      await notifier().escribirTalonario('77');
+    }
+
+    test('no hay total que cambiar a mano: vale 0 aunque haya quedado abierto', () async {
+      notifier()
+        ..fijarProductos(const [
+          ProductoElegido(producto: _camino, cantidad: 2),
+          ProductoElegido(producto: _vidaFeliz, cantidad: 1),
+        ])
+        ..cambiarElMonto()
+        ..escribirMonto('500')
+        ..escribirMotivo('a voluntad');
+      await notifier().escribirTalonario('77');
+      notifier().quitar(estado().renglones.last.clave);
+
+      expect(estado().cobraAlgo, isFalse);
+      expect(estado().cambiandoElMonto, isFalse);
+      expect(estado().puedeRegistrar, isTrue);
+
+      await notifier().registrar();
+
+      final r = repo.recibidas.single;
+      expect(r.venta.montoTotalCentavos, 0);
+      expect(r.venta.motivoMontoManual, isNull);
+      expect(r.diferencia, isNull);
+      expect(r.items.single.precioUnitarioCentavos, 0);
+    });
+
+    test('se guarda para bajar el stock, con precio 0 y subtotal 0', () async {
+      await soloMisioneros();
+
+      final guardada = await notifier().registrar();
+
+      expect(guardada, isNotNull);
+      final item = repo.recibidas.single.items.single;
+      expect(
+        [item.productoId, item.cantidad, item.precioUnitarioCentavos, item.subtotalCentavos],
+        ['p-camino', 2, 0, 0],
+      );
+      expect(guardada!.totalCentavos, 0);
     });
   });
 

@@ -35,18 +35,18 @@ final class ArgumentosDeVenta extends Equatable {
   List<Object?> get props => [colportorId, cliente, visitaId];
 }
 
-/// Un producto suelto con la cantidad que se vende (27A·07 y 27A·08).
+/// Un producto suelto con la cantidad que se vende (27A·07 y 27A·08). Un misionero va siempre a
+/// $ 0: ni el precio de lista ni un monto a voluntad (decisión de Cristian, 28/10, «Misionero»).
 final class ProductoElegido extends Equatable {
-  const ProductoElegido({required this.producto, required this.cantidad, this.sinCobrar = false});
+  const ProductoElegido({required this.producto, required this.cantidad});
 
   final PrecioDeProducto producto;
   final int cantidad;
 
-  /// «Entregarlos sin cobrar»: no suma al total (27A·08).
-  final bool sinCobrar;
+  bool get esMisionero => producto.categoria == CategoriaDePrecios.misioneros;
 
   @override
-  List<Object?> get props => [producto, cantidad, sinCobrar];
+  List<Object?> get props => [producto, cantidad];
 }
 
 /// Una fila de «EN LA VENTA»: una colección o un producto suelto, con cómo se muestra.
@@ -138,9 +138,25 @@ final class NuevaVentaState extends Equatable {
   /// El monto que escribió la colportora, o `null` si no lo está cambiando o no es un monto.
   int? get montoManual => editandoMonto ? FormatoVenta.parsearMonto(montoTexto) : null;
 
-  bool get montoValido => !editandoMonto || montoManual != null;
+  /// Hay algo que cobrar: no todo lo que lleva la venta son misioneros. Con solo misioneros no hay
+  /// total que cambiar a mano: no cuenta como venta y vale $ 0.
+  bool get cobraAlgo => renglones.isNotEmpty && !ReglasDeVenta.soloMisioneros(_lineas);
 
-  int get totalACobrar => montoManual ?? totalCalculado;
+  Iterable<LineaDeVenta> get _lineas => renglones.map((r) => r.linea);
+
+  /// «Cambiar el monto» está abierto y se aplica (hay algo que cobrar).
+  bool get cambiandoElMonto => editandoMonto && cobraAlgo;
+
+  bool get montoValido => !cambiandoElMonto || montoManual != null;
+
+  /// El total cambiado a mano pide su motivo (27A·12): sin él no se registra.
+  bool get motivoFalta => ReglasDeVenta.faltaElMotivo(
+    calculado: totalCalculado,
+    cobrado: cambiandoElMonto ? montoManual : null,
+    motivo: motivo,
+  );
+
+  int get totalACobrar => (cambiandoElMonto ? montoManual : null) ?? totalCalculado;
 
   bool get talonarioVacio => talonario.trim().isEmpty;
 
@@ -150,7 +166,8 @@ final class NuevaVentaState extends Equatable {
       !talonarioVacio &&
       renglones.isNotEmpty &&
       talonarioRepetido == null &&
-      montoValido;
+      montoValido &&
+      !motivoFalta;
 
   /// La cantidad de [productoId] (cualquiera sea su forma de cobro) que ya está en la venta.
   int cantidadDe(String productoId) {
@@ -159,14 +176,6 @@ final class NuevaVentaState extends Equatable {
       if (linea is LineaDeProducto && linea.productoId == productoId) return linea.cantidad;
     }
     return 0;
-  }
-
-  bool estaSinCobrar(String productoId) {
-    for (final r in renglones) {
-      final linea = r.linea;
-      if (linea is LineaDeProducto && linea.productoId == productoId) return linea.sinCobrar;
-    }
-    return false;
   }
 
   NuevaVentaState copiar({
@@ -263,7 +272,8 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
   // --- Lo que se vende ---------------------------------------------------------------------
 
   /// Deja [elegidos] en la venta (27A·07, 27A·08): cantidad 0 saca el producto, otra cantidad la
-  /// reemplaza (la pantalla parte de lo que ya había).
+  /// reemplaza (la pantalla parte de lo que ya había). Un misionero queda a $ 0, sin el precio de
+  /// lista.
   void fijarProductos(List<ProductoElegido> elegidos) {
     final renglones = [...state.renglones];
     for (final e in elegidos) {
@@ -280,8 +290,8 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
         linea: LineaDeProducto(
           productoId: e.producto.id,
           cantidad: e.cantidad,
-          precioCentavos: e.producto.centavos,
-          sinCobrar: e.sinCobrar,
+          precioCentavos: e.esMisionero ? 0 : e.producto.centavos,
+          sinCobrar: e.esMisionero,
         ),
         titulo: e.producto.nombre,
       );
@@ -413,8 +423,8 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
       espacioPersonaId: args.cliente.espacioPersonaId,
       numeroTalonario: s.talonario,
       lineas: [for (final r in s.renglones) r.linea],
-      totalCobradoCentavos: s.editandoMonto ? s.montoManual : null,
-      motivoMontoManual: s.editandoMonto ? s.motivo : '',
+      totalCobradoCentavos: s.cambiandoElMonto ? s.montoManual : null,
+      motivoMontoManual: s.cambiandoElMonto ? s.motivo : '',
       visitaId: args.visitaId,
     );
     final resultado = await _guardar(venta, antesDeGuardar);

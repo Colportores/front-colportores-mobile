@@ -336,20 +336,23 @@ void main() {
       expect([items.last.cantidad, items.last.precioUnitarioCentavos], [2, 12000]);
     });
 
-    testWidgets('27A·08 misioneros «sin cobrar» no suman y quedan con precio 0', (tester) async {
+    testWidgets('27A·08 misioneros: sin precio de lista, no suman y quedan con precio 0', (
+      tester,
+    ) async {
       final e = EntornoDeVenta();
       await montarNuevaVenta(tester, e);
       await _ventaConLaColeccion(tester);
       await tocar(tester, find.text('+ Agregar'));
       await tocar(tester, find.text('Misioneros'));
 
-      expect(find.text('Entregarlos sin cobrar'), findsOneWidget);
-      expect(find.text('No suman al total de la venta.'), findsOneWidget);
+      // Decisión de Cristian (28/10): ni precio de lista ni «Entregarlos sin cobrar».
+      expect(find.text('Entregarlos sin cobrar'), findsNothing);
+      expect(find.byKey(const Key('venta_sin_cobrar')), findsNothing);
       expect(find.text('✦ Misionero'), findsNWidgets(2));
+      expect(find.text(TextosVenta.sinCobrar), findsNWidgets(2));
       for (var i = 0; i < 3; i++) {
         await tocar(tester, find.byTooltip('Uno más de El camino a Cristo'));
       }
-      await tocar(tester, find.byKey(const Key('venta_sin_cobrar')));
       await tocar(tester, find.text(TextosVenta.agregarALaVenta));
 
       expect(find.text('3 · sin cobrar'), findsOneWidget);
@@ -361,6 +364,57 @@ void main() {
         [item.productoId, item.cantidad, item.precioUnitarioCentavos, item.subtotalCentavos],
         ['p-camino', 3, 0, 0],
       );
+    });
+
+    testWidgets('27A·08 una venta solo de misioneros vale \$ 0, sin monto a mano ni precio', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      await montarNuevaVenta(tester, e);
+      await tocar(tester, find.text('Misioneros'));
+      for (var i = 0; i < 2; i++) {
+        await tocar(tester, find.byTooltip('Uno más de El camino a Cristo'));
+      }
+      await tocar(tester, find.text(TextosVenta.agregarALaVenta));
+
+      expect(find.text('2 · sin cobrar'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const Key('venta_total'))).data, r'$ 0');
+      expect(find.byKey(const Key('venta_cambiar_monto')), findsNothing);
+
+      await escribir(tester, _campo('venta_talonario'), '9');
+      await tocar(tester, _cta);
+
+      final r = e.ventas.recibidas.single;
+      expect(r.venta.montoTotalCentavos, 0);
+      expect(
+        [for (final i in r.items) (i.productoId, i.cantidad, i.precioUnitarioCentavos)],
+        [('p-camino', 2, 0)],
+      );
+    });
+
+    testWidgets('quitar lo que se cobra deja el monto cambiado sin efecto: vale \$ 0', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await tocar(tester, find.text('+ Agregar'));
+      await tocar(tester, find.text('Misioneros'));
+      await tocar(tester, find.byTooltip('Uno más de El camino a Cristo'));
+      await tocar(tester, find.text(TextosVenta.agregarALaVenta));
+      await tocar(tester, find.text('Cambiar el monto'));
+      await escribir(tester, _campo('venta_monto'), '1');
+      await escribir(tester, _campo('venta_motivo'), 'a voluntad');
+      await tocar(tester, find.byTooltip(TextosVenta.quitar).first);
+      await escribir(tester, _campo('venta_talonario'), '9');
+
+      expect(find.byKey(const Key('venta_cambiar_monto')), findsNothing);
+      expect(_habilitado(tester), isTrue);
+      await tocar(tester, _cta);
+
+      final r = e.ventas.recibidas.single;
+      expect(r.venta.montoTotalCentavos, 0);
+      expect(r.venta.motivoMontoManual, isNull);
     });
 
     testWidgets('sin colecciones se parte de la primera categoría que tiene productos', (
@@ -546,7 +600,67 @@ void main() {
       expect(find.text('Escribí un monto válido, por ejemplo 8.500.'), findsOneWidget);
       expect(_habilitado(tester), isFalse);
       await escribir(tester, _campo('venta_monto'), '8500,50');
+      await escribir(tester, _campo('venta_motivo'), 'descuento');
       expect(find.text('Escribí un monto válido, por ejemplo 8.500.'), findsNothing);
+      expect(_habilitado(tester), isTrue);
+    });
+
+    testWidgets('con el total cambiado, sin motivo no se registra y el campo dice qué falta', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+      await tocar(tester, find.text('Cambiar el monto'));
+
+      // Recién abierto, el monto es el calculado: no hace falta motivo.
+      expect(find.text(TextosVenta.motivoFalta), findsNothing);
+      expect(_habilitado(tester), isTrue);
+
+      await escribir(tester, _campo('venta_monto'), '8500');
+
+      expect(find.text('MOTIVO DEL CAMBIO'), findsWidgets);
+      expect(find.textContaining('OPCIONAL'), findsNothing);
+      expect(find.text('Escribí por qué cambiaste el monto.'), findsWidgets);
+      expect(_habilitado(tester), isFalse);
+      // Un motivo en blanco tampoco alcanza.
+      await escribir(tester, _campo('venta_motivo'), '   ');
+      expect(_habilitado(tester), isFalse);
+      await tocar(tester, _cta);
+      expect(e.ventas.recibidas, isEmpty);
+
+      await escribir(tester, _campo('venta_motivo'), 'descuento');
+
+      expect(find.text(TextosVenta.motivoFalta), findsNothing);
+      expect(_habilitado(tester), isTrue);
+      await tocar(tester, _cta);
+      expect(e.ventas.recibidas.single.venta.motivoMontoManual, 'descuento');
+    });
+
+    testWidgets('volver al monto calculado ya no pide motivo', (tester) async {
+      await montarNuevaVenta(tester, EntornoDeVenta());
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+      await tocar(tester, find.text('Cambiar el monto'));
+      await escribir(tester, _campo('venta_monto'), '8500');
+      expect(_habilitado(tester), isFalse);
+
+      await tocar(tester, find.byKey(const Key('venta_usar_calculado')));
+
+      expect(_habilitado(tester), isTrue);
+    });
+
+    testWidgets('escribir de vuelta el monto calculado ya no pide motivo', (tester) async {
+      await montarNuevaVenta(tester, EntornoDeVenta());
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+      await tocar(tester, find.text('Cambiar el monto'));
+      await escribir(tester, _campo('venta_monto'), '8500');
+      expect(_habilitado(tester), isFalse);
+
+      await escribir(tester, _campo('venta_monto'), '8.900');
+
       expect(_habilitado(tester), isTrue);
     });
 

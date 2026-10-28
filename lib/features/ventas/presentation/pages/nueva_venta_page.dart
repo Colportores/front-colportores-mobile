@@ -380,7 +380,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           : BotonDeVenta(
               texto: venta.falla != null ? TextosVenta.reintentar : TextosVenta.registrarVenta,
               ocupado: venta.guardando,
-              nota: venta.talonarioVacio ? TextosVenta.talonarioVacio : null,
+              nota: venta.talonarioVacio
+                  ? TextosVenta.talonarioVacio
+                  : venta.motivoFalta
+                  ? TextosVenta.motivoFalta
+                  : null,
               alPresionar: venta.puedeRegistrar ? () => unawaited(_registrar()) : null,
             ),
     );
@@ -428,29 +432,34 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   }
 
   List<Widget> _bloqueDeMonto(NuevaVentaState venta) {
-    if (!venta.editandoMonto) {
+    if (!venta.cambiandoElMonto) {
       return [
         _FilaDeTotal(
           rotulo: TextosVenta.total,
           valor: FormatoVenta.monto(venta.totalCalculado),
           grande: true,
         ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            key: const Key('venta_cambiar_monto'),
-            onPressed: venta.guardando ? null : _notifier.cambiarElMonto,
-            style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: EdgeInsets.zero),
-            child: const Text(
-              TextosVenta.cambiarElMonto,
-              style: TextStyle(
-                fontSize: 13.5,
-                color: ColoresAgenda.azul,
-                fontWeight: FontWeight.w600,
+        // Con solo misioneros no hay monto que cambiar: no cuenta como venta y vale $ 0.
+        if (venta.cobraAlgo)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('venta_cambiar_monto'),
+              onPressed: venta.guardando ? null : _notifier.cambiarElMonto,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                padding: EdgeInsets.zero,
+              ),
+              child: const Text(
+                TextosVenta.cambiarElMonto,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: ColoresAgenda.azul,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
-        ),
       ];
     }
     return [
@@ -477,6 +486,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         controlador: _motivo,
         alCambiar: _notifier.escribirMotivo,
         ayuda: TextosVenta.avisoMotivo,
+        error: venta.motivoFalta ? TextosVenta.motivoFalta : null,
         teclado: TextInputType.multiline,
         maxLargo: 500,
         lineas: 3,

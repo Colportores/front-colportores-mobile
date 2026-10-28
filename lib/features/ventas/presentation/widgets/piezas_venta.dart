@@ -9,8 +9,6 @@ import '../formato_venta.dart';
 // tiene alto fijo salvo el mínimo táctil de 48.
 
 const _borde = Color(0xFFE3E7EE);
-const _verdeFondo = Color(0xFFDDE8D3);
-const _verdeTinta = Color(0xFF1F6E3A);
 
 TextStyle _estiloRotulo() => const TextStyle(
   fontFamily: 'JetBrainsMono',
@@ -873,49 +871,6 @@ class BotonDeVenta extends StatelessWidget {
               : Text(texto, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         ),
       ],
-    );
-  }
-}
-
-/// El interruptor «Entregarlos sin cobrar» (27A·08).
-class InterruptorDeVenta extends StatelessWidget {
-  const InterruptorDeVenta({
-    super.key,
-    required this.titulo,
-    required this.detalle,
-    required this.valor,
-    required this.alCambiar,
-  });
-
-  final String titulo;
-  final String detalle;
-  final bool valor;
-  final ValueChanged<bool> alCambiar;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 60),
-      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-      decoration: BoxDecoration(
-        color: valor ? _verdeFondo : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: valor ? _verdeTinta : _borde, width: valor ? 1.5 : 1),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: SwitchListTile(
-          key: const Key('venta_sin_cobrar'),
-          contentPadding: EdgeInsets.zero,
-          title: Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-          subtitle: Text(
-            detalle,
-            style: const TextStyle(fontSize: 12.5, color: ColoresAgenda.gris),
-          ),
-          value: valor,
-          onChanged: alCambiar,
-        ),
-      ),
     );
   }
 }

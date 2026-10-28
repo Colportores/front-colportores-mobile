@@ -35,8 +35,9 @@ final class RegistrarVentaParams extends Equatable {
 ///    de cada combo y un total que entre en el entero del servidor.
 /// 2. Arma los ítems con la **foto del precio** al vender y, en un combo, lo que traía una unidad.
 /// 3. El monto es el calculado, salvo que la colportora lo haya cambiado a mano: entonces se guarda el
-///    suyo, el motivo (si lo escribió) y la diferencia queda en el `audit_log` local (supuesto S38).
-///    Un total a mano igual al calculado no es un cambio.
+///    suyo, el motivo (obligatorio, de 1 a 500 caracteres) y la diferencia queda en el `audit_log`
+///    local (supuesto S38). Un total a mano igual al calculado no es un cambio y no pide motivo.
+///    Una venta solo de misioneros vale $ 0 y no admite monto a mano.
 /// 4. Lo guarda por [VentaRepository.registrar], que escribe todo o nada, rechaza un talonario ya
 ///    usado el mismo año y encola el sync sin dato del cliente.
 ///
@@ -61,6 +62,7 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
     final v = params.venta;
     final talonario = ReglasDeVenta.talonario(v.numeroTalonario);
     final calculado = ReglasDeVenta.totalCalculado(v.lineas);
+    final cobradoAMano = ReglasDeVenta.soloMisioneros(v.lineas) ? null : v.totalCobradoCentavos;
 
     final errorDeLasLineas = v.lineas.isEmpty
         ? 'Agregá al menos un producto a la venta'
@@ -71,7 +73,6 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
         : v.lineas.any(_comboSinComponentes)
         ? 'Un combo no tiene sus productos'
         : null;
-    final cobradoAMano = v.totalCobradoCentavos;
     final errorDelTotal = calculado > maximoCentavos
         ? 'El total de la venta es demasiado grande'
         : cobradoAMano != null && (cobradoAMano < 0 || cobradoAMano > maximoCentavos)
@@ -89,6 +90,13 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
         'talonario': 'El número del talonario es muy largo',
       'lineas': ?errorDeLasLineas,
       'total': ?errorDelTotal,
+      if (errorDelTotal == null &&
+          ReglasDeVenta.faltaElMotivo(
+            calculado: calculado,
+            cobrado: cobradoAMano,
+            motivo: v.motivoMontoManual,
+          ))
+        'motivo': 'Escribí por qué cambiaste el monto',
     };
     if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
 
@@ -96,7 +104,7 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
     Auditoria auditoria() =>
         Auditoria(createdAt: ahora, updatedAt: ahora, createdBy: v.colportorId.trim());
 
-    final cobrado = v.totalCobradoCentavos;
+    final cobrado = cobradoAMano;
     final aMano = cobrado != null && cobrado != calculado;
     final ventaId = v.ventaId.trim();
     final visitaId = v.visitaId?.trim();

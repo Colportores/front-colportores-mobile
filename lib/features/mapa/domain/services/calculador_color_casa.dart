@@ -42,8 +42,8 @@ abstract final class CalculadorColorCasa {
   }) => ColorHouseStatus.elDeMayorPrioridad(
     [
       // Una venta con algo para cobrar, sin entrega ni cobro registrados todavía (esas tablas llegan
-      // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (todo lo
-      // regalado) no pide cobrar nada y no pinta por sí sola.
+      // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (solo
+      // misioneros, que no cuentan como venta) no pinta por sí sola: la casa queda «entrevista dada».
       for (final monto in montosDeVentas)
         if (monto > 0) ColorHouseStatus.entregaYCobranzaPendiente,
       for (final tipo in agendasPendientes)
