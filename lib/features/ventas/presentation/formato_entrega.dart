@@ -1,7 +1,8 @@
 import 'formato_venta.dart' show FormatoVenta;
 
 /// Los textos de «Entregar ahora» (vista 27, grupo B, HU-VEN-002): los del canvas tal cual, y los que
-/// el canvas no dibuja marcados «A confirmar» (mapa §2: texto).
+/// el canvas no dibuja, que el agente de decisiones aceptó tal cual el 28/10 (mapa §2: texto, P2 de
+/// front-colportores-mobile#159; en 27B·03 sin nada para cobrar vale «no había nada para cobrar»).
 abstract final class TextosEntrega {
   // --- Del canvas (27B·01, 27B·03 y 27B·04) ---
   static const titulo = 'Entregar ahora';
@@ -19,7 +20,7 @@ abstract final class TextosEntrega {
   static const casaCobranzaPendiente =
       'La casa queda como «Cobranza pendiente» hasta que el saldo llegue a cero.';
 
-  // --- A confirmar (mapa §2: texto) ---
+  // --- Aceptados (mapa §2: texto, 28/10) ---
   static const cargando = 'Cargando lo que vendiste';
   static const reintentar = 'Reintentar';
   static const sinProductos = 'Esta venta no tiene productos para entregar.';
