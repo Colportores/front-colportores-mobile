@@ -34,6 +34,10 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('venta'),
   SyncSpec.push('venta_item'),
+  // La entrega de lo vendido (HU-VEN-002, #430): una fila por producto, ya entregada o pendiente.
+  // Sube con ids opacos; `stock_inconsistente` (0118) la pone el servidor. Sin `alsoPull`: un solo
+  // escritor.
+  SyncSpec.push('entrega'),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).

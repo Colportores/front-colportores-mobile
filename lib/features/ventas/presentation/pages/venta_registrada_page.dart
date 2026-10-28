@@ -19,9 +19,11 @@ final class SeguimientoDeLaVenta {
 /// «Venta registrada: ¿y ahora?» (27A·14): encadena la entrega y el cobro de lo que se acaba de
 /// vender.
 ///
-/// Los grupos ENTREGA y COBRO se muestran solo si [conEntrega] / [conCobro]: sus destinos (la
-/// entrega, HU-VEN-002; el cobro, la vista 28) todavía no existen, y ofrecer un botón que no lleva a
-/// ningún lado sería mentir. Sin ninguno de los dos queda solo la confirmación, con un botón.
+/// Cada opción se muestra solo si su destino existe: «Entregar ahora» ([conEntregarAhora], la vista
+/// 27B, HU-VEN-002), «Entregar otro día» ([conEntregarOtroDia], 27C, HU-VEN-003) y «Cobrar ahora»
+/// ([conCobro], la vista 28). Ofrecer un botón que no lleva a ningún lado sería mentir (decisión P7 de
+/// #158). El grupo ENTREGA aparece con que haya una de sus dos opciones; sin ninguna opción queda solo
+/// la confirmación, con un botón.
 class VentaRegistradaPage extends StatefulWidget {
   const VentaRegistradaPage({
     super.key,
@@ -29,13 +31,15 @@ class VentaRegistradaPage extends StatefulWidget {
     required this.nombreDelCliente,
     required this.alContinuar,
     required this.alTerminar,
-    this.conEntrega = false,
+    this.conEntregarAhora = false,
+    this.conEntregarOtroDia = false,
     this.conCobro = false,
   });
 
   final VentaGuardada guardada;
   final String nombreDelCliente;
-  final bool conEntrega;
+  final bool conEntregarAhora;
+  final bool conEntregarOtroDia;
   final bool conCobro;
   final ValueChanged<SeguimientoDeLaVenta> alContinuar;
   final VoidCallback alTerminar;
@@ -51,7 +55,8 @@ class _VentaRegistradaPageState extends State<VentaRegistradaPage> {
 
   /// Sin entrega ni cobro todavía (sus pantallas no existen) no hay nada que elegir: queda la
   /// confirmación con un solo botón que vuelve (decisión P7 de #158).
-  bool get _sinSeguimiento => !widget.conEntrega && !widget.conCobro;
+  bool get _sinSeguimiento =>
+      !widget.conEntregarAhora && !widget.conEntregarOtroDia && !widget.conCobro;
 
   void _continuar() {
     if (_enCurso) return;
@@ -87,22 +92,25 @@ class _VentaRegistradaPageState extends State<VentaRegistradaPage> {
                         FormatoVenta.monto(venta.montoTotalCentavos),
                       ),
                     ),
-                    if (widget.conEntrega) ...[
+                    if (widget.conEntregarAhora || widget.conEntregarOtroDia) ...[
                       const RotuloDeSeccion(TextosVenta.entrega),
                       const SizedBox(height: 7),
-                      FilaElegible(
-                        titulo: TextosVenta.entregarAhora,
-                        detalle: TextosVenta.entregarAhoraSub,
-                        elegida: _entrega == MomentoDeEntrega.ahora,
-                        alPresionar: () => setState(() => _entrega = MomentoDeEntrega.ahora),
-                      ),
-                      const SizedBox(height: 8),
-                      FilaElegible(
-                        titulo: TextosVenta.entregarOtroDia,
-                        detalle: TextosVenta.entregarOtroDiaSub,
-                        elegida: _entrega == MomentoDeEntrega.otroDia,
-                        alPresionar: () => setState(() => _entrega = MomentoDeEntrega.otroDia),
-                      ),
+                      if (widget.conEntregarAhora)
+                        FilaElegible(
+                          titulo: TextosVenta.entregarAhora,
+                          detalle: TextosVenta.entregarAhoraSub,
+                          elegida: _entrega == MomentoDeEntrega.ahora,
+                          alPresionar: () => setState(() => _entrega = MomentoDeEntrega.ahora),
+                        ),
+                      if (widget.conEntregarAhora && widget.conEntregarOtroDia)
+                        const SizedBox(height: 8),
+                      if (widget.conEntregarOtroDia)
+                        FilaElegible(
+                          titulo: TextosVenta.entregarOtroDia,
+                          detalle: TextosVenta.entregarOtroDiaSub,
+                          elegida: _entrega == MomentoDeEntrega.otroDia,
+                          alPresionar: () => setState(() => _entrega = MomentoDeEntrega.otroDia),
+                        ),
                     ],
                     if (widget.conCobro) ...[
                       const RotuloDeSeccion(TextosVenta.cobro),
