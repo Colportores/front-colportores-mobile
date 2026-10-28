@@ -8,6 +8,8 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/componente_vendido.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/entrega_diferida.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/entrega_pendiente.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/productos_de_la_entrega.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/entrega_repository.dart';
@@ -79,12 +81,14 @@ Entrega entregaDe(
   int cantidad = 1,
   bool pendiente = false,
   String ventaId = 'v-1',
+  DateTime? fechaPrevista,
 }) => Entrega(
   id: id,
   ventaId: ventaId,
   productoId: productoId,
   cantidad: cantidad,
   pendiente: pendiente,
+  fechaPrevista: fechaPrevista,
   fechaEntrega: pendiente ? null : t0,
   auditoria: auditoriaDe(),
 );
@@ -110,6 +114,78 @@ class EntregasEnMemoria implements EntregaRepository {
   ColorHouseStatus? colorDeLaCasa = ColorHouseStatus.cobranzaPendiente;
 
   var lecturas = 0;
+
+  // --- Entrega diferida (HU-VEN-003, #433) ---
+
+  /// Cada llamada a [diferir], en orden.
+  final diferidas =
+      <({String ventaId, DateTime fechaPrevista, List<Entrega> filasNuevas, String idDeLaCita})>[];
+
+  /// Cada llamada a [cumplir], en orden.
+  final cumplidas =
+      <({String ventaId, Set<String>? entregaIds, DateTime? nuevaFecha, String idDeLaCita})>[];
+
+  /// Lo que responde [diferir] / [cumplir]; sin esto responden con una falla.
+  EntregaDiferida? respuestaDeDiferir;
+  EntregaCumplida? respuestaDeCumplir;
+
+  /// Las próximas veces que [diferir] / [cumplir] fallan (una por una).
+  final fallasAlDiferir = <Failure>[];
+  final fallasAlCumplir = <Failure>[];
+
+  /// Si no es `null`, [diferir] y [cumplir] se quedan esperando.
+  Completer<void>? compuertaDeDiferida;
+
+  @override
+  Future<Either<Failure, EntregaDiferida>> diferir(
+    String ventaId, {
+    required DateTime fechaPrevista,
+    required DateTime ahora,
+    required List<Entrega> filasNuevas,
+    required String idDeLaCita,
+  }) async {
+    diferidas.add((
+      ventaId: ventaId,
+      fechaPrevista: fechaPrevista,
+      filasNuevas: filasNuevas,
+      idDeLaCita: idDeLaCita,
+    ));
+    final espera = compuertaDeDiferida;
+    if (espera != null) await espera.future;
+    if (fallasAlDiferir.isNotEmpty) return Left(fallasAlDiferir.removeAt(0));
+    final r = respuestaDeDiferir;
+    return r == null ? const Left(FailureEntregaNoGuardada()) : Right(r);
+  }
+
+  @override
+  Future<Either<Failure, EntregaCumplida>> cumplir(
+    String ventaId, {
+    required DateTime ahora,
+    required String idDeLaCita,
+    Set<String>? entregaIds,
+    DateTime? nuevaFecha,
+  }) async {
+    cumplidas.add((
+      ventaId: ventaId,
+      entregaIds: entregaIds,
+      nuevaFecha: nuevaFecha,
+      idDeLaCita: idDeLaCita,
+    ));
+    final espera = compuertaDeDiferida;
+    if (espera != null) await espera.future;
+    if (fallasAlCumplir.isNotEmpty) return Left(fallasAlCumplir.removeAt(0));
+    final r = respuestaDeCumplir;
+    return r == null ? const Left(FailureEntregaNoGuardada()) : Right(r);
+  }
+
+  final _pendientes = StreamController<List<EntregaPendiente>>.broadcast();
+
+  /// Emite [lista] a quien esté mirando las entregas pendientes.
+  void emitirPendientes(List<EntregaPendiente> lista) => _pendientes.add(lista);
+
+  @override
+  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) =>
+      _pendientes.stream;
 
   @override
   Future<Either<Failure, EntregaRegistrada>> entregarAhora(
