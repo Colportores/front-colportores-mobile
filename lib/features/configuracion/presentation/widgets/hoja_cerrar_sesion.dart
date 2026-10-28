@@ -12,23 +12,34 @@ abstract final class TextosCerrarSesion {
   static const confirmarIgual = 'Cerrar sesión igual';
   static const cancelar = 'Cancelar';
   static const reintentar = 'Reintentar';
+  static const revisando = 'Revisando…';
+  static const sinRevisar =
+      'No pudimos revisar si hay algo sin subir. Si cerrás sesión no perdés nada, pero puede '
+      'quedar sin sincronizar hasta que vuelvas a iniciar sesión.';
   static const datosGuardados =
       'Tus datos quedan guardados en este teléfono: vas a volver a verlos cuando inicies sesión.';
   static const errorCierre = 'No pudimos cerrar la sesión. Probá de nuevo.';
 
-  static String advertenciaPendientes(int n) =>
-      'Tenés $n operaciones sin sincronizar. Si cerrás sesión ahora, se subirán cuando vuelvas a '
-      'iniciar sesión.';
+  static String advertenciaPendientes(int n) => n == 1
+      ? 'Tenés 1 operación sin sincronizar. Si cerrás sesión ahora, se subirá cuando vuelvas a '
+            'iniciar sesión.'
+      : 'Tenés $n operaciones sin sincronizar. Si cerrás sesión ahora, se subirán cuando vuelvas a '
+            'iniciar sesión.';
 }
 
 /// Abre la hoja de confirmación del cierre de sesión (vista 16, A02 a A06). [cerrar] hace el cierre
 /// y dice si salió bien: con `false` la hoja muestra el error con «Reintentar». Con `true` no se
 /// cierra sola: quien llamó saca las pantallas de la pila (puede haberlo hecho ya la raíz al
 /// mostrar el login). Devuelve `null` si el colportor canceló.
+///
+/// [pendientes] es `null` si no se pudo contar lo que falta subir: la hoja no afirma «Todo
+/// sincronizado», lo dice y ofrece «Reintentar» el conteo con [contar] (decisión de Cristian,
+/// 02/10). Sin [contar] el reintento no se ofrece.
 Future<bool?> mostrarHojaCerrarSesion(
   BuildContext context, {
-  required int pendientes,
+  required int? pendientes,
   required Future<bool> Function() cerrar,
+  Future<int?> Function()? contar,
 }) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
@@ -39,19 +50,23 @@ Future<bool?> mostrarHojaCerrarSesion(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaCerrarSesion(pendientes: pendientes, cerrar: cerrar),
+  builder: (_) => HojaCerrarSesion(pendientes: pendientes, cerrar: cerrar, contar: contar),
 );
 
 enum _Fase { confirmar, cerrando, error }
 
 /// Hoja inferior «¿Cerrar sesión?». Sin pendientes, «Cerrar sesión» es la acción principal; con
 /// pendientes, la acción segura («Cancelar») es la principal y «Cerrar sesión igual» la
-/// secundaria. Mientras cierra no se puede cancelar ni cerrar la hoja; si falla, «Reintentar».
+/// secundaria; sin poder contarlos ([pendientes] `null`), lo dice y «Reintentar» el conteo es la
+/// principal. Mientras cierra no se puede cancelar ni cerrar la hoja; si falla, «Reintentar».
 class HojaCerrarSesion extends StatefulWidget {
-  const HojaCerrarSesion({super.key, required this.pendientes, required this.cerrar});
+  const HojaCerrarSesion({super.key, required this.pendientes, required this.cerrar, this.contar});
 
-  final int pendientes;
+  final int? pendientes;
   final Future<bool> Function() cerrar;
+
+  /// Vuelve a contar lo que falta subir (`null` si tampoco se pudo).
+  final Future<int?> Function()? contar;
 
   @override
   State<HojaCerrarSesion> createState() => _HojaCerrarSesionState();
@@ -59,6 +74,29 @@ class HojaCerrarSesion extends StatefulWidget {
 
 class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
   _Fase _fase = _Fase.confirmar;
+
+  /// Lo contado; `null` si no se pudo. Arranca con lo que trajo quien abrió la hoja.
+  late int? _pendientes = widget.pendientes;
+
+  /// «Reintentar» el conteo en curso.
+  bool _contando = false;
+
+  Future<void> _recontar() async {
+    final contar = widget.contar;
+    if (contar == null || _contando || _fase != _Fase.confirmar) return; // Doble tap.
+    setState(() => _contando = true);
+    int? n;
+    try {
+      n = await contar();
+    } on Object {
+      n = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _contando = false;
+      _pendientes = n;
+    });
+  }
 
   Future<void> _cerrar() async {
     if (_fase == _Fase.cerrando) return; // Doble tap / reintento encimado: una sola vez.
@@ -79,13 +117,22 @@ class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     final cerrando = _fase == _Fase.cerrando;
-    final hayPendientes = widget.pendientes > 0 && _fase != _Fase.error;
+    final pendientes = _pendientes;
+    final sinRevisar = pendientes == null && _fase != _Fase.error;
+    final hayPendientes = pendientes != null && pendientes > 0 && _fase != _Fase.error;
 
     final cancelar = _Boton(
       clave: const Key('configuracion_dialogo_cancelar'),
       texto: TextosCerrarSesion.cancelar,
       principal: hayPendientes,
       onPressed: cerrando ? null : () => Navigator.of(context).pop(),
+    );
+    final reintentarConteo = _Boton(
+      clave: const Key('configuracion_reintentar_conteo'),
+      texto: _contando ? TextosCerrarSesion.revisando : TextosCerrarSesion.reintentar,
+      principal: true,
+      cargando: _contando,
+      onPressed: _contando || cerrando ? null : _recontar,
     );
     final cierre = switch (_fase) {
       _Fase.error => _Boton(
@@ -103,9 +150,11 @@ class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
       ),
       _Fase.confirmar => _Boton(
         clave: const Key('configuracion_dialogo_confirmar'),
-        texto: hayPendientes ? TextosCerrarSesion.confirmarIgual : TextosCerrarSesion.confirmar,
-        principal: !hayPendientes,
-        onPressed: _cerrar,
+        texto: hayPendientes || sinRevisar
+            ? TextosCerrarSesion.confirmarIgual
+            : TextosCerrarSesion.confirmar,
+        principal: !hayPendientes && !sinRevisar,
+        onPressed: _contando ? null : _cerrar,
       ),
     };
 
@@ -141,12 +190,19 @@ class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
                   marca: '!',
                   texto: TextosCerrarSesion.errorCierre,
                 )
-              else if (widget.pendientes > 0)
+              else if (sinRevisar)
+                const _Aviso(
+                  key: Key('configuracion_aviso_sin_revisar'),
+                  color: Color(0xFF8A6A22),
+                  marca: '?',
+                  texto: TextosCerrarSesion.sinRevisar,
+                )
+              else if (pendientes != null && pendientes > 0)
                 _Aviso(
                   key: const Key('configuracion_aviso_pendientes'),
                   color: const Color(0xFF8A6A22),
-                  marca: '${widget.pendientes}',
-                  texto: TextosCerrarSesion.advertenciaPendientes(widget.pendientes),
+                  marca: '$pendientes',
+                  texto: TextosCerrarSesion.advertenciaPendientes(pendientes),
                 )
               else ...[
                 Text(
@@ -158,7 +214,11 @@ class _HojaCerrarSesionState extends State<HojaCerrarSesion> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 10,
-                children: hayPendientes ? [cancelar, cierre] : [cierre, cancelar],
+                children: sinRevisar && widget.contar != null
+                    ? [reintentarConteo, cierre, cancelar]
+                    : hayPendientes
+                    ? [cancelar, cierre]
+                    : [cierre, cancelar],
               ),
             ],
           ),
