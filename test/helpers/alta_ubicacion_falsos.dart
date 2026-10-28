@@ -174,6 +174,7 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
           Espacio? espacio,
           OrigenCoordenadas origen,
           CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
         })
       >[];
 
@@ -185,8 +186,15 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
-    llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
     final espera = bloqueo;
     if (espera != null) await espera.future;
     final f = comportamiento;

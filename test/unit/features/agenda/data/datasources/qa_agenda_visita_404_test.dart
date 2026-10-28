@@ -322,16 +322,30 @@ void main() {
           prioridades[3] = 'ENTREVISTA_PROGRAMADA';
         }
       }
+      // Entre entrevista, no contestó y rechazo manda la visita más reciente («Rojo o verde»,
+      // 23/10, #464); a igual instante, la de número más chico.
+      final ultimaVisita = <int, String>{};
+      DateTime? fechaUltima;
       for (final v in await db.select(db.visitas).get()) {
         if (!deLaCasa.contains(v.espacioId) || v.deletedAt != null) continue;
-        switch (v.tipoResultado) {
-          case 'ENTREVISTA':
-            prioridades[5] = 'ENTREVISTA_SIN_VENTA';
-          case 'NO_CONTESTO':
-            prioridades[6] = 'SIN_CONTESTAR';
-          case 'RECHAZO':
-            prioridades[7] = 'RECHAZO';
+        final (prioridad, color) = switch (v.tipoResultado) {
+          'ENTREVISTA' => (5, 'ENTREVISTA_SIN_VENTA'),
+          'NO_CONTESTO' => (6, 'SIN_CONTESTAR'),
+          'RECHAZO' => (7, 'RECHAZO'),
+          _ => (0, ''),
+        };
+        if (prioridad == 0) continue;
+        if (fechaUltima == null || v.fecha.isAfter(fechaUltima)) {
+          fechaUltima = v.fecha;
+          ultimaVisita
+            ..clear()
+            ..[prioridad] = color;
+        } else if (v.fecha.isAtSameMomentAs(fechaUltima)) {
+          ultimaVisita[prioridad] = color;
         }
+      }
+      if (ultimaVisita.isNotEmpty) {
+        prioridades[ultimaVisita.keys.reduce(min)] = ultimaVisita[ultimaVisita.keys.reduce(min)]!;
       }
       if (prioridades.isEmpty) return null;
       return prioridades[prioridades.keys.reduce(min)];
