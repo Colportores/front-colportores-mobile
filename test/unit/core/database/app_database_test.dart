@@ -160,7 +160,7 @@ void main() {
           'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":14}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":15}']);
     });
   });
 }
