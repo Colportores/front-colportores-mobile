@@ -9,9 +9,9 @@
 // mitades se entienden: lo que el colportor ve es lo que queda en el teléfono y en la cola.
 //
 // Fuera de alcance, con su issue: la justificación de «Crear igual» que se guarda en la auditoría
-// local (#282, escenario con `skip` al final), la vista 39 (#451) y las ciudades de la campaña con
-// fuente real (#274: hoy `CiudadesParaAltaSinFuente`; las propuestas y la lista «Elegí la ciudad» se
-// prueban con `CiudadesFalsas` en `alta_ubicacion_page_test.dart`).
+// local (#282, escenario con `skip` al final) y la vista 39 (#451). Las ciudades de la campaña tienen
+// su fuente real (#274, `ciudades_para_alta_local_test.dart`); acá las propuestas y la lista «Elegí la
+// ciudad» se prueban con `CiudadesFalsas`, como en `alta_ubicacion_page_test.dart`.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';

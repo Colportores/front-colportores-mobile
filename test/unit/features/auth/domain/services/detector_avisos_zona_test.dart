@@ -24,7 +24,16 @@ InscripcionConZona _inscripcion({
 ResultadoAvisosZona _detectar(
   List<InscripcionConZona> actuales, {
   Map<String, String?> avisadas = const {},
-}) => DetectorAvisosZona.detectar(avisadas: avisadas, actuales: actuales);
+  List<AvisoZona> mostrados = const [],
+}) => DetectorAvisosZona.detectar(avisadas: avisadas, actuales: actuales, mostrados: mostrados);
+
+const _asignadaCentro = ZonaAsignada(
+  inscripcionId: 'insc-1',
+  campaniaNombre: 'Campaña Primavera 2026',
+  zonaId: 'z-centro',
+  zonaNombre: 'Centro',
+);
+const _quitada = ZonaQuitada(inscripcionId: 'insc-1', campaniaNombre: 'Campaña Primavera 2026');
 
 void main() {
   group('te asignaron una zona', () {
@@ -173,6 +182,80 @@ void main() {
       final resultado = _detectar([_inscripcion(campania: '')], avisadas: {'insc-1': 'z-centro'});
 
       expect(resultado.avisos, isEmpty);
+    });
+
+    group('el aviso de «Te asignaron» sigue en la franja sin que la persona lo cierre', () {
+      test('dado que la inscripción llega viva y sin zona, el aviso pasa a «Ya no tenés zona» y no '
+          'se va sin decir nada (el teléfono no lo había anotado: nunca se cerró)', () {
+        final resultado = _detectar([_inscripcion()], mostrados: [_asignadaCentro]);
+
+        expect(resultado.avisos, [_quitada]);
+        expect(resultado.silenciosas, isEmpty, reason: 'se anota al cerrarlo, no antes');
+      });
+
+      test('dado que antes se había anotado sin zona (alta sin zona, ya vista), pasa lo mismo', () {
+        final resultado = _detectar(
+          [_inscripcion()],
+          avisadas: {'insc-1': null},
+          mostrados: [_asignadaCentro],
+        );
+
+        expect(resultado.avisos, [_quitada]);
+      });
+
+      test('dado que el pull siguiente trae lo mismo, «Ya no tenés zona» se queda: no desaparece '
+          'con el segundo pull', () {
+        final primero = _detectar([_inscripcion()], mostrados: [_asignadaCentro]);
+        final segundo = _detectar([_inscripcion()], mostrados: primero.avisos);
+
+        expect(segundo.avisos, [_quitada]);
+        expect(segundo.silenciosas, isEmpty);
+      });
+
+      test(
+        'dado que la persona ya lo cerró, no vuelve: cerrar lo saca de la franja y lo anota',
+        () {
+          final resultado = _detectar(
+            [_inscripcion()],
+            avisadas: {'insc-1': null},
+            mostrados: const [],
+          );
+
+          expect(resultado.avisos, isEmpty);
+        },
+      );
+
+      test('dado que la inscripción sigue con la misma zona, el aviso no cambia', () {
+        final resultado = _detectar(
+          [_inscripcion(zonaId: 'z-centro', zonaNombre: 'Centro')],
+          mostrados: [_asignadaCentro],
+        );
+
+        expect(resultado.avisos, [_asignadaCentro]);
+      });
+
+      test(
+        'dado que lo sacaron de la campaña mientras leía el aviso, no hay «Ya no tenés zona»',
+        () {
+          final resultado = _detectar(
+            [_inscripcion(dadaDeBaja: true)],
+            mostrados: [_asignadaCentro],
+          );
+
+          expect(resultado.avisos, isEmpty);
+          expect(resultado.silenciosas, {'insc-1': null});
+        },
+      );
+
+      test('el aviso de otra inscripción no cuenta: cada inscripción se evalúa por su cuenta', () {
+        final resultado = _detectar(
+          [_inscripcion(), _inscripcion(id: 'insc-2')],
+          mostrados: [_asignadaCentro],
+        );
+
+        expect(resultado.avisos, [_quitada]);
+        expect(resultado.silenciosas, {'insc-2': null});
+      });
     });
   });
 

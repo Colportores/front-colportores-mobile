@@ -19,6 +19,7 @@ import 'generated/schema_v12.dart' as v12;
 import 'generated/schema_v13.dart' as v13;
 import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
+import 'generated/schema_v16.dart' as v16;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -938,6 +939,84 @@ void main() {
         expect(await nuevo.select(nuevo.stock).get(), isEmpty);
         // Nada se encola al migrar: el stock es una réplica de solo lectura.
         expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+      },
+    );
+  });
+
+  test(
+    'dado la versión 15 con una bajada anotada, cuando migra a la 16, crea las réplicas de ciudad y '
+    'de las campañas del colportor vacías, no toca lo guardado y olvida la última bajada',
+    () async {
+      const jornada = v15.JornadaData(
+        id: 'jor-1',
+        colportorId: 'col-1',
+        inicio: 1758700000000,
+        totalVisitas: 0,
+        totalVentas: 0,
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        createdBy: 'col-1',
+        syncVersion: 1,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 15,
+        newVersion: 16,
+        createOld: v15.DatabaseAtV15.new,
+        createNew: v16.DatabaseAtV16.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.jornada, jornada);
+          batch.insertAll(viejo.syncMeta, [
+            const v15.SyncMetaData(clave: 'last_pull_at', valor: '2026-10-20T12:00:00.000Z'),
+            const v15.SyncMetaData(clave: 'last_backup_at', valor: '2026-10-19T12:00:00.000Z'),
+          ]);
+        },
+        validateItems: (nuevo) async {
+          final jornadas = await nuevo.select(nuevo.jornada).get();
+          expect(jornadas.map((j) => j.id), ['jor-1']);
+          expect(await nuevo.select(nuevo.ciudad).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campania).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campaniaColportor).get(), isEmpty);
+          // Las réplicas nuevas todavía no bajaron: «hubo una bajada» ya no se puede afirmar, y lo
+          // demás que el motor anotó se queda.
+          final meta = {for (final f in await nuevo.select(nuevo.syncMeta).get()) f.clave: f.valor};
+          expect(meta, {'last_backup_at': '2026-10-19T12:00:00.000Z'});
+          // Nada se encola al migrar: son réplicas de solo lectura.
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+        },
+      );
+    },
+  );
+
+  test('dado la versión 14 con jornadas guardadas, cuando migra de una vez a la 16 (stock y las '
+      'réplicas de campañas), se conservan y las dos réplicas nacen vacías', () async {
+    const jornada = v14.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 14,
+      newVersion: 16,
+      createOld: v14.DatabaseAtV14.new,
+      createNew: v16.DatabaseAtV16.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.stock).get(), isEmpty);
+        expect(await nuevo.select(nuevo.ciudad).get(), isEmpty);
+        expect(await nuevo.select(nuevo.campania).get(), isEmpty);
+        expect(await nuevo.select(nuevo.campaniaColportor).get(), isEmpty);
       },
     );
   });
