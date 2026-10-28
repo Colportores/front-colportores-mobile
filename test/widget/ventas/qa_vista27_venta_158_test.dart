@@ -185,28 +185,26 @@ void main() {
   // 3 · Avisos de error: que se vean donde la colportora está mirando.
   // ---------------------------------------------------------------------------------------------
   group('Avisos de error', () {
-    testWidgets(
-      '27A·13 a 360×640 con texto 2,0 y la lista abajo: el aviso está a la vista',
-      (tester) async {
-        final e = EntornoDeVenta();
-        e.ventas.respuesta = const FailureVentaNoGuardada();
-        await montarNuevaVenta(tester, e, tamano: chico531, escala: 2);
-        await ventaConColeccion531(tester);
-        await alFinal531(tester);
-        await tester.tap(cta531);
-        await asentar(tester);
+    testWidgets('27A·13 a 360×640 con texto 2,0 y la lista abajo: el aviso está a la vista', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureVentaNoGuardada();
+      await montarNuevaVenta(tester, e, tamano: chico531, escala: 2);
+      await ventaConColeccion531(tester);
+      await alFinal531(tester);
+      await tester.tap(cta531);
+      await asentar(tester);
 
-        // El guardado falló: el botón fijo ya dice «Reintentar»…
-        expect(find.text('Reintentar'), findsOneWidget);
-        // …pero el aviso que explica qué pasó no está a la vista (la lista lo desarma al estar abajo).
-        expect(
-          enVistaEnLaLista531(tester, find.byKey(const Key('venta_error'))),
-          isTrue,
-          reason: 'el aviso queda fuera de la parte visible de la lista',
-        );
-      },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — aviso de guardado arriba de la lista, fuera de vista abajo
+      // El guardado falló: el botón fijo ya dice «Reintentar»…
+      expect(find.text('Reintentar'), findsOneWidget);
+      // …pero el aviso que explica qué pasó no está a la vista (la lista lo desarma al estar abajo).
+      expect(
+        enVistaEnLaLista531(tester, find.byKey(const Key('venta_error'))),
+        isTrue,
+        reason: 'el aviso queda fuera de la parte visible de la lista',
+      );
+    });
 
     testWidgets('27A·13 a 412×915 con texto 1,0 y 3 renglones: el aviso está a la vista', (
       tester,
@@ -427,8 +425,7 @@ void main() {
         expect(salida.cerrada, isTrue, reason: 'la pantalla de la venta tiene que cerrarse');
         expect(find.byKey(const Key('agregar_productos_pagina')), findsNothing);
       },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — «+ Agregar» queda activo mientras se guarda
+    );
 
     testWidgets(
       'volver mientras se guarda: no dice «se pierde lo que cargaste» si ya se está guardando',

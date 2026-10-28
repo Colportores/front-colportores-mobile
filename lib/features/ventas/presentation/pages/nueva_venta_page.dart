@@ -52,6 +52,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   final _motivo = TextEditingController();
   var _navegando = false;
 
+  /// El aviso «No pudimos guardar»: al fallar el guardado la lista se lleva hasta él (27A·13), porque
+  /// con la lista abajo (donde está el total) y el texto grande quedaría fuera de la vista.
+  final _avisoDeGuardado = GlobalKey();
+  final _lista = ScrollController();
+
   ArgumentosDeVenta get _args => widget.argumentos;
 
   NuevaVentaNotifier get _notifier => ref.read(nuevaVentaProvider(_args).notifier);
@@ -61,6 +66,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     _talonario.dispose();
     _monto.dispose();
     _motivo.dispose();
+    _lista.dispose();
     super.dispose();
   }
 
@@ -77,6 +83,17 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   Future<void> _registrar() async {
     final guardada = await _notifier.registrar(antesDeGuardar: widget.antesDeGuardar);
     if (guardada != null && mounted) Navigator.of(context).pop(guardada);
+  }
+
+  /// Lleva la lista hasta el aviso de la falla, sin animación (respeta quitar movimiento).
+  void _mostrarElAviso() {
+    // Con la lista abajo el aviso ni está construido: se vuelve arriba y recién ahí se lo acomoda.
+    if (_lista.hasClients) _lista.jumpTo(0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _avisoDeGuardado.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(Scrollable.ensureVisible(contexto));
+    });
   }
 
   Future<void> _confirmarSalida() async {
@@ -182,6 +199,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     final venta = ref.watch(nuevaVentaProvider(_args));
     ref.listen(nuevaVentaProvider(_args), (anterior, actual) {
       if (_monto.text != actual.montoTexto) _monto.text = actual.montoTexto;
+      if (anterior?.falla == null && actual.falla != null) _mostrarElAviso();
     });
     final id = _args.cliente.espacioPersonaId;
     final precios = ref.watch(preciosDeLaVentaProvider(id));
@@ -328,12 +346,16 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     final vacia = venta.renglones.isEmpty;
     final repetido = venta.talonarioRepetido;
     return _Marco(
+      controlador: _lista,
       cabecera: _cabecera(),
       hijos: [
         TarjetaDelCliente(cliente: _args.cliente),
         if (venta.falla != null) ...[
           const SizedBox(height: 9),
-          const AvisoDeVenta(key: Key('venta_error'), texto: TextosVenta.errorAlGuardar),
+          KeyedSubtree(
+            key: _avisoDeGuardado,
+            child: const AvisoDeVenta(key: Key('venta_error'), texto: TextosVenta.errorAlGuardar),
+          ),
         ],
         const SizedBox(height: 9),
         CampoDeVenta(
@@ -364,7 +386,8 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           RotuloDeSeccion(
             TextosVenta.enLaVenta,
             textoAccion: TextosVenta.agregar,
-            alAccion: () => unawaited(_agregar(items, leido, ciudad)),
+            // Mientras se guarda no se agrega nada: la venta ya está yéndose a la base.
+            alAccion: venta.guardando ? null : () => unawaited(_agregar(items, leido, ciudad)),
           ),
           for (final r in venta.renglones)
             Padding(
@@ -559,8 +582,9 @@ class _FilaDeTotal extends StatelessWidget {
 
 /// El marco de toda pantalla de la venta: cabecera, cuerpo que se desplaza y, abajo fijo, el botón.
 class _Marco extends StatelessWidget {
-  const _Marco({required this.cabecera, required this.hijos, this.cta});
+  const _Marco({required this.cabecera, required this.hijos, this.cta, this.controlador});
 
+  final ScrollController? controlador;
   final Widget cabecera;
   final List<Widget> hijos;
   final Widget? cta;
@@ -575,6 +599,7 @@ class _Marco extends StatelessWidget {
           children: [
             Expanded(
               child: ListView(
+                controller: controlador,
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [cabecera, ...hijos],
