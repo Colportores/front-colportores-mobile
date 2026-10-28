@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/domain/entities/persona_del_espacio.dart';
 import '../../../mapa/domain/repositories/espacio_repository.dart';
@@ -11,9 +12,14 @@ import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
 import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
+import '../../../ventas/domain/usecases/cumplir_entrega_use_case.dart';
+import '../../../ventas/presentation/formato_entrega_diferida.dart' show TextosEntregaDiferida;
+import '../../../ventas/presentation/providers/ventas_providers.dart'
+    show cumplirEntregaUseCaseProvider;
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/franja_horaria.dart';
+import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/usecases/cancelar_agenda_use_case.dart';
 import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_detalle_agenda.dart';
@@ -27,7 +33,9 @@ import 'modificar_agenda_page.dart';
 /// y a qué hora suena el recordatorio, y las salidas.
 ///
 /// - **Programada** (23C·01): «Registrar resultado» lleva a «¿Qué pasó?» de la vista 39 con la casa y
-///   la agenda ya puestas; «Modificar» abre 23C·02; «Cancelar agenda» va como enlace al pie.
+///   la agenda ya puestas; «Modificar» abre 23C·02; «Cancelar agenda» va como enlace al pie. En una
+///   cita de **entrega** (HU-VEN-003) «Registrar resultado» no va: su lugar lo toma «Entregado hoy»,
+///   que marca como entregado todo lo pendiente de la venta (una sola llamada mientras guarda).
 /// - **Modificada** (23C·03): al volver de «Modificar», el detalle ya muestra lo nuevo y el aviso de éxito
 ///   («Guardado. El recordatorio pasó a las 10:00.») queda en pantalla.
 /// - **Cumplida o no cumplida** (23C·06): el aviso «Esta visita ya tiene resultado…» y ninguna salida.
@@ -84,6 +92,39 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     } finally {
       _abriendo = false;
     }
+  }
+
+  /// Ya hay un «Entregado hoy» en curso: un segundo toque no llama de nuevo.
+  var _entregando = false;
+
+  /// «Entregado hoy» (HU-VEN-003, «Cumplir entrega pendiente»): todo lo pendiente de la venta pasa a
+  /// entregado con la fecha de hoy y la cita se cumple.
+  Future<void> _entregadoHoy(DetalleDeAgenda detalle) async {
+    final ventaId = detalle.agenda.ventaId;
+    if (_entregando || ventaId == null) return;
+    setState(() => _entregando = true);
+    final mensajero = ScaffoldMessenger.maybeOf(context);
+    String aviso;
+    try {
+      final hecho = await ref
+          .read(cumplirEntregaUseCaseProvider)
+          .call(CumplirEntregaParams(ventaId: ventaId));
+      aviso = hecho.fold(
+        (falla) => falla.mensaje,
+        (r) => r.entrega.yaEstaba
+            ? TextosEntregaDiferida.yaEstabaEntregada
+            : TextosEntregaDiferida.entregaMarcada,
+      );
+    } on Object {
+      // Sin base abierta o cualquier falla inesperada: no se marcó nada y se puede reintentar.
+      aviso = const FailureEntregaNoGuardada().mensaje;
+    }
+    if (!mounted) return;
+    setState(() => _entregando = false);
+    ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
+    mensajero
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(aviso)));
   }
 
   Future<void> _registrar(DetalleDeAgenda detalle, String ubicacionId) async {
@@ -152,6 +193,8 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
                         detalle: d,
                         alModificar: () => unawaited(_modificar(d)),
                         alRegistrar: (ubicacionId) => unawaited(_registrar(d, ubicacionId)),
+                        alEntregadoHoy: () => unawaited(_entregadoHoy(d)),
+                        entregando: _entregando,
                         alCancelar: _alCancelar,
                         alVolverSinCancelar: _alVolverSinCancelar,
                       ),
@@ -172,6 +215,7 @@ abstract final class ClavesDetalleAgenda {
   static const aviso = Key('detalle_agenda_aviso');
   static const reintentar = Key('detalle_agenda_reintentar');
   static const registrar = Key('detalle_agenda_registrar');
+  static const entregadoHoy = Key('detalle_agenda_entregado_hoy');
   static const modificar = Key('detalle_agenda_modificar');
   static const avisoCerrada = Key('detalle_agenda_aviso_cerrada');
   static const estado = Key('detalle_agenda_estado');
@@ -239,6 +283,8 @@ class _Cuerpo extends ConsumerWidget {
     required this.detalle,
     required this.alModificar,
     required this.alRegistrar,
+    required this.alEntregadoHoy,
+    required this.entregando,
     required this.alCancelar,
     required this.alVolverSinCancelar,
   });
@@ -246,6 +292,10 @@ class _Cuerpo extends ConsumerWidget {
   final DetalleDeAgenda detalle;
   final VoidCallback alModificar;
   final ValueChanged<String> alRegistrar;
+  final VoidCallback alEntregadoHoy;
+
+  /// Hay un «Entregado hoy» en curso: el botón no responde y lo dice con una ruedita.
+  final bool entregando;
   final ValueChanged<ResultadoCancelarAgenda> alCancelar;
   final VoidCallback alVolverSinCancelar;
 
@@ -261,7 +311,9 @@ class _Cuerpo extends ConsumerWidget {
     final preferencias = ref.watch(preferenciasDelAvisoProvider).asData?.value;
     final reloj = ref.watch(relojVisitaProvider);
     final programada = agenda.estado == EstadoAgenda.programada;
-    final registrar = ref.watch(registrarVisitaDesdeLaCasaProvider);
+    final esEntrega = agenda.tipo == TipoAgenda.entrega;
+    // En una cita de entrega «Registrar resultado» abriría la visita, no la entrega.
+    final registrar = esEntrega ? null : ref.watch(registrarVisitaDesdeLaCasaProvider);
     final ubicacionId = contexto?.ubicacion.id;
 
     final subtitulo = _subtitulo(contexto, _persona(personas, agenda.espacioPersonaId));
@@ -352,6 +404,21 @@ class _Cuerpo extends ConsumerWidget {
                 child: const Text(TextosDetalleAgenda.registrarResultado),
               ),
             if (registrar != null) const SizedBox(height: 10),
+            if (esEntrega && agenda.ventaId != null) ...[
+              FilledButton(
+                key: ClavesDetalleAgenda.entregadoHoy,
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                onPressed: entregando ? null : alEntregadoHoy,
+                child: entregando
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : const Text(TextosEntregaDiferida.entregadoHoy),
+              ),
+              const SizedBox(height: 10),
+            ],
             OutlinedButton(
               key: ClavesDetalleAgenda.modificar,
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),

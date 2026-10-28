@@ -299,9 +299,11 @@ final class EntregaLocalDataSourceDrift {
     final entregas = _db.entregas;
     final ventas = _db.ventas;
     final agendas = _db.agendas;
+    final vinculos = _db.espacioPersonas;
     final consulta =
         _db.select(entregas).join([
             innerJoin(ventas, ventas.id.equalsExp(entregas.ventaId)),
+            leftOuterJoin(vinculos, vinculos.id.equalsExp(ventas.espacioPersonaId)),
             leftOuterJoin(
               agendas,
               agendas.ventaId.equalsExp(ventas.id) &
@@ -327,7 +329,13 @@ final class EntregaLocalDataSourceDrift {
         final cita = fila.readTableOrNull(agendas);
         final acumulada = porVenta.putIfAbsent(
           venta.id,
-          () => _VentaPendiente(venta.id, venta.espacioPersonaId, venta.fecha),
+          () => _VentaPendiente(
+            venta.id,
+            venta.espacioPersonaId,
+            venta.fecha,
+            fila.readTableOrNull(vinculos)?.espacioId,
+            venta.numeroTalonario,
+          ),
         );
         acumulada.lineas.putIfAbsent(
           entrega.id,
@@ -555,11 +563,19 @@ final class EntregaLocalDataSourceDrift {
 
 /// Lo que se junta de una venta mientras se recorren las filas de la consulta de pendientes.
 final class _VentaPendiente {
-  _VentaPendiente(this.ventaId, this.espacioPersonaId, this.vendidaEl);
+  _VentaPendiente(
+    this.ventaId,
+    this.espacioPersonaId,
+    this.vendidaEl,
+    this.espacioId,
+    this.numeroTalonario,
+  );
 
   final String ventaId;
   final String espacioPersonaId;
   final DateTime vendidaEl;
+  final String? espacioId;
+  final String numeroTalonario;
   final lineas = <String, LineaPendiente>{};
   DateTime? fecha;
   String? agendaId;
@@ -570,6 +586,8 @@ final class _VentaPendiente {
     lineas: lineas.values.toList(),
     fechaPrevista: fecha,
     agendaId: agendaId,
+    espacioId: espacioId,
+    numeroTalonario: numeroTalonario,
   );
 
   /// Primero las que tienen fecha, de la más próxima a la más lejana; después las que no, de la venta

@@ -535,8 +535,38 @@ void main() {
           ],
           fechaPrevista: sabado,
           agendaId: 'c-1',
+          espacioId: 'esp-1',
+          numeroTalonario: 'T-v-1',
         ),
       ]);
+    });
+
+    test(
+      'lleva la casa del vínculo y el talonario, para resolver quién y dónde en el teléfono',
+      () async {
+        await sembrarVinculo(db, id: 'ep-2', espacioId: 'esp-1', personaId: 'per-2');
+        await vender(id: 'v-2', vinculo: 'ep-2');
+        await local.entregarAhora('v-2', [
+          entregaDe('e-9', 'prod-9', pendiente: true, ventaId: 'v-2'),
+        ]);
+
+        final lista = await local.observarPendientes().first;
+
+        expect(lista.single.espacioId, 'esp-1');
+        expect(lista.single.numeroTalonario, 'T-v-2');
+      },
+    );
+
+    test('si el vínculo ya no está, la entrega figura igual y sin casa', () async {
+      await vender();
+      await diferir();
+      await (db.delete(db.espacioPersonas)).go();
+
+      final lista = await local.observarPendientes().first;
+
+      expect(lista.single.ventaId, 'v-1');
+      expect(lista.single.espacioId, isNull);
+      expect(lista.single.numeroTalonario, 'T-v-1');
     });
 
     test('lo entregado no figura y la lista vuelve a vaciarse', () async {
