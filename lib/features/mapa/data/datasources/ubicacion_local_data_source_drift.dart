@@ -3,9 +3,12 @@ import 'dart:math' as math;
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacio.dart';
@@ -53,11 +56,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required this._encolador,
     this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
     HouseStatusUpdater? estadoDeLasCasas,
-  }) : _estadoInyectado = estadoDeLasCasas;
+    DateTime Function()? ahora,
+  }) : _estadoInyectado = estadoDeLasCasas,
+       _ahora = ahora ?? DateTime.now;
 
   final EncoladorSync _encolador;
   final EncoladorMarcarDuplicado _marcarDuplicado;
   final HouseStatusUpdater? _estadoInyectado;
+
+  /// El reloj de «la próxima entrevista» de la lista: solo cuenta la que todavía no pasó.
+  final DateTime Function() _ahora;
 
   late final HouseStatusUpdater _estadoDeLasCasas =
       _estadoInyectado ?? HouseStatusUpdaterDrift(attachedDatabase, encolador: _encolador);
@@ -552,6 +560,12 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
     // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
     final motivo = auditLogLocal.motivo.max();
+    // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
+    // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
+    // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
+    final agendas = attachedDatabase.agendas;
+    final proxima = agendas.fechaProgramada.min();
+    final desde = const FechaUtcConverter().toSql(_ahora());
     final consulta =
         select(ubicaciones).join([
             leftOuterJoin(
@@ -572,8 +586,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               houseStatuses.ubicacionId.equalsExp(ubicaciones.id) &
                   houseStatuses.deletedAt.isNull(),
             ),
+            leftOuterJoin(
+              agendas,
+              agendas.espacioId.equalsExp(espacios.id) &
+                  agendas.colportorId.equals(colportorId) &
+                  agendas.estado.equals(EstadoAgenda.programada.codigo) &
+                  agendas.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  agendas.deletedAt.isNull() &
+                  agendas.fechaProgramada.isBiggerOrEqualValue(desde),
+            ),
           ])
-          ..addColumns([cantidad, motivo])
+          ..addColumns([cantidad, motivo, proxima])
           ..where(ubicaciones.createdBy.equals(colportorId))
           ..groupBy([ubicaciones.id]);
     if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
@@ -585,10 +608,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             cantidadEspacios: fila.read(cantidad) ?? 0,
             color: _colorDe(fila.readTableOrNull(houseStatuses)),
             motivoBaja: fila.read(motivo),
+            proximaEntrevista: _fechaDe(fila.read(proxima)),
           ),
       ],
     );
   }
+
+  static DateTime? _fechaDe(int? ms) => ms == null ? null : const FechaUtcConverter().fromSql(ms);
 
   /// El color de la fila de `house_status`, o `null` si la ubicación no tiene (es «Sin visita»).
   static ColorHouseStatus? _colorDe(HouseStatusFila? fila) =>

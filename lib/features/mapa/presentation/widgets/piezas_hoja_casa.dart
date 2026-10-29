@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../domain/entities/nota_del_lugar.dart';
 import '../../domain/entities/persona.dart';
 import '../formato_hoja_casa.dart';
@@ -23,6 +24,7 @@ abstract final class ClavesHojaCasa {
   static Key pestana(String id) => Key('hoja_casa_pestana_$id');
   static const nota = Key('hoja_casa_nota');
   static const registrarVisita = Key('hoja_casa_registrar_visita');
+  static const agendar = Key('hoja_casa_agendar');
   static const cerrar = Key('hoja_casa_cerrar');
 }
 
@@ -380,6 +382,33 @@ class BotonRegistrarVisita extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
       ),
+    );
+  }
+}
+
+/// «+ Agendar» de la hoja de la casa (23B·10): la segunda acción, debajo de «Registrar visita». Mientras
+/// [ocupado] queda apagado (un doble toque no abre dos veces el formulario). Alto mínimo 48.
+class BotonAgendarDeLaCasa extends StatelessWidget {
+  const BotonAgendarDeLaCasa({super.key, required this.alPresionar, this.ocupado = false});
+
+  final VoidCallback alPresionar;
+  final bool ocupado;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      key: ClavesHojaCasa.agendar,
+      onPressed: ocupado ? null : alPresionar,
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFF13407A),
+        minimumSize: const Size.fromHeight(48),
+        textStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 14.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      child: const Text(TextosAgenda.agendar),
     );
   }
 }

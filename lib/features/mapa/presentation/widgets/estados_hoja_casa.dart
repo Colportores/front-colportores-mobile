@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -54,6 +55,7 @@ abstract final class TextosEstadosHojaCasa {
 abstract final class ClavesEstadosHojaCasa {
   static const cargando = Key('hoja_casa_cargando');
   static const avisoErrorAlLeer = Key('hoja_casa_aviso_error');
+  static const avisoErrorAlLeerAgendas = Key('hoja_casa_aviso_error_agendas');
   static const avisoDadaDeBaja = Key('hoja_casa_aviso_baja');
   static const avisoLejos = Key('hoja_casa_aviso_lejos');
   static const accionDelAviso = Key('hoja_casa_aviso_accion');
@@ -153,6 +155,19 @@ class AvisoHojaCasa extends StatefulWidget {
         etiquetaDeLaAccion: TextosEstadosHojaCasa.reintentar,
         alAccionar: alReintentar,
       );
+
+  /// «No pudimos leer tu agenda.» con «Reintentar», cuando no se puede leer la lista de «Visitas
+  /// agendadas» de la casa (23B·09, el mismo aviso de la pestaña Agenda).
+  factory AvisoHojaCasa.errorAlLeerAgendas({
+    Key? key,
+    required FutureOr<void> Function() alReintentar,
+  }) => AvisoHojaCasa._(
+    key: key ?? ClavesEstadosHojaCasa.avisoErrorAlLeerAgendas,
+    tono: TonoAvisoHojaCasa.error,
+    texto: TextosAgenda.errorLectura,
+    etiquetaDeLaAccion: TextosAgenda.reintentar,
+    alAccionar: alReintentar,
+  );
 
   /// E·04 · «Esta casa está dada de baja: podés ver lo que pasó, pero no registrar nada.» con
   /// «Reactivar». Sin [alReactivar] (la baja por unión de duplicados no se reactiva, HU-UBI-005) el

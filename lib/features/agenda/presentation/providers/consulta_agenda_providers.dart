@@ -58,6 +58,20 @@ final agendaCampaniaLeidaProvider = StreamProvider.autoDispose
       retry: _sinReintentos,
     );
 
+/// Qué casa lee «Visitas agendadas»: el colportor y la ubicación.
+typedef ClaveVisitasDeLaCasa = ({String colportorId, String ubicacionId});
+
+/// Las visitas `PROGRAMADA` de una casa, reactivas (la lista «Visitas agendadas» de la hoja de la casa,
+/// vista 23, 23B·10, #491). Agendar, cancelar o registrar una visita, o dar de baja la casa o el
+/// depto, las vuelve a emitir.
+final visitasAgendadasDeLaCasaProvider = StreamProvider.autoDispose
+    .family<List<ItemAgenda>, ClaveVisitasDeLaCasa>(
+      (ref, clave) => ref
+          .watch(consultaAgendaRepositoryProvider)
+          .observarDeLaCasa(colportorId: clave.colportorId, ubicacionId: clave.ubicacionId),
+      retry: _sinReintentos,
+    );
+
 /// Los filtros de la agenda del colportor [colportorId]: por tipo y por estado. Se conservan mientras
 /// la pantalla esté montada (la hoja «Agendados» del mapa usa los mismos).
 final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {
