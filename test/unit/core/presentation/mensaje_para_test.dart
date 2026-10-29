@@ -45,7 +45,10 @@ void main() {
     test('el genérico (sin texto propio ni código técnico) se compone con el «No pudimos …»', () {
       for (final status in <int?>[null, 400, 422, 500]) {
         expect(
-          mensajeDeServidor(FailureServidor(status: status), noPudimos: 'No pudimos crear tu cuenta.'),
+          mensajeDeServidor(
+            FailureServidor(status: status),
+            noPudimos: 'No pudimos crear tu cuenta.',
+          ),
           'No pudimos crear tu cuenta. Probá de nuevo en unos minutos.',
         );
       }
