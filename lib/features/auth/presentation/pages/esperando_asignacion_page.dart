@@ -13,6 +13,7 @@ import '../providers/asignacion_campania_providers.dart';
 import '../providers/estado_cuenta_providers.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/aviso_modulo_bloqueado.dart';
+import '../widgets/terminar_jornada_de_la_cuenta.dart';
 
 /// Textos de la pantalla de espera (HU-AUTH-008, vista 18). Los literales de la HU van tal cual;
 /// el resto es propuesta del diseño.
@@ -382,6 +383,8 @@ class _Pendiente extends StatelessWidget {
             if (completo) const Padding(padding: EdgeInsets.only(top: 10), child: _LineaDeTiempo()),
           ],
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar.
+        const TerminarJornadaDeLaCuenta(),
         Padding(
           padding: const EdgeInsets.only(top: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: pie),
@@ -447,6 +450,8 @@ class _Suspendida extends StatelessWidget {
             ),
           ),
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar.
+        const TerminarJornadaDeLaCuenta(),
         const SizedBox(height: 24),
         OutlinedButton(
           key: const Key('espera_ir_a_configuracion'),
