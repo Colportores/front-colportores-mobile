@@ -224,7 +224,13 @@ void main() {
         final modelo = UbicacionModel.fromEntity(ubicacion);
         final local = _LocalFijo(
           lista: Stream.value([
-            (ubicacion: modelo, cantidadEspacios: 3, color: null, motivoBaja: 'Ya no existe'),
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 3,
+              color: null,
+              motivoBaja: 'Ya no existe',
+              proximaEntrevista: null,
+            ),
           ]),
         );
 
@@ -256,7 +262,13 @@ void main() {
       final local = _LocalFijo(
         lista: Stream.value([
           for (final color in esperados.keys)
-            (ubicacion: modelo, cantidadEspacios: 1, color: color, motivoBaja: null),
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: color,
+              motivoBaja: null,
+              proximaEntrevista: null,
+            ),
         ]),
       );
 
@@ -266,6 +278,40 @@ void main() {
 
       expect([for (final f in lista) f.estado], esperados.values.toList());
     });
+
+    test(
+      'la próxima entrevista de la agenda local llega a la fila, y sin agenda queda en null',
+      () async {
+        final modelo = UbicacionModel.fromEntity(ubicacion);
+        final cuando = DateTime.utc(2026, 10, 30, 14, 30);
+        final local = _LocalFijo(
+          lista: Stream.value([
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: ColorHouseStatus.entrevistaProgramada,
+              motivoBaja: null,
+              proximaEntrevista: cuando,
+            ),
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: null,
+              motivoBaja: null,
+              proximaEntrevista: null,
+            ),
+          ]),
+        );
+
+        final lista = await UbicacionRepositoryImpl(
+          local,
+        ).observarListaDelColportor(colportorId: 'col-1').first;
+
+        expect(lista.first.proximaEntrevista, cuando);
+        expect(lista.first.estado, EstadoCasa.entrevistaAgendada);
+        expect(lista.last.proximaEntrevista, isNull);
+      },
+    );
 
     test('un error de lectura llega al stream', () async {
       final local = _LocalFijo(lista: Stream.error(StateError('db cerrada')));

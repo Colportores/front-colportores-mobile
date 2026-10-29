@@ -20,6 +20,7 @@ abstract final class TextosAgenda {
   static const filtroTipo = 'Filtrar por tipo';
 
   static const agendar = '+ Agendar';
+  static const visitasAgendadas = 'VISITAS AGENDADAS';
   static const registrar = 'Registrar';
   static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
@@ -92,6 +93,30 @@ abstract final class FormatoAgenda {
   /// El subtítulo de la pestaña: la ventana de siempre, o la campaña con un estado cerrado o «Todas».
   static String subtituloDe(FiltrosAgenda filtros) =>
       filtros.estado.miraLaCampania ? TextosAgenda.subtituloCampania : TextosAgenda.subtitulo;
+
+  static const _diasCortos = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+  /// «JUE 24/10 · 14:30» (con el año si no es el de [ahora]): cuándo es una visita en la lista de la
+  /// hoja de la casa (23B·10).
+  static String cuandoCorto(DateTime momento, DateTime ahora) {
+    final l = momento.toLocal();
+    return '${_diasCortos[l.weekday - 1]} ${diaMesConAnio(momento, ahora)} · ${hora(momento)}';
+  }
+
+  /// La segunda línea de una visita en la hoja de la casa: con quién («María Fernández»), «en» la
+  /// dirección si la cobranza es en otra, o el depto si la casa es un edificio. `null` si no hay nada
+  /// que decir (la casa ya es el título de la hoja).
+  static String? subtituloDeVisitaDeLaCasa(ItemAgenda item) {
+    final alternativa = item.alternativa == null ? null : direccion(item);
+    final depto = item.numeroDepto?.trim() ?? '';
+    final partes = [
+      ?item.nombrePersona,
+      if (alternativa != null) 'en $alternativa',
+      if (alternativa == null && depto.isNotEmpty && item.casa?.tipo == TipoUbicacion.edificio)
+        'Depto $depto',
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
 
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
   static String rotuloConConteo(DiaDeAgenda dia) => '${rotuloDelDia(dia)} (${dia.cantidad})';

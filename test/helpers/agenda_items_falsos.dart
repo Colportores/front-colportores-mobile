@@ -71,7 +71,23 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
 
   final pedidos = <({String colportorId, DateTime desde, DateTime hasta})>[];
   final pedidosCampania = <({String colportorId, DateTime hoy})>[];
-  final _abiertos = <StreamController<List<ItemAgenda>>>[];
+  final pedidosDeLaCasa = <({String colportorId, String ubicacionId})>[];
+  final _abiertos = <({StreamController<List<ItemAgenda>> c, List<ItemAgenda> Function() lista})>[];
+
+  Stream<List<ItemAgenda>> _abrir(List<ItemAgenda> Function() lista) {
+    final c = StreamController<List<ItemAgenda>>();
+    _abiertos.add((c: c, lista: lista));
+    c.onListen = () {
+      if (congelada) return;
+      final e = error;
+      if (e != null) {
+        c.addError(e);
+      } else {
+        c.add(lista());
+      }
+    };
+    return c.stream;
+  }
 
   @override
   Stream<List<ItemAgenda>> observar({
@@ -80,48 +96,43 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
     required DateTime hasta,
   }) {
     pedidos.add((colportorId: colportorId, desde: desde, hasta: hasta));
-    final c = StreamController<List<ItemAgenda>>();
-    _abiertos.add(c);
-    c.onListen = () {
-      if (congelada) return;
-      final e = error;
-      if (e != null) {
-        c.addError(e);
-      } else {
-        c.add(items);
-      }
-    };
-    return c.stream;
+    return _abrir(() => items);
   }
 
   @override
   Stream<List<ItemAgenda>> observarCampania({required String colportorId, required DateTime hoy}) {
     pedidosCampania.add((colportorId: colportorId, hoy: hoy));
-    final c = StreamController<List<ItemAgenda>>();
-    _abiertos.add(c);
-    c.onListen = () {
-      if (congelada) return;
-      final e = error;
-      if (e != null) {
-        c.addError(e);
-      } else {
-        c.add(items);
-      }
-    };
-    return c.stream;
+    return _abrir(() => items);
+  }
+
+  @override
+  Stream<List<ItemAgenda>> observarDeLaCasa({
+    required String colportorId,
+    required String ubicacionId,
+  }) {
+    pedidosDeLaCasa.add((colportorId: colportorId, ubicacionId: ubicacionId));
+    return _abrir(
+      () => [
+        for (final i in items)
+          if (i.agenda.estado == EstadoAgenda.programada &&
+              i.casa?.ubicacionId == ubicacionId &&
+              i.agenda.colportorId == colportorId)
+            i,
+      ]..sort((a, b) => a.agenda.fechaProgramada.compareTo(b.agenda.fechaProgramada)),
+    );
   }
 
   /// Un error del lector después de haber emitido datos.
   void emitirError(Object e) {
-    for (final c in _abiertos) {
-      if (!c.isClosed && c.hasListener) c.addError(e);
+    for (final a in _abiertos) {
+      if (!a.c.isClosed && a.c.hasListener) a.c.addError(e);
     }
   }
 
   void emitir(List<ItemAgenda> nuevos) {
     items = nuevos;
-    for (final c in _abiertos) {
-      if (!c.isClosed && c.hasListener) c.add(nuevos);
+    for (final a in _abiertos) {
+      if (!a.c.isClosed && a.c.hasListener) a.c.add(a.lista());
     }
   }
 }

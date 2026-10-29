@@ -20,13 +20,14 @@ typedef UnionLocal = ({
 
 /// Una ubicación con la cantidad de espacios sin baja que tiene, el color de su fila de
 /// `house_status` (`null` si no tiene: la casa es «Sin visita») y, si está de baja, el motivo con que
-/// se dio de baja (`audit_log` local), para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005,
-/// HU-VIS-005).
+/// se dio de baja (`audit_log` local) y la hora de su próxima entrevista agendada (`null` si no tiene),
+/// para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005, HU-VIS-005, #491).
 typedef UbicacionConEspacios = ({
   UbicacionModel ubicacion,
   int cantidadEspacios,
   ColorHouseStatus? color,
   String? motivoBaja,
+  DateTime? proximaEntrevista,
 });
 
 /// Persistencia local de las ubicaciones y sus espacios.
