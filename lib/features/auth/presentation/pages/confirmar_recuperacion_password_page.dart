@@ -124,6 +124,7 @@ class _ConfirmarRecuperacionPasswordPageState
 
   final _nueva = TextEditingController();
   final _repetida = TextEditingController();
+  final _scroll = ScrollController();
 
   late bool _vencido = widget.enlace == EnlaceRecuperacion.vencido;
   bool _guardando = false;
@@ -150,6 +151,7 @@ class _ConfirmarRecuperacionPasswordPageState
   void dispose() {
     _nueva.dispose();
     _repetida.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -283,6 +285,9 @@ class _ConfirmarRecuperacionPasswordPageState
           _cierreFallido = cierreFallido;
           _otrasSinCerrar = otrasSinCerrar;
         });
+        // El éxito reemplaza al formulario: con el texto grande el formulario venía desplazado y el
+        // éxito abría a mitad de camino. Se lo lleva al inicio.
+        if (_scroll.hasClients) _scroll.jumpTo(0);
       }
     }
   }
@@ -345,6 +350,7 @@ class _ConfirmarRecuperacionPasswordPageState
               ? _enlaceInservible(theme, haySesion: haySesion)
               : LayoutBuilder(
                   builder: (context, constraints) => SingleChildScrollView(
+                    controller: _scroll,
                     padding: const EdgeInsets.symmetric(
                       horizontal: paddingHorizontal,
                       vertical: 24,

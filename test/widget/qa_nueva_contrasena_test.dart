@@ -1229,4 +1229,25 @@ void main() {
       }, skip: !capturar);
     }
   });
+
+  group('QA vista 15 (#542) — el éxito abre arriba', () {
+    testWidgets(
+      'con el texto al 200 % en 360x640, el éxito no queda desplazado como el formulario',
+      (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: 2.0);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await tester.ensureVisible(_guardar);
+        await tester.pumpAndSettle();
+        final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
+        expect(scroll.position.pixels, greaterThan(0), reason: 'el formulario venía desplazado');
+
+        await tester.tap(_guardar);
+        await tester.pumpAndSettle();
+
+        expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+        expect(scroll.position.pixels, 0, reason: 'el éxito abre desde el inicio');
+      },
+    );
+  });
 }
