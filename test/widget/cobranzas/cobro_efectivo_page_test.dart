@@ -99,6 +99,8 @@ void main() {
 
       expect(elBoton(tester).onPressed, isNull);
       expect(find.text('Ingresá el monto que te pagaron.'), findsOneWidget);
+      // Apagado pero legible: el rótulo es blanco, no la tinta al 38 % de Material.
+      expect(contrasteDelBoton(tester, 'Registrar cobro'), greaterThanOrEqualTo(3));
 
       await tester.tap(botonRegistrar, warnIfMissed: false);
       await asentarAgendar(tester);
@@ -363,6 +365,20 @@ void main() {
       a.repo.compuerta!.complete();
       await asentarAgendar(tester);
       expect(find.text('Cobro registrado'), findsOneWidget);
+    });
+
+    testWidgets('«Registrando…» se lee: blanco sobre el azul lleno (contraste AA)', (tester) async {
+      final a = await montarCobro(tester);
+      a.repo.compuerta = Completer<void>();
+
+      await escribirMonto(tester, '300');
+      await tocarCobro(tester, botonRegistrar);
+
+      expect(find.text('Registrando…'), findsOneWidget);
+      expect(contrasteDelBoton(tester, 'Registrando…'), greaterThanOrEqualTo(4.5));
+
+      a.repo.compuerta!.complete();
+      await asentarAgendar(tester);
     });
 
     testWidgets('el campo de fecha tampoco responde mientras guarda', (tester) async {

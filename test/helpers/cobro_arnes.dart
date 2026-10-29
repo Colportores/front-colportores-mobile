@@ -284,3 +284,21 @@ Future<void> tocarCobro(WidgetTester tester, Finder f) async {
   await tester.tap(f.first);
   await asentarAgendar(tester);
 }
+
+/// Contraste (WCAG) del rótulo [texto] del botón principal contra su fondo, componiendo el fondo
+/// sobre blanco si es translúcido: lo que se ve de verdad, con el botón apagado o no.
+double contrasteDelBoton(WidgetTester tester, String texto) {
+  final estilo = tester
+      .widget<DefaultTextStyle>(
+        find.ancestor(of: find.text(texto), matching: find.byType(DefaultTextStyle)).first,
+      )
+      .style;
+  final fondo = tester
+      .widget<Material>(find.descendant(of: botonRegistrar, matching: find.byType(Material)).first)
+      .color!;
+  final base = Color.alphaBlend(fondo, Colors.white);
+  final letra = Color.alphaBlend(estilo.color!, base);
+  final claro = letra.computeLuminance() > base.computeLuminance() ? letra : base;
+  final oscuro = identical(claro, letra) ? base : letra;
+  return (claro.computeLuminance() + .05) / (oscuro.computeLuminance() + .05);
+}
