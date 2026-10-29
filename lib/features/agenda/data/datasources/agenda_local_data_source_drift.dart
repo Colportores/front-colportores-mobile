@@ -5,6 +5,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../cobranzas/data/datasources/cuotas_local_data_source_drift.dart';
 import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/data/datasources/notas_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
@@ -75,28 +76,38 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   });
 
   @override
-  Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora}) =>
-      _db.transaction(() async {
-        final fila = await _agendaPorId(agendaId);
-        if (fila == null || fila.deletedAt != null) {
-          throw const AgendaRechazadaException(_Motivo.agendaInexistente);
-        }
-        final estado = EstadoAgenda.desdeCodigo(fila.estado);
-        // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
-        // escribir ni a encolar.
-        if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
-        if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+  Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora}) => _db.transaction(
+    () async {
+      final fila = await _agendaPorId(agendaId);
+      if (fila == null || fila.deletedAt != null) {
+        throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+      }
+      final estado = EstadoAgenda.desdeCodigo(fila.estado);
+      // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
+      // escribir ni a encolar.
+      if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
+      if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
 
-        final guardada = await _escribirAgenda(
-          agendaId,
-          AgendasCompanion(
-            estado: Value(EstadoAgenda.cancelada.codigo),
-            updatedAt: Value(instanteMs(ahora)),
-          ),
-        );
-        await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
-        return (agenda: guardada, escribio: true);
-      });
+      // Una cuota del plan de una venta no se pierde al cancelarla: su monto pasa a las que siguen
+      // (HU-COB-004, «Plan cuotas»). Se mide antes de cancelar, con la cuota todavía abierta.
+      if (fila.montoPrevisto != null) {
+        await CuotasLocalDataSourceDrift(
+          _db,
+          encolador: _encolador,
+          estadoDeLasCasas: _estadoDeLasCasas,
+        ).trasladarLaCancelada(agendaId, ahora: ahora);
+      }
+      final guardada = await _escribirAgenda(
+        agendaId,
+        AgendasCompanion(
+          estado: Value(EstadoAgenda.cancelada.codigo),
+          updatedAt: Value(instanteMs(ahora)),
+        ),
+      );
+      await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+      return (agenda: guardada, escribio: true);
+    },
+  );
 
   @override
   Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
@@ -110,6 +121,10 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         // llegar cancelada del servidor.
         if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
           throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+        }
+        // Una cuota del plan se reprograma, pero sigue siendo una cobranza con su venta y su monto.
+        if (fila.montoPrevisto != null && cambios.tipo != TipoAgenda.cobranza) {
+          throw const AgendaRechazadaException(_Motivo.cuotaDelPlan);
         }
 
         final instante = instanteMs(ahora);
@@ -523,6 +538,12 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     await _estadoDeLasCasas.recalcular(ubicacionId, ahora: ahora, colportorId: colportorId);
   }
 
+  /// La entidad de una fila de `agenda`: la usan las cuotas del plan (HU-COB-004), que son citas.
+  static Agenda desdeFila(AgendaFila fila) => _aAgenda(fila);
+
+  /// La fila de [agenda] lista para insertar.
+  static AgendasCompanion aFila(Agenda agenda) => _aFilaAgenda(agenda);
+
   static Agenda _aAgenda(AgendaFila fila) => Agenda(
     id: fila.id,
     espacioId: fila.espacioId,
@@ -535,6 +556,8 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     estado: EstadoAgenda.desdeCodigo(fila.estado),
     colportorId: fila.colportorId,
     visitaId: fila.visitaId,
+    ventaId: fila.ventaId,
+    montoPrevistoCentavos: fila.montoPrevisto,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -573,6 +596,8 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     estado: Value(a.estado.codigo),
     colportorId: a.colportorId,
     visitaId: Value(a.visitaId),
+    ventaId: Value(a.ventaId),
+    montoPrevisto: Value(a.montoPrevistoCentavos),
     createdAt: a.auditoria.createdAt,
     updatedAt: a.auditoria.updatedAt,
     createdBy: Value(a.auditoria.createdBy),

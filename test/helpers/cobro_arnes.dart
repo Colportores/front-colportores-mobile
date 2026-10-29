@@ -18,6 +18,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/personas
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'agendar_visita_arnes.dart';
@@ -186,6 +187,7 @@ Future<ArnesCobro> montarCobro(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  List<Override> overrides = const [],
 }) async {
   final arnes = ArnesCobro(
     repo: repo ?? CobranzasEnMemoria(),
@@ -212,6 +214,7 @@ Future<ArnesCobro> montarCobro(
         ...arnes.telefono.overrides,
         personaRepositoryProvider.overrideWithValue(personasRepo),
         espacioRepositoryProvider.overrideWithValue(EspacioRepositorioParaPersonas(lugar)),
+        ...overrides,
       ],
       child: MaterialApp(
         theme: temaClaro(),

@@ -25,6 +25,7 @@ import 'generated/schema_v18.dart' as v18;
 import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v20.dart' as v20;
+import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1246,4 +1247,64 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado una agenda guardada en la versión 20, cuando migra a la 21, no se pierde nada, suma la '
+    'venta y el monto previsto vacíos y deja guardar una cuota (HU-COB-004, #166)',
+    () async {
+      const agenda = v20.AgendaData(
+        id: 'a-1',
+        espacioId: 'es-1',
+        espacioPersonaId: 'ep-1',
+        tipo: 'COBRANZA',
+        fechaProgramada: 1,
+        esEstricta: 0,
+        estado: 'PROGRAMADA',
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 20,
+        newVersion: 21,
+        createOld: v20.DatabaseAtV20.new,
+        createNew: v21.DatabaseAtV21.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.agenda, agenda);
+        },
+        validateItems: (nuevo) async {
+          final citas = await nuevo.select(nuevo.agenda).get();
+          expect(citas.map((c) => c.id), ['a-1']);
+          expect(citas.single.tipo, 'COBRANZA');
+          expect(citas.single.syncVersion, 3);
+          expect(citas.single.ventaId, isNull);
+          expect(citas.single.montoPrevisto, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Una cobranza con su venta acepta el monto previsto; sin venta, o de otro tipo, no.
+          await nuevo.customStatement(
+            "UPDATE agenda SET venta_id = 'v-1', monto_previsto = 833 WHERE id = 'a-1'",
+          );
+          final cuota = await nuevo.select(nuevo.agenda).getSingle();
+          expect(cuota.ventaId, 'v-1');
+          expect(cuota.montoPrevisto, 833);
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET venta_id = NULL WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET monto_previsto = 0 WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET tipo = 'ENTREVISTA' WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+        },
+      );
+    },
+  );
 }
