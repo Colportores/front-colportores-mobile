@@ -18,6 +18,10 @@ abstract final class EventoAuditoriaLocal {
   /// `creado_en` el mismo instante que su `deleted_at`.
   static const personaBaja = 'persona_baja';
 
+  /// El toque en «Llamar» de la ficha de una persona (HU-UBI-009, `click_to_call`). `uuid` es el `id`
+  /// de la persona; **nunca** el número ni nada de sus datos. Sin motivo. Solo local.
+  static const clickToCall = 'click_to_call';
+
   /// Una agenda modificada (HU-VIS-003, «Audit log local»): `uuid` es el `id` de la agenda y
   /// `creado_en` el instante del cambio. Sin motivo: la nota y la hora son datos de la persona y no
   /// se copian acá.

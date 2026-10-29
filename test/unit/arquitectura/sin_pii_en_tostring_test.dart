@@ -15,7 +15,9 @@ import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/iniciar_sesion_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/registrar_usuario_use_case.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio_persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
@@ -264,6 +266,39 @@ void main() {
       expect(texto, isNot(contains('Techera')));
       expect(texto, isNot(contains('Italia')));
       expect(texto, isNot(contains('402')));
+    });
+
+    test('dado la ficha de una persona (HU-UBI-009), cuando se interpola, no aparece ningun dato '
+        'personal', () {
+      final persona = Persona(
+        id: 'per-1',
+        nombre: 'Rosalia',
+        apellido: 'Techera',
+        telefono: '099123456',
+        auditoria: auditoria,
+      );
+      final nota = NotaPersona(
+        id: 'nota-1',
+        personaId: 'per-1',
+        texto: 'tiene un perro bravo',
+        auditoria: auditoria,
+      );
+      final ficha = FichaDePersona(
+        persona: persona,
+        espacioId: 'esp-1',
+        lugar: null,
+        contexto: const ContextoNotasPersona(nombre: 'Rosalia', direccion: 'Av. Italia 2810'),
+        notas: NotasDeLaFicha(total: 1, ultima: nota),
+        historial: const [],
+      );
+
+      for (final texto in ['$ficha', '${ficha.notas}', '${ficha.contexto}']) {
+        expect(texto, isNot(contains('Rosalia')));
+        expect(texto, isNot(contains('Techera')));
+        expect(texto, isNot(contains('099123456')));
+        expect(texto, isNot(contains('perro bravo')));
+        expect(texto, isNot(contains('Italia')));
+      }
     });
   });
 }

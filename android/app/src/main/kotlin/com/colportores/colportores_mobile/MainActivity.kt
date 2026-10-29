@@ -219,6 +219,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Abre el marcador del sistema con [numero] escrito (`ACTION_DIAL`, sin permiso: no llama solo).
+     * `false` si el número no es de dígitos con un `+` al comienzo, o si ninguna app lo abre. El número
+     * no se registra ni se devuelve a Dart.
+     */
+    private fun marcarTelefono(numero: String?): Boolean {
+        if (numero == null || !Regex("^\\+?[0-9]{1,20}$").matches(numero)) return false
+        return try {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", numero, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun tieneBloqueoPantalla(): Boolean {
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         return keyguard.isDeviceSecure
