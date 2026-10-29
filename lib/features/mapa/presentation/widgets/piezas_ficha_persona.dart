@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/cuenta_de_persona.dart';
+import '../../domain/services/filtro_de_historial.dart';
 import '../textos_baja_persona.dart';
 import '../textos_ficha_persona.dart';
 import 'piezas_alta.dart';
@@ -19,12 +20,12 @@ abstract final class ClavesFicha {
   static const opcionEditar = Key('ficha_opcion_editar');
   static const opcionBaja = Key('ficha_opcion_baja');
   static const cuenta = Key('ficha_cuenta');
-  static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
   static const ultimaNota = Key('ficha_ultima_nota');
   static const historial = Key('ficha_historial');
   static const verMas = Key('ficha_ver_mas');
+  static const sinResultados = Key('ficha_sin_resultados');
   static const hero = Key('ficha_hero');
   static const botonRegistrarVisita = Key('ficha_registrar_visita');
   static const aviso = Key('ficha_aviso');
@@ -34,6 +35,8 @@ abstract final class ClavesFicha {
   static const error = Key('ficha_error');
 
   static Key fila(String id) => Key('ficha_fila_$id');
+
+  static Key filtro(FiltroDeHistorial f) => Key('ficha_filtro_${f.name}');
 }
 
 const _estiloRotulo = TextStyle(
@@ -341,24 +344,6 @@ class TarjetaCuenta extends StatelessWidget {
   }
 }
 
-/// La cuenta cuando no hay de dónde saberla: «Sin movimientos aún» (HU-UBI-009).
-class TarjetaSinMovimientos extends StatelessWidget {
-  const TarjetaSinMovimientos({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const KeyedSubtree(
-      key: ClavesFicha.sinMovimientos,
-      child: _Cuadro(
-        hijo: Text(
-          TextosFicha.sinMovimientos,
-          style: TextStyle(fontSize: 14, color: ColoresAlta.gris),
-        ),
-      ),
-    );
-  }
-}
-
 /// La última nota (32B·01): el día y «1 DE 2», y las primeras 200 caracteres. Se toca entera para abrir
 /// todas las notas.
 class TarjetaUltimaNota extends StatelessWidget {
@@ -417,6 +402,56 @@ class TarjetaUltimaNota extends StatelessWidget {
 
 /// Una fila del historial (32B·01): visita, venta, entrega o cobro, con su glyph, la línea chica de
 /// arriba, el título y, si hay, la de abajo. No se toca: el detalle de cada una no está en esta vista.
+/// MOSTRAR con Todo, Con saldo y Entrega pendiente (32B-03): se elige una sola opción.
+class FiltroDelHistorial extends StatelessWidget {
+  const FiltroDelHistorial({super.key, required this.elegido, required this.alElegir});
+
+  final FiltroDeHistorial elegido;
+  final ValueChanged<FiltroDeHistorial> alElegir;
+
+  @override
+  Widget build(BuildContext context) {
+    final esquema = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ExcludeSemantics(child: Text(TextosFicha.mostrar, style: _estiloRotulo)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final f in FiltroDeHistorial.values)
+              Semantics(
+                selected: f == elegido,
+                button: true,
+                label: TextosFicha.lectorFiltro(f, elegido: f == elegido),
+                excludeSemantics: true,
+                // Con `excludeSemantics` se descarta la acción del chip: se declara acá.
+                onTap: () => alElegir(f),
+                child: ChoiceChip(
+                  key: ClavesFicha.filtro(f),
+                  label: Text(TextosFicha.filtro(f)),
+                  selected: f == elegido,
+                  showCheckmark: false,
+                  selectedColor: esquema.primary,
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: f == elegido ? esquema.primary : ColoresAlta.grisBorde),
+                  labelStyle: TextStyle(
+                    color: f == elegido ? esquema.onPrimary : ColoresAlta.tinta,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  onSelected: (_) => alElegir(f),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class FilaDeHistorial extends StatelessWidget {
   const FilaDeHistorial({super.key, required this.movimiento, required this.ahora});
 

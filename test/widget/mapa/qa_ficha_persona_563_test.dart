@@ -51,7 +51,7 @@ void main() {
     EstadoFicha.error: () => find.byKey(ClavesFicha.error),
     EstadoFicha.deptoDeBaja: () => find.byKey(ClavesFicha.botonReactivarDepto),
     EstadoFicha.personaNoEncontrada: () => find.text(TextosFicha.personaNoEncontrada),
-    EstadoFicha.sinMovimientos: () => find.byKey(ClavesFicha.sinMovimientos),
+    EstadoFicha.sinMovimientos: () => find.byKey(ClavesFicha.historial),
     EstadoFicha.conEntregasYCobros: () => find.text('20/10 · COBRO'),
     EstadoFicha.muchosMovimientos: () => find.byKey(ClavesFicha.verMas),
     EstadoFicha.textosLargos: () => find.byKey(ClavesFicha.cuenta),

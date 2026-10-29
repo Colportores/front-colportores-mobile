@@ -2,6 +2,7 @@ import '../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../domain/entities/contexto_notas_persona.dart';
 import '../domain/entities/ficha_de_persona.dart';
 import '../domain/entities/nota_persona.dart';
+import '../domain/services/filtro_de_historial.dart';
 import 'textos_baja_persona.dart';
 import 'textos_notas.dart';
 
@@ -19,6 +20,10 @@ abstract final class TextosFicha {
   static const notasRotulo = 'NOTAS · SOLO EN TU TELÉFONO';
   static const masNota = '+ Nota';
   static const historial = 'HISTORIAL';
+  static const mostrar = 'MOSTRAR';
+  static const filtroTodo = 'Todo';
+  static const filtroConSaldo = 'Con saldo';
+  static const filtroEntregaPendiente = 'Entrega pendiente';
   static const sinHistorialTitulo = 'Todavía no hay visitas ni ventas';
   static const registrarVisita = 'Registrar visita';
   static const reintentar = 'Reintentar';
@@ -28,9 +33,6 @@ abstract final class TextosFicha {
   static const entregado = TextosBajaPersona.entregado;
   static const pagado = TextosBajaPersona.pagado;
   static const saldo = TextosBajaPersona.saldo;
-
-  /// «Sin movimientos aún» (HU-UBI-009): la cuenta de quien no tiene nada que mostrar.
-  static const sinMovimientos = 'Sin movimientos aún';
 
   // Menú «⋯» (decisiones del 26/10 en #405: la baja sale de acá, y la edición también).
   static const masOpciones = 'Más opciones';
@@ -47,6 +49,28 @@ abstract final class TextosFicha {
   static const noPudimosAbrir = 'No pudimos abrir esa pantalla. Probá de nuevo.';
   static const sinNotas = TextosNotas.sinNotas;
   static const reactivando = 'Reactivando…';
+
+  /// Qué hacer cuando el aviso de solo lectura no trae botón (decisión §2 del 29/10).
+  static const reactivarPrimeroLaUbicacion = 'Reactivá primero la ubicación desde el mapa.';
+  static const reactivarElDepto = 'Reactivá su depto desde el mapa.';
+
+  /// La etiqueta de cada opción de MOSTRAR (32B-03).
+  static String filtro(FiltroDeHistorial filtro) => switch (filtro) {
+    FiltroDeHistorial.todo => filtroTodo,
+    FiltroDeHistorial.conSaldo => filtroConSaldo,
+    FiltroDeHistorial.entregaPendiente => filtroEntregaPendiente,
+  };
+
+  /// Lo que lee el lector de una opción de MOSTRAR: Con saldo, elegido.
+  static String lectorFiltro(FiltroDeHistorial f, {required bool elegido}) =>
+      elegido ? '${filtro(f)}, elegido' : filtro(f);
+
+  /// A confirmar: el filtro no deja ningún movimiento.
+  static String sinResultadosDelFiltro(FiltroDeHistorial filtro) => switch (filtro) {
+    FiltroDeHistorial.conSaldo => 'No hay ventas con saldo.',
+    FiltroDeHistorial.entregaPendiente => 'No hay entregas pendientes.',
+    FiltroDeHistorial.todo => '',
+  };
 
   static String ayudaSinHistorial(String nombre) => 'Lo que registres con $nombre aparece acá.';
 
@@ -68,7 +92,11 @@ abstract final class TextosFicha {
   /// Los avisos de solo lectura (32B·04 y 32B·08). Los del canvas, con la persona de baja dicha sin
   /// género («de baja», como las notas: mapa §2 de #144) y el aviso del depto como lo decidió Cristian
   /// el 23/10 («Depto baja»: solo lectura, con «Reactivar el depto»).
-  static String avisoSoloLectura(ContextoNotasPersona contexto, DateTime ahora) {
+  static String avisoSoloLectura(
+    ContextoNotasPersona contexto,
+    DateTime ahora, {
+    bool ubicacionDeBaja = false,
+  }) {
     final nombre = contexto.nombre;
     return switch (contexto.causa) {
       CausaSoloLectura.personaDeBaja => () {
@@ -86,10 +114,11 @@ abstract final class TextosFicha {
             : depto != null
             ? 'El depto $depto está dado de baja.'
             : 'El espacio de $nombre está dado de baja.';
-        return '$lugar La ficha queda en solo lectura.';
+        final guia = ubicacionDeBaja ? ' $reactivarPrimeroLaUbicacion' : '';
+        return '$lugar La ficha queda en solo lectura.$guia';
       }(),
       CausaSoloLectura.sinEspacioActivo =>
-        '$nombre ya no está en ningún depto activo. La ficha queda en solo lectura.',
+        '$nombre ya no está en ningún depto activo. La ficha queda en solo lectura. $reactivarElDepto',
       null => '',
     };
   }

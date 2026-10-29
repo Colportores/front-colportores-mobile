@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/filtro_de_historial.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_baja_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_ficha_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_notas.dart';
@@ -83,16 +84,18 @@ void main() {
       expect(y, orderedEquals([...y]..sort()));
     });
 
-    testWidgets('sin la cuenta (todavía no hay de dónde saberla) dice «Sin movimientos aún»', (
-      tester,
-    ) async {
-      final m = MundoFicha(historial: historialDelCanvas());
-      await montarFicha(tester, m);
+    testWidgets(
+      'sin la cuenta (todavía no hay de dónde saberla) no muestra la tarjeta ni la inventa',
+      (tester) async {
+        final m = MundoFicha(historial: historialDelCanvas());
+        await montarFicha(tester, m);
 
-      expect(find.byKey(ClavesFicha.sinMovimientos), findsOneWidget);
-      expect(find.text(TextosFicha.sinMovimientos), findsOneWidget);
-      expect(find.byKey(ClavesFicha.cuenta), findsNothing);
-    });
+        expect(find.byKey(ClavesFicha.cuenta), findsNothing);
+        expect(find.text('Sin movimientos aún'), findsNothing);
+        expect(find.text(TextosFicha.saldo), findsNothing);
+        expect(find.byKey(ClavesFicha.historial), findsOneWidget);
+      },
+    );
 
     testWidgets('sin notas muestra «Todavía no hay notas» y «+ Nota» si hay historial', (
       tester,
@@ -406,7 +409,7 @@ void main() {
       await montarFicha(tester, m);
 
       expect(find.byKey(ClavesFicha.error), findsOneWidget);
-      expect(find.byKey(ClavesFicha.sinMovimientos), findsNothing);
+      expect(find.byKey(ClavesFicha.historial), findsNothing);
     });
   });
 
@@ -435,7 +438,7 @@ void main() {
     testWidgets('dice el aviso del canvas, deja ver todo y no ofrece escribir nada', (
       tester,
     ) async {
-      await montarFicha(tester, mundoDeBaja());
+      await montarFicha(tester, mundoDeBaja(), tamano: const Size(390, 1600));
 
       expect(
         find.text(
@@ -567,7 +570,7 @@ void main() {
     testWidgets('dice el aviso del canvas con «Reactivar el depto» y deja todo en solo lectura', (
       tester,
     ) async {
-      await montarFicha(tester, mundoDeptoDeBaja());
+      await montarFicha(tester, mundoDeptoDeBaja(), tamano: const Size(390, 1600));
 
       expect(
         find.text('El depto 3B de Mataojo 2044 está dado de baja. La ficha queda en solo lectura.'),
@@ -627,6 +630,290 @@ void main() {
 
       expect(find.byKey(ClavesFicha.aviso), findsOneWidget);
       expect(find.text(TextosFicha.reactivarDepto), findsNothing);
+      expect(find.textContaining(TextosFicha.reactivarPrimeroLaUbicacion), findsOneWidget);
+    });
+
+    testWidgets('con el botón «Reactivar el depto» el aviso no suma la guía de la ubicación', (
+      tester,
+    ) async {
+      await montarFicha(tester, mundoDeptoDeBaja());
+
+      expect(find.textContaining(TextosFicha.reactivarPrimeroLaUbicacion), findsNothing);
+    });
+
+    testWidgets('sin ningún depto activo el aviso dice qué hacer', (tester) async {
+      final m = MundoFicha(
+        historial: historialDelCanvas(),
+        contexto: const ContextoNotasPersona(
+          nombre: 'María',
+          causa: CausaSoloLectura.sinEspacioActivo,
+        ),
+      );
+      await montarFicha(tester, m);
+
+      expect(find.textContaining(TextosFicha.reactivarElDepto), findsOneWidget);
+      expect(find.text(TextosFicha.masNota), findsNothing);
+    });
+  });
+
+  group('32B·03 Filtro por estado', () {
+    const alto = Size(390, 2600);
+
+    /// María con una venta con saldo, una cobrada entera, una entrega pendiente y otra hecha.
+    MundoFicha mundoConEstados() {
+      final m = MundoFicha(
+        historial: [
+          VentaEnFicha(
+            id: 'ven-2',
+            fecha: DateTime(2026, 10, 12, 12),
+            numeroTalonario: '0042',
+            montoCentavos: 120000,
+            lineas: const [LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1)],
+          ),
+          VentaEnFicha(
+            id: 'ven-1',
+            fecha: DateTime(2026, 9, 1, 12),
+            numeroTalonario: '0030',
+            montoCentavos: 50000,
+            lineas: const [LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1)],
+          ),
+          visitaEnFicha('vis-1', DateTime(2026, 10, 5, 12)),
+        ],
+        notasIniciales: notasDeLaFicha(),
+      );
+      m.cuentas.cuenta = cuentaConSaldo;
+      m.movimientos.poner([
+        CobroEnFicha(
+          id: 'cob-1',
+          fecha: DateTime(2026, 9, 10, 12),
+          montoCentavos: 50000,
+          efectivo: true,
+          numeroTalonario: '0030',
+        ),
+        EntregaEnFicha(
+          id: 'ent-1',
+          fecha: DateTime(2026, 10, 26, 12),
+          pendiente: true,
+          lineas: const [LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1)],
+        ),
+        EntregaEnFicha(
+          id: 'ent-0',
+          fecha: DateTime(2026, 10, 12, 12),
+          pendiente: false,
+          lineas: const [LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1)],
+        ),
+      ]);
+      return m;
+    }
+
+    /// Lleva [finder] a la vista, venga de arriba o de abajo (la lista arma las filas a medida que
+    /// se la recorre).
+    Future<void> llegarA(WidgetTester tester, Finder finder) async {
+      final lista = find.byType(Scrollable).first;
+      await tester.drag(lista, const Offset(0, 20000));
+      await tester.pump();
+      await tester.scrollUntilVisible(finder, 400, scrollable: lista);
+      await traer(tester, finder);
+    }
+
+    Future<void> elegir(WidgetTester tester, FiltroDeHistorial f) async {
+      await llegarA(tester, find.byKey(ClavesFicha.filtro(f)));
+      await tester.tap(find.byKey(ClavesFicha.filtro(f)));
+      await asentar(tester);
+    }
+
+    void veSolo(List<String> ids) {
+      for (final id in ['ven-2', 'ven-1', 'vis-1', 'cob-1', 'ent-1', 'ent-0']) {
+        expect(
+          find.byKey(ClavesFicha.fila(id)),
+          ids.contains(id) ? findsOneWidget : findsNothing,
+          reason: id,
+        );
+      }
+    }
+
+    testWidgets('«MOSTRAR» ofrece Todo, Con saldo y Entrega pendiente, y empieza en Todo', (
+      tester,
+    ) async {
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+
+      expect(find.text(TextosFicha.mostrar), findsOneWidget);
+      expect(find.text('Todo'), findsOneWidget);
+      expect(find.text('Con saldo'), findsOneWidget);
+      expect(find.text('Entrega pendiente'), findsOneWidget);
+      veSolo(['ven-2', 'ven-1', 'vis-1', 'cob-1', 'ent-1', 'ent-0']);
+      expect(
+        tester.widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo))).selected,
+        isTrue,
+      );
+    });
+
+    testWidgets('«Con saldo» deja solo la venta que se debe', (tester) async {
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+
+      await elegir(tester, FiltroDeHistorial.conSaldo);
+
+      veSolo(['ven-2']);
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)))
+            .selected,
+        isTrue,
+      );
+      expect(find.byKey(ClavesFicha.sinResultados), findsNothing);
+    });
+
+    testWidgets('«Entrega pendiente» deja solo la entrega por hacer', (tester) async {
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+
+      await elegir(tester, FiltroDeHistorial.entregaPendiente);
+
+      veSolo(['ent-1']);
+    });
+
+    testWidgets('volver a «Todo» trae todo de nuevo', (tester) async {
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+      await elegir(tester, FiltroDeHistorial.entregaPendiente);
+
+      await elegir(tester, FiltroDeHistorial.todo);
+
+      veSolo(['ven-2', 'ven-1', 'vis-1', 'cob-1', 'ent-1', 'ent-0']);
+    });
+
+    testWidgets('si el filtro no deja nada, lo dice y el historial queda vacío', (tester) async {
+      final m = MundoFicha(historial: historialDelCanvas());
+      m.cuentas.cuenta = cuentaConSaldo;
+      await montarFicha(tester, m, tamano: alto);
+
+      await elegir(tester, FiltroDeHistorial.entregaPendiente);
+
+      expect(
+        find.text(TextosFicha.sinResultadosDelFiltro(FiltroDeHistorial.entregaPendiente)),
+        findsOneWidget,
+      );
+      expect(find.byType(FilaDeHistorial), findsNothing);
+      // Y se puede volver a ver todo.
+      await elegir(tester, FiltroDeHistorial.todo);
+      expect(find.byKey(ClavesFicha.sinResultados), findsNothing);
+      expect(find.byType(FilaDeHistorial), findsNWidgets(2));
+    });
+
+    testWidgets('una entrega que se hace con el filtro puesto sale de la lista en vivo', (
+      tester,
+    ) async {
+      final m = mundoConEstados();
+      await montarFicha(tester, m, tamano: alto);
+      await elegir(tester, FiltroDeHistorial.entregaPendiente);
+      veSolo(['ent-1']);
+
+      m.movimientos.poner([
+        EntregaEnFicha(
+          id: 'ent-1',
+          fecha: DateTime(2026, 10, 26, 12),
+          pendiente: false,
+          lineas: const [LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1)],
+        ),
+      ]);
+      await asentar(tester);
+
+      veSolo([]);
+      expect(find.byKey(ClavesFicha.sinResultados), findsOneWidget);
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)))
+            .selected,
+        isTrue,
+      );
+    });
+
+    testWidgets('al reentrar a la ficha el filtro vuelve a «Todo»', (tester) async {
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+      await elegir(tester, FiltroDeHistorial.conSaldo);
+
+      await volverAtras(tester);
+      await tester.tap(find.text('abrir ficha'));
+      await asentar(tester);
+
+      expect(
+        tester.widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo))).selected,
+        isTrue,
+      );
+      veSolo(['ven-2', 'ven-1', 'vis-1', 'cob-1', 'ent-1', 'ent-0']);
+    });
+
+    testWidgets('«Ver más» cuenta lo filtrado y cambiar de filtro vuelve a la primera página', (
+      tester,
+    ) async {
+      final m = MundoFicha(
+        historial: [
+          for (var i = 0; i < 120; i++)
+            VentaEnFicha(
+              id: 'ven-${i.toString().padLeft(3, '0')}',
+              fecha: DateTime(2026, 9, 1).subtract(Duration(hours: i)),
+              numeroTalonario: '$i',
+              montoCentavos: 1000,
+              lineas: const [],
+            ),
+          for (var i = 0; i < 30; i++)
+            visitaEnFicha(
+              'vis-${i.toString().padLeft(3, '0')}',
+              DateTime(2026, 6, 1).subtract(Duration(hours: i)),
+            ),
+        ],
+      );
+      m.cuentas.cuenta = cuentaConSaldo;
+      await montarFicha(tester, m);
+      await llegarA(tester, find.byKey(ClavesFicha.verMas));
+      expect(find.text(TextosFicha.verMas(50)), findsOneWidget);
+
+      await elegir(tester, FiltroDeHistorial.conSaldo);
+      await llegarA(tester, find.byKey(ClavesFicha.verMas));
+      expect(find.text(TextosFicha.verMas(20)), findsOneWidget);
+
+      await tester.tap(find.byKey(ClavesFicha.verMas));
+      await asentar(tester);
+      expect(find.byKey(ClavesFicha.verMas), findsNothing);
+
+      await elegir(tester, FiltroDeHistorial.todo);
+      await llegarA(tester, find.byKey(ClavesFicha.verMas));
+      expect(find.text(TextosFicha.verMas(50)), findsOneWidget);
+    });
+
+    testWidgets('también se puede filtrar con la ficha en solo lectura', (tester) async {
+      final m = MundoFicha(
+        persona: mariaDePrueba(baja: DateTime(2026, 10, 22)),
+        historial: historialDelCanvas(),
+        contexto: contextoBajaDesde22(),
+      );
+      m.cuentas.cuenta = cuentaConSaldo;
+      await montarFicha(tester, m, tamano: alto);
+
+      await elegir(tester, FiltroDeHistorial.conSaldo);
+
+      expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
+      expect(find.byKey(ClavesFicha.fila('vis-1')), findsNothing);
+    });
+
+    testWidgets('con texto al 200 % las opciones bajan de renglón sin desbordar', (tester) async {
+      await montarFicha(tester, mundoConEstados(), escala: 2, tamano: const Size(320, 568));
+
+      await llegarA(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)));
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getSize(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente))).height,
+        greaterThanOrEqualTo(40),
+      );
+    });
+
+    testWidgets('el lector oye cada opción y cuál está elegida', (tester) async {
+      final asa = tester.ensureSemantics();
+      await montarFicha(tester, mundoConEstados(), tamano: alto);
+
+      expect(find.bySemanticsLabel('Todo, elegido'), findsOneWidget);
+      expect(find.bySemanticsLabel('Con saldo'), findsOneWidget);
+      expect(find.bySemanticsLabel('Entrega pendiente'), findsOneWidget);
+      asa.dispose();
     });
   });
 

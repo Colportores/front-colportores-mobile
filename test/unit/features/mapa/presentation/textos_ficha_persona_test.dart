@@ -176,6 +176,26 @@ void main() {
       );
 
       expect(texto, contains('ningún depto activo'));
+      expect(texto, endsWith(TextosFicha.reactivarElDepto));
+    });
+
+    test('depto de baja con la ubicación también de baja: dice qué reactivar primero', () {
+      const contexto = ContextoNotasPersona(
+        nombre: 'María',
+        causa: CausaSoloLectura.espacioDeBaja,
+        numeroDepto: '3B',
+        direccion: 'Mataojo 2044',
+      );
+
+      expect(
+        TextosFicha.avisoSoloLectura(contexto, ahora, ubicacionDeBaja: true),
+        'El depto 3B de Mataojo 2044 está dado de baja. La ficha queda en solo lectura. '
+        'Reactivá primero la ubicación desde el mapa.',
+      );
+      expect(
+        TextosFicha.avisoSoloLectura(contexto, ahora),
+        isNot(contains(TextosFicha.reactivarPrimeroLaUbicacion)),
+      );
     });
   });
 

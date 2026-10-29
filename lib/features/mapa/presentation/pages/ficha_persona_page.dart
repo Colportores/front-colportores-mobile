@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/ficha_de_persona.dart';
+import '../../domain/services/filtro_de_historial.dart';
 import '../../domain/usecases/ficha_persona_use_cases.dart';
 import '../../domain/usecases/restaurar_espacio_use_case.dart';
 import '../formato_espacios.dart';
@@ -37,8 +38,10 @@ import 'notas_de_persona_page.dart';
 ///   agrega ni se cambia nada. «Llamar» no escribe nada, así que sigue.
 /// - El teléfono se vuelve a ocultar al salir: no se guarda.
 /// - Más de 100 movimientos: se muestran de a 100 con «Ver más».
-/// - Los chips «+ Agendar cobranza» y «Registrar entrega» y el filtro por estado (32B·03) son de
-///   HU-VEN-005, y la ubicación alternativa, de la vista 22: no están acá.
+/// - «MOSTRAR» (32B·03) filtra el historial por estado: «Todo», «Con saldo» o «Entrega pendiente». No
+///   se guarda: al reentrar vuelve a «Todo».
+/// - Los chips «+ Agendar cobranza» y «Registrar entrega» son de HU-VEN-005, y la ubicación
+///   alternativa, de la vista 22: no están acá.
 class FichaPersonaPage extends ConsumerStatefulWidget {
   const FichaPersonaPage({
     super.key,
@@ -82,6 +85,9 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
 
   /// Cuántos movimientos se muestran.
   var _mostrar = FichaPersonaPage.pagina;
+
+  /// El filtro por estado del historial (32B·03).
+  var _filtro = FiltroDeHistorial.todo;
 
   /// Ya se está abriendo algo (el marcador, las notas, la baja, la edición): un segundo toque no abre
   /// otra cosa encima.
@@ -256,6 +262,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
         ahora: ahora,
         telefonoVisible: _telefonoVisible,
         mostrar: _mostrar,
+        filtro: _filtro,
         reactivandoPersona: _reactivandoPersona,
         reactivandoDepto: _reactivandoDepto,
         puedeRegistrarVisita: ref.watch(registrarVisitaDesdeLaCasaProvider) != null,
@@ -265,6 +272,10 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
         alNuevaNota: _nuevaNota,
         alVerNotas: _verNotas,
         alVerMas: () => setState(() => _mostrar += FichaPersonaPage.pagina),
+        alElegirFiltro: (f) => setState(() {
+          _filtro = f;
+          _mostrar = FichaPersonaPage.pagina;
+        }),
         alRegistrarVisita: () => _registrarVisita(ficha),
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
@@ -412,6 +423,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.ahora,
     required this.telefonoVisible,
     required this.mostrar,
+    required this.filtro,
     required this.reactivandoPersona,
     required this.reactivandoDepto,
     required this.puedeRegistrarVisita,
@@ -421,6 +433,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alNuevaNota,
     required this.alVerNotas,
     required this.alVerMas,
+    required this.alElegirFiltro,
     required this.alRegistrarVisita,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
@@ -430,6 +443,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   final DateTime ahora;
   final bool telefonoVisible;
   final int mostrar;
+  final FiltroDeHistorial filtro;
   final bool reactivandoPersona;
   final bool reactivandoDepto;
   final bool puedeRegistrarVisita;
@@ -439,6 +453,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   final VoidCallback alNuevaNota;
   final VoidCallback alVerNotas;
   final VoidCallback alVerMas;
+  final ValueChanged<FiltroDeHistorial> alElegirFiltro;
   final VoidCallback alRegistrarVisita;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
@@ -455,8 +470,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     final soloLectura = ficha.soloLectura;
     final historial = ficha.historial;
     final vacia = historial.isEmpty && ficha.resumen == null;
-    final visibles = historial.length <= mostrar ? historial : historial.sublist(0, mostrar);
-    final faltan = historial.length - visibles.length;
+    final filtrado = FiltroDeHistorialDeFicha.aplicar(historial, filtro, resumen: ficha.resumen);
+    final visibles = filtrado.length <= mostrar ? filtrado : filtrado.sublist(0, mostrar);
+    final faltan = filtrado.length - visibles.length;
     final notas = ficha.notas;
     // 32B·05: la persona sin nada que mostrar ve solo el aviso de que todavía no hay visitas ni ventas.
     final mostrarNotas = notas.total > 0 || !vacia;
@@ -504,10 +520,8 @@ class _CuerpoDeLaFicha extends StatelessWidget {
           )
         else ...[
           const SizedBox(height: 8),
-          if (ficha.resumen case final cuenta?)
-            TarjetaCuenta(cuenta: cuenta)
-          else
-            const TarjetaSinMovimientos(),
+          // Sin de dónde saber lo cobrado y entregado no se afirma nada: ni saldo ni «Sin movimientos».
+          if (ficha.resumen case final cuenta?) TarjetaCuenta(cuenta: cuenta),
         ],
         if (mostrarNotas) ...[
           const SizedBox(height: 14),
@@ -521,8 +535,19 @@ class _CuerpoDeLaFicha extends StatelessWidget {
         ],
         if (historial.isNotEmpty) ...[
           const SizedBox(height: 14),
+          FiltroDelHistorial(elegido: filtro, alElegir: alElegirFiltro),
+          const SizedBox(height: 14),
           const RotuloDeSeccion(texto: TextosFicha.historial),
           const SizedBox(height: 6),
+          if (filtrado.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                TextosFicha.sinResultadosDelFiltro(filtro),
+                key: ClavesFicha.sinResultados,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
           Column(
             key: ClavesFicha.historial,
             children: [
@@ -647,7 +672,11 @@ class _AvisoSoloLectura extends StatelessWidget {
         color: ColoresAlta.ambarBorde,
         colorInsignia: ColoresAlta.ambar,
         glyph: '!',
-        texto: TextosFicha.avisoSoloLectura(ficha.contexto, ahora),
+        texto: TextosFicha.avisoSoloLectura(
+          ficha.contexto,
+          ahora,
+          ubicacionDeBaja: lugar?.ubicacion.estaBorrada ?? false,
+        ),
         acciones: etiqueta == null
             ? null
             : Align(
