@@ -423,9 +423,6 @@ void main() {
   });
 
   group('decisión del orquestador (29/10), P2: error al leer la jornada', () {
-    // skip: QA #472 — P2 decidida (b) en el PR («en #555, antes del merge»): si la jornada no se
-    // puede leer, la cuenta muestra «No pudimos leer tu jornada.» con «Reintentar» en el lugar de la
-    // sección; hoy la sección simplemente no aparece (SizedBox.shrink). El implementador saca el skip.
     testWidgets(
       'si no se puede leer la jornada: el aviso de «Hoy» con «Reintentar», y al reintentar vuelve',
       (tester) async {
@@ -443,7 +440,6 @@ void main() {
 
         expect(find.byKey(const Key('cuenta_terminar_jornada')), findsOneWidget);
       },
-      skip: true,
     );
   });
 

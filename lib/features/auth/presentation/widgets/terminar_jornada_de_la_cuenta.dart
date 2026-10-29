@@ -135,6 +135,8 @@ class _ErrorAlLeer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final esquema = theme.colorScheme;
     final escala = MediaQuery.textScalerOf(context).scale(15);
     return Padding(
       key: const Key('cuenta_terminar_jornada_error_lectura'),
@@ -143,10 +145,31 @@ class _ErrorAlLeer extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 10,
         children: [
-          const AvisoJornada(
-            key: Key('jornada_error_lectura'),
-            esError: true,
-            texto: '$textoNoPudimosLeerJornada $textoReintentarLeerJornada',
+          Semantics(
+            liveRegion: true,
+            container: true,
+            key: const Key('jornada_error_lectura'),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: esquema.errorContainer,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 4,
+                children: [
+                  Text(
+                    textoNoPudimosLeerJornada,
+                    style: theme.textTheme.titleMedium?.copyWith(color: esquema.onErrorContainer),
+                  ),
+                  Text(
+                    textoReintentarLeerJornada,
+                    style: theme.textTheme.bodyLarge?.copyWith(color: esquema.onErrorContainer),
+                  ),
+                ],
+              ),
+            ),
           ),
           OutlinedButton(
             key: const Key('jornada_reintentar'),
