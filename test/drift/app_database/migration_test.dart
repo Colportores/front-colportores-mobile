@@ -24,6 +24,7 @@ import 'generated/schema_v17.dart' as v17;
 import 'generated/schema_v18.dart' as v18;
 import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
+import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1176,4 +1177,73 @@ void main() {
       );
     },
   );
+
+  test('dado un cobro en efectivo guardado en la versión 19, cuando migra a la 20, no se pierde nada, '
+      'los datos de la tarjeta y de la transferencia quedan vacíos y no se encola nada', () async {
+    // HU-COB-002 y HU-COB-003 (#396): cinco columnas opcionales nuevas en `cobranza`.
+    const venta = v19.VentaData(
+      id: 'v-1',
+      espacioPersonaId: 'ep-1',
+      numeroTalonario: '0042',
+      montoTotal: 4500,
+      fecha: 1,
+      colportorId: 'col-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 0,
+    );
+    const cobro = v19.CobranzaData(
+      id: 'c-1',
+      ventaId: 'v-1',
+      monto: 500,
+      medio: 'EFECTIVO',
+      fecha: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 2,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 19,
+      newVersion: 20,
+      createOld: v19.DatabaseAtV19.new,
+      createNew: v20.DatabaseAtV20.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.venta, venta);
+        batch.insert(viejo.cobranza, cobro);
+      },
+      validateItems: (nuevo) async {
+        final cobros = await nuevo.select(nuevo.cobranza).get();
+        expect(cobros.map((c) => c.id), ['c-1']);
+        expect(cobros.single.monto, 500);
+        expect(cobros.single.medio, 'EFECTIVO');
+        expect(cobros.single.syncVersion, 2);
+        expect(cobros.single.tarjetaTipo, isNull);
+        expect(cobros.single.tarjetaMarca, isNull);
+        expect(cobros.single.numeroAprobacion, isNull);
+        expect(cobros.single.referenciaTransferencia, isNull);
+        expect(cobros.single.bancoOrigen, isNull);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // Las columnas aceptan lo que llevan el cobro con tarjeta y el de transferencia.
+        await nuevo.customStatement(
+          "UPDATE cobranza SET medio = 'TARJETA', tarjeta_tipo = 'DEBITO', tarjeta_marca = 'Visa', "
+          "numero_aprobacion = '884213' WHERE id = 'c-1'",
+        );
+        final tarjeta = await nuevo.select(nuevo.cobranza).getSingle();
+        expect(tarjeta.tarjetaTipo, 'DEBITO');
+        expect(tarjeta.tarjetaMarca, 'Visa');
+        expect(tarjeta.numeroAprobacion, '884213');
+        await nuevo.customStatement(
+          "UPDATE cobranza SET medio = 'TRANSFERENCIA', tarjeta_tipo = NULL, tarjeta_marca = NULL, "
+          "numero_aprobacion = NULL, referencia_transferencia = 'TX-12345', banco_origen = 'BROU' "
+          "WHERE id = 'c-1'",
+        );
+        final transferencia = await nuevo.select(nuevo.cobranza).getSingle();
+        expect(transferencia.referenciaTransferencia, 'TX-12345');
+        expect(transferencia.bancoOrigen, 'BROU');
+      },
+    );
+  });
 }

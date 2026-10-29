@@ -919,7 +919,9 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('María de los Ángeles'), findsOneWidget);
+      // El monto lleva el foco y, con el selector del medio, el formulario es más alto que la
+      // pantalla: la cabecera puede haber subido fuera de vista, pero sigue entera en el árbol.
+      expect(find.textContaining('María de los Ángeles', skipOffstage: false), findsOneWidget);
     });
   });
 
@@ -980,7 +982,8 @@ void main() {
       await abrirCobro(tester);
       await _cobrar(tester, '600');
       await sinDesbordes(tester);
-      expect(find.text('Venta pagada'), findsOneWidget);
+      // La confirmación arranca arriba: la marca queda más abajo y se llega desplazando.
+      await alAlcance(tester, find.text('Venta pagada', skipOffstage: false));
       await alAlcance(tester, find.byKey(const Key('cobro_volver_al_mapa')));
     });
 

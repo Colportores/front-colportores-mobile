@@ -217,6 +217,7 @@ class CampoDeVenta extends StatelessWidget {
     this.icono,
     this.habilitado = true,
     this.autofocus = false,
+    this.autocorregir = true,
   });
 
   final String? rotulo;
@@ -233,6 +234,10 @@ class CampoDeVenta extends StatelessWidget {
 
   /// Abre el teclado al mostrarse (el monto del cobro, vista 28).
   final bool autofocus;
+
+  /// `false` en los campos de códigos (el número de aprobación, la referencia): sin corrector ni
+  /// sugerencias del teclado.
+  final bool autocorregir;
 
   @override
   Widget build(BuildContext context) {
@@ -252,6 +257,8 @@ class CampoDeVenta extends StatelessWidget {
             onChanged: alCambiar,
             enabled: habilitado,
             autofocus: autofocus,
+            autocorrect: autocorregir,
+            enableSuggestions: autocorregir,
             keyboardType: teclado,
             minLines: lineas,
             maxLines: lineas,

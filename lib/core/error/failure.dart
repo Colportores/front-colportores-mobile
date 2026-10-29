@@ -927,6 +927,17 @@ final class FailureCobroSinVenta extends Failure {
       );
 }
 
+/// Un dato de la tarjeta o de la transferencia (marca, aprobación, referencia o banco) es más largo
+/// de lo que acepta el servidor (HU-COB-002 y HU-COB-003). La pantalla no deja escribir de más, así
+/// que esto no debería verse; si llega, no se registra nada.
+final class FailureCobroDatoDelMedioInvalido extends Failure {
+  const FailureCobroDatoDelMedioInvalido()
+    : super(
+        mensaje: 'Algún dato de la tarjeta o de la transferencia es demasiado largo.',
+        codigo: 'COBRO_DATO_DEL_MEDIO_INVALIDO',
+      );
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {

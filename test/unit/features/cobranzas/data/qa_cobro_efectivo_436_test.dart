@@ -12,7 +12,7 @@ import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dar
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/data/repositories/cobranza_repository_impl.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/venta_con_saldo.dart';
-import 'package:colportores_mobile/features/cobranzas/domain/usecases/registrar_cobro_efectivo_use_case.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/usecases/registrar_cobro_use_case.dart';
 import 'package:colportores_mobile/features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/house_status.dart';
@@ -55,7 +55,7 @@ void main() {
   late EncoladorSyncEnMemoria encolador;
   late CobranzaLocalDataSourceDrift local;
   late CobranzaRepositoryImpl repo;
-  late RegistrarCobroEfectivoUseCase caso;
+  late RegistrarCobroUseCase caso;
   late MemoryOutput salidaDeLogs;
 
   String logs() => salidaDeLogs.buffer.expand((e) => e.lines).join('\n');
@@ -74,7 +74,7 @@ void main() {
         logger: Logger(level: Level.all, printer: SimplePrinter(), output: salidaDeLogs),
       ),
     );
-    caso = RegistrarCobroEfectivoUseCase(repo, ahora: () => ahora);
+    caso = RegistrarCobroUseCase(repo, ahora: () => ahora);
   }
 
   Future<void> sembrarVenta({
@@ -104,12 +104,12 @@ void main() {
         ]);
   }
 
-  RegistrarCobroEfectivoParams params({
+  RegistrarCobroParams params({
     String id = 'c-1',
     String venta = 'v-1',
     int monto = 50000,
     DateTime? fecha,
-  }) => RegistrarCobroEfectivoParams(
+  }) => RegistrarCobroParams(
     cobroId: id,
     ventaId: venta,
     montoCentavos: monto,
@@ -198,7 +198,7 @@ void main() {
   group('validación de lo que se escribe', () {
     test('un monto vacío, cero, negativo o más grande que el entero del servidor no escribe nada '
         'y avisa qué hacer', () async {
-      for (final monto in [0, -1, -50000, RegistrarCobroEfectivoUseCase.maximoCentavos + 1]) {
+      for (final monto in [0, -1, -50000, RegistrarCobroUseCase.maximoCentavos + 1]) {
         final f = _izquierda(await caso(params(monto: monto)));
         expect(f, isA<FailureCobroMontoInvalido>(), reason: 'monto $monto');
         expect(f.mensaje, 'Ingresá el monto que te pagaron.');
@@ -241,7 +241,7 @@ void main() {
     test(
       'una venta del máximo del entero se cobra entera y después no admite ni un centavo',
       () async {
-        const maximo = RegistrarCobroEfectivoUseCase.maximoCentavos;
+        const maximo = RegistrarCobroUseCase.maximoCentavos;
         await sembrarVenta(id: 'v-m', monto: maximo);
 
         _derecha(await caso(params(id: 'c-1', venta: 'v-m', monto: maximo - 1)));
@@ -627,6 +627,11 @@ void main() {
         'medio',
         'fecha',
         'numero_cuota',
+        'tarjeta_tipo',
+        'tarjeta_marca',
+        'numero_aprobacion',
+        'referencia_transferencia',
+        'banco_origen',
         'created_at',
         'updated_at',
         'created_by',

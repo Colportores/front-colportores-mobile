@@ -16,16 +16,26 @@ import '../../../mapa/presentation/widgets/dialogos_modificar.dart'
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
+import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
-import '../../domain/usecases/registrar_cobro_efectivo_use_case.dart';
+import '../../domain/usecases/registrar_cobro_use_case.dart';
 import '../providers/cobranzas_providers.dart';
 import '../textos_cobro.dart';
+import '../textos_medio_de_cobro.dart';
 import '../widgets/piezas_cobro.dart';
+import '../widgets/piezas_medio_de_cobro.dart';
 
-/// «Cobro en efectivo» (vista 28, HU-COB-001, artboards 28·01 a 28·09): la colportora registra lo que
-/// le pagó el cliente de una venta —monto y fecha, por defecto hoy— y el saldo baja solo. Se abre ya
-/// con la venta, la casa y la persona resueltas (contrato de navegación de la vista 39); no las
-/// vuelve a pedir.
+/// «Cobrar» (vista 28, HU-COB-001, artboards 28·01 a 28·09, y vista 29, HU-COB-002 y HU-COB-003,
+/// artboards 29A y 29B): la colportora registra lo que le pagó el cliente de una venta —el medio,
+/// el monto y la fecha, por defecto hoy— y el saldo baja solo. Se abre ya con la venta, la casa y la
+/// persona resueltas (contrato de navegación de la vista 39); no las vuelve a pedir. Se sigue llamando
+/// `CobroEfectivoPage` porque así la abren la vista 39 y las ramas abiertas.
+///
+/// - **Medio** (29A·01 y 29B·01): Efectivo (por defecto), Tarjeta o Transferencia. Con tarjeta se
+///   carga débito o crédito, la marca y el número de aprobación; con transferencia, la referencia y el
+///   banco de origen (hoja 29B·02). Todo eso es opcional y solo viaja el del medio elegido.
+/// - **Registrada** (29A·02 y 29B·03): tarjeta y transferencia suman al dinero depositado, no al dinero
+///   en mano; la tarjeta recuerda guardar el ticket.
 ///
 /// - **Monto vacío** (28·02): el botón está apagado y dice por qué.
 /// - **Monto mayor al saldo** (28·03): el campo se marca con el saldo y el botón queda apagado. Se
@@ -94,6 +104,21 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
   final _monto = TextEditingController();
   final _scroll = ScrollController();
 
+  /// Cómo pagó el cliente (29A·01 y 29B·01).
+  var _medio = MedioCobranza.efectivo;
+
+  /// Tarjeta: `true` = crédito, `false` = débito (el canvas arranca en Débito).
+  var _credito = false;
+
+  /// Tarjeta: la marca de los chips («Visa», «Otra»…), o `null` si no eligió ninguna.
+  String? _marca;
+  final _marcaOtra = TextEditingController();
+  final _aprobacion = TextEditingController();
+
+  /// Transferencia.
+  final _referencia = TextEditingController();
+  String? _banco;
+
   var _lectura = _Lectura.cargando;
   VentaConSaldo? _venta;
 
@@ -122,8 +147,8 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
   var _preguntando = false;
 
   /// El último intento de guardar: con los mismos datos se repite el id del cobro; con otros, es otro
-  /// cobro.
-  ({int montoCentavos, DateTime? dia, String id})? _intento;
+  /// cobro. [datos] resume el medio y lo que se cargó de él.
+  ({int montoCentavos, DateTime? dia, String datos, String id})? _intento;
 
   @override
   void initState() {
@@ -134,6 +159,9 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
   @override
   void dispose() {
     _monto.dispose();
+    _marcaOtra.dispose();
+    _aprobacion.dispose();
+    _referencia.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -201,6 +229,59 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     _fechaRechazada = false;
   });
 
+  // --- Medio -------------------------------------------------------------------------------
+
+  void _elegirMedio(MedioCobranza medio) {
+    if (_enviando || medio == _medio) return;
+    setState(() => _medio = medio);
+  }
+
+  /// Los datos opcionales del medio elegido, como se guardan; los de otro medio no cuentan. «Otra»
+  /// marca sin escribir nada queda como «Otra».
+  ({TipoTarjeta? tipo, String? marca, String? aprobacion, String? referencia, String? banco})
+  _datosDelMedio() {
+    switch (_medio) {
+      case MedioCobranza.efectivo:
+        return (tipo: null, marca: null, aprobacion: null, referencia: null, banco: null);
+      case MedioCobranza.tarjeta:
+        return (
+          tipo: _credito ? TipoTarjeta.credito : TipoTarjeta.debito,
+          marca: _marca == TextosMedioDeCobro.marcaOtra
+              ? RegistrarCobroUseCase.limpiar(_marcaOtra.text) ?? TextosMedioDeCobro.marcaOtra
+              : _marca,
+          aprobacion: RegistrarCobroUseCase.limpiar(_aprobacion.text),
+          referencia: null,
+          banco: null,
+        );
+      case MedioCobranza.transferencia:
+        return (
+          tipo: null,
+          marca: null,
+          aprobacion: null,
+          referencia: RegistrarCobroUseCase.limpiar(_referencia.text),
+          banco: _banco,
+        );
+    }
+  }
+
+  /// Hay algo cargado del medio elegido que se perdería al salir.
+  bool get _hayDatosDelMedio {
+    final d = _datosDelMedio();
+    return d.marca != null || d.aprobacion != null || d.referencia != null || d.banco != null;
+  }
+
+  Future<void> _elegirBanco() async {
+    if (_enviando || _navegando) return;
+    _navegando = true;
+    try {
+      final elegido = await mostrarHojaBancoDeOrigen(context, actual: _banco);
+      if (elegido == null || !mounted) return;
+      setState(() => _banco = elegido.isEmpty ? null : elegido);
+    } finally {
+      _navegando = false;
+    }
+  }
+
   // --- Fecha -------------------------------------------------------------------------------
 
   Future<void> _cambiarLaFecha(VentaConSaldo venta) async {
@@ -239,18 +320,37 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     });
     try {
       final dia = _dia;
+      final d = _datosDelMedio();
+      final datos = [
+        _medio.name,
+        d.tipo?.name,
+        d.marca,
+        d.aprobacion,
+        d.referencia,
+        d.banco,
+      ].join('|');
       final previo = _intento;
-      final id = previo != null && previo.montoCentavos == centavos && previo.dia == dia
+      final id =
+          previo != null &&
+              previo.montoCentavos == centavos &&
+              previo.dia == dia &&
+              previo.datos == datos
           ? previo.id
           : ref.read(generadorIdCobroProvider)();
-      _intento = (montoCentavos: centavos, dia: dia, id: id);
-      final resultado = await ref.read(registrarCobroEfectivoUseCaseProvider)(
-        RegistrarCobroEfectivoParams(
+      _intento = (montoCentavos: centavos, dia: dia, datos: datos, id: id);
+      final resultado = await ref.read(registrarCobroUseCaseProvider)(
+        RegistrarCobroParams(
           cobroId: id,
           ventaId: venta.ventaId,
           montoCentavos: centavos,
           colportorId: widget.colportorId,
+          medio: _medio,
           fecha: dia == null ? null : FormatoCobro.alMediodia(dia),
+          tarjetaTipo: d.tipo,
+          tarjetaMarca: d.marca,
+          numeroAprobacion: d.aprobacion,
+          referenciaTransferencia: d.referencia,
+          bancoOrigen: d.banco,
         ),
       );
       if (!mounted) return;
@@ -306,8 +406,10 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     Navigator.of(context).pop(cobrado);
   }
 
-  /// Hay algo escrito que se perdería al salir: un monto o un día distinto de hoy, antes de cobrar.
-  bool get _hayLoEscrito => _registrado == null && (_monto.text.trim().isNotEmpty || _dia != null);
+  /// Hay algo escrito que se perdería al salir: un monto, un día distinto de hoy o un dato del medio,
+  /// antes de cobrar.
+  bool get _hayLoEscrito =>
+      _registrado == null && (_monto.text.trim().isNotEmpty || _dia != null || _hayDatosDelMedio);
 
   Future<void> _atras() async {
     if (_enviando || _preguntando || _cerrando) return;
@@ -407,12 +509,17 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     );
   }
 
+  /// «COBRO EN EFECTIVO» (canvas 28) con efectivo; «COBRO» (canvas 29) con tarjeta o transferencia.
+  static String _eyebrowDe(MedioCobranza medio) =>
+      medio == MedioCobranza.efectivo ? TextosCobro.eyebrow : TextosMedioDeCobro.eyebrow;
+
   Widget _cabecera(
     String? subtitulo, {
     String titulo = TextosCobro.titulo,
     bool conSalida = true,
+    MedioCobranza? medio,
   }) => CabeceraVenta(
-    eyebrow: TextosCobro.eyebrow,
+    eyebrow: _eyebrowDe(medio ?? _medio),
     titulo: titulo,
     subtitulo: subtitulo,
     cerrar: true,
@@ -464,6 +571,20 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
         ],
         _resumen(venta),
         const SizedBox(height: 12),
+        SegmentadoDeCobro(
+          rotulo: TextosMedioDeCobro.medio,
+          etiqueta: TextosMedioDeCobro.medio,
+          opciones: const [
+            TextosMedioDeCobro.efectivo,
+            TextosMedioDeCobro.tarjeta,
+            TextosMedioDeCobro.transferencia,
+          ],
+          elegida: _medio.index,
+          alElegir: (i) => _elegirMedio(MedioCobranza.values[i]),
+          prefijoDeClave: 'cobro_medio',
+          habilitado: !_enviando,
+        ),
+        const SizedBox(height: 12),
         CampoDeVenta(
           key: const Key('cobro_monto'),
           rotulo: TextosCobro.monto,
@@ -476,6 +597,29 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
           habilitado: !_enviando,
           autofocus: true,
         ),
+        if (_medio == MedioCobranza.tarjeta) ...[
+          const SizedBox(height: 12),
+          BloqueDeTarjeta(
+            credito: _credito,
+            alElegirTipo: (credito) => setState(() => _credito = credito),
+            marca: _marca,
+            alElegirMarca: (marca) => setState(() => _marca = marca),
+            marcaOtra: _marcaOtra,
+            alEscribir: () => setState(() {}),
+            aprobacion: _aprobacion,
+            habilitado: !_enviando,
+          ),
+        ],
+        if (_medio == MedioCobranza.transferencia) ...[
+          const SizedBox(height: 12),
+          BloqueDeTransferencia(
+            referencia: _referencia,
+            alEscribir: () => setState(() {}),
+            banco: _banco,
+            alElegirBanco: _enviando ? null : () => unawaited(_elegirBanco()),
+            habilitado: !_enviando,
+          ),
+        ],
         const SizedBox(height: 12),
         CampoDeFechaDelCobro(
           texto: FormatoCobro.dia(_diaElegido, _hoy()),
@@ -510,6 +654,9 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
   /// 28·06 y 28·07: el cobro quedó registrado.
   Widget _exito(CobroRegistrado registrado, String? subtitulo) {
     final venta = registrado.venta;
+    if (registrado.cobranza.medio != MedioCobranza.efectivo) {
+      return _exitoDepositado(registrado, subtitulo);
+    }
     if (registrado.ventaPagada) {
       return _marco(
         cabecera: _cabecera(subtitulo, titulo: TextosCobro.tituloRegistrado, conSalida: false),
@@ -533,25 +680,68 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
           texto: TextosCobro.sumamos(FormatoVenta.monto(registrado.cobranza.montoCentavos)),
         ),
       ],
-      cta: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          BotonDeVenta(
-            texto: TextosCobro.agendarLaProxima,
-            alPresionar: () => unawaited(_agendarLaProxima()),
-          ),
-          TextButton(
-            key: const Key('cobro_listo'),
-            onPressed: () => _cerrar(cobrado: true),
-            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-            child: const Text(
-              TextosCobro.listo,
-              style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
-            ),
-          ),
-        ],
-      ),
+      cta: _ctaDeCobroParcial(),
     );
   }
+
+  /// 29A·02 y 29B·03: tarjeta o transferencia registradas. Suman al dinero depositado, no al dinero en
+  /// mano; la tarjeta recuerda guardar el ticket. Con la venta pagada del todo, solo «Listo» (como el
+  /// canvas); con saldo, también «Agendar la próxima cobranza», como el cobro parcial en efectivo.
+  Widget _exitoDepositado(CobroRegistrado registrado, String? subtitulo) {
+    final cobro = registrado.cobranza;
+    return _marco(
+      cabecera: _cabecera(
+        subtitulo,
+        titulo: TextosCobro.tituloRegistrado,
+        conSalida: false,
+        medio: cobro.medio,
+      ),
+      hijos: [
+        _resumen(registrado.venta),
+        const SizedBox(height: 12),
+        AvisoDeCobroHecho(
+          texto: TextosMedioDeCobro.sumamosDepositado(
+            FormatoVenta.monto(cobro.montoCentavos),
+            referencia: cobro.referenciaTransferencia,
+          ),
+        ),
+        if (cobro.medio == MedioCobranza.tarjeta) ...[
+          const SizedBox(height: 9),
+          const AvisoDeVenta(
+            key: Key('cobro_aviso_ticket'),
+            error: false,
+            texto: TextosMedioDeCobro.guardaElTicket,
+          ),
+        ],
+      ],
+      cta: registrado.ventaPagada
+          ? BotonDeVenta(
+              key: const Key('cobro_listo'),
+              texto: TextosCobro.listo,
+              alPresionar: () => _cerrar(cobrado: true),
+            )
+          : _ctaDeCobroParcial(),
+    );
+  }
+
+  /// «Agendar la próxima cobranza» y «Listo».
+  Widget _ctaDeCobroParcial() => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      BotonDeVenta(
+        texto: TextosCobro.agendarLaProxima,
+        alPresionar: () => unawaited(_agendarLaProxima()),
+      ),
+      TextButton(
+        key: const Key('cobro_listo'),
+        onPressed: () => _cerrar(cobrado: true),
+        style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        child: const Text(
+          TextosCobro.listo,
+          style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+        ),
+      ),
+    ],
+  );
 }
