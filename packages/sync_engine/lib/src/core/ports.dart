@@ -286,12 +286,14 @@ abstract interface class ArchivePort {
   /// backup» a «el backup cuenta» (HU-SYNC-005, «manifest intacto»).
   ///
   /// [exportedAt] es de cuándo, en el reloj del teléfono, se leyó la DB; ver
-  /// [BackupEntry.exportedAt].
+  /// [BackupEntry.exportedAt]. [keyId] es la llave que cifró el payload; ver
+  /// [BackupEntry.keyId].
   Future<BackupEntry> upload({
     required List<int> payload,
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
+    String? keyId,
   });
 
   Future<List<int>> download(String id);
@@ -313,6 +315,15 @@ abstract interface class CryptoPort {
 
   /// Hash del payload cifrado, para la integridad de la cadena.
   String digest(List<int> bytes);
+
+  /// Identificador de la llave con la que se cifra, para saber de quién es cada
+  /// entrada de una carpeta que puede compartir más de una instalación.
+  ///
+  /// **Nunca la llave ni nada que la reconstruya**: va en claro en los metadatos
+  /// de Drive. Tiene que salir de la llave con una función de un solo sentido
+  /// y una etiqueta propia (ver `AesGcmCrypto.keyId`), y ser estable: la misma
+  /// llave, recuperada en otro teléfono, da el mismo identificador.
+  Future<String> keyId();
 }
 
 /// La DB local vista como archivo: exportar para el backup, reemplazar para el

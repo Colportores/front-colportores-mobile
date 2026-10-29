@@ -127,7 +127,10 @@ class BackupService {
     final inicio = _clock();
     final mark = watermark ?? await watermarkProvider?.call() ?? '';
 
-    final existentes = await _archive.list();
+    // Solo la cadena de esta llave. Lo que dejó otra instalación en la misma
+    // carpeta de Drive (el teléfono viejo de la persona, con otra DEK) ni se
+    // encadena ni se poda: para este servicio no existe.
+    final (:llave, entradas: existentes) = await _propias();
     final cadena = buildChain(existentes);
 
     // Una cadena rota no se extiende: agregarle un eslabón encima haría que el
@@ -147,6 +150,7 @@ class BackupService {
       parentId: punta?.id,
       watermark: mark,
       exportedAt: inicio,
+      keyId: llave,
     );
 
     if (punta == null) {
@@ -168,6 +172,27 @@ class BackupService {
       // Ver [alTerminarUnBackup]: el backup ya está hecho.
     }
     return entrada;
+  }
+
+  /// Las entradas de Drive que cifró esta llave, y solo esas.
+  ///
+  /// Las que traen otro identificador, o ninguno, quedan afuera: no se
+  /// extienden, no se podan ni cuentan para la integridad. Si no hay cadena
+  /// propia, el respaldo arranca la suya al lado y la ajena queda entera
+  /// (nunca se pierde una persona: ante la duda, no se borra).
+  ///
+  /// Primero se lista y después se pide la llave: sin Drive (sin token) la falla es la de Drive, y
+  /// la DEK no se toca para nada.
+  Future<({String llave, List<BackupEntry> entradas})> _propias() async {
+    final todas = await _archive.list();
+    final llave = await _crypto.keyId();
+    return (
+      llave: llave,
+      entradas: [
+        for (final e in todas)
+          if (e.keyId == llave) e,
+      ],
+    );
   }
 
   bool _tocaRotar(ChainStatus cadena, DateTime ahora) {
@@ -199,7 +224,7 @@ class BackupService {
   /// ([BackupEntry.storedHash], Drive lo hace) se compara sin bajar nada; si no,
   /// se baja el blob.
   Future<ChainStatus> verifyChain({bool checkContent = true}) async =>
-      _verificar(await _archive.list(), checkContent: checkContent);
+      _verificar((await _propias()).entradas, checkContent: checkContent);
 
   Future<ChainStatus> _verificar(
     List<BackupEntry> entradas, {
@@ -233,7 +258,7 @@ class BackupService {
     // Serializada con los backups: no se verifica una cadena mientras se la
     // extiende.
     return _encadenar(() async {
-      final entradas = await _archive.list();
+      final entradas = (await _propias()).entradas;
       final estado = await _verificar(entradas, checkContent: true);
       final informe = IntegrityReport(
         status: estado,
@@ -258,7 +283,9 @@ class BackupService {
   Future<BackupEntry?> restore() => _encadenar(_restore);
 
   Future<BackupEntry?> _restore() async {
-    final cadena = await verifyChain();
+    // Sin filtrar por llave: qué hacer cuando Drive tiene más de una cadena (la del teléfono viejo y
+    // la del nuevo) es de la restauración (#186, HU-SYNC-006), no de este backup.
+    final cadena = await _verificar(await _archive.list(), checkContent: true);
     if (!cadena.ok) return null;
 
     final payloads = <List<int>>[];

@@ -74,6 +74,7 @@ class FakeArchive implements ArchivePort {
               bytes: e.bytes,
               exportedAt: e.exportedAt,
               storedHash: _digest(_payloads[e.id]!),
+              keyId: e.keyId,
             )
           else
             e,
@@ -88,6 +89,7 @@ class FakeArchive implements ArchivePort {
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
+    String? keyId,
   }) async {
     if (subidasQueFallan > 0) {
       subidasQueFallan--;
@@ -110,6 +112,7 @@ class FakeArchive implements ArchivePort {
       parentId: parentId,
       bytes: payload.length,
       exportedAt: exportedAt,
+      keyId: keyId,
     );
     _payloads[id] = payload;
     entries.add(entrada);
@@ -136,6 +139,13 @@ class FakeArchive implements ArchivePort {
 /// OS—, pero sí lo que le importa al núcleo: que lo que sale al archivo no sea
 /// el texto en claro, y que descifrar sea la inversa exacta de cifrar.
 class FakeCrypto implements CryptoPort {
+  FakeCrypto({this.llave = 'llave-1'});
+
+  /// De qué llave es este cifrado: dos `FakeCrypto` con la misma [llave] son la
+  /// misma persona (la DEK recuperada en otro teléfono); con otra, un teléfono
+  /// nuevo con su propia DEK.
+  final String llave;
+
   /// Lo que el fake escribió, en claro, para que el test pueda mirarlo.
   final List<List<int>> encrypted = [];
 
@@ -151,6 +161,9 @@ class FakeCrypto implements CryptoPort {
 
   @override
   String digest(List<int> bytes) => hashOf(bytes);
+
+  @override
+  Future<String> keyId() async => 'id-$llave';
 
   /// Hash barato pero estable: alcanza para detectar un payload cambiado.
   static String hashOf(List<int> bytes) {

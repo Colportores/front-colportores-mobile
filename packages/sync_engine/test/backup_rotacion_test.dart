@@ -391,6 +391,7 @@ class _ArchivoSinRed implements ArchivePort {
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
+    String? keyId,
   }) async =>
       throw StateError('sin red');
   @override

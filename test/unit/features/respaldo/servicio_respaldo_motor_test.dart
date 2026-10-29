@@ -31,6 +31,7 @@ class _Archivo extends FakeArchive {
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
+    String? keyId,
   }) async {
     intentos++;
     if (frenar case final espera?) await espera.future;
@@ -40,6 +41,7 @@ class _Archivo extends FakeArchive {
       parentId: parentId,
       watermark: watermark,
       exportedAt: exportedAt,
+      keyId: keyId,
     );
   }
 }

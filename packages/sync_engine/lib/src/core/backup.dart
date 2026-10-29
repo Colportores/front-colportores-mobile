@@ -16,6 +16,7 @@ class BackupEntry {
     this.bytes = 0,
     this.exportedAt,
     this.storedHash,
+    this.keyId,
   });
 
   /// Identidad en Drive.
@@ -51,6 +52,14 @@ class BackupEntry {
   /// lo que está en Drive no es lo que se subió. `null` si el archivo no lo
   /// informa; ahí `verifyChain` baja el blob.
   final String? storedHash;
+
+  /// De qué llave es esta entrada: el identificador que dejó quien la subió
+  /// ([CryptoPort.keyId]). Dos instalaciones con llaves distintas —el teléfono
+  /// nuevo de una persona que cambió de equipo— comparten el mismo
+  /// `appDataFolder` pero no pueden leer lo que escribió la otra. El respaldo
+  /// solo encadena y solo poda lo que tiene su misma llave; lo ajeno, o lo que
+  /// no trae identificador, no se toca nunca. `null` si el archivo no lo trae.
+  final String? keyId;
 
   bool get isBase => parentId == null;
 

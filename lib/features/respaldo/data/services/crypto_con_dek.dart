@@ -22,7 +22,12 @@ final class CryptoConDek extends CompressingCrypto {
   Future<List<int>> decryptBytes(List<int> ciphertext) =>
       _conLaClave((cripto) => cripto.decryptBytes(ciphertext));
 
-  Future<List<int>> _conLaClave(Future<List<int>> Function(AesGcmCrypto cripto) operacion) async {
+  /// Identificador de la DEK (ver `AesGcmCrypto.keyId`): con él cada archivo de Drive dice de qué
+  /// instalación es, y el respaldo no toca lo de otra llave.
+  @override
+  Future<String> keyId() => _conLaClave((cripto) => cripto.keyId());
+
+  Future<T> _conLaClave<T>(Future<T> Function(AesGcmCrypto cripto) operacion) async {
     final dek = await _leerDek();
     if (dek == null) {
       throw StateError('no hay DEK para cifrar el backup');

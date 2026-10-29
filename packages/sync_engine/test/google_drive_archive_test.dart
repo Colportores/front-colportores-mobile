@@ -131,6 +131,17 @@ void main() {
     expect((await archivo.list()).map((e) => e.id), [base.id, inc.id]);
   });
 
+  test('el identificador de llave viaja en appProperties y vuelve en list', () async {
+    final e = await archivo.upload(
+        payload: const [1], parentId: null, watermark: 'w', keyId: 'abc123');
+    final sin = await archivo.upload(payload: const [2], parentId: e.id, watermark: 'w');
+
+    expect(e.keyId, 'abc123');
+    expect(drive.archivos[e.id]!['appProperties'], containsPair('key_id', 'abc123'));
+    expect(sin.keyId, isNull);
+    expect((await archivo.list()).map((x) => x.keyId), ['abc123', null]);
+  });
+
   test('el hash que calculó Drive viene en la entrada y coincide con el subido', () async {
     final e = await archivo.upload(
         payload: const [9, 8, 7], parentId: null, watermark: 'w');
