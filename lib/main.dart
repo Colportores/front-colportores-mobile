@@ -1,3 +1,4 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +61,9 @@ import 'plataforma/identidad_instalacion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Sin PII en `toString()` (convenciones §7.5, #540): `Equatable` arranca con `stringify` en `true` en
+  // debug y volcaría las `props` (calle, número, coordenadas, nombres) de cualquier entidad a un log.
+  EquatableConfig.stringify = false;
   // Solo vertical (#301): la misma regla que el manifest de Android y el Info.plist de iOS.
   await OrientacionApp.fijarVertical();
 
