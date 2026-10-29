@@ -283,6 +283,7 @@ class _Pendiente extends StatelessWidget {
     final completo = conocido && !consultando && resultado == null;
     // Sin estado conocido y sin red: un aviso de sin conexión explícito, no el error genérico.
     final sinConexionSinEstado = !conocido && !consultando && resultado == _Resultado.sinConexion;
+    final sinConexion = !consultando && resultado == _Resultado.sinConexion;
 
     final cuerpo = <Widget>[
       if (conocido)
@@ -383,12 +384,15 @@ class _Pendiente extends StatelessWidget {
             if (completo) const Padding(padding: EdgeInsets.only(top: 10), child: _LineaDeTiempo()),
           ],
         ),
-        // Solo con una jornada abierta (#472); si no, no ocupa lugar.
-        const TerminarJornadaDeLaCuenta(),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar. En 18-A04 (sin conexión) va
+        // debajo del bloque del canvas (título, aviso y «Reintentar»), no entre el título y el aviso
+        // (decisión del 29/10, QA P1).
+        if (!sinConexion) const TerminarJornadaDeLaCuenta(),
         Padding(
           padding: const EdgeInsets.only(top: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: pie),
         ),
+        if (sinConexion) const TerminarJornadaDeLaCuenta(),
       ],
     );
   }

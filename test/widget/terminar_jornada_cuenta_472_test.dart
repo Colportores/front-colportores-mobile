@@ -81,6 +81,36 @@ void main() {
       expect(_boton, findsOneWidget);
     });
 
+    testWidgets('18-A04 (sin conexión): la sección va debajo de título, aviso y «Reintentar»', (
+      tester,
+    ) async {
+      await montar(tester, estado: null);
+
+      final titulo = tester.getRect(find.byKey(const Key('espera_titulo')));
+      final aviso = tester.getRect(find.byKey(const Key('espera_sin_conexion')));
+      final reintentar = tester.getRect(find.byKey(const Key('espera_actualizar')));
+      final seccion = tester.getRect(_seccion);
+      expect(titulo.bottom, lessThanOrEqualTo(aviso.top));
+      expect(aviso.bottom, lessThanOrEqualTo(reintentar.top));
+      expect(reintentar.bottom, lessThanOrEqualTo(seccion.top));
+    });
+
+    testWidgets('cuenta pendiente: la sección queda entre el cuerpo y «Actualizar»', (
+      tester,
+    ) async {
+      await montar(tester, estado: EstadoCuenta.pendienteAsignacion);
+
+      final seccion = tester.getRect(_seccion);
+      expect(
+        tester.getRect(find.byKey(const Key('espera_titulo'))).bottom,
+        lessThanOrEqualTo(seccion.top),
+      );
+      expect(
+        seccion.bottom,
+        lessThanOrEqualTo(tester.getRect(find.byKey(const Key('espera_actualizar'))).top),
+      );
+    });
+
     testWidgets('no ofrece empezar nada nuevo: ni «Iniciar jornada» ni «Abrir el mapa»', (
       tester,
     ) async {
