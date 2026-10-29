@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.StatFs
 import android.provider.Settings
@@ -26,6 +27,32 @@ class MainActivity : FlutterActivity() {
         registrarCanalSeguridadDispositivo(flutterEngine)
         registrarCanalAlmacenamientoTiles(flutterEngine)
         registrarCanalNotificaciones(flutterEngine)
+        registrarCanalBateria(flutterEngine)
+    }
+
+    /**
+     * Canal `colportores/bateria` (HU-SYNC-005, R-SY10): el nivel de la batería, para que el backup
+     * automático no corra con menos del 30 %. Del lado de Dart, `NivelBateriaCanal`.
+     *
+     * - `nivel` -> el porcentaje (0 a 100, `BatteryManager.BATTERY_PROPERTY_CAPACITY`) o `null` si el
+     *   sistema no lo informa.
+     */
+    private fun registrarCanalBateria(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_BATERIA).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "nivel" -> {
+                        val bateria = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                        val nivel = bateria.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                        // Sin dato, Android devuelve 0 o `Integer.MIN_VALUE`.
+                        result.success(if (nivel in 1..100) nivel else null)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("BATERIA", e.javaClass.simpleName, null)
+            }
+        }
     }
 
     /**
@@ -289,6 +316,7 @@ class MainActivity : FlutterActivity() {
         private const val CANAL = "colportores/seguridad_dispositivo"
         private const val CANAL_TILES = "colportores/almacenamiento_tiles"
         private const val CANAL_NOTIFICACIONES = "colportores/notificaciones"
+        private const val CANAL_BATERIA = "colportores/bateria"
         private const val CODIGO_NOTIFICACIONES = 4711
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ALIAS_PRUEBA = "colportores_sonda_nivel_keystore"
