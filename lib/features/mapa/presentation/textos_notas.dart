@@ -87,6 +87,16 @@ abstract final class TextosNotas {
 
   static String verBorradas(int cantidad) => 'Ver borradas ($cantidad)';
 
+  /// Lo que lee el lector de pantalla del botón «Restaurar» de una nota borrada: «Restaurar la nota
+  /// del 05/10» o «Restaurar la nota de hoy a las 14:20». [fechaParaLector] es
+  /// `FormatoNotas.fechaParaLector` («el 05/10», «hoy a las 14:20»): con «el» va «del».
+  static String restaurarLaNota(String fechaParaLector) {
+    final fecha = fechaParaLector.startsWith('el ')
+        ? 'del ${fechaParaLector.substring(3)}'
+        : 'de $fechaParaLector';
+    return 'Restaurar la nota $fecha';
+  }
+
   /// La advertencia del límite blando de la HU (5000 caracteres): avisa y deja guardar.
   static String notaLarga(int largo) =>
       'La nota tiene $largo caracteres y lo recomendado es hasta ${ValidadorNota.largoSuave}. '

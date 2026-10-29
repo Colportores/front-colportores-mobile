@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,6 +61,10 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
   /// La última vez no se pudo guardar.
   bool _fallo = false;
 
+  /// Para llevar a la vista el aviso de la falla si la pantalla estaba desplazada: con el texto
+  /// grande queda bajo el pliegue y la persona no vería nada pasar (QA #445).
+  final _claveFalla = GlobalKey();
+
   Future<void> _noVolverAMostrar() async {
     final cuenta = widget.colportorId;
     if (_guardando || cuenta == null) return;
@@ -74,6 +80,23 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
     setState(() {
       _recienEscondido = guardado;
       _fallo = !guardado;
+    });
+    if (!guardado) _mostrarLaFalla();
+  }
+
+  void _mostrarLaFalla() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveFalla.currentContext;
+      if (!mounted || contexto == null) return;
+      // Al medio de la vista: arriba quedaría pegado al borde y cortaría el «No volver a mostrar» de
+      // arriba; abajo, bajo la barra de acciones.
+      unawaited(
+        Scrollable.ensureVisible(
+          contexto,
+          alignment: .5,
+          duration: const Duration(milliseconds: 150),
+        ),
+      );
     });
   }
 
@@ -135,6 +158,7 @@ class _AvisoPrivacidadPersonaState extends ConsumerState<AvisoPrivacidadPersona>
         ),
         if (_fallo)
           Semantics(
+            key: _claveFalla,
             liveRegion: true,
             child: const Text(
               TextosPersonas.noPudimosGuardarElAviso,

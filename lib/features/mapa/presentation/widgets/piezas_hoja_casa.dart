@@ -95,6 +95,9 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
         decoration: const BoxDecoration(color: _navy, shape: BoxShape.circle),
         child: Text(
           FormatoPersonas.iniciales(persona),
+          // El círculo es fijo (34 dp) y las iniciales no llevan información que el nombre de al lado no
+          // diga: no escalan con el texto, o se partirían en dos renglones y el círculo las cortaría.
+          textScaler: TextScaler.noScaling,
           style: const TextStyle(
             fontFamily: 'Inter',
             fontSize: 12,
