@@ -470,6 +470,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     final soloLectura = ficha.soloLectura;
     final historial = ficha.historial;
     final vacia = historial.isEmpty && ficha.resumen == null;
+    final opciones = FiltroDeHistorialDeFicha.disponibles(ficha.resumen);
+    // Si la opción elegida dejó de estar (la cuenta se dejó de saber), vale «Todo».
+    final filtro = opciones.contains(this.filtro) ? this.filtro : FiltroDeHistorial.todo;
     final filtrado = FiltroDeHistorialDeFicha.aplicar(historial, filtro, resumen: ficha.resumen);
     final visibles = filtrado.length <= mostrar ? filtrado : filtrado.sublist(0, mostrar);
     final faltan = filtrado.length - visibles.length;
@@ -535,7 +538,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
         ],
         if (historial.isNotEmpty) ...[
           const SizedBox(height: 14),
-          FiltroDelHistorial(elegido: filtro, alElegir: alElegirFiltro),
+          FiltroDelHistorial(opciones: opciones, elegido: filtro, alElegir: alElegirFiltro),
           const SizedBox(height: 14),
           const RotuloDeSeccion(texto: TextosFicha.historial),
           const SizedBox(height: 6),

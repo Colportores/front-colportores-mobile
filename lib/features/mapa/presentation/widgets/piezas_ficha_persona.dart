@@ -404,8 +404,14 @@ class TarjetaUltimaNota extends StatelessWidget {
 /// arriba, el título y, si hay, la de abajo. No se toca: el detalle de cada una no está en esta vista.
 /// MOSTRAR con Todo, Con saldo y Entrega pendiente (32B-03): se elige una sola opción.
 class FiltroDelHistorial extends StatelessWidget {
-  const FiltroDelHistorial({super.key, required this.elegido, required this.alElegir});
+  const FiltroDelHistorial({
+    super.key,
+    required this.opciones,
+    required this.elegido,
+    required this.alElegir,
+  });
 
+  final List<FiltroDeHistorial> opciones;
   final FiltroDeHistorial elegido;
   final ValueChanged<FiltroDeHistorial> alElegir;
 
@@ -421,7 +427,7 @@ class FiltroDelHistorial extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final f in FiltroDeHistorial.values)
+            for (final f in opciones)
               Semantics(
                 selected: f == elegido,
                 button: true,

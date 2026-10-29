@@ -86,7 +86,11 @@ void main() {
       _cobro('cob-3', 5000, talonario: '0043'),
     ];
 
-    final r = FiltroDeHistorialDeFicha.aplicar(pagadas, FiltroDeHistorial.conSaldo);
+    final r = FiltroDeHistorialDeFicha.aplicar(
+      pagadas,
+      FiltroDeHistorial.conSaldo,
+      resumen: _cuenta(saldo: 1000),
+    );
 
     expect(r, isEmpty);
   });
@@ -101,11 +105,24 @@ void main() {
     expect(r, isEmpty);
   });
 
+  test(
+    '«Con saldo» sin fuente de cobros (cuenta desconocida) no afirma ninguna deuda ni se ofrece',
+    () {
+      expect(FiltroDeHistorialDeFicha.aplicar(historial, FiltroDeHistorial.conSaldo), isEmpty);
+      expect(FiltroDeHistorialDeFicha.disponibles(null), [
+        FiltroDeHistorial.todo,
+        FiltroDeHistorial.entregaPendiente,
+      ]);
+      expect(FiltroDeHistorialDeFicha.disponibles(_cuenta(saldo: 0)), FiltroDeHistorial.values);
+    },
+  );
+
   test('un cobro sin número de venta no se descuenta de ninguna', () {
-    final r = FiltroDeHistorialDeFicha.aplicar([
-      _venta('ven-1', '0042', 120000),
-      _cobro('cob-1', 120000),
-    ], FiltroDeHistorial.conSaldo);
+    final r = FiltroDeHistorialDeFicha.aplicar(
+      [_venta('ven-1', '0042', 120000), _cobro('cob-1', 120000)],
+      FiltroDeHistorial.conSaldo,
+      resumen: _cuenta(saldo: 120000),
+    );
 
     expect(_ids(r), ['ven-1']);
   });

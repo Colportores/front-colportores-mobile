@@ -15,12 +15,19 @@ enum FiltroDeHistorial {
 
 /// Aplica un [FiltroDeHistorial] a los movimientos de la ficha, sin cambiarles el orden.
 abstract final class FiltroDeHistorialDeFicha {
+  /// Las opciones que se ofrecen. «Con saldo» solo si se sabe cuánto debe la persona ([resumen] no es
+  /// `null`): sin fuente de cobros no se afirma una deuda.
+  static List<FiltroDeHistorial> disponibles(ResumenCuentaPersona? resumen) => [
+    for (final f in FiltroDeHistorial.values)
+      if (f != FiltroDeHistorial.conSaldo || resumen != null) f,
+  ];
+
   /// Los movimientos de [historial] que quedan con [filtro].
   ///
   /// - [FiltroDeHistorial.todo]: todos.
   /// - [FiltroDeHistorial.conSaldo]: las ventas cuyo monto supera lo cobrado con su número de
-  ///   talonario. Si [resumen] dice que la persona no debe nada, ninguna: el filtro y la cuenta de
-  ///   arriba no se contradicen.
+  ///   talonario. Si [resumen] dice que la persona no debe nada, o no se sabe ([resumen] `null`),
+  ///   ninguna: el filtro y la cuenta de arriba no se contradicen ni se afirma una deuda.
   /// - [FiltroDeHistorial.entregaPendiente]: las entregas pendientes.
   static List<MovimientoDeFicha> aplicar(
     List<MovimientoDeFicha> historial,
@@ -36,7 +43,7 @@ abstract final class FiltroDeHistorialDeFicha {
             if (m is EntregaEnFicha && m.pendiente) m,
         ];
       case FiltroDeHistorial.conSaldo:
-        if (resumen != null && !resumen.tieneSaldo) return const <MovimientoDeFicha>[];
+        if (resumen == null || !resumen.tieneSaldo) return const <MovimientoDeFicha>[];
         final cobrado = <String, int>{};
         for (final m in historial) {
           if (m is CobroEnFicha && m.numeroTalonario != null) {

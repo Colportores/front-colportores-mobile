@@ -748,6 +748,37 @@ void main() {
       );
     });
 
+    testWidgets('con la fuente por defecto (sin cuenta) no se ofrece «Con saldo»', (tester) async {
+      final m = MundoFicha(historial: historialDelCanvas());
+      await montarFicha(tester, m, tamano: alto);
+
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)), findsNothing);
+      expect(find.text('Con saldo'), findsNothing);
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo)), findsOneWidget);
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)), findsOneWidget);
+      expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
+    });
+
+    testWidgets('si la cuenta deja de saberse con «Con saldo» puesto, vuelve a «Todo»', (
+      tester,
+    ) async {
+      final m = mundoConEstados();
+      await montarFicha(tester, m, tamano: alto);
+      await elegir(tester, FiltroDeHistorial.conSaldo);
+      veSolo(['ven-2']);
+
+      m.cuentas.cuenta = null;
+      m.fichas.poner(LecturaDeFicha(persona: mariaDePrueba(), historial: historialDelCanvas()));
+      await asentar(tester);
+
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)), findsNothing);
+      expect(
+        tester.widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo))).selected,
+        isTrue,
+      );
+      expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
+    });
+
     testWidgets('«Con saldo» deja solo la venta que se debe', (tester) async {
       await montarFicha(tester, mundoConEstados(), tamano: alto);
 
