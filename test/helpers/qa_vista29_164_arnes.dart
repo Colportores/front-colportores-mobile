@@ -15,7 +15,7 @@ import 'agendar_visita_arnes.dart' show asentarAgendar;
 import 'cobro_arnes.dart';
 import 'qa_vista23_408_arnes.dart' show cargarFuentes408, conCapturas408, usarFuentesReales408;
 
-export 'qa_vista23_408_arnes.dart' show conCapturas408, usarFuentesReales408;
+export 'qa_vista23_408_arnes.dart' show cargarFuentes408, conCapturas408, usarFuentesReales408;
 
 const chico164 = Size(360, 640);
 const grande164 = Size(412, 915);

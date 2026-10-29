@@ -551,6 +551,9 @@ void main() {
         testWidgets(
           'tras fallar con $medio y el último dato escrito, el aviso de error queda a la vista · ${sufijo164(tamano, escala)}',
           (tester) async {
+            // Con las fuentes reales: con las cajas de Ahem el encabezado ocupa más renglones y el
+            // resultado dependía de qué test corría antes.
+            await cargarFuentes408(tester);
             final repo = CobranzasEnMemoria()..fallas.add(const FailureCobroNoGuardado());
             await montarCobro(tester, repo: repo, tamano: tamano, escala: escala);
             if (medio == 'tarjeta') {
