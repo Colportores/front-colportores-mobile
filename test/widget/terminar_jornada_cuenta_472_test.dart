@@ -114,17 +114,53 @@ void main() {
       expect(_seccion, findsNothing);
     });
 
-    testWidgets('si no se puede leer la jornada, la pantalla de la cuenta sigue entera', (
+    testWidgets(
+      'si no se puede leer la jornada: lo dice con «Reintentar» y la cuenta sigue entera',
+      (tester) async {
+        local.errorAlLeer = StateError('disco');
+        await montar(tester);
+
+        expect(_seccion, findsNothing);
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('No pudimos leer tu jornada.'), findsOneWidget);
+        expect(find.textContaining('Tus datos siguen guardados en este teléfono.'), findsOneWidget);
+        expect(find.byKey(const Key('jornada_reintentar')), findsOneWidget);
+        expect(find.text('Cuenta suspendida'), findsOneWidget);
+        expect(find.byKey(const Key('espera_ir_a_configuracion')), findsOneWidget);
+      },
+    );
+
+    testWidgets('«Reintentar» vuelve a leer: con la lectura arreglada aparece «Terminar jornada»', (
       tester,
     ) async {
       local.errorAlLeer = StateError('disco');
       await montar(tester);
+      local.errorAlLeer = null;
 
-      expect(_seccion, findsNothing);
-      expect(tester.takeException(), isNull);
-      expect(find.text('Cuenta suspendida'), findsOneWidget);
-      expect(find.byKey(const Key('espera_ir_a_configuracion')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('jornada_reintentar')));
+      await tester.tap(find.byKey(const Key('jornada_reintentar')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('jornada_reintentar')), findsNothing);
+      expect(_boton, findsOneWidget);
     });
+
+    testWidgets(
+      '«Reintentar» con la lectura todavía rota: sigue el aviso y se puede volver a tocar',
+      (tester) async {
+        local.errorAlLeer = StateError('disco');
+        await montar(tester);
+
+        for (var i = 0; i < 2; i++) {
+          await tester.ensureVisible(find.byKey(const Key('jornada_reintentar')));
+          await tester.tap(find.byKey(const Key('jornada_reintentar')));
+          await tester.pumpAndSettle();
+        }
+
+        expect(find.byKey(const Key('jornada_reintentar')), findsOneWidget);
+        expect(_boton, findsNothing);
+      },
+    );
 
     testWidgets('mientras se lee, la sección no ocupa lugar y aparece al llegar la lectura', (
       tester,

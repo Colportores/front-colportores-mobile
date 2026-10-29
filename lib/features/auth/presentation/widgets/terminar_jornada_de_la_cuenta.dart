@@ -67,7 +67,15 @@ class _TerminarJornadaDeLaCuentaState extends ConsumerState<TerminarJornadaDeLaC
     final sesion = ref.watch(sesionProvider).value;
     if (sesion == null) return const SizedBox.shrink();
     _sesion = sesion;
-    final jornada = ref.watch(jornadaActualProvider(sesion.usuarioId)).value;
+    final lectura = ref.watch(jornadaActualProvider(sesion.usuarioId));
+    // No poder leerla no es lo mismo que no tenerla (decisión del 29/10, P2): se dice y se ofrece
+    // reintentar, como en «Hoy» (vista 20, A06). Cargando o sin jornada no ocupa lugar.
+    if (lectura.hasError) {
+      return _ErrorAlLeer(
+        alReintentar: () => ref.invalidate(jornadaActualProvider(sesion.usuarioId)),
+      );
+    }
+    final jornada = lectura.value;
     if (jornada == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
@@ -112,6 +120,44 @@ class _TerminarJornadaDeLaCuentaState extends ConsumerState<TerminarJornadaDeLaC
             child: finalizando
                 ? const ConEspera(TextosTerminarJornadaDeLaCuenta.terminando)
                 : const Text(TextosTerminarJornadaDeLaCuenta.terminar, textAlign: TextAlign.center),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// No se pudo leer la jornada guardada: el aviso de «Hoy» con «Reintentar».
+class _ErrorAlLeer extends StatelessWidget {
+  const _ErrorAlLeer({required this.alReintentar});
+
+  final VoidCallback alReintentar;
+
+  @override
+  Widget build(BuildContext context) {
+    final escala = MediaQuery.textScalerOf(context).scale(15);
+    return Padding(
+      key: const Key('cuenta_terminar_jornada_error_lectura'),
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 10,
+        children: [
+          const AvisoJornada(
+            key: Key('jornada_error_lectura'),
+            esError: true,
+            texto: '$textoNoPudimosLeerJornada $textoReintentarLeerJornada',
+          ),
+          OutlinedButton(
+            key: const Key('jornada_reintentar'),
+            onPressed: alReintentar,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              shape: escala > 20
+                  ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                  : const StadiumBorder(),
+            ),
+            child: const Text('Reintentar', textAlign: TextAlign.center),
           ),
         ],
       ),

@@ -78,6 +78,32 @@ void main() {
           await tester.ensureVisible(_boton);
           expect(tester.widget<FilledButton>(_boton).onPressed, isNotNull);
         });
+
+        testWidgets(
+          'el aviso de no poder leer la jornada entra y «Reintentar» responde · $cuando',
+          (tester) async {
+            local.errorAlLeer = StateError('disco');
+            await montarCuentaConJornada(
+              tester,
+              local: local,
+              montaje: montaje,
+              estado: estado,
+              tamano: tamano,
+              escala: escala,
+            );
+
+            final reintentar = find.byKey(const Key('jornada_reintentar'));
+            await tester.ensureVisible(reintentar);
+            await tester.pumpAndSettle();
+
+            expect(tester.takeException(), isNull, reason: 'sin overflow');
+            expect(tester.getSize(reintentar).height, greaterThanOrEqualTo(52));
+            expect(
+              tester.getRect(find.byKey(const Key('jornada_error_lectura'))).right,
+              lessThanOrEqualTo(tamano.width),
+            );
+          },
+        );
       }
     }
   }

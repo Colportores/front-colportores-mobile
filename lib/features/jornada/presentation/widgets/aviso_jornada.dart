@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
 
+/// Lo que dice «Hoy» (vista 20, A06) cuando no se puede leer la jornada guardada, y la pantalla de
+/// la cuenta restringida (#472) con el mismo texto.
+const textoNoPudimosLeerJornada = 'No pudimos leer tu jornada.';
+const textoReintentarLeerJornada =
+    'Tocá “Reintentar” para volver a cargarla. Tus datos siguen guardados en este teléfono.';
+
 /// Aviso en línea: error (qué pasó y qué hacer) o información (el bloqueo de jornada activa).
 class AvisoJornada extends StatelessWidget {
   const AvisoJornada({super.key, required this.texto, this.esError = false});

@@ -521,10 +521,9 @@ class _ErrorAlLeer extends StatelessWidget {
                   ),
                 ),
               ),
-              Text('No pudimos leer tu jornada.', style: theme.textTheme.headlineMedium),
+              Text(textoNoPudimosLeerJornada, style: theme.textTheme.headlineMedium),
               Text(
-                'Tocá “Reintentar” para volver a cargarla. Tus datos siguen guardados en este '
-                'teléfono.',
+                textoReintentarLeerJornada,
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: esquema.onSurfaceVariant,
                   height: 1.5,
