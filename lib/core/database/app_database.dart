@@ -10,6 +10,7 @@ import '../../features/catalogo/data/datasources/precios_generales_table.dart';
 import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
+import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -84,6 +85,7 @@ part 'app_database.g.dart';
     CampaniasColportor,
     Ventas,
     VentaItems,
+    Cobranzas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -122,10 +124,11 @@ class AppDatabase extends _$AppDatabase {
   /// - 18: `producto.codigo_editor` (el código de la casa editora, opcional) y `parametro_global`, la
   ///   réplica de solo lectura de los parámetros de toda la aplicación, hoy los días del aviso de
   ///   precios viejos (backend-supabase 0070, HU-CAT-006, #419).
+  /// - 19: `cobranza`, el cobro en efectivo, que sube (HU-COB-001, #436).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 18;
+  static const int versionEsquema = 19;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -328,6 +331,11 @@ class AppDatabase extends _$AppDatabase {
     from17To18: (m, esquema) async {
       await m.addColumn(esquema.producto, esquema.producto.codigoEditor);
       await m.createTable(esquema.parametroGlobal);
+    },
+    // Solo crea los cobros, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from18To19: (m, esquema) async {
+      await m.createTable(esquema.cobranza);
+      await m.createIndex(esquema.cobranzaVentaIdx);
     },
   );
 }

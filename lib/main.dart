@@ -39,10 +39,12 @@ import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/mapa/presentation/providers/personas_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
@@ -217,6 +219,10 @@ Future<void> main() async {
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
         monitorConectividadProvider.overrideWithValue(conectividad),
+        // Lo que debe cada persona (HU-COB-001): las ventas del teléfono menos sus cobros.
+        saldosDePersonasProvider.overrideWith(
+          (ref) => SaldosDePersonasLocal(ref.watch(cobranzaLocalProvider)),
+        ),
         // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
         // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
         // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.
