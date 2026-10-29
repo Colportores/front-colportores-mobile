@@ -8,7 +8,9 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/fakes/estado_cuenta_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/jornada/data/models/jornada_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -205,6 +207,72 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_seccion, findsOneWidget);
+    });
+  });
+
+  group('la sección no se remonta cuando cambia de lugar (revisión, ronda 2)', () {
+    testWidgets('«Reintentar» consultando y de nuevo sin conexión: la hora elegida sigue ahí', (
+      tester,
+    ) async {
+      final remoto = EstadoCuentaEnMemoria()..simularSinConexion = true;
+      await montarCuentaConJornada(
+        tester,
+        local: local,
+        montaje: montaje,
+        estado: null,
+        extras: [estadoCuentaRemoteDataSourceProvider.overrideWithValue(remoto)],
+      );
+      await elegirUnaHoraAntes(tester);
+      expect(find.textContaining('14:36'), findsOneWidget);
+
+      // La consulta queda en vuelo: la sección pasa de abajo (18-A04) a antes de los botones.
+      remoto.demora = Completer<void>();
+      await tester.ensureVisible(find.byKey(const Key('espera_actualizar')));
+      await tester.tap(find.byKey(const Key('espera_actualizar')));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const Key('espera_revisando')), findsOneWidget);
+      expect(find.textContaining('14:36'), findsOneWidget);
+
+      // Contesta sin red: vuelve abajo y conserva la hora.
+      remoto.demora!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('espera_sin_conexion')), findsOneWidget);
+      expect(find.textContaining('14:36'), findsOneWidget);
+
+      await tocarTerminar(tester);
+      expect(local.unica.fin!.isAtSameMomentAs(DateTime(2026, 10, 23, 14, 36)), isTrue);
+    });
+
+    testWidgets('un cierre en vuelo no se reactiva por una revisión de la cuenta', (tester) async {
+      final remoto = EstadoCuentaEnMemoria()..simularSinConexion = true;
+      await montarCuentaConJornada(
+        tester,
+        local: local,
+        montaje: montaje,
+        estado: null,
+        extras: [estadoCuentaRemoteDataSourceProvider.overrideWithValue(remoto)],
+      );
+      final cierre = local.demoraFinalizar = Completer<void>();
+      await tester.ensureVisible(_boton);
+      await tester.tap(_boton);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Terminando…'), findsOneWidget);
+
+      remoto.demora = Completer<void>();
+      await tester.ensureVisible(find.byKey(const Key('espera_actualizar')));
+      await tester.tap(find.byKey(const Key('espera_actualizar')));
+      await tester.pump(const Duration(milliseconds: 50));
+      remoto.demora!.complete();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Terminando…'), findsOneWidget);
+      expect(alTocar(tester), isNull);
+
+      cierre.complete();
+      await tester.pumpAndSettle();
+      expect(local.cierres, 1);
+      expect(local.unica.estaAbierta, isFalse);
     });
   });
 

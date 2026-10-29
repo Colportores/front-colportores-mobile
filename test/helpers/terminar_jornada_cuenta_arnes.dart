@@ -18,6 +18,7 @@ import 'package:colportores_mobile/features/jornada/domain/services/disparador_b
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'entrevista_falsos.dart';
@@ -102,6 +103,7 @@ Future<void> montarCuentaConJornada(
   EstadoCuenta? estado = EstadoCuenta.suspendida,
   Size tamano = const Size(390, 844),
   double escala = 1,
+  List<Override> extras = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -114,6 +116,7 @@ Future<void> montarCuentaConJornada(
         disparadorBackupProvider.overrideWithValue(BackupFalsoDeLaCuenta()),
         relojJornadaProvider.overrideWithValue(() => ahoraDeLaCuenta),
         ...montaje.overrides,
+        ...extras,
       ],
       child: MaterialApp(
         theme: temaClaro(),
