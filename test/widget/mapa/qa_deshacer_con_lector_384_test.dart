@@ -650,6 +650,163 @@ void main() {
     );
   });
 
+  group('Con otra ruta encima el aviso se suelta y la unión sigue esperando (#540)', () {
+    final unenAlCerrar = find.textContaining('se unen en una cuando cierres este aviso');
+
+    /// Pone otra pantalla encima de «Posibles duplicados» y devuelve el contexto de esta.
+    Future<BuildContext> cubrir(WidgetTester tester, {bool conAviso = false}) async {
+      final contexto = tester.element(find.byType(PosiblesDuplicadosPage));
+      unawaited(
+        Navigator.of(contexto).push<void>(
+          MaterialPageRoute(
+            builder: (c) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  key: const Key('otra_pide'),
+                  onPressed: () => ScaffoldMessenger.of(c).showSnackBar(
+                    const SnackBar(content: Text('Guardado sin conexión. Se sube después.')),
+                  ),
+                  child: const Text('otra pantalla'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _transicion(tester);
+      expect(find.text('otra pantalla'), findsOneWidget);
+      if (conAviso) {
+        await tester.tap(find.byKey(const Key('otra_pide')));
+        await _asentar(tester);
+      }
+      return contexto;
+    }
+
+    _prueba('cubierta por una ruta: el aviso se suelta, la unión no se confirma ni a los 30 s y al '
+        'volver reaparece', (tester) async {
+      final m = await _montar(tester, _datos());
+      await _unir(tester, _parItalia);
+      expect(unenAlCerrar, findsOneWidget);
+      expect(m.datos.uniones, isEmpty);
+
+      final contexto = await cubrir(tester);
+      expect(unenAlCerrar, findsNothing, reason: 'el aviso tapa la pantalla de arriba');
+      await tester.pump(const Duration(seconds: 30));
+      expect(m.datos.uniones, isEmpty, reason: 'cubierta, la unión no se confirma sola');
+
+      Navigator.of(contexto).pop();
+      await _transicion(tester);
+      expect(unenAlCerrar, findsOneWidget, reason: 'al volver el aviso tiene que reaparecer');
+      expect(_deshacer, findsOneWidget);
+      expect(m.datos.uniones, isEmpty);
+
+      // Y sigue andando: «Deshacer» la cancela.
+      await tester.tap(_deshacer);
+      await _transicion(tester);
+      await tester.pump(const Duration(minutes: 1));
+      expect(m.datos.uniones, isEmpty);
+      expect(find.text('2 para revisar'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _prueba('cubierta y al volver se cierra el aviso: la unión se hace una sola vez', (
+      tester,
+    ) async {
+      final m = await _montar(tester, _datos());
+      await _unir(tester, _parItalia);
+      final contexto = await cubrir(tester);
+      Navigator.of(contexto).pop();
+      await _transicion(tester);
+      expect(unenAlCerrar, findsOneWidget);
+
+      await _descartarElAviso(tester);
+      await tester.pump(const Duration(minutes: 1));
+      expect(m.datos.uniones, [(conservadaId: 'ub-a', duplicadaId: 'ub-b')]);
+    });
+
+    _prueba('cubierta y se sale de la pantalla de abajo: la unión se hace', (tester) async {
+      final m = await _montar(tester, _datos());
+      await _unir(tester, _parItalia);
+      final contexto = await cubrir(tester);
+      expect(m.datos.uniones, isEmpty);
+
+      Navigator.of(contexto).popUntil((r) => r.isFirst);
+      await _transicion(tester);
+      await tester.pump(const Duration(seconds: 1));
+      expect(m.datos.uniones, [(conservadaId: 'ub-a', duplicadaId: 'ub-b')]);
+      expect(find.text('abrir'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _prueba('la otra pantalla pide su aviso y vuelve: se ve, y después reaparece el de la unión', (
+      tester,
+    ) async {
+      final m = await _montar(tester, _datos());
+      await _unir(tester, _parItalia);
+      final contexto = await cubrir(tester, conAviso: true);
+      expect(find.text('Guardado sin conexión. Se sube después.'), findsOneWidget);
+
+      Navigator.of(contexto).pop();
+      await _transicion(tester);
+      await tester.pump(const Duration(seconds: 8));
+      await _asentar(tester);
+      expect(
+        unenAlCerrar,
+        findsOneWidget,
+        reason: 'el aviso de la unión no volvió tras el de la otra',
+      );
+      expect(m.datos.uniones, isEmpty);
+    });
+
+    _prueba('sin lector, cubierta por una ruta no cambia nada: corren los 8 s y se une una vez', (
+      tester,
+    ) async {
+      final m = await _montar(tester, _datos(), lector: false);
+      await _unir(tester, _parItalia);
+      expect(_aviso, findsOneWidget);
+      await cubrir(tester);
+      await tester.pump(_ocho + const Duration(seconds: 1));
+      expect(m.datos.uniones, [(conservadaId: 'ub-a', duplicadaId: 'ub-b')]);
+    });
+
+    _prueba(
+      'la hoja «Revisar» de otro par también cubre: el aviso se suelta mientras está abierta y '
+      'vuelve al cerrarla sin decidir',
+      (tester) async {
+        final m = await _montar(tester, _datos());
+        await _unir(tester, _parItalia);
+        expect(unenAlCerrar, findsOneWidget);
+
+        await _tocar(tester, _revisar(_parArtigas));
+        await _transicion(tester);
+        expect(_conservarYUnir, findsOneWidget, reason: 'la hoja del segundo par está abierta');
+        expect(unenAlCerrar, findsNothing, reason: 'el aviso no puede quedar detrás de la hoja');
+        await tester.pump(const Duration(seconds: 30));
+        expect(m.datos.uniones, isEmpty, reason: 'con la hoja abierta no se confirma nada');
+
+        Navigator.of(tester.element(_conservarYUnir)).pop();
+        await _transicion(tester);
+        expect(unenAlCerrar, findsOneWidget, reason: 'al cerrar la hoja el aviso tiene que volver');
+        expect(m.datos.uniones, isEmpty);
+      },
+    );
+
+    _prueba(
+      'desde la hoja del segundo par, «Conservar A y unir» confirma la primera y deja el aviso '
+      'de la segunda a la vista',
+      (tester) async {
+        final m = await _montar(tester, _datos());
+        await _unir(tester, _parItalia);
+        await _unir(tester, _parArtigas);
+        await _transicion(tester);
+
+        expect(m.datos.uniones, [(conservadaId: 'ub-a', duplicadaId: 'ub-b')]);
+        expect(find.textContaining('Bulevar Artigas 880 se unen'), findsOneWidget);
+        expect(_deshacer, findsOneWidget);
+      },
+    );
+  });
+
   group('Privacidad', () {
     test('el toString de la unión pendiente no vuelca la dirección ni los ids', () {
       const union = UnionPendiente(
