@@ -32,7 +32,7 @@
          transferencia dispositivo-a-dispositivo en API 31+, donde allowBackup no alcanza en
          todos los fabricantes. -->
     <application
-        android:label="colportores_mobile"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

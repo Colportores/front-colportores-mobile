@@ -115,6 +115,21 @@ flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUP
 
 `ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` (incluye las reglas de Riverpod del plugin `riverpod_lint`), `flutter test --coverage` con umbrales, el smoke test de proveedores de Supabase Auth (omitido si no hay variables), y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
 
+## Despliegue (staging y production)
+
+Ramas `develop → staging → production`. Los compilados de despliegue no corren en el CI de develop: salen de dos workflows que comparten `android-build.yml` (`workflow_call`) y toman variables y secretos de los GitHub Environments `staging` y `production`.
+
+| Workflow | Cuándo | Qué compila | Dónde publica |
+|---|---|---|---|
+| `staging.yml` | push a `staging` | APK release, `applicationId` con sufijo `.staging` y nombre «Colportores (staging)», variables de **dev** | pre-release `staging-<n>` en GitHub Releases |
+| `staging.yml` | a mano (`gh workflow run staging.yml --ref develop`) | por defecto el `app-debug.apk` de la demo (debug, sin sufijo, Supabase dev) | artefacto de Actions; pre-release solo si se pide y desde `staging`/`develop` |
+| `production.yml` | push a `production` | AAB release firmado, variables de **producción** (exige `APP_ENV=production` y rechaza el proyecto dev) | Google Play (track `PLAY_TRACK`, por defecto `internal`, en borrador) |
+
+- Variables (`vars`, no secretas): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV` y opcionales (`GOOGLE_SERVER_CLIENT_ID`, `SOPORTE_WHATSAPP`, `SOPORTE_WHATSAPP_VISIBLE`, `LOG_LEVEL`). En `staging`, si el environment no las define, valen las del repo (proyecto dev).
+- Secretos del environment: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (obligatorios en producción; en staging, sin ellos el release se firma con la clave de debug del runner y para actualizarlo hay que desinstalar) y `PLAY_SERVICE_ACCOUNT_JSON` (producción).
+- `android/app/build.gradle.kts` lee del entorno el sufijo (`COLPORTORES_APP_ID_SUFFIX`), el nombre (`COLPORTORES_APP_NAME`) y la keystore (`ANDROID_KEYSTORE_PATH` y compañía). Sin esas variables (local, Docker) el build es el de siempre.
+- El repo es público: ningún paso imprime valores, la keystore se decodifica a un archivo temporal que se borra al final y los `dart-define` van por archivo (`--dart-define-from-file`), no por la línea de comandos.
+
 ## Privacidad
 
 Los datos personales de clientes (`persona.nombre`, `persona.apellido`, `persona.telefono`, `nota.texto`) son **local-only**: viven solo en el dispositivo del colportor y nunca llegan al cloud, por la Ley 18.331 de Uruguay. Ver [`02-restricciones.md`](https://github.com/Colportores/docs-organizacion/blob/main/docs/02-restricciones.md).
