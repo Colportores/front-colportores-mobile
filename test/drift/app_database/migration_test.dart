@@ -7,7 +7,7 @@
 // rompe el test, y un `ALTER TABLE … ADD COLUMN` no da un falso fallo.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
@@ -21,6 +21,7 @@ import 'generated/schema_v14.dart' as v14;
 import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v16.dart' as v16;
 import 'generated/schema_v17.dart' as v17;
+import 'generated/schema_v18.dart' as v18;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -1077,4 +1078,55 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado lo guardado en la versión 17, cuando migra a la 18, el producto conserva todo, queda sin '
+    'código del editor, aparece parametro_global vacío y no se encola nada',
+    () async {
+      // HU-CAT-006 (#419): `producto.codigo_editor` es una columna nueva y opcional, y `parametro_global`
+      // una réplica de solo lectura que llena el pull. Al migrar no se toca nada de lo guardado.
+      const producto = v17.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 3,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 17,
+        newVersion: 18,
+        createOld: v17.DatabaseAtV17.new,
+        createNew: v18.DatabaseAtV18.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.producto, producto),
+        validateItems: (nuevo) async {
+          final productos = await nuevo.select(nuevo.producto).get();
+          expect(productos.map((p) => p.id), ['pro-1']);
+          expect(productos.single.nombre, 'El Conflicto de los Siglos');
+          expect(productos.single.precioBaseCompra, 18000);
+          expect(productos.single.syncVersion, 3);
+          expect(productos.single.codigoEditor, isNull);
+          expect(await nuevo.select(nuevo.parametroGlobal).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta un código; la tabla nueva, una fila como la del servidor.
+          await nuevo.customStatement(
+            "UPDATE producto SET codigo_editor = 'CS-01' WHERE id = 'pro-1'",
+          );
+          await nuevo.customStatement(
+            'INSERT INTO parametro_global (id, clave, valor, created_at, updated_at) '
+            "VALUES ('pg-1', 'dias_antiguedad_precios', 15, 1, 1)",
+          );
+          expect((await nuevo.select(nuevo.producto).getSingle()).codigoEditor, 'CS-01');
+          expect((await nuevo.select(nuevo.parametroGlobal).getSingle()).valor, 15);
+        },
+      );
+    },
+  );
 }

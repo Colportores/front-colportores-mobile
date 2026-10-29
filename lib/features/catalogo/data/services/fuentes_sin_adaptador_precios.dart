@@ -11,12 +11,11 @@ import '../../domain/repositories/fuente_de_ciudades_para_precios.dart';
 // Puertos de la consulta de precios (HU-CAT-006) cuya fuente real todavía no existe. **Ninguno es la
 // regla de la HU**: se reemplazan cuando llegue lo que les falta.
 
-/// Sin la réplica local del catálogo de ventas (`producto`, `coleccion`, `producto_coleccion`,
-/// `precio_por_ciudad` y `precio_general` llegan con el pull de catálogos, front-colportores-mobile#180;
-/// además, `producto.codigo_editor` y `parametro_global`, backend-supabase 0070): no hay qué leer.
+/// Sin base local abierta (no hay sesión): no hay de dónde leer el catálogo de ventas. Con la base
+/// abierta lo lee `ConsultaDePreciosRepositoryImpl` (réplica del pull de catálogos, #180 y #419).
 ///
 /// **No sabe, así que no afirma que no hay precios**: emite un error (26·10, «No pudimos leer los
-/// precios guardados en tu teléfono.», con «Reintentar»). La app no sale a producción con esta clase.
+/// precios guardados en tu teléfono.», con «Reintentar»).
 final class ConsultaDePreciosSinFuente implements ConsultaDePreciosRepository {
   ConsultaDePreciosSinFuente({AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -27,7 +26,7 @@ final class ConsultaDePreciosSinFuente implements ConsultaDePreciosRepository {
     _log.warn(
       LogModulo.stock,
       'PRECIOS_SIN_FUENTE',
-      'no hay catálogo de ventas en el teléfono (falta la réplica local del catálogo)',
+      'no hay catálogo de ventas que leer (la base local no está abierta)',
     );
     return Stream.error(const FailurePreciosNoDisponibles());
   }
@@ -63,8 +62,8 @@ final class FechaDeLosPreciosDesconocida implements FechaDeLosPrecios {
   Future<DateTime?> ultimaBajada() async => null;
 }
 
-/// Mientras la réplica de `parametro_global` no llegue al teléfono rigen los 15 días de siempre (el
-/// valor sembrado por backend-supabase 0070).
+/// Sin base local abierta rigen los 15 días de siempre (el valor sembrado por backend-supabase 0070).
+/// Con la base abierta los lee `DiasDeAntiguedadDePreciosLocal` de la réplica de `parametro_global`.
 final class DiasDeAntiguedadPorDefecto implements DiasDeAntiguedadDePrecios {
   const DiasDeAntiguedadPorDefecto(this._dias);
 
