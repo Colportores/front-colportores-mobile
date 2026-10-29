@@ -292,6 +292,103 @@ void main() {
     });
   });
 
+  group('varias personas: el selector de R·02 desde la hoja (r2)', () {
+    final dos = ContextoDeLaCasa(
+      espacioId: 'esp-1',
+      personas: [
+        mariaFernandez,
+        clienteDePersonas('p2', 'Pedro', apellido: 'Gómez'),
+      ],
+    );
+    final seguir = find.text('Seguir');
+
+    testWidgets('«Todavía no sé con quién» abre el formulario «Sin persona»', (tester) async {
+      final m = await _montar(tester, contexto: dos);
+      await _tocarAgendar(tester);
+
+      await tester.tap(find.text('Todavía no sé con quién'));
+      await asentarAgendar(tester);
+
+      expect(m.destinos.single.espacioPersonaId, isNull);
+      expect(_formulario, findsOneWidget);
+      expect(find.text('Sin persona'), findsOneWidget);
+    });
+
+    testWidgets('elegir a la segunda persona agenda con ella', (tester) async {
+      final m = await _montar(tester, contexto: dos);
+      await _tocarAgendar(tester);
+
+      await tester.tap(find.textContaining('Pedro Gómez').last);
+      await tester.pump();
+      await tester.tap(seguir);
+      await asentarAgendar(tester);
+
+      expect(m.destinos.single.espacioPersonaId, 'ep-p2');
+      expect(_formulario, findsOneWidget);
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await asentarAgendar(tester);
+      expect(m.repo.recibidas.single.agenda.espacioPersonaId, 'ep-p2');
+    });
+
+    testWidgets('«Volver» no abre nada y el botón vuelve a poder tocarse', (tester) async {
+      final m = await _montar(tester, contexto: dos);
+      await _tocarAgendar(tester);
+
+      await tester.tap(find.text('Volver'));
+      await asentarAgendar(tester);
+
+      expect(m.destinos, isEmpty);
+      expect(_formulario, findsNothing);
+      await _tocarAgendar(tester);
+      expect(seguir, findsOneWidget);
+    });
+
+    testWidgets('un doble toque abre un solo selector', (tester) async {
+      await _montar(tester, contexto: dos);
+      await tester.ensureVisible(_agendar);
+      await tester.pump();
+      await tester.tap(_agendar);
+      await tester.tap(_agendar, warnIfMissed: false);
+      await asentarAgendar(tester);
+
+      expect(seguir, findsOneWidget);
+      await tester.tap(find.text('Volver'));
+      await asentarAgendar(tester);
+      expect(seguir, findsNothing);
+    });
+
+    for (final tamano in const [Size(360, 640), Size(412, 915)]) {
+      for (final escala in const [1.0, 2.0]) {
+        testWidgets(
+          'selector a ${tamano.width.toInt()}×${tamano.height.toInt()} y $escala×: sin overflow, '
+          'se puede elegir y los toques son de 48',
+          (tester) async {
+            await _montar(tester, contexto: dos, tamano: tamano, escala: escala);
+            await _tocarAgendar(tester);
+            expect(tester.takeException(), isNull);
+            expect(seguir, findsOneWidget);
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            await tester.scrollUntilVisible(
+              find.text('Todavía no sé con quién'),
+              80,
+              scrollable: find
+                  .descendant(of: find.byType(BottomSheet), matching: find.byType(Scrollable))
+                  .first,
+            );
+            await tester.pump();
+            await tester.tap(find.text('Todavía no sé con quién'));
+            await asentarAgendar(tester);
+            expect(_formulario, findsOneWidget);
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  });
+
   group('tamaños', () {
     for (final tamano in const [Size(360, 640), Size(412, 915)]) {
       for (final escala in const [1.0, 2.0]) {
