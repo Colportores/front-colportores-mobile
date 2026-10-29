@@ -9,6 +9,7 @@ class FakeArchive implements ArchivePort {
     bool authorized = false,
     DateTime Function()? clock,
     String Function(List<int>)? digest,
+    this.informaHashRemoto = false,
   })  : _authorized = authorized,
         _clock = clock ?? (() => DateTime.now().toUtc()),
         _digest = digest ?? FakeCrypto.hashOf;
@@ -22,8 +23,26 @@ class FakeArchive implements ArchivePort {
   final String Function(List<int>) _digest;
   bool _authorized;
 
+  /// Como Drive: `list()` trae el hash que el archivo calculó sobre lo que
+  /// guardó (`BackupEntry.storedHash`), así que la integridad se verifica sin
+  /// bajar nada. Apagado, el archivo no lo informa y `verifyChain` baja el blob.
+  final bool informaHashRemoto;
+
   final Map<String, List<int>> _payloads = {};
   final List<BackupEntry> entries = [];
+
+  /// Cuántas veces se bajó un blob: la verificación por metadatos no baja nada.
+  int descargas = 0;
+
+  /// Si la próxima subida (o la que sigue) se corta: no queda nada en el
+  /// archivo, como una subida de Drive que no terminó.
+  int subidasQueFallan = 0;
+
+  /// Los ids que se borraron, en orden.
+  final List<String> borrados = [];
+
+  /// Si borrar explota (Drive sin red a mitad de la poda).
+  bool failOnDelete = false;
 
   /// El usuario nunca autorizó Drive. Es el caso de §7 "sin backup".
   void revoke() => _authorized = false;
@@ -43,22 +62,54 @@ class FakeArchive implements ArchivePort {
   Future<bool> get isAuthorized async => _authorized;
 
   @override
-  Future<List<BackupEntry>> list() async => List.of(entries);
+  Future<List<BackupEntry>> list() async => [
+        for (final e in entries)
+          if (informaHashRemoto && _payloads.containsKey(e.id))
+            BackupEntry(
+              id: e.id,
+              createdAt: e.createdAt,
+              contentHash: e.contentHash,
+              watermark: e.watermark,
+              parentId: e.parentId,
+              bytes: e.bytes,
+              exportedAt: e.exportedAt,
+              storedHash: _digest(_payloads[e.id]!),
+            )
+          else
+            e,
+      ];
+
+  int _secuencia = 0;
+  DateTime? _ultimaFecha;
 
   @override
   Future<BackupEntry> upload({
     required List<int> payload,
     required String? parentId,
     required String watermark,
+    DateTime? exportedAt,
   }) async {
-    final id = 'backup-${entries.length + 1}';
+    if (subidasQueFallan > 0) {
+      subidasQueFallan--;
+      throw StateError('la subida se cortó');
+    }
+    final id = 'backup-${++_secuencia}';
+    // Drive no repite el instante de dos subidas: la base más nueva se
+    // reconoce por su fecha.
+    var ahora = _clock();
+    final ultima = _ultimaFecha;
+    if (ultima != null && !ahora.isAfter(ultima)) {
+      ahora = ultima.add(const Duration(milliseconds: 1));
+    }
+    _ultimaFecha = ahora;
     final entrada = BackupEntry(
       id: id,
-      createdAt: _clock(),
+      createdAt: ahora,
       contentHash: _digest(payload),
       watermark: watermark,
       parentId: parentId,
       bytes: payload.length,
+      exportedAt: exportedAt,
     );
     _payloads[id] = payload;
     entries.add(entrada);
@@ -66,8 +117,17 @@ class FakeArchive implements ArchivePort {
   }
 
   @override
-  Future<List<int>> download(String id) async =>
-      _payloads[id] ?? (throw StateError('no existe $id en el archivo'));
+  Future<List<int>> download(String id) async {
+    descargas++;
+    return _payloads[id] ?? (throw StateError('no existe $id en el archivo'));
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    if (failOnDelete) throw StateError('no se pudo borrar');
+    borrados.add(id);
+    deleteEntry(id);
+  }
 }
 
 /// Cifrado de mentira: invierte los bytes.

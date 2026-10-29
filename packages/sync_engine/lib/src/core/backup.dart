@@ -14,6 +14,8 @@ class BackupEntry {
     required this.watermark,
     this.parentId,
     this.bytes = 0,
+    this.exportedAt,
+    this.storedHash,
   });
 
   /// Identidad en Drive.
@@ -34,7 +36,26 @@ class BackupEntry {
 
   final int bytes;
 
+  /// El instante, **del reloj del teléfono**, en que empezó a leerse la DB para
+  /// armar este backup. El siguiente incremental parte de acá y no de
+  /// [createdAt]: ese es el reloj de Drive y llega después de la subida, así que
+  /// una fila escrita mientras se subía quedaba entre los dos y no entraba en
+  /// ningún backup (HU-SYNC-005: nunca se pierde una venta). Repetir filas es
+  /// inofensivo —el restore es un upsert—; saltearlas, no. `null` en un backup
+  /// de una versión anterior: se usa [createdAt].
+  final DateTime? exportedAt;
+
+  /// El hash que **el archivo remoto** calculó sobre lo que guardó (en Drive, el
+  /// `sha256Checksum` del archivo). Con él la integridad de la cadena se
+  /// verifica sin bajar nada (HU-SYNC-009): si no coincide con [contentHash],
+  /// lo que está en Drive no es lo que se subió. `null` si el archivo no lo
+  /// informa; ahí `verifyChain` baja el blob.
+  final String? storedHash;
+
   bool get isBase => parentId == null;
+
+  /// Lo que se subió y lo que Drive guardó no es lo mismo.
+  bool get corrupta => storedHash != null && storedHash != contentHash;
 }
 
 /// Qué le puede pasar a una cadena.
@@ -54,12 +75,29 @@ enum ChainProblem {
 
   /// Hay entradas que no cuelgan de la base.
   orphan,
+
+  /// Una entrada existe pero lo que guarda el archivo remoto no es lo que se
+  /// subió: rompe el restore igual que una que falta.
+  corrupt,
 }
 
 class ChainStatus {
-  const ChainStatus({required this.problems, required this.ordered});
+  const ChainStatus({
+    required this.problems,
+    required this.ordered,
+    this.superseded = const [],
+    this.corruptIds = const {},
+  });
 
   final Set<ChainProblem> problems;
+
+  /// Lo que quedó de una base anterior (la rotación sube la nueva antes de
+  /// borrar la vieja, y borrar puede fallar). No es un problema: es basura que
+  /// se poda después del próximo backup.
+  final List<BackupEntry> superseded;
+
+  /// Las entradas cuyo contenido remoto no coincide con lo subido.
+  final Set<String> corruptIds;
 
   /// De la base a la punta. Es el orden en que hay que aplicar los payloads
   /// para reconstruir la DB. Vacío si la cadena no sirve.
@@ -80,40 +118,41 @@ class ChainStatus {
 
 /// Arma la cadena a partir de lo que hay en Drive y dice si sirve.
 ///
-/// Es pura: no descarga nada. Lo que verifica son los enlaces, no los hashes
-/// del contenido — eso necesita bajar los archivos y lo hace `verifyChain()`.
+/// Es pura: no descarga nada. Lo que verifica son los enlaces y, si el archivo
+/// remoto los informa, los hashes que **él** calculó ([BackupEntry.storedHash]).
+/// Un archivo que no informa su hash se verifica bajándolo, en `verifyChain()`.
+///
+/// **La base vigente es la más nueva.** La rotación (30 días o 30 backups) sube
+/// una base nueva y recién cuando está confirmada borra la anterior, así que
+/// durante un rato hay dos. Lo que es más viejo que la base vigente y no
+/// cuelga de ella es de una cadena anterior: va a [ChainStatus.superseded], no
+/// es un error. Lo que es más nuevo y no cuelga de ella sí lo es.
 ChainStatus buildChain(List<BackupEntry> entries) {
   if (entries.isEmpty) {
     return const ChainStatus(problems: {ChainProblem.missingBase}, ordered: []);
   }
 
   final porId = {for (final e in entries) e.id: e};
-  final problemas = <ChainProblem>{};
-
-  final bases = entries.where((e) => e.isBase).toList();
-  if (bases.isEmpty) problemas.add(ChainProblem.missingBase);
-  if (bases.length > 1) problemas.add(ChainProblem.fork);
+  final bases = entries.where((e) => e.isBase).toList()
+    ..sort((a, b) {
+      final porFecha = a.createdAt.compareTo(b.createdAt);
+      return porFecha != 0 ? porFecha : a.id.compareTo(b.id);
+    });
+  if (bases.isEmpty) {
+    return const ChainStatus(problems: {ChainProblem.missingBase}, ordered: []);
+  }
+  final vigente = bases.last;
 
   final hijosPorPadre = <String, List<BackupEntry>>{};
   for (final e in entries) {
-    if (e.isBase) continue;
-    if (!porId.containsKey(e.parentId)) {
-      problemas.add(ChainProblem.brokenLink);
-      continue;
-    }
+    if (e.isBase || !porId.containsKey(e.parentId)) continue;
     (hijosPorPadre[e.parentId!] ??= []).add(e);
   }
-  if (hijosPorPadre.values.any((h) => h.length > 1)) {
-    problemas.add(ChainProblem.fork);
-  }
 
-  if (problemas.isNotEmpty) {
-    return ChainStatus(problems: problemas, ordered: const []);
-  }
-
+  final problemas = <ChainProblem>{};
   final ordenados = <BackupEntry>[];
   final vistos = <String>{};
-  var actual = bases.single;
+  var actual = vigente;
   while (true) {
     if (!vistos.add(actual.id)) {
       return const ChainStatus(problems: {ChainProblem.cycle}, ordered: []);
@@ -121,13 +160,42 @@ ChainStatus buildChain(List<BackupEntry> entries) {
     ordenados.add(actual);
     final hijos = hijosPorPadre[actual.id];
     if (hijos == null) break;
+    if (hijos.length > 1) {
+      // Dos entradas con el mismo padre: dos dispositivos escribiendo la misma
+      // cadena. No se puede saber cuál rama es la buena.
+      problemas.add(ChainProblem.fork);
+      break;
+    }
     actual = hijos.single;
   }
 
-  if (ordenados.length != entries.length) {
-    problemas.add(ChainProblem.orphan);
-    return ChainStatus(problems: problemas, ordered: const []);
+  final superseded = <BackupEntry>[];
+  for (final e in entries) {
+    if (vistos.contains(e.id)) continue;
+    if (e.createdAt.isBefore(vigente.createdAt)) {
+      superseded.add(e);
+    } else if (e.isBase) {
+      problemas.add(ChainProblem.fork);
+    } else if (!porId.containsKey(e.parentId)) {
+      problemas.add(ChainProblem.brokenLink);
+    } else if (!problemas.contains(ChainProblem.fork)) {
+      problemas.add(ChainProblem.orphan);
+    }
   }
 
-  return ChainStatus(problems: const {}, ordered: ordenados);
+  final corruptas = {
+    for (final e in ordenados)
+      if (e.corrupta) e.id,
+  };
+  if (corruptas.isNotEmpty) problemas.add(ChainProblem.corrupt);
+
+  if (problemas.isNotEmpty) {
+    // No se ofrece una cadena a medias.
+    return ChainStatus(
+      problems: problemas,
+      ordered: const [],
+      corruptIds: corruptas,
+    );
+  }
+  return ChainStatus(problems: const {}, ordered: ordenados, superseded: superseded);
 }

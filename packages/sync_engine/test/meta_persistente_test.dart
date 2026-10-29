@@ -94,6 +94,24 @@ void main() {
       await reabierto.dispose();
     });
 
+    test('el backup guarda el watermark de pull que tiene el motor (§7, fase 3)', () async {
+      final t = _telefono();
+      final archivo = FakeArchive(authorized: true);
+      final backup = BackupService(
+        archive: archivo,
+        crypto: FakeCrypto(),
+        snapshot: FakeSnapshot(),
+      );
+      final motor = _abrir(t, backup: backup);
+      await t.store.applyDelta(const {}, scope: 'mirror', watermark: 'wm-7');
+
+      final entrada = await motor.backup.backupNow();
+
+      expect(entrada.watermark, 'wm-7', reason: 'el restore arranca la reconciliación desde acá');
+      await motor.dispose();
+      expect(backup.watermarkProvider, isNull, reason: 'cerrado el motor no queda colgado');
+    });
+
     test('instalación nueva: no hay nada anotado y el estado lo dice con null', () async {
       final t = _telefono();
       final motor = _abrir(t);

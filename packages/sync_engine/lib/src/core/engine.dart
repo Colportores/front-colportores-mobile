@@ -111,6 +111,9 @@ class SyncEngine {
       await _anotarMeta(lastBackupAt: entrada.createdAt);
       await _emit();
     };
+    // El backup guarda el watermark de pull de la DB (§7 fase 3): la app llama
+    // a `backup.backupNow()` sin saber qué es.
+    _backup?.watermarkProvider = () => _store.watermarkOf(_scopeMirror);
     resubscribe();
   }
 
@@ -851,6 +854,7 @@ class SyncEngine {
     await _conn?.cancel();
     await _wifiSub?.cancel();
     _backup?.alTerminarUnBackup = null;
+    _backup?.watermarkProvider = null;
     await _status.close();
   }
 

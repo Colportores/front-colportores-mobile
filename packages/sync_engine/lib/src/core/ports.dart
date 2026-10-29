@@ -280,13 +280,26 @@ abstract interface class ArchivePort {
   Future<List<BackupEntry>> list();
 
   /// Sube un payload **ya cifrado** y devuelve la entrada creada.
+  ///
+  /// La entrada existe **entera o no existe**: si la subida se corta, no queda
+  /// nada que `list()` devuelva. Es lo que hace atómico el paso de «subí el
+  /// backup» a «el backup cuenta» (HU-SYNC-005, «manifest intacto»).
+  ///
+  /// [exportedAt] es de cuándo, en el reloj del teléfono, se leyó la DB; ver
+  /// [BackupEntry.exportedAt].
   Future<BackupEntry> upload({
     required List<int> payload,
     required String? parentId,
     required String watermark,
+    DateTime? exportedAt,
   });
 
   Future<List<int>> download(String id);
+
+  /// Borra una entrada. Es lo que usa la rotación de la base (HU-SYNC-005) para
+  /// podar la cadena vieja **después** de confirmar la nueva. Borrar lo que ya
+  /// no está no es un error.
+  Future<void> delete(String id);
 }
 
 /// Cifrado E2E con la clave del usuario (ADR-003).
