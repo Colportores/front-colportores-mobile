@@ -49,7 +49,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     final color = CalculadorColorCasa.calcular(
       agendasPendientes: await _agendasPendientes(ubicacionId),
       resultadosDeVisitas: await _resultadosDeVisitas(ubicacionId),
-      montosDeVentas: await _montosDeVentas(ubicacionId),
+      ventas: await _ventas(ubicacionId),
     );
     final existente = await _fila(ubicacionId);
 
@@ -135,16 +135,35 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     ];
   }
 
-  /// Lo que se cobra por cada venta viva de la casa (HU-VEN-001): las ventas cuelgan del vínculo
-  /// persona ↔ espacio, y el espacio tiene que seguir activo.
-  Future<List<int>> _montosDeVentas(String ubicacionId) async {
+  /// Cada venta viva de la casa con lo que lleva cobrado (HU-VEN-001, HU-COB-001): las ventas cuelgan
+  /// del vínculo persona ↔ espacio, y el espacio tiene que seguir activo. Los cobros dados de baja
+  /// no cuentan.
+  Future<List<({int montoCentavos, int cobradoCentavos, bool entregada})>> _ventas(
+    String ubicacionId,
+  ) async {
     final vinculos = _db.selectOnly(_db.espacioPersonas)
       ..addColumns([_db.espacioPersonas.id])
       ..where(_db.espacioPersonas.espacioId.isInQuery(_espaciosDe(ubicacionId)));
     final filas = await (_db.select(
       _db.ventas,
     )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
-    return [for (final fila in filas) fila.montoTotal];
+    final salida = <({int montoCentavos, int cobradoCentavos, bool entregada})>[];
+    for (final fila in filas) {
+      final suma = _db.cobranzas.monto.sum();
+      final cobrado =
+          await (_db.selectOnly(_db.cobranzas)
+                ..addColumns([suma])
+                ..where(_db.cobranzas.ventaId.equals(fila.id) & _db.cobranzas.deletedAt.isNull()))
+              .getSingle();
+      // La tabla `entrega` llega con HU-VEN-002 (#430): hasta entonces el teléfono no sabe si se
+      // entregó y no lo da por hecho, así que una venta pagada sigue pendiente.
+      salida.add((
+        montoCentavos: fila.montoTotal,
+        cobradoCentavos: cobrado.read(suma) ?? 0,
+        entregada: false,
+      ));
+    }
+    return salida;
   }
 
   Future<HouseStatusFila?> _fila(String ubicacionId) => (_db.select(

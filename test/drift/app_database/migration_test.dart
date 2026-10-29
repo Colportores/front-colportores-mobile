@@ -22,6 +22,7 @@ import 'generated/schema_v15.dart' as v15;
 import 'generated/schema_v16.dart' as v16;
 import 'generated/schema_v17.dart' as v17;
 import 'generated/schema_v18.dart' as v18;
+import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
@@ -1125,6 +1126,52 @@ void main() {
           );
           expect((await nuevo.select(nuevo.producto).getSingle()).codigoEditor, 'CS-01');
           expect((await nuevo.select(nuevo.parametroGlobal).getSingle()).valor, 15);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 18, cuando migra a la 19, no se pierde nada y aparece el cobro '
+    'vacío, con los CHECK del servidor y sin encolar nada',
+    () async {
+      // HU-COB-001 (#436): `cobranza` sube por el motor; al migrar solo se crea.
+      const venta = v18.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 18,
+        newVersion: 19,
+        createOld: v18.DatabaseAtV18.new,
+        createNew: v19.DatabaseAtV19.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.cobranza).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO cobranza (id, venta_id, monto, medio, fecha, created_at, updated_at) '
+              'VALUES ';
+          await nuevo.customStatement("$columnas('c-1', 'v-1', 500, 'EFECTIVO', 1, 1, 1)");
+          for (final malo in [
+            "('c-2', 'v-1', 0, 'EFECTIVO', 1, 1, 1)",
+            "('c-3', 'v-1', -5, 'EFECTIVO', 1, 1, 1)",
+            "('c-4', 'v-1', 500, 'CHEQUE', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
         },
       );
     },
