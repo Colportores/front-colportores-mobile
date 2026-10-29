@@ -1,5 +1,5 @@
 /// Los textos de la vista 29 (Cobro con tarjeta y por transferencia, HU-COB-002 y HU-COB-003): los
-/// del canvas tal cual, y los que el canvas no dibuja marcados «A confirmar» (mapa §2: texto).
+/// del canvas tal cual, y los que el canvas no dibuja (decididos como están, PR #572, P5).
 abstract final class TextosMedioDeCobro {
   // --- Del canvas (29A y 29B) ---
   static const eyebrow = 'COBRO';
@@ -32,7 +32,7 @@ abstract final class TextosMedioDeCobro {
   static String sumamosDepositado(String monto, {String? referencia}) =>
       'Sumamos $monto a tu dinero depositado.${referencia == null ? '' : ' Referencia $referencia.'}';
 
-  // --- A confirmar (mapa §2: texto y accesibilidad) ---
+  // --- Sin dibujo en el canvas (texto y accesibilidad; decididos como están) ---
 
   /// Lo que oye el lector de pantalla en el control de débito o crédito, que el canvas dibuja sin
   /// rótulo.
