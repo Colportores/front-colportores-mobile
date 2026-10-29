@@ -877,6 +877,13 @@ class BotonDeVenta extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(56),
             backgroundColor: ColoresAgenda.navy,
+            // Un botón apagado de Material pinta el rótulo con `onSurface` al 38 %: ilegible sobre
+            // azul. Ocupado («Registrando…») se ve lleno, como en el canvas; apagado por falta de
+            // datos queda más claro, pero con el rótulo blanco.
+            disabledBackgroundColor: ocupado
+                ? ColoresAgenda.navy
+                : ColoresAgenda.navy.withValues(alpha: .6),
+            disabledForegroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
           child: ocupado
