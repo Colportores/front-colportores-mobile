@@ -65,7 +65,9 @@ final class ContadorPersonasFalso implements ContadorPersonasEspacio {
 ///   complete y recién ahí se aplica.
 /// - [fallas]: las fallas de las próximas escrituras, de a una (una escritura que falla no cambia nada).
 /// - [lanzas]: lo mismo, pero lanzando.
-/// - [fallaAlListar]: mientras no sea `null`, `listar` devuelve esa falla.
+/// - [fallaAlListar]: mientras no sea `null`, `listar` devuelve esa falla. [fallaAlListarBajas] es lo mismo
+///   para la lectura de «Dados de baja» (`incluirBajas: true`), que tiene su propia pausa
+///   ([esperaAlListarBajas]) y su propia cuenta ([listadosConBajas]).
 final class EspacioRepoFalso implements EspacioRepository {
   EspacioRepoFalso(this.ubicacion, {List<Espacio> espacios = const []}) {
     this.espacios.addAll(espacios);
@@ -84,11 +86,18 @@ final class EspacioRepoFalso implements EspacioRepository {
   /// Si no es `null`, la próxima lectura de la lista espera a que se complete.
   Completer<void>? esperaAlListar;
 
-  /// Las escrituras que llegaron, en orden: `agregar:<id>`, `modificar:<id>`, `baja:<id>`.
+  Failure? fallaAlListarBajas;
+  Completer<void>? esperaAlListarBajas;
+
+  /// Las escrituras que llegaron, en orden: `agregar:<id>`, `modificar:<id>`, `baja:<id>`,
+  /// `restaurar:<id>`.
   final llamadas = <String>[];
 
-  /// Las lecturas de la lista.
+  /// Las lecturas de la lista de los activos.
   var listados = 0;
+
+  /// Las lecturas de «Dados de baja» (con las bajas incluidas).
+  var listadosConBajas = 0;
 
   List<Espacio> get activos => [
     for (final e in espacios)
@@ -180,9 +189,25 @@ final class EspacioRepoFalso implements EspacioRepository {
 
   @override
   Future<Either<Failure, Espacio>> restaurar(String id, {required DateTime ahora}) async {
+    llamadas.add('restaurar:$id');
+    final corte = await _antes();
+    if (corte != null) return corte;
     final actual = _por(id);
     if (actual == null) return _rechazo(MotivoRechazoEspacio.espacioInexistente);
-    return Right(actual);
+    if (!actual.estaBorrada) return Right(actual);
+    if (ubicacion.estaBorrada) return _rechazo(MotivoRechazoEspacio.ubicacionDeBaja);
+    if (actual.clave != null && activos.any((e) => e.id != id && e.clave == actual.clave)) {
+      return _rechazo(MotivoRechazoEspacio.deptoDuplicado);
+    }
+    final vuelto = Espacio(
+      id: actual.id,
+      ubicacionId: actual.ubicacionId,
+      numeroDepto: actual.numeroDepto,
+      piso: actual.piso,
+      auditoria: actual.auditoria.copyWith(updatedAt: ahora, deletedAt: null),
+    );
+    espacios[espacios.indexOf(actual)] = vuelto;
+    return Right(vuelto);
   }
 
   @override
@@ -196,13 +221,21 @@ final class EspacioRepoFalso implements EspacioRepository {
     String ubicacionId, {
     bool incluirBajas = false,
   }) async {
-    listados++;
-    final pausa = esperaAlListar;
+    if (incluirBajas) {
+      listadosConBajas++;
+    } else {
+      listados++;
+    }
+    final pausa = incluirBajas ? esperaAlListarBajas : esperaAlListar;
     if (pausa != null) {
-      esperaAlListar = null;
+      if (incluirBajas) {
+        esperaAlListarBajas = null;
+      } else {
+        esperaAlListar = null;
+      }
       await pausa.future;
     }
-    final falla = fallaAlListar;
+    final falla = incluirBajas ? fallaAlListarBajas : fallaAlListar;
     if (falla != null) return Left(falla);
     return Right([
       for (final e in espacios)
