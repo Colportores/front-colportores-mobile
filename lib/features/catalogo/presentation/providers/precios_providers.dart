@@ -8,6 +8,9 @@ import '../../../mapa/domain/services/ciudades_para_alta.dart';
 import '../../../mapa/domain/value_objects/coordenadas.dart';
 import '../../../mapa/presentation/providers/alta_ubicacion_providers.dart'
     show ciudadesParaAltaProvider, proveedorGpsProvider;
+import '../../data/datasources/catalogo_local_data_source.dart';
+import '../../data/repositories/consulta_de_precios_repository_impl.dart';
+import '../../data/repositories/dias_de_antiguedad_de_precios_local.dart';
 import '../../data/repositories/fecha_de_los_precios_sync_meta.dart';
 import '../../data/services/fuentes_sin_adaptador_precios.dart';
 import '../../domain/entities/catalogo_local.dart';
@@ -22,11 +25,14 @@ import '../../domain/services/selector_de_ciudad_inicial.dart';
 // Cableado de la consulta de precios (HU-CAT-006, vista 26): de dónde salen las ciudades, el
 // catálogo y la fecha de los precios, y lo que la colportora fue eligiendo en la pantalla.
 
-/// El catálogo de ventas replicado en el teléfono. Sin réplica (#180 todavía no está en `develop`)
-/// [ConsultaDePreciosSinFuente] emite el error de 26·10: la app no sale a producción así.
-final consultaDePreciosRepositoryProvider = Provider<ConsultaDePreciosRepository>(
-  (ref) => ConsultaDePreciosSinFuente(),
-);
+/// El catálogo de ventas replicado en el teléfono (el pull de catálogos, #180). Sin DB abierta
+/// [ConsultaDePreciosSinFuente] emite el error de 26·10: no se sabe qué hay, y no se dice que no hay
+/// precios.
+final consultaDePreciosRepositoryProvider = Provider<ConsultaDePreciosRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return ConsultaDePreciosSinFuente();
+  return ConsultaDePreciosRepositoryImpl(CatalogoLocalDataSource(db));
+});
 
 /// Las ciudades y campañas de la colportora. Sin réplica (#274) [FuenteDeCiudadesParaPreciosSinFuente]
 /// devuelve la falla de lectura: la app no sale a producción así.
@@ -42,11 +48,13 @@ final fechaDeLosPreciosProvider = Provider<FechaDeLosPrecios>((ref) {
   return FechaDeLosPreciosSyncMeta(DriftSyncMeta(db));
 });
 
-/// Los días del aviso fuerte de precios viejos. Mientras `parametro_global` no baje al teléfono
-/// (backend-supabase 0070), los 15 por defecto.
-final diasDeAntiguedadDePreciosProvider = Provider<DiasDeAntiguedadDePrecios>(
-  (ref) => const DiasDeAntiguedadPorDefecto(AntiguedadDePrecios.diasPorDefecto),
-);
+/// Los días del aviso fuerte de precios viejos: los de `parametro_global` (backend-supabase 0070,
+/// «Precio viejo»). Mientras esa fila no bajó al teléfono, o sin DB abierta, los 15 por defecto.
+final diasDeAntiguedadDePreciosProvider = Provider<DiasDeAntiguedadDePrecios>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return const DiasDeAntiguedadPorDefecto(AntiguedadDePrecios.diasPorDefecto);
+  return DiasDeAntiguedadDePreciosLocal(CatalogoLocalDataSource(db));
+});
 
 /// El reloj de la pantalla («cuántos días tienen los precios», el día que rige); un test lo reemplaza.
 final relojPreciosProvider = Provider<DateTime Function()>((ref) => DateTime.now);

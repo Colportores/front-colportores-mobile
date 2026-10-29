@@ -28,6 +28,7 @@ const _producto = {
   'created_by': 'adm-1',
   'deleted_at': null,
   'sync_version': 3,
+  'codigo_editor': 'CS-01',
   'xmin_w': '123456',
 };
 
@@ -87,6 +88,19 @@ const _general = {
   'xmin_w': '123460',
 };
 
+/// El parámetro sembrado por backend-supabase 0070: los días del aviso fuerte de precios viejos.
+const _parametro = {
+  'id': 'par-1',
+  'clave': 'dias_antiguedad_precios',
+  'valor': 15,
+  'created_at': '2026-10-27T23:00:00+00:00',
+  'updated_at': '2026-10-27T23:00:00+00:00',
+  'created_by': null,
+  'deleted_at': null,
+  'sync_version': 1,
+  'xmin_w': '123461',
+};
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late AppDatabase db;
@@ -108,6 +122,7 @@ void main() {
       'producto_coleccion': _componente,
       'precio_por_ciudad': _excepcion,
       'precio_general': _general,
+      'parametro_global': _parametro,
     };
 
     for (final MapEntry(key: entidad, value: fila) in porEntidad.entries) {
@@ -140,6 +155,7 @@ void main() {
       expect(p.createdBy, 'adm-1');
       expect(p.deletedAt, isNull);
       expect(p.syncVersion, 3);
+      expect(p.codigoEditor, 'CS-01');
     });
 
     test('producto: los opcionales llegan en null', () async {
@@ -152,6 +168,7 @@ void main() {
             'casa_editora': null,
             'imagen_url': null,
             'created_by': null,
+            'codigo_editor': null,
           },
         ],
       });
@@ -163,7 +180,34 @@ void main() {
         p.casaEditora,
         p.imagenUrl,
         p.createdBy,
+        p.codigoEditor,
       ], everyElement(isNull));
+    });
+
+    test(
+      'producto: un servidor sin la columna nueva (sin codigo_editor) igual se aplica',
+      () async {
+        // El delta de un servidor que todavía no corrió backend-supabase 0070 no trae la columna.
+        final sinCodigo = {..._producto}..remove('codigo_editor');
+
+        await aplicar({
+          'producto': [sinCodigo],
+        });
+
+        expect((await db.select(db.productos).getSingle()).codigoEditor, isNull);
+      },
+    );
+
+    test('parametro_global: la clave y su valor entero, con las fechas a epoch ms UTC', () async {
+      await aplicar({
+        'parametro_global': [_parametro],
+      });
+
+      final p = await db.select(db.parametrosGlobales).getSingle();
+      expect([p.id, p.clave, p.valor], ['par-1', 'dias_antiguedad_precios', 15]);
+      expect(p.createdAt, DateTime.utc(2026, 10, 27, 23));
+      expect(p.deletedAt, isNull);
+      expect(p.syncVersion, 1);
     });
 
     test(
@@ -247,6 +291,25 @@ void main() {
       final producto = await db.select(db.productos).getSingle();
       expect(producto.deletedAt, DateTime.utc(2026, 10, 28, 10));
     });
+
+    test(
+      'un parámetro que Administración cambia queda con el valor nuevo, en la misma fila',
+      () async {
+        await aplicar({
+          'parametro_global': [_parametro],
+        });
+
+        await aplicar({
+          'parametro_global': [
+            {..._parametro, 'valor': 30, 'sync_version': 2},
+          ],
+        }, w: 'w2');
+
+        final filas = await db.select(db.parametrosGlobales).get();
+        expect(filas, hasLength(1));
+        expect([filas.single.valor, filas.single.syncVersion], [30, 2]);
+      },
+    );
   });
 
   test(
