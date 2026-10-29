@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/auth/data/repositories/recuperacion_
 import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/politica_password.dart';
 import 'package:dartz/dartz.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:logger/logger.dart';
 import 'package:test/test.dart';
 
@@ -291,6 +292,37 @@ void main() {
 
       expect(await repo.cerrarTodasLasSesiones(), const Left<Failure, Unit>(FailureSinConexion()));
       expect(salida.lineas.join('\n'), contains('RECUPERACION_REVOCAR_FAIL'));
+    });
+  });
+
+  group('el tope por defecto es de 15 s (decisión del 29/10 en #542)', () {
+    test('cambiar la contraseña sin respuesta sale como sin conexión a los 15 s, no antes', () {
+      expect(RecuperacionPasswordRepositoryImpl.topePorDefecto, const Duration(seconds: 15));
+      fakeAsync((reloj) {
+        remoto.demoraAlActualizar = Completer<void>();
+        final porDefecto = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo());
+        Either<Failure, Unit>? resultado;
+        unawaited(porDefecto.actualizarPassword('NuevaClave1').then((r) => resultado = r));
+
+        reloj.elapse(const Duration(seconds: 14));
+        expect(resultado, isNull);
+        reloj.elapse(const Duration(seconds: 2));
+        expect(resultado, const Left<Failure, Unit>(FailureSinConexion()));
+      });
+    });
+
+    test('revocar las sesiones sin respuesta también corta a los 15 s', () {
+      fakeAsync((reloj) {
+        remoto.demoraAlCerrarSesiones = Completer<void>();
+        final porDefecto = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo());
+        Either<Failure, Unit>? resultado;
+        unawaited(porDefecto.cerrarTodasLasSesiones().then((r) => resultado = r));
+
+        reloj.elapse(const Duration(seconds: 14));
+        expect(resultado, isNull);
+        reloj.elapse(const Duration(seconds: 2));
+        expect(resultado, isA<Left<Failure, Unit>>());
+      });
     });
   });
 

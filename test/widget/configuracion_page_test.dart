@@ -39,7 +39,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/sync_engine.dart'
-    show Op, PullDelta, PushBatch, PushResult, SpecRegistry, SyncEngine, SyncSpec;
+    show JobState, Op, PullDelta, PushBatch, PushResult, SpecRegistry, SyncEngine, SyncSpec;
 import 'package:sync_engine/testing.dart'
     show FakeSyncTransport, InMemoryJobStore, InMemoryLocalStore;
 
@@ -127,6 +127,21 @@ final class _TransporteQueSeTraba extends FakeSyncTransport {
     llamadas++;
     await compuerta.future;
     return super.pull(entities: entities, watermark: watermark, limit: limit);
+  }
+}
+
+/// Backend en memoria que **aplica** el primer lote y cuya respuesta no llega hasta que el test la
+/// suelta: la señal se corta justo después de que el servidor guardó la operación, y el teléfono no
+/// se entera.
+final class _TransporteQuePierdeLaPrimeraRespuesta extends FakeSyncTransport {
+  final Completer<void> respuesta = Completer<void>();
+  int _lotes = 0;
+
+  @override
+  Future<PushResult> push(PushBatch batch) async {
+    final resultado = await super.push(batch);
+    if (++_lotes == 1) await respuesta.future;
+    return resultado;
   }
 }
 
@@ -972,6 +987,69 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         await motor.settled;
+      },
+    );
+
+    // Decisión del 29/10 en #542 (P3): el motor no cancela el ciclo; vencidos los 5 s se cierra la
+    // DB igual, lo que no subió queda en la cola y se retoma al volver a entrar, sin duplicarse.
+    testWidgets(
+      'Edge -logout en medio de un sync activo: la operación que iba en vuelo se retoma al volver '
+      'a entrar y sube una sola vez',
+      (tester) async {
+        var ahora = DateTime.utc(2026, 10, 29, 12);
+        final cola = InMemoryJobStore(clock: () => ahora);
+        final servidor = _TransporteQuePierdeLaPrimeraRespuesta();
+        final specs = SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'});
+        final motor = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        SyncEngine? motorDeLaNuevaSesion;
+        addTearDown(() async {
+          if (!servidor.respuesta.isCompleted) servidor.respuesta.complete();
+          await motor.dispose();
+          await motorDeLaNuevaSesion?.dispose();
+        });
+        await motor.stage('venta', Op.insert, {'id': 'venta-1'}, clientOpId: 'op-1');
+        final container = await _montar(
+          tester,
+          extras: [motorSyncProvider.overrideWithValue(motor)],
+        );
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor guardó la venta');
+        expect(cola.withState(JobState.inFlight), hasLength(1), reason: 'el teléfono no se enteró');
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(milliseconds: 5100));
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_login, findsOneWidget);
+        expect(
+          cola.withState(JobState.inFlight),
+          hasLength(1),
+          reason: 'cerrar sesión no pierde la operación: queda en la cola',
+        );
+        expect(cola.withState(JobState.done), isEmpty);
+
+        // Vuelve a entrar: un motor nuevo sobre la misma cola. La operación colgada ya pasó su plazo.
+        ahora = ahora.add(const Duration(minutes: 11));
+        motorDeLaNuevaSesion = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        final salida = (await tester.runAsync(() => motorDeLaNuevaSesion!.syncNow()))!;
+
+        expect(salida.ok, isTrue);
+        expect(servidor.batches, hasLength(2), reason: 'se volvió a mandar');
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor la reconoce: una sola vez');
+        expect(servidor.rowsOf('venta'), hasLength(1));
+        expect(cola.withState(JobState.done), hasLength(1));
+        expect(cola.withState(JobState.inFlight), isEmpty);
+        expect(cola.withState(JobState.pending), isEmpty);
       },
     );
 

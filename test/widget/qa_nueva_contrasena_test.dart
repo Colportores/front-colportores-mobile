@@ -833,11 +833,11 @@ void main() {
   });
 
   group('QA vista 15 — errores del servidor', () {
-    // QA #224: un error del servidor sin traducción propia llega a la pantalla con el texto del
-    // `Failure` tal cual: «No se pudo completar la operación (<código>).» (lo arma
-    // `AuthRemoteDataSourceSupabase._traducir`) o «El servidor no pudo procesar la solicitud»: ni
-    // dicen qué hacer ni son el aviso del canvas 15-A05 («No pudimos guardar la contraseña. Probá de
-    // nuevo.»); el primero muestra además un código técnico.
+    // QA #224: un error del servidor sin traducción propia llegaba a la pantalla con el texto del
+    // `Failure` tal cual: «No se pudo completar la operación (<código>).» o «El servidor no pudo
+    // procesar la solicitud»: ni decían qué hacer ni eran el aviso del canvas 15-A05 («No pudimos
+    // guardar la contraseña. Probá de nuevo.»). Desde el 29/10 (#542) el remoto ya no arma texto con
+    // el código (queda en el log); la pantalla igual lo traduce si le llegara.
     testWidgets('un error del servidor sin texto propio dice qué hacer y no muestra un código', (
       tester,
     ) async {

@@ -18,7 +18,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
 
   /// Lo que se espera la respuesta del servidor antes de dar el paso por cortado (QA #224): sin
   /// tope, una señal que se corta a mitad dejaba «Guardando…» para siempre y el atrás bloqueado.
-  static const topePorDefecto = Duration(seconds: 30);
+  /// Son 15 s, el mismo número con que se espera la respuesta de autenticación (`limiteConsultaAlEntrar`;
+  /// decisión del 29/10 en #542). Rige también para revocar y abandonar.
+  static const topePorDefecto = Duration(seconds: 15);
 
   final RecuperacionPasswordRemoteDataSource _remote;
   final AppLogger _log;

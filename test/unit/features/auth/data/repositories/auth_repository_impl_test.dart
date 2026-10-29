@@ -415,22 +415,12 @@ void main() {
 
     test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
         'devuelve la falla visible en vez de enmascararla', () async {
-      remote.fallaAlSolicitarRecuperacion = const ServidorException(
-        status: 500,
-        mensaje: 'No se pudo completar la operación (unexpected_failure).',
-      );
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(status: 500);
 
       final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
 
-      expect(
-        resultado,
-        const Left<Failure, Unit>(
-          FailureServidor(
-            status: 500,
-            mensaje: 'No se pudo completar la operación (unexpected_failure).',
-          ),
-        ),
-      );
+      // Sin texto propio: la falla trae el genérico y cada pantalla compone el suyo (#542).
+      expect(resultado, const Left<Failure, Unit>(FailureServidor(status: 500)));
     });
 
     test('dado que no hay conexión, devuelve FailureSinConexion', () async {
