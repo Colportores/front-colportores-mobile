@@ -530,9 +530,9 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
 }
 
 /// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
-/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
-/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
-/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// pudo leer o el teléfono todavía no bajó el catálogo, las campañas o las ciudades
+/// (`ConsultaDePreciosRepositoryImpl`, `FuenteDeCiudadesParaPreciosLocal`, y sus `…SinFuente` sin base
+/// abierta; front-colportores-mobile#419 y #421). Es **otra cosa** que «no
 /// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
 /// Se puede reintentar.
 ///

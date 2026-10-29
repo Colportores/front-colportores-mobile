@@ -9,9 +9,11 @@ import '../../../mapa/domain/value_objects/coordenadas.dart';
 import '../../../mapa/presentation/providers/alta_ubicacion_providers.dart'
     show ciudadesParaAltaProvider, proveedorGpsProvider;
 import '../../data/datasources/catalogo_local_data_source.dart';
+import '../../data/datasources/ciudades_para_precios_local_data_source.dart';
 import '../../data/repositories/consulta_de_precios_repository_impl.dart';
 import '../../data/repositories/dias_de_antiguedad_de_precios_local.dart';
 import '../../data/repositories/fecha_de_los_precios_sync_meta.dart';
+import '../../data/repositories/fuente_de_ciudades_para_precios_local.dart';
 import '../../data/services/fuentes_sin_adaptador_precios.dart';
 import '../../domain/entities/catalogo_local.dart';
 import '../../domain/entities/ciudad_consultable.dart';
@@ -34,11 +36,17 @@ final consultaDePreciosRepositoryProvider = Provider<ConsultaDePreciosRepository
   return ConsultaDePreciosRepositoryImpl(CatalogoLocalDataSource(db));
 });
 
-/// Las ciudades y campañas de la colportora. Sin réplica (#274) [FuenteDeCiudadesParaPreciosSinFuente]
-/// devuelve la falla de lectura: la app no sale a producción así.
-final fuenteDeCiudadesParaPreciosProvider = Provider<FuenteDeCiudadesParaPrecios>(
-  (ref) => FuenteDeCiudadesParaPreciosSinFuente(),
-);
+/// Las ciudades y campañas de la colportora, de las réplicas locales del pull de catálogos
+/// (`campania_colportor`, `campania`, `campania_ciudad`, `ciudad` y `zona`): sin red (#421). Sin la base
+/// abierta [FuenteDeCiudadesParaPreciosSinFuente] devuelve la falla de lectura (26·10): no se sabe.
+final fuenteDeCiudadesParaPreciosProvider = Provider<FuenteDeCiudadesParaPrecios>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return FuenteDeCiudadesParaPreciosSinFuente();
+  return FuenteDeCiudadesParaPreciosLocal(
+    CiudadesParaPreciosLocalDataSource(db),
+    ahora: ref.watch(relojPreciosProvider),
+  );
+});
 
 /// Cuándo bajó el teléfono por última vez los precios: la última bajada del motor. Sin DB abierta no
 /// se sabe.
