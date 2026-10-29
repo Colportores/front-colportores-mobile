@@ -604,6 +604,18 @@ void main() {
       },
     );
 
+    testWidgets(
+      'sin fuente de cobros el filtro no ofrece «Con saldo» y deja Todo y Entrega pendiente',
+      (tester) async {
+        await llegarAFicha(tester, EstadoFicha.sinMovimientos);
+        await llegarA563(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo)));
+
+        expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)), findsNothing);
+        expect(find.text('Con saldo'), findsNothing);
+        expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)), findsOneWidget);
+      },
+    );
+
     testWidgets('los avisos de solo lectura dicen qué reactivar primero', (tester) async {
       await llegarAFicha(tester, EstadoFicha.ubicacionDeBaja);
       expect(find.textContaining(TextosFicha.reactivarPrimeroLaUbicacion), findsOneWidget);
