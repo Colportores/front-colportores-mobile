@@ -1291,24 +1291,18 @@ void main() {
       expect(titular.data, 'Contraseña actualizada. Iniciá sesión.');
     });
     for (final revocaMal in [true, false]) {
-      testWidgets(
-        'al abrir el éxito con texto 2.0 (revocación ${revocaMal ? "fallida" : "ok"}) se '
-        've el ícono y el titular entero, aunque la persona haya desplazado el formulario para '
-        'guardar',
-        (tester) async {
-          _pantalla(tester, const Size(360, 640), texto: 2.0);
-          if (revocaMal) _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
-          await _montar(tester);
-          await _completar(tester, 'NuevaClave1');
-          await _tocarGuardar(tester);
+      testWidgets('al abrir el éxito con texto 2.0 (revocación ${revocaMal ? "fallida" : "ok"}) se '
+          've el ícono y el titular entero, aunque la persona haya desplazado el formulario para '
+          'guardar', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: 2.0);
+        if (revocaMal) _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
 
-          expect(find.byKey(const Key('confirmar_recuperacion_exito')), findsOneWidget);
-          _expectIconoYTitularVisibles(tester);
-        },
-        // QA #542: el éxito abre con el desplazamiento del formulario; a texto 2.0 el ícono queda
-        // fuera de pantalla y el titular cortado arriba (el implementador saca el skip al arreglarlo).
-        skip: true,
-      );
+        expect(find.byKey(const Key('confirmar_recuperacion_exito')), findsOneWidget);
+        _expectIconoYTitularVisibles(tester);
+      });
     }
   });
 
