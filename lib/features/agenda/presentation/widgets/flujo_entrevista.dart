@@ -1,10 +1,19 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either, Unit;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/providers/personas_providers.dart';
+import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
+import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
+import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
+import '../../../ventas/presentation/pages/nueva_venta_page.dart';
+import '../../../ventas/presentation/providers/nueva_venta_notifier.dart' show ArgumentosDeVenta;
 import '../../domain/entities/entrevista_en_curso.dart';
+import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import '../../domain/usecases/finalizar_entrevista_use_case.dart';
 import '../providers/agenda_providers.dart';
 import '../providers/entrevista_providers.dart';
@@ -49,11 +58,21 @@ abstract final class FlujoEntrevista {
   /// termina la jornada con ella abierta, la hora de salida **no se inventa**, se le pide
   /// (decisión de Cristian, 23/10, #450). Devuelve cómo se cerró la hoja, o `null` si no había
   /// entrevista o se cerró sin elegir (la entrevista sigue en curso).
+  ///
+  /// «Sí, registrar la venta» sigue por la venta (vista 27) con la casa, la persona y la visita ya
+  /// puestas ([_registrarLaVenta], #428): devuelve [VentaGuardadaEnLaEntrevista] si se guardó, o
+  /// [VentaSinCompletar] si no (por R44 no se guarda el resultado y la entrevista sigue en curso).
+  /// [desdeLaJornada] es `true` cuando se llega desde «Finalizar jornada»: el aviso de la venta que no
+  /// se completó dice que hay que terminar la entrevista para cerrar la jornada, y la casa no se
+  /// vuelve a elegir en el mapa. Con [conVenta] en `false` la hoja devuelve [QuiereRegistrarLaVenta] sin
+  /// seguir (la cuenta restringida, a la espera de la decisión de Cristian, «Venta susp.»).
   static Future<SalidaTerminoEntrevista?> terminar(
     BuildContext context,
     WidgetRef ref, {
     required String colportorId,
     bool pedirSalida = false,
+    bool desdeLaJornada = false,
+    bool conVenta = true,
   }) async {
     final notificador = ref.read(entrevistaEnCursoProvider(colportorId).notifier);
     final estado = await notificador.esperarLectura();
@@ -97,6 +116,21 @@ abstract final class FlujoEntrevista {
                 : TextosEntrevista.guardada(_lugar(rotulo.direccion)),
           ),
         ),
+      );
+    }
+    if (resultado is QuiereRegistrarLaVenta && conVenta) {
+      if (!context.mounted) return const VentaSinCompletar();
+      return _registrarLaVenta(
+        context,
+        ref,
+        colportorId: colportorId,
+        persona: rotulo.persona,
+        direccion: rotulo.direccion,
+        desdeLaJornada: desdeLaJornada,
+        preparar: () =>
+            notificador.prepararVenta(entrada: resultado.entrada, salida: resultado.salida),
+        guardarVisita: notificador.guardarVisitaDeLaVenta,
+        soltar: notificador.soltarTrasLaVenta,
       );
     }
     return resultado;
@@ -153,7 +187,190 @@ abstract final class FlujoEntrevista {
         SnackBar(content: Text(TextosEntrevista.guardada(_lugar(direccion)))),
       );
     }
+    if (resultado is QuiereRegistrarLaVenta) {
+      if (!context.mounted) return const VentaSinCompletar();
+      final casoDeUso = ref.read(cerrarEntrevistaConVentaUseCaseProvider);
+      return _registrarLaVenta(
+        context,
+        ref,
+        colportorId: colportorId,
+        persona: persona,
+        direccion: direccion,
+        desdeLaJornada: false,
+        // Sin entrevista en curso no hay nada que soltar: la visita se guarda con la venta.
+        preparar: () => casoDeUso.preparar(
+          FinalizarEntrevistaParams(
+            ids: ids,
+            espacioId: espacioId,
+            espacioPersonaId: espacioPersonaId,
+            colportorId: colportorId,
+            entrada: resultado.entrada,
+            salida: resultado.salida,
+            agendaId: agendaId,
+            jornadaId: jornadaId,
+            nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
+          ),
+        ),
+        guardarVisita: casoDeUso.guardarVisita,
+      );
+    }
     return resultado;
+  }
+
+  /// «Sí, registrar la venta» (R·06 / R·07 → vista 27 → R·08; #428).
+  ///
+  /// 1. [preparar] arma la visita `VENTA` sin guardar nada. Si ya no hay casa o persona, un aviso dice
+  ///    qué pasó y la entrevista sigue en curso.
+  /// 2. Abre la venta con la casa, la persona y la visita puestas. Al registrarla, la visita `VENTA` se
+  ///    guarda en la misma transacción ([guardarVisita]): si la venta no se guarda, la visita tampoco
+  ///    (R44). Después, [soltar] cierra la entrevista en curso.
+  /// 3. Con saldo, pregunta «¿Cuándo volvés a cobrar?» y agenda la cobranza (decisión «Agenda cobro»).
+  /// 4. R·08: vuelve a la casa, que ya muestra la cobranza pendiente y la cita.
+  static Future<SalidaTerminoEntrevista> _registrarLaVenta(
+    BuildContext context,
+    WidgetRef ref, {
+    required String colportorId,
+    required String persona,
+    required String direccion,
+    required bool desdeLaJornada,
+    required Future<Either<Failure, VentaDeLaEntrevista>> Function() preparar,
+    required Future<void> Function(VentaDeLaEntrevista) guardarVisita,
+    Future<Either<Failure, Unit>> Function(VentaDeLaEntrevista)? soltar,
+  }) async {
+    final mensajero = ScaffoldMessenger.maybeOf(context);
+    final navegador = Navigator.of(context);
+    void avisar(String texto) => mensajero
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(texto)));
+    final noSeGuardo = desdeLaJornada
+        ? TextosEntrevista.ventaNoGuardadaEnLaJornada(persona)
+        : TextosEntrevista.ventaNoGuardada(persona);
+
+    VentaDeLaEntrevista? venta;
+    Failure? falla;
+    try {
+      (await preparar()).fold((f) => falla = f, (v) => venta = v);
+    } on Object {
+      falla = const FailureInesperado();
+    }
+    final preparada = venta;
+    if (preparada == null) {
+      // Las fallas de validación ya dicen qué pasó y qué hacer; cualquier otra, el aviso común.
+      final f = falla;
+      avisar(f is FailureValidacion ? TextosEntrevista.ventaNoGuardadaCon(f.mensaje) : noSeGuardo);
+      return const VentaSinCompletar();
+    }
+
+    final cliente = await _cliente(ref, preparada, persona: persona, direccion: direccion);
+    if (!context.mounted) return const VentaSinCompletar();
+    final guardada = await navegador.push(
+      NuevaVentaPage.ruta(
+        argumentos: ArgumentosDeVenta(
+          colportorId: colportorId,
+          cliente: cliente,
+          visitaId: preparada.visitaId,
+        ),
+        antesDeGuardar: () => guardarVisita(preparada),
+      ),
+    );
+    if (guardada == null) {
+      avisar(noSeGuardo);
+      return const VentaSinCompletar();
+    }
+
+    // La venta y la visita ya están guardadas: lo que sigue no las deshace.
+    var cerrada = true;
+    if (soltar != null) {
+      try {
+        cerrada = (await soltar(preparada)).isRight();
+      } on Object {
+        cerrada = false;
+      }
+    }
+    final numero = guardada.venta.numeroTalonario;
+    avisar(
+      cerrada
+          ? TextosEntrevista.ventaGuardada(numero)
+          : TextosEntrevista.ventaGuardadaEntrevistaAbierta,
+    );
+
+    if (context.mounted) {
+      await FlujoCuandoCobrar.preguntar(
+        context,
+        ref,
+        guardada: guardada,
+        espacioId: preparada.espacioId,
+        espacioPersonaId: preparada.espacioPersonaId,
+        colportorId: colportorId,
+        persona: cliente.nombre,
+        direccion: cliente.direccion,
+      );
+    }
+    if (!desdeLaJornada) await _volverALaCasa(ref, colportorId, preparada.espacioId);
+    return VentaGuardadaEnLaEntrevista(numeroTalonario: numero);
+  }
+
+  /// A quién y dónde se le vende: el nombre y «Mataojo 2044 · Depto 3B» de lo que hoy hay en el
+  /// teléfono; si no se pueden leer, lo que ya mostraba la entrevista.
+  static Future<ClienteDeLaVenta> _cliente(
+    WidgetRef ref,
+    VentaDeLaEntrevista venta, {
+    required String persona,
+    required String direccion,
+  }) async {
+    var nombre = persona.trim();
+    var lugar = direccion.trim();
+    try {
+      final contexto = (await ref.read(espacioRepositoryProvider).buscar(venta.espacioId)).fold(
+        (_) => null,
+        (c) => c,
+      );
+      if (contexto != null) {
+        lugar = FormatoPersonas.dondeEstaElEspacio(contexto.espacio, contexto.ubicacion);
+      }
+    } on Object {
+      // Se queda con la dirección que ya mostraba la entrevista.
+    }
+    try {
+      final personas = await ref
+          .read(personaRepositoryProvider)
+          .observarDelEspacio(venta.espacioId)
+          .first
+          .timeout(const Duration(seconds: 2));
+      for (final p in personas) {
+        if (p.vinculo.id == venta.espacioPersonaId) {
+          final leido = [
+            p.persona.nombre,
+            p.persona.apellido,
+          ].where((t) => t.trim().isNotEmpty).join(' ');
+          if (leido.isNotEmpty) nombre = leido;
+          break;
+        }
+      }
+    } on Object {
+      // Se queda con el nombre que ya mostraba la entrevista.
+    }
+    return ClienteDeLaVenta(
+      espacioPersonaId: venta.espacioPersonaId,
+      nombre: nombre.isEmpty ? TextosEntrevista.sinNombre : nombre,
+      direccion: lugar,
+    );
+  }
+
+  /// R·08: la casa de la venta queda elegida en el mapa, con su hoja abierta: ahí están la cobranza
+  /// pendiente («$ Cobrar») y la cita agendada. Si el mapa no está montado, no hace nada.
+  static Future<void> _volverALaCasa(WidgetRef ref, String colportorId, String espacioId) async {
+    try {
+      final proveedor = mapaUbicacionesProvider(colportorId);
+      if (!ref.exists(proveedor)) return;
+      final lugar = (await ref.read(espacioRepositoryProvider).buscar(espacioId)).fold<String?>(
+        (_) => null,
+        (c) => c?.ubicacion.id,
+      );
+      if (lugar != null && ref.exists(proveedor)) ref.read(proveedor.notifier).seleccionar(lugar);
+    } on Object {
+      // Sin la casa elegida, la colportora igual la toca en el mapa: no se rompe nada.
+    }
   }
 
   static Future<RotuloEntrevista> _rotulo(WidgetRef ref, EntrevistaEnCurso entrevista) async {

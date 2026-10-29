@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/entrevista_falsos.dart';
+import '../../helpers/venta_ui_falsos.dart' show EntornoDeVenta;
 
 void main() {
   late MontajeEntrevista montaje;
@@ -274,20 +275,33 @@ void main() {
       expect(montaje.agenda.recibidas.single.nota!.texto, 'volver con la esposa');
     });
 
-    testWidgets('«Sí, registrar la venta» no guarda nada y la entrevista sigue en curso (R44)', (
-      tester,
-    ) async {
-      await empezadaEnEstaSesion(tester);
+    testWidgets(
+      '«Sí, registrar la venta» abre la venta y, si no se completa, la entrevista sigue en curso '
+      '(R44)',
+      (tester) async {
+        montaje.extra.addAll(EntornoDeVenta().overrides);
+        await empezadaEnEstaSesion(tester);
 
-      await tocarKey(tester, const Key('abrir'));
-      await tocarKey(tester, ClavesEntrevista.finalizar);
-      await tocarKey(tester, ClavesEntrevista.registrarVenta);
+        await tocarKey(tester, const Key('abrir'));
+        await tocarKey(tester, ClavesEntrevista.finalizar);
+        await tocarKey(tester, ClavesEntrevista.registrarVenta);
 
-      expect(ultimaSalida, isA<QuiereRegistrarLaVenta>());
-      expect(montaje.agenda.recibidas, isEmpty);
-      expect(montaje.almacen.guardadas, hasLength(1));
-      expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
-    });
+        expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
+        expect(montaje.agenda.recibidas, isEmpty);
+        expect(montaje.almacen.guardadas, hasLength(1));
+
+        await tocarKey(tester, const Key('venta_atras'));
+
+        expect(ultimaSalida, isA<VentaSinCompletar>());
+        expect(montaje.agenda.recibidas, isEmpty);
+        expect(montaje.almacen.guardadas, hasLength(1));
+        expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
+        expect(
+          find.text('La venta no se guardó. La entrevista con Pedro Gómez sigue en curso.'),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('si no se puede guardar, la entrevista no se pierde y se puede reintentar', (
       tester,

@@ -20,13 +20,31 @@ final class EntrevistaGuardada extends SalidaTerminoEntrevista {
   const EntrevistaGuardada();
 }
 
-/// «Sí, registrar la venta»: sigue la venta (vista 27, S9) con estas horas. **Nada se guardó**: si la
-/// venta no se completa, el resultado no se guarda (R44).
+/// «Sí, registrar la venta»: sigue la venta (vista 27) con estas horas. **Nada se guardó**: si la
+/// venta no se completa, el resultado no se guarda (R44). Quien abre la hoja con [mostrarHojaTerminoEntrevista]
+/// recibe esto; [FlujoEntrevista] lo lleva a la venta y devuelve [VentaGuardadaEnLaEntrevista] o
+/// [VentaSinCompletar].
 final class QuiereRegistrarLaVenta extends SalidaTerminoEntrevista {
   const QuiereRegistrarLaVenta({required this.entrada, required this.salida});
 
   final DateTime entrada;
   final DateTime salida;
+}
+
+/// La venta se guardó y, en la misma transacción, la visita quedó como `VENTA`: la entrevista está
+/// cerrada con sus horas (decisión del orquestador, 23/10, #428). Sigue R·08 en la casa.
+final class VentaGuardadaEnLaEntrevista extends SalidaTerminoEntrevista {
+  const VentaGuardadaEnLaEntrevista({required this.numeroTalonario});
+
+  /// El talonario de la venta («0039»), para el aviso «Venta 0039 guardada.».
+  final String numeroTalonario;
+}
+
+/// La venta no se completó (se salió de la pantalla, falló el guardado, ya no hay a quién vendérsela):
+/// por R44 no se guardó ningún resultado y **la entrevista sigue en curso**. Quien lo recibe no cierra
+/// nada más (por ejemplo, la jornada).
+final class VentaSinCompletar extends SalidaTerminoEntrevista {
+  const VentaSinCompletar();
 }
 
 /// Abre la hoja R·06 / R·07 «Terminó la entrevista» (con velo, como el canvas). Devuelve cómo se

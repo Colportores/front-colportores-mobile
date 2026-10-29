@@ -84,6 +84,34 @@ abstract final class TextosEntrevista {
   /// Propuesta: ya no hay entrevista (otro toque la terminó).
   static const yaNoHayEntrevista = 'Esta entrevista ya no está en curso.';
 
+  // «Sí, registrar la venta» (#428). Propuesta del orquestador (23/10, «Entrevista fuera»): dicen
+  // qué pasó y qué hacer (mapa §2: texto/aviso).
+
+  /// «Venta 0039 guardada.» (R·08).
+  static String ventaGuardada(String numero) => 'Venta $numero guardada.';
+
+  /// La venta no se completó: la entrevista sigue en curso. «La venta no se guardó. La entrevista con
+  /// Pedro sigue en curso.»
+  static String ventaNoGuardada(String persona) => persona.trim().isEmpty
+      ? 'La venta no se guardó. La entrevista sigue en curso.'
+      : 'La venta no se guardó. La entrevista con ${persona.trim()} sigue en curso.';
+
+  /// Lo mismo cuando se vino de «Finalizar jornada»: la jornada no se cierra con una entrevista abierta.
+  static String ventaNoGuardadaEnLaJornada(String persona) =>
+      '${ventaNoGuardada(persona)} Terminala para poder cerrar la jornada.';
+
+  /// Una falla que ya explica qué pasó y qué hacer ([mensaje]): se le antepone que la venta no se
+  /// guardó.
+  static String ventaNoGuardadaCon(String mensaje) => 'La venta no se guardó. $mensaje';
+
+  /// Cuando se desconoce el nombre de a quién se le vende.
+  static const sinNombre = 'Sin nombre';
+
+  /// La venta quedó guardada pero la entrevista no se pudo cerrar del teléfono.
+  static const ventaGuardadaEntrevistaAbierta =
+      'La venta se guardó, pero la entrevista sigue abierta. Terminala con «No, guardar y volver al '
+      'mapa» para cerrarla.';
+
   // Nota de la visita.
   static const campoNota = 'NOTA DE LA VISITA (OPCIONAL)';
 
