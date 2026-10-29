@@ -11,6 +11,7 @@ import '../../domain/usecases/baja_persona_use_cases.dart';
 import '../providers/baja_persona_providers.dart';
 import '../textos_baja_persona.dart';
 import 'piezas_alta.dart';
+import 'piezas_lista_ubicaciones.dart' show textoGrande;
 
 /// Cómo se cerró la hoja de baja de una persona.
 sealed class SalidaHojaBajaPersona {
@@ -376,36 +377,58 @@ class _CuadroDeCuenta extends StatelessWidget {
             MergeSemantics(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // El rótulo es una palabra y manda (3 partes contra 2): con el texto grande y un valor
-                    // ancho no se parte a mitad de palabra («Comprad» / «o»); el valor, que puede ser
-                    // ancho, se acomoda en el resto.
-                    Flexible(
-                      flex: 3,
-                      child: Text(
-                        rotulo,
-                        style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                // Con el texto grande (desde 1,4×) no entran el rótulo y el valor lado a lado sin
+                // partir uno de los dos a mitad de palabra o de número: van uno sobre el otro.
+                child: textoGrande(context)
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            rotulo,
+                            style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                          ),
+                          Text(
+                            valor,
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontFamily: mono ? 'JetBrainsMono' : null,
+                              fontSize: 14,
+                              fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+                              color: ColoresAlta.tinta,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // El rótulo es una palabra y manda (3 partes contra 2): con el texto grande y un valor
+                          // ancho no se parte a mitad de palabra («Comprad» / «o»); el valor, que puede ser
+                          // ancho, se acomoda en el resto.
+                          Flexible(
+                            flex: 3,
+                            child: Text(
+                              rotulo,
+                              style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            flex: 2,
+                            child: Text(
+                              valor,
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontFamily: mono ? 'JetBrainsMono' : null,
+                                fontSize: 14,
+                                fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+                                color: ColoresAlta.tinta,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      flex: 2,
-                      child: Text(
-                        valor,
-                        textAlign: TextAlign.end,
-                        style: TextStyle(
-                          fontFamily: mono ? 'JetBrainsMono' : null,
-                          fontSize: 14,
-                          fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
-                          color: ColoresAlta.tinta,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ),
         ],

@@ -1,4 +1,5 @@
 import '../domain/entities/lista_ubicaciones.dart';
+import '../domain/services/cercania_de_la_casa.dart';
 import 'formato_baja.dart';
 import 'formato_lista_ubicaciones.dart';
 import 'formato_mapa_ubicaciones.dart';
@@ -71,11 +72,14 @@ abstract final class FormatoHojaCasa {
     }
     final estado = item.estado;
     final distancia = item.distanciaMetros;
+    // Con el aviso «Estás a 650 m de esta casa.» (E·05) el subtítulo no repite la distancia: el canvas lo
+    // deja en «Casa · Cobranza pendiente» (decisión del 29/10, #541 P2). Sin aviso, «a 20 m de vos».
+    final lejos = CercaniaDeLaCasa.estaLejos(distancia);
     final partes = [
       FormatoUbicaciones.tipo(ubicacion.tipo),
       if (estado != null)
         FormatoMapaUbicaciones.estadoVistaPrevia(estado, item.proximaEntrevista, ahora),
-      if (distancia != null && FormatoUbicaciones.distancia(distancia).isNotEmpty)
+      if (!lejos && distancia != null && FormatoUbicaciones.distancia(distancia).isNotEmpty)
         'a ${FormatoUbicaciones.distancia(distancia)} de vos',
     ];
     return partes.join(' · ');

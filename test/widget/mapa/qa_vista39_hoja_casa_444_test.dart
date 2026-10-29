@@ -352,9 +352,16 @@ void main() {
   group('Medidas: qué se ve en el mapa sin desplazar la hoja', () {
     for (final t in tamanos) {
       for (final s in escalas) {
+        // A 360×640 con el texto al 200 % la hoja a un tercio solo deja ver el título y media línea del
+        // subtítulo: no es un defecto, se llega a todo desplazando (decisión del 29/10, #541 P1). Esa
+        // celda comprueba que la persona y «Registrar visita» se alcanzan desplazando, sin texto cortado.
+        final chico = t == _t360 && s == 2.0;
         testWidgets(
-          'mapa · ${t.width.toInt()}×${t.height.toInt()} · texto $s×: el título, el subtítulo y '
-          'la persona de la casa entran en la hoja sin desplazar',
+          chico
+              ? 'mapa · ${t.width.toInt()}×${t.height.toInt()} · texto $s×: la persona y «Registrar '
+                    'visita» se alcanzan desplazando la hoja, sin texto cortado'
+              : 'mapa · ${t.width.toInt()}×${t.height.toInt()} · texto $s×: el título, el subtítulo y '
+                    'la persona de la casa entran en la hoja sin desplazar',
           (tester) async {
             final m = await montarMapaUbicaciones(
               tester,
@@ -369,12 +376,30 @@ void main() {
               ]),
               tamano: t,
               escala: s,
+              registrarVisita: chico ? (_) {} : null,
             );
             m.mapa.tocarPunto('a');
             await asentarLista(tester);
             await _capturar(tester, 'mapa_sin_cobro_${t.width.toInt()}_x${s.toInt()}');
 
             final hojaRect = _rectDe(tester, hoja);
+            if (chico) {
+              for (final (nombre, f) in [
+                ('persona', _persona),
+                ('«Registrar visita»', _registrar),
+              ]) {
+                await tester.ensureVisible(f);
+                await tester.pump();
+                final r = _rectDe(tester, f);
+                expect(
+                  r.top >= hojaRect.top - 0.5 && r.bottom <= hojaRect.bottom + 0.5,
+                  isTrue,
+                  reason: '$nombre no se alcanza al desplazar: $r en la hoja $hojaRect',
+                );
+              }
+              expect(tester.takeException(), isNull);
+              return;
+            }
             for (final (nombre, f) in [
               ('título', _titulo),
               ('subtítulo', _subtitulo),
@@ -389,9 +414,6 @@ void main() {
               );
             }
           },
-          // skip: QA #444 — a 360×640 con texto 2.0× la hoja a un tercio solo deja ver el título y media
-          // línea del subtítulo: la persona queda bajo el pliegue (menor; se llega desplazando).
-          skip: t == _t360 && s == 2.0,
         );
       }
     }
@@ -656,11 +678,9 @@ void main() {
     }
   });
 
-  // Hallazgos menores de QA #444. El del avatar (iniciales a 2,0×) está corregido; el del subtítulo con la
-  // distancia en E·05 queda con `skip`: lo decide el agente de decisiones (gana el canvas), ver #541.
+  // Hallazgos menores de QA #444, corregidos en #541: el avatar (iniciales a 2,0×) y el subtítulo de E·05
+  // sin la distancia que ya dice el aviso (decisión del 29/10: gana el canvas).
   group('Hallazgos menores (QA #444)', () {
-    const verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
     testWidgets(
       'las iniciales del avatar de la persona no se parten ni se cortan con texto 2.0 en 360×640',
       (tester) async {
@@ -690,9 +710,6 @@ void main() {
           reason: 'el canvas E·05 deja el subtítulo en «Casa · Cobranza pendiente»',
         );
       },
-      // skip: QA #444 — el canvas E·05 dibuja el subtítulo sin «a 650 m de vos» (lo dice el aviso); la
-      // hoja lo dice dos veces (menor).
-      skip: !verHallazgos,
     );
   });
 }

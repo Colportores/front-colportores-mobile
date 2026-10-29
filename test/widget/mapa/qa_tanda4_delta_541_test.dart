@@ -52,9 +52,6 @@ Future<void> _traer(WidgetTester tester, Finder f) async {
   expect(f, findsOneWidget);
 }
 
-/// `--dart-define=QA_HALLAZGOS=true` corre también los tests de hallazgos (los que llevan `skip`).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   group('#448 · distancia en la frontera del kilómetro', () {
     test(
@@ -338,10 +335,9 @@ void main() {
     }
   });
 
-  group('Hallazgos (skip: QA #541; --dart-define=QA_HALLAZGOS=true los corre)', () {
-    // skip: QA #541 — D·02 a 360×640 con el texto al 200 %: el valor del cuadro («$ 4.500») se parte a
-    // mitad de número en dos renglones («$ 4.50» / «0»): el rótulo se queda con 3 de 5 partes y el valor no
-    // entra en las otras 2. El arreglo de #143 saca la falla del rótulo y la pasa al valor.
+  group('Hallazgos corregidos (QA #541)', () {
+    // QA #541 — D·02 a 360×640 con el texto al 200 %: con el texto grande el rótulo y el valor del cuadro
+    // van uno sobre el otro y el monto («$ 4.500») no se parte.
     testWidgets(
       'D·02 a 360×640 y 2,0×: los montos del cuadro de la cuenta no se parten en dos renglones',
       (tester) async {
@@ -363,11 +359,10 @@ void main() {
         }
         expect(montos, greaterThanOrEqualTo(3), reason: 'el cuadro lleva tres montos');
       },
-      skip: !_verHallazgos,
     );
 
-    // skip: QA #541 — «Personas del espacio» (vista 32) tiene el mismo avatar (36 dp, 13 sp) y sigue escalando
-    // con el texto: a 2,0× las iniciales no entran en el círculo (el mismo caso de #445 en la hoja de la casa).
+    // QA #541 — «Personas del espacio» (vista 32): el avatar (36 dp) no escala con el texto, como el de la
+    // hoja de la casa: a 2,0× las iniciales caben en el círculo (decisión del 29/10, P1 del QA).
     testWidgets(
       'Personas del espacio a 360×640 y 2,0×: las iniciales caben en el círculo de 36 dp',
       (tester) async {
@@ -384,7 +379,6 @@ void main() {
         expect(p.getMaxIntrinsicWidth(double.infinity), lessThanOrEqualTo(36));
         expect(p.getMaxIntrinsicHeight(36), lessThanOrEqualTo(36));
       },
-      skip: !_verHallazgos,
     );
   });
 }
