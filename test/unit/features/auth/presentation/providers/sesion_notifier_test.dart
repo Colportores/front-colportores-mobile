@@ -565,6 +565,50 @@ void main() {
       },
     );
 
+    // QA de #556: el cierre de sesión no toca la marca (ni la consume ni la deja colgada).
+    test('dado que el reintento de ana falla, cuando cierra sesión y vuelve a entrar, la marca '
+        'sigue, se reintenta y se consume una sola vez (#542)', () async {
+      final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+        ..fallaAlCerrarSesiones = const SinConexionException()
+        ..fallaAlCerrarLasOtras = const SinConexionException();
+      final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+        recuperacion,
+        logger: loggerMudo(),
+      );
+      await repoRecuperacion.cerrarTodasLasSesiones();
+      final conPendiente = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+        ],
+      );
+      addTearDown(conPendiente.dispose);
+      await conPendiente.read(sesionProvider.future);
+      final notifier = conPendiente.read(sesionProvider.notifier);
+
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue, reason: 'el reintento falló');
+
+      await notifier.cerrarSesion();
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue, reason: 'cerrar sesión no la borra');
+
+      recuperacion.fallaAlCerrarLasOtras = null;
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(recuperacion.otrasSesionesCerradas, 1);
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isFalse);
+
+      await notifier.cerrarSesion();
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(recuperacion.otrasSesionesCerradas, 1, reason: 'resuelto: no se repite');
+    });
+
     test('dado que el reintento de las otras sesiones falla, cuando entra, igual entra y la marca '
         'sigue para el próximo login (#542)', () async {
       final recuperacion = RecuperacionPasswordEnMemoria()

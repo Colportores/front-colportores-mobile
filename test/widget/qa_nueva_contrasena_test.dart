@@ -113,6 +113,19 @@ bool _habilitado(WidgetTester tester) => tester.widget<FilledButton>(_guardar).o
 String _texto(WidgetTester tester, String campo) =>
     tester.widget<TextField>(_k(campo)).controller!.text;
 
+/// El ícono de éxito y el titular están dentro de la pantalla de 360x640, sin desplazar.
+void _expectIconoYTitularVisibles(WidgetTester tester) {
+  final pantalla = Offset.zero & const Size(360, 640);
+  final icono = tester.getRect(find.byIcon(Icons.check));
+  final texto = tester.getRect(find.byKey(const Key('confirmar_recuperacion_exito')));
+  expect(
+    pantalla.topLeft <= icono.topLeft && icono.bottomRight <= pantalla.bottomRight,
+    isTrue,
+    reason: 'el ícono se ve sin desplazar: $icono',
+  );
+  expect(texto.top, greaterThanOrEqualTo(0), reason: 'el titular no empieza cortado: $texto');
+}
+
 void _pantalla(WidgetTester tester, Size tam, {double texto = 1.0}) {
   tester.view.physicalSize = tam;
   tester.view.devicePixelRatio = 1;
@@ -1227,6 +1240,75 @@ void main() {
           ).writeAsBytesSync(bytes.buffer.asUint8List());
         });
       }, skip: !capturar);
+    }
+    // QA de #542 (PR #556), delta 5abee68..48489c2: el texto del éxito con revocación fallida,
+    // letra por letra, y que el ícono y el titular se vean al abrir sin tener que desplazar.
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('el éxito con la revocación fallida dice exactamente la frase fijada y se ve el '
+          'ícono y el titular al abrir (360x640, texto $escala)', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        final handle = tester.ensureSemantics();
+        try {
+          _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
+          await _montar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+
+          const literal =
+              'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en '
+              'los otros teléfonos.';
+          expect(find.text(literal), findsOneWidget);
+          final titular = tester.widget<Text>(
+            find.byKey(const Key('confirmar_recuperacion_exito')),
+          );
+          expect(titular.data, literal, reason: 'ni un espacio ni un punto de más');
+          expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsNothing);
+
+          if (escala == 1.0) _expectIconoYTitularVisibles(tester);
+          expect(
+            tester.getSemantics(find.byKey(const Key('confirmar_recuperacion_exito'))),
+            matchesSemantics(
+              label: literal,
+              isHeader: true,
+              isLiveRegion: true,
+              hasEnabledState: false,
+            ),
+          );
+          await _guias(tester);
+        } finally {
+          handle.dispose();
+        }
+      });
+    }
+
+    testWidgets('con la revocación bien, el éxito sigue siendo la frase de siempre, letra por '
+        'letra', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      final titular = tester.widget<Text>(find.byKey(const Key('confirmar_recuperacion_exito')));
+      expect(titular.data, 'Contraseña actualizada. Iniciá sesión.');
+    });
+    for (final revocaMal in [true, false]) {
+      testWidgets(
+        'al abrir el éxito con texto 2.0 (revocación ${revocaMal ? "fallida" : "ok"}) se '
+        've el ícono y el titular entero, aunque la persona haya desplazado el formulario para '
+        'guardar',
+        (tester) async {
+          _pantalla(tester, const Size(360, 640), texto: 2.0);
+          if (revocaMal) _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
+          await _montar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+
+          expect(find.byKey(const Key('confirmar_recuperacion_exito')), findsOneWidget);
+          _expectIconoYTitularVisibles(tester);
+        },
+        // QA #542: el éxito abre con el desplazamiento del formulario; a texto 2.0 el ícono queda
+        // fuera de pantalla y el titular cortado arriba (el implementador saca el skip al arreglarlo).
+        skip: true,
+      );
     }
   });
 
