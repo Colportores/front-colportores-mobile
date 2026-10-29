@@ -287,9 +287,16 @@ void main() {
           throwsA(isA<ServidorException>().having((e) => e.status, 'status', isNot(57014))),
         );
       },
-      skip:
-          'QA #61: `int.tryParse(e.code)` toma un SQLSTATE numérico (57014, 23505…) como status HTTP; '
-          'el log dice {"status":57014}',
+    );
+
+    test(
+      'ningún SQLSTATE numérico (23505, 57014) se toma por status; el log lo dice como code',
+      () async {
+        for (final sqlstate in ['23505', '57014', '40001']) {
+          final servidor = _Servidor((_) async => _json(500, {'code': sqlstate, 'message': 'x'}));
+          await expectLater(servidor.consultar(), throwsA(_servidorConStatus(null)));
+        }
+      },
     );
 
     test(

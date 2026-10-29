@@ -1,4 +1,4 @@
-﻿// QA de la vista 15 «Nueva contraseña» (HU-AUTH-005, #224), seguimiento del 02/10. Complementa
+// QA de la vista 15 «Nueva contraseña» (HU-AUTH-005, #224), seguimiento del 02/10. Complementa
 // `confirmar_recuperacion_password_page_test.dart` y `confirmar_recuperacion_password_qa_test.dart`:
 // recorre cada artboard del canvas (A01 a A09 más los estados nuevos de las decisiones del 02/10)
 // con las cuatro guías de accesibilidad en 360x640 (texto 1.0 y 2.0) y 412x915, prueba las entradas
@@ -838,22 +838,46 @@ void main() {
     // `AuthRemoteDataSourceSupabase._traducir`) o «El servidor no pudo procesar la solicitud»: ni
     // dicen qué hacer ni son el aviso del canvas 15-A05 («No pudimos guardar la contraseña. Probá de
     // nuevo.»); el primero muestra además un código técnico.
-    testWidgets(
-      'un error del servidor sin texto propio dice qué hacer y no muestra un código',
-      (tester) async {
-        await _montar(tester);
-        await _completar(tester, 'NuevaClave1');
-        _recuperacion.fallaAlActualizar = const ServidorException(
-          status: 500,
-          mensaje: 'No se pudo completar la operación (unexpected_failure).',
-        );
-        await _tocarGuardar(tester);
+    testWidgets('un error del servidor sin texto propio dice qué hacer y no muestra un código', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+      await _tocarGuardar(tester);
 
-        expect(find.textContaining('unexpected_failure'), findsNothing);
-        expect(find.textContaining('Probá de nuevo'), findsOneWidget);
-      },
-      skip: true,
-    ); // skip: QA #224 — error del servidor sin traducción: sin «qué hacer» y con código.
+      expect(find.textContaining('unexpected_failure'), findsNothing);
+      expect(find.textContaining('Probá de nuevo'), findsOneWidget);
+    });
+
+    testWidgets('un error 4xx con código técnico tampoco lo muestra y deja reintentar', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(
+        status: 400,
+        mensaje: 'No se pudo completar la operación (validation_failed).',
+      );
+      await _tocarGuardar(tester);
+
+      expect(find.textContaining('validation_failed'), findsNothing);
+      expect(find.text(TextosConfirmacionRecuperacion.errorInesperado), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+    });
+
+    testWidgets('un error del servidor sin mensaje (el genérico) dice qué hacer', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(status: 503);
+      await _tocarGuardar(tester);
+
+      expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+      expect(find.text(TextosConfirmacionRecuperacion.errorInesperado), findsOneWidget);
+    });
 
     testWidgets('un 429 conserva su texto con qué hacer y deja reintentar', (tester) async {
       await _montar(tester);
@@ -885,7 +909,29 @@ void main() {
       await tester.pump(const Duration(minutes: 3));
       expect(_k('guardando'), findsNothing);
       expect(_habilitado(tester), isTrue);
-    }, skip: true); // skip: QA #224 — sin timeout: «Guardando…» eterno y atrás bloqueado.
+    });
+
+    testWidgets(
+      'si la respuesta nunca llega, el aviso es de sin conexión y reintentar con la misma '
+      'contraseña no la da por perdida',
+      (tester) async {
+        _recuperacion.demoraAlActualizar = Completer<void>();
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await tester.ensureVisible(_guardar);
+        await tester.tap(_guardar);
+        await tester.pump();
+        await tester.pump(const Duration(minutes: 3));
+        expect(find.text('Sin conexión'), findsOneWidget);
+
+        // El servidor sí había aplicado el cambio (la respuesta llegó tarde): el reintento vuelve
+        // «igual a la anterior» y se da por bueno.
+        _recuperacion.demoraAlActualizar!.complete();
+        await tester.pump();
+        await _tocarGuardar(tester);
+        expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      },
+    );
   });
 
   group('QA vista 15 — privacidad', () {
