@@ -90,13 +90,15 @@ Future<void> asentarHoja(WidgetTester tester, [int veces = 10]) async {
 
 /// Monta la hoja de [ubicacion] (por defecto, el edificio de Mataojo 2044) con [espacios] y la abre.
 ///
-/// [personas] son las personas activas de cada espacio. [escala] es el tamaño de texto del sistema.
+/// [personas] son las personas activas de cada espacio. [escala] es el tamaño de texto del sistema y
+/// [lector] enciende la navegación accesible (TalkBack o VoiceOver).
 Future<MontajeHoja> montarHoja(
   WidgetTester tester, {
   Ubicacion? ubicacion,
   List<Espacio> espacios = const [],
   Map<String, int>? personas,
   double escala = 1,
+  bool lector = false,
   Size tamano = const Size(390, 844),
   double? distancia = 25,
   bool abrir = true,
@@ -130,7 +132,9 @@ Future<MontajeHoja> montarHoja(
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(escala), accessibleNavigation: lector),
           child: child!,
         ),
         home: _Anfitrion(montaje: montaje, ubicacionId: u.id, distancia: distancia),

@@ -13,6 +13,11 @@ enum EstadoFiltroAgenda {
   canceladas,
   todas;
 
+  /// Con un estado cerrado o «Todas» la pestaña mira **la campaña en curso**, no la ventana de hoy
+  /// y 7 días (HU-VIS-002, decisión de Cristian, 27/10, «Rango filtro»). Solo [pendientes] queda en
+  /// la ventana.
+  bool get miraLaCampania => this != pendientes;
+
   /// ¿Una agenda en [estado] entra con este filtro?
   bool admite(EstadoAgenda estado) => switch (this) {
     pendientes => estado == EstadoAgenda.programada,

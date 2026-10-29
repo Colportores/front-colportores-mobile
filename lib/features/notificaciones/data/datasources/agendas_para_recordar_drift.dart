@@ -11,10 +11,15 @@ import '../../domain/repositories/preferencias_recordatorios_repository.dart';
 
 /// [AgendasParaRecordar] sobre las tablas `agenda`, `espacio` y `ubicacion` de la DB cifrada.
 ///
+/// Una agenda **oculta** (su depto o su casa están de baja, HU-VIS-002 «Agenda baja») no se recuerda
+/// ni cuenta como que sonó: [pendientes] y [conAvisoEntre] la dejan afuera, y [observarPendientes] la
+/// trae marcada para sacarle el aviso.
+///
 /// Solo lee. La dirección es la de la ubicación del espacio de la agenda o, si es una cobranza en
 /// otra dirección (`ubicacion_alt_id`) que está en el teléfono, la alternativa. Una ubicación que no
 /// llegó (o sin calle ni número) deja la dirección vacía: el aviso sale sin «en …» pero sale.
-final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConAvisoVencido {
+final class AgendasParaRecordarDrift
+    implements AgendasParaRecordar, AgendasConAvisoVencido, AgendasObservablesParaRecordar {
   AgendasParaRecordarDrift(this._db);
 
   final AppDatabase _db;
@@ -87,8 +92,37 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
     return agenda.createdAt.isBefore(avisoEn) && resultadoEn.isAfter(avisoEn);
   }
 
-  /// Las agendas de [colportorId] en alguno de [estados] (`PROGRAMADA` por defecto), sin baja, que
-  /// cumplen [filtro], por fecha, con la dirección de cada una.
+  @override
+  Stream<List<AgendaConAviso>> observarPendientes({
+    required String colportorId,
+    required DateTime desde,
+  }) {
+    final agendas = _db.agendas;
+    final espacios = _db.espacios;
+    final propia = _db.ubicaciones;
+    return _consulta(
+      colportorId,
+      (agendas) =>
+          agendas.fechaProgramada.isBiggerThanValue(const FechaUtcConverter().toSql(desde)),
+      const [EstadoAgenda.programada],
+    ).watch().map(
+      (filas) => [
+        for (final fila in filas)
+          (
+            visita: _visita(
+              fila.readTable(agendas),
+              _direccion(fila.readTableOrNull(_alternativa) ?? fila.readTableOrNull(propia)),
+            ),
+            oculta:
+                fila.readTableOrNull(espacios)?.deletedAt != null ||
+                fila.readTableOrNull(propia)?.deletedAt != null,
+          ),
+      ],
+    );
+  }
+
+  /// Las agendas de [colportorId] en alguno de [estados] (`PROGRAMADA` por defecto), sin baja y sin
+  /// ocultar, que cumplen [filtro], por fecha, con la dirección de cada una.
   Future<List<({AgendaFila agenda, String direccion})>> _leer(
     String colportorId,
     Expression<bool> Function($AgendasTable agendas) filtro, {
@@ -97,28 +131,40 @@ final class AgendasParaRecordarDrift implements AgendasParaRecordar, AgendasConA
     final agendas = _db.agendas;
     final espacios = _db.espacios;
     final propia = _db.ubicaciones;
-    final alternativa = _db.alias(_db.ubicaciones, 'alternativa');
-    final consulta =
-        _db.select(agendas).join([
-            leftOuterJoin(espacios, espacios.id.equalsExp(agendas.espacioId)),
-            leftOuterJoin(propia, propia.id.equalsExp(espacios.ubicacionId)),
-            leftOuterJoin(alternativa, alternativa.id.equalsExp(agendas.ubicacionAltId)),
-          ])
-          ..where(
-            agendas.colportorId.equals(colportorId) &
-                agendas.estado.isIn([for (final e in estados) e.codigo]) &
-                agendas.deletedAt.isNull() &
-                filtro(agendas),
-          )
-          ..orderBy([OrderingTerm.asc(agendas.fechaProgramada), OrderingTerm.asc(agendas.id)]);
+    final consulta = _consulta(colportorId, filtro, estados)
+      ..where(espacios.deletedAt.isNull() & propia.deletedAt.isNull());
     final filas = await consulta.get();
     return [
       for (final fila in filas)
         (
           agenda: fila.readTable(agendas),
-          direccion: _direccion(fila.readTableOrNull(alternativa) ?? fila.readTableOrNull(propia)),
+          direccion: _direccion(fila.readTableOrNull(_alternativa) ?? fila.readTableOrNull(propia)),
         ),
     ];
+  }
+
+  late final _alternativa = _db.alias(_db.ubicaciones, 'alternativa');
+
+  JoinedSelectStatement<HasResultSet, dynamic> _consulta(
+    String colportorId,
+    Expression<bool> Function($AgendasTable agendas) filtro,
+    List<EstadoAgenda> estados,
+  ) {
+    final agendas = _db.agendas;
+    final espacios = _db.espacios;
+    final propia = _db.ubicaciones;
+    return _db.select(agendas).join([
+        leftOuterJoin(espacios, espacios.id.equalsExp(agendas.espacioId)),
+        leftOuterJoin(propia, propia.id.equalsExp(espacios.ubicacionId)),
+        leftOuterJoin(_alternativa, _alternativa.id.equalsExp(agendas.ubicacionAltId)),
+      ])
+      ..where(
+        agendas.colportorId.equals(colportorId) &
+            agendas.estado.isIn([for (final e in estados) e.codigo]) &
+            agendas.deletedAt.isNull() &
+            filtro(agendas),
+      )
+      ..orderBy([OrderingTerm.asc(agendas.fechaProgramada), OrderingTerm.asc(agendas.id)]);
   }
 
   static RecordatorioDeVisita _visita(AgendaFila agenda, String direccion) => RecordatorioDeVisita(

@@ -63,6 +63,12 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   /// De quién es la altura que se está siguiendo: el aviso que se va (o está saliendo) no la pisa.
   Object? _medidorVigente;
 
+  /// Hay otra ruta encima de esta pantalla (la edición de «Editar uno», una hoja…). Con lector de
+  /// pantalla el aviso «unen al cerrar» no se va solo y, a la vista, dejaría en la cola (sin verse) los
+  /// avisos de la pantalla de arriba (p. ej. «Guardado sin conexión»): mientras está cubierta se lo
+  /// suelta sin confirmar la unión y se vuelve a mostrar cuando la pantalla queda arriba otra vez (#540).
+  var _cubierta = false;
+
   @override
   void dispose() {
     _ocultarAvisoAlTerminarElCuadro();
@@ -87,6 +93,11 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   void _mostrarAviso(UnionPendiente union) {
     final mensajero = ScaffoldMessenger.maybeOf(context);
     if (mensajero == null) return;
+    // Cubierta por otra ruta, el aviso que no se va solo espera: vuelve en `_seguirCobertura`.
+    if (_cubierta && union.esperaElCierre) {
+      _ocultarAviso();
+      return;
+    }
     final notificador = ref.read(unionesPendientesProvider.notifier);
     final plazo = ref.read(plazoDeshacerUnionProvider);
     final mediaQuery = MediaQuery.of(context);
@@ -167,6 +178,23 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     );
   }
 
+  /// Sigue si otra ruta tapa esta pantalla: el aviso que no se va solo se suelta (la unión sigue
+  /// esperando, no se confirma ni se cancela) y reaparece cuando la pantalla vuelve a quedar arriba.
+  void _seguirCobertura(bool cubierta) {
+    if (cubierta == _cubierta) return;
+    _cubierta = cubierta;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pendiente = ref.read(unionesPendientesProvider).pendiente;
+      if (pendiente == null || !pendiente.esperaElCierre) return;
+      if (_cubierta) {
+        _ocultarAviso();
+      } else if (_aviso == null) {
+        _mostrarAviso(pendiente);
+      }
+    });
+  }
+
   /// La altura que mide el aviso de esta pantalla que no se va solo; la de uno que ya no es el vigente
   /// no cuenta.
   void _alMedirAviso(Object medidor, double alto) {
@@ -208,6 +236,9 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
         _mostrarAviso(pendiente);
       }
     });
+
+    final ruta = ModalRoute.of(context);
+    _seguirCobertura(ruta != null && !ruta.isCurrent);
 
     final lectura = ref.watch(paresParaRevisarProvider(widget.colportorId));
     final uniones = ref.watch(unionesPendientesProvider);

@@ -28,3 +28,19 @@ abstract interface class AgendasParaRecordar {
     required DateTime desde,
   });
 }
+
+/// Una visita pendiente de recordar y si hoy está **oculta**: su casa o su depto están dados de baja
+/// (HU-VIS-002, «Agenda baja»). Una agenda oculta no se muestra ni suena.
+typedef AgendaConAviso = ({RecordatorioDeVisita visita, bool oculta});
+
+/// Lo mismo que [AgendasParaRecordar] pero en vivo y con las ocultas: para sacar el recordatorio de
+/// la agenda cuya casa se da de baja y devolverlo si se reactiva.
+abstract interface class AgendasObservablesParaRecordar {
+  /// Las agendas `PROGRAMADA` de [colportorId], sin baja propia y con la visita después de [desde],
+  /// ocultas o no, que se vuelve a emitir cuando cambia una agenda, un espacio o una ubicación. Un
+  /// error al leer sale por el `Stream`.
+  Stream<List<AgendaConAviso>> observarPendientes({
+    required String colportorId,
+    required DateTime desde,
+  });
+}

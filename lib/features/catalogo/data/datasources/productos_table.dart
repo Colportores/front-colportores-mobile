@@ -49,6 +49,11 @@ class Productos extends Table {
 
   IntColumn get syncVersion => integer().withDefault(const Constant(0))();
 
+  /// El código que le asignó la casa editora (`producto.codigo_editor`, backend-supabase 0070):
+  /// opcional y no único, de 1 a 50 caracteres. Sin código el producto se encuentra por nombre. Va
+  /// al final porque llegó con la versión 18 del esquema (`ALTER TABLE … ADD COLUMN`).
+  TextColumn get codigoEditor => text().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 

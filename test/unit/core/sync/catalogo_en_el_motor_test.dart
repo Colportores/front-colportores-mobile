@@ -102,6 +102,18 @@ void main() {
           'deleted_at': null,
           'sync_version': 1,
         },
+      ])
+      ..seed('parametro_global', [
+        {
+          'id': 'par-1',
+          'clave': 'dias_antiguedad_precios',
+          'valor': 21,
+          'created_at': '2026-10-20T12:00:00+00:00',
+          'updated_at': '2026-10-20T12:00:00+00:00',
+          'created_by': null,
+          'deleted_at': null,
+          'sync_version': 1,
+        },
       ]);
 
     contenedor.listen(cicloDeVidaSyncProvider, (_, _) {});
@@ -112,5 +124,7 @@ void main() {
 
     expect((await db.select(db.productos).getSingle()).nombre, 'El Conflicto de los Siglos');
     expect((await db.select(db.preciosGenerales).getSingle()).precioVenta, 45000);
+    // Los días del aviso de precios viejos bajan con el catálogo (backend-supabase 0070).
+    expect((await db.select(db.parametrosGlobales).getSingle()).valor, 21);
   });
 }

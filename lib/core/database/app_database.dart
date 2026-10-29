@@ -5,10 +5,12 @@ import '../../features/agenda/data/datasources/agendas_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/catalogo/data/datasources/colecciones_table.dart';
+import '../../features/catalogo/data/datasources/parametros_globales_table.dart';
 import '../../features/catalogo/data/datasources/precios_generales_table.dart';
 import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
+import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -76,12 +78,14 @@ part 'app_database.g.dart';
     ProductoColecciones,
     PreciosPorCiudad,
     PreciosGenerales,
+    ParametrosGlobales,
     Stocks,
     Ciudades,
     Campanias,
     CampaniasColportor,
     Ventas,
     VentaItems,
+    Cobranzas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -116,10 +120,15 @@ class AppDatabase extends _$AppDatabase {
   /// - 15: `stock`, la réplica de solo lectura del inventario del colportor (HU-STK-004, #545).
   /// - 16: las réplicas de `ciudad`, `campania` y `campania_colportor` (las inscripciones propias):
   ///   de dónde salen las ciudades de la campaña del colportor sin red (#274).
+  /// - 17: `venta` y `venta_item`, las ventas del colportor (HU-VEN-001, #423).
+  /// - 18: `producto.codigo_editor` (el código de la casa editora, opcional) y `parametro_global`, la
+  ///   réplica de solo lectura de los parámetros de toda la aplicación, hoy los días del aviso de
+  ///   precios viejos (backend-supabase 0070, HU-CAT-006, #419).
+  /// - 19: `cobranza`, el cobro en efectivo, que sube (HU-COB-001, #436).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 17;
+  static const int versionEsquema = 19;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -313,6 +322,20 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.ventaEspacioPersonaIdx);
       await m.createTable(esquema.ventaItem);
       await m.createIndex(esquema.ventaItemVentaIdx);
+    },
+    // Suma la columna `codigo_editor` a `producto` (vacía: ninguna fila que ya estaba cambia) y crea
+    // `parametro_global`, vacía (la llena el pull, entero la primera vez: el servidor baja desde cero
+    // toda entidad que el watermark del teléfono no tiene). Sin código, el producto se encuentra por
+    // nombre, que es lo que pasaba hasta ahora. Un producto ya bajado recibe su código cuando
+    // Administración lo cambia en el servidor (agregar la columna no mueve el cursor del delta).
+    from17To18: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.codigoEditor);
+      await m.createTable(esquema.parametroGlobal);
+    },
+    // Solo crea los cobros, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from18To19: (m, esquema) async {
+      await m.createTable(esquema.cobranza);
+      await m.createIndex(esquema.cobranzaVentaIdx);
     },
   );
 }

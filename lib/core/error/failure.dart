@@ -885,3 +885,60 @@ final class FailureVentaNoGuardada extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// El cobro es mayor que lo que debe la venta (HU-COB-001, vista 28, 28·03). Se rechaza: no hay saldo
+/// a favor (decisión del 23/10: sumarlo sería una función nueva). El texto es el del canvas;
+/// [saldoCentavos] lo arma la pantalla con su formato de dinero.
+final class FailureCobroMayorAlSaldo extends Failure {
+  const FailureCobroMayorAlSaldo({required this.saldoCentavos})
+    : super(
+        mensaje: 'El cobro es mayor que el saldo de la venta. Ingresá hasta ese monto.',
+        codigo: 'COBRO_MAYOR_AL_SALDO',
+      );
+
+  /// Lo que todavía debe la venta, en centavos.
+  final int saldoCentavos;
+
+  @override
+  List<Object?> get props => [...super.props, saldoCentavos];
+}
+
+/// La fecha del cobro no es válida: antes de la venta o después de hoy (28·04).
+final class FailureCobroFechaInvalida extends Failure {
+  const FailureCobroFechaInvalida()
+    : super(
+        mensaje: 'La fecha no puede ser antes de la venta ni después de hoy.',
+        codigo: 'COBRO_FECHA_INVALIDA',
+      );
+}
+
+/// El monto del cobro no es un monto (vacío, cero o negativo; 28·02).
+final class FailureCobroMontoInvalido extends Failure {
+  const FailureCobroMontoInvalido()
+    : super(mensaje: 'Ingresá el monto que te pagaron.', codigo: 'COBRO_MONTO_INVALIDO');
+}
+
+/// La venta que se cobra ya no está en el teléfono (o se dio de baja).
+final class FailureCobroSinVenta extends Failure {
+  const FailureCobroSinVenta()
+    : super(
+        mensaje: 'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
+        codigo: 'COBRO_SIN_VENTA',
+      );
+}
+
+/// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
+/// texto es el del canvas.
+final class FailureCobroNoGuardado extends Failure {
+  const FailureCobroNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el cobro. No se registró nada: probá de nuevo.',
+        codigo: 'COBRO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}

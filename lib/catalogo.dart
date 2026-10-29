@@ -34,6 +34,9 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('venta'),
   SyncSpec.push('venta_item'),
+  // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
+  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('cobranza', critical: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).
@@ -62,6 +65,10 @@ final specsDeLaApp = <SyncSpec>[
   // `sync.entidad`): el pull ignora lo que no conoce, así que baja solo el día que se registre. Su
   // `realtime` se suma ese día, junto con la publicación del servidor.
   SyncSpec.pull('precio_general'),
+  // Los parámetros de toda la aplicación que cambia Administración (backend-supabase 0070): hoy los
+  // días del aviso de precios viejos (`dias_antiguedad_precios`, HU-CAT-006, #419). Sin filtro (el
+  // valor es el mismo para todos) y sin `realtime`: cambia rara vez y entra en el ciclo siguiente.
+  SyncSpec.pull('parametro_global'),
 
   // pull: el inventario del colportor (HU-STK-004, #545). Réplica de solo lectura: lo mueve el
   // servidor (pedido recibido, entrega, devolución, transferencia) y el pull baja solo las filas del

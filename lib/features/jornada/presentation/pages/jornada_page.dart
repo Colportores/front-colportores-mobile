@@ -5,21 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
-import '../../../agenda/presentation/providers/entrevista_providers.dart';
-import '../../../agenda/presentation/widgets/flujo_entrevista.dart';
-import '../../../agenda/presentation/widgets/hoja_termino_entrevista.dart' show EntrevistaGuardada;
 import '../../../auth/domain/entities/sesion.dart';
 import '../../domain/entities/jornada.dart';
-import '../../domain/jornada_sin_cerrar.dart';
-import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
+import '../widgets/aviso_jornada.dart';
 import '../widgets/con_espera.dart';
+import '../widgets/fila_hora_jornada.dart';
+import '../widgets/fin_de_jornada.dart';
 import '../widgets/hoja_hora_inicio.dart';
-import 'corregir_jornada_page.dart';
-import 'resumen_jornada_page.dart';
 
 /// Texto literal del criterio de aceptación "Bloqueo - jornada ya activa" (HU-JOR-001).
 const textoBloqueoJornadaActiva = 'Tenés una jornada en curso. Cerrala antes de iniciar otra.';
@@ -49,11 +45,7 @@ class JornadaPage extends ConsumerStatefulWidget {
   ConsumerState<JornadaPage> createState() => _JornadaPageState();
 }
 
-class _JornadaPageState extends ConsumerState<JornadaPage> {
-  /// Refresca "Ahora · 14:35" y "Llevás 1 h 20 min" mientras la pantalla está abierta, al cambiar
-  /// el minuto.
-  Timer? _tic;
-
+class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<JornadaPage> {
   /// Cuántos minutos hacia atrás eligió el colportor (0 = ahora).
   DateTime? _horaInicio;
   bool _iniciando = false;
@@ -63,51 +55,25 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   bool _bloqueadaPorEnCurso = false;
   String? _error;
 
-  /// Cuántos minutos hacia atrás eligió el colportor para el fin (0 = ahora).
-  DateTime? _horaFin;
-  bool _finalizando = false;
+  @override
+  Sesion get sesionDelFin => widget.sesion;
 
-  /// Mientras se termina la entrevista que estaba abierta (antes de cerrar la jornada): un segundo
-  /// toque en «Finalizar jornada» no abre otra hoja encima.
-  bool _terminandoEntrevista = false;
-  String? _errorFin;
-
-  /// El "ahora" con el que se armó la pantalla que el colportor está viendo (lo actualiza cada
-  /// `build`). La hora elegida se calcula con este instante y no con el del toque: si entre el
-  /// último refresco y el toque cambió el minuto, se guardaría un minuto más que lo que mostraba la
-  /// etiqueta (#102). Si la hora mostrada quedó fuera de rango, el caso de uso la rechaza con el
-  /// rango explícito; nunca se ajusta en silencio.
-  DateTime? _ahoraMostrado;
+  /// Cerrar la jornada suelta los avisos de inicio y el bloqueo de «ya hay una en curso».
+  @override
+  void alCerrarLaJornada() {
+    _error = null;
+    _bloqueadaPorEnCurso = false;
+  }
 
   @override
   void initState() {
     super.initState();
-    _programarTic();
-  }
-
-  /// Redibuja justo cuando cambia el minuto: así "Ahora · 14:35", la hora elegida y lo que se
-  /// guarda (que sale del mismo instante, ver [_ahoraMostrado]) nunca quedan un minuto atrás del
-  /// reloj del teléfono (revisión de #107).
-  void _programarTic() {
-    final ahora = ref.read(relojJornadaProvider)();
-    final proximoMinuto = DateTime(
-      ahora.year,
-      ahora.month,
-      ahora.day,
-      ahora.hour,
-      ahora.minute + 1,
-    );
-    final espera = proximoMinuto.difference(ahora);
-    _tic = Timer(espera > Duration.zero ? espera : const Duration(seconds: 1), () {
-      if (!mounted) return;
-      setState(() {});
-      _programarTic();
-    });
+    iniciarTic();
   }
 
   @override
   void dispose() {
-    _tic?.cancel();
+    detenerTic();
     super.dispose();
   }
 
@@ -116,13 +82,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// rango, el caso de uso la rechaza con el rango explícito (nunca se ajusta en silencio).
   DateTime? _horaElegida(DateTime ahora) => _horaInicio;
 
-  /// Cuántos minutos hacia atrás está [hora] del [ahora] mostrado (al minuto).
-  static int _minutosAtrasDe(DateTime ahora, DateTime hora) =>
-      _menosMinutos(ahora, 0).difference(hora).inMinutes;
-
   Future<void> _iniciar() async {
     if (_iniciando) return;
-    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
+    final ahora = ahoraMostrado ?? ref.read(relojJornadaProvider)();
     setState(() {
       _iniciando = true;
       _error = null;
@@ -151,163 +113,10 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     });
   }
 
-  /// Cuántos minutos hacia atrás se puede marcar el fin: hasta 30, sin pasar del inicio. 0 si la
-  /// jornada quedó abierta de un día anterior (HU-JOR-002, bug #118): el margen normal no
-  /// corresponde, hay que preguntar a qué hora terminó (el mismo criterio que usa el caso de uso,
-  /// [JornadaSinCerrar]). Cerca de la medianoche, con el margen todavía en el día del inicio, sí se
-  /// ofrece, y la hora elegida puede caer pasadas las 00:00 (#250). Con 0 el selector no se
-  /// muestra (la fila de fin queda sin toque con `maximo == 0`) y el botón "Cambiar" queda
-  /// deshabilitado; "Finalizar" llega con `hora: null` y el caso de uso devuelve
-  /// `FailureJornadaDeDiaAnterior`, que navega a `CorregirJornadaPage`.
-  static int _maximoAtrasFin(Jornada jornada, DateTime ahora) {
-    const margen = FinalizarJornadaUseCase.margenHaciaAtras;
-    final quedoAbierta = JornadaSinCerrar.quedoAbierta(
-      inicio: jornada.inicio,
-      ahora: ahora,
-      margen: margen,
-    );
-    if (quedoAbierta) return 0;
-    final desdeInicio = _menosMinutos(ahora, 0).difference(jornada.inicio).inMinutes;
-    return desdeInicio.clamp(0, margen.inMinutes);
-  }
-
-  /// La hora de fin elegida a mano (el instante que el colportor vio y confirmó), o `null` si es
-  /// "ahora". Absoluta, como la de inicio: no se corre si cambia el minuto.
-  DateTime? _horaElegidaFin(Jornada jornada, DateTime ahora) => _horaFin;
-
-  /// `true` si no hay una entrevista en curso o si la colportora la terminó (con «No, guardar y
-  /// volver al mapa»); `false` si la dejó abierta o eligió registrar la venta, que sigue por su lado
-  /// (R44: si la venta no se completa el resultado no se guarda).
-  Future<bool> _terminarEntrevistaAbierta() async {
-    final colportorId = widget.sesion.usuarioId;
-    final estado = await ref.read(entrevistaEnCursoProvider(colportorId).notifier).esperarLectura();
-    if (!estado.hayEntrevista) return true;
-    if (!mounted) return false;
-    final salida = await FlujoEntrevista.terminar(
-      context,
-      ref,
-      colportorId: colportorId,
-      pedirSalida: true,
-    );
-    return salida is EntrevistaGuardada;
-  }
-
-  Future<void> _finalizar(Jornada jornada) async {
-    if (_finalizando || _terminandoEntrevista) return;
-    // Una entrevista abierta se termina antes de cerrar la jornada, y su hora de salida se le pide a
-    // la colportora: nunca se inventa (decisión de Cristian, 23/10, #450). Si no la termina, la
-    // jornada sigue abierta y la entrevista también: no se pierde nada. Todavía no se muestra
-    // «Finalizando…»: la hoja de la entrevista es lo que tiene la atención.
-    _terminandoEntrevista = true;
-    final entrevistaTerminada = await _terminarEntrevistaAbierta();
-    _terminandoEntrevista = false;
-    if (!entrevistaTerminada || !mounted) return;
-
-    final ahora = _ahoraMostrado ?? ref.read(relojJornadaProvider)();
-    setState(() {
-      _finalizando = true;
-      _errorFin = null;
-    });
-
-    final notifier = ref.read(jornadaActualProvider(widget.sesion.usuarioId).notifier);
-    final horaElegida = _horaElegidaFin(jornada, ahora);
-    var resultado = await notifier.finalizar(hora: horaElegida);
-
-    if (!mounted) return;
-
-    // La hora de fin que se eligió antes ya no vale y «Cambiar» no se puede usar (la jornada quedó
-    // abierta de un día anterior y el selector del momento no corresponde): por ejemplo, 23:45
-    // elegida antes de la medianoche y una jornada siguiente que empezó a las 23:30 (#339). Repetir
-    // el mismo error en cada toque no lleva a ningún lado: se suelta esa hora y se vuelve a pedir
-    // sin ella, que lleva a «¿A qué hora terminaste?» con el tope. Nada se cierra con una hora
-    // inventada.
-    final falloLaHoraVieja =
-        horaElegida != null &&
-        resultado.fold((failure) => failure is FailureHoraFueraDeRango, (_) => false) &&
-        // `_maximoAtrasFin == 0` no alcanza: también vale 0 por el tope con el reloj a minutos del
-        // inicio, y ahí repetir sin hora cerraría con «ahora» (un fin inventado). Solo si la jornada
-        // de verdad quedó abierta de un día anterior.
-        JornadaSinCerrar.quedoAbierta(
-          inicio: jornada.inicio,
-          ahora: ref.read(relojJornadaProvider)(),
-          margen: FinalizarJornadaUseCase.margenHaciaAtras,
-        );
-    if (falloLaHoraVieja) {
-      setState(() => _horaFin = null);
-      resultado = await notifier.finalizar();
-      if (!mounted) return;
-    }
-
-    // Jornada de un día anterior (#109, HU-JOR-002 "jornada que quedó abierta"): no se corrige
-    // acá mismo —cerrarla con la hora de hoy inventaría un fin—, se ofrece "¿A qué hora
-    // terminaste?" en su propia pantalla. Si vuelve con la jornada ya cerrada, es el mismo cierre
-    // exitoso de siempre.
-    final failure = resultado.fold<Failure?>((failure) => failure, (_) => null);
-    if (failure is FailureJornadaDeDiaAnterior) {
-      setState(() => _finalizando = false);
-      final corregida = await Navigator.of(context).push<Jornada>(
-        MaterialPageRoute(
-          builder: (_) => CorregirJornadaPage(
-            sesion: widget.sesion,
-            inicio: jornada.inicio,
-            inicioSiguiente: failure.inicioSiguiente,
-          ),
-        ),
-      );
-      if (!mounted) return;
-      if (corregida == null) {
-        // Ya estaba cerrada (otro teléfono) o no había hora válida: Hoy muestra lo guardado.
-        setState(() => _horaFin = null);
-        return;
-      }
-      setState(() {
-        _horaFin = null;
-        _error = null;
-      });
-      unawaited(_mostrarResumen(corregida));
-      return;
-    }
-
-    Jornada? cerrada;
-    setState(() {
-      _finalizando = false;
-      resultado.fold<void>(
-        (failure) => _errorFin = switch (failure) {
-          // La pantalla se relee y muestra lo que hay guardado. La hora de fin elegida era de esa
-          // jornada (que cerró otro teléfono): no pasa a la próxima.
-          FailureSinJornadaActiva() => () {
-            _horaFin = null;
-            return null;
-          }(),
-          FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
-          // Reloj atrasado: qué pasó y qué hacer (#102).
-          FailureValidacion(:final mensaje) => mensaje,
-          // No debería llegar acá: se maneja arriba con la navegación a CorregirJornadaPage.
-          FailureJornadaDeDiaAnterior(:final mensaje) => mensaje,
-          Failure() =>
-            'No pudimos guardar el fin de tu jornada, que sigue abierta. Probá de nuevo; si sigue '
-                'pasando, avisale a tu coordinador.',
-        },
-        (jornadaCerrada) {
-          cerrada = jornadaCerrada;
-          _horaFin = null;
-          _error = null;
-          _bloqueadaPorEnCurso = false;
-        },
-      );
-    });
-    if (cerrada case final cerrada?) unawaited(_mostrarResumen(cerrada));
-  }
-
-  /// El cierre a pantalla completa (vista 21): "Volver al inicio" vuelve a "Hoy", ya sin jornada.
-  Future<void> _mostrarResumen(Jornada cerrada) => Navigator.of(
-    context,
-  ).push<void>(MaterialPageRoute(builder: (_) => ResumenJornadaPage(jornada: cerrada)));
-
   @override
   Widget build(BuildContext context) {
     final ahora = ref.watch(relojJornadaProvider)();
-    _ahoraMostrado = ahora;
+    ahoraMostrado = ahora;
     final estado = ref.watch(jornadaActualProvider(widget.sesion.usuarioId));
 
     return SafeArea(
@@ -353,9 +162,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     final colores = theme.extension<ColoresColportaje>()!;
     final esquema = theme.colorScheme;
     // Mientras finaliza, cuánto llevaba hasta la hora de fin elegida (A04).
-    final fin = _finalizando ? (_horaElegidaFin(jornada, ahora) ?? ahora) : ahora;
+    final fin = finalizando ? (horaElegidaFin(jornada, ahora) ?? ahora) : ahora;
     final transcurrido = fin.difference(jornada.inicio);
-    final conError = _errorFin != null;
+    final conError = errorFin != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -407,12 +216,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       spacing: 10,
       children: [
         if (_error case final error?)
-          _Aviso(key: const Key('jornada_error'), texto: error, esError: true),
-        _FilaHora(
+          AvisoJornada(key: const Key('jornada_error'), texto: error, esError: true),
+        FilaHoraJornada(
           hora: elegida == null ? 'Ahora' : horaCorta(elegida),
           detalle: elegida == null
               ? horaCorta(ahora)
-              : 'hace ${_minutosAtrasDe(ahora, elegida)} min',
+              : 'hace ${minutosAtrasDe(ahora, elegida)} min',
           onTap: _iniciando ? null : () => _elegirHora(ahora),
         ),
         if (_error == null)
@@ -441,7 +250,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     spacing: 10,
     children: [
-      const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
+      const AvisoJornada(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
       OutlinedButton(
         key: const Key('jornada_ver_en_curso'),
         onPressed: () => setState(() => _bloqueadaPorEnCurso = false),
@@ -464,7 +273,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       context,
       ahora: ahora,
       margenMinutos: margen,
-      minutosAtras: actual == null ? 0 : _minutosAtrasDe(ahora, actual).clamp(0, margen),
+      minutosAtras: actual == null ? 0 : minutosAtrasDe(ahora, actual).clamp(0, margen),
     );
     if (!mounted || elegida == null) return;
     setState(() {
@@ -476,23 +285,23 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
   /// Al pie de "Jornada activa" (vista 21): la hora de fin como fila tocable (abre la hoja de ±5
   /// minutos), "Abrir el mapa" y "Finalizar jornada".
   Widget _accionesFin(Jornada jornada, DateTime ahora) {
-    final maximo = _maximoAtrasFin(jornada, ahora);
-    final elegida = _horaElegidaFin(jornada, ahora);
+    final maximo = maximoAtrasFinDeJornada(jornada, ahora);
+    final elegida = horaElegidaFin(jornada, ahora);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 10,
       children: [
-        if (_errorFin case final error?)
-          _Aviso(key: const Key('jornada_error_fin'), texto: error, esError: true),
-        _FilaHora(
+        if (errorFin case final error?)
+          AvisoJornada(key: const Key('jornada_error_fin'), texto: error, esError: true),
+        FilaHoraJornada(
           sufijoKey: '_fin',
           etiqueta: 'HORA DE FIN',
           hora: elegida == null ? 'Ahora' : horaCorta(elegida),
           detalle: elegida == null
               ? horaCorta(ahora)
-              : 'hace ${_minutosAtrasDe(ahora, elegida)} min',
-          onTap: _finalizando || maximo == 0 ? null : () => _elegirHoraFin(ahora, maximo),
+              : 'hace ${minutosAtrasDe(ahora, elegida)} min',
+          onTap: finalizando || maximo == 0 ? null : () => elegirHoraFin(ahora, maximo),
         ),
         const SizedBox(height: 4),
         OutlinedButton.icon(
@@ -503,12 +312,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
         ),
         FilledButton(
           key: const Key('jornada_finalizar'),
-          onPressed: _finalizando ? null : () => _finalizar(jornada),
-          style: _finalizando ? ConEspera.estiloDelBoton(context) : null,
-          child: _finalizando ? const ConEspera('Finalizando…') : const Text('Finalizar jornada'),
+          onPressed: finalizando ? null : () => finalizarJornada(jornada),
+          style: finalizando ? ConEspera.estiloDelBoton(context) : null,
+          child: finalizando ? const ConEspera('Finalizando…') : const Text('Finalizar jornada'),
         ),
         // Vista 20 A08: con una jornada en curso no se puede iniciar otra.
-        const _Aviso(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
+        const AvisoJornada(key: Key('jornada_bloqueo'), texto: textoBloqueoJornadaActiva),
         FilledButton.icon(
           key: const Key('jornada_iniciar'),
           onPressed: null,
@@ -518,31 +327,6 @@ class _JornadaPageState extends ConsumerState<JornadaPage> {
       ],
     );
   }
-
-  Future<void> _elegirHoraFin(DateTime ahora, int maximo) async {
-    final actual = _horaFin;
-    final elegida = await mostrarHojaHoraInicio(
-      context,
-      ahora: ahora,
-      margenMinutos: maximo,
-      minutosAtras: actual == null ? 0 : _minutosAtrasDe(ahora, actual).clamp(0, maximo),
-      pregunta: '¿A qué hora terminaste?',
-      etiquetaCampo: 'HORA DE FIN',
-    );
-    if (!mounted || elegida == null) return;
-    setState(() {
-      _horaFin = elegida.esAhora ? null : elegida.hora;
-      _errorFin = null;
-    });
-  }
-
-  static DateTime _menosMinutos(DateTime ahora, int minutos) => DateTime(
-    ahora.year,
-    ahora.month,
-    ahora.day,
-    ahora.hour,
-    ahora.minute,
-  ).subtract(Duration(minutes: minutos));
 }
 
 /// Estructura común de "Hoy": la [cabecera] arriba, las [acciones] al pie (al alcance del pulgar) y
@@ -679,134 +463,6 @@ class _Cabecera extends StatelessWidget {
   }
 }
 
-/// La hora de inicio como fila tocable: abre la hoja donde se ajusta (A01 del diseño).
-class _FilaHora extends StatelessWidget {
-  const _FilaHora({
-    this.sufijoKey = '',
-    this.etiqueta = 'HORA DE INICIO',
-    required this.hora,
-    required this.detalle,
-    required this.onTap,
-  });
-
-  /// Distingue las keys de la fila de fin (`_fin`) de las de inicio.
-  final String sufijoKey;
-  final String etiqueta;
-
-  /// "Ahora" o la hora elegida ("14:25").
-  final String hora;
-
-  /// La hora actual si es "Ahora", o "hace 10 min".
-  final String detalle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final esquema = theme.colorScheme;
-
-    return Material(
-      color: esquema.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        key: Key('jornada_ajustar_hora$sufijoKey'),
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 60),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: colores.borde),
-          ),
-          child: Row(
-            spacing: 12,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 3,
-                  children: [
-                    Text(
-                      etiqueta,
-                      style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
-                    ),
-                    Text.rich(
-                      key: Key('jornada_hora$sufijoKey'),
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: hora,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          TextSpan(text: ' · $detalle'),
-                        ],
-                      ),
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                'Cambiar ›',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  // Sin acción se ve apagado, en el gris de los textos sin acción (cumple AA).
-                  color: onTap == null ? colores.gris : esquema.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Aviso en línea: error (qué pasó y qué hacer) o información (el bloqueo de jornada activa).
-class _Aviso extends StatelessWidget {
-  const _Aviso({super.key, required this.texto, this.esError = false});
-
-  final String texto;
-  final bool esError;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colores = theme.extension<ColoresColportaje>()!;
-    final esquema = theme.colorScheme;
-
-    final fondo = esError ? esquema.errorContainer : esquema.surfaceContainerHighest;
-    final color = esError ? esquema.onErrorContainer : esquema.onSurface;
-
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: fondo,
-          borderRadius: BorderRadius.circular(14),
-          border: esError ? null : Border.all(color: colores.borde, width: 1.5),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              esError ? Icons.error_outline : Icons.info_outline,
-              color: esError ? color : esquema.primary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(texto, style: theme.textTheme.bodyLarge?.copyWith(color: color)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _Cargando extends StatelessWidget {
   const _Cargando();
 
@@ -865,10 +521,9 @@ class _ErrorAlLeer extends StatelessWidget {
                   ),
                 ),
               ),
-              Text('No pudimos leer tu jornada.', style: theme.textTheme.headlineMedium),
+              Text(textoNoPudimosLeerJornada, style: theme.textTheme.headlineMedium),
               Text(
-                'Tocá “Reintentar” para volver a cargarla. Tus datos siguen guardados en este '
-                'teléfono.',
+                textoReintentarLeerJornada,
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: esquema.onSurfaceVariant,
                   height: 1.5,
