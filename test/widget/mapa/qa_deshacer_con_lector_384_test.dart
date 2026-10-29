@@ -12,8 +12,8 @@
 // - privacidad (`toString()` de la unión pendiente).
 //
 // Capturas: `flutter test --dart-define=QA_CAPTURAS=true …` las deja en `.dart_tool/qa_capturas/`
-// (gitignored: nunca se commitean). Un test que documenta un hallazgo va con `skip` y el comentario
-// `// skip: issue #384 — <motivo>`.
+// (gitignored: nunca se commitean). Los hallazgos de este QA (#384) ya están arreglados: ningún
+// test queda con `skip`.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -35,9 +35,6 @@ import '../../helpers/duplicados_falsos.dart';
 import '../../helpers/qa_vista10_arnes.dart';
 
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
-
-/// Los tests con `skip` documentan un hallazgo: `--dart-define=QA_HALLAZGOS=true` los corre.
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _ocho = Duration(seconds: 8);
 const _parItalia = 'ub-a|ub-b';
@@ -417,8 +414,6 @@ void main() {
   });
 
   group('Un aviso que no se va solo y los avisos de otras pantallas', () {
-    // skip: issue #384 — con lector el aviso queda fijo y los avisos de otras pantallas (p. ej. «Guardado
-    // sin conexión» de la edición de «Editar uno») esperan en la cola detrás de él, sin verse.
     _prueba('con lector, un aviso que otra pantalla pide mientras la unión espera se ve '
         '(no queda en la cola detrás del aviso que no se va)', (tester) async {
       final m = await _montar(tester, _datos());
@@ -455,7 +450,7 @@ void main() {
         findsOneWidget,
         reason: 'el aviso de la otra pantalla espera detrás del "Deshacer" que no se va solo',
       );
-    }, skip: !_verHallazgos);
+    });
   });
 
   group('Casos límite', () {
@@ -656,22 +651,16 @@ void main() {
   });
 
   group('Privacidad', () {
-    // skip: issue #384 — `UnionPendiente` es un `Equatable` sin `stringify => false`: en debug su
-    // `toString()` vuelca la dirección y los ids (las demás entidades del mapa lo apagan).
-    test(
-      skip: !_verHallazgos,
-      'el toString de la unión pendiente no vuelca la dirección ni los ids',
-      () {
-        const union = UnionPendiente(
-          clavePar: 'ub-a|ub-b',
-          conservarId: 'ub-a',
-          duplicadaId: 'ub-b',
-          direccion: 'Av. Italia 1234',
-          esperaElCierre: true,
-        );
-        expect(union.toString(), isNot(contains('Italia')));
-        expect(union.toString(), isNot(contains('ub-a')));
-      },
-    );
+    test('el toString de la unión pendiente no vuelca la dirección ni los ids', () {
+      const union = UnionPendiente(
+        clavePar: 'ub-a|ub-b',
+        conservarId: 'ub-a',
+        duplicadaId: 'ub-b',
+        direccion: 'Av. Italia 1234',
+        esperaElCierre: true,
+      );
+      expect(union.toString(), isNot(contains('Italia')));
+      expect(union.toString(), isNot(contains('ub-a')));
+    });
   });
 }
