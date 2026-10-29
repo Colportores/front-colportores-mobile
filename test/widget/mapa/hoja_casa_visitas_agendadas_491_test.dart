@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
@@ -51,7 +52,8 @@ ItemAgenda _cobranza(String id, DateTime cuando, {String ub = 'u-1'}) => itemAge
 final class _Montaje {
   final detalles = <String>[];
   final visitas = <ContextoDeVisita>[];
-  var agendar = 0;
+  final citas = <ContextoDeCita>[];
+  int get agendar => citas.length;
   final cierres = <int>[];
 }
 
@@ -64,7 +66,8 @@ Future<_Montaje> _montar(
   bool conDetalle = true,
   bool conAgendar = true,
   FutureOr<Object?> Function(String agendaId)? detalle,
-  FutureOr<Object?> Function()? agendar,
+  FutureOr<Object?> Function(ContextoDeCita)? agendar,
+  ContextoDeLaCasa? contexto,
   double escala = 1,
   Size tamano = const Size(390, 844),
 }) async {
@@ -73,7 +76,11 @@ Future<_Montaje> _montar(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final overrides = <Override>[
-    ...overridesHojaCasa(registrarVisita: m.visitas.add, agendas: repo),
+    ...overridesHojaCasa(
+      registrarVisita: m.visitas.add,
+      agendas: repo,
+      lectura: contexto == null ? null : (_) => Stream.value(contexto),
+    ),
     abrirDetalleDeAgendaProvider.overrideWithValue(
       conDetalle
           ? (id) async {
@@ -82,11 +89,12 @@ Future<_Montaje> _montar(
             }
           : null,
     ),
-    agendarDesdeLaAgendaProvider.overrideWithValue(
+    // «+ Agendar» abre «Agendar visita» con la casa puesta: el mismo destino de «Programar entrevista».
+    programarEntrevistaDesdeLaCasaProvider.overrideWithValue(
       conAgendar
-          ? () async {
-              m.agendar++;
-              return agendar?.call();
+          ? (cita) async {
+              m.citas.add(cita);
+              return agendar?.call(cita);
             }
           : null,
     ),
@@ -246,12 +254,11 @@ void main() {
       expect(_registrar, findsNothing);
     });
 
-    _probar('sin colportor con la sesión no se lee la agenda', (tester) async {
+    _probar('sin colportor con la sesión no se lee la agenda de la casa', (tester) async {
       final repo = ConsultaAgendaFalsa([_entrevista('ent', _jueves)]);
       await _montar(tester, repo, colportorId: null);
 
       expect(_seccion, findsNothing);
-      expect(_agendar, findsNothing);
       expect(repo.pedidosDeLaCasa, isEmpty);
     });
 
@@ -404,18 +411,45 @@ void main() {
   });
 
   group('«+ Agendar»', () {
-    _probar('abre el formulario de agendar', (tester) async {
+    _probar('abre «Agendar visita» con la casa y su espacio ya puestos', (tester) async {
       final m = await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]));
 
       await tester.tap(_agendar);
       await tester.pump();
 
-      expect(m.agendar, 1);
+      expect(m.citas, [
+        (ubicacionId: 'u-1', espacioId: 'esp-1', espacioPersonaId: null, personaId: null),
+      ]);
     });
 
-    _probar('sin destino (todavía no llegó #408) no se muestra, como en la pestaña', (
-      tester,
-    ) async {
+    _probar('en un edificio con el depto elegido lleva ese espacio', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+        contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pump();
+
+      expect(m.citas.single.espacioId, 'esp-3B');
+      expect(m.citas.single.ubicacionId, 'u-1');
+    });
+
+    _probar('en un edificio sin depto elegido (sin espacio) no se ofrece', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+        contexto: const ContextoDeLaCasa(personas: []),
+      );
+
+      expect(_agendar, findsNothing);
+      expect(_registrar, findsOneWidget);
+    });
+
+    _probar('sin destino no se muestra, como «Registrar visita»', (tester) async {
       await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]), conAgendar: false);
 
       expect(_agendar, findsNothing);
@@ -426,7 +460,7 @@ void main() {
       final m = await _montar(
         tester,
         ConsultaAgendaFalsa(),
-        agendar: () => Future<void>.delayed(const Duration(seconds: 1)),
+        agendar: (_) => Future<void>.delayed(const Duration(seconds: 1)),
       );
 
       await tester.tap(_agendar);
@@ -441,7 +475,7 @@ void main() {
       final m = await _montar(
         tester,
         ConsultaAgendaFalsa(),
-        agendar: () {
+        agendar: (_) {
           if (falla) throw StateError('no abre');
           return null;
         },
@@ -459,7 +493,7 @@ void main() {
 
     _probar('mientras se abre, «Registrar visita» no abre otro destino a la vez', (tester) async {
       final cierre = Completer<void>();
-      final m = await _montar(tester, ConsultaAgendaFalsa(), agendar: () => cierre.future);
+      final m = await _montar(tester, ConsultaAgendaFalsa(), agendar: (_) => cierre.future);
 
       await tester.tap(_agendar);
       await tester.pump();
