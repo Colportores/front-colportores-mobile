@@ -28,6 +28,9 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   /// Si está, [actualizarPassword] espera a que el test la complete (estado "guardando").
   Completer<void>? demoraAlActualizar;
 
+  /// Si está, [cerrarTodasLasSesiones] espera a que el test la complete (la revocación no contesta).
+  Completer<void>? demoraAlCerrarSesiones;
+
   /// Si es `true`, la próxima [actualizarPassword] fija la contraseña pero lanza
   /// [SinConexionException], como si la respuesta se hubiera perdido en el camino. Una sola vez.
   bool pierdeLaRespuestaAlActualizar = false;
@@ -87,6 +90,7 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
 
   @override
   Future<void> cerrarTodasLasSesiones() async {
+    await demoraAlCerrarSesiones?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlCerrarSesiones case final falla?) throw falla;
     _haySesionDeRecuperacion = false;

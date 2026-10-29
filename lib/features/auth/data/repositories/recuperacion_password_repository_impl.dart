@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
@@ -11,11 +13,18 @@ import '../datasources/recuperacion_password_remote_data_source.dart';
 /// [RecuperacionPasswordRepository] sobre el remoto (HU-AUTH-005). Traduce las excepciones a
 /// [Failure] y deja en el log lo que el usuario no puede resolver.
 final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRepository {
-  RecuperacionPasswordRepositoryImpl(this._remote, {AppLogger? logger})
+  RecuperacionPasswordRepositoryImpl(this._remote, {AppLogger? logger, this.tope = topePorDefecto})
     : _log = logger ?? AppLogger.instance;
+
+  /// Lo que se espera la respuesta del servidor antes de dar el paso por cortado (QA #224): sin
+  /// tope, una señal que se corta a mitad dejaba «Guardando…» para siempre y el atrás bloqueado.
+  static const topePorDefecto = Duration(seconds: 30);
 
   final RecuperacionPasswordRemoteDataSource _remote;
   final AppLogger _log;
+
+  /// Ver [topePorDefecto].
+  final Duration tope;
 
   /// La contraseña de un intento que se cortó sin respuesta: Supabase pudo haberlo aceptado. Si el
   /// reintento con la misma contraseña vuelve con "igual a la anterior", el primero sí entró y la
@@ -34,7 +43,7 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   @override
   Future<Either<Failure, Unit>> actualizarPassword(String nueva) async {
     try {
-      await _remote.actualizarPassword(nueva);
+      await _remote.actualizarPassword(nueva).timeout(tope);
       _enDuda = null;
       _registrarCambio();
       return const Right(unit);
@@ -47,6 +56,16 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     } on SinConexionException catch (e) {
       _enDuda = nueva;
       return Left(_traducir(e));
+    } on TimeoutException {
+      // Sin respuesta: igual que un corte de red. Supabase pudo haber aplicado el cambio, así que
+      // el reintento con la misma contraseña se resuelve con `_enDuda`.
+      _enDuda = nueva;
+      _log.warn(
+        LogModulo.auth,
+        'RECUPERACION_TIMEOUT',
+        'el servidor no respondió al cambiar la contraseña',
+      );
+      return const Left(FailureSinConexion());
     } on AuthRemoteException catch (e) {
       _enDuda = null;
       return Left(_traducir(e));
@@ -92,7 +111,7 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     Future<void> Function() accion,
   ) async {
     try {
-      await accion();
+      await accion().timeout(tope);
       return const Right(unit);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, op, mensaje, const {}, e, st);

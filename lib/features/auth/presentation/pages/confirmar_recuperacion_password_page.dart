@@ -226,6 +226,19 @@ class _ConfirmarRecuperacionPasswordPageState
           _guardando = false;
           _errorGeneral = TextosConfirmacionRecuperacion.errorInesperado;
         });
+      case FailureServidor(status: 429, :final mensaje):
+        // El único error del servidor con texto propio que dice qué hacer («Esperá unos minutos…»).
+        setState(() {
+          _guardando = false;
+          _errorGeneral = mensaje;
+        });
+      case FailureServidor():
+        // Cualquier otro: el texto de la falla es un código técnico o el genérico del servidor y
+        // no dice qué hacer (QA #224). El detalle ya quedó en el log del remoto.
+        setState(() {
+          _guardando = false;
+          _errorGeneral = TextosConfirmacionRecuperacion.errorInesperado;
+        });
       case final Failure falla:
         setState(() {
           _guardando = false;

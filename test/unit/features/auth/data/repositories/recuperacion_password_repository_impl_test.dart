@@ -1,4 +1,6 @@
 // HU-AUTH-005 — repositorio de la confirmación de recuperación, contra el remoto en memoria.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -226,9 +228,55 @@ void main() {
         );
       }
     });
+
+    group('sin respuesta del servidor (QA #224)', () {
+      const tope = Duration(milliseconds: 20);
+
+      setUp(() {
+        remoto.demoraAlActualizar = Completer<void>();
+        repo = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo(), tope: tope);
+      });
+
+      test('pasado el tope sale como sin conexión y queda en el log', () async {
+        final salida = _SalidaEnMemoria();
+        repo = RecuperacionPasswordRepositoryImpl(
+          remoto,
+          logger: AppLogger(output: salida),
+          tope: tope,
+        );
+
+        expect(
+          await repo.actualizarPassword('NuevaClave1'),
+          const Left<Failure, Unit>(FailureSinConexion()),
+        );
+        final log = salida.lineas.join('\n');
+        expect(log, contains('RECUPERACION_TIMEOUT'));
+        expect(log, isNot(contains('NuevaClave1')));
+      });
+
+      test('el cambio pudo haber entrado: reintentar con la misma contraseña es éxito', () async {
+        await repo.actualizarPassword('NuevaClave1');
+        remoto.demoraAlActualizar!.complete();
+        await Future<void>.delayed(Duration.zero);
+        expect(remoto.passwordActual, 'NuevaClave1');
+
+        expect(await repo.actualizarPassword('NuevaClave1'), const Right<Failure, Unit>(unit));
+      });
+    });
   });
 
   group('cerrarTodasLasSesiones y abandonar', () {
+    test('si revocar no contesta, no deja la pantalla esperando: sale como falla', () async {
+      remoto.demoraAlCerrarSesiones = Completer<void>();
+      repo = RecuperacionPasswordRepositoryImpl(
+        remoto,
+        logger: loggerMudo(),
+        tope: const Duration(milliseconds: 20),
+      );
+
+      expect(await repo.cerrarTodasLasSesiones(), isA<Left<Failure, Unit>>());
+    });
+
     test('revocan en el remoto', () async {
       expect(await repo.cerrarTodasLasSesiones(), const Right<Failure, Unit>(unit));
       expect(await repo.abandonar(), const Right<Failure, Unit>(unit));
