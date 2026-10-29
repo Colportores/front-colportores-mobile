@@ -344,7 +344,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                             key: const Key('configuracion_notificaciones'),
                             minVerticalPadding: 12,
                             leading: const Icon(Icons.notifications_none_outlined),
-                            title: const Text(TextosNotificaciones.filaConfiguracion),
+                            // Con el texto al 200 % en 360 dp la palabra no entra entre el ícono y la
+                            // flecha: se achica en vez de partirla (QA #153, menor 1).
+                            title: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(TextosNotificaciones.filaConfiguracion, maxLines: 1),
+                            ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () =>
                                 unawaited(Navigator.of(context).push(NotificacionesPage.ruta())),

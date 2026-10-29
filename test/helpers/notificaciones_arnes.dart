@@ -85,7 +85,7 @@ const textoToast = 'Notificaciones activadas.';
 const textoToastSinConexion =
     'Activadas. Los recordatorios ya funcionan; los avisos de tu coordinador empiezan a llegar '
     'cuando haya conexión.';
-const textoAviso = 'Notificaciones desactivadas. Activá en Configuración.';
+const textoAviso = 'Las notificaciones están apagadas. Podés activarlas en configuración.';
 const textoApagadas =
     'Las notificaciones están apagadas en el teléfono. Estas opciones valen cuando las actives.';
 const textoBloqueadas =

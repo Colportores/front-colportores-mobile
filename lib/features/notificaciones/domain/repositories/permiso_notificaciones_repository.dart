@@ -22,7 +22,7 @@ abstract interface class PermisoNotificacionesRepository {
   /// Anota [pedido]. `sistema` pisa a `ahoraNo`; `ahoraNo` nunca pisa a `sistema`.
   Future<void> anotarPedido(PedidoNotificaciones pedido);
 
-  /// Si la persona cerró el aviso «Notificaciones desactivadas».
+  /// Si la persona cerró el aviso «Las notificaciones están apagadas».
   Future<bool> leerAvisoCerrado();
 
   Future<void> anotarAvisoCerrado();
