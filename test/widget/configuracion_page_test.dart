@@ -1053,6 +1053,41 @@ void main() {
       },
     );
 
+    // QA #542: la espera de hasta 5 s no puede dejar a la persona mirando una pantalla que parece no
+    // haber hecho caso, ni permitirle pedir el cierre dos veces o salir de la hoja a la mitad.
+    testWidgets(
+      'mientras el cierre espera al ciclo de sync la hoja dice «Cerrando sesión», no admite '
+      'un segundo pedido ni el atrás, y la DB se cierra una sola vez',
+      (tester) async {
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('Cerrando sesión'), findsWidgets);
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        // Un segundo toque en el botón de la hoja y el atrás del sistema: no hacen nada.
+        await tester.tap(
+          find.byKey(const Key('configuracion_dialogo_confirmar')),
+          warnIfMissed: false,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.binding.handlePopRoute();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Cerrando sesión'), findsWidgets, reason: 'la hoja sigue hasta terminar');
+
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_remote.llamadasCerrarSesion, 1);
+        expect(_login, findsOneWidget);
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await motor.settled;
+      },
+    );
+
     testWidgets('sin ningún sync en curso el cierre no espera nada', (tester) async {
       final container = await _montar(tester);
 

@@ -4,7 +4,8 @@
 // con las cuatro guías de accesibilidad en 360x640 (texto 1.0 y 2.0) y 412x915, prueba las entradas
 // límite (largo en caracteres visibles, espacios, pegado largo) y los casos límite de cada flujo.
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
@@ -23,6 +24,8 @@ import 'package:colportores_mobile/features/auth/presentation/providers/db_local
 import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
@@ -971,5 +974,140 @@ void main() {
         expect(captura.lineas.join('\n'), contains('password_reset_completed'));
       },
     );
+  });
+
+  // QA del PR #556 (deuda #542): el aviso 15-A05 con cada tipo de error del servidor, y los tiempos
+  // de espera de 15 s (decisión del 29/10).
+  group('QA vista 15 (#542) — 15-A05 con un error del servidor', () {
+    const a05 = TextosConfirmacionRecuperacion.errorInesperado;
+    const rateLimit = 'Demasiados intentos. Esperá unos minutos y volvé a probar.';
+
+    final casos = <(String, ServidorException, String)>[
+      ('4xx con código técnico', const ServidorException(status: 400), a05),
+      ('5xx sin mensaje', const ServidorException(status: 503), a05),
+      ('sin status', const ServidorException(), a05),
+      ('429 con su texto', const ServidorException(status: 429, mensaje: rateLimit), rateLimit),
+    ];
+    for (final (rotulo, falla, texto) in casos) {
+      for (final escala in [1.0, 2.0]) {
+        testWidgets('$rotulo a 360x640 (texto $escala): el aviso dice qué hacer, se anuncia y pasa '
+            'las cuatro guías', (tester) async {
+          _pantalla(tester, const Size(360, 640), texto: escala);
+          final handle = tester.ensureSemantics();
+          try {
+            await _montar(tester);
+            await _completar(tester, 'NuevaClave1');
+            _recuperacion.fallaAlActualizar = falla;
+            await _tocarGuardar(tester);
+
+            expect(find.text(texto), findsOneWidget);
+            expect(find.textContaining('No se pudo completar la operación'), findsNothing);
+            expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+            expect(_habilitado(tester), isTrue);
+            expect(tester.getSemantics(_k('error')), isSemantics(isLiveRegion: true));
+            await _guias(tester);
+          } finally {
+            handle.dispose();
+          }
+        });
+      }
+    }
+
+    // Capturas de revisión visual (solo con `--dart-define=QA_CAPTURAS=true`; no se commitean).
+    const capturar = bool.fromEnvironment('QA_CAPTURAS');
+    for (final (nombre, falla, escala) in [
+      ('4xx', const ServidorException(status: 400), 1.0),
+      ('4xx', const ServidorException(status: 400), 2.0),
+      ('429', const ServidorException(status: 429, mensaje: rateLimit), 2.0),
+    ]) {
+      testWidgets('captura de 15-A05 ($nombre, texto $escala)', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        await tester.runAsync(() async {
+          for (final f in ['Inter', 'SourceSerif4', 'JetBrainsMono']) {
+            final bytes = File('assets/fonts/$f.ttf').readAsBytesSync();
+            final c = FontLoader(f)..addFont(Future.value(ByteData.view(bytes.buffer)));
+            await c.load();
+          }
+          final raiz = Platform.environment['FLUTTER_ROOT'];
+          final iconos = File('$raiz/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+          if (iconos.existsSync()) {
+            final c = FontLoader('MaterialIcons')
+              ..addFont(Future.value(ByteData.view(iconos.readAsBytesSync().buffer)));
+            await c.load();
+          }
+        });
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        _recuperacion.fallaAlActualizar = falla;
+        await _tocarGuardar(tester);
+        await tester.runAsync(() async {
+          final render = tester.renderObject<RenderRepaintBoundary>(
+            find.byType(RepaintBoundary).first,
+          );
+          final img = await render.toImage();
+          final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
+          final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
+          File(
+            '${dir.path}/qa542_vista15_a05_${nombre}_${escala.toInt()}.png',
+          ).writeAsBytesSync(bytes.buffer.asUint8List());
+        });
+      }, skip: !capturar);
+    }
+
+    testWidgets('lo tipeado sigue tras el error y reintentar con éxito saca el aviso', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(status: 400);
+      await _tocarGuardar(tester);
+      expect(_k('error'), findsOneWidget);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1');
+      expect(_texto(tester, 'repetida'), 'NuevaClave1');
+
+      _recuperacion.fallaAlActualizar = null;
+      await _tocarGuardar(tester);
+      expect(_k('error'), findsNothing);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+    });
+
+    testWidgets('el tope es de 15 s: a los 14 s sigue «Guardando…», a los 16 s hay «Sin conexión» '
+        'con el botón habilitado y el atrás libre', (tester) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 14));
+      expect(_k('guardando'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(_k('guardando'), findsNothing);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1');
+      await _soltar(tester);
+    });
+
+    testWidgets('si la contraseña ya cambió y revocar las sesiones no contesta, a los 15 s más la '
+        'pantalla sale de «Guardando…» con el éxito (nunca queda trabada)', (tester) async {
+      _recuperacion.demoraAlCerrarSesiones = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 14));
+      expect(_k('guardando'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(_k('guardando'), findsNothing);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      expect(_recuperacion.passwordActual, 'NuevaClave1');
+      _recuperacion.demoraAlCerrarSesiones!.complete();
+      await tester.pumpAndSettle();
+    });
   });
 }
