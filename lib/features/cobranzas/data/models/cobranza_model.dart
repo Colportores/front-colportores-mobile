@@ -14,6 +14,11 @@ abstract final class CobranzaModel {
     'medio': codigoDelMedio(cobro.medio),
     'fecha': cobro.fecha.toIso8601String(),
     'numero_cuota': cobro.numeroCuota,
+    'tarjeta_tipo': cobro.tarjetaTipo == null ? null : codigoDelTipoDeTarjeta(cobro.tarjetaTipo!),
+    'tarjeta_marca': cobro.tarjetaMarca,
+    'numero_aprobacion': cobro.numeroAprobacion,
+    'referencia_transferencia': cobro.referenciaTransferencia,
+    'banco_origen': cobro.bancoOrigen,
     ...auditoriaAJson(cobro.auditoria),
   };
 
@@ -21,6 +26,19 @@ abstract final class CobranzaModel {
     MedioCobranza.efectivo => 'EFECTIVO',
     MedioCobranza.tarjeta => 'TARJETA',
     MedioCobranza.transferencia => 'TRANSFERENCIA',
+  };
+
+  static String codigoDelTipoDeTarjeta(TipoTarjeta tipo) => switch (tipo) {
+    TipoTarjeta.debito => 'DEBITO',
+    TipoTarjeta.credito => 'CREDITO',
+  };
+
+  /// El tipo de tarjeta de un código guardado; `null` si no hay o no se reconoce (un dato opcional
+  /// nunca tumba la lectura del cobro).
+  static TipoTarjeta? tipoDeTarjetaDesdeCodigo(String? codigo) => switch (codigo) {
+    'DEBITO' => TipoTarjeta.debito,
+    'CREDITO' => TipoTarjeta.credito,
+    _ => null,
   };
 
   static MedioCobranza medioDesdeCodigo(String codigo) => switch (codigo) {

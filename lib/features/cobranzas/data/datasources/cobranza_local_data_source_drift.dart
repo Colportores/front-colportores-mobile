@@ -150,23 +150,46 @@ final class CobranzaLocalDataSourceDrift {
     );
   }
 
-  /// Qué se vendió, en una línea: «Colección de 2 libros», «3 productos».
+  /// Qué se vendió, en una línea (C·08 de la vista 39): «Vida Feliz × 2», «Colección de 1 libro».
+  ///
+  /// Un producto va con su nombre de la réplica del catálogo (#180) —con « × N» si se vendieron
+  /// varias—, aunque esté dado de baja: las ventas que ya lo llevan lo siguen resolviendo. Un
+  /// combo, con la cuenta de sus libros. Si el producto no está en el teléfono (el catálogo todavía
+  /// no bajó) se cuenta aparte como «N productos»: la línea nunca queda sin decir algo.
   Future<String> _descripcion(String ventaId) async {
-    final items = await (_db.select(
-      _db.ventaItems,
-    )..where((i) => i.ventaId.equals(ventaId) & i.deletedAt.isNull())).get();
+    final items =
+        await (_db.select(_db.ventaItems)
+              ..where((i) => i.ventaId.equals(ventaId) & i.deletedAt.isNull())
+              ..orderBy([(i) => OrderingTerm.asc(i.createdAt), (i) => OrderingTerm.asc(i.id)]))
+            .get();
+    final productoIds = {
+      for (final item in items)
+        if (item.coleccionId == null && item.productoId != null) item.productoId!,
+    };
+    final nombres = <String, String>{};
+    if (productoIds.isNotEmpty) {
+      final filas = await (_db.select(_db.productos)..where((p) => p.id.isIn(productoIds))).get();
+      for (final fila in filas) {
+        if (fila.nombre.trim().isNotEmpty) nombres[fila.id] = fila.nombre.trim();
+      }
+    }
     final partes = <String>[];
-    var sueltos = 0;
+    var sinNombre = 0;
     for (final item in items) {
       if (item.coleccionId != null) {
         final libros = (VentaItemModel.componentesDesdeJson(item.componentes) ?? const [])
             .fold<int>(0, (a, c) => a + c.cantidad);
         partes.add(libros == 1 ? 'Colección de 1 libro' : 'Colección de $libros libros');
+        continue;
+      }
+      final nombre = nombres[item.productoId];
+      if (nombre == null) {
+        sinNombre += item.cantidad;
       } else {
-        sueltos += item.cantidad;
+        partes.add(item.cantidad == 1 ? nombre : '$nombre × ${item.cantidad}');
       }
     }
-    if (sueltos > 0) partes.add(sueltos == 1 ? '1 producto' : '$sueltos productos');
+    if (sinNombre > 0) partes.add(sinNombre == 1 ? '1 producto' : '$sinNombre productos');
     return partes.join(' · ');
   }
 
@@ -197,6 +220,11 @@ final class CobranzaLocalDataSourceDrift {
     medio: CobranzaModel.medioDesdeCodigo(fila.medio),
     fecha: fila.fecha,
     numeroCuota: fila.numeroCuota,
+    tarjetaTipo: CobranzaModel.tipoDeTarjetaDesdeCodigo(fila.tarjetaTipo),
+    tarjetaMarca: fila.tarjetaMarca,
+    numeroAprobacion: fila.numeroAprobacion,
+    referenciaTransferencia: fila.referenciaTransferencia,
+    bancoOrigen: fila.bancoOrigen,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -213,6 +241,13 @@ final class CobranzaLocalDataSourceDrift {
     medio: CobranzaModel.codigoDelMedio(c.medio),
     fecha: c.fecha,
     numeroCuota: Value(c.numeroCuota),
+    tarjetaTipo: Value(
+      c.tarjetaTipo == null ? null : CobranzaModel.codigoDelTipoDeTarjeta(c.tarjetaTipo!),
+    ),
+    tarjetaMarca: Value(c.tarjetaMarca),
+    numeroAprobacion: Value(c.numeroAprobacion),
+    referenciaTransferencia: Value(c.referenciaTransferencia),
+    bancoOrigen: Value(c.bancoOrigen),
     createdAt: c.auditoria.createdAt,
     updatedAt: c.auditoria.updatedAt,
     createdBy: Value(c.auditoria.createdBy),

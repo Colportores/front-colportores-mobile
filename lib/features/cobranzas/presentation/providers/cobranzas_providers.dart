@@ -8,7 +8,7 @@ import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
 import '../../data/repositories/cobranza_repository_impl.dart';
 import '../../domain/repositories/cobranza_repository.dart';
-import '../../domain/usecases/registrar_cobro_efectivo_use_case.dart';
+import '../../domain/usecases/registrar_cobro_use_case.dart';
 
 // Cableado de los cobros (BACK-HU-COB-001, #436). Presentation conoce domain; data se inyecta acá.
 
@@ -36,9 +36,10 @@ final generadorIdCobroProvider = Provider<String Function()>((ref) => const Uuid
 /// El reloj del cobro («hoy» y la fecha máxima); un test lo reemplaza.
 final relojCobroProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-/// Registra el cobro en efectivo de una venta (HU-COB-001).
-final registrarCobroEfectivoUseCaseProvider = Provider<RegistrarCobroEfectivoUseCase>(
-  (ref) => RegistrarCobroEfectivoUseCase(
+/// Registra el cobro de una venta, en efectivo, con tarjeta o por transferencia (HU-COB-001, HU-COB-002 y
+/// HU-COB-003).
+final registrarCobroUseCaseProvider = Provider<RegistrarCobroUseCase>(
+  (ref) => RegistrarCobroUseCase(
     ref.watch(cobranzaRepositoryProvider),
     ahora: ref.watch(relojCobroProvider),
   ),

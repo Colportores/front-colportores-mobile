@@ -216,6 +216,8 @@ class CampoDeVenta extends StatelessWidget {
     this.hint,
     this.icono,
     this.habilitado = true,
+    this.autofocus = false,
+    this.autocorregir = true,
   });
 
   final String? rotulo;
@@ -230,6 +232,13 @@ class CampoDeVenta extends StatelessWidget {
   final IconData? icono;
   final bool habilitado;
 
+  /// Abre el teclado al mostrarse (el monto del cobro, vista 28).
+  final bool autofocus;
+
+  /// `false` en los campos de códigos (el número de aprobación, la referencia): sin corrector ni
+  /// sugerencias del teclado.
+  final bool autocorregir;
+
   @override
   Widget build(BuildContext context) {
     final conError = error != null;
@@ -241,36 +250,46 @@ class CampoDeVenta extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: ExcludeSemantics(child: Text(rotulo!, style: _estiloRotulo())),
           ),
-        TextField(
-          controller: controlador,
-          onChanged: alCambiar,
-          enabled: habilitado,
-          keyboardType: teclado,
-          minLines: lineas,
-          maxLines: lineas,
-          maxLength: maxLargo,
-          maxLengthEnforcement: MaxLengthEnforcement.enforced,
-          buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-          decoration: InputDecoration(
-            labelText: rotulo,
-            floatingLabelBehavior: FloatingLabelBehavior.never,
-            hintText: hint,
-            prefixIcon: icono == null ? null : Icon(icono),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: conError ? ColoresAgenda.rojo : _borde),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: conError ? ColoresAgenda.rojo : _borde, width: 1.5),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: conError ? ColoresAgenda.rojo : ColoresAgenda.azul,
-                width: 2,
+        Semantics(
+          label: hint != null ? rotulo : null,
+          child: TextField(
+            controller: controlador,
+            onChanged: alCambiar,
+            enabled: habilitado,
+            autofocus: autofocus,
+            autocorrect: autocorregir,
+            enableSuggestions: autocorregir,
+            keyboardType: teclado,
+            minLines: lineas,
+            maxLines: lineas,
+            maxLength: maxLargo,
+            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+            buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+            decoration: InputDecoration(
+              // Alto mínimo de toque: 48 dp en Android (44 pt en iOS), también con texto 1,0.
+              constraints: lineas == 1 ? const BoxConstraints(minHeight: 48) : null,
+              // Con texto de ejemplo (`hint`) el rótulo no va adentro: taparía el ejemplo. El rótulo de
+              // arriba es solo visual, así que el lector lo recibe por el `Semantics` de afuera.
+              labelText: hint == null ? rotulo : null,
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              hintText: hint,
+              prefixIcon: icono == null ? null : Icon(icono),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: conError ? ColoresAgenda.rojo : _borde),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: conError ? ColoresAgenda.rojo : _borde, width: 1.5),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: conError ? ColoresAgenda.rojo : ColoresAgenda.azul,
+                  width: 2,
+                ),
               ),
             ),
           ),
@@ -830,6 +849,7 @@ class BotonDeVenta extends StatelessWidget {
     required this.alPresionar,
     this.nota,
     this.ocupado = false,
+    this.textoOcupado,
   });
 
   final String texto;
@@ -838,6 +858,10 @@ class BotonDeVenta extends StatelessWidget {
 
   /// Guardando: el botón no responde (un doble toque no hace nada) y lo dice con una ruedita.
   final bool ocupado;
+
+  /// Lo que dice el botón mientras está [ocupado] («Registrando…»), al lado de la ruedita; sin él,
+  /// solo la ruedita.
+  final String? textoOcupado;
 
   @override
   Widget build(BuildContext context) {
@@ -860,13 +884,34 @@ class BotonDeVenta extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(56),
             backgroundColor: ColoresAgenda.navy,
+            // Un botón apagado de Material pinta el rótulo con `onSurface` al 38 %: ilegible sobre
+            // azul. Ocupado («Registrando…») se ve lleno, como en el canvas; apagado por falta de
+            // datos queda más claro, pero con el rótulo blanco.
+            disabledBackgroundColor: ocupado
+                ? ColoresAgenda.navy
+                : ColoresAgenda.navy.withValues(alpha: .6),
+            disabledForegroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
           child: ocupado
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    ),
+                    if (textoOcupado != null) ...[
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          textoOcupado!,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ],
                 )
               : Text(texto, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         ),

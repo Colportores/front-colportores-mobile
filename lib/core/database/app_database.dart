@@ -125,10 +125,13 @@ class AppDatabase extends _$AppDatabase {
   ///   réplica de solo lectura de los parámetros de toda la aplicación, hoy los días del aviso de
   ///   precios viejos (backend-supabase 0070, HU-CAT-006, #419).
   /// - 19: `cobranza`, el cobro en efectivo, que sube (HU-COB-001, #436).
+  /// - 20: `cobranza` suma los datos opcionales de la tarjeta (`tarjeta_tipo`, `tarjeta_marca`,
+  ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
+  ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 19;
+  static const int versionEsquema = 20;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -336,6 +339,15 @@ class AppDatabase extends _$AppDatabase {
     from18To19: (m, esquema) async {
       await m.createTable(esquema.cobranza);
       await m.createIndex(esquema.cobranzaVentaIdx);
+    },
+    // Suma a `cobranza` los datos opcionales de la tarjeta y de la transferencia, vacíos: ningún cobro
+    // que ya estaba cambia ni se vuelve a encolar al migrar.
+    from19To20: (m, esquema) async {
+      await m.addColumn(esquema.cobranza, esquema.cobranza.tarjetaTipo);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.tarjetaMarca);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.numeroAprobacion);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.referenciaTransferencia);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.bancoOrigen);
     },
   );
 }
