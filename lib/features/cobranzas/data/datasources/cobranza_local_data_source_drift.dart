@@ -123,6 +123,10 @@ final class CobranzaLocalDataSourceDrift {
     return salida;
   }
 
+  /// Un evento cada vez que se escribe en las ventas o los cobros (también los de una sincronización).
+  Stream<void> cambiosDeSaldos() =>
+      _db.tableUpdates(TableUpdateQuery.onAllTables([_db.cobranzas, _db.ventas])).map((_) {});
+
   /// El saldo de cada venta viva de las personas [personaIds] que debe algo, sumado por persona.
   Future<Map<String, int>> saldosPorPersona(Iterable<String> personaIds) async {
     final salida = <String, int>{};

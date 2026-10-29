@@ -245,6 +245,21 @@ void main() {
       expect(ventas.first.descripcion, '1 producto');
     });
 
+    test('cambiosDeSaldos avisa al registrar un cobro y al registrar una venta', () async {
+      var avisos = 0;
+      final suscripcion = local.cambiosDeSaldos().listen((_) => avisos++);
+      addTearDown(suscripcion.cancel);
+
+      await local.registrar(cobroDe('c-1', 50000));
+      await pumpEventQueue();
+      expect(avisos, greaterThan(0), reason: 'un cobro cambia el saldo');
+
+      final tras = avisos;
+      await sembrarVentaCon('v-2', [itemDe('i-x', 'v-2', cantidad: 1, precio: 10000)]);
+      await pumpEventQueue();
+      expect(avisos, greaterThan(tras), reason: 'una venta nueva también');
+    });
+
     group('qué se vendió (C·08)', () {
       test('un producto del catálogo se nombra y varios llevan « × N»', () async {
         await sembrarProducto('prod-vf', 'Vida Feliz');

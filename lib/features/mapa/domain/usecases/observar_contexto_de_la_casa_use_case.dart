@@ -19,7 +19,8 @@ import '../services/saldos_de_personas.dart';
 ///   **edificio** no: el contexto es siempre el depto (39, «Reglas comunes») y sin uno elegido no hay
 ///   espacio ni personas.
 /// - Emite cuando cambian las personas (un alta, una baja) o la nota, con los saldos ya leídos de
-///   esas personas. Un saldo que no se puede leer no frena nada: esa persona queda sin saldo (no se
+///   esas personas, y también cuando cambian los saldos (un cobro, una venta) si la fuente avisa
+///   ([SaldosQueAvisan]). Un saldo que no se puede leer no frena nada: esa persona queda sin saldo (no se
 ///   afirma lo que no se sabe).
 /// - Un error al leer el espacio, las personas o la nota sale por el `Stream`.
 final class ObservarContextoDeLaCasaUseCase {
@@ -44,6 +45,7 @@ final class ObservarContextoDeLaCasaUseCase {
     var cancelado = false;
     StreamSubscription<List<PersonaDelEspacio>>? alPersonas;
     StreamSubscription<NotaDelLugar?>? alNota;
+    StreamSubscription<void>? alosSaldos;
 
     String? espacioId;
     List<PersonaDelEspacio>? personas;
@@ -107,6 +109,15 @@ final class ObservarContextoDeLaCasaUseCase {
           alPersonas = _personas
               .observarDelEspacio(id)
               .listen(alLlegarPersonas, onError: salida.addError);
+          final fuente = _saldos;
+          if (fuente is SaldosQueAvisan) {
+            // Un cobro o una venta nueva: se vuelven a pedir los saldos de las personas que ya se
+            // conocen (si todavía no llegaron, la primera lista los pide igual).
+            alosSaldos = fuente.cambios.listen((_) {
+              final lista = personas;
+              if (lista != null && lista.isNotEmpty) unawaited(alLlegarPersonas(lista));
+            }, onError: (Object _) {});
+          }
         }
         alNota = _notas.observarMasReciente(ubicacionId).listen((n) {
           nota = n;
@@ -123,6 +134,7 @@ final class ObservarContextoDeLaCasaUseCase {
       onCancel: () async {
         cancelado = true;
         await alPersonas?.cancel();
+        await alosSaldos?.cancel();
         await alNota?.cancel();
       },
     );

@@ -46,7 +46,7 @@ final registrarCobroEfectivoUseCaseProvider = Provider<RegistrarCobroEfectivoUse
 
 /// Lo que debe cada persona, sumando el saldo de sus ventas vivas (la línea «Saldo» de «¿Con quién?»
 /// y el monto de «$ Cobrar»). Local: sale de las ventas y cobros del teléfono, nunca del servidor.
-final class SaldosDePersonasLocal implements SaldosDePersonas {
+final class SaldosDePersonasLocal implements SaldosQueAvisan {
   const SaldosDePersonasLocal(this._local);
 
   final CobranzaLocalDataSourceDrift _local;
@@ -54,4 +54,7 @@ final class SaldosDePersonasLocal implements SaldosDePersonas {
   @override
   Future<Map<String, int>> saldosPendientes(Iterable<String> personaIds) =>
       _local.saldosPorPersona(personaIds);
+
+  @override
+  Stream<void> get cambios => _local.cambiosDeSaldos();
 }

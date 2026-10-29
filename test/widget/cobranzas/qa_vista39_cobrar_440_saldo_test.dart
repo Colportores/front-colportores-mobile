@@ -2,8 +2,6 @@
 // de cobrar, con la base real. El contrato de la 39 dice que al terminar el cobro se «vuelve a la hoja
 // de la casa»; la hoja muestra «Debe $ X · $ Cobrar» con el saldo que leyó el caso de uso
 // `ObservarContextoDeLaCasaUseCase`, la misma lectura que la hoja real.
-//
-// Los hallazgos van con `skip` y el motivo; `--dart-define=QA_HALLAZGOS=true` los corre.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
@@ -31,8 +29,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
 import '../../helpers/venta_falsos.dart';
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 final class _EspaciosDeLaCasa implements EspacioRepository {
   @override
@@ -129,10 +125,6 @@ void main() {
             'se vuelve a leer cuando cambian las personas de la casa, no cuando cambia su saldo',
       );
     },
-    skip: !_hallazgos
-        ? 'QA #440: la hoja de la casa no refresca la deuda tras cobrar (el contexto solo escucha '
-              'personas y notas)'
-        : false,
   );
 
   test(
@@ -149,9 +141,6 @@ void main() {
         reason: 'pagó todo y la hoja sigue ofreciendo «\$ Cobrar» y «Debe \$ 1.200»',
       );
     },
-    skip: !_hallazgos
-        ? 'QA #440: la hoja de la casa sigue ofreciendo «\$ Cobrar» después de saldar la deuda'
-        : false,
   );
 
   group('Lo que lista C·08 con la base real', () {

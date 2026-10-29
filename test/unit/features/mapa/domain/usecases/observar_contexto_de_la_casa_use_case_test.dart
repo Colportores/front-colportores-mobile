@@ -69,6 +69,14 @@ final class _Saldos implements SaldosDePersonas {
   }
 }
 
+/// Una fuente de saldos que avisa cuando cambian (un cobro, una venta).
+final class _SaldosQueAvisan extends _Saldos implements SaldosQueAvisan {
+  final aviso = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get cambios => aviso.stream;
+}
+
 final class _Entrevistas implements LectorEntrevistasDePersonas {
   Map<String, DateTime> respuesta = const {};
   Object? falla;
@@ -137,6 +145,118 @@ void main() {
     await pumpEventQueue();
     return (emitidos, errores);
   }
+
+  group('si la fuente de saldos avisa que cambiaron (cobro, venta nueva)', () {
+    late _SaldosQueAvisan avisadora;
+
+    setUp(() {
+      avisadora = _SaldosQueAvisan()..respuesta = {'p-1': 120000};
+      caso = ObservarContextoDeLaCasaUseCase(
+        espacios: espacios,
+        personas: personas,
+        saldos: avisadora,
+        notas: notas,
+        entrevistas: entrevistas,
+      );
+    });
+
+    Future<List<ContextoDeLaCasa>> conAna() async {
+      final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+      personas.de(espacio.id).add([ana]);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+      return emitidos;
+    }
+
+    test('vuelve a leer los saldos y emite con la deuda nueva', () async {
+      final emitidos = await conAna();
+      expect(emitidos.single.saldoDe('p-1'), 120000);
+
+      avisadora.respuesta = {'p-1': 70000};
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos, hasLength(2));
+      expect(emitidos.last.saldoDe('p-1'), 70000);
+      expect(emitidos.last.personas, [ana]);
+    });
+
+    test('al saldar la deuda la persona deja de figurar con saldo', () async {
+      final emitidos = await conAna();
+
+      avisadora.respuesta = const {};
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos.last.saldosCentavos.containsKey('p-1'), isFalse);
+    });
+
+    test('dos avisos seguidos: queda lo último que se leyó', () async {
+      final emitidos = await conAna();
+
+      avisadora.respuesta = {'p-1': 90000};
+      avisadora.aviso.add(null);
+      avisadora.respuesta = {'p-1': 30000};
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos.last.saldoDe('p-1'), 30000);
+    });
+
+    test('un aviso antes de que lleguen las personas no emite nada', () async {
+      final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos, isEmpty);
+      expect(avisadora.pedidos, isEmpty);
+    });
+
+    test('una lista de personas vacía no pide saldos por un aviso', () async {
+      final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+      personas.de(espacio.id).add(const []);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+      final pedidos = avisadora.pedidos.length;
+
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(avisadora.pedidos, hasLength(pedidos));
+      expect(emitidos, hasLength(1));
+    });
+
+    test('al dejar de escuchar, un aviso ya no lee ni emite', () async {
+      final emitidos = <ContextoDeLaCasa>[];
+      final suscripcion = caso(ubicacionId: 'ub-1', tipo: TipoUbicacion.casa).listen(emitidos.add);
+      await pumpEventQueue();
+      personas.de(espacio.id).add([ana]);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+      final pedidos = avisadora.pedidos.length;
+
+      await suscripcion.cancel();
+      avisadora.aviso.add(null);
+      await pumpEventQueue();
+
+      expect(avisadora.pedidos, hasLength(pedidos));
+      expect(emitidos, hasLength(1));
+    });
+
+    test(
+      'un aviso con la lectura caída deja a la persona sin saldo y sin romper el flujo',
+      () async {
+        final emitidos = await conAna();
+
+        avisadora.falla = StateError('la base no responde');
+        avisadora.aviso.add(null);
+        await pumpEventQueue();
+
+        expect(emitidos.last.saldosCentavos, isEmpty);
+      },
+    );
+  });
 
   test('una casa: emite el espacio, las personas, sus saldos y la nota cuando llegan', () async {
     saldos.respuesta = {'p-1': 120000};
