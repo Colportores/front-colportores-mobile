@@ -11,6 +11,8 @@ abstract final class TextosAgenda {
   static const eyebrow = 'AGENDA';
   static const titulo = 'Agenda';
   static const subtitulo = 'Hoy y los próximos 7 días';
+  static const subtituloCampania = 'En esta campaña';
+  static const verMas = 'Ver más';
 
   static const chipTodas = 'Todas';
   static const chipEntrevistas = 'Entrevistas';
@@ -72,6 +74,10 @@ abstract final class FormatoAgenda {
     if (dia.esManana) return 'MAÑANA · $nombre';
     return nombre;
   }
+
+  /// El subtítulo de la pestaña: la ventana de siempre, o la campaña con un estado cerrado o «Todas».
+  static String subtituloDe(FiltrosAgenda filtros) =>
+      filtros.estado.miraLaCampania ? TextosAgenda.subtituloCampania : TextosAgenda.subtitulo;
 
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
   static String rotuloConConteo(DiaDeAgenda dia) => '${rotuloDelDia(dia)} (${dia.cantidad})';

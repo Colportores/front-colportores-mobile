@@ -70,6 +70,7 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
   bool congelada = false;
 
   final pedidos = <({String colportorId, DateTime desde, DateTime hasta})>[];
+  final pedidosCampania = <({String colportorId, DateTime hoy})>[];
   final _abiertos = <StreamController<List<ItemAgenda>>>[];
 
   @override
@@ -79,6 +80,23 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
     required DateTime hasta,
   }) {
     pedidos.add((colportorId: colportorId, desde: desde, hasta: hasta));
+    final c = StreamController<List<ItemAgenda>>();
+    _abiertos.add(c);
+    c.onListen = () {
+      if (congelada) return;
+      final e = error;
+      if (e != null) {
+        c.addError(e);
+      } else {
+        c.add(items);
+      }
+    };
+    return c.stream;
+  }
+
+  @override
+  Stream<List<ItemAgenda>> observarCampania({required String colportorId, required DateTime hoy}) {
+    pedidosCampania.add((colportorId: colportorId, hoy: hoy));
     final c = StreamController<List<ItemAgenda>>();
     _abiertos.add(c);
     c.onListen = () {

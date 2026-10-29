@@ -25,7 +25,10 @@ abstract final class ColoresAgenda {
 
 /// El encabezado de la pestaña: «AGENDA», «Agenda» y «Hoy y los próximos 7 días».
 class CabeceraAgenda extends StatelessWidget {
-  const CabeceraAgenda({super.key});
+  const CabeceraAgenda({super.key, this.subtitulo = TextosAgenda.subtitulo});
+
+  /// «Hoy y los próximos 7 días», o «En esta campaña» con un estado cerrado o «Todas».
+  final String subtitulo;
 
   @override
   Widget build(BuildContext context) {
@@ -56,9 +59,9 @@ class CabeceraAgenda extends StatelessWidget {
               ),
             ),
           ),
-          const Text(
-            TextosAgenda.subtitulo,
-            style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: ColoresAgenda.gris),
+          Text(
+            subtitulo,
+            style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: ColoresAgenda.gris),
           ),
         ],
       ),
@@ -184,6 +187,37 @@ class RotuloDeDia extends StatelessWidget {
               child: const Text(TextosAgenda.agendar),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// «Ver más» al pie de la lista de la campaña: suma la página siguiente.
+class BotonVerMasAgenda extends StatelessWidget {
+  const BotonVerMasAgenda({super.key, required this.alPresionar});
+
+  final VoidCallback alPresionar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        child: OutlinedButton(
+          key: const Key('agenda_ver_mas'),
+          onPressed: alPresionar,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: ColoresAgenda.azul,
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          child: const Text(TextosAgenda.verMas),
+        ),
       ),
     );
   }
