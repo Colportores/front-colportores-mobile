@@ -19,6 +19,10 @@ on:
   push:
     branches: [production]
   workflow_dispatch:
+  # Solo para que GitHub registre el workflow cuando un PR lo toca (ver staging.yml). En un PR no corre ningún job:
+  # todos exigen la rama production.
+  pull_request:
+    paths: [".github/workflows/production.yml", ".github/workflows/android-build.yml"]
 
 permissions:
   contents: read
