@@ -3,8 +3,8 @@ import '../../ventas/presentation/formato_venta.dart';
 import '../domain/entities/venta_con_saldo.dart';
 import 'textos_cobro.dart';
 
-/// Los textos de «¿Qué venta?» (vista 39, C·08, #440): los del canvas tal cual, y los que el canvas no
-/// dibuja marcados «A confirmar» (mapa §2: texto).
+/// Los textos de «¿Qué venta?» (vista 39, C·08, #440): los del canvas tal cual, y los de los estados
+/// que el canvas no dibuja (decididos por mapa §2: texto, en línea con #439 P1).
 abstract final class TextosQueVenta {
   // --- Del canvas (C·08) ---
   static const cobrar = 'Cobrar';
@@ -24,7 +24,7 @@ abstract final class TextosQueVenta {
   /// «$ 1.200»: lo que falta cobrar de la venta, a la derecha de la opción.
   static String saldo(VentaConSaldo venta) => FormatoVenta.monto(venta.saldoCentavos);
 
-  // --- A confirmar (mapa §2: texto) ---
+  // --- Estados que el canvas no dibuja (decididos, mapa §2: texto) ---
   static const cargando = 'Cargando las ventas…';
   static const noPudimosLeer = 'No pudimos leer las ventas guardadas en tu teléfono.';
   static const reintentar = 'Reintentar';
