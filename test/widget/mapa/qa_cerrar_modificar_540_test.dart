@@ -54,7 +54,13 @@ final _casos = <_Caso>[
 
 /// Las guías de contraste de Flutter miden el pixel de la captura: con estos dos casos marcan rótulos de la
 /// hoja que el desplazamiento corta a medias (no son «Cerrar»). Se prueban las demás guías.
-const _sinContraste = {'320×568 · 1× · teclado abajo', '360×640 · 1,8× · teclado arriba'};
+const _sinContraste = {
+  '320×568 · 1× · teclado abajo',
+  '360×640 · 1,8× · teclado arriba',
+  // Con la barra de 48 dp el encabezado corre su relleno izquierdo (P2 de #540) y el renglón de resumen
+  // cae en el borde de lo que se desplaza: el pixel que mide la guía queda cortado a medias.
+  '320×568 · 2× · teclado arriba · barra de 48 dp',
+};
 
 final _cerrar = find.ancestor(
   of: find.widgetWithIcon(IconButton, Icons.close),
@@ -125,55 +131,51 @@ void main() {
         },
       );
 
-      testWidgets(
-        '${c.nombre}: «Cerrar» no tapa ningún campo, botón ni texto de la hoja',
-        (tester) async {
-          await cargarFuentesReales();
-          await _abrir(tester, c);
-          final boton = tester.getRect(_botonCerrar);
-          final visor = tester.getRect(zonaDesplazable);
-          final tapados = <String>[];
+      testWidgets('${c.nombre}: «Cerrar» no tapa ningún campo, botón ni texto de la hoja', (
+        tester,
+      ) async {
+        await cargarFuentesReales();
+        await _abrir(tester, c);
+        final boton = tester.getRect(_botonCerrar);
+        final visor = tester.getRect(zonaDesplazable);
+        final tapados = <String>[];
 
-          // Lo que se toca: campos y botones de la hoja (los que se ven en lo que se desplaza).
-          for (final (tipo, buscador) in <(String, Finder)>[
-            ('TextField', find.byType(TextField)),
-            ('Botón', find.byWidgetPredicate((w) => w is ButtonStyleButton)),
-          ]) {
-            for (final e
-                in find
-                    .descendant(of: find.byType(HojaModificarDatos), matching: buscador)
-                    .evaluate()) {
-              final r = _rectDe(e);
-              final visible = r.overlaps(visor) ? r.intersect(visor) : Rect.zero;
-              final choque = visible.overlaps(boton) ? visible.intersect(boton) : Rect.zero;
-              if (choque.width > 2 && choque.height > 2) {
-                tapados.add('$tipo $r (se tapa $choque)');
-              }
-            }
-          }
-          // Lo que se lee: los textos de la hoja.
+        // Lo que se toca: campos y botones de la hoja (los que se ven en lo que se desplaza).
+        for (final (tipo, buscador) in <(String, Finder)>[
+          ('TextField', find.byType(TextField)),
+          ('Botón', find.byWidgetPredicate((w) => w is ButtonStyleButton)),
+        ]) {
           for (final e
               in find
-                  .descendant(of: find.byType(HojaModificarDatos), matching: find.byType(Text))
+                  .descendant(of: find.byType(HojaModificarDatos), matching: buscador)
                   .evaluate()) {
             final r = _rectDe(e);
-            final fueraDelVisor = r.bottom <= visor.top || r.top >= visor.bottom;
-            final dentroDelScroll = find
-                .descendant(of: zonaDesplazable, matching: find.byWidget(e.widget))
-                .evaluate()
-                .isNotEmpty;
-            if (dentroDelScroll && fueraDelVisor) continue;
-            final choque = r.overlaps(boton) ? r.intersect(boton) : Rect.zero;
+            final visible = r.overlaps(visor) ? r.intersect(visor) : Rect.zero;
+            final choque = visible.overlaps(boton) ? visible.intersect(boton) : Rect.zero;
             if (choque.width > 2 && choque.height > 2) {
-              tapados.add('Text «${(e.widget as Text).data}» $r (se tapa $choque)');
+              tapados.add('$tipo $r (se tapa $choque)');
             }
           }
-          expect(tapados, isEmpty, reason: '«Cerrar» $boton tapa: ${tapados.join('; ')}');
-        },
-        // skip: QA #540 — con una barra de estado de 48 dp a 320×568 y el teclado arriba, «Cerrar» tapa el
-        // comienzo del título «Av. Italia 1234» de la hoja (menor; captura 320x568_2×_teclado_barra48).
-        skip: c.barra > 40,
-      );
+        }
+        // Lo que se lee: los textos de la hoja.
+        for (final e
+            in find
+                .descendant(of: find.byType(HojaModificarDatos), matching: find.byType(Text))
+                .evaluate()) {
+          final r = _rectDe(e);
+          final fueraDelVisor = r.bottom <= visor.top || r.top >= visor.bottom;
+          final dentroDelScroll = find
+              .descendant(of: zonaDesplazable, matching: find.byWidget(e.widget))
+              .evaluate()
+              .isNotEmpty;
+          if (dentroDelScroll && fueraDelVisor) continue;
+          final choque = r.overlaps(boton) ? r.intersect(boton) : Rect.zero;
+          if (choque.width > 2 && choque.height > 2) {
+            tapados.add('Text «${(e.widget as Text).data}» $r (se tapa $choque)');
+          }
+        }
+        expect(tapados, isEmpty, reason: '«Cerrar» $boton tapa: ${tapados.join('; ')}');
+      });
     }
 
     testWidgets(
