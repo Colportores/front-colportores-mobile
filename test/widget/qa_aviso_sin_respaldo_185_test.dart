@@ -3,8 +3,7 @@
 //
 // Matriz: 360×640 y 412×915 × texto 1,0 y 2,0 × aviso con días / reintentando / muchos días, con las
 // guías de accesibilidad de Flutter, letra real (Inter + MaterialIcons) y el aviso dentro de Inicio
-// junto a los otros avisos. Los hallazgos van con `skip` y se corren con
-// `--dart-define=QA_HALLAZGOS=true`. Capturas: `--dart-define=QA_CAPTURAS=true` (a `.dart_tool/qa_capturas/`,
+// junto a los otros avisos. Los hallazgos que quedaron con `skip` van en otro issue (#550). Capturas: `--dart-define=QA_CAPTURAS=true` (a `.dart_tool/qa_capturas/`,
 // fuera del repo).
 import 'dart:async';
 import 'dart:io';
@@ -34,7 +33,6 @@ import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../helpers/notificaciones_arnes.dart';
 
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 // El reloj real: Inicio usa `DateTime.now()` y el aviso solo se puede probar contra él.
 final _ahora = DateTime.now().toUtc();
@@ -637,17 +635,16 @@ void main() {
   });
 
   group('hallazgos', () {
-    // skip: QA #185 — la persona toca «Reintentar» sin conexión (o el respaldo falla) y no se le dice
-    // nada: el botón parpadea «Reintentando…» y vuelve igual. Convenciones §10: sin conexión se dice
-    // «Necesitás conexión para <acción>»; todo error dice qué pasó y qué hacer.
+    // Decisión del 29/10 (P1): tras «Reintentar» sin conexión o con un fallo, el aviso lo dice, dentro
+    // del mismo aviso (convenciones §10).
     testWidgets('tras «Reintentar» sin conexión, el aviso dice qué pasó', (tester) async {
       final servicio = _Servicio(const RespaldoOmitido(MotivoOmision.sinConexion));
       await _montarAviso(tester, tam: _chico, escala: 1, servicio: servicio, ultimo: _haceDias(9));
       await tester.tap(_reintentar);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Necesitás conexión'), findsOneWidget);
-    }, skip: !_verHallazgos);
+      expect(find.text('Necesitás conexión para hacer el respaldo.'), findsOneWidget);
+    });
 
     testWidgets('tras «Reintentar» que falla, el aviso dice qué pasó', (tester) async {
       final servicio = _Servicio(const RespaldoFallido(CausaFalloRespaldo.otra));
@@ -655,10 +652,10 @@ void main() {
       await tester.tap(_reintentar);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('No pudimos'), findsOneWidget);
-    }, skip: !_verHallazgos);
+      expect(find.text('No pudimos hacer el respaldo. Probá de nuevo en un rato.'), findsOneWidget);
+    });
 
-    // skip: QA #185 — HU-SYNC-005: «Notificación al usuario si > 7 días sin backup exitoso». Con el
+    // skip: va en #550 (Drive en Hoy, con diseño; decisión del 29/10, P2) — HU-SYNC-005: «Notificación al usuario si > 7 días sin backup exitoso». Con el
     // permiso de Drive revocado o sin espacio (justo cuando los respaldos no salen) Inicio no avisa
     // nada: el único aviso está en Configuración → Cuenta Drive.
     for (final estado in <EstadoRespaldoDrive>[
@@ -679,7 +676,7 @@ void main() {
 
           expect(find.textContaining('backup'), findsAtLeastNWidgets(1));
         },
-        skip: !_verHallazgos,
+        skip: true,
       );
     }
   });

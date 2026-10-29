@@ -35,17 +35,39 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
   /// segundo toque aunque llegue antes de que se vuelva a dibujar.
   bool _reintentando = false;
 
+  /// Lo que dejó el último «Reintentar» si no salió (sin conexión, o falló). Se borra al volver a
+  /// tocar; si salió bien, el aviso se va solo y no queda nada que mostrar.
+  String? _detalle;
+
   Future<void> _reintentar() async {
     if (_reintentando) return;
-    setState(() => _reintentando = true);
+    setState(() {
+      _reintentando = true;
+      _detalle = null;
+    });
+    String? detalle;
     try {
-      await ref.read(servicioRespaldoProvider).respaldar(OrigenRespaldo.pedidoPorLaPersona);
+      final resultado = await ref
+          .read(servicioRespaldoProvider)
+          .respaldar(OrigenRespaldo.pedidoPorLaPersona);
+      detalle = switch (resultado) {
+        RespaldoOmitido(motivo: MotivoOmision.sinConexion) =>
+          TextosRespaldoDrive.reintentoSinConexion,
+        RespaldoFallido() => TextosRespaldoDrive.reintentoFallido,
+        _ => null,
+      };
     } on Object {
       // El servicio no lanza; si algún día lo hiciera, el botón no puede quedar apagado para
       // siempre ni el error salir sin atender de un `unawaited`.
+      detalle = TextosRespaldoDrive.reintentoFallido;
     } finally {
       // Con la pantalla cerrada no hay nada que volver a dibujar.
-      if (mounted) setState(() => _reintentando = false);
+      if (mounted) {
+        setState(() {
+          _reintentando = false;
+          _detalle = detalle;
+        });
+      }
     }
   }
 
@@ -68,6 +90,7 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
           key: const Key('aviso_sin_respaldo'),
           clase: ClaseAvisoDrive.error,
           texto: TextosRespaldoDrive.avisoSinRespaldo(dias),
+          detalle: _detalle,
           accion: _reintentando ? TextosRespaldoDrive.reintentando : TextosRespaldoDrive.reintentar,
           alAccionar: _reintentando ? null : () => unawaited(_reintentar()),
         ),

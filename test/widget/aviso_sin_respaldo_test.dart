@@ -30,6 +30,7 @@ class _EstadoFijo extends EstadoRespaldoDriveNotifier {
 /// Respaldo que hace lo que el test le diga: se frena, falla o sale bien.
 final class _Servicio implements ServicioRespaldo {
   Completer<ResultadoRespaldo>? espera;
+  ResultadoRespaldo? resultado;
   Object? error;
   final List<OrigenRespaldo> pedidos = [];
 
@@ -38,6 +39,7 @@ final class _Servicio implements ServicioRespaldo {
     pedidos.add(origen);
     if (espera case final e?) return e.future;
     if (error case final e?) throw e;
+    if (resultado case final r?) return r;
     return RespaldoHecho(fecha: _ahora, esBase: false);
   }
 
@@ -100,11 +102,11 @@ void main() {
     testWidgets('más de 7 días sin respaldo, con Drive conectado: el texto literal de la HU', (
       tester,
     ) async {
-      await _montar(tester, servicio: _Servicio(), ultimo: _haceDias(9, horas: 3));
+      await _montar(tester, servicio: _Servicio(), ultimo: _haceDias(7, horas: 3));
 
       expect(_aviso, findsOneWidget);
       expect(
-        find.text('Llevás 9 días sin backup. Revisá tu conexión y reintentá.'),
+        find.text('Llevás 8 días sin backup. Revisá tu conexión y reintentá.'),
         findsOneWidget,
       );
       expect(find.text('Reintentar'), findsOneWidget);
@@ -213,6 +215,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.widget<TextButton>(_reintentar).onPressed, isNotNull);
+    });
+
+    testWidgets('sin conexión o con un fallo, el aviso lo dice; al volver a tocar, se borra', (
+      tester,
+    ) async {
+      final servicio = _Servicio()..resultado = const RespaldoOmitido(MotivoOmision.sinConexion);
+      await _montar(tester, servicio: servicio, ultimo: _haceDias(10));
+      final detalle = find.byKey(const Key('aviso_drive_detalle'));
+      expect(detalle, findsNothing);
+
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+      expect(find.text(TextosRespaldoDrive.reintentoSinConexion), findsOneWidget);
+
+      servicio
+        ..resultado = const RespaldoFallido(CausaFalloRespaldo.otra)
+        ..espera = Completer<ResultadoRespaldo>();
+      await tester.tap(_reintentar);
+      await tester.pump();
+      expect(detalle, findsNothing, reason: 'mientras reintenta no queda el mensaje anterior');
+      servicio.espera!.complete(const RespaldoFallido(CausaFalloRespaldo.otra));
+      await tester.pumpAndSettle();
+      expect(find.text(TextosRespaldoDrive.reintentoFallido), findsOneWidget);
+      expect(tester.widget<TextButton>(_reintentar).onPressed, isNotNull);
+    });
+
+    testWidgets('si el respaldo sale bien no se dice nada: el aviso se va solo', (tester) async {
+      await _montar(tester, servicio: _Servicio(), ultimo: _haceDias(10));
+
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('aviso_drive_detalle')), findsNothing);
     });
 
     testWidgets('salir de la pantalla con el pedido en curso no rompe nada', (tester) async {

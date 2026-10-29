@@ -97,11 +97,16 @@ final respaldoAlVolverProvider = Provider<void>((ref) {
 /// «Aviso por > 7 días sin backup»): solo con Drive conectado y un respaldo anterior. `null` si no
 /// hay nada que avisar.
 ///
+/// El número es de días contados hacia arriba: el día en curso cuenta.
+///
 /// Sin un respaldo anterior no hay desde cuándo contar —no se guarda cuándo se conectó Drive—, así
 /// que ese caso no avisa (queda como pendiente de decisión).
 int? diasSinRespaldo({required DateTime? ultimo, required DateTime ahora}) {
   if (ultimo == null) return null;
   final pasado = ahora.difference(ultimo);
   if (pasado <= const Duration(days: 7)) return null;
-  return pasado.inDays;
+  // El día en curso cuenta (decisión del 29/10, QA #185): 7 días y 3 horas es «8 días», como el
+  // ejemplo de la HU. El umbral sigue siendo «más de 7 días».
+  final completos = pasado.inDays;
+  return pasado == Duration(days: completos) ? completos : completos + 1;
 }

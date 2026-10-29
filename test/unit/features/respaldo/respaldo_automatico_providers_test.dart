@@ -39,15 +39,21 @@ void main() {
           ultimo: _ahora.subtract(const Duration(days: 7, minutes: 1)),
           ahora: _ahora,
         ),
-        7,
+        8,
       );
     });
 
-    test('dice los días completos', () {
+    test('cuenta el día en curso: 7 días y 3 horas son «8 días» (ejemplo de la HU)', () {
+      expect(
+        diasSinRespaldo(ultimo: _ahora.subtract(const Duration(days: 7, hours: 3)), ahora: _ahora),
+        8,
+      );
       expect(
         diasSinRespaldo(ultimo: _ahora.subtract(const Duration(days: 9, hours: 5)), ahora: _ahora),
-        9,
+        10,
       );
+      // Días justos: no se suma uno de más.
+      expect(diasSinRespaldo(ultimo: _ahora.subtract(const Duration(days: 8)), ahora: _ahora), 8);
       expect(diasSinRespaldo(ultimo: _ahora.subtract(const Duration(days: 45)), ahora: _ahora), 45);
     });
 

@@ -24,6 +24,7 @@ class AvisoDrive extends StatelessWidget {
     required this.texto,
     this.accion,
     this.alAccionar,
+    this.detalle,
   }) : assert(accion != null || alAccionar == null, 'sin texto de acción no hay a qué accionar');
 
   final ClaseAvisoDrive clase;
@@ -34,6 +35,10 @@ class AvisoDrive extends StatelessWidget {
 
   /// Qué hace la acción. Con [accion] y sin esto, el botón queda apagado (un reintento en curso).
   final VoidCallback? alAccionar;
+
+  /// Una línea de más bajo el texto (por ejemplo, por qué falló el último intento). Al aparecer, el
+  /// lector de pantalla la anuncia: el aviso es una región viva.
+  final String? detalle;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +71,22 @@ class AvisoDrive extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 6,
+                  children: [
+                    Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
+                    if (detalle != null)
+                      Text(
+                        detalle!,
+                        key: const Key('aviso_drive_detalle'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.45,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
