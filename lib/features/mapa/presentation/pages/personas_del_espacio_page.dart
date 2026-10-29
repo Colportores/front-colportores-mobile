@@ -4,21 +4,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/persona_del_espacio.dart';
+import '../formato_hoja_casa.dart';
 import '../formato_ubicaciones.dart';
 import '../providers/baja_persona_providers.dart';
+import '../providers/hoja_casa_providers.dart';
 import '../providers/personas_providers.dart';
 import '../textos_baja_persona.dart';
 import '../textos_personas.dart';
 import '../widgets/piezas_alta.dart';
+import '../widgets/piezas_visita_del_depto.dart';
 import 'alta_persona_page.dart';
 
 /// Los clientes de un departamento (HU-UBI-008, vista 11·04 «Departamento con sus clientes»): el título
 /// del espacio y la lista de personas que el colportor guardó en él, con «+ Agregar cliente».
 ///
-/// Lo que el artboard dibuja y no es de esta pantalla queda fuera: «Registrar visita» y el estado de la
-/// entrevista (las visitas, #151), «Editar» (el depto, #211) y las visitas de cada cliente (todavía no
-/// hay visitas que contar). Tampoco hay `›` en las filas: la ficha de la persona (HU-UBI-009) es otro
-/// issue.
+/// **Estado de la última visita y «Registrar visita»** (HU-VIS-005, #151): debajo del título, la píldora
+/// con «Entrevista hecha · 20/09» (o «Sin visitas todavía») y el botón. Se registra por depto, no por
+/// edificio: el botón lleva a «¿Qué pasó?» (vista 39, C·06) con este espacio puesto
+/// ([registrarVisitaDesdeLaCasaProvider]); sin destino enganchado, o con el depto dado de baja, no se
+/// ofrece. Al volver, el estado ya es el nuevo (se lee en vivo) y la pantalla sigue donde estaba.
+///
+/// Lo que el artboard dibuja y no es de esta pantalla queda fuera: «Editar» (el depto, #211) y las
+/// visitas de cada cliente (todavía no hay visitas por persona que contar). Tampoco hay `›` en las
+/// filas: la ficha de la persona (HU-UBI-009) es otro issue.
 ///
 /// - Cargando, vacío, error al leer y espacio que ya no está son estados propios.
 /// - Con el espacio dado de baja es de solo lectura: se ven los clientes y no se puede agregar.
@@ -58,6 +66,28 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
   /// Las personas que se están reactivando: un segundo toque sobre la misma no la pide dos veces.
   final _reactivando = <String>{};
 
+  /// Ya se está abriendo «Registrar visita»: un segundo toque no abre otro «¿Qué pasó?» encima. El botón
+  /// no se apaga (apagado sobre el azul oscuro no se lee): el segundo toque simplemente no hace nada.
+  var _registrando = false;
+
+  /// «Registrar visita» de este depto. Si la apertura falla, el aviso dice qué hacer y el botón sigue
+  /// tocable (la guarda se suelta pase lo que pase).
+  Future<void> _registrarVisita(String ubicacionId) async {
+    if (_registrando) return;
+    final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
+    if (destino == null) return;
+    _registrando = true;
+    // Un aviso viejo (la falla de una vez anterior) se va con el nuevo intento.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    try {
+      await destino((ubicacionId: ubicacionId, espacioId: widget.espacioId, agendaId: null));
+    } on Object {
+      if (mounted) _avisar(TextosHojaCasa.noPudimosAbrirVisita);
+    } finally {
+      _registrando = false;
+    }
+  }
+
   Future<void> _agregar() async {
     if (_abriendoAlta) return;
     // Con la cuenta restringida mientras esta pantalla estaba abierta no se da de alta a nadie.
@@ -88,7 +118,8 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
     ref
       ..invalidate(contextoEspacioProvider(widget.espacioId))
       ..invalidate(personasDelEspacioProvider(widget.espacioId))
-      ..invalidate(bajasDelEspacioProvider(widget.espacioId));
+      ..invalidate(bajasDelEspacioProvider(widget.espacioId))
+      ..invalidate(ultimaVisitaDelEspacioProvider(widget.espacioId));
   }
 
   void _avisar(String texto) {
@@ -141,6 +172,10 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
         datos != null && (datos.espacio.auditoria.estaBorrada || datos.ubicacion.estaBorrada);
     final puedeAgregar = datos != null && !deBaja;
     final cantidad = personas.asData?.value.length;
+    // El estado de la última visita: sin la lectura (cargando o con error) no se dice ninguno.
+    final ultima = ref.watch(ultimaVisitaDelEspacioProvider(widget.espacioId));
+    final destinoDeVisita = ref.watch(registrarVisitaDesdeLaCasaProvider);
+    final puedeRegistrar = datos != null && !deBaja && destinoDeVisita != null;
 
     final Widget cuerpo;
     if (contexto.hasError || personas.hasError) {
@@ -175,13 +210,37 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
                   ? null
                   : FormatoUbicaciones.direccion(datos.ubicacion).toUpperCase(),
             ),
-            if (datos != null)
-              _Titulo(
-                titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
-                piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
+            // Todo lo de arriba de la lista (título, visita y «CLIENTES · N») se desplaza si no entra
+            // (texto grande en una pantalla chica): la lista de clientes de abajo conserva siempre
+            // el 40 % de la pantalla y nada desborda.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (datos != null)
+                      _Titulo(
+                        titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
+                        piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
+                      ),
+                    if (datos != null)
+                      VisitaDelDepto(
+                        conEstado: ultima.hasValue,
+                        ultima: ultima.asData?.value,
+                        alRegistrar: puedeRegistrar
+                            ? () => _registrarVisita(datos.ubicacion.id)
+                            : null,
+                      ),
+                    const Divider(height: 1),
+                    _EncabezadoClientes(
+                      cantidad: cantidad,
+                      alAgregar: puedeAgregar ? _agregar : null,
+                    ),
+                  ],
+                ),
               ),
-            const Divider(height: 1),
-            _EncabezadoClientes(cantidad: cantidad, alAgregar: puedeAgregar ? _agregar : null),
+            ),
             Expanded(child: cuerpo),
           ],
         ),
