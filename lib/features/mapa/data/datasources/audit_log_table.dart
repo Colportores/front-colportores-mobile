@@ -32,6 +32,17 @@ abstract final class EventoAuditoriaLocal {
   /// cobrado menos el calculado). El texto que escribió la colportora no se copia acá: viaja con la
   /// venta (`motivo_monto_manual`).
   static const ventaMontoManual = 'venta_monto_manual';
+
+  /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
+  /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
+  static const backupIntegridadOk = 'backup_integrity_ok';
+
+  /// La verificación encontró un problema y se regenera la base (HU-SYNC-009). `motivo` son los
+  /// problemas por nombre (`corrupt`, `brokenLink`…), nunca contenido del backup.
+  static const backupIntegridadProblema = 'backup_integrity_problem';
+
+  /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
+  static const uuidBackup = 'backup';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman

@@ -24,13 +24,15 @@ class AvisoDrive extends StatelessWidget {
     required this.texto,
     this.accion,
     this.alAccionar,
-  }) : assert((accion == null) == (alAccionar == null), 'la acción y su texto van juntos');
+  }) : assert(accion != null || alAccionar == null, 'sin texto de acción no hay a qué accionar');
 
   final ClaseAvisoDrive clase;
   final String texto;
 
   /// Rótulo de la acción (por ejemplo «Reconectar»).
   final String? accion;
+
+  /// Qué hace la acción. Con [accion] y sin esto, el botón queda apagado (un reintento en curso).
   final VoidCallback? alAccionar;
 
   @override

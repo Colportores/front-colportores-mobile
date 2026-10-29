@@ -19,6 +19,7 @@ import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
+import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
@@ -155,6 +156,9 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         children: [
           // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
           _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+          // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa lugar. Con
+          // el teclado abierto gana el campo que se escribe.
+          const _AvisoSinRespaldo(),
           // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
           // nada, abre su hoja cuando corresponde.
           SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
@@ -237,6 +241,18 @@ class _AvisoNotificaciones extends StatelessWidget {
   Widget build(BuildContext context) {
     if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
     return const AvisoNotificacionesApagadas();
+  }
+}
+
+/// El aviso de más de 7 días sin respaldo (HU-SYNC-005). Con el teclado abierto gana el campo que se
+/// escribe, como con los demás avisos: se oculta y vuelve al cerrarlo.
+class _AvisoSinRespaldo extends StatelessWidget {
+  const _AvisoSinRespaldo();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
+    return const AvisoSinRespaldo();
   }
 }
 
