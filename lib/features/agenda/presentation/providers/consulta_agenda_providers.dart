@@ -46,6 +46,18 @@ final agendaLeidaProvider = StreamProvider.autoDispose.family<List<ItemAgenda>, 
       .observar(colportorId: clave.colportorId, desde: ventana.desdeUtc, hasta: ventana.hastaUtc);
 }, retry: _sinReintentos);
 
+/// Las agendas de **la campaña en curso**, de todos los estados, reactivas: la lista de un estado
+/// cerrado o «Todas» (HU-VIS-002, decisión de Cristian, 27/10, «Rango filtro»). Igual que
+/// [agendaLeidaProvider], los filtros y el «Ver más» se aplican después, en memoria. Al cambiar el día
+/// la clave cambia y se vuelve a leer.
+final agendaCampaniaLeidaProvider = StreamProvider.autoDispose
+    .family<List<ItemAgenda>, ClaveAgenda>(
+      (ref, clave) => ref
+          .watch(consultaAgendaRepositoryProvider)
+          .observarCampania(colportorId: clave.colportorId, hoy: clave.inicioDeHoy),
+      retry: _sinReintentos,
+    );
+
 /// Los filtros de la agenda del colportor [colportorId]: por tipo y por estado. Se conservan mientras
 /// la pantalla esté montada (la hoja «Agendados» del mapa usa los mismos).
 final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {

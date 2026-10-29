@@ -32,6 +32,7 @@ import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -330,6 +331,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
     ref.watch(conciliacionRecordatoriosProvider);
+    // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
+    ref.watch(recordatoriosPorBajaProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

@@ -11,6 +11,8 @@ abstract final class TextosAgenda {
   static const eyebrow = 'AGENDA';
   static const titulo = 'Agenda';
   static const subtitulo = 'Hoy y los próximos 7 días';
+  static const subtituloCampania = 'En esta campaña';
+  static const verMas = 'Ver más';
 
   static const chipTodas = 'Todas';
   static const chipEntrevistas = 'Entrevistas';
@@ -63,6 +65,20 @@ abstract final class FormatoAgenda {
     return '${_dos(l.day)}/${_dos(l.month)}';
   }
 
+  /// El año de [momento] si no es el de [ahora] («2025»), o `null` si es el actual: la lista de la
+  /// campaña puede juntar más de un año (campaña permanente, o sin campaña conocida) y «15/12» solo
+  /// no dice de cuál.
+  static String? anioSiEsOtro(DateTime momento, DateTime ahora) {
+    final anio = momento.toLocal().year;
+    return anio == ahora.toLocal().year ? null : anio.toString();
+  }
+
+  /// «22/10», o «22/10/2025» si el año no es el de [ahora].
+  static String diaMesConAnio(DateTime momento, DateTime ahora) {
+    final anio = anioSiEsOtro(momento, ahora);
+    return anio == null ? diaMes(momento) : '${diaMes(momento)}/$anio';
+  }
+
   static String _dos(int n) => n.toString().padLeft(2, '0');
 
   /// «HOY · MIÉRCOLES 23», «MAÑANA · JUEVES 24», «VIERNES 25».
@@ -72,6 +88,10 @@ abstract final class FormatoAgenda {
     if (dia.esManana) return 'MAÑANA · $nombre';
     return nombre;
   }
+
+  /// El subtítulo de la pestaña: la ventana de siempre, o la campaña con un estado cerrado o «Todas».
+  static String subtituloDe(FiltrosAgenda filtros) =>
+      filtros.estado.miraLaCampania ? TextosAgenda.subtituloCampania : TextosAgenda.subtitulo;
 
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
   static String rotuloConConteo(DiaDeAgenda dia) => '${rotuloDelDia(dia)} (${dia.cantidad})';
@@ -130,9 +150,17 @@ abstract final class FormatoAgenda {
   }
 
   /// Lo que dice el lector de pantalla de una fila.
-  static String etiquetaDeFila(ItemAgenda item, {required bool vencida, bool conFecha = false}) {
+  static String etiquetaDeFila(
+    ItemAgenda item, {
+    required bool vencida,
+    bool conFecha = false,
+    DateTime? ahora,
+  }) {
     final partes = [
-      if (conFecha) diaMes(item.agenda.fechaProgramada),
+      if (conFecha)
+        ahora == null
+            ? diaMes(item.agenda.fechaProgramada)
+            : diaMesConAnio(item.agenda.fechaProgramada, ahora),
       hora(item.agenda.fechaProgramada),
       tipo(item.agenda.tipo),
       titulo(item),

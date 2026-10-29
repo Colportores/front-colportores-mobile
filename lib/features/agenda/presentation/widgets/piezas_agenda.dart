@@ -25,7 +25,10 @@ abstract final class ColoresAgenda {
 
 /// El encabezado de la pestaña: «AGENDA», «Agenda» y «Hoy y los próximos 7 días».
 class CabeceraAgenda extends StatelessWidget {
-  const CabeceraAgenda({super.key});
+  const CabeceraAgenda({super.key, this.subtitulo = TextosAgenda.subtitulo});
+
+  /// «Hoy y los próximos 7 días», o «En esta campaña» con un estado cerrado o «Todas».
+  final String subtitulo;
 
   @override
   Widget build(BuildContext context) {
@@ -56,9 +59,9 @@ class CabeceraAgenda extends StatelessWidget {
               ),
             ),
           ),
-          const Text(
-            TextosAgenda.subtitulo,
-            style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: ColoresAgenda.gris),
+          Text(
+            subtitulo,
+            style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: ColoresAgenda.gris),
           ),
         ],
       ),
@@ -189,6 +192,37 @@ class RotuloDeDia extends StatelessWidget {
   }
 }
 
+/// «Ver más» al pie de la lista de la campaña: suma la página siguiente.
+class BotonVerMasAgenda extends StatelessWidget {
+  const BotonVerMasAgenda({super.key, required this.alPresionar});
+
+  final VoidCallback alPresionar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        child: OutlinedButton(
+          key: const Key('agenda_ver_mas'),
+          onPressed: alPresionar,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: ColoresAgenda.azul,
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          child: const Text(TextosAgenda.verMas),
+        ),
+      ),
+    );
+  }
+}
+
 /// Una agenda: hora, glifo del tipo, persona, dirección y etiqueta (canvas 23B·01). Cuatro formas:
 /// - **programada**: la «›» de «se abre» si hay a dónde ir ([alTocar]);
 /// - **vencida** (23B·02): borde ámbar, «Pasó la hora · registrá qué pasó» y «Registrar» en lugar de
@@ -235,9 +269,16 @@ class FilaAgenda extends StatelessWidget {
 
     final horaTexto = FormatoAgenda.hora(item.agenda.fechaProgramada);
     final fechaTexto = FormatoAgenda.diaMes(item.agenda.fechaProgramada);
+    // El año solo si no es el actual (una campaña permanente puede juntar varios).
+    final anio = FormatoAgenda.anioSiEsOtro(item.agenda.fechaProgramada, ahora);
     final hora = Text(
-      // Apilada hay ancho de sobra: en una línea. Si no, el día arriba de la hora en los 44 px.
-      !conFecha ? horaTexto : (apilada ? '$fechaTexto · $horaTexto' : '$fechaTexto\n$horaTexto'),
+      // Apilada hay ancho de sobra: en una línea. Si no, el día arriba de la hora en los 44 px, y el
+      // año (4 cifras caben; con el día no) en su propio renglón.
+      !conFecha
+          ? horaTexto
+          : (apilada
+                ? '$fechaTexto${anio == null ? '' : '/$anio'} · $horaTexto'
+                : '$fechaTexto\n${anio == null ? '' : '$anio\n'}$horaTexto'),
       style: TextStyle(
         fontFamily: 'JetBrainsMono',
         fontSize: 11,
@@ -389,7 +430,12 @@ class FilaAgenda extends StatelessWidget {
       child: Semantics(
         container: true,
         button: alTocar != null,
-        label: FormatoAgenda.etiquetaDeFila(item, vencida: vencida, conFecha: conFecha),
+        label: FormatoAgenda.etiquetaDeFila(
+          item,
+          vencida: vencida,
+          conFecha: conFecha,
+          ahora: ahora,
+        ),
         onTap: alTocar,
         child: tarjeta,
       ),
