@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/cuenta_de_persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/filtro_de_historial.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/ficha_persona_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/baja_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_persona_providers.dart';
@@ -99,7 +100,11 @@ enum EstadoFicha {
   errorAlReactivar('no pudo reactivar'),
   noPudoLlamar('no pudo abrir el marcador'),
   menuAbierto('menú ⋯ abierto'),
-  conLector('ficha completa con lector');
+  conLector('ficha completa con lector'),
+  filtroConSaldo('32B·03 filtro «Con saldo»'),
+  filtroSinResultados('32B·03 filtro sin resultados'),
+  ubicacionDeBaja('depto y ubicación de baja'),
+  sinDeptoActivo('sin ningún depto activo');
 
   const EstadoFicha(this.rotulo);
 
@@ -147,7 +152,29 @@ MundoFicha mundoDe563(EstadoFicha estado) {
     case EstadoFicha.menuAbierto:
     case EstadoFicha.conLector:
     case EstadoFicha.noPudoLlamar:
+    case EstadoFicha.filtroConSaldo:
+    case EstadoFicha.filtroSinResultados:
       return mundoCompleto563();
+    case EstadoFicha.ubicacionDeBaja:
+      final m = MundoFicha(
+        historial: historialDelCanvas(),
+        notasIniciales: notasDeLaFicha(),
+        contexto: contextoDeptoDeBaja,
+        lugarInicial: (
+          espacio: espacioDePersonas(numeroDepto: '3B', deletedAt: DateTime.utc(2026, 10, 20)),
+          ubicacion: ubicacionDePersonas(deletedAt: DateTime.utc(2026, 10, 20)),
+        ),
+      )..conEdicion = true;
+      m.cuentas.cuenta = cuentaConSaldo;
+      return m;
+    case EstadoFicha.sinDeptoActivo:
+      return MundoFicha(
+        historial: historialDelCanvas(),
+        contexto: const ContextoNotasPersona(
+          nombre: 'María',
+          causa: CausaSoloLectura.sinEspacioActivo,
+        ),
+      );
     case EstadoFicha.personaDeBaja:
     case EstadoFicha.reactivandoPersona:
     case EstadoFicha.errorAlReactivar:
@@ -284,6 +311,14 @@ Future<MundoFicha> llegarAFicha(
       await traer563(tester, find.byKey(ClavesFicha.botonReactivar));
       await tester.tap(find.byKey(ClavesFicha.botonReactivar));
       await asentar(tester);
+    case EstadoFicha.filtroConSaldo:
+      await llegarA563(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)));
+      await tester.tap(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)));
+      await asentar(tester);
+    case EstadoFicha.filtroSinResultados:
+      await llegarA563(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)));
+      await tester.tap(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)));
+      await asentar(tester);
     case EstadoFicha.noPudoLlamar:
       m.marcador.abre = false;
       await traer563(tester, find.byKey(ClavesFicha.botonLlamar));
@@ -293,6 +328,15 @@ Future<MundoFicha> llegarAFicha(
       break;
   }
   return m;
+}
+
+/// Lleva [finder] a la vista aunque la lista perezosa todavía no lo haya armado.
+Future<void> llegarA563(WidgetTester tester, Finder finder) async {
+  final lista = find.byType(Scrollable).first;
+  await tester.drag(lista, const Offset(0, 20000));
+  await tester.pump();
+  await tester.scrollUntilVisible(finder, 300, scrollable: lista);
+  await traer563(tester, finder);
 }
 
 /// Lleva [finder] a la vista (la ficha es una lista).
