@@ -445,6 +445,95 @@ void main() {
     );
   });
 
+  group('re-verificación (29/10): error de lectura y orden en 18-A04', () {
+    for (final (nombre, estado) in _estados) {
+      for (final tamano in _tamanos) {
+        for (final escala in _escalas) {
+          testWidgets(
+            'aviso «No pudimos leer tu jornada.»: guías, sin desborde y «Reintentar» a mano · '
+            '$nombre · ${tamano.width.toInt()}×${tamano.height.toInt()} · '
+            'texto ${(escala * 100).toInt()} %',
+            (tester) async {
+              _local.errorAlLeer = StateError('disco');
+              await _montar(tester, estado: estado, tamano: tamano, escala: escala);
+              final reintentar = find.byKey(const Key('jornada_reintentar'));
+              await tester.ensureVisible(reintentar);
+              await tester.pumpAndSettle();
+
+              expect(tester.takeException(), isNull);
+              expect(find.text('No pudimos leer tu jornada.'), findsOneWidget);
+              expect(tester.getSize(reintentar).height, greaterThanOrEqualTo(48));
+              await _guias(tester);
+            },
+          );
+        }
+      }
+    }
+
+    testWidgets('el aviso de lectura es una región viva y «Reintentar» tiene nombre y acción', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      _local.errorAlLeer = StateError('disco');
+      await _montar(tester);
+      final reintentar = find.byKey(const Key('jornada_reintentar'));
+      await tester.ensureVisible(reintentar);
+
+      expect(
+        tester.getSemantics(reintentar),
+        isSemantics(label: 'Reintentar', isButton: true, hasTapAction: true, isEnabled: true),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('cuenta_terminar_jornada_error_lectura')),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsOneWidget,
+      );
+      semantica.dispose();
+    });
+
+    testWidgets('«Reintentar» que vuelve a fallar: el aviso sigue y el botón responde', (
+      tester,
+    ) async {
+      _local.errorAlLeer = StateError('disco');
+      await _montar(tester);
+      final reintentar = find.byKey(const Key('jornada_reintentar'));
+      await tester.ensureVisible(reintentar);
+      await tester.tap(reintentar);
+      await tester.pumpAndSettle();
+      await tester.tap(reintentar);
+      await tester.pumpAndSettle();
+
+      expect(find.text('No pudimos leer tu jornada.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      _local.errorAlLeer = null;
+      await tester.tap(reintentar);
+      await tester.pumpAndSettle();
+      expect(_boton, findsOneWidget);
+      expect(find.byKey(const Key('cuenta_terminar_jornada_error_lectura')), findsNothing);
+    });
+
+    // skip: QA #472 — P1 del QA decidida (29/10, «en #555 antes del merge»): en 18-A04 la sección va
+    // debajo del bloque del canvas (título, aviso y «Reintentar»); hoy queda entre el título y el
+    // aviso. El implementador saca el skip.
+    testWidgets(
+      '18-A04: «Terminar jornada» va debajo de título, aviso y «Reintentar» de la cuenta',
+      (tester) async {
+        await _montar(tester, estado: null);
+
+        final reintentarCuenta = tester.getRect(find.byKey(const Key('espera_actualizar')));
+        final seccion = tester.getRect(find.byKey(const Key('cuenta_terminar_jornada')));
+        final aviso = tester.getRect(find.byKey(const Key('espera_sin_conexion')));
+        expect(seccion.top, greaterThanOrEqualTo(reintentarCuenta.bottom));
+        expect(seccion.top, greaterThan(aviso.bottom));
+      },
+      skip: true,
+    );
+  });
+
   group('privacidad', () {
     test('la sección no escribe en el log ni expone datos del colportor', () {
       final fuente = File(
