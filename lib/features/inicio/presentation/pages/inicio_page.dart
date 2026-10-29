@@ -154,16 +154,23 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       ),
       body: Column(
         children: [
-          // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
-          _AvisosDeZona(colportorId: widget.sesion.usuarioId),
-          // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa lugar. Con
-          // el teclado abierto gana el campo que se escribe.
-          const _AvisoSinRespaldo(),
+          // La franja de avisos tiene un tope conjunto (QA #185): con texto grande y varios avisos a la
+          // vez, la pestaña de abajo (la acción principal de Hoy) seguía quedando sin lugar. Pasado el
+          // tope, la franja se desplaza sola y deja el resto a la pestaña.
+          _FranjaDeAvisos(
+            children: [
+              // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
+              _AvisosDeZona(colportorId: widget.sesion.usuarioId),
+              // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa
+              // lugar. Con el teclado abierto gana el campo que se escribe.
+              const _AvisoSinRespaldo(),
+              // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
+              if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
+            ],
+          ),
           // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
           // nada, abre su hoja cuando corresponde.
           SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
-          // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
-          if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
           Expanded(
             child: IndexedStack(
               index: _actual.index,
@@ -205,6 +212,32 @@ class _InicioPageState extends ConsumerState<InicioPage> {
         ],
       ),
       bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
+    );
+  }
+}
+
+/// Los avisos de Inicio, juntos, con un tope de alto conjunto (QA #185).
+///
+/// Cada aviso puede ocupar mucho con el texto al 200 %; todos a la vez dejaban 12 dp a la pestaña de
+/// abajo y «Iniciar jornada» no se alcanzaba hasta cerrar uno. Sin avisos no ocupa lugar; con pocos,
+/// tampoco pasa del tope; pasado el tope, la franja se desplaza sola.
+class _FranjaDeAvisos extends StatelessWidget {
+  const _FranjaDeAvisos({required this.children});
+
+  /// Qué parte de la pantalla puede tomar la franja entera.
+  static const fraccionMaxima = 0.4;
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tope = MediaQuery.sizeOf(context).height * fraccionMaxima;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: tope),
+      child: SingleChildScrollView(
+        key: const Key('inicio_franja_avisos'),
+        child: Column(children: children),
+      ),
     );
   }
 }

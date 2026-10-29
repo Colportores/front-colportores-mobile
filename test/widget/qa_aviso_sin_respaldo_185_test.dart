@@ -601,11 +601,9 @@ void main() {
       ('con el aviso de respaldo', 9, false),
       ('con el aviso de respaldo y el de notificaciones apagadas', 9, true),
     ]) {
-      // skip: QA #185 — con el aviso de respaldo y el de notificaciones apagadas a texto 2,0 en 360×640
-      // quedan 12 dp para Hoy: «Iniciar jornada» no se alcanza (hasta cerrar el aviso de notificaciones).
-      testWidgets('$nombre: «Iniciar jornada» se puede tocar', skip: apagadas && !_verHallazgos, (
-        tester,
-      ) async {
+      // La franja de avisos tiene un tope conjunto (40 % del alto) y se desplaza sola: Hoy conserva su
+      // lugar aunque haya dos avisos a texto 2,0 en 360×640.
+      testWidgets('$nombre: «Iniciar jornada» se puede tocar', (tester) async {
         await _montarInicio(
           tester,
           tam: _chico,
@@ -615,8 +613,13 @@ void main() {
           apagadas: apagadas,
         );
         final alto = await altoDeHoy(tester);
-        // ignore: avoid_print
-        print('QA185 $nombre: alto para Hoy = ${alto.toStringAsFixed(0)} dp');
+        expect(alto, greaterThan(_chico.height * 0.2), reason: 'a Hoy le quedan $alto dp');
+        final franja = find.byKey(const Key('inicio_franja_avisos'));
+        expect(
+          tester.getSize(franja).height,
+          lessThanOrEqualTo(_chico.height * 0.4 + 0.01),
+          reason: 'la franja de avisos pasó su tope',
+        );
         final boton = find.byKey(const Key('jornada_iniciar'));
         expect(boton, findsOneWidget);
         await tester.ensureVisible(boton);
