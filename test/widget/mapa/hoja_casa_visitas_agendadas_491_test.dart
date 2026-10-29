@@ -13,8 +13,10 @@ import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_con_quien.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/visitas_agendadas_de_la_casa.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +27,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/agenda_items_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart' show ahoraLista;
+import '../../helpers/persona_falsos.dart';
+
+final _ana = clienteDePersonas('p-ana', 'Ana', apellido: 'Gómez');
 
 /// Jueves 8/10/2026 y sábado 10/10/2026 (la hoja se monta el martes 6/10).
 final _jueves = DateTime(2026, 10, 8, 14, 30);
@@ -80,6 +85,8 @@ Future<_Montaje> _montar(
       registrarVisita: m.visitas.add,
       agendas: repo,
       lectura: contexto == null ? null : (_) => Stream.value(contexto),
+      // El repositorio de personas dice lo mismo que el contexto de la hoja.
+      personas: PersonaRepositorioFalso()..sembrar(contexto?.personas ?? const []),
     ),
     abrirDetalleDeAgendaProvider.overrideWithValue(
       conDetalle
@@ -444,16 +451,99 @@ void main() {
       expect(m.citas.single.ubicacionId, 'u-1');
     });
 
-    _probar('en un edificio sin depto elegido (sin espacio) no se ofrece', (tester) async {
+    _probar(
+      'en un edificio sin depto elegido se ve y al tocarlo avisa que el depto se elige antes',
+      (tester) async {
+        final m = await _montar(
+          tester,
+          ConsultaAgendaFalsa(),
+          item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+          contexto: const ContextoDeLaCasa(personas: []),
+        );
+
+        expect(_agendar, findsOneWidget);
+        await tester.tap(_agendar);
+        await tester.pump();
+
+        expect(find.text(TextosRegistrarVisita.edificioSinDepto), findsOneWidget);
+        expect(m.citas, isEmpty);
+      },
+    );
+
+    _probar('con una sola persona la cita va con ella, sin preguntar', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.espacioPersonaId, pedroGomez.vinculo.id);
+      expect(m.citas.single.personaId, pedroGomez.persona.id);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('con varias personas pregunta con quién antes de abrir el formulario', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+      expect(m.citas, isEmpty);
+      expect(find.byType(HojaConQuien), findsOneWidget);
+
+      await tester.tap(find.textContaining('Ana Gómez').first);
+      await tester.pump();
+      await tester.tap(find.text('Seguir'));
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.personaId, _ana.persona.id);
+    });
+
+    _probar('con varias personas, «Volver» no abre el formulario', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Volver'));
+      await tester.pumpAndSettle();
+
+      expect(m.citas, isEmpty);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('sin personas la cita queda sin persona y sin preguntar', (tester) async {
+      final m = await _montar(tester, ConsultaAgendaFalsa());
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.espacioPersonaId, isNull);
+      expect(m.citas.single.personaId, isNull);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('un doble toque con varias personas abre una sola pregunta', (tester) async {
       await _montar(
         tester,
         ConsultaAgendaFalsa(),
-        item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
-        contexto: const ContextoDeLaCasa(personas: []),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
       );
 
-      expect(_agendar, findsNothing);
-      expect(_registrar, findsOneWidget);
+      await tester.tap(_agendar);
+      await tester.tap(_agendar, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HojaConQuien), findsOneWidget);
     });
 
     _probar('sin destino no se muestra, como «Registrar visita»', (tester) async {

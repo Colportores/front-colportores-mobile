@@ -26,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'agenda_items_falsos.dart';
 import 'hoja_casa_falsos.dart';
 import 'lista_ubicaciones_falsos.dart' show ahoraLista;
+import 'persona_falsos.dart' show PersonaRepositorioFalso;
 import 'qa_agenda_148_arnes.dart' show cargarFuentes, conCapturas, telefonoChico;
 
 export 'qa_agenda_148_arnes.dart'
@@ -236,7 +237,11 @@ Future<Montaje491> montar491(
     ProviderScope(
       key: UniqueKey(),
       overrides: [
-        ...overridesHojaCasa(registrarVisita: m.visitas.add, agendas: r),
+        ...overridesHojaCasa(
+          registrarVisita: m.visitas.add,
+          agendas: r,
+          personas: PersonaRepositorioFalso(),
+        ),
         abrirDetalleDeAgendaProvider.overrideWithValue(
           conDetalle && !sinDestinos
               ? (id) async {

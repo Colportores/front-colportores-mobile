@@ -9,7 +9,10 @@ import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dar
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/nota_del_lugar.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/repositories/persona_repository.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart'
+    show personaRepositoryProvider;
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'agenda_items_falsos.dart';
@@ -63,9 +66,12 @@ List<Override> overridesHojaCasa({
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   FutureOr<void> Function(ContextoDeCobro)? cobrar,
   ConsultaAgendaRepository? agendas,
+  PersonaRepository? personas,
 }) => [
   // La lista «Visitas agendadas» de la hoja lee la agenda local: por defecto, sin visitas (#491).
   consultaAgendaRepositoryProvider.overrideWithValue(agendas ?? ConsultaAgendaFalsa()),
+  // «+ Agendar» pregunta con quién es la cita: con [personas] la hoja lee de ahí (#491).
+  if (personas != null) personaRepositoryProvider.overrideWithValue(personas),
   contextoDeLaCasaProvider.overrideWith((ref, clave) {
     lecturas?.add(clave);
     return lectura != null ? lectura(clave) : Stream.value(contextoDelCanvas);

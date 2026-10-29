@@ -7,6 +7,7 @@ import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
     show frenaPorCuentaRestringida;
 import '../../domain/entities/contexto_de_la_casa.dart';
+import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_hoja_casa.dart';
@@ -15,7 +16,9 @@ import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
 import '../providers/hoja_casa_providers.dart';
 import '../textos_personas.dart' show TextosPersonas;
+import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
+import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import 'piezas_hoja_casa.dart';
@@ -53,9 +56,11 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// ([AvisoErrorVisitasAgendadas]) va arriba de la persona, bajo el subtítulo;
 /// tocar una abre su detalle. Debajo de «Registrar visita», «+ Agendar»
 /// ([programarEntrevistaDesdeLaCasaProvider]): abre «Agendar visita» con la casa y su espacio ya
-/// puestos (decisión del 29/10, #491 P1). Sin destino, o en un edificio sin depto elegido (todavía no
-/// hay espacio), no se dibuja. Con la casa de baja no hay ni lista ni «+ Agendar» (la agenda de una
-/// casa de baja está oculta).
+/// puestos y pregunta con quién es la cita como «Programar entrevista» (una persona, va con ella;
+/// varias, el selector de R·02; ninguna, «Sin persona»). En un edificio sin depto elegido se dibuja y,
+/// al tocarlo, avisa que el depto se elige antes (decisiones del 29/10, #491). Sin destino no se
+/// dibuja. Con la casa de baja no hay ni lista ni «+ Agendar» (la agenda de una casa de baja está
+/// oculta).
 ///
 /// Los dos botones dependen de pantallas que se enganchan por [registrarVisitaDesdeLaCasaProvider] y
 /// [cobrarDesdeLaCasaProvider]: sin destino no se dibujan (HU-UBI-003: «los botones no se muestran
@@ -241,18 +246,37 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
   }
 
   /// Lo que hace «+ Agendar», o `null` si no se ofrece: sin destino enganchado, con la casa de baja o
-  /// sin espacio (un edificio sin depto elegido). Abre «Agendar visita» con la casa y el espacio ya
-  /// puestos; la persona se elige en el formulario (la cita puede quedar sin persona).
+  /// sin saber quién es el colportor. Abre «Agendar visita» con la casa y su espacio ya puestos y, como
+  /// «Programar entrevista» de «¿Qué pasó?», pregunta con quién es la cita (`mostrarHojaConQuienParaProgramar`):
+  /// con **una** sola persona va con ella; con **varias**, el selector de R·02; sin personas, queda
+  /// «Sin persona». En un edificio sin depto elegido (todavía no hay espacio) el botón se ve y, al
+  /// tocarlo, avisa que el depto se elige antes, como «Registrar visita» (decisiones del 29/10, #491).
   VoidCallback? _agendar(ContextoDeLaCasa contexto) {
     final destino = ref.watch(programarEntrevistaDesdeLaCasaProvider);
-    final espacioId = contexto.espacioId;
-    if (destino == null || widget.item.esBaja || espacioId == null) return null;
+    final colportorId = widget.colportorId;
+    if (destino == null || widget.item.esBaja || colportorId == null) return null;
     return () => _correr(() async {
+      final espacioId = contexto.espacioId;
+      if (espacioId == null) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDepto)));
+        return;
+      }
+      final eleccion = await mostrarHojaConQuienParaProgramar(
+        context,
+        espacioId: espacioId,
+        colportorId: colportorId,
+      );
+      if (eleccion == null || !mounted) return;
       await destino((
         ubicacionId: widget.item.ubicacion.id,
         espacioId: espacioId,
-        espacioPersonaId: null,
-        personaId: null,
+        espacioPersonaId: eleccion.espacioPersonaId,
+        personaId: switch (eleccion) {
+          CitaConPersona(:final persona) => persona.personaId,
+          CitaSinPersona() => null,
+        },
       ));
     }, TextosAgenda.noPudimosAbrir);
   }

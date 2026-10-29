@@ -28,11 +28,7 @@ import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
 
-/// `--dart-define=QA_HALLAZGOS=true` corre los tests de los hallazgos (salen del skip al arreglarlos).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 final _agendar = find.byKey(ClavesHojaCasa.agendar);
-final _registrar = find.byKey(ClavesHojaCasa.registrarVisita);
 final _formulario = find.byType(AgendarVisitaPage);
 final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDepto);
 final _guardar = find.byKey(ClavesAgendarVisita.botonAgendar);
@@ -65,7 +61,8 @@ Future<_Montaje> _montar(
   addTearDown(tester.view.reset);
   final llave = GlobalKey<NavigatorState>();
   var n = 0;
-  final personas = PersonaRepositorioFalso()..sembrar([mariaFernandez]);
+  // El repositorio de personas dice lo mismo que el contexto de la hoja (en la app salen de la misma DB).
+  final personas = PersonaRepositorioFalso()..sembrar(contexto?.personas ?? [mariaFernandez]);
   final overrides = <Override>[
     ...overridesHojaCasa(
       lectura: contexto == null ? null : (_) => Stream.value(contexto),
@@ -221,22 +218,10 @@ void main() {
       expect(_formulario, findsOneWidget);
       expect(m.destinos.single.espacioId, 'esp-3B');
     });
-
-    testWidgets('sin depto elegido no hay «+ Agendar» pero sí «Registrar visita»', (tester) async {
-      await _montar(
-        tester,
-        tipo: TipoUbicacion.edificio,
-        contexto: const ContextoDeLaCasa(personas: []),
-      );
-
-      expect(_agendar, findsNothing);
-      expect(_registrar, findsOneWidget);
-    });
   });
 
-  // Decisiones de la revisión del 29/10 (#491 P1 y P2, mapa §2) que #570 todavía no aplica: los tests
-  // están escritos con el comportamiento decidido y salen del `skip` cuando el implementador lo arregle.
-  group('decisiones de la revisión sin aplicar', () {
+  // Decisiones de la revisión del 29/10 (#491 P1 y P2, mapa §2), aplicadas en #570.
+  group('decisiones de la revisión', () {
     testWidgets(
       'edificio sin depto elegido: «+ Agendar» se ve y al tocarlo avisa, sin abrir el formulario',
       (tester) async {
@@ -254,53 +239,43 @@ void main() {
         expect(_formulario, findsNothing);
         expect(m.destinos, isEmpty);
       },
-      skip:
-          !_verHallazgos, // QA #570: edificio sin depto esconde «+ Agendar» sin decir nada (decidido: se ve y avisa)
     );
 
-    testWidgets(
-      'una sola persona activa: la cita se agenda CON ella (no «Sin persona»)',
-      (tester) async {
-        final m = await _montar(
-          tester,
-          contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [mariaFernandez]),
-        );
+    testWidgets('una sola persona activa: la cita se agenda CON ella (no «Sin persona»)', (
+      tester,
+    ) async {
+      final m = await _montar(
+        tester,
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [mariaFernandez]),
+      );
 
-        await _tocarAgendar(tester);
+      await _tocarAgendar(tester);
 
-        expect(m.destinos.single.espacioPersonaId, 'ep-p1');
-        expect(find.text('Sin persona'), findsNothing);
-      },
-      skip:
-          !_verHallazgos, // QA #570: la cita siempre queda «Sin persona» aunque la casa tenga una persona (decidido: va con ella)
-    );
+      expect(m.destinos.single.espacioPersonaId, 'ep-p1');
+      expect(find.text('Sin persona'), findsNothing);
+    });
 
-    testWidgets(
-      'varias personas: pregunta con quién antes de abrir el formulario',
-      (tester) async {
-        final m = await _montar(
-          tester,
-          contexto: ContextoDeLaCasa(
-            espacioId: 'esp-1',
-            personas: [
-              mariaFernandez,
-              clienteDePersonas('p2', 'Pedro', apellido: 'Gómez'),
-            ],
-          ),
-        );
+    testWidgets('varias personas: pregunta con quién antes de abrir el formulario', (tester) async {
+      final m = await _montar(
+        tester,
+        contexto: ContextoDeLaCasa(
+          espacioId: 'esp-1',
+          personas: [
+            mariaFernandez,
+            clienteDePersonas('p2', 'Pedro', apellido: 'Gómez'),
+          ],
+        ),
+      );
 
-        await tester.ensureVisible(_agendar);
-        await tester.pump();
-        await tester.tap(_agendar);
-        await asentarAgendar(tester);
+      await tester.ensureVisible(_agendar);
+      await tester.pump();
+      await tester.tap(_agendar);
+      await asentarAgendar(tester);
 
-        expect(m.destinos, isEmpty);
-        expect(find.textContaining('Pedro Gómez'), findsWidgets);
-        expect(find.textContaining('María Fernández'), findsWidgets);
-      },
-      skip:
-          !_verHallazgos, // QA #570: con varias personas no pregunta con quién (decidido: mismo selector de R·02)
-    );
+      expect(m.destinos, isEmpty);
+      expect(find.textContaining('Pedro Gómez'), findsWidgets);
+      expect(find.textContaining('María Fernández'), findsWidgets);
+    });
 
     testWidgets('sin personas: la cita queda «Sin persona» y el formulario lo dice', (
       tester,
