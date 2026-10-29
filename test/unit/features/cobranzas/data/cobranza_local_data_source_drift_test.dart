@@ -7,7 +7,9 @@ import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:colportores_mobile/features/ventas/domain/entities/componente_vendido.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/venta_item.dart';
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -39,6 +41,31 @@ void main() {
     await ventas.registrar(ventaDe(id, monto: monto, talonario: 'T-$id'), [
       itemDe('i-$id', id, cantidad: 1, precio: monto),
     ]);
+    encolador.encolados.clear();
+  }
+
+  Future<void> sembrarProducto(String id, String nombre, {bool baja = false}) => db
+      .into(db.productos)
+      .insert(
+        ProductosCompanion.insert(
+          id: id,
+          nombre: nombre,
+          tipo: 'LIBRO',
+          createdAt: t0,
+          updatedAt: t0,
+          deletedAt: Value(baja ? t0 : null),
+        ),
+      );
+
+  /// Una venta de `ep-1` con los [items] dados (su monto es la suma de los subtotales).
+  Future<void> sembrarVentaCon(String id, List<VentaItem> items) async {
+    final ventas = VentaLocalDataSourceDrift(
+      db,
+      encolador: encolador,
+      estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+    );
+    final total = items.fold<int>(0, (a, i) => a + i.subtotalCentavos);
+    await ventas.registrar(ventaDe(id, monto: total, talonario: 'T-$id'), items);
     encolador.encolados.clear();
   }
 
@@ -216,6 +243,123 @@ void main() {
       expect([for (final v in ventas) v.ventaId], ['v-1', 'v-2']);
       expect(ventas.first.numeroTalonario, 'T-v-1');
       expect(ventas.first.descripcion, '1 producto');
+    });
+
+    group('qué se vendió (C·08)', () {
+      test('un producto del catálogo se nombra y varios llevan « × N»', () async {
+        await sembrarProducto('prod-vf', 'Vida Feliz');
+        await sembrarProducto('prod-sh', 'Salud y Hogar');
+        await sembrarVentaCon('v-2', [
+          itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 2, precio: 12000),
+          itemDe('i-b', 'v-2', productoId: 'prod-sh', cantidad: 1, precio: 80000),
+        ]);
+
+        final ventas = await local.ventasConSaldoDe('per-1');
+
+        expect(
+          ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion,
+          'Vida Feliz × 2 · Salud y Hogar',
+        );
+      });
+
+      test('un combo sigue con la cuenta de sus libros, junto al producto suelto', () async {
+        await sembrarProducto('prod-vf', 'Vida Feliz');
+        await sembrarVentaCon('v-2', [
+          itemDe(
+            'i-c',
+            'v-2',
+            productoId: null,
+            coleccionId: 'col-1',
+            componentes: const [
+              ComponenteVendido(productoId: 'prod-vf'),
+              ComponenteVendido(productoId: 'prod-sh', cantidad: 2),
+            ],
+            cantidad: 1,
+            precio: 90000,
+          ),
+          itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 1, precio: 10000),
+        ]);
+
+        final ventas = await local.ventasConSaldoDe('per-1');
+
+        expect(
+          ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion,
+          'Vida Feliz · Colección de 3 libros',
+        );
+      });
+
+      test('un combo de un solo libro dice «Colección de 1 libro»', () async {
+        await sembrarVentaCon('v-2', [
+          itemDe(
+            'i-c',
+            'v-2',
+            productoId: null,
+            coleccionId: 'col-1',
+            componentes: const [ComponenteVendido(productoId: 'prod-vf')],
+            cantidad: 1,
+            precio: 120000,
+          ),
+        ]);
+
+        final ventas = await local.ventasConSaldoDe('per-1');
+
+        expect(ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion, 'Colección de 1 libro');
+      });
+
+      test(
+        'un producto dado de baja del catálogo se sigue nombrando en la venta que lo llevó',
+        () async {
+          await sembrarProducto('prod-vf', 'Vida Feliz', baja: true);
+          await sembrarVentaCon('v-2', [
+            itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 1, precio: 12000),
+          ]);
+
+          final ventas = await local.ventasConSaldoDe('per-1');
+
+          expect(ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion, 'Vida Feliz');
+        },
+      );
+
+      test(
+        'un producto que la réplica todavía no trae se cuenta aparte, sin romper la línea',
+        () async {
+          await sembrarProducto('prod-vf', 'Vida Feliz');
+          await sembrarVentaCon('v-2', [
+            itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 2, precio: 12000),
+            itemDe('i-b', 'v-2', productoId: 'prod-nuevo', cantidad: 3, precio: 10000),
+          ]);
+
+          final ventas = await local.ventasConSaldoDe('per-1');
+
+          expect(
+            ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion,
+            'Vida Feliz × 2 · 3 productos',
+          );
+        },
+      );
+
+      test('un nombre en blanco en la réplica no se muestra: se cuenta como producto', () async {
+        await sembrarProducto('prod-vf', '   ');
+        await sembrarVentaCon('v-2', [
+          itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 1, precio: 12000),
+        ]);
+
+        final ventas = await local.ventasConSaldoDe('per-1');
+
+        expect(ventas.firstWhere((v) => v.ventaId == 'v-2').descripcion, '1 producto');
+      });
+
+      test('los ítems dados de baja de la venta no cuentan', () async {
+        await sembrarProducto('prod-vf', 'Vida Feliz');
+        await sembrarVentaCon('v-2', [
+          itemDe('i-a', 'v-2', productoId: 'prod-vf', cantidad: 2, precio: 12000),
+        ]);
+        await db.customStatement('UPDATE venta_item SET deleted_at = 1 WHERE id = ?', ['i-a']);
+
+        final v = await local.ventaConSaldo('v-2');
+
+        expect(v!.descripcion, isEmpty);
+      });
     });
 
     test('saldosPorPersona suma lo que debe cada una y omite a quien no debe nada', () async {

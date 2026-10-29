@@ -39,6 +39,7 @@ import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
 import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
@@ -252,6 +253,20 @@ Future<void> main() async {
               colportorId: cobro.colportorId,
               espacioId: cobro.espacioId,
               espacioPersonaId: cobro.espacioPersonaId,
+            );
+          },
+        ),
+        // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
+        // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
+        // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
+        cobrarDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoCobrarDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
             );
           },
         ),
