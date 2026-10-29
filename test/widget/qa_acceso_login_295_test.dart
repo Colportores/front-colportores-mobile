@@ -459,6 +459,28 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
     });
 
+    testWidgets(
+      'un rechazo del servidor sin traducción (4xx con código) dice qué pasa y qué hacer, sin el '
+      'código ni el genérico, y el botón queda habilitado (decisión del 29/10 en #542)',
+      (tester) async {
+        final remoto = await _llegarA(tester, _Estado.inicial);
+        remoto.falla = const ServidorException(status: 400);
+        await _escribir(tester);
+
+        await _tocarEntrar(tester);
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<Text>(find.byKey(_errorGeneral)).data,
+          'No pudimos iniciar tu sesión. Probá de nuevo en unos minutos.',
+        );
+        expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+        expect(find.textContaining('No se pudo completar la operación'), findsNothing);
+        expect(tester.widget<FilledButton>(find.byKey(_enviar)).onPressed, isNotNull);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
+
     testWidgets('«¿Olvidaste tu clave?» lleva el correo tipeado y al volver el login lo conserva', (
       tester,
     ) async {

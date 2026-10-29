@@ -3,7 +3,9 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/sync/sync_providers.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_local_data_source.dart';
@@ -36,6 +38,10 @@ import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sync_engine/sync_engine.dart'
+    show JobState, Op, PullDelta, PushBatch, PushResult, SpecRegistry, SyncEngine, SyncSpec;
+import 'package:sync_engine/testing.dart'
+    show FakeSyncTransport, InMemoryJobStore, InMemoryLocalStore;
 
 import '../helpers/db_local_repository_en_memoria.dart';
 import '../helpers/mapa_descargas_arnes.dart';
@@ -99,6 +105,43 @@ final class _LocalQueNoBorra implements AuthLocalDataSource {
     await demora?.future;
     if (fallar) throw Exception('keystore');
     _sesion = null;
+  }
+}
+
+/// Backend en memoria cuyas llamadas esperan a que el test las suelte: un ciclo de sync "en vuelo".
+final class _TransporteQueSeTraba extends FakeSyncTransport {
+  final Completer<void> compuerta = Completer<void>();
+
+  /// Cuántas llamadas (push o pull) llegaron a la compuerta.
+  int llamadas = 0;
+
+  @override
+  Future<PushResult> push(PushBatch batch) async {
+    llamadas++;
+    await compuerta.future;
+    return super.push(batch);
+  }
+
+  @override
+  Future<PullDelta> pull({required List<String> entities, String? watermark, int? limit}) async {
+    llamadas++;
+    await compuerta.future;
+    return super.pull(entities: entities, watermark: watermark, limit: limit);
+  }
+}
+
+/// Backend en memoria que **aplica** el primer lote y cuya respuesta no llega hasta que el test la
+/// suelta: la señal se corta justo después de que el servidor guardó la operación, y el teléfono no
+/// se entera.
+final class _TransporteQuePierdeLaPrimeraRespuesta extends FakeSyncTransport {
+  final Completer<void> respuesta = Completer<void>();
+  int _lotes = 0;
+
+  @override
+  Future<PushResult> push(PushBatch batch) async {
+    final resultado = await super.push(batch);
+    if (++_lotes == 1) await respuesta.future;
+    return resultado;
   }
 }
 
@@ -848,31 +891,215 @@ void main() {
       });
     });
 
-    // Los siguientes tres escenarios de HU-AUTH-006 no tienen nada que probar todavía: el código
-    // no tiene motor de sync, backup en background ni push notifications. `testWidgets.skip` es
-    // `bool?` (a diferencia de `test.skip`, que acepta un motivo en texto), así que el motivo va
-    // en el comentario de cada uno, apuntando al issue #56 en vez de omitirse en silencio.
+    // Los escenarios de backup nocturno y de push entrante de HU-AUTH-006 siguen como marcadores:
+    // dependen de #185 y #187. `testWidgets.skip` es `bool?` (a diferencia de `test.skip`, que
+    // acepta un motivo en texto), así que el motivo va en el comentario de cada uno.
 
-    // skip: QA #56 — HU-AUTH-006 (criterios de aceptación, escenario Edge) pide que cerrarSesion()
-    // espere el sync activo con timeout de 5s, o lo cancele limpiamente. El código no tiene ningún
-    // concepto de "job de sincronización" (feature/sync-engine y feature/sync-queue sin mergear a
-    // develop) — nada que testear hasta que exista.
+    // QA #56 — HU-AUTH-006, «Edge -logout en medio de un sync activo»: el motor de sync real, con
+    // un backend en memoria que no contesta hasta que el test lo suelta, y la app armada como en
+    // producción (`app.dart` dispara un ciclo al abrir la pantalla principal). El cierre espera al
+    // ciclo hasta 5 s y, si no termina, cierra la DB igual.
+    Future<({SyncEngine motor, _TransporteQueSeTraba servidor, ProviderContainer container})>
+    montarConSyncEnVuelo(WidgetTester tester) async {
+      final servidor = _TransporteQueSeTraba();
+      final motor = SyncEngine(
+        specs: SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'}),
+        transport: servidor,
+        jobs: InMemoryJobStore(),
+        store: InMemoryLocalStore(),
+      );
+      addTearDown(() async {
+        if (!servidor.compuerta.isCompleted) servidor.compuerta.complete();
+        await motor.dispose();
+      });
+      // Una venta sin subir: el ciclo que arranca al abrir la pantalla principal la manda al backend.
+      await motor.stage('venta', Op.insert, {'id': 'venta-1'}, clientOpId: 'op-1');
+      final container = await _montar(tester, extras: [motorSyncProvider.overrideWithValue(motor)]);
+      expect(servidor.llamadas, greaterThan(0), reason: 'hay un ciclo de sync en vuelo');
+      return (motor: motor, servidor: servidor, container: container);
+    }
+
+    Future<void> cerrarSesionConfirmando(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
+      await tester.pump();
+    }
+
     testWidgets(
       'Escenario: Edge -logout en medio de un sync activo (espera con timeout de 5s, o cancela '
-      'limpiamente)',
+      'limpiamente): si el ciclo termina antes del timeout, la DB se cierra recién después',
       (tester) async {
-        fail(
-          'no hay nada que probar: el código no tiene ningún concepto de "job de sincronización" '
-          'que cerrarSesion() pueda esperar o cancelar (feature/sync-engine y feature/sync-queue '
-          'sin mergear a develop)',
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(seconds: 3));
+        expect(
+          container.read(cierresDbLocalProvider).pedidos,
+          0,
+          reason: 'el ciclo en curso todavía usa la DB: no se cierra debajo',
         );
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(container.read(sesionProvider).value, isNull);
+        expect(_login, findsOneWidget);
+        expect(_datos.borrados, isEmpty, reason: 'cerrar sesión nunca borra datos locales');
+        expect(tester.takeException(), isNull);
+        await motor.settled;
       },
-      skip: true,
     );
 
+    testWidgets(
+      'Edge -logout en medio de un sync activo: si el ciclo no termina en 5 s, el cierre sigue y '
+      'cierra la DB igual',
+      (tester) async {
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(milliseconds: 4900));
+        expect(
+          container.read(cierresDbLocalProvider).pedidos,
+          0,
+          reason: 'todavía dentro de los 5 s',
+        );
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(container.read(sesionProvider).value, isNull);
+        expect(
+          _login,
+          findsOneWidget,
+          reason: 'la UI llega al login aunque el backend no conteste',
+        );
+        expect(_remote.llamadasCerrarSesion, 1);
+        expect(_datos.borrados, isEmpty);
+
+        // El backend contesta tarde: el ciclo termina sin dejar nada colgado ni lanzar.
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await motor.settled;
+      },
+    );
+
+    // Decisión del 29/10 en #542 (P3): el motor no cancela el ciclo; vencidos los 5 s se cierra la
+    // DB igual, lo que no subió queda en la cola y se retoma al volver a entrar, sin duplicarse.
+    testWidgets(
+      'Edge -logout en medio de un sync activo: la operación que iba en vuelo se retoma al volver '
+      'a entrar y sube una sola vez',
+      (tester) async {
+        var ahora = DateTime.utc(2026, 10, 29, 12);
+        final cola = InMemoryJobStore(clock: () => ahora);
+        final servidor = _TransporteQuePierdeLaPrimeraRespuesta();
+        final specs = SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'});
+        final motor = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        SyncEngine? motorDeLaNuevaSesion;
+        addTearDown(() async {
+          if (!servidor.respuesta.isCompleted) servidor.respuesta.complete();
+          await motor.dispose();
+          await motorDeLaNuevaSesion?.dispose();
+        });
+        await motor.stage('venta', Op.insert, {'id': 'venta-1'}, clientOpId: 'op-1');
+        final container = await _montar(
+          tester,
+          extras: [motorSyncProvider.overrideWithValue(motor)],
+        );
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor guardó la venta');
+        expect(cola.withState(JobState.inFlight), hasLength(1), reason: 'el teléfono no se enteró');
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(milliseconds: 5100));
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_login, findsOneWidget);
+        expect(
+          cola.withState(JobState.inFlight),
+          hasLength(1),
+          reason: 'cerrar sesión no pierde la operación: queda en la cola',
+        );
+        expect(cola.withState(JobState.done), isEmpty);
+
+        // Vuelve a entrar: un motor nuevo sobre la misma cola. La operación colgada ya pasó su plazo.
+        ahora = ahora.add(const Duration(minutes: 11));
+        motorDeLaNuevaSesion = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        final salida = (await tester.runAsync(() => motorDeLaNuevaSesion!.syncNow()))!;
+
+        expect(salida.ok, isTrue);
+        expect(servidor.batches, hasLength(2), reason: 'se volvió a mandar');
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor la reconoce: una sola vez');
+        expect(servidor.rowsOf('venta'), hasLength(1));
+        expect(cola.withState(JobState.done), hasLength(1));
+        expect(cola.withState(JobState.inFlight), isEmpty);
+        expect(cola.withState(JobState.pending), isEmpty);
+      },
+    );
+
+    // QA #542: la espera de hasta 5 s no puede dejar a la persona mirando una pantalla que parece no
+    // haber hecho caso, ni permitirle pedir el cierre dos veces o salir de la hoja a la mitad.
+    testWidgets(
+      'mientras el cierre espera al ciclo de sync la hoja dice «Cerrando sesión», no admite '
+      'un segundo pedido ni el atrás, y la DB se cierra una sola vez',
+      (tester) async {
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('Cerrando sesión'), findsWidgets);
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        // Un segundo toque en el botón de la hoja y el atrás del sistema: no hacen nada.
+        await tester.tap(
+          find.byKey(const Key('configuracion_dialogo_confirmar')),
+          warnIfMissed: false,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.binding.handlePopRoute();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Cerrando sesión'), findsWidgets, reason: 'la hoja sigue hasta terminar');
+
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_remote.llamadasCerrarSesion, 1);
+        expect(_login, findsOneWidget);
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await motor.settled;
+      },
+    );
+
+    testWidgets('sin ningún sync en curso el cierre no espera nada', (tester) async {
+      final container = await _montar(tester);
+
+      await cerrarSesionConfirmando(tester);
+      await tester.pumpAndSettle();
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(_login, findsOneWidget);
+    });
+
     // skip: QA #56 — HU-AUTH-006 (casos borde) pide cancelar limpiamente un backup nocturno en
-    // curso al cerrar sesión. No hay job de backup en background en el código todavía — nada que
-    // testear hasta que exista.
+    // curso al cerrar sesión. Espera #185 (HU-SYNC-005): test real cuando mergee.
     testWidgets('caso borde: logout en medio de un backup nocturno cancela el backup limpiamente', (
       tester,
     ) async {
@@ -880,8 +1107,7 @@ void main() {
     }, skip: true);
 
     // skip: QA #56 — HU-AUTH-006 (casos borde) pide descartar un push notification que entra
-    // justo al cerrar sesión. La app no tiene push notifications implementadas todavía — nada que
-    // testear hasta que exista.
+    // justo al cerrar sesión. Espera #187 (HU-NOT-003): test real cuando mergee.
     testWidgets('caso borde: logout justo cuando entra un push notification descarta el push', (
       tester,
     ) async {

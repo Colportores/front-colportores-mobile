@@ -74,10 +74,19 @@ final class EstadoCuentaSupabase implements EstadoCuentaRemoteDataSource {
     return switch (e.code) {
       '42501' => const ServidorException(status: 401),
       'P0002' => const ServidorException(status: 404),
-      final String codigo => ServidorException(status: int.tryParse(codigo)),
+      final String codigo => ServidorException(status: _statusHttp(codigo)),
       null => const ServidorException(),
     };
   }
+
+  /// El `code` de una [PostgrestException] es un SQLSTATE (5 caracteres: `57014`, `23505`…) o,
+  /// cuando el cuerpo no es JSON (un gateway que devuelve HTML), el status HTTP en 3 dígitos
+  /// (`502`). Solo el segundo es un status: llevar un SQLSTATE numérico como si lo fuera hacía que
+  /// el log dijera `{"status":57014}`. El SQLSTATE queda en el log como `code`.
+  static final _statusDeTresDigitos = RegExp(r'^[1-5]\d\d$');
+
+  static int? _statusHttp(String codigo) =>
+      _statusDeTresDigitos.hasMatch(codigo) ? int.parse(codigo) : null;
 
   /// Sin red, con el servidor cortado a mitad o sin contestar a tiempo.
   static bool _esFallaDeRed(Object e) =>
