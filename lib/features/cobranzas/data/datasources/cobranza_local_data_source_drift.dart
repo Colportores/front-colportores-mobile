@@ -127,25 +127,102 @@ final class CobranzaLocalDataSourceDrift {
   Future<Map<String, int>> saldosPorPersona(Iterable<String> personaIds) async {
     final salida = <String, int>{};
     for (final personaId in personaIds) {
-      final deuda = (await ventasConSaldoDe(personaId)).fold<int>(0, (a, v) => a + v.saldoCentavos);
+      final deuda = await _saldoDe(_cortePersona, [Variable<String>(personaId)]);
       if (deuda > 0) salida[personaId] = deuda;
     }
     return salida;
   }
 
+  // ---- Saldo pendiente reactivo (HU-COB-005) ----------------------------------------------------
+  //
+  // `saldo = monto_total_venta − SUM(cobros válidos)`, por venta, nunca negativo, y los cortes suman
+  // el saldo de cada venta viva. Una sola fórmula ([_sqlSaldo]) para los tres cortes y para
+  // [saldosPorPersona]; la de la venta suelta ([_conSaldo]) usa el mismo [_cobroValido]. Cada `Stream`
+  // emite el valor de ahora al suscribirse y uno nuevo solo si cambió, cuando se registra, se da de
+  // baja o llega por el pull cualquier venta o cobro (Drift avisa por tabla), sin recargar nada.
+
+  /// Lo que hace que un cobro cuente. HU-COB-006 (#422) suma acá la marca de anulado: es el único
+  /// lugar donde se decide qué cobro es válido.
+  static const _cobroValido = 'c.deleted_at IS NULL';
+
+  /// Las ventas vivas con la parte de lo que debe cada una. `SUM(MAX(a, 0))`: una venta cobrada de
+  /// más no resta de lo que deben las demás.
+  static const _sqlSaldo =
+      'SELECT COALESCE(SUM(MAX(v.monto_total - COALESCE('
+      '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND $_cobroValido), 0), 0)), 0) '
+      'AS saldo FROM venta v WHERE v.deleted_at IS NULL AND ';
+
+  /// Las ventas de una persona, por sus vínculos vivos con un espacio.
+  static const _cortePersona =
+      'v.espacio_persona_id IN (SELECT ep.id FROM espacio_persona ep '
+      'WHERE ep.persona_id = ? AND ep.deleted_at IS NULL)';
+
+  /// Las ventas de una ubicación: las de las personas de cualquiera de sus espacios (una casa tiene
+  /// uno solo; un edificio, un depto por espacio).
+  static const _corteUbicacion =
+      'v.espacio_persona_id IN (SELECT ep.id FROM espacio_persona ep '
+      'JOIN espacio e ON e.id = ep.espacio_id '
+      'WHERE e.ubicacion_id = ? AND ep.deleted_at IS NULL)';
+
+  /// Todas las ventas vivas del colportor.
+  static const _corteColportor = 'v.colportor_id = ?';
+
+  Set<ResultSetImplementation<dynamic, dynamic>> get _tablasDelSaldo => {
+    _db.ventas,
+    _db.cobranzas,
+    _db.espacioPersonas,
+    _db.espacios,
+  };
+
+  Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async {
+    final fila = await _db.customSelect('$_sqlSaldo$corte', variables: variables).getSingle();
+    return fila.read<int>('saldo');
+  }
+
+  Stream<int> _observarSaldo(String corte, String id) => _db
+      .customSelect(
+        '$_sqlSaldo$corte',
+        variables: [Variable<String>(id)],
+        readsFrom: _tablasDelSaldo,
+      )
+      .watch()
+      .map((filas) => filas.single.read<int>('saldo'))
+      .distinct();
+
+  /// La venta [ventaId] con su saldo cada vez que cambia ella, sus cobros o lo que se vendió; `null`
+  /// si no está o se dio de baja.
+  Stream<VentaConSaldo?> observarVentaConSaldo(String ventaId) => _db
+      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.ventaItems, _db.productos})
+      .watch()
+      .asyncMap((_) => ventaConSaldo(ventaId))
+      .distinct();
+
+  /// Lo que debe la persona [personaId], en centavos, sumando sus ventas vivas.
+  Stream<int> observarSaldoDePersona(String personaId) => _observarSaldo(_cortePersona, personaId);
+
+  /// Lo que se debe en la ubicación [ubicacionId], en centavos, sumando las ventas de las personas
+  /// de todos sus espacios.
+  Stream<int> observarSaldoDeUbicacion(String ubicacionId) =>
+      _observarSaldo(_corteUbicacion, ubicacionId);
+
+  /// Lo que le deben al colportor [colportorId], en centavos, sumando todas sus ventas vivas.
+  Stream<int> observarSaldoTotal(String colportorId) =>
+      _observarSaldo(_corteColportor, colportorId);
+
   Future<VentaConSaldo> _conSaldo(VentaFila venta) async {
-    final suma = _db.cobranzas.monto.sum();
-    final fila =
-        await (_db.selectOnly(_db.cobranzas)
-              ..addColumns([suma])
-              ..where(_db.cobranzas.ventaId.equals(venta.id) & _db.cobranzas.deletedAt.isNull()))
-            .getSingle();
+    final cobrado = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(c.monto), 0) AS cobrado FROM cobranza c '
+          'WHERE c.venta_id = ? AND $_cobroValido',
+          variables: [Variable<String>(venta.id)],
+        )
+        .getSingle();
     return VentaConSaldo(
       ventaId: venta.id,
       numeroTalonario: venta.numeroTalonario,
       fecha: venta.fecha,
       montoTotalCentavos: venta.montoTotal,
-      cobradoCentavos: fila.read(suma) ?? 0,
+      cobradoCentavos: cobrado.read<int>('cobrado'),
       descripcion: await _descripcion(venta.id),
     );
   }
