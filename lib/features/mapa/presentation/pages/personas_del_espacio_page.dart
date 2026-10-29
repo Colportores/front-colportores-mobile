@@ -177,15 +177,17 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
     final destinoDeVisita = ref.watch(registrarVisitaDesdeLaCasaProvider);
     final puedeRegistrar = datos != null && !deBaja && destinoDeVisita != null;
 
-    final Widget cuerpo;
+    // Un solo renglón por pieza: los de arriba (título, visita, «CLIENTES · N») y los del cuerpo se
+    // desplazan juntos, así nada desborda con texto grande en una pantalla chica.
+    final List<Widget Function()> cuerpo;
     if (contexto.hasError || personas.hasError) {
-      cuerpo = _ErrorDeLectura(alReintentar: _reintentar);
+      cuerpo = [() => _ErrorDeLectura(alReintentar: _reintentar)];
     } else if (noEncontrado) {
-      cuerpo = const _Mensaje(texto: TextosPersonas.espacioNoEncontrado);
+      cuerpo = [() => const _Mensaje(texto: TextosPersonas.espacioNoEncontrado)];
     } else if (!contexto.hasValue || !personas.hasValue) {
-      cuerpo = const _Cargando();
+      cuerpo = [() => const _Cargando()];
     } else {
-      cuerpo = _ListaDeClientes(
+      cuerpo = _itemsDeClientes(
         clientes: personas.requireValue,
         deBaja: deBaja,
         bajas: bajas.asData?.value ?? const [],
@@ -200,6 +202,22 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
         ahora: ref.read(relojPersonaProvider)(),
       );
     }
+    final items = <Widget Function()>[
+      if (datos != null)
+        () => _Titulo(
+          titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
+          piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
+        ),
+      if (datos != null)
+        () => VisitaDelDepto(
+          conEstado: ultima.hasValue,
+          ultima: ultima.asData?.value,
+          alRegistrar: puedeRegistrar ? () => _registrarVisita(datos.ubicacion.id) : null,
+        ),
+      () => const Divider(height: 1),
+      () => _EncabezadoClientes(cantidad: cantidad, alAgregar: puedeAgregar ? _agregar : null),
+      ...cuerpo,
+    ];
 
     return Scaffold(
       body: SafeArea(
@@ -210,38 +228,13 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
                   ? null
                   : FormatoUbicaciones.direccion(datos.ubicacion).toUpperCase(),
             ),
-            // Todo lo de arriba de la lista (título, visita y «CLIENTES · N») se desplaza si no entra
-            // (texto grande en una pantalla chica): la lista de clientes de abajo conserva siempre
-            // el 40 % de la pantalla y nada desborda.
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (datos != null)
-                      _Titulo(
-                        titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
-                        piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
-                      ),
-                    if (datos != null)
-                      VisitaDelDepto(
-                        conEstado: ultima.hasValue,
-                        ultima: ultima.asData?.value,
-                        alRegistrar: puedeRegistrar
-                            ? () => _registrarVisita(datos.ubicacion.id)
-                            : null,
-                      ),
-                    const Divider(height: 1),
-                    _EncabezadoClientes(
-                      cantidad: cantidad,
-                      alAgregar: puedeAgregar ? _agregar : null,
-                    ),
-                  ],
-                ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16),
+                itemCount: items.length,
+                itemBuilder: (context, i) => items[i](),
               ),
             ),
-            Expanded(child: cuerpo),
           ],
         ),
       ),
@@ -358,78 +351,55 @@ class _EncabezadoClientes extends StatelessWidget {
   }
 }
 
-class _ListaDeClientes extends StatelessWidget {
-  const _ListaDeClientes({
-    required this.clientes,
-    required this.deBaja,
-    required this.bajas,
-    required this.bajasConError,
-    required this.mostrarBajas,
-    required this.alCambiarMostrarBajas,
-    required this.saldosDeBajas,
-    required this.reactivando,
-    required this.alReactivar,
-    required this.alReintentarBajas,
-    required this.ahora,
-  });
-
-  final List<PersonaDelEspacio> clientes;
-  final bool deBaja;
-
-  /// Las personas dadas de baja del espacio (32D·04).
-  final List<PersonaDelEspacio> bajas;
-  final bool bajasConError;
-  final bool mostrarBajas;
-  final ValueChanged<bool> alCambiarMostrarBajas;
-
-  /// Lo que debe cada baja, por `persona.id`; la que no está no tiene saldo conocido.
-  final Map<String, int> saldosDeBajas;
-  final Set<String> reactivando;
-
-  /// `null`: no se puede reactivar (el espacio está dado de baja).
-  final ValueChanged<PersonaDelEspacio>? alReactivar;
-  final VoidCallback alReintentarBajas;
-  final DateTime ahora;
-
-  @override
-  Widget build(BuildContext context) {
-    final avisoBaja = deBaja
-        ? const Padding(
-            padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-            child: AvisoAlta(
-              color: ColoresAlta.ambarBorde,
-              colorInsignia: ColoresAlta.ambar,
-              glyph: '!',
-              texto: TextosPersonas.espacioDeBaja,
-            ),
-          )
-        : null;
-    // Avisos de arriba + filas + vacío + «Mostrar bajas» y las bajas + nota de privacidad: una sola
-    // lista que se desplaza.
-    final items = <Widget Function()>[
-      if (avisoBaja != null) () => avisoBaja,
-      if (clientes.isEmpty) () => const _SinClientes(),
-      for (final cliente in clientes) () => _FilaCliente(cliente: cliente),
-      if (bajas.isNotEmpty)
-        () => _MostrarBajas(valor: mostrarBajas, alCambiar: alCambiarMostrarBajas),
-      if (bajas.isNotEmpty && mostrarBajas)
-        for (final baja in bajas)
-          () => _FilaBaja(
-            baja: baja,
-            saldoCentavos: saldosDeBajas[baja.persona.id],
-            ahora: ahora,
-            reactivando: reactivando.contains(baja.persona.id),
-            alReactivar: alReactivar == null ? null : () => alReactivar!(baja),
+/// Las filas de la lista de clientes, una por renglón de la lista que se desplaza: el aviso del espacio
+/// dado de baja, los clientes (o «Todavía no hay clientes»), «Mostrar bajas» con las bajas, el error
+/// de las bajas y la nota de privacidad.
+///
+/// - [bajas]: las personas dadas de baja del espacio (32D·04).
+/// - [saldosDeBajas]: lo que debe cada baja, por `persona.id`; la que no está no tiene saldo conocido.
+/// - [alReactivar] `null`: no se puede reactivar (el espacio está dado de baja).
+List<Widget Function()> _itemsDeClientes({
+  required List<PersonaDelEspacio> clientes,
+  required bool deBaja,
+  required List<PersonaDelEspacio> bajas,
+  required bool bajasConError,
+  required bool mostrarBajas,
+  required ValueChanged<bool> alCambiarMostrarBajas,
+  required Map<String, int> saldosDeBajas,
+  required Set<String> reactivando,
+  required ValueChanged<PersonaDelEspacio>? alReactivar,
+  required VoidCallback alReintentarBajas,
+  required DateTime ahora,
+}) {
+  final avisoBaja = deBaja
+      ? const Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: AvisoAlta(
+            color: ColoresAlta.ambarBorde,
+            colorInsignia: ColoresAlta.ambar,
+            glyph: '!',
+            texto: TextosPersonas.espacioDeBaja,
           ),
-      if (bajasConError) () => _ErrorDeBajas(alReintentar: alReintentarBajas),
-      () => const _NotaDePrivacidad(),
-    ];
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16),
-      itemCount: items.length,
-      itemBuilder: (context, i) => items[i](),
-    );
-  }
+        )
+      : null;
+  return [
+    if (avisoBaja != null) () => avisoBaja,
+    if (clientes.isEmpty) () => const _SinClientes(),
+    for (final cliente in clientes) () => _FilaCliente(cliente: cliente),
+    if (bajas.isNotEmpty)
+      () => _MostrarBajas(valor: mostrarBajas, alCambiar: alCambiarMostrarBajas),
+    if (bajas.isNotEmpty && mostrarBajas)
+      for (final baja in bajas)
+        () => _FilaBaja(
+          baja: baja,
+          saldoCentavos: saldosDeBajas[baja.persona.id],
+          ahora: ahora,
+          reactivando: reactivando.contains(baja.persona.id),
+          alReactivar: alReactivar == null ? null : () => alReactivar(baja),
+        ),
+    if (bajasConError) () => _ErrorDeBajas(alReintentar: alReintentarBajas),
+    () => const _NotaDePrivacidad(),
+  ];
 }
 
 /// «Mostrar bajas» (canvas 32D·04): el interruptor que muestra o esconde a las personas dadas de baja.
@@ -819,7 +789,7 @@ class _ErrorDeLectura extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(20),
       child: AvisoAlta(
         color: ColoresAlta.rojo,
