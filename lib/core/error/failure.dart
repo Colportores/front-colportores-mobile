@@ -966,3 +966,56 @@ final class FailureCobroNoGuardado extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// El ticket de tarjeta no se pudo guardar en el teléfono (HU-COB-007). No se registró nada: se puede
+/// reintentar. El texto es para confirmar (el canvas no dibuja este caso).
+final class FailureTicketNoGuardado extends Failure {
+  const FailureTicketNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el ticket. No se registró nada: probá de nuevo.',
+        codigo: 'TICKET_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// Falta o está mal un dato del ticket (monto, fecha, número de autorización o tipo de tarjeta): se le
+/// pide a la colportora que lo complete **antes de subir** (HU-COB-007, «Edge: falta el número de
+/// autorización»). Los datos concretos viajan en [datos].
+final class FailureTicketDatos extends Failure {
+  const FailureTicketDatos(this.datos)
+    : super(
+        mensaje: 'Completá los datos del ticket antes de subirlo.',
+        codigo: 'TICKET_DATOS_INCOMPLETOS',
+      );
+
+  /// Los nombres de los datos con problema (`monto`, `fecha`, `numero_autorizacion`,
+  /// `tipo_de_tarjeta`).
+  final Set<String> datos;
+
+  @override
+  List<Object?> get props => [...super.props, datos];
+}
+
+/// El cobro del ticket ya no está en el teléfono, o no es un cobro con tarjeta: no hay a qué atarlo.
+final class FailureTicketSinCobro extends Failure {
+  const FailureTicketSinCobro()
+    : super(
+        mensaje: 'No encontramos el cobro de este ticket. Volvé al mapa y probá de nuevo.',
+        codigo: 'TICKET_SIN_COBRO',
+      );
+}
+
+/// La foto no se pudo preparar: no se pudo leer, o ni con la menor calidad queda dentro de los 2 MiB que
+/// acepta el servidor. Se pide otra foto.
+final class FailureFotoDeTicketIlegible extends Failure {
+  const FailureFotoDeTicketIlegible()
+    : super(
+        mensaje: 'No pudimos preparar esa foto. Sacá otra, con el ticket entero y bien iluminado.',
+        codigo: 'TICKET_FOTO_ILEGIBLE',
+      );
+}
