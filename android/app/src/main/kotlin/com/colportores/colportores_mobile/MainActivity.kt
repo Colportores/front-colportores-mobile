@@ -87,6 +87,13 @@ class MainActivity : FlutterActivity() {
         if (requestCode != CODIGO_NOTIFICACIONES) return
         val pedido = pedidoNotificaciones ?: return
         pedidoNotificaciones = null
+        if (grantResults.isEmpty()) {
+            // El sistema canceló el pedido sin que la persona contestara (por ejemplo, al girar la
+            // pantalla o cambiar de app con el diálogo abierto): no es un «no». La app lo cuenta como
+            // falla recuperable y ofrece volver a intentarlo.
+            pedido.error("NOTIFICACIONES", "Interrumpido", null)
+            return
+        }
         // El permiso concedido puede convivir con las notificaciones apagadas de la app en los ajustes:
         // lo que vale es lo que el sistema dice ahora.
         pedido.success(notificacionesActivadas())

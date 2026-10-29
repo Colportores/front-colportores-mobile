@@ -104,7 +104,7 @@ enum ClaveSegura {
   /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
   permisoNotificaciones('notifications_permission'),
 
-  /// Marca de que la persona cerró con la ✕ el aviso «Notificaciones desactivadas» de Hoy (24A·03):
+  /// Marca de que la persona cerró con la ✕ el aviso «Las notificaciones están apagadas» de Hoy (24A·03):
   /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
   avisoNotificacionesCerrado('notifications_banner_closed'),
 

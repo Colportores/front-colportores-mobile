@@ -22,6 +22,10 @@ enum EstadoSistemaNotificaciones {
 /// Puerto en Dart puro. La implementación de producción es [PermisoNotificacionesCanal], sobre un
 /// canal nativo chico y propio (como `SeguridadDispositivoCanal`); la de los tests, un fake. Pedir el
 /// permiso no necesita Firebase: el registro del teléfono para las push (HU-NOT-003) llega en el S11.
+///
+/// Es la ÚNICA entrada para pedir y leer este permiso (decisión del orquestador, 26/10, P1): los
+/// recordatorios locales (`flutter_local_notifications`) y las push del S11 lo usan y no llaman a
+/// los métodos de permiso de su plugin, para que nunca haya dos caminos para lo mismo.
 /// Toda falla de la plataforma sale como [PermisoNotificacionesException].
 abstract interface class PermisoNotificacionesSistema {
   /// Cómo están las notificaciones ahora. No le pide nada a la persona.
