@@ -380,44 +380,40 @@ void main() {
   });
 
   group('datos límite', () {
-    test(
-      '2000 productos con precio se leen y se resuelven en pocos segundos',
-      () async {
-        await bajar({
-          'producto': [
-            for (var i = 0; i < 2000; i++) _producto('pro-$i', 'Libro número $i', codigo: 'COD-$i'),
-          ],
-          'precio_general': [
-            for (var i = 0; i < 2000; i++) _general('pg-$i', 1000 + i, producto: 'pro-$i'),
-          ],
-          'precio_por_ciudad': [
-            for (var i = 0; i < 1000; i++)
-              _excepcion('ppc-$i', _rivera, 500 + i, producto: 'pro-$i'),
-          ],
-        });
-        final reloj = Stopwatch()..start();
+    test('2000 productos con precio se leen y se resuelven en pocos segundos', () async {
+      await bajar({
+        'producto': [
+          for (var i = 0; i < 2000; i++) _producto('pro-$i', 'Libro número $i', codigo: 'COD-$i'),
+        ],
+        'precio_general': [
+          for (var i = 0; i < 2000; i++) _general('pg-$i', 1000 + i, producto: 'pro-$i'),
+        ],
+        'precio_por_ciudad': [
+          for (var i = 0; i < 1000; i++) _excepcion('ppc-$i', _rivera, 500 + i, producto: 'pro-$i'),
+        ],
+      });
+      final reloj = Stopwatch()..start();
 
-        final items = ResolvedorDePrecios.resolver(await datos.leer(_rivera), dia: _hoy);
+      final items = ResolvedorDePrecios.resolver(await datos.leer(_rivera), dia: _hoy);
 
-        reloj.stop();
-        expect(items, hasLength(2000));
-        expect(
-          items
-              .whereType<PrecioDeProducto>()
-              .firstWhere((p) => p.nombre == 'Libro número 5')
-              .centavos,
-          505,
-        );
-        expect(
-          items
-              .whereType<PrecioDeProducto>()
-              .firstWhere((p) => p.nombre == 'Libro número 1500')
-              .centavos,
-          2500,
-        );
-        expect(reloj.elapsed, lessThan(const Duration(seconds: 5)));
-      },
-    );
+      reloj.stop();
+      expect(items, hasLength(2000));
+      expect(
+        items
+            .whereType<PrecioDeProducto>()
+            .firstWhere((p) => p.nombre == 'Libro número 5')
+            .centavos,
+        505,
+      );
+      expect(
+        items
+            .whereType<PrecioDeProducto>()
+            .firstWhere((p) => p.nombre == 'Libro número 1500')
+            .centavos,
+        2500,
+      );
+      expect(reloj.elapsed, lessThan(const Duration(seconds: 5)));
+    });
 
     test(
       'nombres y códigos con emoji, RTL, comillas, saltos de línea y 5000 caracteres llegan tal cual',
