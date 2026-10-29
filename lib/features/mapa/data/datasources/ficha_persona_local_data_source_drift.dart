@@ -30,6 +30,9 @@ final class FichaPersonaLocalDataSourceDrift {
       readsFrom: {
         _db.personas,
         _db.espacioPersonas,
+        // El lugar (baja o reactivación del depto o de la ubicación) cambia si la ficha es de solo lectura.
+        _db.espacios,
+        _db.ubicaciones,
         _db.visitas,
         _db.ventas,
         _db.ventaItems,

@@ -249,6 +249,38 @@ void main() {
     expect(lecturas.last, 1);
   });
 
+  test(
+    'dar de baja o reactivar el depto o la ubicación vuelve a emitir (la ficha cambia de solo lectura)',
+    () async {
+      await sembrarPersona();
+      var lecturas = 0;
+      final sub = fuente.observar('per-1').listen((_) => lecturas++);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      final base = lecturas;
+
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('esp-1'))).write(EspaciosCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+      expect(lecturas, greaterThan(base), reason: 'baja del depto');
+
+      final trasBaja = lecturas;
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('esp-1'))).write(const EspaciosCompanion(deletedAt: Value(null)));
+      await pumpEventQueue();
+      expect(lecturas, greaterThan(trasBaja), reason: 'reactivar el depto');
+
+      final trasReactivar = lecturas;
+      await (db.update(
+        db.ubicaciones,
+      )..where((u) => u.id.equals('ub-1'))).write(UbicacionesCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+      expect(lecturas, greaterThan(trasReactivar), reason: 'baja de la ubicación');
+    },
+  );
+
   group('registrarLlamada', () {
     test('deja click_to_call con el id de la persona y sin el número', () async {
       await sembrarPersona();
