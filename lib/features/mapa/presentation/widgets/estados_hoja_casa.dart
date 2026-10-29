@@ -144,6 +144,7 @@ class AvisoHojaCasa extends StatefulWidget {
     required this.texto,
     this.etiquetaDeLaAccion,
     this.alAccionar,
+    this.accionAlLado = false,
   });
 
   /// E·02 · «No pudimos leer esta casa en tu teléfono.» con «Reintentar».
@@ -167,6 +168,7 @@ class AvisoHojaCasa extends StatefulWidget {
     texto: TextosAgenda.errorLectura,
     etiquetaDeLaAccion: TextosAgenda.reintentar,
     alAccionar: alReintentar,
+    accionAlLado: true,
   );
 
   /// E·04 · «Esta casa está dada de baja: podés ver lo que pasó, pero no registrar nada.» con
@@ -195,6 +197,11 @@ class AvisoHojaCasa extends StatefulWidget {
   /// `null`: el aviso no tiene acción.
   final String? etiquetaDeLaAccion;
   final FutureOr<void> Function()? alAccionar;
+
+  /// La acción va a la derecha del texto y no debajo: el aviso mide lo que el botón (48 dp) y entra
+  /// bajo el título en la hoja a un tercio de la pantalla (360×640). Con el texto grande (desde 1,3×)
+  /// no queda ancho para las dos cosas y va debajo, como los demás avisos.
+  final bool accionAlLado;
 
   @override
   State<AvisoHojaCasa> createState() => _AvisoHojaCasaState();
@@ -225,6 +232,33 @@ class _AvisoHojaCasaState extends State<AvisoHojaCasa> {
     if (widget.texto.isEmpty) return const SizedBox.shrink();
     final tono = widget.tono;
     final etiqueta = widget.etiquetaDeLaAccion;
+    final texto = Text(
+      widget.texto,
+      style: const TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 13.5,
+        height: 1.45,
+        color: Color(0xFF0E1A2B),
+      ),
+    );
+    final accion = etiqueta == null
+        ? null
+        : TextButton(
+            key: ClavesEstadosHojaCasa.accionDelAviso,
+            onPressed: _enCurso ? null : _accionar,
+            style: TextButton.styleFrom(
+              foregroundColor: ColoresAlta.azul,
+              minimumSize: const Size(48, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              tapTargetSize: MaterialTapTargetSize.padded,
+              textStyle: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: Text(etiqueta),
+          );
     return Semantics(
       container: true,
       liveRegion: true,
@@ -236,50 +270,35 @@ class _AvisoHojaCasaState extends State<AvisoHojaCasa> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: tono.color, width: 1.5),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InsigniaCirculo(color: tono.color, glyph: tono.glifo),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+        child: widget.accionAlLado && accion != null && !textoGrande(context)
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    widget.texto,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13.5,
-                      height: 1.45,
-                      color: Color(0xFF0E1A2B),
+                  InsigniaCirculo(color: tono.color, glyph: tono.glifo),
+                  const SizedBox(width: 12),
+                  Expanded(child: texto),
+                  const SizedBox(width: 4),
+                  accion,
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InsigniaCirculo(color: tono.color, glyph: tono.glifo),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        texto,
+                        if (accion != null)
+                          Align(alignment: AlignmentDirectional.centerStart, child: accion),
+                      ],
                     ),
                   ),
-                  if (etiqueta != null)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: TextButton(
-                        key: ClavesEstadosHojaCasa.accionDelAviso,
-                        onPressed: _enCurso ? null : _accionar,
-                        style: TextButton.styleFrom(
-                          foregroundColor: ColoresAlta.azul,
-                          minimumSize: const Size(48, 48),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          tapTargetSize: MaterialTapTargetSize.padded,
-                          textStyle: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        child: Text(etiqueta),
-                      ),
-                    ),
                 ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

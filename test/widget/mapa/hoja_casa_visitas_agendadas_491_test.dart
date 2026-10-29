@@ -9,11 +9,14 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_con_quien.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/visitas_agendadas_de_la_casa.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +27,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/agenda_items_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart' show ahoraLista;
+import '../../helpers/persona_falsos.dart';
+
+final _ana = clienteDePersonas('p-ana', 'Ana', apellido: 'Gómez');
 
 /// Jueves 8/10/2026 y sábado 10/10/2026 (la hoja se monta el martes 6/10).
 final _jueves = DateTime(2026, 10, 8, 14, 30);
@@ -51,7 +57,8 @@ ItemAgenda _cobranza(String id, DateTime cuando, {String ub = 'u-1'}) => itemAge
 final class _Montaje {
   final detalles = <String>[];
   final visitas = <ContextoDeVisita>[];
-  var agendar = 0;
+  final citas = <ContextoDeCita>[];
+  int get agendar => citas.length;
   final cierres = <int>[];
 }
 
@@ -64,7 +71,8 @@ Future<_Montaje> _montar(
   bool conDetalle = true,
   bool conAgendar = true,
   FutureOr<Object?> Function(String agendaId)? detalle,
-  FutureOr<Object?> Function()? agendar,
+  FutureOr<Object?> Function(ContextoDeCita)? agendar,
+  ContextoDeLaCasa? contexto,
   double escala = 1,
   Size tamano = const Size(390, 844),
 }) async {
@@ -73,7 +81,13 @@ Future<_Montaje> _montar(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final overrides = <Override>[
-    ...overridesHojaCasa(registrarVisita: m.visitas.add, agendas: repo),
+    ...overridesHojaCasa(
+      registrarVisita: m.visitas.add,
+      agendas: repo,
+      lectura: contexto == null ? null : (_) => Stream.value(contexto),
+      // El repositorio de personas dice lo mismo que el contexto de la hoja.
+      personas: PersonaRepositorioFalso()..sembrar(contexto?.personas ?? const []),
+    ),
     abrirDetalleDeAgendaProvider.overrideWithValue(
       conDetalle
           ? (id) async {
@@ -82,11 +96,12 @@ Future<_Montaje> _montar(
             }
           : null,
     ),
-    agendarDesdeLaAgendaProvider.overrideWithValue(
+    // «+ Agendar» abre «Agendar visita» con la casa puesta: el mismo destino de «Programar entrevista».
+    programarEntrevistaDesdeLaCasaProvider.overrideWithValue(
       conAgendar
-          ? () async {
-              m.agendar++;
-              return agendar?.call();
+          ? (cita) async {
+              m.citas.add(cita);
+              return agendar?.call(cita);
             }
           : null,
     ),
@@ -246,12 +261,11 @@ void main() {
       expect(_registrar, findsNothing);
     });
 
-    _probar('sin colportor con la sesión no se lee la agenda', (tester) async {
+    _probar('sin colportor con la sesión no se lee la agenda de la casa', (tester) async {
       final repo = ConsultaAgendaFalsa([_entrevista('ent', _jueves)]);
       await _montar(tester, repo, colportorId: null);
 
       expect(_seccion, findsNothing);
-      expect(_agendar, findsNothing);
       expect(repo.pedidosDeLaCasa, isEmpty);
     });
 
@@ -262,12 +276,19 @@ void main() {
       expect(repo.pedidosDeLaCasa, [(colportorId: 'col-1', ubicacionId: 'u-1')]);
     });
 
-    _probar('con la hoja arriba también está, debajo de «Registrar visita»', (tester) async {
+    _probar('con la hoja arriba va en el mismo orden que el resumen: lista, botones y pestañas', (
+      tester,
+    ) async {
       await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]), arriba: true);
 
       expect(_filas, findsOneWidget);
-      expect(tester.getTopLeft(_registrar).dy, lessThan(tester.getTopLeft(_filas).dy));
-      expect(find.byKey(ClavesHojaCasa.pestanas), findsOneWidget);
+      final lista = tester.getTopLeft(_filas).dy;
+      final registrar = tester.getTopLeft(_registrar).dy;
+      final agendar = tester.getTopLeft(_agendar).dy;
+      final pestanas = tester.getTopLeft(find.byKey(ClavesHojaCasa.pestanas)).dy;
+      expect(lista, lessThan(registrar));
+      expect(registrar, lessThan(agendar));
+      expect(agendar, lessThan(pestanas));
     });
 
     _probar('una visita cuya hora ya pasó lo dice', (tester) async {
@@ -404,18 +425,128 @@ void main() {
   });
 
   group('«+ Agendar»', () {
-    _probar('abre el formulario de agendar', (tester) async {
+    _probar('abre «Agendar visita» con la casa y su espacio ya puestos', (tester) async {
       final m = await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]));
 
       await tester.tap(_agendar);
       await tester.pump();
 
-      expect(m.agendar, 1);
+      expect(m.citas, [
+        (ubicacionId: 'u-1', espacioId: 'esp-1', espacioPersonaId: null, personaId: null),
+      ]);
     });
 
-    _probar('sin destino (todavía no llegó #408) no se muestra, como en la pestaña', (
-      tester,
-    ) async {
+    _probar('en un edificio con el depto elegido lleva ese espacio', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+        contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pump();
+
+      expect(m.citas.single.espacioId, 'esp-3B');
+      expect(m.citas.single.ubicacionId, 'u-1');
+    });
+
+    _probar(
+      'en un edificio sin depto elegido se ve y al tocarlo avisa que el depto se elige antes',
+      (tester) async {
+        final m = await _montar(
+          tester,
+          ConsultaAgendaFalsa(),
+          item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+          contexto: const ContextoDeLaCasa(personas: []),
+        );
+
+        expect(_agendar, findsOneWidget);
+        await tester.tap(_agendar);
+        await tester.pump();
+
+        expect(find.text(TextosRegistrarVisita.edificioSinDepto), findsOneWidget);
+        expect(m.citas, isEmpty);
+      },
+    );
+
+    _probar('con una sola persona la cita va con ella, sin preguntar', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.espacioPersonaId, pedroGomez.vinculo.id);
+      expect(m.citas.single.personaId, pedroGomez.persona.id);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('con varias personas pregunta con quién antes de abrir el formulario', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+      expect(m.citas, isEmpty);
+      expect(find.byType(HojaConQuien), findsOneWidget);
+
+      await tester.tap(find.textContaining('Ana Gómez').first);
+      await tester.pump();
+      await tester.tap(find.text('Seguir'));
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.personaId, _ana.persona.id);
+    });
+
+    _probar('con varias personas, «Volver» no abre el formulario', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Volver'));
+      await tester.pumpAndSettle();
+
+      expect(m.citas, isEmpty);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('sin personas la cita queda sin persona y sin preguntar', (tester) async {
+      final m = await _montar(tester, ConsultaAgendaFalsa());
+
+      await tester.tap(_agendar);
+      await tester.pumpAndSettle();
+
+      expect(m.citas.single.espacioPersonaId, isNull);
+      expect(m.citas.single.personaId, isNull);
+      expect(find.byType(HojaConQuien), findsNothing);
+    });
+
+    _probar('un doble toque con varias personas abre una sola pregunta', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa(),
+        contexto: ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez, _ana]),
+      );
+
+      await tester.tap(_agendar);
+      await tester.tap(_agendar, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HojaConQuien), findsOneWidget);
+    });
+
+    _probar('sin destino no se muestra, como «Registrar visita»', (tester) async {
       await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]), conAgendar: false);
 
       expect(_agendar, findsNothing);
@@ -426,7 +557,7 @@ void main() {
       final m = await _montar(
         tester,
         ConsultaAgendaFalsa(),
-        agendar: () => Future<void>.delayed(const Duration(seconds: 1)),
+        agendar: (_) => Future<void>.delayed(const Duration(seconds: 1)),
       );
 
       await tester.tap(_agendar);
@@ -441,7 +572,7 @@ void main() {
       final m = await _montar(
         tester,
         ConsultaAgendaFalsa(),
-        agendar: () {
+        agendar: (_) {
           if (falla) throw StateError('no abre');
           return null;
         },
@@ -459,7 +590,7 @@ void main() {
 
     _probar('mientras se abre, «Registrar visita» no abre otro destino a la vez', (tester) async {
       final cierre = Completer<void>();
-      final m = await _montar(tester, ConsultaAgendaFalsa(), agendar: () => cierre.future);
+      final m = await _montar(tester, ConsultaAgendaFalsa(), agendar: (_) => cierre.future);
 
       await tester.tap(_agendar);
       await tester.pump();
@@ -484,6 +615,38 @@ void main() {
       expect(find.text('No pudimos leer tu agenda.'), findsOneWidget);
       expect(_registrar, findsOneWidget);
       expect(_seccion, findsNothing);
+    });
+
+    _probar(
+      'el aviso va arriba de la persona y se ve sin desplazar a 360×640, en el resumen y arriba',
+      (tester) async {
+        for (final arriba in [false, true]) {
+          final repo = ConsultaAgendaFalsa()..error = StateError('disco');
+          await _montar(tester, repo, arriba: arriba, tamano: const Size(360, 640));
+
+          final aviso = find.byKey(ClavesEstadosHojaCasa.avisoErrorAlLeerAgendas);
+          expect(aviso, findsOneWidget);
+          final caja = tester.getRect(aviso);
+          expect(caja.top, greaterThanOrEqualTo(0));
+          expect(caja.bottom, lessThanOrEqualTo(640));
+          if (!arriba) {
+            expect(caja.top, lessThan(tester.getTopLeft(find.byKey(ClavesHojaCasa.persona)).dy));
+          }
+          expect(find.text('Reintentar').hitTestable(), findsOneWidget);
+        }
+      },
+    );
+
+    _probar('se anuncia una sola vez, como mensaje de estado (región viva del propio aviso)', (
+      tester,
+    ) async {
+      await _montar(tester, ConsultaAgendaFalsa()..error = StateError('disco'));
+
+      final regiones = find.descendant(
+        of: find.byKey(ClavesEstadosHojaCasa.avisoErrorAlLeerAgendas),
+        matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.liveRegion == true),
+      );
+      expect(regiones, findsOneWidget);
     });
 
     _probar('«Reintentar» vuelve a leer y, si ahora anda, muestra la lista', (tester) async {

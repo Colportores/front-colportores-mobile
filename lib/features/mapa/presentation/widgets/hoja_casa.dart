@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
-import '../../../agenda/presentation/providers/consulta_agenda_providers.dart'
-    show agendarDesdeLaAgendaProvider;
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
     show frenaPorCuentaRestringida;
 import '../../domain/entities/contexto_de_la_casa.dart';
+import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_hoja_casa.dart';
@@ -17,7 +16,9 @@ import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
 import '../providers/hoja_casa_providers.dart';
 import '../textos_personas.dart' show TextosPersonas;
+import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
+import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import 'piezas_hoja_casa.dart';
@@ -49,11 +50,17 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// la pestaña no se ofrece. En un edificio sin depto elegido no hay espacio ni personas: se ve el
 /// resumen.
 ///
-/// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —en la hoja arriba, debajo
-/// de «Registrar visita»— va la lista de las visitas `PROGRAMADA` de la casa ([VisitasAgendadasDeLaCasa]);
-/// tocar una abre su detalle. Debajo de «Registrar visita», «+ Agendar» ([agendarDesdeLaAgendaProvider]):
-/// sin destino no se dibuja, igual que en la pestaña Agenda. Con la casa de baja no hay ni lista ni
-/// «+ Agendar» (la agenda de una casa de baja está oculta).
+/// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —lo mismo en la hoja
+/// arriba, antes de las pestañas— va la lista de las visitas `PROGRAMADA` de la casa
+/// ([VisitasAgendadasDeLaCasa]); si no se puede leer, el aviso con «Reintentar»
+/// ([AvisoErrorVisitasAgendadas]) va arriba de la persona, bajo el subtítulo;
+/// tocar una abre su detalle. Debajo de «Registrar visita», «+ Agendar»
+/// ([programarEntrevistaDesdeLaCasaProvider]): abre «Agendar visita» con la casa y su espacio ya
+/// puestos y pregunta con quién es la cita como «Programar entrevista» (una persona, va con ella;
+/// varias, el selector de R·02; ninguna, «Sin persona»). En un edificio sin depto elegido se dibuja y,
+/// al tocarlo, avisa que el depto se elige antes (decisiones del 29/10, #491). Sin destino no se
+/// dibuja. Con la casa de baja no hay ni lista ni «+ Agendar» (la agenda de una casa de baja está
+/// oculta).
 ///
 /// Los dos botones dependen de pantallas que se enganchan por [registrarVisitaDesdeLaCasaProvider] y
 /// [cobrarDesdeLaCasaProvider]: sin destino no se dibujan (HU-UBI-003: «los botones no se muestran
@@ -163,7 +170,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
               alReactivar: widget.alReactivar,
               ahora: widget.ahora,
               alRegistrarVisita: _registrarVisita(datos),
-              alAgendar: _agendar(),
+              alAgendar: _agendar(datos),
               alCobrar: _cobrar(datos),
               alAbrirFicha: _abrirFicha(datos),
               alAgregarPersona: _agregarPersona(datos),
@@ -182,7 +189,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
               ahora: widget.ahora,
               colportorId: widget.colportorId,
               alRegistrarVisita: _registrarVisita(datos),
-              alAgendar: _agendar(),
+              alAgendar: _agendar(datos),
               alCobrar: _cobrar(datos),
             ),
       error: (_, _) => AvisoHojaCasa.errorAlLeer(
@@ -238,13 +245,39 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
     }, TextosHojaCasa.noPudimosAbrirVisita);
   }
 
-  /// Lo que hace «+ Agendar», o `null` si no se ofrece: sin destino enganchado (#408), con la casa de
-  /// baja o sin saber quién es el colportor.
-  VoidCallback? _agendar() {
-    final destino = ref.watch(agendarDesdeLaAgendaProvider);
-    if (destino == null || widget.item.esBaja || widget.colportorId == null) return null;
+  /// Lo que hace «+ Agendar», o `null` si no se ofrece: sin destino enganchado, con la casa de baja o
+  /// sin saber quién es el colportor. Abre «Agendar visita» con la casa y su espacio ya puestos y, como
+  /// «Programar entrevista» de «¿Qué pasó?», pregunta con quién es la cita (`mostrarHojaConQuienParaProgramar`):
+  /// con **una** sola persona va con ella; con **varias**, el selector de R·02; sin personas, queda
+  /// «Sin persona». En un edificio sin depto elegido (todavía no hay espacio) el botón se ve y, al
+  /// tocarlo, avisa que el depto se elige antes, como «Registrar visita» (decisiones del 29/10, #491).
+  VoidCallback? _agendar(ContextoDeLaCasa contexto) {
+    final destino = ref.watch(programarEntrevistaDesdeLaCasaProvider);
+    final colportorId = widget.colportorId;
+    if (destino == null || widget.item.esBaja || colportorId == null) return null;
     return () => _correr(() async {
-      await destino();
+      final espacioId = contexto.espacioId;
+      if (espacioId == null) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDepto)));
+        return;
+      }
+      final eleccion = await mostrarHojaConQuienParaProgramar(
+        context,
+        espacioId: espacioId,
+        colportorId: colportorId,
+      );
+      if (eleccion == null || !mounted) return;
+      await destino((
+        ubicacionId: widget.item.ubicacion.id,
+        espacioId: espacioId,
+        espacioPersonaId: eleccion.espacioPersonaId,
+        personaId: switch (eleccion) {
+          CitaConPersona(:final persona) => persona.personaId,
+          CitaSinPersona() => null,
+        },
+      ));
     }, TextosAgenda.noPudimosAbrir);
   }
 
@@ -410,6 +443,8 @@ class _Resumen extends StatelessWidget {
       children: [
         if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
         if (persona != null)
           FilaPersonaDeLaCasa(
             persona: persona.persona,
@@ -500,17 +535,20 @@ class _Arriba extends ConsumerWidget {
       children: [
         if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
         if (falla != null)
           AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
-        if (alRegistrarVisita != null)
-          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
-        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
+        // El mismo orden que el resumen (23B·10): la lista, «Registrar visita» y «+ Agendar».
         if (colportorId != null && !item.esBaja)
           VisitasAgendadasDeLaCasa(
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
           ),
+        if (alRegistrarVisita != null)
+          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
         PestanasDeLaHoja(pestanas: disponibles, elegida: elegida, alElegir: alElegirPestana),
         switch (elegida) {
           PestanaHojaCasa.personas => PestanaPersonasDeLaCasa(

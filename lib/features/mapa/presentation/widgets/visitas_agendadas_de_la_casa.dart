@@ -27,7 +27,9 @@ abstract final class ClavesVisitasAgendadas {
 ///
 /// - Sin visitas agendadas —o mientras lee— no ocupa lugar. Con la casa o el depto dados de baja la
 ///   agenda está oculta (HU-VIS-002, «Agenda baja»), así que tampoco se dibuja.
-/// - Si no se puede leer: «No pudimos leer tu agenda.» con «Reintentar».
+/// - Si no se puede leer, esta lista no dibuja nada: el aviso «No pudimos leer tu agenda.» con
+///   «Reintentar» es [AvisoErrorVisitasAgendadas], que la hoja pone arriba de la persona para que se
+///   vea sin desplazar (decisión del 29/10, QA #491 P1).
 /// - El detalle se abre de a uno ([abrirDetalleDeAgendaProvider]): un doble toque, o dos filas
 ///   seguidas, abren una sola vez; si falla, avisa y las filas vuelven a poder tocarse. **Sin destino**
 ///   las filas no se tocan y no llevan la flecha «›».
@@ -72,13 +74,9 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
     final leida = ref.watch(visitasAgendadasDeLaCasaProvider(clave));
     final detalle = ref.watch(abrirDetalleDeAgendaProvider);
 
-    // Un error que llega después de los primeros datos también se dice: la lista ya no se sabe al día.
-    if (leida.hasError) {
-      return AvisoHojaCasa.errorAlLeerAgendas(
-        alReintentar: () => ref.invalidate(visitasAgendadasDeLaCasaProvider(clave)),
-      );
-    }
-    final visitas = leida.value;
+    // Con un error (también el que llega después de los primeros datos) la lista no se dibuja: el
+    // aviso va aparte, arriba en la hoja.
+    final visitas = leida.hasError ? null : leida.value;
     if (visitas == null || visitas.isEmpty) return const SizedBox.shrink();
     return Column(
       key: ClavesVisitasAgendadas.seccion,
@@ -107,6 +105,34 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
             alTocar: detalle == null ? null : () => unawaited(_abrir(detalle, visita.agenda.id)),
           ),
       ],
+    );
+  }
+}
+
+/// El aviso «No pudimos leer tu agenda.» con «Reintentar» de «Visitas agendadas»: va arriba de la
+/// persona, bajo el subtítulo, para que se vea sin desplazar aunque la hoja esté a un tercio de la
+/// pantalla (con «Reintentar» al lado del texto, no debajo). Se anuncia una sola vez como mensaje de
+/// estado, región viva (WCAG 4.1.3). Sin error —o mientras lee—
+/// no ocupa lugar. Un error que llega después de los primeros datos también se dice: la lista ya no se
+/// sabe al día.
+class AvisoErrorVisitasAgendadas extends ConsumerWidget {
+  const AvisoErrorVisitasAgendadas({
+    super.key,
+    required this.colportorId,
+    required this.ubicacionId,
+  });
+
+  final String colportorId;
+  final String ubicacionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final clave = (colportorId: colportorId, ubicacionId: ubicacionId);
+    if (!ref.watch(visitasAgendadasDeLaCasaProvider(clave)).hasError) {
+      return const SizedBox.shrink();
+    }
+    return AvisoHojaCasa.errorAlLeerAgendas(
+      alReintentar: () => ref.invalidate(visitasAgendadasDeLaCasaProvider(clave)),
     );
   }
 }

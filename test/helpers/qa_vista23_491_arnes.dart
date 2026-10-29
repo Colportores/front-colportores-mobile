@@ -13,7 +13,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.d
 import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
-    show ContextoDeVisita;
+    show ContextoDeVisita, programarEntrevistaDesdeLaCasaProvider;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_mapa_ubicaciones.dart'
     show AlturaHoja;
@@ -26,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'agenda_items_falsos.dart';
 import 'hoja_casa_falsos.dart';
 import 'lista_ubicaciones_falsos.dart' show ahoraLista;
+import 'persona_falsos.dart' show PersonaRepositorioFalso;
 import 'qa_agenda_148_arnes.dart' show cargarFuentes, conCapturas, telefonoChico;
 
 export 'qa_agenda_148_arnes.dart'
@@ -236,7 +237,11 @@ Future<Montaje491> montar491(
     ProviderScope(
       key: UniqueKey(),
       overrides: [
-        ...overridesHojaCasa(registrarVisita: m.visitas.add, agendas: r),
+        ...overridesHojaCasa(
+          registrarVisita: m.visitas.add,
+          agendas: r,
+          personas: PersonaRepositorioFalso(),
+        ),
         abrirDetalleDeAgendaProvider.overrideWithValue(
           conDetalle && !sinDestinos
               ? (id) async {
@@ -245,9 +250,10 @@ Future<Montaje491> montar491(
                 }
               : null,
         ),
-        agendarDesdeLaAgendaProvider.overrideWithValue(
+        // «+ Agendar» abre «Agendar visita» con la casa puesta (decisión del 29/10, #491 P1).
+        programarEntrevistaDesdeLaCasaProvider.overrideWithValue(
           conAgendar && !sinDestinos
-              ? () async {
+              ? (cita) async {
                   m.agendar++;
                   return agendar?.call();
                 }
