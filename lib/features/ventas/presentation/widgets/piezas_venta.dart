@@ -927,7 +927,8 @@ class BotonDeVenta extends StatelessWidget {
                         strokeWidth: 2.5,
                         color: Colors.white,
                         // Sin texto al lado, la ruedita es todo lo que hay: el lector dice qué pasa.
-                        semanticsLabel: textoOcupado ?? TextosVenta.guardando,
+                        // Con texto al lado, ese texto ya lo dice: no se lee dos veces.
+                        semanticsLabel: textoOcupado == null ? TextosVenta.guardando : null,
                       ),
                     ),
                     if (textoOcupado != null) ...[

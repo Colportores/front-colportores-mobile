@@ -100,6 +100,9 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
   /// Una validación rechazada por el caso de uso se dice tal cual (reintentar igual no la arregla);
   /// cualquier otra falla es «No pudimos guardar… probá de nuevo».
   static String _textoDeLaFalla(Failure? falla) => switch (falla) {
+    // La persona ausente no se arregla editando lo cargado: se vuelve atrás y se la elige de nuevo.
+    FailureValidacion(:final campos) when campos.containsKey('persona') =>
+      TextosVenta.personaYaNoEsta,
     FailureValidacion(:final campos) when campos.isNotEmpty => TextosVenta.revisaLoCargado(
       campos.values.first,
     ),

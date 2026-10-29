@@ -781,6 +781,48 @@ void main() {
       expect(_habilitado(tester), isTrue);
     });
 
+    testWidgets('un detalle que ya trae punto final no lo duplica', (tester) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureValidacion(
+        campos: {'total': 'El total de la venta es demasiado grande.'},
+      );
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+
+      await tocar(tester, _cta);
+
+      expect(
+        find.text(
+          'El total de la venta es demasiado grande. Revisá lo que cargaste y probá de nuevo.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('la persona que ya no está dice que hay que volver a elegirla', (tester) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureValidacion(
+        campos: {'persona': 'La persona de esta venta ya no está en tu teléfono.'},
+      );
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+
+      await tocar(tester, _cta);
+
+      expect(
+        find.text(
+          'La persona de esta venta ya no está en tu teléfono. '
+          'Volvé atrás y elegí a la persona de nuevo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('..'), findsNothing);
+      expect(find.textContaining('Revisá lo que cargaste'), findsNothing);
+      expect(_habilitado(tester), isTrue);
+    });
+
     testWidgets('el aviso se va apenas la colportora toca algo', (tester) async {
       final e = EntornoDeVenta();
       e.ventas.respuesta = const FailureVentaNoGuardada();

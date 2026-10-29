@@ -86,8 +86,15 @@ abstract final class TextosVenta {
 
   /// El aviso cuando la venta no se guardó porque algo cargado no es válido (reintentar sin cambiar
   /// nada no lo arregla): dice qué es y qué hacer.
-  static String revisaLoCargado(String detalle) =>
-      '$detalle. Revisá lo que cargaste y probá de nuevo.';
+  static String revisaLoCargado(String detalle) {
+    final sinPunto = detalle.trimRight().replaceFirst(RegExp(r'\.+$'), '');
+    return '$sinPunto. Revisá lo que cargaste y probá de nuevo.';
+  }
+
+  /// Cuando la persona de la venta ya no está en el teléfono: editar lo cargado no lo arregla, hay
+  /// que volver y elegirla de nuevo.
+  static const personaYaNoEsta =
+      'La persona de esta venta ya no está en tu teléfono. Volvé atrás y elegí a la persona de nuevo.';
 
   static String ubicacion(String ciudad) => '◉ Precios de $ciudad, según la casa del cliente.';
 
