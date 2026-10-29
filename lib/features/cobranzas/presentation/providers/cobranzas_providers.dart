@@ -7,7 +7,10 @@ import '../../../mapa/domain/services/saldos_de_personas.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
 import '../../data/repositories/cobranza_repository_impl.dart';
+import '../../data/repositories/saldo_pendiente_repository_impl.dart';
+import '../../domain/entities/venta_con_saldo.dart';
 import '../../domain/repositories/cobranza_repository.dart';
+import '../../domain/repositories/saldo_pendiente_repository.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
 
 // Cableado de los cobros (BACK-HU-COB-001, #436). Presentation conoce domain; data se inyecta acá.
@@ -56,3 +59,43 @@ final class SaldosDePersonasLocal implements SaldosDePersonas {
   Future<Map<String, int>> saldosPendientes(Iterable<String> personaIds) =>
       _local.saldosPorPersona(personaIds);
 }
+
+// Saldo pendiente reactivo (HU-COB-005): lo que se debe por venta, por persona, por ubicación y en
+// total, al día solo después de cada cobro.
+
+/// Sin reintentos: un `Stream` que falla (la base no se pudo leer) deja el error a la vista en vez de
+/// quedarse en «cargando» (Riverpod 3 reintenta 10 veces).
+Duration? _sinReintentos(int intento, Object error) => null;
+
+/// De dónde sale el saldo: las tablas `venta` y `cobranza` de la DB local. Sin DB abierta, sus
+/// `Stream` fallan con `FailureSaldoNoDisponible`.
+final saldoPendienteRepositoryProvider = Provider<SaldoPendienteRepository>((ref) {
+  if (ref.watch(dbLocalProvider) == null) return const SaldoPendienteSinBase();
+  return SaldoPendienteRepositoryImpl(ref.watch(cobranzaLocalProvider));
+});
+
+/// La venta con lo cobrado y lo que debe; `null` si no está o se dio de baja.
+final saldoDeLaVentaProvider = StreamProvider.autoDispose.family<VentaConSaldo?, String>(
+  (ref, ventaId) => ref.watch(saldoPendienteRepositoryProvider).observarVenta(ventaId),
+  retry: _sinReintentos,
+);
+
+/// Lo que debe la persona (centavos), sumando sus ventas vivas.
+final saldoDeLaPersonaProvider = StreamProvider.autoDispose.family<int, String>(
+  (ref, personaId) => ref.watch(saldoPendienteRepositoryProvider).observarDePersona(personaId),
+  retry: _sinReintentos,
+);
+
+/// Lo que se debe en la ubicación (centavos), sumando las ventas de las personas de todos sus
+/// espacios.
+final saldoDeLaUbicacionProvider = StreamProvider.autoDispose.family<int, String>(
+  (ref, ubicacionId) =>
+      ref.watch(saldoPendienteRepositoryProvider).observarDeUbicacion(ubicacionId),
+  retry: _sinReintentos,
+);
+
+/// Lo que le deben al colportor (centavos) en total, sumando todas sus ventas vivas.
+final saldoTotalDelColportorProvider = StreamProvider.autoDispose.family<int, String>(
+  (ref, colportorId) => ref.watch(saldoPendienteRepositoryProvider).observarTotal(colportorId),
+  retry: _sinReintentos,
+);

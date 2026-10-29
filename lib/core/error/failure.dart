@@ -938,6 +938,19 @@ final class FailureCobroDatoDelMedioInvalido extends Failure {
       );
 }
 
+/// No se pudo calcular el saldo pendiente (HU-COB-005): la base local no se pudo leer. Es **otra cosa**
+/// que «no debe nada»: nadie muestra «$ 0» ni «sin saldo» ante esta falla, y los cobros y las ventas
+/// siguen guardados. Se puede reintentar. El texto es para confirmar (el canvas no dibuja este caso).
+final class FailureSaldoNoDisponible extends Failure {
+  const FailureSaldoNoDisponible()
+    : super(
+        mensaje:
+            'No pudimos calcular lo que te deben. Tus ventas y cobros siguen guardados: '
+            'cerrá y abrí la app para volver a intentar.',
+        codigo: 'COBRO_SALDO_NO_DISPONIBLE',
+      );
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {
