@@ -1149,5 +1149,84 @@ void main() {
       expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
       expect(find.textContaining('otros teléfonos'), findsNothing);
     });
+
+    // QA de #556 (29/10), P2: A varada pasado el tope, la persona corrige y guarda B.
+    testWidgets('A varada y B que entra después: la contraseña final es B, nunca la A tardía', (
+      tester,
+    ) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'ClaveAaaa1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 16));
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+
+      await _completar(tester, 'ClaveBbbb1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+      expect(_k('guardando'), findsOneWidget, reason: 'B espera a A, pero se ve que guarda');
+      expect(_recuperacion.actualizaciones, isEmpty);
+
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+
+      expect(_recuperacion.actualizaciones, ['ClaveAaaa1', 'ClaveBbbb1']);
+      expect(_recuperacion.passwordActual, 'ClaveBbbb1');
+      expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+    });
+
+    testWidgets('el éxito con otras sesiones pendientes pasa las guías en 412x915 con texto 2.0', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(412, 915), texto: 2.0);
+      final handle = tester.ensureSemantics();
+      try {
+        _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+        expect(
+          find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+          findsOneWidget,
+        );
+        await _guias(tester);
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('captura del éxito con otras sesiones pendientes (texto $escala)', (
+        tester,
+      ) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        await tester.runAsync(() async {
+          for (final f in ['Inter', 'SourceSerif4', 'JetBrainsMono']) {
+            final bytes = File('assets/fonts/$f.ttf').readAsBytesSync();
+            final c = FontLoader(f)..addFont(Future.value(ByteData.view(bytes.buffer)));
+            await c.load();
+          }
+        });
+        _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+        await tester.runAsync(() async {
+          final render = tester.renderObject<RenderRepaintBoundary>(
+            find.byType(RepaintBoundary).first,
+          );
+          final img = await render.toImage();
+          final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
+          final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
+          File(
+            '${dir.path}/qa556_vista15_otras_pendientes_${escala.toInt()}.png',
+          ).writeAsBytesSync(bytes.buffer.asUint8List());
+        });
+      }, skip: !capturar);
+    }
   });
 }
