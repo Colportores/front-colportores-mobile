@@ -17,6 +17,7 @@ import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
+import '../../domain/usecases/cerrar_otras_sesiones_pendientes_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
@@ -268,7 +269,7 @@ class SesionNotifier extends _$SesionNotifier {
         ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
-        _cerrarOtrasSesionesPendientes();
+        _cerrarOtrasSesionesPendientes(sesion.usuarioId);
         return null;
       },
     );
@@ -589,7 +590,10 @@ class SesionNotifier extends _$SesionNotifier {
       unawaited(ref.read(reintentarRevocacionPendienteUseCaseProvider)(const NoParams()));
 
   /// Best-effort: si al cambiar la contraseña no se pudieron cerrar las sesiones de los otros
-  /// teléfonos, entrar con la nueva lo reintenta (#542). La sesión de este teléfono no se toca.
-  void _cerrarOtrasSesionesPendientes() =>
-      unawaited(ref.read(cerrarOtrasSesionesPendientesUseCaseProvider)(const NoParams()));
+  /// teléfonos, entrar con la nueva lo reintenta (#542), solo si entra esa cuenta. La sesión de este teléfono no se toca.
+  void _cerrarOtrasSesionesPendientes(String usuarioId) => unawaited(
+    ref.read(cerrarOtrasSesionesPendientesUseCaseProvider)(
+      CerrarOtrasSesionesPendientesParams(usuarioId: usuarioId),
+    ),
+  );
 }

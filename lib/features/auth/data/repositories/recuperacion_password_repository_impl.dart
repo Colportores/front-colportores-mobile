@@ -39,7 +39,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// termina con error: solo avisa que terminó.
   Future<void>? _enVuelo;
 
-  bool _otrasSinCerrar = false;
+  /// La cuenta cuyas otras sesiones quedaron sin cerrar, o `null` si no hay nada pendiente. Atada
+  /// a la cuenta para que el login de otra persona en el mismo teléfono no la consuma.
+  String? _otrasSinCerrarDe;
 
   /// Supabase manda el mismo error para un enlace vencido y para uno ya usado: la app no adivina
   /// cuál de los dos es, y los dos salen como [EnlaceRecuperacion.vencido].
@@ -126,10 +128,12 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
       _log.info(LogModulo.auth, 'password_reset_completed', 'contraseña actualizada');
 
   @override
-  bool get otrasSesionesSinCerrar => _otrasSinCerrar;
+  bool get otrasSesionesSinCerrar => _otrasSinCerrarDe != null;
 
   @override
   Future<Either<Failure, Unit>> cerrarTodasLasSesiones() async {
+    // Antes de revocar: la revocación global suelta la sesión de recuperación y con ella el id.
+    final cuenta = usuarioId;
     final resultado = await _sinMostrar(
       'RECUPERACION_REVOCAR_FAIL',
       'no se pudieron revocar las sesiones tras cambiar la contraseña',
@@ -137,19 +141,19 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     );
     // Si no contestó, los otros teléfonos pueden seguir adentro: queda para decírselo a la persona
     // y reintentar al próximo login (decisión del 29/10 en #542).
-    _otrasSinCerrar = resultado.isLeft();
+    _otrasSinCerrarDe = resultado.isLeft() ? cuenta : null;
     return resultado;
   }
 
   @override
-  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes() async {
-    if (!_otrasSinCerrar) return const Right(unit);
+  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes(String usuarioId) async {
+    if (_otrasSinCerrarDe != usuarioId) return const Right(unit);
     final resultado = await _sinMostrar(
       'RECUPERACION_REVOCAR_OTRAS_FAIL',
       'no se pudieron revocar las otras sesiones al volver a entrar',
       _remote.cerrarLasOtrasSesiones,
     );
-    if (resultado.isRight()) _otrasSinCerrar = false;
+    if (resultado.isRight() && _otrasSinCerrarDe == usuarioId) _otrasSinCerrarDe = null;
     return resultado;
   }
 

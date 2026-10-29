@@ -653,7 +653,7 @@ void main() {
       // Decisión del 29/10 en #542: avisa que las otras sesiones se cierran al volver a entrar.
       expect(
         find.text(
-          'Contraseña actualizada. Iniciá sesión: al entrar cerramos tus sesiones en los otros '
+          'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en los otros '
           'teléfonos.',
         ),
         findsOneWidget,

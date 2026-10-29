@@ -52,7 +52,7 @@ abstract final class TextosConfirmacionRecuperacion {
   /// La contraseña cambió pero el servidor no contestó al cerrar las sesiones de los otros
   /// teléfonos: se les cierran al entrar con la nueva (decisión del 29/10 en #542).
   static const exitoOtrasSesionesPendientes =
-      'Contraseña actualizada. Iniciá sesión: al entrar cerramos tus sesiones en los otros '
+      'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en los otros '
       'teléfonos.';
 
   /// La contraseña cambió pero la sesión que estaba abierta en este teléfono no se pudo cerrar

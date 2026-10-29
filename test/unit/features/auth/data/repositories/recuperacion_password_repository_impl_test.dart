@@ -27,6 +27,9 @@ class _SalidaEnMemoria extends LogOutput {
   void output(OutputEvent event) => lineas.addAll(event.lines);
 }
 
+/// La cuenta que se recupera en el remoto en memoria.
+const _cuenta = 'usuario-en-memoria';
+
 void main() {
   late RecuperacionPasswordEnMemoria remoto;
   late RecuperacionPasswordRepositoryImpl repo;
@@ -300,7 +303,7 @@ void main() {
       expect(await repo.cerrarTodasLasSesiones(), const Right<Failure, Unit>(unit));
 
       expect(repo.otrasSesionesSinCerrar, isFalse);
-      expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+      expect(await repo.cerrarOtrasSesionesPendientes(_cuenta), const Right<Failure, Unit>(unit));
       expect(remoto.otrasSesionesCerradas, 0, reason: 'sin pendiente no se llama al servidor');
     });
 
@@ -312,11 +315,11 @@ void main() {
         expect(repo.otrasSesionesSinCerrar, isTrue);
 
         remoto.fallaAlCerrarSesiones = null;
-        expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+        expect(await repo.cerrarOtrasSesionesPendientes(_cuenta), const Right<Failure, Unit>(unit));
 
         expect(remoto.otrasSesionesCerradas, 1);
         expect(repo.otrasSesionesSinCerrar, isFalse);
-        expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+        expect(await repo.cerrarOtrasSesionesPendientes(_cuenta), const Right<Failure, Unit>(unit));
         expect(remoto.otrasSesionesCerradas, 1, reason: 'no se repite una vez resuelto');
       },
     );
@@ -341,13 +344,45 @@ void main() {
       remoto.fallaAlCerrarLasOtras = const SinConexionException();
 
       expect(
-        await repo.cerrarOtrasSesionesPendientes(),
+        await repo.cerrarOtrasSesionesPendientes(_cuenta),
         const Left<Failure, Unit>(FailureSinConexion()),
       );
       expect(repo.otrasSesionesSinCerrar, isTrue);
 
       remoto.fallaAlCerrarLasOtras = null;
-      expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+      expect(await repo.cerrarOtrasSesionesPendientes(_cuenta), const Right<Failure, Unit>(unit));
+      expect(repo.otrasSesionesSinCerrar, isFalse);
+    });
+
+    test(
+      'dado que la marca es de una cuenta, cuando entra otra persona en el mismo teléfono, no la '
+      'consume ni cierra nada: sigue para su dueña (seguridad barata, #542)',
+      () async {
+        remoto.fallaAlCerrarSesiones = const SinConexionException();
+        await repo.cerrarTodasLasSesiones();
+        remoto.fallaAlCerrarSesiones = null;
+
+        expect(
+          await repo.cerrarOtrasSesionesPendientes('otra-cuenta'),
+          const Right<Failure, Unit>(unit),
+        );
+
+        expect(remoto.otrasSesionesCerradas, 0, reason: 'la sesión de la otra cuenta no se toca');
+        expect(repo.otrasSesionesSinCerrar, isTrue, reason: 'la marca sigue para su dueña');
+
+        expect(await repo.cerrarOtrasSesionesPendientes(_cuenta), const Right<Failure, Unit>(unit));
+        expect(remoto.otrasSesionesCerradas, 1);
+        expect(repo.otrasSesionesSinCerrar, isFalse);
+      },
+    );
+
+    test('dado que la sesión de recuperación ya no tiene cuenta conocida, cuando revocar falla, no '
+        'queda una marca que nadie podría consumir', () async {
+      remoto.vencerSesionDeRecuperacion();
+      remoto.fallaAlCerrarSesiones = const SinConexionException();
+
+      await repo.cerrarTodasLasSesiones();
+
       expect(repo.otrasSesionesSinCerrar, isFalse);
     });
   });

@@ -23,6 +23,7 @@ import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzad
 import 'package:colportores_mobile/features/auth/data/repositories/recuperacion_password_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
@@ -476,6 +477,8 @@ void main() {
     test('dado que al cambiar la contraseña no se cerraron las otras sesiones, cuando entra con la '
         'nueva, las cierra una vez y la sesión de este teléfono sigue (#542)', () async {
       final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
         ..fallaAlCerrarSesiones = const SinConexionException();
       final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
         recuperacion,
@@ -515,9 +518,58 @@ void main() {
       expect(recuperacion.otrasSesionesCerradas, 1, reason: 'resuelto: no se repite');
     });
 
+    test(
+      'dado que la marca es de ana, cuando entra luis en el mismo teléfono, no se cierran sesiones '
+      'ni se consume la marca, y al entrar ana sí (#542)',
+      () async {
+        final recuperacion = RecuperacionPasswordEnMemoria()
+          ..simularEnlace(EnlaceRecuperacion.valido)
+          ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+          ..fallaAlCerrarSesiones = const SinConexionException();
+        final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+          recuperacion,
+          logger: loggerMudo(),
+        );
+        await repoRecuperacion.cerrarTodasLasSesiones();
+        final remotoDeDos = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'ana@example.com': 'secreto123', 'luis@example.com': 'otra12345'},
+        );
+        final conPendiente = ProviderContainer(
+          overrides: [
+            authRemoteDataSourceProvider.overrideWithValue(remotoDeDos),
+            authLocalDataSourceProvider.overrideWithValue(local),
+            databaseHelperProvider.overrideWithValue(helper),
+            recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+          ],
+        );
+        addTearDown(conPendiente.dispose);
+        await conPendiente.read(sesionProvider.future);
+
+        final falla = await conPendiente
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'luis@example.com', password: 'otra12345');
+        await pumpEventQueue();
+
+        expect(falla, isNull);
+        expect(recuperacion.otrasSesionesCerradas, 0);
+        expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue);
+
+        await conPendiente.read(sesionProvider.notifier).cerrarSesion();
+        await conPendiente
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(recuperacion.otrasSesionesCerradas, 1);
+        expect(repoRecuperacion.otrasSesionesSinCerrar, isFalse);
+      },
+    );
+
     test('dado que el reintento de las otras sesiones falla, cuando entra, igual entra y la marca '
         'sigue para el próximo login (#542)', () async {
       final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
         ..fallaAlCerrarSesiones = const SinConexionException()
         ..fallaAlCerrarLasOtras = const SinConexionException();
       final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
@@ -2585,4 +2637,10 @@ void main() {
       );
     });
   });
+}
+
+/// El id de usuario que el remoto en memoria le da a [email] (es el mismo en cada instancia).
+Future<String> _idDe(String email, String password) async {
+  final remoto = AuthRemoteDataSourceEnMemoria(credenciales: {email: password});
+  return (await remoto.iniciarSesion(email: email, password: password)).usuarioId;
 }

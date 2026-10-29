@@ -61,8 +61,8 @@ final class _RecuperacionFalsa implements RecuperacionPasswordRepository {
   bool otrasSesionesSinCerrar = false;
 
   @override
-  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes() async {
-    llamadas.add('cerrarOtras');
+  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes(String usuarioId) async {
+    llamadas.add('cerrarOtras:$usuarioId');
     otrasSesionesSinCerrar = false;
     return const Right(unit);
   }
@@ -121,10 +121,12 @@ void main() {
     test('el caso de uso de reintento delega en el repositorio y baja la marca', () async {
       recuperacion.otrasSesionesSinCerrar = true;
 
-      final r = await CerrarOtrasSesionesPendientesUseCase(recuperacion)(const NoParams());
+      final r = await CerrarOtrasSesionesPendientesUseCase(recuperacion)(
+        const CerrarOtrasSesionesPendientesParams(usuarioId: 'u1'),
+      );
 
       expect(r, const Right<Failure, Unit>(unit));
-      expect(recuperacion.llamadas, ['cerrarOtras']);
+      expect(recuperacion.llamadas, ['cerrarOtras:u1']);
       expect(confirmar.otrasSesionesSinCerrar, isFalse);
     });
   });
