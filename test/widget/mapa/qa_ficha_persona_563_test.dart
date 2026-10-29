@@ -6,7 +6,9 @@
 // Las capturas salen a `.dart_tool/qa_capturas/563_*.png` solo con `--dart-define=QA_CAPTURAS=true`; los
 // tests de hallazgos (con `skip`) se corren con `--dart-define=QA_HALLAZGOS=true`.
 import 'dart:async';
+import 'dart:ui' show Tristate;
 
+import 'package:colportores_mobile/features/mapa/domain/services/filtro_de_historial.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_ficha_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_notas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
@@ -61,6 +63,10 @@ void main() {
     EstadoFicha.noPudoLlamar: () => find.text(TextosFicha.noPudimosAbrirElTelefono),
     EstadoFicha.menuAbierto: () => find.byKey(ClavesFicha.opcionBaja),
     EstadoFicha.conLector: () => find.byKey(ClavesFicha.cuenta),
+    EstadoFicha.filtroConSaldo: () => find.byKey(ClavesFicha.fila('ven-1')),
+    EstadoFicha.filtroSinResultados: () => find.byKey(ClavesFicha.sinResultados),
+    EstadoFicha.ubicacionDeBaja: () => find.textContaining(TextosFicha.reactivarPrimeroLaUbicacion),
+    EstadoFicha.sinDeptoActivo: () => find.textContaining(TextosFicha.reactivarElDepto),
   };
 
   group('matriz de estados: sin overflow, con su contenido y capturas', () {
@@ -501,6 +507,113 @@ void main() {
         isTrue,
       );
       h.dispose();
+    });
+  });
+
+  group('32B·03 filtro por estado (segunda ronda)', () {
+    testWidgets('el lector oye «Todo, elegido» y cada opción es un botón elegible', (tester) async {
+      final h = tester.ensureSemantics();
+      await llegarAFicha(tester, EstadoFicha.completa);
+      final todo = find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo));
+      await llegarA563(tester, todo);
+
+      final nodoTodo = tester.getSemantics(todo);
+      expect(nodoTodo.label, 'Todo, elegido');
+      expect(nodoTodo.flagsCollection.isSelected, Tristate.isTrue);
+      expect(nodoTodo.flagsCollection.isButton, isTrue);
+      final nodoSaldo = tester.getSemantics(
+        find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)),
+      );
+      expect(nodoSaldo.label, 'Con saldo');
+      expect(nodoSaldo.flagsCollection.isSelected, Tristate.isFalse);
+      h.dispose();
+    });
+
+    testWidgets('el lector elige una opción con la acción de toque y cambia lo elegido', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await llegarAFicha(tester, EstadoFicha.completa);
+      final saldo = find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo));
+      await llegarA563(tester, saldo);
+
+      tester.semantics.performAction(find.semantics.byLabel('Con saldo'), SemanticsAction.tap);
+      await asentar(tester);
+
+      expect(tester.getSemantics(saldo).label, 'Con saldo, elegido');
+      expect(
+        tester.getSemantics(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo))).label,
+        'Todo',
+      );
+      h.dispose();
+    });
+
+    testWidgets('cambiar de opción muchas veces seguidas deja una sola elegida y sin errores', (
+      tester,
+    ) async {
+      await llegarAFicha(tester, EstadoFicha.conEntregasYCobros, tamano: telefonoGrande563);
+      const opciones = FiltroDeHistorial.values;
+      await llegarA563(tester, find.byKey(ClavesFicha.filtro(opciones.first)));
+      for (var i = 0; i < 12; i++) {
+        final f = opciones[i % opciones.length];
+        await tester.tap(find.byKey(ClavesFicha.filtro(f)));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await asentar(tester);
+
+      final elegidas = [
+        for (final f in opciones)
+          if (tester.widget<ChoiceChip>(find.byKey(ClavesFicha.filtro(f))).selected) f,
+      ];
+      expect(elegidas, [opciones[11 % opciones.length]]);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el filtro sin resultados el aviso dice qué pasa y «Todo» a mano lo deshace', (
+      tester,
+    ) async {
+      await llegarAFicha(tester, EstadoFicha.filtroSinResultados);
+
+      expect(
+        find.text(TextosFicha.sinResultadosDelFiltro(FiltroDeHistorial.entregaPendiente)),
+        findsOneWidget,
+      );
+      final todo = find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo));
+      await llegarA563(tester, todo);
+      await tester.tap(todo);
+      await asentar(tester);
+      expect(find.byKey(ClavesFicha.sinResultados), findsNothing);
+      expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
+    });
+
+    testWidgets('sin historial no hay filtro (nada que filtrar)', (tester) async {
+      await llegarAFicha(tester, EstadoFicha.sinHistorial);
+
+      expect(find.text(TextosFicha.mostrar), findsNothing);
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo)), findsNothing);
+    });
+
+    testWidgets(
+      'sin fuente de cobros la tarjeta de la cuenta no se muestra ni dice «Sin movimientos»',
+      (tester) async {
+        await llegarAFicha(tester, EstadoFicha.sinMovimientos);
+
+        expect(find.byKey(ClavesFicha.cuenta), findsNothing);
+        expect(find.text('Sin movimientos aún'), findsNothing);
+        expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
+      },
+    );
+
+    testWidgets('los avisos de solo lectura dicen qué reactivar primero', (tester) async {
+      await llegarAFicha(tester, EstadoFicha.ubicacionDeBaja);
+      expect(find.textContaining(TextosFicha.reactivarPrimeroLaUbicacion), findsOneWidget);
+      expect(find.text(TextosFicha.masNota), findsNothing);
+    });
+
+    testWidgets('sin ningún depto activo el aviso dice qué reactivar', (tester) async {
+      await llegarAFicha(tester, EstadoFicha.sinDeptoActivo);
+      expect(find.textContaining(TextosFicha.reactivarElDepto), findsOneWidget);
+      expect(find.text(TextosFicha.masNota), findsNothing);
     });
   });
 
