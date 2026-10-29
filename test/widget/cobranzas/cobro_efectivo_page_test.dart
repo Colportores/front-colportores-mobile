@@ -778,6 +778,9 @@ void main() {
       await tocarCobro(tester, find.byKey(const Key('cobro_hoja_listo')));
 
       await tocarCobro(tester, cerrarCobro);
+      // Con algo escrito pregunta antes de perderlo.
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      await tocarCobro(tester, find.text('Descartar'));
       expect(pagina, findsNothing);
       expect(a.resultados, [false]);
       expect(a.repo.recibidos, isEmpty);
@@ -797,6 +800,68 @@ void main() {
 
       expect(pagina, findsNothing);
       expect(a.resultados, [false]);
+    });
+
+    testWidgets('con un monto escrito, «✕» y atrás preguntan; «Seguir escribiendo» lo conserva', (
+      tester,
+    ) async {
+      final a = await montarCobro(tester);
+      await escribirMonto(tester, '600');
+
+      await tocarCobro(tester, cerrarCobro);
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      await tocarCobro(tester, find.text('Seguir escribiendo'));
+      expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+      expect(pagina, findsOneWidget);
+      expect(tester.widget<TextField>(campoMonto).controller!.text, '600');
+
+      await tester.binding.handlePopRoute();
+      await asentarAgendar(tester);
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      await tocarCobro(tester, find.text('Descartar'));
+
+      expect(pagina, findsNothing);
+      expect(a.resultados, [false]);
+      expect(a.repo.recibidos, isEmpty);
+    });
+
+    testWidgets('con solo el día cambiado también pregunta; sin nada escrito no', (tester) async {
+      final a = await montarCobro(tester);
+      await tocarCobro(tester, campoFecha);
+      await tocarCobro(tester, find.byKey(const Key('cobro_dia_1')));
+      await tocarCobro(tester, find.byKey(const Key('cobro_hoja_listo')));
+
+      await tocarCobro(tester, cerrarCobro);
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      await tocarCobro(tester, find.text('Descartar'));
+      expect(a.resultados, [false]);
+
+      await abrirCobro(tester);
+      await tocarCobro(tester, cerrarCobro);
+      expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+      expect(a.resultados, [false, false]);
+    });
+
+    testWidgets('el monto borrado vuelve a cerrar directo, y el atrás sobre el aviso lo cierra', (
+      tester,
+    ) async {
+      final a = await montarCobro(tester);
+      await escribirMonto(tester, '600');
+      await escribirMonto(tester, '');
+      await tocarCobro(tester, cerrarCobro);
+      expect(a.resultados, [false]);
+
+      await abrirCobro(tester);
+      await escribirMonto(tester, '600');
+      await tester.binding.handlePopRoute();
+      await asentarAgendar(tester);
+      expect(find.text('¿Descartar lo que escribiste?'), findsOneWidget);
+      // El atrás del sistema sobre el aviso lo cierra y deja todo como está.
+      await tester.binding.handlePopRoute();
+      await asentarAgendar(tester);
+      expect(find.text('¿Descartar lo que escribiste?'), findsNothing);
+      expect(pagina, findsOneWidget);
+      expect(tester.widget<TextField>(campoMonto).controller!.text, '600');
     });
 
     testWidgets('«✕» dos veces seguidas cierra una sola pantalla', (tester) async {

@@ -11,6 +11,8 @@ import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAge
 import '../../../mapa/domain/entities/persona_del_espacio.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
+import '../../../mapa/presentation/widgets/dialogos_modificar.dart'
+    show confirmarDescartarLoEscrito;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
@@ -115,6 +117,9 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
 
   /// La pantalla se está cerrando: un segundo toque no vuelve a hacer `pop`.
   var _cerrando = false;
+
+  /// El aviso «¿Descartar lo que escribiste?» está abierto: otro atrás no abre uno segundo.
+  var _preguntando = false;
 
   /// El último intento de guardar: con los mismos datos se repite el id del cobro; con otros, es otro
   /// cobro.
@@ -301,8 +306,22 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     Navigator.of(context).pop(cobrado);
   }
 
-  void _atras() {
-    if (_enviando) return;
+  /// Hay algo escrito que se perdería al salir: un monto o un día distinto de hoy, antes de cobrar.
+  bool get _hayLoEscrito => _registrado == null && (_monto.text.trim().isNotEmpty || _dia != null);
+
+  Future<void> _atras() async {
+    if (_enviando || _preguntando || _cerrando) return;
+    if (_hayLoEscrito) {
+      // Decisión de #439 (QA, P1): con algo escrito, «✕» y atrás preguntan; sin nada, cierran directo.
+      _preguntando = true;
+      bool descartar;
+      try {
+        descartar = await confirmarDescartarLoEscrito(context);
+      } finally {
+        _preguntando = false;
+      }
+      if (!mounted || !descartar || _enviando) return;
+    }
     _cerrar(cobrado: _registrado != null);
   }
 
@@ -382,7 +401,7 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (salio, _) {
-        if (!salio) _atras();
+        if (!salio) unawaited(_atras());
       },
       child: cuerpo,
     );
@@ -397,7 +416,7 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     titulo: titulo,
     subtitulo: subtitulo,
     cerrar: true,
-    alVolver: conSalida && !_enviando ? _atras : null,
+    alVolver: conSalida && !_enviando ? () => unawaited(_atras()) : null,
   );
 
   Widget _botonVolver() =>
