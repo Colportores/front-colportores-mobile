@@ -269,12 +269,19 @@ void main() {
       expect(repo.pedidosDeLaCasa, [(colportorId: 'col-1', ubicacionId: 'u-1')]);
     });
 
-    _probar('con la hoja arriba también está, debajo de «Registrar visita»', (tester) async {
+    _probar('con la hoja arriba va en el mismo orden que el resumen: lista, botones y pestañas', (
+      tester,
+    ) async {
       await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]), arriba: true);
 
       expect(_filas, findsOneWidget);
-      expect(tester.getTopLeft(_registrar).dy, lessThan(tester.getTopLeft(_filas).dy));
-      expect(find.byKey(ClavesHojaCasa.pestanas), findsOneWidget);
+      final lista = tester.getTopLeft(_filas).dy;
+      final registrar = tester.getTopLeft(_registrar).dy;
+      final agendar = tester.getTopLeft(_agendar).dy;
+      final pestanas = tester.getTopLeft(find.byKey(ClavesHojaCasa.pestanas)).dy;
+      expect(lista, lessThan(registrar));
+      expect(registrar, lessThan(agendar));
+      expect(agendar, lessThan(pestanas));
     });
 
     _probar('una visita cuya hora ya pasó lo dice', (tester) async {
@@ -518,6 +525,38 @@ void main() {
       expect(find.text('No pudimos leer tu agenda.'), findsOneWidget);
       expect(_registrar, findsOneWidget);
       expect(_seccion, findsNothing);
+    });
+
+    _probar(
+      'el aviso va arriba de la persona y se ve sin desplazar a 360×640, en el resumen y arriba',
+      (tester) async {
+        for (final arriba in [false, true]) {
+          final repo = ConsultaAgendaFalsa()..error = StateError('disco');
+          await _montar(tester, repo, arriba: arriba, tamano: const Size(360, 640));
+
+          final aviso = find.byKey(ClavesEstadosHojaCasa.avisoErrorAlLeerAgendas);
+          expect(aviso, findsOneWidget);
+          final caja = tester.getRect(aviso);
+          expect(caja.top, greaterThanOrEqualTo(0));
+          expect(caja.bottom, lessThanOrEqualTo(640));
+          if (!arriba) {
+            expect(caja.top, lessThan(tester.getTopLeft(find.byKey(ClavesHojaCasa.persona)).dy));
+          }
+          expect(find.text('Reintentar').hitTestable(), findsOneWidget);
+        }
+      },
+    );
+
+    _probar('se anuncia una sola vez, como mensaje de estado (región viva del propio aviso)', (
+      tester,
+    ) async {
+      await _montar(tester, ConsultaAgendaFalsa()..error = StateError('disco'));
+
+      final regiones = find.descendant(
+        of: find.byKey(ClavesEstadosHojaCasa.avisoErrorAlLeerAgendas),
+        matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.liveRegion == true),
+      );
+      expect(regiones, findsOneWidget);
     });
 
     _probar('«Reintentar» vuelve a leer y, si ahora anda, muestra la lista', (tester) async {

@@ -209,8 +209,8 @@ void main() {
       expect(r.height, greaterThanOrEqualTo(44));
     });
 
-    // skip: QA #491 — con el resumen a un tercio de la pantalla el aviso «No pudimos leer tu agenda.»
-    // queda bajo el pliegue: Lucía no se entera de que no ve sus visitas (ver el comentario del PR).
+    // QA #491 — con el resumen a un tercio de la pantalla el aviso «No pudimos leer tu agenda.» tiene
+    // que verse sin desplazar: va arriba de la persona (decisión del 29/10, P1).
     for (final tamano in tamanos) {
       probar491(
         'el aviso de error de lectura se ve sin desplazar · resumen ${tamano.width.toInt()}x${tamano.height.toInt()}',
@@ -219,7 +219,6 @@ void main() {
           await alPrincipio(tester);
           expect(estaALaVista(tester, _aviso), isTrue);
         },
-        skip: !verHallazgos,
       );
     }
   });

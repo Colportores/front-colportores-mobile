@@ -47,8 +47,10 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// la pestaña no se ofrece. En un edificio sin depto elegido no hay espacio ni personas: se ve el
 /// resumen.
 ///
-/// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —en la hoja arriba, debajo
-/// de «Registrar visita»— va la lista de las visitas `PROGRAMADA` de la casa ([VisitasAgendadasDeLaCasa]);
+/// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —lo mismo en la hoja
+/// arriba, antes de las pestañas— va la lista de las visitas `PROGRAMADA` de la casa
+/// ([VisitasAgendadasDeLaCasa]); si no se puede leer, el aviso con «Reintentar»
+/// ([AvisoErrorVisitasAgendadas]) va arriba de la persona, bajo el subtítulo;
 /// tocar una abre su detalle. Debajo de «Registrar visita», «+ Agendar»
 /// ([programarEntrevistaDesdeLaCasaProvider]): abre «Agendar visita» con la casa y su espacio ya
 /// puestos (decisión del 29/10, #491 P1). Sin destino, o en un edificio sin depto elegido (todavía no
@@ -417,6 +419,8 @@ class _Resumen extends StatelessWidget {
       children: [
         if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
         if (persona != null)
           FilaPersonaDeLaCasa(
             persona: persona.persona,
@@ -507,17 +511,20 @@ class _Arriba extends ConsumerWidget {
       children: [
         if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
         if (falla != null)
           AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
-        if (alRegistrarVisita != null)
-          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
-        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
+        // El mismo orden que el resumen (23B·10): la lista, «Registrar visita» y «+ Agendar».
         if (colportorId != null && !item.esBaja)
           VisitasAgendadasDeLaCasa(
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
           ),
+        if (alRegistrarVisita != null)
+          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
         PestanasDeLaHoja(pestanas: disponibles, elegida: elegida, alElegir: alElegirPestana),
         switch (elegida) {
           PestanaHojaCasa.personas => PestanaPersonasDeLaCasa(
