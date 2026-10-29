@@ -9,6 +9,7 @@ import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
 import '../models/cobranza_model.dart';
+import 'cobro_valido.dart';
 
 /// La persistencia rechazó el cobro: el repositorio la traduce a un `Failure`.
 sealed class CobroRechazadoException implements Exception {
@@ -137,19 +138,15 @@ final class CobranzaLocalDataSourceDrift {
   //
   // `saldo = monto_total_venta − SUM(cobros válidos)`, por venta, nunca negativo, y los cortes suman
   // el saldo de cada venta viva. Una sola fórmula ([_sqlSaldo]) para los tres cortes y para
-  // [saldosPorPersona]; la de la venta suelta ([_conSaldo]) usa el mismo [_cobroValido]. Cada `Stream`
+  // [saldosPorPersona]; la de la venta suelta ([_conSaldo]) y el color de la casa usan [CobroValido]. Cada `Stream`
   // emite el valor de ahora al suscribirse y uno nuevo solo si cambió, cuando se registra, se da de
   // baja o llega por el pull cualquier venta o cobro (Drift avisa por tabla), sin recargar nada.
-
-  /// Lo que hace que un cobro cuente. HU-COB-006 (#422) suma acá la marca de anulado: es el único
-  /// lugar donde se decide qué cobro es válido.
-  static const _cobroValido = 'c.deleted_at IS NULL';
 
   /// Las ventas vivas con la parte de lo que debe cada una. `SUM(MAX(a, 0))`: una venta cobrada de
   /// más no resta de lo que deben las demás.
   static const _sqlSaldo =
       'SELECT COALESCE(SUM(MAX(v.monto_total - COALESCE('
-      '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND $_cobroValido), 0), 0)), 0) '
+      '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql}), 0), 0)), 0) '
       'AS saldo FROM venta v WHERE v.deleted_at IS NULL AND ';
 
   /// Las ventas de una persona, por sus vínculos vivos con un espacio.
@@ -210,19 +207,12 @@ final class CobranzaLocalDataSourceDrift {
       _observarSaldo(_corteColportor, colportorId);
 
   Future<VentaConSaldo> _conSaldo(VentaFila venta) async {
-    final cobrado = await _db
-        .customSelect(
-          'SELECT COALESCE(SUM(c.monto), 0) AS cobrado FROM cobranza c '
-          'WHERE c.venta_id = ? AND $_cobroValido',
-          variables: [Variable<String>(venta.id)],
-        )
-        .getSingle();
     return VentaConSaldo(
       ventaId: venta.id,
       numeroTalonario: venta.numeroTalonario,
       fecha: venta.fecha,
       montoTotalCentavos: venta.montoTotal,
-      cobradoCentavos: cobrado.read<int>('cobrado'),
+      cobradoCentavos: await CobroValido.cobradoDe(_db, venta.id),
       descripcion: await _descripcion(venta.id),
     );
   }

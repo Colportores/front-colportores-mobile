@@ -7,6 +7,7 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../../agenda/domain/entities/estado_agenda.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../../agenda/domain/entities/visita.dart';
+import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/house_status.dart';
 import '../../domain/services/calculador_color_casa.dart';
@@ -137,7 +138,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
 
   /// Cada venta viva de la casa con lo que lleva cobrado (HU-VEN-001, HU-COB-001): las ventas cuelgan
   /// del vínculo persona ↔ espacio, y el espacio tiene que seguir activo. Los cobros dados de baja
-  /// no cuentan.
+  /// no cuentan (`CobroValido`, la misma regla que el saldo).
   Future<List<({int montoCentavos, int cobradoCentavos, bool entregada})>> _ventas(
     String ubicacionId,
   ) async {
@@ -149,19 +150,10 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
     final salida = <({int montoCentavos, int cobradoCentavos, bool entregada})>[];
     for (final fila in filas) {
-      final suma = _db.cobranzas.monto.sum();
-      final cobrado =
-          await (_db.selectOnly(_db.cobranzas)
-                ..addColumns([suma])
-                ..where(_db.cobranzas.ventaId.equals(fila.id) & _db.cobranzas.deletedAt.isNull()))
-              .getSingle();
+      final cobrado = await CobroValido.cobradoDe(_db, fila.id);
       // La tabla `entrega` llega con HU-VEN-002 (#430): hasta entonces el teléfono no sabe si se
       // entregó y no lo da por hecho, así que una venta pagada sigue pendiente.
-      salida.add((
-        montoCentavos: fila.montoTotal,
-        cobradoCentavos: cobrado.read(suma) ?? 0,
-        entregada: false,
-      ));
+      salida.add((montoCentavos: fila.montoTotal, cobradoCentavos: cobrado, entregada: false));
     }
     return salida;
   }
