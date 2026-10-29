@@ -70,6 +70,33 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
   /// no se apaga (apagado sobre el azul oscuro no se lee): el segundo toque simplemente no hace nada.
   var _registrando = false;
 
+  /// El encabezado (título, última visita y «CLIENTES · N») va fijo, como en el canvas 11·04 (`flex:none`).
+  /// Si medido ocupa más de [_topeDelEncabezado] de la altura (texto grande en una pantalla chica), pasa
+  /// a desplazarse con la lista: así nada desborda y la lista de clientes no se queda sin lugar.
+  var _encabezadoEnLista = false;
+  final _claveDelEncabezado = GlobalKey();
+
+  /// Qué parte de la altura puede ocupar el encabezado fijo.
+  static const _topeDelEncabezado = 0.4;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cambió el tamaño o el texto: se vuelve a medir con el encabezado fijo.
+    _encabezadoEnLista = false;
+  }
+
+  /// Mide el encabezado fijo después del cuadro y, si no entra en el tope, lo pasa a la lista.
+  void _medirEncabezado(double alturaDeLaPantalla) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _encabezadoEnLista) return;
+      final tamano = _claveDelEncabezado.currentContext?.size;
+      if (tamano != null && tamano.height > alturaDeLaPantalla * _topeDelEncabezado) {
+        setState(() => _encabezadoEnLista = true);
+      }
+    });
+  }
+
   /// «Registrar visita» de este depto. Si la apertura falla, el aviso dice qué hacer y el botón sigue
   /// tocable (la guarda se suelta pase lo que pase).
   Future<void> _registrarVisita(String ubicacionId) async {
@@ -177,8 +204,7 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
     final destinoDeVisita = ref.watch(registrarVisitaDesdeLaCasaProvider);
     final puedeRegistrar = datos != null && !deBaja && destinoDeVisita != null;
 
-    // Un solo renglón por pieza: los de arriba (título, visita, «CLIENTES · N») y los del cuerpo se
-    // desplazan juntos, así nada desborda con texto grande en una pantalla chica.
+    // El cuerpo: una pieza por renglón de la lista que se desplaza.
     final List<Widget Function()> cuerpo;
     if (contexto.hasError || personas.hasError) {
       cuerpo = [() => _ErrorDeLectura(alReintentar: _reintentar)];
@@ -202,7 +228,7 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
         ahora: ref.read(relojPersonaProvider)(),
       );
     }
-    final items = <Widget Function()>[
+    final encabezado = <Widget Function()>[
       if (datos != null)
         () => _Titulo(
           titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
@@ -216,8 +242,28 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
         ),
       () => const Divider(height: 1),
       () => _EncabezadoClientes(cantidad: cantidad, alAgregar: puedeAgregar ? _agregar : null),
-      ...cuerpo,
     ];
+
+    // Depende del tamaño y del texto: cuando cambian se vuelve a medir (`didChangeDependencies`).
+    final alto = MediaQuery.sizeOf(context).height;
+    MediaQuery.textScalerOf(context);
+    if (!_encabezadoEnLista) _medirEncabezado(alto);
+
+    final Widget lista;
+    if (_encabezadoEnLista) {
+      final items = [...encabezado, ...cuerpo];
+      lista = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16),
+        itemCount: items.length,
+        itemBuilder: (context, i) => items[i](),
+      );
+    } else {
+      lista = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16),
+        itemCount: cuerpo.length,
+        itemBuilder: (context, i) => cuerpo[i](),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -228,13 +274,25 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
                   ? null
                   : FormatoUbicaciones.direccion(datos.ubicacion).toUpperCase(),
             ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 16),
-                itemCount: items.length,
-                itemBuilder: (context, i) => items[i](),
+            if (!_encabezadoEnLista)
+              // Sin tope propio de altura el encabezado se mide entero; lo que se ve nunca pasa del tope
+              // (si lo pasa, el cuadro siguiente lo manda a la lista).
+              ClipRect(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: alto * _topeDelEncabezado),
+                  child: UnconstrainedBox(
+                    constrainedAxis: Axis.horizontal,
+                    alignment: Alignment.topCenter,
+                    clipBehavior: Clip.hardEdge,
+                    child: Column(
+                      key: _claveDelEncabezado,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [for (final pieza in encabezado) pieza()],
+                    ),
+                  ),
+                ),
               ),
-            ),
+            Expanded(child: lista),
           ],
         ),
       ),

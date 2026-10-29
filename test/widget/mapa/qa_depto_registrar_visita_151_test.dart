@@ -346,9 +346,6 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(botonRegistrar151.hitTestable(), findsOneWidget);
       },
-      // skip: QA #151 — el título, el estado y «Registrar visita» (11·04 `flex:none`) van dentro de la
-      // lista y salen de la vista al bajar; también «+ Agregar cliente», que antes de #574 era fijo.
-      skip: !const bool.fromEnvironment('QA_HALLAZGOS'),
     );
   });
 
