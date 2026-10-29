@@ -271,17 +271,15 @@ void main() {
     );
   });
 
-  group('Hallazgos (con skip; `--dart-define=QA_HALLAZGOS=true` los corre)', () {
-    // skip: QA #508 — «+ Agendar» queda junto al rótulo de un día pasado de «Cumplidas»/«Canceladas»
-    // (el primero de la lista): el canvas 23B·05 no lo dibuja con un estado cerrado.
-    probar(
-      '«+ Agendar» no se ofrece al lado del rótulo de un día pasado de una lista cerrada',
-      (tester) async {
-        await llegarA508(tester, Estado508.canceladas, tamano: telefonoGrande);
-        expect(find.text('+ Agendar'), findsNothing);
-      },
-      skip: !verHallazgos,
-    );
+  group('Hallazgos corregidos', () {
+    // QA #508 — «+ Agendar» no queda junto al rótulo de un día pasado de «Cumplidas»/«Canceladas»
+    // (el canvas 23B·05 no lo dibuja con un estado cerrado; decisión del 29/10, P1).
+    probar('«+ Agendar» no se ofrece al lado del rótulo de un día pasado de una lista cerrada', (
+      tester,
+    ) async {
+      await llegarA508(tester, Estado508.canceladas, tamano: telefonoGrande);
+      expect(find.text('+ Agendar'), findsNothing);
+    });
   });
 
   group(

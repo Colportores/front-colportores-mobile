@@ -269,9 +269,16 @@ class FilaAgenda extends StatelessWidget {
 
     final horaTexto = FormatoAgenda.hora(item.agenda.fechaProgramada);
     final fechaTexto = FormatoAgenda.diaMes(item.agenda.fechaProgramada);
+    // El año solo si no es el actual (una campaña permanente puede juntar varios).
+    final anio = FormatoAgenda.anioSiEsOtro(item.agenda.fechaProgramada, ahora);
     final hora = Text(
-      // Apilada hay ancho de sobra: en una línea. Si no, el día arriba de la hora en los 44 px.
-      !conFecha ? horaTexto : (apilada ? '$fechaTexto · $horaTexto' : '$fechaTexto\n$horaTexto'),
+      // Apilada hay ancho de sobra: en una línea. Si no, el día arriba de la hora en los 44 px, y el
+      // año (4 cifras caben; con el día no) en su propio renglón.
+      !conFecha
+          ? horaTexto
+          : (apilada
+                ? '$fechaTexto${anio == null ? '' : '/$anio'} · $horaTexto'
+                : '$fechaTexto\n${anio == null ? '' : '$anio\n'}$horaTexto'),
       style: TextStyle(
         fontFamily: 'JetBrainsMono',
         fontSize: 11,
@@ -423,7 +430,12 @@ class FilaAgenda extends StatelessWidget {
       child: Semantics(
         container: true,
         button: alTocar != null,
-        label: FormatoAgenda.etiquetaDeFila(item, vencida: vencida, conFecha: conFecha),
+        label: FormatoAgenda.etiquetaDeFila(
+          item,
+          vencida: vencida,
+          conFecha: conFecha,
+          ahora: ahora,
+        ),
         onTap: alTocar,
         child: tarjeta,
       ),

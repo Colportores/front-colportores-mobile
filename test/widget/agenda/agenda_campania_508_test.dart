@@ -8,11 +8,13 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/services/armador_agenda.dart';
+import 'package:colportores_mobile/features/agenda/presentation/formato_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agenda_page.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/piezas_agenda.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agenda_items_falsos.dart';
@@ -26,6 +28,7 @@ Future<void> _montar(
   ConsultaAgendaFalsa repo, {
   double escala = 1,
   double alto = 844,
+  List<Override> overrides = const [],
 }) async {
   tester.view.physicalSize = Size(390, alto);
   tester.view.devicePixelRatio = 1;
@@ -35,6 +38,7 @@ Future<void> _montar(
       overrides: [
         consultaAgendaRepositoryProvider.overrideWithValue(repo),
         relojAgendaProvider.overrideWithValue(() => _base),
+        ...overrides,
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -399,6 +403,102 @@ void main() {
       await _elegirEstado(tester, 'Pendientes', 'Cumplidas');
 
       expect(_filas(tester), ['2026', '2025']);
+    });
+  });
+
+  group('«+ Agendar» solo con los filtros de fábrica (QA #508, P1)', () {
+    final agendar = agendarDesdeLaAgendaProvider.overrideWithValue(() async => true);
+
+    _probar('con «Pendientes» y «Todas» las sigue ofreciendo junto al primer día', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_de('hoy', _base, estado: EstadoAgenda.programada)]),
+        overrides: [agendar],
+      );
+
+      expect(find.text('+ Agendar'), findsOneWidget);
+    });
+
+    for (final estado in ['Cumplidas', 'No cumplidas', 'Canceladas', 'Todas']) {
+      _probar('con «$estado» no se ofrece junto al rótulo de un día', (tester) async {
+        await _montar(tester, ConsultaAgendaFalsa(_campania()), overrides: [agendar]);
+
+        await _elegirEstado(tester, 'Pendientes', estado);
+
+        expect(find.text('+ Agendar'), findsNothing);
+      });
+    }
+
+    _probar('con el filtro de tipo «Cobranzas» tampoco (canvas 23B·03)', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([
+          _de('cob', _base, estado: EstadoAgenda.programada, tipo: TipoAgenda.cobranza),
+        ]),
+        overrides: [agendar],
+      );
+      expect(find.text('+ Agendar'), findsOneWidget);
+
+      await tester.tap(find.text('Cobranzas'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('+ Agendar'), findsNothing);
+    });
+
+    _probar('«Limpiar filtros» lo devuelve', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_de('hoy', _base, estado: EstadoAgenda.programada)]),
+        overrides: [agendar],
+      );
+      await _elegirEstado(tester, 'Pendientes', 'Cumplidas');
+      expect(find.text('Limpiar filtros'), findsOneWidget);
+
+      await tester.tap(find.text('Limpiar filtros'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('+ Agendar'), findsOneWidget);
+    });
+  });
+
+  group('El año en la fecha de cada fila, solo si no es el actual (QA #508, P2)', () {
+    final vieja = _de('2025', DateTime(2025, 12, 30, 9), nombre: 'Anual');
+    final actual = _de('2026', DateTime(2026, 1, 2, 9), nombre: 'Actual');
+
+    _probar('la fila de otro año lleva el año; la del año actual, no', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([vieja, actual]));
+
+      await _elegirEstado(tester, 'Pendientes', 'Cumplidas');
+
+      expect(find.text('30/12\n2025\n09:00'), findsOneWidget);
+      expect(find.text('02/01\n09:00'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _probar('con el texto al 200 % va en una línea («30/12/2025 · 09:00»)', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([vieja, actual]), escala: 2);
+
+      await _elegirEstado(tester, 'Pendientes', 'Cumplidas');
+
+      expect(find.text('30/12/2025 · 09:00'), findsOneWidget);
+      expect(find.text('02/01 · 09:00'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _probar('el lector de pantalla también lo dice', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([vieja, actual]));
+
+      await _elegirEstado(tester, 'Pendientes', 'Cumplidas');
+
+      expect(find.bySemanticsLabel(RegExp(r'^30/12/2025\. 09:00')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'^02/01\. 09:00')), findsOneWidget);
+    });
+
+    test('FormatoAgenda.diaMesConAnio y anioSiEsOtro', () {
+      expect(FormatoAgenda.anioSiEsOtro(DateTime(2026, 3, 1), _base), isNull);
+      expect(FormatoAgenda.anioSiEsOtro(DateTime(2025, 3, 1), _base), '2025');
+      expect(FormatoAgenda.diaMesConAnio(DateTime(2026, 3, 1), _base), '01/03');
+      expect(FormatoAgenda.diaMesConAnio(DateTime(2027, 3, 1), _base), '01/03/2027');
     });
   });
 }

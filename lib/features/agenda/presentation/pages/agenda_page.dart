@@ -218,7 +218,11 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
           _Dias(
             vista: vista,
             ahora: _ahora,
-            alAgendar: agendar == null ? null : () => unawaited(_sola(agendar)),
+            // «+ Agendar» junto al rótulo solo con los filtros de fábrica: el canvas no lo dibuja con
+            // otro tipo o estado (23B·03, 23B·05; decisión del 29/10, QA #508).
+            alAgendar: agendar == null || !filtros.esPorDefecto
+                ? null
+                : () => unawaited(_sola(agendar)),
             alAbrirDetalle: detalle == null
                 ? null
                 : (item) => unawaited(_sola(() => detalle(item.agenda.id))),
