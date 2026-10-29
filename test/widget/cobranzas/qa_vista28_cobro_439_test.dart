@@ -288,6 +288,80 @@ void main() {
     });
   });
 
+  group('Salir con algo escrito (decisión de #439: pregunta antes de descartar)', () {
+    final aviso = find.text('¿Descartar lo que escribiste?');
+
+    testWidgets('dos toques seguidos en «✕» abren un solo aviso', (tester) async {
+      await montarCobro(tester);
+      await escribirMonto(tester, '600');
+
+      await tester.tap(cerrarCobro);
+      await tester.tap(cerrarCobro, warnIfMissed: false);
+      await asentarAgendar(tester);
+
+      expect(aviso, findsOneWidget);
+    });
+
+    testWidgets('tocar fuera del aviso lo cierra y conserva monto y día', (tester) async {
+      final a = await montarCobro(tester);
+      await escribirMonto(tester, '600');
+      await tocarCobro(tester, campoFecha);
+      await tocarCobro(tester, find.byKey(const Key('cobro_dia_1')));
+      await tocarCobro(tester, find.byKey(const Key('cobro_hoja_listo')));
+      await tocarCobro(tester, cerrarCobro);
+      expect(aviso, findsOneWidget);
+
+      await tester.tapAt(const Offset(5, 5));
+      await asentarAgendar(tester);
+
+      expect(aviso, findsNothing);
+      expect(pagina, findsOneWidget);
+      expect(tester.widget<TextField>(campoMonto).controller!.text, '600');
+      expect(find.text('Ayer, 22/10'), findsOneWidget);
+      expect(a.resultados, isEmpty);
+    });
+
+    testWidgets(
+      'tras una falla de guardado, «✕» pregunta (lo escrito sigue ahí) y «Descartar» no cobra',
+      (tester) async {
+        final a = await montarCobro(tester);
+        a.repo.fallas.add(const FailureCobroNoGuardado());
+        await _cobrar(tester, '300');
+        expect(find.byKey(const Key('cobro_error')), findsOneWidget);
+
+        await tocarCobro(tester, cerrarCobro);
+        expect(aviso, findsOneWidget);
+        await tocarCobro(tester, find.text('Descartar'));
+
+        expect(pagina, findsNothing);
+        expect(a.resultados, [false]);
+        expect(a.repo.cobros.values.where((c) => c.montoCentavos == 30000), isEmpty);
+      },
+    );
+
+    testWidgets('con la confirmación del cobro ya hecho, el atrás no pregunta', (tester) async {
+      final a = await montarCobro(tester);
+      await _cobrar(tester, '300');
+
+      await tester.binding.handlePopRoute();
+      await asentarAgendar(tester);
+
+      expect(aviso, findsNothing);
+      expect(a.resultados, [true]);
+    });
+
+    testWidgets('el aviso mide 48 en sus botones y los botones tienen nombre', (tester) async {
+      final h = tester.ensureSemantics();
+      await llegarA439(tester, Estado439.descartar, tamano: chico439, escala: 2);
+
+      for (final texto in ['Descartar', 'Seguir escribiendo']) {
+        expect(tester.getSize(find.text(texto)).height, greaterThan(0));
+        expect(find.bySemanticsLabel(texto), findsWidgets);
+      }
+      h.dispose();
+    });
+  });
+
   group('Teclado abierto', () {
     testWidgets(
       'a 360×640 con texto 2,0 y el teclado arriba, el campo del monto queda a la vista al escribir',

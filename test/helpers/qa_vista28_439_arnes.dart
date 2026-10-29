@@ -38,7 +38,8 @@ enum Estado439 {
   errorLectura('Error de lectura'),
   sinSaldo('Venta sin saldo al abrir'),
   fechaRechazada('Fecha rechazada al guardar'),
-  montoInvalido('Monto que no es un monto');
+  montoInvalido('Monto que no es un monto'),
+  descartar('Aviso «¿Descartar lo que escribiste?»');
 
   const Estado439(this.rotulo);
   final String rotulo;
@@ -113,6 +114,17 @@ Future<ArnesCobro> llegarA439(
     case Estado439.montoInvalido:
       final a = await montar();
       await _escribir(tester, '12abc');
+      return a;
+    case Estado439.descartar:
+      final a = await montar();
+      await _escribir(tester, '600');
+      // Con letra grande el campo subió la lista: «✕» está arriba de todo.
+      await tester.drag(
+        find.descendant(of: pagina, matching: find.byType(Scrollable)).first,
+        const Offset(0, 5000),
+      );
+      await asentarAgendar(tester, 4);
+      await tocarCobro(tester, cerrarCobro);
       return a;
   }
 }
