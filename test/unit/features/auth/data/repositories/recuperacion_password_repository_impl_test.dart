@@ -295,6 +295,113 @@ void main() {
     });
   });
 
+  group('las otras sesiones que no se cerraron (decisión del 29/10 en #542)', () {
+    test('dado que revocar sale bien, cuando se pregunta, no queda nada pendiente', () async {
+      expect(await repo.cerrarTodasLasSesiones(), const Right<Failure, Unit>(unit));
+
+      expect(repo.otrasSesionesSinCerrar, isFalse);
+      expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+      expect(remoto.otrasSesionesCerradas, 0, reason: 'sin pendiente no se llama al servidor');
+    });
+
+    test(
+      'dado que revocar falla, cuando se reintenta con red, cierra las otras y baja la marca',
+      () async {
+        remoto.fallaAlCerrarSesiones = const SinConexionException();
+        await repo.cerrarTodasLasSesiones();
+        expect(repo.otrasSesionesSinCerrar, isTrue);
+
+        remoto.fallaAlCerrarSesiones = null;
+        expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+
+        expect(remoto.otrasSesionesCerradas, 1);
+        expect(repo.otrasSesionesSinCerrar, isFalse);
+        expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+        expect(remoto.otrasSesionesCerradas, 1, reason: 'no se repite una vez resuelto');
+      },
+    );
+
+    test('dado que revocar no contesta, cuando pasa el tope, queda pendiente', () async {
+      remoto.demoraAlCerrarSesiones = Completer<void>();
+      repo = RecuperacionPasswordRepositoryImpl(
+        remoto,
+        logger: loggerMudo(),
+        tope: const Duration(milliseconds: 20),
+      );
+
+      expect(await repo.cerrarTodasLasSesiones(), isA<Left<Failure, Unit>>());
+
+      expect(repo.otrasSesionesSinCerrar, isTrue);
+    });
+
+    test('dado que el reintento también falla, cuando vuelve a entrar, la marca sigue para el '
+        'próximo login', () async {
+      remoto.fallaAlCerrarSesiones = const SinConexionException();
+      await repo.cerrarTodasLasSesiones();
+      remoto.fallaAlCerrarLasOtras = const SinConexionException();
+
+      expect(
+        await repo.cerrarOtrasSesionesPendientes(),
+        const Left<Failure, Unit>(FailureSinConexion()),
+      );
+      expect(repo.otrasSesionesSinCerrar, isTrue);
+
+      remoto.fallaAlCerrarLasOtras = null;
+      expect(await repo.cerrarOtrasSesionesPendientes(), const Right<Failure, Unit>(unit));
+      expect(repo.otrasSesionesSinCerrar, isFalse);
+    });
+  });
+
+  group('un cambio de contraseña espera al anterior que sigue en el aire (QA de #542)', () {
+    const tope = Duration(milliseconds: 100);
+
+    test('dado A varada pasado el tope y B enseguida, cuando A contesta, el servidor las ve en el '
+        'orden A y B y queda B', () async {
+      final varada = Completer<void>();
+      remoto.demoraAlActualizar = varada;
+      repo = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo(), tope: tope);
+
+      final a = await repo.actualizarPassword('ClaveAaaa1');
+      expect(a, const Left<Failure, Unit>(FailureSinConexion()));
+
+      final b = repo.actualizarPassword('ClaveBbbb1');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(remoto.actualizaciones, isEmpty, reason: 'B espera a que A conteste');
+
+      varada.complete();
+      expect(await b, const Right<Failure, Unit>(unit));
+
+      expect(remoto.actualizaciones, ['ClaveAaaa1', 'ClaveBbbb1']);
+      expect(remoto.passwordActual, 'ClaveBbbb1');
+    });
+
+    test('dado A que falla con error, cuando llega B, B sale sin esperar al tope', () async {
+      remoto.fallaAlActualizar = const PasswordDebilException();
+      repo = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo(), tope: tope);
+      await repo.actualizarPassword('flojo');
+      remoto.fallaAlActualizar = null;
+
+      final reloj = Stopwatch()..start();
+      final b = await repo.actualizarPassword('ClaveBbbb1');
+
+      expect(b, const Right<Failure, Unit>(unit));
+      expect(reloj.elapsed, lessThan(tope));
+      expect(remoto.actualizaciones, ['ClaveBbbb1']);
+    });
+
+    test('dado A que no contesta ni pasado otro tope, cuando llega B, B sale igual', () async {
+      remoto.demoraAlActualizar = Completer<void>();
+      repo = RecuperacionPasswordRepositoryImpl(remoto, logger: loggerMudo(), tope: tope);
+      await repo.actualizarPassword('ClaveAaaa1');
+      remoto.demoraAlActualizar = null;
+
+      final b = await repo.actualizarPassword('ClaveBbbb1');
+
+      expect(b, const Right<Failure, Unit>(unit));
+      expect(remoto.actualizaciones, ['ClaveBbbb1']);
+    });
+  });
+
   group('el tope por defecto es de 15 s (decisión del 29/10 en #542)', () {
     test('cambiar la contraseña sin respuesta sale como sin conexión a los 15 s, no antes', () {
       expect(RecuperacionPasswordRepositoryImpl.topePorDefecto, const Duration(seconds: 15));
@@ -366,6 +473,9 @@ final class _RemotoRoto implements RecuperacionPasswordRemoteDataSource {
 
   @override
   Future<void> cerrarTodasLasSesiones() async => throw StateError('boom');
+
+  @override
+  Future<void> cerrarLasOtrasSesiones() async => throw StateError('boom');
 
   @override
   Future<void> abandonarRecuperacion() async {}

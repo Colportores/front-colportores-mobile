@@ -71,6 +71,11 @@ abstract final class TextosPreparacionDbLocal {
   static const abrirAlmacenamiento = 'Abrir almacenamiento';
 
   /// Propuesta: si la plataforma no pudo abrir los ajustes, el usuario sabe cómo llegar a mano.
+  /// Un error del servidor sin texto propio al confirmar la contraseña o cerrar la sesión: dice qué
+  /// pasó y qué hacer (decisión del 29/10 en #542).
+  static const noPudimosConfirmarPassword = 'No pudimos confirmar tu contraseña.';
+  static const noPudimosCerrarSesion = 'No pudimos cerrar tu sesión.';
+
   static const noPudimosAbrirAjustes =
       'No pudimos abrir los ajustes. Abrilos a mano desde el menú del teléfono.';
 
@@ -311,7 +316,20 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
     final resultado = await ref.read(sesionProvider.notifier).cerrarSesion();
     // Si no se pudo, el usuario sigue adentro: se le dice por qué y puede volver a tocar.
     resultado.fold(
-      (falla) => messenger.showSnackBar(SnackBar(content: Text(falla.mensaje))),
+      (falla) => messenger.showSnackBar(
+        SnackBar(
+          content: Text(switch (falla) {
+            final FailureServidor f => mensajeDeServidor(
+              f,
+              noPudimos: TextosPreparacionDbLocal.noPudimosCerrarSesion,
+            ),
+            // «Ocurrió un error inesperado» no dice qué hacer.
+            FailureInesperado() =>
+              '${TextosPreparacionDbLocal.noPudimosCerrarSesion} Probá de nuevo en unos minutos.',
+            _ => falla.mensaje,
+          }),
+        ),
+      ),
       (_) => null,
     );
   }
@@ -643,6 +661,10 @@ class _PreparacionDbLocalPageState extends ConsumerState<PreparacionDbLocalPage>
       final FailureSinConexion f => mensajePara(
         f,
         accion: TextosPreparacionDbLocal.accionConfirmarPassword,
+      ),
+      final FailureServidor f => mensajeDeServidor(
+        f,
+        noPudimos: TextosPreparacionDbLocal.noPudimosConfirmarPassword,
       ),
       final Failure f => f.mensaje,
       null => null,

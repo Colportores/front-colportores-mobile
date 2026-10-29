@@ -293,6 +293,11 @@ final class AuthRemoteDataSourceSupabase
   Future<void> cerrarTodasLasSesiones() =>
       _traduciendo(() => _auth.signOut(scope: SignOutScope.global));
 
+  // Scope others: las sesiones de los demás teléfonos, sin la de este (#542, reintento tras un login).
+  @override
+  Future<void> cerrarLasOtrasSesiones() =>
+      _traduciendo(() => _auth.signOut(scope: SignOutScope.others));
+
   @override
   Future<void> abandonarRecuperacion() => _traduciendo(() => _auth.signOut());
 

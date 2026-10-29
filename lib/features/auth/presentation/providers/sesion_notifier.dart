@@ -24,6 +24,7 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'recuperacion_password_providers.dart';
 import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
@@ -267,6 +268,7 @@ class SesionNotifier extends _$SesionNotifier {
         ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
+        _cerrarOtrasSesionesPendientes();
         return null;
       },
     );
@@ -585,4 +587,9 @@ class SesionNotifier extends _$SesionNotifier {
   /// sigue pendiente y no se avisa — el usuario no puede hacer nada con eso.
   void _reintentarRevocacionPendiente() =>
       unawaited(ref.read(reintentarRevocacionPendienteUseCaseProvider)(const NoParams()));
+
+  /// Best-effort: si al cambiar la contraseña no se pudieron cerrar las sesiones de los otros
+  /// teléfonos, entrar con la nueva lo reintenta (#542). La sesión de este teléfono no se toca.
+  void _cerrarOtrasSesionesPendientes() =>
+      unawaited(ref.read(cerrarOtrasSesionesPendientesUseCaseProvider)(const NoParams()));
 }

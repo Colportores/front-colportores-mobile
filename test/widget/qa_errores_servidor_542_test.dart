@@ -324,25 +324,18 @@ void main() {
       await aA05Qa(tester);
     }
 
-    // Hallazgo de QA #542: la decisión del 29/10 es «el mismo caso lleva el mismo texto en cada
-    // pantalla». La vista 14 usa `mensajePara` sin `noPudimos`, así que un 4xx/5xx del servidor
-    // llega como «El servidor no pudo procesar la solicitud»: dice qué pasó pero no qué hacer.
-    // skip: QA #542: la vista 14 muestra «El servidor no pudo procesar la solicitud» sin decir qué
-    // hacer (`mensajePara` sin `noPudimos`). `testWidgets.skip` es `bool?`: el motivo va acá.
-    testWidgets('un 400 dice qué hacer, como el registro y el login', (tester) async {
-      await aAviso(tester, const ServidorException(status: 400));
-      final aviso = tester.widget<Text>(avisoGeneralQa).data!;
-      expect(aviso, isNot(contains(_genericoDelServidor)));
-      expect(aviso, contains('Probá de nuevo'));
-    }, skip: true);
-
-    // skip: QA #542: ídem, con un 5xx.
-    testWidgets('un 500 dice qué hacer, como el registro y el login', (tester) async {
-      await aAviso(tester, const ServidorException(status: 500));
-      final aviso = tester.widget<Text>(avisoGeneralQa).data!;
-      expect(aviso, isNot(contains(_genericoDelServidor)));
-      expect(aviso, contains('Probá de nuevo'));
-    }, skip: true);
+    // Decisión del 29/10 (P1 de la revisión de #556): el mismo caso lleva el mismo texto en cada
+    // pantalla, también al pedir el enlace.
+    for (final status in [400, 500]) {
+      testWidgets('un $status dice qué pasó y qué hacer, como el registro y el login', (
+        tester,
+      ) async {
+        await aAviso(tester, ServidorException(status: status));
+        final aviso = tester.widget<Text>(avisoGeneralQa).data!;
+        expect(aviso, 'No pudimos enviar el enlace. Probá de nuevo en unos minutos.');
+        expect(aviso, isNot(contains(_genericoDelServidor)));
+      });
+    }
 
     testWidgets('hoy: el código técnico no llega a la pantalla y el botón queda habilitado', (
       tester,

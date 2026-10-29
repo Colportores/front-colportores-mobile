@@ -1951,7 +1951,9 @@ void main() {
       expect(find.text('Sin conexión. Reintentá cuando tengas señal'), findsNothing);
     });
 
-    testWidgets('falla real del servidor (no 429) muestra el mensaje traducido', (tester) async {
+    testWidgets('falla real del servidor (no 429) dice qué pasó y qué hacer, sin el genérico', (
+      tester,
+    ) async {
       final remote =
           AuthRemoteDataSourceEnMemoria(
               credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
@@ -1967,7 +1969,11 @@ void main() {
       await tester.tap(find.byKey(const Key('recuperacion_password_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('El servidor no pudo procesar la solicitud'), findsOneWidget);
+      expect(
+        find.text('No pudimos enviar el enlace. Probá de nuevo en unos minutos.'),
+        findsOneWidget,
+      );
+      expect(find.text('El servidor no pudo procesar la solicitud'), findsNothing);
     });
 
     testWidgets('email vacío: error de validación en el campo', (tester) async {

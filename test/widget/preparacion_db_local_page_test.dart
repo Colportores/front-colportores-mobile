@@ -11,7 +11,10 @@ import 'package:colportores_mobile/core/dispositivo/abridor_enlace_externo.dart'
 import 'package:colportores_mobile/core/dispositivo/seguridad_dispositivo.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_db_local.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/inicializar_db_local_use_case.dart';
 import 'package:colportores_mobile/features/auth/presentation/pages/preparacion_db_local_page.dart';
@@ -26,6 +29,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/acceso_qa_arnes.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 
 const _email = 'ana@example.com';
@@ -77,6 +81,20 @@ final class _EnlaceFalso implements AbridorEnlaceExterno {
 
 late _EnlaceFalso _soporte;
 
+/// Un almacén de sesión que no deja borrar: el cierre de sesión falla y la persona sigue adentro.
+final class _LocalQueNoBorra implements AuthLocalDataSource {
+  final _real = AuthLocalDataSourceEnMemoria();
+
+  @override
+  Future<SesionModel?> leerSesion() => _real.leerSesion();
+
+  @override
+  Future<void> guardarSesion(SesionModel sesion) => _real.guardarSesion(sesion);
+
+  @override
+  Future<void> borrarSesion() async => throw StateError('el almacén no deja borrar');
+}
+
 Finder get _principal => find.byType(InicioPage);
 Finder get _preparacion => find.byType(PreparacionDbLocalPage);
 Finder _boton(String key) => find.byKey(Key(key));
@@ -87,13 +105,15 @@ Future<ProviderContainer> _entrar(
   WidgetTester tester, {
   bool esperar = true,
   bool restaurada = false,
+  AuthRemoteDataSource? remoto,
+  AuthLocalDataSource? local,
 }) async {
   final container = ProviderContainer(
     overrides: [
       authRemoteDataSourceProvider.overrideWithValue(
-        AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
+        remoto ?? AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
       ),
-      authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+      authLocalDataSourceProvider.overrideWithValue(local ?? AuthLocalDataSourceEnMemoria()),
       dbLocalRepositoryProvider.overrideWithValue(_db),
       abridorAjustesSistemaProvider.overrideWithValue(_ajustes),
       abridorEnlaceExternoProvider.overrideWithValue(_soporte),
@@ -617,6 +637,71 @@ void main() {
         expect(_principal, findsOneWidget);
       });
     }
+  });
+
+  group('Avisos de error (decisión del 29/10 en #542)', () {
+    testWidgets(
+      'dado un rechazo del servidor sin texto propio al confirmar la contraseña, dice qué '
+      'pasó y qué hacer, sin el genérico ni el código',
+      (tester) async {
+        final remoto = RemotoQueFalla(
+          AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
+        );
+        await _entrar(tester, restaurada: true, remoto: remoto);
+        remoto.falla = const ServidorException(status: 400);
+
+        await tester.enterText(_boton('preparacion_db_password'), _password);
+        await _tocar(tester, 'preparacion_db_confirmar_password');
+
+        expect(
+          find.text('No pudimos confirmar tu contraseña. Probá de nuevo en unos minutos.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+        expect(_botonHabilitado(tester, 'preparacion_db_confirmar_password'), isTrue);
+        expect(_principal, findsNothing);
+
+        // El reintento sale: el aviso se va y entra.
+        remoto.falla = null;
+        await _tocar(tester, 'preparacion_db_confirmar_password');
+        expect(_principal, findsOneWidget);
+      },
+    );
+
+    testWidgets('dado un 429, conserva su texto «Esperá unos minutos…»', (tester) async {
+      final remoto = RemotoQueFalla(
+        AuthRemoteDataSourceEnMemoria(credenciales: const {_email: _password}),
+      );
+      await _entrar(tester, restaurada: true, remoto: remoto);
+      remoto.falla = const ServidorException(
+        status: 429,
+        mensaje: 'Demasiados intentos. Esperá unos minutos y volvé a probar.',
+      );
+
+      await tester.enterText(_boton('preparacion_db_password'), _password);
+      await _tocar(tester, 'preparacion_db_confirmar_password');
+
+      expect(
+        find.text('Demasiados intentos. Esperá unos minutos y volvé a probar.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('dado que cerrar la sesión falla, el aviso dice qué pasó y qué hacer y la persona '
+        'puede volver a tocar', (tester) async {
+      _dbExistente(dekEnAlmacen: false, conEnvoltorio: false);
+      await _entrar(tester, local: _LocalQueNoBorra());
+
+      await _tocar(tester, 'preparacion_db_cerrar_sesion');
+
+      expect(
+        find.text('No pudimos cerrar tu sesión. Probá de nuevo en unos minutos.'),
+        findsOneWidget,
+      );
+      expect(find.text('Ocurrió un error inesperado'), findsNothing);
+      expect(_boton('preparacion_db_cerrar_sesion'), findsOneWidget);
+      expect(_botonHabilitado(tester, 'preparacion_db_cerrar_sesion'), isTrue);
+    });
   });
 
   group('Cerrar sesión', () {

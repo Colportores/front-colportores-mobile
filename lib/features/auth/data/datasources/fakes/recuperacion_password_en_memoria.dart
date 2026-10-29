@@ -25,6 +25,9 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   /// Si no es `null`, [cerrarTodasLasSesiones] lo lanza.
   AuthRemoteException? fallaAlCerrarSesiones;
 
+  /// Si no es `null`, [cerrarLasOtrasSesiones] lo lanza.
+  AuthRemoteException? fallaAlCerrarLasOtras;
+
   /// Si está, [actualizarPassword] espera a que el test la complete (estado "guardando").
   Completer<void>? demoraAlActualizar;
 
@@ -39,6 +42,9 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
   final List<String> actualizaciones = [];
 
   int sesionesCerradas = 0;
+
+  /// Veces que [cerrarLasOtrasSesiones] salió bien.
+  int otrasSesionesCerradas = 0;
   int abandonos = 0;
 
   /// El id de la cuenta que se recupera: es el `usuarioDeLaRecuperacion` mientras haya sesión de
@@ -95,6 +101,13 @@ final class RecuperacionPasswordEnMemoria implements RecuperacionPasswordRemoteD
     if (fallaAlCerrarSesiones case final falla?) throw falla;
     _haySesionDeRecuperacion = false;
     sesionesCerradas++;
+  }
+
+  @override
+  Future<void> cerrarLasOtrasSesiones() async {
+    if (simularSinConexion) throw const SinConexionException();
+    if (fallaAlCerrarLasOtras case final falla?) throw falla;
+    otrasSesionesCerradas++;
   }
 
   @override

@@ -49,6 +49,12 @@ abstract final class TextosConfirmacionRecuperacion {
       'contraseña nueva.';
   static const sesionesConBase = 'Se cierran tus sesiones en todos tus teléfonos.';
 
+  /// La contraseña cambió pero el servidor no contestó al cerrar las sesiones de los otros
+  /// teléfonos: se les cierran al entrar con la nueva (decisión del 29/10 en #542).
+  static const exitoOtrasSesionesPendientes =
+      'Contraseña actualizada. Iniciá sesión: al entrar cerramos tus sesiones en los otros '
+      'teléfonos.';
+
   /// La contraseña cambió pero la sesión que estaba abierta en este teléfono no se pudo cerrar
   /// (decisión de Cristian, 02/10): dice qué pasó y la salida.
   static const exitoSinCerrarSesion =
@@ -125,6 +131,9 @@ class _ConfirmarRecuperacionPasswordPageState
 
   /// La contraseña cambió pero la sesión abierta en la app no se pudo cerrar.
   bool _cierreFallido = false;
+
+  /// La contraseña cambió pero el servidor no contestó al cerrar las sesiones de los otros teléfonos.
+  bool _otrasSinCerrar = false;
   bool _sesionSoltada = false;
   bool _hayBaseLocal = false;
   Map<String, String> _erroresCampo = const {};
@@ -251,6 +260,9 @@ class _ConfirmarRecuperacionPasswordPageState
   /// también se cierra acá (DB, DEK en memoria), y se muestra la pantalla de éxito (15-A09).
   Future<void> _terminar() async {
     _terminado = true;
+    final otrasSinCerrar = ref
+        .read(confirmarRecuperacionPasswordUseCaseProvider)
+        .otrasSesionesSinCerrar;
     var cierreFallido = false;
     try {
       if (ref.read(sesionProvider).value != null) {
@@ -269,6 +281,7 @@ class _ConfirmarRecuperacionPasswordPageState
         setState(() {
           _guardando = false;
           _cierreFallido = cierreFallido;
+          _otrasSinCerrar = otrasSinCerrar;
         });
       }
     }
@@ -445,6 +458,8 @@ class _ConfirmarRecuperacionPasswordPageState
           // Con la sesión todavía abierta, «Iniciá sesión» sería falso: se dice qué pasó y qué hacer.
           _cierreFallido
               ? TextosConfirmacionRecuperacion.exitoSinCerrarSesion
+              : _otrasSinCerrar
+              ? TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes
               : TextosConfirmacionRecuperacion.exito,
           key: const Key('confirmar_recuperacion_exito'),
           style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),

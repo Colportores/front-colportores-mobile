@@ -1104,10 +1104,50 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
       expect(_k('guardando'), findsNothing);
-      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      // Decisión del 29/10: el éxito dice que las otras sesiones se cierran al volver a entrar.
+      expect(
+        find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+        findsOneWidget,
+      );
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsNothing);
       expect(_recuperacion.passwordActual, 'NuevaClave1');
       _recuperacion.demoraAlCerrarSesiones!.complete();
       await tester.pumpAndSettle();
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('si revocar las otras sesiones falla con un error, el éxito avisa que se cierran '
+          'al entrar (texto $escala) y las cuatro guías pasan', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        final handle = tester.ensureSemantics();
+        try {
+          _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+          await _montar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+
+          expect(
+            find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+            findsOneWidget,
+          );
+          expect(find.textContaining('otros teléfonos'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await _guias(tester);
+        } finally {
+          handle.dispose();
+        }
+      });
+    }
+
+    testWidgets('si revocar sale bien, el éxito es el de siempre, sin avisar de otras sesiones', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+      expect(find.textContaining('otros teléfonos'), findsNothing);
     });
   });
 }

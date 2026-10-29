@@ -34,6 +34,13 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// Solo en memoria, y se suelta con cualquier respuesta del servidor.
   String? _enDuda;
 
+  /// El último pedido de cambio que sigue en el aire (aunque ya haya pasado el [tope]): un cambio
+  /// nuevo lo espera antes de mandarse, así uno que llega tarde nunca pisa a otro posterior. No
+  /// termina con error: solo avisa que terminó.
+  Future<void>? _enVuelo;
+
+  bool _otrasSinCerrar = false;
+
   /// Supabase manda el mismo error para un enlace vencido y para uno ya usado: la app no adivina
   /// cuál de los dos es, y los dos salen como [EnlaceRecuperacion.vencido].
   @override
@@ -44,8 +51,16 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
 
   @override
   Future<Either<Failure, Unit>> actualizarPassword(String nueva) async {
+    await _esperarAlPedidoAnterior();
     try {
-      await _remote.actualizarPassword(nueva).timeout(tope);
+      final pedido = _remote.actualizarPassword(nueva);
+      late final Future<void> aviso;
+      aviso = pedido.then<void>(
+        (_) => _soltarEnVuelo(aviso),
+        onError: (Object _, StackTrace _) => _soltarEnVuelo(aviso),
+      );
+      _enVuelo = aviso;
+      await pedido.timeout(tope);
       _enDuda = null;
       _registrarCambio();
       return const Right(unit);
@@ -84,16 +99,59 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     }
   }
 
+  /// Un cambio de contraseña nuevo no sale hasta que el anterior contesta o pasa su [tope]: dos
+  /// pedidos en el aire pueden llegar al servidor en el orden contrario y dejar la contraseña que
+  /// la persona ya no quiere (QA de #542). Si el anterior no contesta ni así, el nuevo sale igual:
+  /// la persona no puede quedar sin poder guardar.
+  Future<void> _esperarAlPedidoAnterior() async {
+    final anterior = _enVuelo;
+    if (anterior == null) return;
+    try {
+      await anterior.timeout(tope);
+    } on TimeoutException {
+      _log.warn(
+        LogModulo.auth,
+        'RECUPERACION_PEDIDO_ANTERIOR',
+        'el pedido anterior sigue sin contestar; se manda el nuevo',
+      );
+    }
+  }
+
+  void _soltarEnVuelo(Future<void> aviso) {
+    if (identical(_enVuelo, aviso)) _enVuelo = null;
+  }
+
   // `audit_log` todavía no existe: el evento de la HU queda en el log (como `local_data_wipe`).
   void _registrarCambio() =>
       _log.info(LogModulo.auth, 'password_reset_completed', 'contraseña actualizada');
 
   @override
-  Future<Either<Failure, Unit>> cerrarTodasLasSesiones() => _sinMostrar(
-    'RECUPERACION_REVOCAR_FAIL',
-    'no se pudieron revocar las sesiones tras cambiar la contraseña',
-    _remote.cerrarTodasLasSesiones,
-  );
+  bool get otrasSesionesSinCerrar => _otrasSinCerrar;
+
+  @override
+  Future<Either<Failure, Unit>> cerrarTodasLasSesiones() async {
+    final resultado = await _sinMostrar(
+      'RECUPERACION_REVOCAR_FAIL',
+      'no se pudieron revocar las sesiones tras cambiar la contraseña',
+      _remote.cerrarTodasLasSesiones,
+    );
+    // Si no contestó, los otros teléfonos pueden seguir adentro: queda para decírselo a la persona
+    // y reintentar al próximo login (decisión del 29/10 en #542).
+    _otrasSinCerrar = resultado.isLeft();
+    return resultado;
+  }
+
+  @override
+  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes() async {
+    if (!_otrasSinCerrar) return const Right(unit);
+    final resultado = await _sinMostrar(
+      'RECUPERACION_REVOCAR_OTRAS_FAIL',
+      'no se pudieron revocar las otras sesiones al volver a entrar',
+      _remote.cerrarLasOtrasSesiones,
+    );
+    if (resultado.isRight()) _otrasSinCerrar = false;
+    return resultado;
+  }
 
   @override
   Future<Either<Failure, Unit>> abandonar() {
