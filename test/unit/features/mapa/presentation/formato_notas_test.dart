@@ -88,4 +88,17 @@ void main() {
     expect(TextosNotas.notaLarga(5200), contains('5200'));
     expect(TextosNotas.notaLarga(5200), contains('5000'));
   });
+
+  test(
+    'el botón «Restaurar» se lee «de la nota del 05/10» y «de hoy a las 14:20», nunca «de el»',
+    () {
+      String lector(DateTime creada) => TextosNotas.restaurarLaNota(
+        FormatoNotas.fechaParaLector(notaDePrueba('a', 'x', creada: creada), ahora),
+      );
+
+      expect(lector(DateTime(2026, 10, 5, 9)), 'Restaurar la nota del 05/10');
+      expect(lector(DateTime(2025, 12, 30, 9)), 'Restaurar la nota del 30/12/25');
+      expect(lector(DateTime(2026, 10, 22, 14, 20)), 'Restaurar la nota de hoy a las 14:20');
+    },
+  );
 }

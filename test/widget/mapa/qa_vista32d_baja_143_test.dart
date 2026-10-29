@@ -353,10 +353,8 @@ void main() {
           final renglones = cajas.map((c) => c.top.round()).toSet().length;
           expect(renglones, 1, reason: '«$rotulo» se parte en $renglones renglones');
         }
-        // skip: QA #143 — rótulo y valor son dos `Flexible` iguales: con el valor ancho, «Comprado» queda
-        // en la mitad del cuadro y se parte («Comprad» / «o»); a 412×915 no pasa.
+        // QA #143 — el rótulo ya no compite con el valor por el ancho: «Comprado» no se parte.
       },
-      skip: true,
     );
 
     for (final estado in EstadoHoja.values) {

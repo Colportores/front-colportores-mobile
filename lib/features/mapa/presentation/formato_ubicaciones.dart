@@ -10,14 +10,15 @@ abstract final class FormatoUbicaciones {
   };
 
   /// «12 m», o «1,2 km» desde el kilómetro. Nunca «0 m»: lo que está a menos de 1 m se ve como «1 m».
+  /// Nunca «1000 m»: lo que redondea a 1000 m (desde 999,5) ya es «1,0 km».
   /// Entre el número y la unidad va un espacio duro ([espacioDuro]): en un renglón angosto la unidad
   /// no queda sola.
   static String distancia(double metros) {
     if (!metros.isFinite || metros < 0) return '';
-    if (metros >= 1000) {
+    final redondeado = metros.round();
+    if (redondeado >= 1000) {
       return '${(metros / 1000).toStringAsFixed(1).replaceAll('.', ',')}${espacioDuro}km';
     }
-    final redondeado = metros.round();
     return '${redondeado < 1 ? 1 : redondeado}${espacioDuro}m';
   }
 

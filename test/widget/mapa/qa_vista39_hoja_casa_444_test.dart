@@ -656,7 +656,8 @@ void main() {
     }
   });
 
-  // Hallazgos menores: documentados con `skip`; `--dart-define=QA_HALLAZGOS=true` los corre.
+  // Hallazgos menores de QA #444. El del avatar (iniciales a 2,0×) está corregido; el del subtítulo con la
+  // distancia en E·05 queda con `skip`: lo decide el agente de decisiones (gana el canvas), ver #541.
   group('Hallazgos menores (QA #444)', () {
     const verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
@@ -676,9 +677,6 @@ void main() {
               '(captura qa471_hoja_C01-completo_360_x2.png)',
         );
       },
-      // skip: QA #444 — a 2.0× «PG» se parte en dos renglones y el círculo de 34 dp lo corta (el nombre
-      // al lado dice lo mismo: menor).
-      skip: !verHallazgos,
     );
 
     testWidgets(

@@ -380,7 +380,11 @@ class _CuadroDeCuenta extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // El rótulo es una palabra y manda (3 partes contra 2): con el texto grande y un valor
+                    // ancho no se parte a mitad de palabra («Comprad» / «o»); el valor, que puede ser
+                    // ancho, se acomoda en el resto.
                     Flexible(
+                      flex: 3,
                       child: Text(
                         rotulo,
                         style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
@@ -388,6 +392,7 @@ class _CuadroDeCuenta extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Flexible(
+                      flex: 2,
                       child: Text(
                         valor,
                         textAlign: TextAlign.end,
