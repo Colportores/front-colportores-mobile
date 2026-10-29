@@ -3,25 +3,9 @@
 // contraste lee los colores de la captura y con las fuentes reales da falsos negativos (con las cajas
 // de Ahem lee el color de verdad).
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista29_164_arnes.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
-/// skip: QA #164 — los campos de texto nuevos (otra marca, aprobación, referencia, otro banco) miden
-/// 41 dp de alto con texto 1,0: menos de los 48 dp de Android y los 44 pt de iOS. Estos son los
-/// estados donde algún campo de texto entra en la lista armada; con texto 2,0 crecen y pasan.
-bool _tocaUnCampoBajo(Estado164 estado, Size tamano, double escala) {
-  if (escala != 1.0) return false;
-  return switch (estado) {
-    Estado164.a01Otra || Estado164.b01Transferencia || Estado164.b01ConBanco => true,
-    Estado164.b02Otro => tamano == chico164,
-    Estado164.errorTransferencia => tamano == grande164,
-    _ => false,
-  };
-}
 
 void main() {
   sinFuentesReales164();
@@ -38,17 +22,11 @@ void main() {
             h.dispose();
           }
 
-          final conHallazgo = _tocaUnCampoBajo(estado, tamano, escala);
           testWidgets(
             'tamaño de toque Android (48 dp)',
             (t) => verificar(t, androidTapTargetGuideline),
-            skip: conHallazgo && !_verHallazgos,
           );
-          testWidgets(
-            'tamaño de toque iOS (44 pt)',
-            (t) => verificar(t, iOSTapTargetGuideline),
-            skip: conHallazgo && !_verHallazgos,
-          );
+          testWidgets('tamaño de toque iOS (44 pt)', (t) => verificar(t, iOSTapTargetGuideline));
           testWidgets(
             'todo lo tocable tiene nombre',
             (t) => verificar(t, labeledTapTargetGuideline),

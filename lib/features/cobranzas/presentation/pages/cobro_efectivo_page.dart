@@ -371,12 +371,12 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     setState(() => _registrado = registrado);
   }
 
-  /// El aviso de falla está arriba del formulario: con letra grande hay que subir para verlo.
+  /// El aviso de falla está arriba del formulario: con letra grande hay que subir para verlo. Se sube
+  /// de una (sin animar): el aviso está fuera de la lista armada hasta que llega el principio, y el
+  /// lector de pantalla solo lo anuncia cuando existe (QA #164, 5b).
   void _verElAviso() {
     if (!_scroll.hasClients || _scroll.offset == 0) return;
-    unawaited(
-      _scroll.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut),
-    );
+    _scroll.jumpTo(0);
   }
 
   void _alFallar(Failure falla) {

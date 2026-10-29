@@ -548,10 +548,6 @@ void main() {
       (grande164, 2.0),
     ]) {
       for (final medio in ['tarjeta', 'transferencia']) {
-        // skip: QA #164 — con texto 2,0 y el último dato escrito (aprobación o referencia), al fallar
-        // el guardado la lista no llega a subir al aviso «No pudimos guardar el cobro»: queda fuera de
-        // la vista (y sin armar, así que el lector tampoco lo anuncia); solo cambia el botón a
-        // «Reintentar».
         testWidgets(
           'tras fallar con $medio y el último dato escrito, el aviso de error queda a la vista · ${sufijo164(tamano, escala)}',
           (tester) async {
@@ -575,16 +571,12 @@ void main() {
               reason: 'el aviso de error no está a la vista',
             );
           },
-          skip: escala > 1 && !verHallazgos164,
         );
       }
     }
   });
 
   group('Tamaño de toque de los campos nuevos', () {
-    // skip: QA #164 — los campos de texto de la tarjeta y la transferencia miden 41 dp de alto con
-    // texto 1,0 (el mínimo de Android es 48 dp, y las guías de Flutter fallan): `CampoDeVenta` no
-    // fija un alto mínimo, como sí lo hacen los campos de registro (#115).
     for (final (estado, clave) in [
       (Estado164.a01Otra, 'cobro_marca_otra'),
       (Estado164.a01Otra, 'cobro_aprobacion'),
@@ -597,7 +589,7 @@ void main() {
         await llegarA164(tester, estado);
         await traerAlAlcance(tester, campo164(clave));
         expect(tester.getSize(campo164(clave)).height, greaterThanOrEqualTo(48));
-      }, skip: !verHallazgos164);
+      });
     }
   });
 

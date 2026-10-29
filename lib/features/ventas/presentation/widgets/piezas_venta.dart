@@ -266,6 +266,8 @@ class CampoDeVenta extends StatelessWidget {
             maxLengthEnforcement: MaxLengthEnforcement.enforced,
             buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
             decoration: InputDecoration(
+              // Alto mínimo de toque: 48 dp en Android (44 pt en iOS), también con texto 1,0.
+              constraints: lineas == 1 ? const BoxConstraints(minHeight: 48) : null,
               // Con texto de ejemplo (`hint`) el rótulo no va adentro: taparía el ejemplo. El rótulo de
               // arriba es solo visual, así que el lector lo recibe por el `Semantics` de afuera.
               labelText: hint == null ? rotulo : null,
