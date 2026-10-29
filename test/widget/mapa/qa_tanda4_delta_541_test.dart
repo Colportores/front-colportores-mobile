@@ -287,6 +287,11 @@ void main() {
       await tester.tap(boton);
       await asentar(tester);
       expect(find.byKey(const ValueKey('borrada_b3')), findsOneWidget);
+      // El aviso de la falla («No pudimos restaurar…») tapa un rato la parte de abajo: se espera a que se
+      // vaya y se trae el botón a la vista antes de reintentar (con el texto al 200 % el aviso es alto).
+      await tester.pump(const Duration(seconds: 6));
+      await tester.ensureVisible(boton);
+      await tester.pump();
       await tester.tap(boton);
       await asentar(tester);
       expect(repo.cuantas('restaurar'), 2);
