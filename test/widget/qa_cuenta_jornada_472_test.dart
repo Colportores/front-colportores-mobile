@@ -383,6 +383,7 @@ void main() {
         expect(_local.unica.estaAbierta, isFalse);
         expect(_local.unica.fin!.isAtSameMomentAs(DateTime(2026, 10, 22, 22, 30)), isTrue);
         expect(_resumen, findsOneWidget);
+        await tester.ensureVisible(find.text('Volver al inicio'));
         await tester.tap(find.text('Volver al inicio'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('cuenta_terminar_jornada')), findsNothing);
@@ -395,6 +396,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _tocarTerminar(tester);
+        await tester.ensureVisible(find.text('Volver al inicio'));
         await tester.tap(find.text('Volver al inicio'));
         await tester.pumpAndSettle();
 
