@@ -518,17 +518,22 @@ class _FilaBaja extends StatelessWidget {
       label: '$nombre. $detalle',
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: Color(0xFFF3F1EA), shape: BoxShape.circle),
-            child: Text(
-              FormatoPersonas.iniciales(persona),
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: ColoresAlta.gris,
+          // El círculo es fijo (36 dp) y las iniciales no dicen nada que el nombre de al lado no diga:
+          // no escalan con el texto (partirían en dos renglones) y quedan fuera de la lectura.
+          ExcludeSemantics(
+            child: Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(color: Color(0xFFF3F1EA), shape: BoxShape.circle),
+              child: Text(
+                FormatoPersonas.iniciales(persona),
+                textScaler: TextScaler.noScaling,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: ColoresAlta.gris,
+                ),
               ),
             ),
           ),
@@ -664,17 +669,23 @@ class _FilaCliente extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(color: ColoresAlta.azulFondo, shape: BoxShape.circle),
-              child: Text(
-                FormatoPersonas.iniciales(persona),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
+            ExcludeSemantics(
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: ColoresAlta.azulFondo,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  FormatoPersonas.iniciales(persona),
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ),

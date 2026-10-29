@@ -29,7 +29,7 @@ final class EstadoNotificaciones extends Equatable {
   /// Ya vio el pedido del primer ingreso y lo contestó («Activar» o «Ahora no»).
   final bool pedidoRespondido;
 
-  /// Cerró con la ✕ el aviso «Notificaciones desactivadas»: no vuelve en esta instalación.
+  /// Cerró con la ✕ el aviso «Las notificaciones están apagadas»: no vuelve en esta instalación.
   final bool avisoCerrado;
 
   bool get activadas => permiso == EstadoPermisoNotificaciones.activadas;
