@@ -39,6 +39,8 @@ import 'features/auth/data/repositories/zonas_avisadas_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
+import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
@@ -59,6 +61,8 @@ import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'features/ventas/presentation/providers/ventas_providers.dart'
+    show cobrarDespuesDeLaVentaProvider;
 import 'plataforma/identidad_instalacion.dart';
 
 Future<void> main() async {
@@ -231,6 +235,35 @@ Future<void> main() async {
             final contexto = navigatorKeyColportores.currentContext;
             if (contexto == null) return false;
             return FlujoRegistrarVisita.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Cobrar ahora» de «Venta registrada: ¿y ahora?» (vista 27, 27A·14): el cobro en efectivo
+        // (vista 28, #439) con la venta, la casa y el cliente ya resueltos.
+        cobrarDespuesDeLaVentaProvider.overrideWith(
+          (ref) => (cobro) async {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return CobroEfectivoPage.abrir(
+              contexto,
+              ventaId: cobro.ventaId,
+              colportorId: cobro.colportorId,
+              espacioId: cobro.espacioId,
+              espacioPersonaId: cobro.espacioPersonaId,
+            );
+          },
+        ),
+        // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
+        // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
+        // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
+        cobrarDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoCobrarDesdeLaCasa.abrir(
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,

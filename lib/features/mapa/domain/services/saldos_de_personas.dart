@@ -9,6 +9,14 @@ abstract interface class SaldosDePersonas {
   Future<Map<String, int>> saldosPendientes(Iterable<String> personaIds);
 }
 
+/// Una fuente de saldos que además avisa cuando algo pudo cambiarlos (una venta, un cobro). Es opcional:
+/// quien arma el contexto de la casa se vuelve a leer los saldos cada vez que llega un aviso, así la hoja
+/// no sigue diciendo «Debe $ 1.200» después de cobrar (vista 39, C·01, #440).
+abstract interface class SaldosQueAvisan implements SaldosDePersonas {
+  /// Un evento cada vez que cambian las ventas o los cobros de la base local.
+  Stream<void> get cambios;
+}
+
 /// Mientras no haya ventas locales de dónde sacar el saldo: no se sabe de nadie.
 final class SaldosDePersonasSinFuente implements SaldosDePersonas {
   const SaldosDePersonasSinFuente();
