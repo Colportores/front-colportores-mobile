@@ -20,6 +20,7 @@ abstract final class ClavesFicha {
   static const opcionEditar = Key('ficha_opcion_editar');
   static const opcionBaja = Key('ficha_opcion_baja');
   static const cuenta = Key('ficha_cuenta');
+  static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
   static const ultimaNota = Key('ficha_ultima_nota');
@@ -338,6 +339,26 @@ class TarjetaCuenta extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// La cuenta de quien todavía no tiene ventas ni pagos (HU-UBI-009, «Sin movimientos aún»): ocupa el lugar
+/// de [TarjetaCuenta]. Sin ventas no hay nada que sumar, y decirlo evita que parezca que la ficha no
+/// terminó de cargar.
+class SinMovimientosDeCuenta extends StatelessWidget {
+  const SinMovimientosDeCuenta({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const KeyedSubtree(
+      key: ClavesFicha.sinMovimientos,
+      child: _Cuadro(
+        hijo: Text(
+          TextosFicha.sinMovimientos,
+          style: TextStyle(fontSize: 14, color: ColoresAlta.gris),
         ),
       ),
     );

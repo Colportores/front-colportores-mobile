@@ -85,17 +85,27 @@ void main() {
     });
 
     testWidgets(
-      'sin la cuenta (todavía no hay de dónde saberla) no muestra la tarjeta ni la inventa',
+      'sin ventas (la cuenta es null) dice «Sin movimientos aún», sin tarjeta ni saldo inventado',
       (tester) async {
-        final m = MundoFicha(historial: historialDelCanvas());
+        final m = MundoFicha(historial: [visitaEnFicha('vis-1', DateTime.utc(2026, 10, 12, 14))]);
         await montarFicha(tester, m);
 
         expect(find.byKey(ClavesFicha.cuenta), findsNothing);
-        expect(find.text('Sin movimientos aún'), findsNothing);
+        expect(find.byKey(ClavesFicha.sinMovimientos), findsOneWidget);
+        expect(find.text('Sin movimientos aún'), findsOneWidget);
         expect(find.text(TextosFicha.saldo), findsNothing);
         expect(find.byKey(ClavesFicha.historial), findsOneWidget);
       },
     );
+
+    testWidgets('con la cuenta se ve la tarjeta y no «Sin movimientos aún»', (tester) async {
+      final m = MundoFicha(historial: historialDelCanvas())..cuentas.cuenta = cuentaConSaldo;
+      await montarFicha(tester, m);
+
+      expect(find.byKey(ClavesFicha.cuenta), findsOneWidget);
+      expect(find.byKey(ClavesFicha.sinMovimientos), findsNothing);
+      expect(find.text('Sin movimientos aún'), findsNothing);
+    });
 
     testWidgets('sin notas muestra «Todavía no hay notas» y «+ Nota» si hay historial', (
       tester,

@@ -41,21 +41,11 @@ final class ResumenCuentaPersona extends Equatable {
   ];
 }
 
-/// De dónde sale la cuenta de cada persona (HU-UBI-011: advertir antes de dar de baja a quien debe).
-///
-/// **Sin adaptador todavía**: las ventas y los cobros locales llegan con el S9, así que hasta entonces
-/// el puerto lo cubre [CuentasDePersonasSinFuente] y nadie tiene saldo conocido. El S9 lo reemplaza
-/// por el real, con la misma regla que `SaldosDePersonas`.
+/// De dónde sale la cuenta de cada persona (la ficha, 32B, y HU-UBI-011: advertir antes de dar de baja a
+/// quien debe). Lo cubre el adaptador de la DB local (`CuentasDePersonasDrift`), con la misma regla de
+/// saldo que `SaldosDePersonas`.
 abstract interface class CuentasDePersonas {
-  /// La cuenta de [personaId], o `null` si no tiene ventas (no se muestra nada, ni «$ 0»). Si no se
-  /// puede leer, lanza: quien la pide no da por hecho que no debe nada.
+  /// La cuenta de [personaId], o `null` si no tiene ventas (no hay nada que sumar: ni «$ 0» ni saldo).
+  /// Si no se puede leer, lanza: quien la pide no da por hecho que no debe nada.
   Future<ResumenCuentaPersona?> resumenDe(String personaId);
-}
-
-/// Mientras no haya ventas locales de dónde sacar la cuenta: no se sabe de nadie.
-final class CuentasDePersonasSinFuente implements CuentasDePersonas {
-  const CuentasDePersonasSinFuente();
-
-  @override
-  Future<ResumenCuentaPersona?> resumenDe(String personaId) async => null;
 }

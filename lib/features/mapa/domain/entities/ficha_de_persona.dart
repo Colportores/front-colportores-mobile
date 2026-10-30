@@ -149,7 +149,7 @@ class FichaDePersona extends Equatable {
   /// Todos los movimientos, el más nuevo primero. La pantalla los pagina.
   final List<MovimientoDeFicha> historial;
 
-  /// Lo que compró, recibió y pagó; `null` si no hay de dónde saberlo («Sin movimientos aún»).
+  /// Lo que compró, recibió y pagó; `null` si no tiene ventas («Sin movimientos aún»).
   final ResumenCuentaPersona? resumen;
 
   bool get soloLectura => contexto.soloLectura;
