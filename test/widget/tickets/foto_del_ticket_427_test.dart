@@ -60,7 +60,10 @@ void main() {
     testWidgets('cerrar la cámara del teléfono sin sacar nada deja la pantalla lista', (
       tester,
     ) async {
-      final a = await montarTicket(tester, capturador: CapturadorDePrueba(camara: const [CapturaCancelada()]));
+      final a = await montarTicket(
+        tester,
+        capturador: CapturadorDePrueba(camara: const [CapturaCancelada()]),
+      );
 
       await sacarLaFoto(tester);
 
@@ -307,7 +310,9 @@ void main() {
       expect(a.repo.recibidos, isEmpty);
     });
 
-    testWidgets('sin monto el botón se apaga y dice «Ingresá el monto del ticket.»', (tester) async {
+    testWidgets('sin monto el botón se apaga y dice «Ingresá el monto del ticket.»', (
+      tester,
+    ) async {
       await montarTicket(tester);
       await irALosDatos(tester);
 
@@ -369,10 +374,14 @@ void main() {
 
       await tocarTicket(tester, find.byKey(const Key('ticket_tipo_0')));
       await tocarTicket(tester, find.byKey(const Key('ticket_marca_Otra')));
-      await _escribir(tester, find.descendant(
-        of: find.byKey(const Key('ticket_marca_otra')),
-        matching: find.byType(TextField),
-      ), 'Cabal');
+      await _escribir(
+        tester,
+        find.descendant(
+          of: find.byKey(const Key('ticket_marca_otra')),
+          matching: find.byType(TextField),
+        ),
+        'Cabal',
+      );
       await tocarTicket(tester, _enviar);
 
       final t = a.repo.recibidos.single.ticket;
@@ -547,7 +556,10 @@ void main() {
 
       await tocarTicket(tester, _enviar);
 
-      expect(find.text('Este cobro ya tiene su ticket, o ya no está. Volvé atrás.'), findsOneWidget);
+      expect(
+        find.text('Este cobro ya tiene su ticket, o ya no está. Volvé atrás.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('volver de los datos a la vista previa y seguir conserva lo escrito', (
@@ -906,7 +918,9 @@ void main() {
       await tocarTicket(tester, find.byKey(const Key('venta_aviso_accion')));
 
       expect(
-        find.text('El servidor no aceptó esta foto y no se va a reintentar. Avisale a tu coordinador.'),
+        find.text(
+          'El servidor no aceptó esta foto y no se va a reintentar. Avisale a tu coordinador.',
+        ),
         findsOneWidget,
       );
       expect(find.text('Reintentar ahora'), findsNothing);

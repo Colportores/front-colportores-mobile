@@ -59,7 +59,9 @@ void main() {
       expect(find.text('Después'), findsOneWidget);
     });
 
-    testWidgets('sin cámara sigue el aviso de guardar el ticket y «Listo» (29A·02)', (tester) async {
+    testWidgets('sin cámara sigue el aviso de guardar el ticket y «Listo» (29A·02)', (
+      tester,
+    ) async {
       await _cobrarConTarjeta(tester, monto: '1200', conCamara: false);
 
       expect(find.byKey(const Key('cobro_aviso_ticket')), findsOneWidget);
@@ -130,7 +132,9 @@ void main() {
       expect(find.text('Necesitamos la cámara'), findsNothing);
     });
 
-    testWidgets('el flujo completo con «Listo» vuelve a la casa con el cobro hecho', (tester) async {
+    testWidgets('el flujo completo con «Listo» vuelve a la casa con el cobro hecho', (
+      tester,
+    ) async {
       final a = await _cobrarConTarjeta(tester, monto: '1200');
       await tocarCobro(tester, _sacarFoto);
 
@@ -156,13 +160,10 @@ void main() {
       expect(a.cobro.resultados, [true]);
     });
 
-    testWidgets('textScaler 2.0 a 320×568: el cobro registrado entra sin desbordar', (tester) async {
-      await _cobrarConTarjeta(
-        tester,
-        monto: '300',
-        escala: 2,
-        tamano: const Size(320, 568),
-      );
+    testWidgets('textScaler 2.0 a 320×568: el cobro registrado entra sin desbordar', (
+      tester,
+    ) async {
+      await _cobrarConTarjeta(tester, monto: '300', escala: 2, tamano: const Size(320, 568));
 
       await traerAlAlcance(tester, _sacarFoto);
       expect(find.text('Sacar foto del ticket'), findsOneWidget);

@@ -149,9 +149,7 @@ class _TicketDeTarjetaPageState extends ConsumerState<TicketDeTarjetaPage> {
       } else {
         _marca = TextosMedioDeCobro.marcaOtra;
         if (marca != TextosMedioDeCobro.marcaOtra) {
-          _marcaOtra.text = String.fromCharCodes(
-            marca.runes.take(ReglasDeTicket.largoMaximoTexto),
-          );
+          _marcaOtra.text = String.fromCharCodes(marca.runes.take(ReglasDeTicket.largoMaximoTexto));
         }
       }
     }
@@ -691,11 +689,7 @@ class _TicketDeTarjetaPageState extends ConsumerState<TicketDeTarjetaPage> {
         ),
         if (avisoDeMonto != null) ...[
           const SizedBox(height: 9),
-          AvisoDeVenta(
-            key: const Key('ticket_aviso_monto'),
-            error: false,
-            texto: avisoDeMonto,
-          ),
+          AvisoDeVenta(key: const Key('ticket_aviso_monto'), error: false, texto: avisoDeMonto),
         ],
         const SizedBox(height: 10),
         CampoDeFechaDelCobro(
@@ -817,7 +811,9 @@ class _TicketDeTarjetaPageState extends ConsumerState<TicketDeTarjetaPage> {
       ),
       error: (_, _) => _marco(
         cabecera: _cabecera(TextosTicket.enColaTitulo, atras: false),
-        hijos: const [AvisoDeVenta(key: Key('ticket_error_lectura'), texto: TextosTicket.errorDeLectura)],
+        hijos: const [
+          AvisoDeVenta(key: Key('ticket_error_lectura'), texto: TextosTicket.errorDeLectura),
+        ],
         cta: _botonListo(),
       ),
       data: (registrado) {
