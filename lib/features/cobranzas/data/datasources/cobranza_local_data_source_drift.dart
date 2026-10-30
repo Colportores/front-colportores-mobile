@@ -325,6 +325,10 @@ final class CobranzaLocalDataSourceDrift {
     );
   }
 
+  /// La fila como entidad: la usan los que ligan algo al cobro (el ticket, HU-COB-007) y encolan su
+  /// `update` con la fila entera.
+  static Cobranza aEntidad(CobranzaFila fila) => _aCobranza(fila);
+
   static Cobranza _aCobranza(CobranzaFila fila) => Cobranza(
     id: fila.id,
     ventaId: fila.ventaId,
@@ -337,6 +341,7 @@ final class CobranzaLocalDataSourceDrift {
     numeroAprobacion: fila.numeroAprobacion,
     referenciaTransferencia: fila.referenciaTransferencia,
     bancoOrigen: fila.bancoOrigen,
+    ticketId: fila.ticketId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -360,6 +365,7 @@ final class CobranzaLocalDataSourceDrift {
     numeroAprobacion: Value(c.numeroAprobacion),
     referenciaTransferencia: Value(c.referenciaTransferencia),
     bancoOrigen: Value(c.bancoOrigen),
+    ticketId: Value(c.ticketId),
     createdAt: c.auditoria.createdAt,
     updatedAt: c.auditoria.updatedAt,
     createdBy: Value(c.auditoria.createdBy),

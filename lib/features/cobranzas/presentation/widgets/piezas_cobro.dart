@@ -316,13 +316,21 @@ Future<DateTime?> mostrarHojaFechaDelCobro(
   required DateTime hoy,
   required DateTime diaDeLaVenta,
   required DateTime elegido,
+  String titulo = TextosCobro.hojaTitulo,
+  String? pista,
 }) => showModalBottomSheet<DateTime>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
-  builder: (_) => HojaFechaDelCobro(hoy: hoy, diaDeLaVenta: diaDeLaVenta, elegido: elegido),
+  builder: (_) => HojaFechaDelCobro(
+    hoy: hoy,
+    diaDeLaVenta: diaDeLaVenta,
+    elegido: elegido,
+    titulo: titulo,
+    pista: pista,
+  ),
 );
 
 class HojaFechaDelCobro extends StatefulWidget {
@@ -331,11 +339,20 @@ class HojaFechaDelCobro extends StatefulWidget {
     required this.hoy,
     required this.diaDeLaVenta,
     required this.elegido,
+    this.titulo = TextosCobro.hojaTitulo,
+    this.pista,
   });
 
   final DateTime hoy;
   final DateTime diaDeLaVenta;
   final DateTime elegido;
+
+  /// «¿Cuándo te pagó?» en el cobro; el ticket de tarjeta pregunta de qué día es.
+  final String titulo;
+
+  /// La línea de abajo con el rango permitido; sin ella, la del cobro («No puede ser antes de la
+  /// venta…»).
+  final String? pista;
 
   @override
   State<HojaFechaDelCobro> createState() => _HojaFechaDelCobroState();
@@ -408,7 +425,7 @@ class _HojaFechaDelCobroState extends State<HojaFechaDelCobro> {
           children: [
             Semantics(
               header: true,
-              child: Text(TextosCobro.hojaTitulo, style: Theme.of(context).textTheme.titleLarge),
+              child: Text(widget.titulo, style: Theme.of(context).textTheme.titleLarge),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -444,7 +461,8 @@ class _HojaFechaDelCobroState extends State<HojaFechaDelCobro> {
             ),
             const SizedBox(height: 14),
             Text(
-              TextosCobro.fechaFueraDeRango(FormatoAgendarVisita.diaYMes(widget.diaDeLaVenta)),
+              widget.pista ??
+                  TextosCobro.fechaFueraDeRango(FormatoAgendarVisita.diaYMes(widget.diaDeLaVenta)),
               key: const Key('cobro_rango'),
               style: const TextStyle(fontSize: 12.5, color: ColoresAgenda.gris),
             ),
