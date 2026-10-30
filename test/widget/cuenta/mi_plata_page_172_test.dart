@@ -16,13 +16,19 @@ Future<void> _tocar(WidgetTester tester, Key llave) async {
   await tester.pumpAndSettle();
 }
 
-/// Desplaza hasta que [llave] esté a la vista (con el texto grande no cabe todo) y la toca.
+/// Desplaza hasta que el centro de [llave] caiga dentro de la pantalla (con el texto grande un
+/// widget puede estar construido pero fuera de la vista, y `dragUntilVisible` no lo trae) y lo toca.
 Future<void> _verYTocar(WidgetTester tester, Key llave) async {
-  await tester.dragUntilVisible(
-    find.byKey(llave),
-    find.byKey(const Key('mi_plata_lista')),
-    const Offset(0, -200),
-  );
+  final alto = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+  for (var i = 0; i < 80; i++) {
+    final encontrado = find.byKey(llave);
+    if (encontrado.evaluate().isNotEmpty) {
+      final y = tester.getCenter(encontrado).dy;
+      if (y > 0 && y < alto - 24) break;
+    }
+    await tester.drag(find.byKey(const Key('mi_plata_lista')), const Offset(0, -100));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
   await _tocar(tester, llave);
 }
 
