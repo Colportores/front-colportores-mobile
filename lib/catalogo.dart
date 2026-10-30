@@ -51,8 +51,10 @@ final specsDeLaApp = <SyncSpec>[
   // incluye, decisión «Cobro en dep.»). Solo de alta: el servidor rechaza un update o una baja con
   // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor. Sin `alsoPull`: que el
   // teléfono vea la validación o el rechazo del retiro está pendiente de decisión (contrato §2). El de
-  // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola.
-  SyncSpec.push('deposito'),
+  // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola. Es una escritura
+  // crítica como el cobro (decisión del agente de decisiones, 30/10, regla R1: mueve plata y un
+  // teléfono perdido antes del próximo ciclo no puede perder lo registrado): sube sin esperar.
+  SyncSpec.push('deposito', critical: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).
