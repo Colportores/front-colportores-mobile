@@ -34,6 +34,10 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('venta'),
   SyncSpec.push('venta_item'),
+  // La entrega de lo vendido (HU-VEN-002, #430): una fila por producto, ya entregada o pendiente. Sube
+  // con ids opacos, después de la venta que entrega; `stock_inconsistente` (backend 0118) la pone el
+  // servidor y el push la descarta. Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('entrega'),
   // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
   // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('cobranza', critical: true),
