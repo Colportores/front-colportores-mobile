@@ -2,14 +2,13 @@
 // Flutter (tamaño de toque de Android e iOS, etiquetas y contraste) en cada estado, 360×640 y
 // 412×915, texto 1,0 y 2,0. Va aparte de `qa_vista27_venta_158_test.dart` porque la guía de contraste
 // da falsos negativos con las fuentes reales (se usa la fuente de prueba).
+import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart'
+    show TextosVenta;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista27_venta_158_arnes.dart';
 import '../../helpers/venta_ui_falsos.dart';
-
-/// `--dart-define=QA_HALLAZGOS=true` corre los casos que documentan un hallazgo (hoy fallan).
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   setUpAll(() => usarFuentesReales408 = false);
@@ -71,20 +70,17 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets(
-      '«Guardando»: la ruedita tiene un anuncio, no es un botón mudo',
-      (tester) async {
-        final semantica = tester.ensureSemantics();
-        await llegar531(tester, Estado531.guardando);
-        final nodo = tester.getSemantics(cta531);
-        expect(
-          nodo.label.isNotEmpty || nodo.flagsCollection.isLiveRegion,
-          isTrue,
-          reason: 'con el guardado en curso, el botón no dice nada',
-        );
-        semantica.dispose();
-      },
-      skip: !_conHallazgos,
-    ); // skip: QA #158 — el botón «guardando» no tiene etiqueta para el lector
+    testWidgets('«Guardando»: la ruedita tiene un anuncio, no es un botón mudo', (tester) async {
+      final semantica = tester.ensureSemantics();
+      await llegar531(tester, Estado531.guardando);
+      final nodo = tester.getSemantics(cta531);
+      expect(
+        nodo.label.isNotEmpty || nodo.flagsCollection.isLiveRegion,
+        isTrue,
+        reason: 'con el guardado en curso, el botón no dice nada',
+      );
+      expect(nodo.label, contains(TextosVenta.guardando));
+      semantica.dispose();
+    });
   });
 }
