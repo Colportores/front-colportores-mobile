@@ -399,18 +399,21 @@ void main() {
       expect(r.entregasPendientes, 2);
     });
 
-    test('suma las unidades de todas las ventas de la persona (canvas: «Entregado 1 de 2»)', () async {
-      await venta('ven-1');
-      await venta('ven-2', talonario: '0043');
-      await renglon('it-1', 'ven-1', 'pro-1');
-      await renglon('it-2', 'ven-2', 'pro-2');
-      await entrega('ent-1', 'ven-1', 'pro-1');
+    test(
+      'suma las unidades de todas las ventas de la persona (canvas: «Entregado 1 de 2»)',
+      () async {
+        await venta('ven-1');
+        await venta('ven-2', talonario: '0043');
+        await renglon('it-1', 'ven-1', 'pro-1');
+        await renglon('it-2', 'ven-2', 'pro-2');
+        await entrega('ent-1', 'ven-1', 'pro-1');
 
-      final r = (await fuente.resumenDe('per-1'))!;
+        final r = (await fuente.resumenDe('per-1'))!;
 
-      expect(r.entregasHechas, 1);
-      expect(r.entregasTotales, 2);
-    });
+        expect(r.entregasHechas, 1);
+        expect(r.entregasTotales, 2);
+      },
+    );
 
     test('una fila pendiente o dada de baja no cuenta como entregada', () async {
       await venta('ven-1');
