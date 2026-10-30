@@ -53,6 +53,10 @@ class Cobranzas extends Table {
   /// El banco de origen, como texto de 1 a 60 caracteres; solo con TRANSFERENCIA. Opcional.
   TextColumn get bancoOrigen => text().nullable()();
 
+  /// El ticket del cobro con tarjeta (HU-COB-007, #426): el id de una fila de `ticket`. Opcional; se
+  /// completa cuando el colportor carga el ticket. Es un id opaco, sin dato del cliente.
+  TextColumn get ticketId => text().nullable()();
+
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 
   IntColumn get updatedAt => integer().map(const FechaUtcConverter())();
