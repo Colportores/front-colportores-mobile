@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
+import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/filtro_de_historial.dart';
@@ -40,8 +42,12 @@ import 'notas_de_persona_page.dart';
 /// - Más de 100 movimientos: se muestran de a 100 con «Ver más».
 /// - «MOSTRAR» (32B·03) filtra el historial por estado: «Todo», «Con saldo» o «Entrega pendiente». No
 ///   se guarda: al reentrar vuelve a «Todo».
-/// - Los chips «+ Agendar cobranza» y «Registrar entrega» son de HU-VEN-005, y la ubicación
-///   alternativa, de la vista 22: no están acá.
+/// - Bajo la cuenta, las acciones rápidas de HU-VEN-005 (32B·01): «+ Agendar cobranza» abre «Agendar
+///   visita» de cobranza con la casa y la persona puestas, y «Registrar entrega» abre la pantalla de
+///   entregas pendientes (`registrarEntregaDesdeLaFichaProvider`; sin destino no se dibuja). No están
+///   con la persona de baja o el depto de baja (32B·04 y 32B·08), ni en la ficha vacía (32B·05) ni
+///   sin ventas. Con una de las dos abriéndose, la otra queda apagada.
+/// - La ubicación alternativa es de la vista 22: no está acá.
 class FichaPersonaPage extends ConsumerStatefulWidget {
   const FichaPersonaPage({
     super.key,
@@ -169,6 +175,39 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await editar(widget.personaId);
   });
 
+  /// «+ Agendar cobranza» (32B·01, HU-VEN-005): «Agendar visita» de cobranza con la casa y la persona ya
+  /// puestas. Al guardar vuelve acá con el aviso «Agendada…».
+  Future<void> _agendarCobranza() => _unaAlaVez(() async {
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    // El vínculo de la persona con este depto: la agenda cuelga de él.
+    final personas = await ref
+        .read(personaRepositoryProvider)
+        .observarDelEspacio(widget.espacioId)
+        .first;
+    final vinculo = personas.where((p) => p.persona.id == widget.personaId).firstOrNull?.vinculo;
+    if (!mounted) return;
+    if (vinculo == null || widget.colportorId.trim().isEmpty) {
+      _avisar(TextosFicha.noPudimosAbrir);
+      return;
+    }
+    await FlujoAgendarVisita.abrir(
+      context,
+      espacioId: widget.espacioId,
+      espacioPersonaId: vinculo.id,
+      colportorId: widget.colportorId,
+      tipo: TipoAgenda.cobranza,
+    );
+  });
+
+  /// «Registrar entrega» (32B·01, HU-VEN-005): la pantalla de entregas pendientes de esta persona. Al
+  /// volver, la ficha, que lee en vivo, ya muestra lo entregado.
+  Future<void> _registrarEntrega() => _unaAlaVez(() async {
+    final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
+    if (destino == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((personaId: widget.personaId, espacioId: widget.espacioId));
+  });
+
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
@@ -289,6 +328,10 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
             ? null
             : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
+        conEntrega: ref.watch(registrarEntregaDesdeLaFichaProvider) != null,
+        ocupado: _abriendo,
+        alAgendarCobranza: _agendarCobranza,
+        alRegistrarEntrega: _registrarEntrega,
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
       );
@@ -448,6 +491,10 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alElegirFiltro,
     required this.alDevolver,
     required this.alRegistrarVisita,
+    required this.conEntrega,
+    required this.ocupado,
+    required this.alAgendarCobranza,
+    required this.alRegistrarEntrega,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
   });
@@ -471,6 +518,14 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
   final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
+
+  /// Hay a dónde llevar «Registrar entrega»; sin destino el botón no se dibuja.
+  final bool conEntrega;
+
+  /// Ya se está abriendo algo: las acciones rápidas quedan apagadas.
+  final bool ocupado;
+  final VoidCallback alAgendarCobranza;
+  final VoidCallback alRegistrarEntrega;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
 
@@ -540,9 +595,25 @@ class _CuerpoDeLaFicha extends StatelessWidget {
         else ...[
           const SizedBox(height: 8),
           // Sin ventas no hay cuenta que sumar: lo dice la HU («Sin movimientos aún»), sin inventar un $ 0.
-          if (ficha.resumen case final cuenta?)
-            TarjetaCuenta(cuenta: cuenta)
-          else
+          if (ficha.resumen case final cuenta?) ...[
+            TarjetaCuenta(cuenta: cuenta),
+            // 32B·01: agendar la cobranza y registrar la entrega sin salir de la ficha. Con la persona o
+            // el depto de baja (32B·04 y 32B·08) la ficha es de solo lectura y no se ofrecen. Cada acción
+            // aparece solo si hay algo que hacer (decisión del 30/10, regla R4): «Agendar cobranza» con
+            // saldo y «Registrar entrega» con entregas pendientes; sin ninguna, no hay bloque.
+            if (!soloLectura &&
+                lugar != null &&
+                (cuenta.tieneSaldo || (conEntrega && cuenta.entregasPendientes > 0))) ...[
+              const SizedBox(height: 10),
+              AccionesRapidasDeLaFicha(
+                conCobranza: cuenta.tieneSaldo,
+                conEntrega: conEntrega && cuenta.entregasPendientes > 0,
+                ocupado: ocupado,
+                alAgendarCobranza: alAgendarCobranza,
+                alRegistrarEntrega: alRegistrarEntrega,
+              ),
+            ],
+          ] else
             const SinMovimientosDeCuenta(),
         ],
         if (mostrarNotas) ...[
