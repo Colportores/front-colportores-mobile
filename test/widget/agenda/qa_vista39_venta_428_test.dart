@@ -70,8 +70,7 @@ void main() {
       );
     });
 
-    // skip: QA #428 — «Venta 0039 guardada.» (4 s) corre por debajo de la hoja: con «Sin fecha» tras
-    // leerla unos segundos no queda ninguna confirmación de que la venta se guardó.
+    // Decisión P1 del QA: un solo aviso al llegar a R·08, después de la pregunta (no por debajo de ella).
     testWidgets('dado el aviso «Venta 0039 guardada.», cuando elijo «Sin fecha», entonces el aviso '
         'sigue a la vista aunque haya tardado en elegir (R·08)', (tester) async {
       await a.montar(tester);
@@ -82,7 +81,7 @@ void main() {
       await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
 
       expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-    }, skip: _hallazgo);
+    });
   });
 
   group('casos límite del recorrido', () {

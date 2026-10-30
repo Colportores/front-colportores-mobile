@@ -830,6 +830,11 @@ void main() {
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
       expect(find.text(TextosCuandoCobrar.noSePudoAgendar), findsOneWidget);
+      expect(
+        find.text('Venta 0039 guardada.'),
+        findsNothing,
+        reason: 'el aviso de la falla ya lo dice',
+      );
       expect(entorno.ventas.recibidas, hasLength(1));
       expect(salida, isA<VentaGuardadaEnLaEntrevista>());
     });

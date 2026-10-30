@@ -28,7 +28,8 @@ abstract final class FlujoCuandoCobrar {
   ///
   /// [saldoCentavos] es lo que queda por cobrar: sin él, el total de la venta. Después de «Cobrar
   /// ahora» (27A·14) es lo que quedó sin cobrar, y si ya no queda nada no se pregunta. [alAgendar]
-  /// recibe la cobranza que quedó agendada, para que quien llama la muestre (R·08).
+  /// recibe la cobranza que quedó agendada, para que quien llama la muestre (R·08); [alNoPudoAgendar]
+  /// avisa que no se pudo (el aviso de esa falla ya lo dio esta pregunta).
   static Future<bool> preguntar(
     BuildContext context,
     ProviderContainer ref, {
@@ -40,6 +41,7 @@ abstract final class FlujoCuandoCobrar {
     required String direccion,
     int? saldoCentavos,
     void Function(Agenda agenda)? alAgendar,
+    VoidCallback? alNoPudoAgendar,
   }) async {
     final saldo = saldoCentavos ?? guardada.totalCentavos;
     if (saldo <= 0) return false;
@@ -119,6 +121,7 @@ abstract final class FlujoCuandoCobrar {
             confirmoHoraPasada = true;
             continue;
           case null:
+            alNoPudoAgendar?.call();
             mensajero
               ?..clearSnackBars()
               ..showSnackBar(const SnackBar(content: Text(TextosCuandoCobrar.noSePudoAgendar)));

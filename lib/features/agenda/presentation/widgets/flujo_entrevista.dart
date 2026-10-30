@@ -306,8 +306,8 @@ abstract final class FlujoEntrevista {
       }
     }
     final numero = guardada.venta.numeroTalonario;
-    // El «Venta 0039 guardada.» se dice después de «Venta registrada» y del cobro: antes taparía sus
-    // botones, abajo de todo.
+    // El «Venta 0039 guardada.» se dice al llegar a R·08, después de «Venta registrada», del cobro y de
+    // la pregunta: antes taparía sus botones, abajo de todo.
     void avisarLaVenta() => avisar(
       cerrada
           ? TextosEntrevista.ventaGuardada(numero)
@@ -334,8 +334,8 @@ abstract final class FlujoEntrevista {
           colportorId: colportorId,
         );
       }
-      avisarLaVenta();
       if (contextoFirme.mounted) {
+        var avisoDeLaCita = false;
         await FlujoCuandoCobrar.preguntar(
           contextoFirme,
           contenedor,
@@ -347,7 +347,13 @@ abstract final class FlujoEntrevista {
           direccion: cliente.direccion,
           saldoCentavos: saldo,
           alAgendar: (agenda) => cita = agenda,
+          alNoPudoAgendar: () => avisoDeLaCita = true,
         );
+        // Un solo aviso al llegar a R·08: con cita lo dice la pregunta («… Cobranza agendada para …»);
+        // sin fecha o sin saldo, «Venta 0039 guardada.» (decisión del QA de #428, P1).
+        if (cita == null && !avisoDeLaCita) avisarLaVenta();
+      } else {
+        avisarLaVenta();
       }
     } else {
       avisarLaVenta();
