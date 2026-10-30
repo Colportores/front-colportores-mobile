@@ -14,7 +14,6 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_fic
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'baja_persona_arnes.dart' show cuentaConSaldo;
 import 'ficha_persona_arnes.dart';
 
 void main() {
