@@ -90,7 +90,8 @@ void main() {
 
     expect(spec.policy, SyncPolicy.push);
     expect(spec.alsoPull, isFalse);
-    expect(spec.critical, isFalse);
+    // Escritura crítica, como el cobro: mueve plata y sube sin esperar al próximo ciclo.
+    expect(spec.critical, isTrue);
     expect(spec.pk, 'id');
     expect(entidadesDelBackup, contains('deposito'));
   });
