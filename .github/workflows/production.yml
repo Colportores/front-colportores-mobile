@@ -1,0 +1,84 @@
+name: Production
+
+# Producción: compila el AAB firmado con las variables del environment `production` y lo sube a Google Play.
+#
+# Hoy NO hay producción (el proyecto Supabase de producción sale en diciembre): el workflow queda listo pero falla con
+# un mensaje claro mientras el environment no tenga sus variables y secretos. Nunca usa las variables de dev del repo:
+# android-build.yml exige APP_ENV=production y rechaza la URL del proyecto dev.
+#
+# Environment `production` (lo crea Cristian; con revisores requeridos y solo la rama `production`):
+#   Variables: APP_ENV=production, SUPABASE_URL, SUPABASE_ANON_KEY (+ opcionales de android-build.yml),
+#              PLAY_PACKAGE_NAME (applicationId; hoy com.colportores.colportores_mobile),
+#              PLAY_TRACK (internal | alpha | beta | production; por defecto internal),
+#              PLAY_RELEASE_STATUS (draft | completed; por defecto draft: la versión queda en borrador en la consola).
+#   Secretos:  ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (clave de subida),
+#              PLAY_SERVICE_ACCOUNT_JSON (cuenta de servicio con permiso de publicar en la app).
+# La primera versión de una app nueva se sube a mano desde Play Console; desde la segunda, este workflow.
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+  # Solo para que GitHub registre el workflow cuando un PR lo toca (ver staging.yml). En un PR no corre ningún job:
+  # todos exigen la rama production.
+  pull_request:
+    paths: [".github/workflows/production.yml", ".github/workflows/android-build.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/production'
+    uses: ./.github/workflows/android-build.yml
+    with:
+      environment: production
+      modo: release
+      formato: appbundle
+      artefacto: colportores-production.aab
+      exigir-entorno: true
+      exigir-firma: true
+      retencion-dias: 30
+    secrets: inherit
+
+  play:
+    name: Subir a Google Play
+    needs: build
+    if: github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Validar la configuración de Play
+        env:
+          PLAY_PACKAGE_NAME: ${{ vars.PLAY_PACKAGE_NAME }}
+          PLAY_TRACK: ${{ vars.PLAY_TRACK }}
+          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS }}
+          HAY_CUENTA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        run: |
+          fallas=0
+          falla() { echo "::error title=Google Play::$1"; fallas=$((fallas + 1)); }
+          [ -n "$PLAY_PACKAGE_NAME" ] || falla "falta la variable PLAY_PACKAGE_NAME en el environment production."
+          [ "$HAY_CUENTA" = true ] || falla "falta el secreto PLAY_SERVICE_ACCOUNT_JSON en el environment production."
+          case "${PLAY_TRACK:-internal}" in internal|alpha|beta|production) ;; *) falla "PLAY_TRACK inválido: internal, alpha, beta o production." ;; esac
+          case "${PLAY_RELEASE_STATUS:-draft}" in draft|completed) ;; *) falla "PLAY_RELEASE_STATUS inválido: draft o completed." ;; esac
+          [ "$fallas" -eq 0 ] || exit 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: colportores-production.aab
+          path: aab
+
+      - uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ vars.PLAY_PACKAGE_NAME }}
+          releaseFiles: aab/${{ needs.build.outputs.archivo }}
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
