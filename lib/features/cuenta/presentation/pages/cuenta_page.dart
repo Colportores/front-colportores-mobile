@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/cuenta_providers.dart';
 import '../widgets/piezas_cuenta.dart';
+import '../widgets/piezas_mi_plata.dart';
+import 'mi_plata_page.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
 /// cambiaron contra la semana pasada.
@@ -13,8 +15,8 @@ import '../widgets/piezas_cuenta.dart';
 /// (33A·03); si la base no se puede leer, el error con «Reintentar» (33A·05), nunca ceros.
 ///
 /// En V1 son dos tarjetas, En mano y Por cobrar. La deuda con la casa editora llega con los pedidos
-/// (V2), «Depositado» cuando el teléfono sepa qué validó el coordinador, y el toque en cada tarjeta
-/// cuando exista su detalle (HU-CTA-003): hasta entonces no se dibuja lo que no lleva a ningún lado.
+/// (V2) y «Depositado» cuando el teléfono sepa qué validó el coordinador (#596). Cada tarjeta se toca
+/// y abre su detalle en «Mi plata» (HU-CTA-003, 33C); no se dibuja lo que no lleva a ningún lado.
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -29,6 +31,23 @@ class CuentaPage extends ConsumerStatefulWidget {
 }
 
 class _CuentaPageState extends ConsumerState<CuentaPage> {
+  /// Ya se está abriendo «Mi plata»: un segundo toque antes de que termine no abre otra encima.
+  var _abriendo = false;
+
+  Future<void> _abrir(TipoDeCifra tipo) async {
+    if (_abriendo) return;
+    _abriendo = true;
+    try {
+      await MiPlataPage.abrir(
+        context,
+        colportorId: widget.colportorId,
+        abierta: CategoriaDeMiPlata.de(tipo),
+      );
+    } finally {
+      _abriendo = false;
+    }
+  }
+
   @override
   void didUpdateWidget(CuentaPage anterior) {
     super.didUpdateWidget(anterior);
@@ -73,6 +92,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                   TarjetaDeCifra(
                     key: Key('cuenta_${tipo.name}'),
                     tipo: tipo,
+                    alAbrir: () => _abrir(tipo),
                     cifra: switch (tipo) {
                       TipoDeCifra.enMano => datos.enMano,
                       TipoDeCifra.porCobrar => datos.porCobrar,

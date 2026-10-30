@@ -106,12 +106,16 @@ enum TipoDeCifra {
 /// Una cifra de Mi Cuenta: su glifo, el rótulo, el total y cuánto cambió contra la semana pasada.
 ///
 /// Con la cifra en cero no hay colores de cuenta: el glifo va gris (33A·04, 33C·03). El lector de
-/// pantalla la lee de una vez («En mano, $ 2.400. Subió $ 1.800 contra la semana pasada.»).
+/// pantalla la lee de una vez («En mano, $ 2.400. Subió $ 1.800 contra la semana pasada.») y como botón:
+/// tocarla abre su detalle en «Mi plata» (HU-CTA-003, 33C).
 class TarjetaDeCifra extends StatelessWidget {
-  const TarjetaDeCifra({super.key, required this.tipo, required this.cifra});
+  const TarjetaDeCifra({super.key, required this.tipo, required this.cifra, this.alAbrir});
 
   final TipoDeCifra tipo;
   final CifraDeCuenta cifra;
+
+  /// Abre el detalle de la cifra; `null` deja la tarjeta sin toque (ni «›»).
+  final VoidCallback? alAbrir;
 
   @override
   Widget build(BuildContext context) {
@@ -122,75 +126,89 @@ class TarjetaDeCifra extends StatelessWidget {
       cifra,
       aconsejaDepositar: tipo.aconsejaDepositar,
     );
+    final contenido = Container(
+      constraints: const BoxConstraints(minHeight: 72),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: sinNada ? ColoresCuenta.grisFondo : tipo.fondo,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              tipo.glifo,
+              textScaler: TextScaler.noScaling,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: sinNada ? ColoresCuenta.gris : tipo.tinta,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tipo.rotulo,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 10,
+                    letterSpacing: 1.4,
+                    color: ColoresCuenta.gris,
+                  ),
+                ),
+                Text(
+                  monto,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 22,
+                    fontWeight: FontWeight.w500,
+                    color: ColoresCuenta.tinta,
+                  ),
+                ),
+                Text(
+                  linea,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12.5,
+                    color: tipo.colorDeLaVariacion(cifra.variacionCentavos),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (alAbrir != null) ...[
+            const SizedBox(width: 8),
+            const Text(
+              '›',
+              textScaler: TextScaler.noScaling,
+              style: TextStyle(fontSize: 22, color: ColoresCuenta.gris),
+            ),
+          ],
+        ],
+      ),
+    );
     return Semantics(
       container: true,
       excludeSemantics: true,
+      button: alAbrir != null,
+      onTap: alAbrir,
       label: '${tipo.hablado}, $monto. $hablada.',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 72),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: ColoresCuenta.borde),
+          side: const BorderSide(color: ColoresCuenta.borde),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: sinNada ? ColoresCuenta.grisFondo : tipo.fondo,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                tipo.glifo,
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: sinNada ? ColoresCuenta.gris : tipo.tinta,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tipo.rotulo,
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 10,
-                      letterSpacing: 1.4,
-                      color: ColoresCuenta.gris,
-                    ),
-                  ),
-                  Text(
-                    monto,
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 22,
-                      fontWeight: FontWeight.w500,
-                      color: ColoresCuenta.tinta,
-                    ),
-                  ),
-                  Text(
-                    linea,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12.5,
-                      color: tipo.colorDeLaVariacion(cifra.variacionCentavos),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        clipBehavior: Clip.antiAlias,
+        child: alAbrir == null ? contenido : InkWell(onTap: alAbrir, child: contenido),
       ),
     );
   }

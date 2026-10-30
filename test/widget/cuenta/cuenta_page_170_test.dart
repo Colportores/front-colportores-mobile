@@ -48,10 +48,9 @@ void main() {
       ]) {
         expect(find.textContaining(texto), findsNothing, reason: texto);
       }
-      // Ni flecha «›» ni toque: el detalle (HU-CTA-003) todavía no existe.
-      expect(find.text('›'), findsNothing);
-      expect(find.byType(InkWell), findsNothing);
-      expect(find.byType(GestureDetector), findsNothing);
+      // Lo único que se toca son las dos tarjetas, que abren su detalle en «Mi plata» (HU-CTA-003).
+      expect(find.text('›'), findsNWidgets(2));
+      expect(find.byType(InkWell), findsNWidgets(2));
     });
 
     testWidgets('una cifra que subió y una que bajó se leen con su verbo, sin las flechas', (

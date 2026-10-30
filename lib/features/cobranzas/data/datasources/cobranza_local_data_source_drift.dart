@@ -6,6 +6,7 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../../ventas/data/datasources/estado_de_devolucion.dart';
 import '../../../ventas/data/models/venta_model.dart';
+import '../../../ventas/domain/entities/venta_para_devolver.dart' show CuentaDeLaVenta;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
@@ -41,6 +42,25 @@ final class CobroFechaAnteriorException extends CobroRechazadoException {
 
   @override
   String toString() => 'CobroFechaAnteriorException';
+}
+
+/// Una venta viva con sus cuentas ([CuentaDeLaVenta]) y a quién se le vendió.
+final class VentaConCuenta {
+  const VentaConCuenta({
+    required this.ventaId,
+    required this.espacioPersonaId,
+    required this.fecha,
+    required this.cuenta,
+  });
+
+  final String ventaId;
+
+  /// El vínculo persona-espacio de la venta (de ahí sale el cliente).
+  final String espacioPersonaId;
+
+  /// Cuándo se hizo la venta.
+  final DateTime fecha;
+  final CuentaDeLaVenta cuenta;
 }
 
 /// Lee y escribe los cobros en las tablas `cobranza` y `venta` de la DB cifrada.
@@ -201,6 +221,37 @@ final class CobranzaLocalDataSourceDrift {
         )
         .get();
     return _sumarSaldos(filas, hasta: hasta);
+  }
+
+  /// Las cuentas de cada venta viva del colportor [colportorId] (la de la fórmula [CuentaDeLaVenta]),
+  /// con a quién se le vendió y cuándo: de acá salen el saldo de cada cliente y lo que se le debe en
+  /// el detalle de Mi plata (HU-CTA-003). La suma de sus saldos es [saldoTotalDe].
+  Future<List<VentaConCuenta>> cuentasDeLasVentasDe(String colportorId) async {
+    final filas = await _db
+        .customSelect(
+          'SELECT v.id AS id, v.espacio_persona_id AS ep, v.fecha AS fecha, '
+          'v.monto_total AS monto, COALESCE('
+          '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql}), 0) '
+          'AS cobrado FROM venta v WHERE v.deleted_at IS NULL AND $_corteColportor '
+          'ORDER BY v.fecha, v.id',
+          variables: [Variable<String>(colportorId)],
+        )
+        .get();
+    final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
+      for (final fila in filas) fila.read<String>('id'),
+    ]);
+    return [
+      for (final fila in filas)
+        VentaConCuenta(
+          ventaId: fila.read<String>('id'),
+          espacioPersonaId: fila.read<String>('ep'),
+          fecha: DateTime.fromMillisecondsSinceEpoch(fila.read<int>('fecha'), isUtc: true),
+          cuenta: (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna).cuentaDe(
+            montoTotalCentavos: fila.read<int>('monto'),
+            cobradoCentavos: fila.read<int>('cobrado'),
+          ),
+        ),
+    ];
   }
 
   /// La suma del saldo de las ventas de [filas] (`id`, `monto`, `cobrado`); con [hasta], con las
