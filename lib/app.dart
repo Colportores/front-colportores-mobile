@@ -34,6 +34,7 @@ import 'features/notificaciones/presentation/providers/conciliacion_recordatorio
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -336,6 +337,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(conciliacionRecordatoriosProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
+    // HU-COB-007: las fotos de los tickets suben cuando hay red y el ticket ya llegó al servidor.
+    ref.watch(colaDeSubidaDeFotosProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

@@ -1154,3 +1154,109 @@ final class FailureDepositoTicketYaUsado extends Failure {
         codigo: 'DEPOSITO_TICKET_YA_USADO',
       );
 }
+
+// --- Tickets (HU-COB-007, #426). Los textos son a confirmar con la pantalla (#427). ---
+
+/// El ticket no se pudo guardar en el teléfono. No se registró nada: se puede reintentar.
+final class FailureTicketNoGuardado extends Failure {
+  const FailureTicketNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el ticket. No cambió nada: probá de nuevo.',
+        codigo: 'TICKET_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer el estado de los tickets del teléfono.
+final class FailureTicketNoDisponible extends Failure {
+  const FailureTicketNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer tus tickets. Cerrá y abrí la pantalla de nuevo.',
+        codigo: 'TICKET_NO_DISPONIBLE',
+      );
+}
+
+/// El monto del ticket es cero, negativo o demasiado grande (el servidor lo rechaza con `23514`).
+final class FailureTicketMontoInvalido extends Failure {
+  const FailureTicketMontoInvalido()
+    : super(
+        mensaje: 'Ingresá el monto del ticket, mayor que cero.',
+        codigo: 'TICKET_MONTO_INVALIDO',
+      );
+}
+
+/// La fecha del ticket es después de hoy (el servidor lo rechaza con `23514`).
+final class FailureTicketFechaInvalida extends Failure {
+  const FailureTicketFechaInvalida()
+    : super(
+        mensaje: 'La fecha del ticket no puede ser futura. Revisá el día.',
+        codigo: 'TICKET_FECHA_INVALIDA',
+      );
+}
+
+/// Al ticket de tarjeta le falta el número de autorización (el servidor lo rechaza con `23514`).
+final class FailureTicketSinAutorizacion extends Failure {
+  const FailureTicketSinAutorizacion()
+    : super(
+        mensaje: 'Ingresá el número de autorización que dice el ticket.',
+        codigo: 'TICKET_SIN_AUTORIZACION',
+      );
+}
+
+/// Al ticket de tarjeta le falta decir si es de crédito o de débito (el servidor lo rechaza con
+/// `23514`).
+final class FailureTicketSinTarjeta extends Failure {
+  const FailureTicketSinTarjeta()
+    : super(
+        mensaje: 'Elegí si la tarjeta es de crédito o de débito.',
+        codigo: 'TICKET_SIN_TARJETA',
+      );
+}
+
+/// El número de autorización o la marca de la tarjeta son demasiado largos (40 caracteres como
+/// mucho).
+final class FailureTicketTextoLargo extends Failure {
+  const FailureTicketTextoLargo()
+    : super(
+        mensaje: 'El número de autorización y la tarjeta tienen hasta 40 caracteres.',
+        codigo: 'TICKET_TEXTO_LARGO',
+      );
+}
+
+/// La foto no sirve para subirla: está vacía o pesa más de 2 MiB (el servidor no la acepta).
+final class FailureTicketFotoInvalida extends Failure {
+  const FailureTicketFotoInvalida()
+    : super(
+        mensaje: 'La foto del ticket está vacía o pesa más de 2 MB. Sacala de nuevo.',
+        codigo: 'TICKET_FOTO_INVALIDA',
+      );
+}
+
+/// El cobro al que se quiere ligar el ticket no existe en este teléfono o ya tiene otro ticket.
+final class FailureTicketCobroInvalido extends Failure {
+  const FailureTicketCobroInvalido()
+    : super(
+        mensaje: 'No encontramos ese cobro para ligarle el ticket.',
+        codigo: 'TICKET_COBRO_INVALIDO',
+      );
+}
+
+/// Se quiso borrar la copia local de una foto que todavía no subió: borrarla perdería el ticket.
+final class FailureTicketCopiaSinSubir extends Failure {
+  const FailureTicketCopiaSinSubir()
+    : super(
+        mensaje: 'Esta foto todavía no subió. Cuando haya conexión sube sola y ahí podés borrarla.',
+        codigo: 'TICKET_COPIA_SIN_SUBIR',
+      );
+}
+
+/// No hay ticket con ese id en el teléfono.
+final class FailureTicketNoEncontrado extends Failure {
+  const FailureTicketNoEncontrado()
+    : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
+}
