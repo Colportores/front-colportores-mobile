@@ -982,35 +982,6 @@ final class FailureDevolucionInvalida extends Failure {
   List<Object?> get props => [...super.props, causa];
 }
 
-/// La entrega no se pudo guardar en el teléfono (HU-VEN-002). No se registró nada: se puede
-/// reintentar. El texto adapta el de 27A·13 a la entrega: a confirmar con la pantalla (#432).
-final class FailureEntregaNoGuardada extends Failure {
-  const FailureEntregaNoGuardada({this.causa})
-    : super(
-        mensaje:
-            'No pudimos guardar la entrega en tu teléfono. No se registró nada: probá de nuevo.',
-        codigo: 'VENTA_ENTREGA_NO_GUARDADA',
-      );
-
-  /// El tipo de la excepción, para el log; nunca su texto.
-  final String? causa;
-
-  @override
-  List<Object?> get props => [...super.props, causa];
-}
-
-/// No se pudo leer lo que se entregó de una venta (HU-VEN-002): la base local no se pudo leer. Es
-/// **otra cosa** que «nada entregado»: aquí no se sabe, y afirmar que no se entregó mandaría a la
-/// colportora a entregar dos veces. Se puede reintentar. El texto es a confirmar (el canvas no dibuja
-/// este estado).
-final class FailureEntregaNoDisponible extends Failure {
-  const FailureEntregaNoDisponible()
-    : super(
-        mensaje: 'No pudimos leer lo que entregaste en tu teléfono. Probá de nuevo.',
-        codigo: 'VENTA_ENTREGA_NO_DISPONIBLE',
-      );
-}
-
 /// El cobro es mayor que lo que debe la venta (HU-COB-001, vista 28, 28·03). Se rechaza: no hay saldo
 /// a favor (decisión del 23/10: sumarlo sería una función nueva). El texto es el del canvas;
 /// [saldoCentavos] lo arma la pantalla con su formato de dinero.
