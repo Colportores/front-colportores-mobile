@@ -116,6 +116,10 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// La última falla al guardar (31-10); `null` si no hay.
   Failure? _falla;
 
+  /// El registro se rechazó porque lo elegido ya no es válido (otra devolución se llevó el libro): la
+  /// venta se vuelve a leer y este aviso dice qué hacer. `null` si no hay.
+  FailureDevolucionInvalida? _invalida;
+
   /// La devolución registrada (31-05); `null` mientras se está cargando o eligiendo.
   DevolucionRegistrada? _registrada;
 
@@ -193,16 +197,23 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
 
   void _cambiarCantidad(RenglonDeLaVenta renglon, int cantidad) {
     if (_enviando) return;
+    final venta = _venta;
+    // La plata de más que había que decidir, antes del cambio.
+    final pagoDeMasAntes = venta == null ? 0 : _cuenta(venta).pagoDeMasCentavos;
     setState(() {
       final n = cantidad.clamp(0, renglon.disponibles);
       _elegidas = {..._elegidas, if (n > 0) renglon.ventaItemId: n};
       if (n == 0) _elegidas.remove(renglon.ventaItemId);
+      // Si cambió el monto a decidir, la elección era para otro monto: sin opción por defecto, hay que
+      // volver a elegir (canvas 31-02).
+      if (venta != null && _cuenta(venta).pagoDeMasCentavos != pagoDeMasAntes) _queHacer = null;
       if (_elegidas.isEmpty) {
         // Sin nada elegido se vuelve a la primera etapa; lo de la plata de más ya no corresponde.
         _siguio = false;
         _queHacer = null;
       }
       _falla = null;
+      _invalida = null;
     });
   }
 
@@ -276,6 +287,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     setState(() {
       _enviando = true;
       _falla = null;
+      _invalida = null;
     });
     try {
       final elegidas = {..._elegidas};
@@ -340,7 +352,10 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
       case FailureDevolucionSinVenta():
         setState(() => _lectura = _Lectura.ausente);
       case FailureDevolucionInvalida():
-        // Lo que quedaba por devolver cambió desde que se abrió: se lee de nuevo y las filas lo dicen.
+        // Lo que quedaba por devolver cambió desde que se abrió: se lee de nuevo, las filas lo dicen y
+        // el aviso de arriba explica qué hacer.
+        setState(() => _invalida = falla);
+        _verElAviso();
         unawaited(_leerLaVenta(mostrarCarga: false));
       default:
         setState(() => _falla = falla is FailureDevolucionNoGuardada ? falla : _generica);
@@ -572,6 +587,10 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
       hijos: [
         if (_falla != null) ...[
           const AvisoDeVenta(key: Key('devolucion_error'), texto: TextosDevolucion.errorAlGuardar),
+          const SizedBox(height: 9),
+        ],
+        if (_invalida case final invalida?) ...[
+          AvisoDeVenta(key: const Key('devolucion_invalida'), texto: invalida.mensaje),
           const SizedBox(height: 9),
         ],
         const RotuloDeSeccion(TextosDevolucion.enLaVenta),

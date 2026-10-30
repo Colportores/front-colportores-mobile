@@ -483,6 +483,24 @@ void main() {
       expect(find.text('Devuelve 3 productos'), findsOneWidget);
     });
 
+    testWidgets(
+      'si cambia el monto a decidir, la opción elegida se borra y hay que volver a elegir',
+      (tester) async {
+        await _montar(tester, _RepoFalso(_ventaDelCanvas()));
+        await tocar(tester, _mas('Nuestros Hijos'));
+        await _seguir(tester);
+        await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverAhora')));
+        expect(_boton(tester).onPressed, isNotNull);
+
+        await _alPrincipio(tester);
+        await tocar(tester, _mas('Salud y Hogar'));
+
+        expect(find.text('¿QUÉ HACÉS CON ${_m(450000)}?'), findsOneWidget);
+        expect(_boton(tester).onPressed, isNull);
+        expect(find.text('Elegí qué hacés con la diferencia.'), findsOneWidget);
+      },
+    );
+
     testWidgets('en la segunda etapa las filas siguen editables: vaciarlas vuelve a elegir', (
       tester,
     ) async {
@@ -704,6 +722,8 @@ void main() {
       await tocar(tester, find.byKey(const Key('devolucion_hoja_registrar')));
 
       expect(repo.lecturas, 2);
+      expect(find.byKey(const Key('devolucion_invalida')), findsOneWidget);
+      expect(find.text('Revisá lo que elegiste para devolver y probá de nuevo.'), findsOneWidget);
       expect(find.text('Vendidos 1 · ya devolvió 1 · ${_m(190000)}'), findsOneWidget);
       expect(find.text('Registrando…'), findsNothing);
     });

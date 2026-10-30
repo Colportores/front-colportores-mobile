@@ -245,23 +245,19 @@ void main() {
       expect(find.text('Registrando…'), findsNothing);
     });
 
-    testWidgets(
-      'Invalida con la venta sin cambios: el registro se rechaza y la pantalla lo dice '
-      '(hoy el rechazo es mudo)',
-      (tester) async {
-        final repo = RepoFalso161(ventaCanvas161());
-        repo.respuestas.add(() async => const Left(FailureDevolucionInvalida(causa: 'x')));
-        await _hastaSeguir(tester, repo);
-        await tocar(tester, _opcion('retener'));
-        await confirmarEnLaHoja161(tester);
-        final avisos =
-            find.textContaining('Revisá lo que elegiste').evaluate().length +
-            find.byKey(const Key('devolucion_error')).evaluate().length;
-        expect(avisos, greaterThan(0), reason: 'el colportor no ve por qué no se registró');
-      },
-      // skip: issue #161 (QA) — FailureDevolucionInvalida relee la venta y no muestra ningún aviso.
-      skip: !conHallazgos161,
-    );
+    testWidgets('Invalida con la venta sin cambios: el registro se rechaza y la pantalla lo dice', (
+      tester,
+    ) async {
+      final repo = RepoFalso161(ventaCanvas161());
+      repo.respuestas.add(() async => const Left(FailureDevolucionInvalida(causa: 'x')));
+      await _hastaSeguir(tester, repo);
+      await tocar(tester, _opcion('retener'));
+      await confirmarEnLaHoja161(tester);
+      final avisos =
+          find.textContaining('Revisá lo que elegiste').evaluate().length +
+          find.byKey(const Key('devolucion_error')).evaluate().length;
+      expect(avisos, greaterThan(0), reason: 'el colportor no ve por qué no se registró');
+    });
   });
 
   group('Validación del motivo (texto libre opcional, 500 caracteres)', () {
@@ -568,8 +564,6 @@ void main() {
           reason: 'la elección era para \$ 1.900; para \$ 4.500 hay que volver a elegir',
         );
       },
-      // skip: issue #161 (QA) — la opción elegida para $ 1.900 queda elegida para $ 4.500.
-      skip: !conHallazgos161,
     );
 
     testWidgets('venta sin persona: el subtítulo arranca con «Pagó» y no inventa un nombre', (
