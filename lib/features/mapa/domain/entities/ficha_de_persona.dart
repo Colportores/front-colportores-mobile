@@ -83,6 +83,7 @@ final class CobroEnFicha extends MovimientoDeFicha {
     required super.fecha,
     required this.montoCentavos,
     required this.efectivo,
+    required this.ventaId,
     this.numeroTalonario,
   });
 
@@ -91,11 +92,15 @@ final class CobroEnFicha extends MovimientoDeFicha {
   /// `true`: en efectivo («$ 600 en efectivo»). Hoy es el único medio que se registra.
   final bool efectivo;
 
+  /// La venta que se cobró. El talonario se puede repetir entre años (es único por colportor y año): lo
+  /// que une un cobro con su venta es este `id`, no el número.
+  final String ventaId;
+
   /// El número de la venta que se cobró, si se conoce («Venta 0042»).
   final String? numeroTalonario;
 
   @override
-  List<Object?> get props => [id, fecha, montoCentavos, efectivo, numeroTalonario];
+  List<Object?> get props => [id, fecha, montoCentavos, efectivo, ventaId, numeroTalonario];
 }
 
 /// Las notas de la persona (las activas), de la más nueva a la más vieja: solo la última se muestra
@@ -149,7 +154,7 @@ class FichaDePersona extends Equatable {
   /// Todos los movimientos, el más nuevo primero. La pantalla los pagina.
   final List<MovimientoDeFicha> historial;
 
-  /// Lo que compró, recibió y pagó; `null` si no hay de dónde saberlo («Sin movimientos aún»).
+  /// Lo que compró, recibió y pagó; `null` si no tiene ventas («Sin movimientos aún»).
   final ResumenCuentaPersona? resumen;
 
   bool get soloLectura => contexto.soloLectura;

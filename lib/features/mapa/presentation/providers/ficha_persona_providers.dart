@@ -6,6 +6,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/dispositivo/marcador_de_telefono_canal.dart';
 import '../../data/datasources/ficha_persona_local_data_source_drift.dart';
 import '../../data/repositories/ficha_persona_repository_impl.dart';
+import '../../data/services/cuenta_de_persona_drift.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/repositories/ficha_persona_repository.dart';
 import '../../domain/services/marcador_de_telefono.dart';
@@ -30,11 +31,10 @@ final fichaPersonaRepositoryProvider = Provider<FichaPersonaRepository>((ref) {
   return FichaPersonaRepositoryImpl(FichaPersonaLocalDataSourceDrift(db));
 });
 
-/// De dónde salen las entregas y los cobros del historial. **Sin adaptador todavía**: llegan con las
-/// tablas locales de HU-VEN-002/003 y HU-COB-001 ([MovimientosDeCuentaSinFuente]); un test o esas HU lo
-/// reemplazan.
+/// De dónde salen las entregas y los cobros del historial: las tablas `entrega`, `cobranza` y `venta`
+/// de la DB local. Un test lo reemplaza con un fake.
 final movimientosDeCuentaProvider = Provider<MovimientosDeCuentaDeLaPersona>(
-  (ref) => const MovimientosDeCuentaSinFuente(),
+  (ref) => MovimientosDeCuentaDrift(ref.watch(cuentaDePersonaLocalProvider)),
 );
 
 /// El marcador del teléfono. Sin estado: los tests lo reemplazan con un fake.

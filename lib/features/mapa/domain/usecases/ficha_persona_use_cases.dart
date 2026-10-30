@@ -25,7 +25,7 @@ final class ObservarFichaDePersonaUseCase {
     required this._notas,
     required this._espacios,
     required this._cuentas,
-    this._movimientos = const MovimientosDeCuentaSinFuente(),
+    required this._movimientos,
   });
 
   final FichaPersonaRepository _fichas;

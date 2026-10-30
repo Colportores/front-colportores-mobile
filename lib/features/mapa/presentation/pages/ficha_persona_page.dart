@@ -523,8 +523,11 @@ class _CuerpoDeLaFicha extends StatelessWidget {
           )
         else ...[
           const SizedBox(height: 8),
-          // Sin de dónde saber lo cobrado y entregado no se afirma nada: ni saldo ni «Sin movimientos».
-          if (ficha.resumen case final cuenta?) TarjetaCuenta(cuenta: cuenta),
+          // Sin ventas no hay cuenta que sumar: lo dice la HU («Sin movimientos aún»), sin inventar un $ 0.
+          if (ficha.resumen case final cuenta?)
+            TarjetaCuenta(cuenta: cuenta)
+          else
+            const SinMovimientosDeCuenta(),
         ],
         if (mostrarNotas) ...[
           const SizedBox(height: 14),
