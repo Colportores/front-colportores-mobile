@@ -23,7 +23,15 @@ enum MotivoRechazoAgenda {
   ),
 
   /// La agenda ya se cumplió o se canceló.
-  agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.');
+  agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.'),
+
+  /// La cobranza es una cuota del plan de una venta (HU-COB-004): se reprograma, pero no deja de ser
+  /// una cobranza.
+  cuotaDelPlan(
+    'agenda',
+    'Esta cobranza es una cuota del plan de la venta: podés cambiar el día y la hora, pero no el '
+        'tipo.',
+  );
 
   const MotivoRechazoAgenda(this.campo, this.mensaje);
 

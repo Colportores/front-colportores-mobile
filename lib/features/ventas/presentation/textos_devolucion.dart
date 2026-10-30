@@ -31,7 +31,6 @@ abstract final class TextosDevolucion {
   static const despues = 'Se lo devuelvo después';
   static const despuesSub = 'Queda como «Debo al cliente»';
   static const elegiAlMenosUno = 'Elegí al menos un producto.';
-  static const elegiQueHaces = 'Elegí qué hacés con la diferencia.';
   static const hojaTitulo = '¿Registrar la devolución?';
   static const laVentaNoSeBorra = 'La venta original no se borra: queda con la devolución anotada.';
   static const errorAlGuardar = 'No pudimos registrar la devolución. No cambió nada.';

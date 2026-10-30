@@ -9,8 +9,10 @@ import '../../../ventas/data/models/venta_model.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
+import '../../domain/services/reparto_de_cuotas.dart';
 import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
+import 'cuotas_local_data_source_drift.dart';
 
 /// La persistencia rechazó el cobro: el repositorio la traduce a un `Failure`.
 sealed class CobroRechazadoException implements Exception {
@@ -55,11 +57,18 @@ final class CobranzaLocalDataSourceDrift {
     this._db, {
     required this._encolador,
     required this._estadoDeLasCasas,
-  });
+  }) : _cuotas = CuotasLocalDataSourceDrift(
+         _db,
+         encolador: _encolador,
+         estadoDeLasCasas: _estadoDeLasCasas,
+       );
 
   final AppDatabase _db;
   final EncoladorSync _encolador;
   final HouseStatusUpdater _estadoDeLasCasas;
+
+  /// Las cuotas del plan de la venta: un cobro se aplica a la más próxima (HU-COB-004).
+  final CuotasLocalDataSourceDrift _cuotas;
 
   /// Ver [CobranzaRepository.registrar]. Lanza una [CobroRechazadoException] si el cobro no entra.
   Future<CobroRegistrado> registrar(Cobranza cobro) => _db.transaction(() async {
@@ -90,11 +99,20 @@ final class CobranzaLocalDataSourceDrift {
       throw const CobroFechaAnteriorException();
     }
 
-    await _db.into(_db.cobranzas).insert(_aFila(cobro));
-    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(cobro));
-    await _recalcular(venta.espacioPersonaId, cobro);
+    // Con un plan de cuotas, el cobro lleva el número de la primera cuota a la que va (HU-COB-004).
+    final plan = await _cuotas.leerPlanDe(venta);
+    final numeroCuota =
+        cobro.numeroCuota ??
+        RepartoDeCuotas.aplicarPago(plan.cuotas, cobro.montoCentavos).primeraCuota;
+    final guardado = numeroCuota == cobro.numeroCuota ? cobro : cobro.conNumeroCuota(numeroCuota);
 
-    return CobroRegistrado(cobranza: cobro, venta: await _conSaldo(venta));
+    await _db.into(_db.cobranzas).insert(_aFila(guardado));
+    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(guardado));
+    // Las cuotas que este cobro cubre pasan a CUMPLIDA y suben por el motor, en la misma transacción.
+    await _cuotas.cerrarLasCubiertas(venta.id, ahora: guardado.auditoria.updatedAt);
+    await _recalcular(venta.espacioPersonaId, guardado);
+
+    return CobroRegistrado(cobranza: guardado, venta: await _conSaldo(venta));
   });
 
   /// Ver [CobranzaRepository.ventaConSaldo].
@@ -178,11 +196,37 @@ final class CobranzaLocalDataSourceDrift {
 
   /// Lo que se debe en un corte: la suma del saldo de cada venta viva, `SUM(MAX(a, 0))` (una venta
   /// cobrada de más no resta de lo que deben las demás).
-  Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async {
-    final filas = await _db.customSelect('$_sqlVentas$corte', variables: variables).get();
+  Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async =>
+      _sumarSaldos(await _db.customSelect('$_sqlVentas$corte', variables: variables).get());
+
+  /// Lo que le deben al colportor [colportorId] ahora, en centavos, sumando todas sus ventas vivas
+  /// (una lectura; [observarSaldoTotal] es la misma cuenta cada vez que cambia).
+  Future<int> saldoTotalDe(String colportorId) =>
+      _saldoDe(_corteColportor, [Variable<String>(colportorId)]);
+
+  /// Lo que le debían al colportor [colportorId] en el momento [hasta], en centavos: la misma cuenta
+  /// que [observarSaldoTotal], con solo las ventas, los cobros y las devoluciones hechos hasta
+  /// entonces. Es la mitad de la comparación «contra la semana pasada» de Mi Cuenta (HU-CTA-001).
+  Future<int> saldoTotalHasta(String colportorId, DateTime hasta) async {
+    final ms = hasta.toUtc().millisecondsSinceEpoch;
+    final filas = await _db
+        .customSelect(
+          'SELECT v.id AS id, v.monto_total AS monto, COALESCE('
+          '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql} '
+          'AND c.fecha <= ?), 0) AS cobrado FROM venta v '
+          'WHERE v.deleted_at IS NULL AND v.fecha <= ? AND $_corteColportor',
+          variables: [Variable<int>(ms), Variable<int>(ms), Variable<String>(colportorId)],
+        )
+        .get();
+    return _sumarSaldos(filas, hasta: hasta);
+  }
+
+  /// La suma del saldo de las ventas de [filas] (`id`, `monto`, `cobrado`); con [hasta], con las
+  /// devoluciones de ese momento.
+  Future<int> _sumarSaldos(List<QueryRow> filas, {DateTime? hasta}) async {
     final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
       for (final fila in filas) fila.read<String>('id'),
-    ]);
+    ], hasta: hasta);
     var saldo = 0;
     for (final fila in filas) {
       saldo += (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)

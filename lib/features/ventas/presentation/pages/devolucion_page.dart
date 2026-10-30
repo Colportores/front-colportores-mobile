@@ -30,8 +30,9 @@ import '../widgets/piezas_venta.dart';
 /// - **Elegir** (31-01 y 31-09): una fila por renglón de la venta con su «−  n  +». Sin nada elegido el
 ///   botón está apagado y dice por qué.
 /// - **Seguir** (31-02, 31-03, 31-06 y 31-07): muestra cómo queda la venta. Si el cliente pagó de más hay
-///   que elegir qué se hace con la diferencia (obligatorio, sin opción por defecto); si no, el saldo baja
-///   solo. Las filas siguen editables: vaciarlas vuelve a elegir.
+///   que decidir qué se hace con la diferencia: viene elegida «Lo retengo» (la salida que no devuelve
+///   plata, decisión de Cristian, 23/10, «Debo cliente») y «Se lo devuelvo ahora» y «Se lo devuelvo
+///   después» quedan a mano como opciones secundarias; si no, el saldo baja solo. Las filas siguen editables: vaciarlas vuelve a elegir.
 /// - **Confirmar** (31-04): la hoja «¿Registrar la devolución?».
 /// - **Registrada** (31-05): lo que quedó hecho y, si el dinero quedó pendiente, «Agendar la devolución
 ///   del dinero».
@@ -107,7 +108,8 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// Ya tocó «Seguir»: se ve cómo queda la venta (31-02 a 31-07).
   var _siguio = false;
 
-  /// Qué hace con la plata de más; `null` mientras no elija (no hay opción por defecto).
+  /// Lo que la colportora tocó para la plata de más; `null` mientras no toque ninguna (rige la salida que
+  /// no devuelve plata: [_salida]).
   QueHacerConLaDiferencia? _queHacer;
 
   /// Hay un guardado en curso: no admite otro toque, no deja salir y bloquea los campos.
@@ -204,8 +206,8 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
       final n = cantidad.clamp(0, renglon.disponibles);
       _elegidas = {..._elegidas, if (n > 0) renglon.ventaItemId: n};
       if (n == 0) _elegidas.remove(renglon.ventaItemId);
-      // Si cambió el monto a decidir, la elección era para otro monto: sin opción por defecto, hay que
-      // volver a elegir (canvas 31-02).
+      // Si cambió el monto a decidir, la elección era para otro monto: vuelve a regir la salida que no
+      // devuelve plata y, si quiere devolver, lo elige de nuevo para el monto nuevo.
       if (venta != null && _cuenta(venta).pagoDeMasCentavos != pagoDeMasAntes) _queHacer = null;
       if (_elegidas.isEmpty) {
         // Sin nada elegido se vuelve a la primera etapa; lo de la plata de más ya no corresponde.
@@ -219,11 +221,13 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
 
   bool _sePuedeSeguir() => !_enviando && _elegidas.values.any((n) => n > 0);
 
-  /// Falta elegir qué hacer con la plata de más (31-02).
-  bool _faltaElegir(CuentaDeLaDevolucion cuenta) => cuenta.hayQueElegir && _queHacer == null;
+  /// Qué se hace con la plata de más (31-02 y 31-03): lo que tocó o, mientras no toque nada, «Lo
+  /// retengo», la salida que no devuelve plata (decisión de Cristian, 23/10, «Debo cliente»: devolver
+  /// es una opción a mano pero secundaria). `null` si no hay plata de más que decidir.
+  QueHacerConLaDiferencia? _salida(CuentaDeLaDevolucion cuenta) =>
+      cuenta.hayQueElegir ? (_queHacer ?? QueHacerConLaDiferencia.retener) : null;
 
-  bool _sePuedeRegistrar(VentaParaDevolver venta) =>
-      !_enviando && _siguio && _sePuedeSeguir() && !_faltaElegir(_cuenta(venta));
+  bool _sePuedeRegistrar() => !_enviando && _siguio && _sePuedeSeguir();
 
   void _seguir() {
     if (!_sePuedeSeguir()) return;
@@ -236,11 +240,12 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// 23/10): solo lo que vuelve y cómo queda la plata.
   List<DatoDeDevolucion> _datosDeLaHoja(VentaParaDevolver venta) {
     final cuenta = _cuenta(venta);
-    final destino = ReglasDeDevolucion.destinoDeLaDiferencia(cuenta.pagoDeMasCentavos, _queHacer);
+    final salida = _salida(cuenta);
+    final destino = ReglasDeDevolucion.destinoDeLaDiferencia(cuenta.pagoDeMasCentavos, salida);
     return [
       DatoDeDevolucion(TextosDevolucion.devuelve, TextosDevolucion.loQueVuelve(venta, _elegidas)),
-      if (cuenta.hayQueElegir && destino != null)
-        switch (_queHacer!) {
+      if (salida != null && destino != null)
+        switch (salida) {
           QueHacerConLaDiferencia.devolverAhora => DatoDeDevolucion(
             TextosDevolucion.leDevolves,
             FormatoVenta.monto(cuenta.pagoDeMasCentavos),
@@ -269,7 +274,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// 31-04: pregunta antes de registrar.
   Future<void> _pedirConfirmacion() async {
     final venta = _venta;
-    if (venta == null || !_sePuedeRegistrar(venta) || _navegando) return;
+    if (venta == null || !_sePuedeRegistrar() || _navegando) return;
     _navegando = true;
     bool? confirmo;
     try {
@@ -283,7 +288,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
 
   Future<void> _registrar() async {
     final venta = _venta;
-    if (venta == null || !_sePuedeRegistrar(venta)) return;
+    if (venta == null || !_sePuedeRegistrar()) return;
     setState(() {
       _enviando = true;
       _falla = null;
@@ -291,10 +296,11 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     });
     try {
       final elegidas = {..._elegidas};
+      final salida = _salida(_cuenta(venta));
       final motivo = _motivo.text;
       final datos = [
         for (final k in (elegidas.keys.toList()..sort())) '$k:${elegidas[k]}',
-        _queHacer?.name ?? '',
+        salida?.name ?? '',
         motivo,
       ].join('|');
       final previo = _intento;
@@ -312,7 +318,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
           ventaId: venta.ventaId,
           colportorId: widget.colportorId,
           unidadesPorRenglon: elegidas,
-          queHacer: _cuenta(venta).hayQueElegir ? _queHacer : null,
+          queHacer: salida,
           motivo: motivo,
         ),
       );
@@ -562,7 +568,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     final titulo = _siguio && !cuenta.estaVacia
         ? TextosDevolucion.tituloDeLaEleccion(venta, _elegidas, cuenta.esTotal)
         : TextosDevolucion.titulo;
-    final puedeRegistrar = _sePuedeRegistrar(venta);
+    final puedeRegistrar = _sePuedeRegistrar();
     final puedeSeguir = _sePuedeSeguir();
     final Widget cta;
     if (_siguio) {
@@ -570,7 +576,6 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
         texto: _falla != null ? TextosDevolucion.reintentar : TextosDevolucion.registrarDevolucion,
         textoOcupado: TextosDevolucion.registrando,
         ocupado: _enviando,
-        nota: !_enviando && _faltaElegir(cuenta) ? TextosDevolucion.elegiQueHaces : null,
         alPresionar: puedeRegistrar
             ? () => unawaited(_falla != null ? _registrar() : _pedirConfirmacion())
             : null,
@@ -653,7 +658,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
             const SizedBox(height: 12),
             OpcionesDeLaDiferencia(
               rotulo: TextosDevolucion.queHaces(cuenta.pagoDeMasCentavos),
-              elegida: _queHacer,
+              elegida: _salida(cuenta),
               alElegir: _enviando ? null : (o) => setState(() => _queHacer = o),
             ),
           ],

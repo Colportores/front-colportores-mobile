@@ -28,6 +28,7 @@ import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
+import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1402,6 +1403,66 @@ void main() {
             "$columnas('d-8', 100, 1, 'RETIRO_COORDINADOR', 'ALQUILER', 'camp-1', NULL, 1, 1)",
           );
           expect(await nuevo.select(nuevo.deposito).get(), hasLength(2));
+        },
+      );
+    },
+  );
+
+  test(
+    'dado una agenda guardada en la versión 23, cuando migra a la 24, no se pierde nada, suma la '
+    'venta y el monto previsto vacíos y deja guardar una cuota (HU-COB-004, #166)',
+    () async {
+      const agenda = v23.AgendaData(
+        id: 'a-1',
+        espacioId: 'es-1',
+        espacioPersonaId: 'ep-1',
+        tipo: 'COBRANZA',
+        fechaProgramada: 1,
+        esEstricta: 0,
+        estado: 'PROGRAMADA',
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 23,
+        newVersion: 24,
+        createOld: v23.DatabaseAtV23.new,
+        createNew: v24.DatabaseAtV24.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.agenda, agenda);
+        },
+        validateItems: (nuevo) async {
+          final citas = await nuevo.select(nuevo.agenda).get();
+          expect(citas.map((c) => c.id), ['a-1']);
+          expect(citas.single.tipo, 'COBRANZA');
+          expect(citas.single.syncVersion, 3);
+          expect(citas.single.ventaId, isNull);
+          expect(citas.single.montoPrevisto, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Una cobranza con su venta acepta el monto previsto; sin venta, o de otro tipo, no.
+          await nuevo.customStatement(
+            "UPDATE agenda SET venta_id = 'v-1', monto_previsto = 833 WHERE id = 'a-1'",
+          );
+          final cuota = await nuevo.select(nuevo.agenda).getSingle();
+          expect(cuota.ventaId, 'v-1');
+          expect(cuota.montoPrevisto, 833);
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET venta_id = NULL WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET monto_previsto = 0 WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET tipo = 'ENTREVISTA' WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
         },
       );
     },
