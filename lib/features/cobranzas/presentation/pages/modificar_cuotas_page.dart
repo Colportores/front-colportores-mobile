@@ -267,7 +267,9 @@ class _ModificarCuotasPageState extends ConsumerState<ModificarCuotasPage> {
         cta: BotonDeVenta(texto: TextosCuotas.volver, alPresionar: () => _cerrar(guardado: false)),
       );
     }
-    var abierta = 0;
+    // El lugar de cada cuota abierta entre las abiertas, fijo: la lista es perezosa y arma las filas
+    // fuera de orden y más de una vez.
+    final lugarDe = {for (var i = 0; i < _abiertas.length; i++) _abiertas[i].agendaId: i};
     return MarcoDeCuotas(
       key: const Key('cuotas_modificar_pagina'),
       scroll: _scroll,
@@ -280,21 +282,16 @@ class _ModificarCuotasPageState extends ConsumerState<ModificarCuotasPage> {
         const RotuloDeCuotas(TextosCuotas.cuotas),
         for (final cuota in plan.cuotas) ...[
           if (cuota.sePuedeModificar)
-            Builder(
-              builder: (_) {
-                final i = abierta++;
-                return FilaDeCuotaEditable(
-                  key: Key('cuotas_fila_${cuota.numero}'),
-                  rotulo: TextosCuotas.rotuloDeCuota(cuota.numero, cuota.fecha),
-                  controlador: _controladores[i],
-                  alCambiar: (t) => _alEditar(i, t),
-                  ayuda: _ajustadas.contains(i) ? TextosCuotas.seAjusto : null,
-                  error: _problemas[i] == null
-                      ? null
-                      : TextosCuotas.problema(_problemas[i]!, _porRepartir),
-                  habilitado: !_enviando,
-                );
-              },
+            FilaDeCuotaEditable(
+              key: Key('cuotas_fila_${cuota.numero}'),
+              rotulo: TextosCuotas.rotuloDeCuota(cuota.numero, cuota.fecha),
+              controlador: _controladores[lugarDe[cuota.agendaId]!],
+              alCambiar: (t) => _alEditar(lugarDe[cuota.agendaId]!, t),
+              ayuda: _ajustadas.contains(lugarDe[cuota.agendaId]!) ? TextosCuotas.seAjusto : null,
+              error: _problemas[lugarDe[cuota.agendaId]!] == null
+                  ? null
+                  : TextosCuotas.problema(_problemas[lugarDe[cuota.agendaId]!]!, _porRepartir),
+              habilitado: !_enviando,
             )
           else
             FilaDeCuotaEditable(

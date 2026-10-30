@@ -218,6 +218,60 @@ class FilaDeCuotaEditable extends StatelessWidget {
   Widget build(BuildContext context) {
     final conError = error != null;
     final editable = habilitado && !cerrada;
+    // Con letra grande el monto no entra al lado del rótulo sin cortarse: pasa debajo y usa todo el ancho.
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 14 * 1.15;
+    final etiqueta = Text(
+      rotulo,
+      style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: ColoresAgenda.tinta),
+    );
+    final Widget monto = cerrada
+        ? Semantics(
+            label: 'Monto de la cuota $rotulo: ${valorFijo ?? ''}. ${TextosCuotas.pagada}',
+            excludeSemantics: true,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: grande ? 6 : 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    valorFijo ?? '',
+                    style: const TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: ColoresAgenda.gris,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.check, size: 16, color: _verde),
+                ],
+              ),
+            ),
+          )
+        : Semantics(
+            label: 'Monto de la cuota $rotulo',
+            child: TextField(
+              controller: controlador,
+              onChanged: alCambiar,
+              enabled: editable,
+              textAlign: TextAlign.end,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [LengthLimitingTextInputFormatter(14)],
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: conError ? ColoresAgenda.rojo : ColoresAgenda.tinta,
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                constraints: BoxConstraints(minHeight: 48),
+                border: InputBorder.none,
+                suffixIcon: Icon(Icons.edit_outlined, size: 16, color: ColoresAgenda.gris),
+                suffixIconConstraints: BoxConstraints(minWidth: 24, minHeight: 24),
+              ),
+            ),
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,72 +282,20 @@ class FilaDeCuotaEditable extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: conError ? ColoresAgenda.rojo : _borde, width: 1.5),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  rotulo,
-                  style: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 13,
-                    color: ColoresAgenda.tinta,
-                  ),
-                ),
-              ),
-              if (cerrada)
-                Semantics(
-                  label: 'Monto de la cuota $rotulo: ${valorFijo ?? ''}. ${TextosCuotas.pagada}',
-                  excludeSemantics: true,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          valorFijo ?? '',
-                          style: const TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: ColoresAgenda.gris,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.check, size: 16, color: _verde),
-                      ],
-                    ),
-                  ),
+          child: grande
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(padding: const EdgeInsets.only(top: 8), child: etiqueta),
+                    monto,
+                  ],
                 )
-              else
-                SizedBox(
-                  width: 130,
-                  child: Semantics(
-                    label: 'Monto de la cuota $rotulo',
-                    child: TextField(
-                      controller: controlador,
-                      onChanged: alCambiar,
-                      enabled: editable,
-                      textAlign: TextAlign.end,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [LengthLimitingTextInputFormatter(14)],
-                      style: TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: conError ? ColoresAgenda.rojo : ColoresAgenda.tinta,
-                      ),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        constraints: BoxConstraints(minHeight: 48),
-                        border: InputBorder.none,
-                        suffixIcon: Icon(Icons.edit_outlined, size: 16, color: ColoresAgenda.gris),
-                        suffixIconConstraints: BoxConstraints(minWidth: 24, minHeight: 24),
-                      ),
-                    ),
-                  ),
+              : Row(
+                  children: [
+                    Expanded(child: etiqueta),
+                    cerrada ? monto : SizedBox(width: 130, child: monto),
+                  ],
                 ),
-            ],
-          ),
         ),
         if (conError)
           Semantics(

@@ -1,7 +1,5 @@
 // QA de la vista 30 A (plan de cuotas, HU-COB-004, #166): matriz de estados × tamaños × escala con
 // las guías de accesibilidad, entradas hostiles, fallas a mitad de la acción y los textos del canvas.
-// Los casos que documentan un hallazgo van con `skip` mientras no se arreglen;
-// `--dart-define=QA_HALLAZGOS=true` los corre.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -16,13 +14,7 @@ import '../../helpers/agendar_visita_arnes.dart' show asentarAgendar;
 import '../../helpers/cuotas_arnes.dart';
 import '../../helpers/plan_de_cuotas_arnes.dart';
 
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
-
-// skip: QA #166 — «Modificar cuotas» con letra grande: la fila abierta se arma con un contador
-// (`abierta++`) dentro del `Builder` de una lista perezosa; al construirse fuera de orden o de nuevo
-// el índice se pasa (RangeError) o apunta a otro campo.
-const _conHallazgo = {'modificar editada · 360x640 · ×2.0'};
 
 typedef _Preparar = Future<void> Function(WidgetTester tester, ArnesCuotas arnes);
 
@@ -193,7 +185,7 @@ void main() {
             await _llegarA(tester, e, tamano: t.value, escala: escala);
             expect(tester.takeException(), isNull);
             await _guias(tester);
-          }, skip: _conHallazgo.contains(nombre) && !_hallazgos);
+          });
         }
       }
     }
@@ -340,7 +332,7 @@ void main() {
       final r = tester.getRect(find.byKey(const Key('cuotas_error')));
       expect(r.top, greaterThanOrEqualTo(0));
       expect(r.bottom, lessThanOrEqualTo(640));
-    }, skip: !_hallazgos);
+    });
   });
 
   group('modificar cuotas (30A-09)', () {
@@ -441,19 +433,15 @@ void main() {
     }
 
     for (final escala in escalas) {
-      testWidgets(
-        '«Pagar en cuotas» con un saldo de \$ 45.000 a 360×640 ×$escala',
-        (tester) async {
-          await montarCuotas(
-            tester,
-            plan: PlanDeCuotasEnMemoria(montoCentavos: 4500000),
-            tamano: const Size(360, 640),
-            escala: escala,
-          );
-          expect(await recortados(tester, [0, 1, 2]), isEmpty);
-        },
-        skip: escala > 1 && !_hallazgos,
-      );
+      testWidgets('«Pagar en cuotas» con un saldo de \$ 45.000 a 360×640 ×$escala', (tester) async {
+        await montarCuotas(
+          tester,
+          plan: PlanDeCuotasEnMemoria(montoCentavos: 4500000),
+          tamano: const Size(360, 640),
+          escala: escala,
+        );
+        expect(await recortados(tester, [0, 1, 2]), isEmpty);
+      });
 
       testWidgets('«Modificar cuotas» con montos de \$ 1.000 a 360×640 ×$escala', (tester) async {
         await montarCuotas(
@@ -464,7 +452,7 @@ void main() {
           escala: escala,
         );
         expect(await recortados(tester, [2, 3]), isEmpty);
-      }, skip: escala > 1 && !_hallazgos);
+      });
     }
   });
 
