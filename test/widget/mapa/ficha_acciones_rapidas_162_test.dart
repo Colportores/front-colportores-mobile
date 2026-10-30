@@ -288,9 +288,10 @@ void main() {
       final m = mundo()..cuentas.cuenta = sinSaldo;
       await montarFicha(tester, m, tamano: const Size(320, 568), escala: 2);
 
-      await tester.ensureVisible(entrega);
+      await tester.scrollUntilVisible(entrega, 200, scrollable: find.byType(Scrollable).first);
       expect(entrega, findsOneWidget);
       expect(agendar, findsNothing);
+      expect(tester.getRect(entrega).right, lessThanOrEqualTo(320));
       expect(tester.takeException(), isNull);
     });
   });
