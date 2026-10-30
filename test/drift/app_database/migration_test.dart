@@ -25,6 +25,7 @@ import 'generated/schema_v18.dart' as v18;
 import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v20.dart' as v20;
+import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1243,6 +1244,64 @@ void main() {
         final transferencia = await nuevo.select(nuevo.cobranza).getSingle();
         expect(transferencia.referenciaTransferencia, 'TX-12345');
         expect(transferencia.bancoOrigen, 'BROU');
+      },
+    );
+  });
+
+  test('dado un cobro guardado en la versión 20, cuando migra a la 21, no se pierde nada, queda '
+      'vigente (sin marca de anulado) y no se encola nada', () async {
+    // HU-COB-006 (#422): `anulado_at` y `motivo_anulacion` opcionales en `cobranza`.
+    const venta = v20.VentaData(
+      id: 'v-1',
+      espacioPersonaId: 'ep-1',
+      numeroTalonario: '0042',
+      montoTotal: 4500,
+      fecha: 1,
+      colportorId: 'col-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 0,
+    );
+    const cobro = v20.CobranzaData(
+      id: 'c-1',
+      ventaId: 'v-1',
+      monto: 500,
+      medio: 'TARJETA',
+      fecha: 1,
+      tarjetaTipo: 'DEBITO',
+      tarjetaMarca: 'Visa',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 2,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 20,
+      newVersion: 21,
+      createOld: v20.DatabaseAtV20.new,
+      createNew: v21.DatabaseAtV21.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.venta, venta);
+        batch.insert(viejo.cobranza, cobro);
+      },
+      validateItems: (nuevo) async {
+        final cobros = await nuevo.select(nuevo.cobranza).get();
+        expect(cobros.map((c) => c.id), ['c-1']);
+        expect(cobros.single.monto, 500);
+        expect(cobros.single.tarjetaMarca, 'Visa');
+        expect(cobros.single.syncVersion, 2);
+        expect(cobros.single.anuladoAt, isNull);
+        expect(cobros.single.motivoAnulacion, isNull);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // Las columnas aceptan la marca de anulado con su motivo.
+        await nuevo.customStatement(
+          "UPDATE cobranza SET anulado_at = 5, motivo_anulacion = 'Otro' WHERE id = 'c-1'",
+        );
+        final anulado = await nuevo.select(nuevo.cobranza).getSingle();
+        expect(anulado.anuladoAt, isA<DateTime>());
+        expect(anulado.motivoAnulacion, 'Otro');
       },
     );
   });

@@ -128,10 +128,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 20: `cobranza` suma los datos opcionales de la tarjeta (`tarjeta_tipo`, `tarjeta_marca`,
   ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
+  /// - 21: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
+  ///   (backend-supabase 0072, HU-COB-006, #422).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 20;
+  static const int versionEsquema = 21;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -348,6 +350,12 @@ class AppDatabase extends _$AppDatabase {
       await m.addColumn(esquema.cobranza, esquema.cobranza.numeroAprobacion);
       await m.addColumn(esquema.cobranza, esquema.cobranza.referenciaTransferencia);
       await m.addColumn(esquema.cobranza, esquema.cobranza.bancoOrigen);
+    },
+    // Suma a `cobranza` la marca de anulado y su motivo, vacíos: ningún cobro que ya estaba cambia (todos
+    // quedan vigentes) ni se vuelve a encolar al migrar.
+    from20To21: (m, esquema) async {
+      await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
     },
   );
 }

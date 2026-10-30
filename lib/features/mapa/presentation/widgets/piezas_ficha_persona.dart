@@ -459,10 +459,13 @@ class FiltroDelHistorial extends StatelessWidget {
 }
 
 class FilaDeHistorial extends StatelessWidget {
-  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora});
+  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora, this.alTocar});
 
   final MovimientoDeFicha movimiento;
   final DateTime ahora;
+
+  /// Abre el detalle de la fila (un cobro, vista 30 B); `null` = la fila no se toca.
+  final VoidCallback? alTocar;
 
   @override
   Widget build(BuildContext context) {
@@ -477,45 +480,65 @@ class FilaDeHistorial extends StatelessWidget {
     final sub = FormatoFicha.subtitulo(m);
     return Semantics(
       container: true,
+      button: alTocar != null,
       label: FormatoFicha.paraLector(m, ahora),
       excludeSemantics: true,
+      onTap: alTocar,
       child: KeyedSubtree(
         key: ClavesFicha.fila(m.id),
-        child: _Cuadro(
-          hijo: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      FormatoFicha.antetitulo(m, ahora),
-                      style: _estiloRotulo.copyWith(
-                        color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
+        child: _Tocable(
+          alTocar: alTocar,
+          hijo: _Cuadro(
+            hijo: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        FormatoFicha.antetitulo(m, ahora),
+                        style: _estiloRotulo.copyWith(
+                          color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      FormatoFicha.titulo(m),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
+                      const SizedBox(height: 2),
+                      Text(
+                        FormatoFicha.titulo(m),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
                       ),
-                    ),
-                    if (sub != null)
-                      Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
-                  ],
+                      if (sub != null)
+                        Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Una fila que se toca (con su ripple y un alto táctil de 48) o, sin destino, tal cual.
+class _Tocable extends StatelessWidget {
+  const _Tocable({required this.alTocar, required this.hijo});
+
+  final VoidCallback? alTocar;
+  final Widget hijo;
+
+  @override
+  Widget build(BuildContext context) {
+    final alTocar = this.alTocar;
+    if (alTocar == null) return hijo;
+    return InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: hijo);
   }
 }
 

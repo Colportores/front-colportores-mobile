@@ -41,10 +41,12 @@ import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
 import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
+import 'features/cobranzas/presentation/pages/detalle_del_cobro_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
+import 'features/mapa/presentation/providers/ficha_persona_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
@@ -275,6 +277,20 @@ Future<void> main() async {
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // Un cobro del historial de la ficha (vista 32 B) abre su detalle y «Anular cobro» (vista 30 B,
+        // HU-COB-006, #424).
+        verCobroDesdeLaFichaProvider.overrideWith(
+          (ref) => (cobranzaId) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null) return false;
+            return DetalleDelCobroPage.abrir(
+              contexto,
+              cobranzaId: cobranzaId,
+              colportorId: colportorId,
             );
           },
         ),

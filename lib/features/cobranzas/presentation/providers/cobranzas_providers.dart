@@ -6,11 +6,14 @@ import '../../../../core/sync/sync_providers.dart';
 import '../../../mapa/domain/services/saldos_de_personas.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
+import '../../data/repositories/anulacion_de_cobro_repository_impl.dart';
 import '../../data/repositories/cobranza_repository_impl.dart';
 import '../../data/repositories/saldo_pendiente_repository_impl.dart';
 import '../../domain/entities/venta_con_saldo.dart';
+import '../../domain/repositories/anulacion_de_cobro_repository.dart';
 import '../../domain/repositories/cobranza_repository.dart';
 import '../../domain/repositories/saldo_pendiente_repository.dart';
+import '../../domain/usecases/anular_cobro_use_case.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
 
 // Cableado de los cobros (BACK-HU-COB-001, #436). Presentation conoce domain; data se inyecta acá.
@@ -46,6 +49,28 @@ final registrarCobroUseCaseProvider = Provider<RegistrarCobroUseCase>(
     ref.watch(cobranzaRepositoryProvider),
     ahora: ref.watch(relojCobroProvider),
   ),
+);
+
+/// Leer un cobro y anularlo (HU-COB-006, #422): la anulación marca el cobro, lo encola, deja el
+/// `audit_log` y recalcula el color de la casa en la misma transacción.
+final anulacionDeCobroRepositoryProvider = Provider<AnulacionDeCobroRepository>(
+  (ref) => AnulacionDeCobroRepositoryImpl(ref.watch(cobranzaLocalProvider)),
+);
+
+/// Anula un cobro con la hora del teléfono (el reloj es [relojCobroProvider]).
+final anularCobroUseCaseProvider = Provider<AnularCobroUseCase>(
+  (ref) => AnularCobroUseCase(
+    ref.watch(anulacionDeCobroRepositoryProvider),
+    ahora: ref.watch(relojCobroProvider),
+  ),
+);
+
+/// ¿El coordinador ya validó el ticket de este cobro? (30B-07). Con el ticket validado la colportora no
+/// anula sola: se lo pide al coordinador. **Todavía no hay de dónde saberlo**: el ticket local llega con
+/// HU-COB-007 (#169), así que hasta entonces nadie lo sabe y la respuesta es «no»; el servidor lo cuida
+/// igual (`CB002`). Quien conecte el ticket reemplaza este provider.
+final ticketValidadoDelCobroProvider = FutureProvider.autoDispose.family<bool, String>(
+  (ref, cobranzaId) async => false,
 );
 
 /// Lo que debe cada persona, sumando el saldo de sus ventas vivas (la línea «Saldo» de «¿Con quién?»

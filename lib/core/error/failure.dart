@@ -966,3 +966,45 @@ final class FailureCobroNoGuardado extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// Pasaron más de 72 horas desde el cobro: ya no se puede anular (HU-COB-006, 30B-06). Vale para todos,
+/// también para el coordinador (decisión de Cristian, 23/10, «Anular 72 h»).
+final class FailureAnulacionFueraDePlazo extends Failure {
+  const FailureAnulacionFueraDePlazo()
+    : super(
+        mensaje: 'Pasaron más de 72 h desde el cobro: ya no se puede anular.',
+        codigo: 'COBRO_ANULACION_FUERA_DE_PLAZO',
+      );
+}
+
+/// Falta el motivo de la anulación, o eligió «Otro» sin contar qué pasó (30B-02 y 30B-03). La pantalla no
+/// deja llegar hasta acá; si llega, no se anula nada.
+final class FailureAnulacionSinMotivo extends Failure {
+  const FailureAnulacionSinMotivo()
+    : super(mensaje: 'Elegí el motivo para seguir.', codigo: 'COBRO_ANULACION_SIN_MOTIVO');
+}
+
+/// El cobro que se quiere ver o anular ya no está en el teléfono (o no es de esta cuenta).
+final class FailureCobroAusente extends Failure {
+  const FailureCobroAusente()
+    : super(
+        mensaje: 'Este cobro ya no está en tu teléfono. Volvé atrás y elegí otro.',
+        codigo: 'COBRO_AUSENTE',
+      );
+}
+
+/// El cobro no se pudo anular en el teléfono (30B-08). No cambió nada: sigue registrado como estaba y se
+/// puede reintentar. El texto es el del canvas.
+final class FailureCobroNoAnulado extends Failure {
+  const FailureCobroNoAnulado({this.causa})
+    : super(
+        mensaje: 'No pudimos anular el cobro. Sigue registrado como estaba.',
+        codigo: 'COBRO_NO_ANULADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}

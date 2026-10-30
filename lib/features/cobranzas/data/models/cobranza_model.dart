@@ -19,6 +19,10 @@ abstract final class CobranzaModel {
     'numero_aprobacion': cobro.numeroAprobacion,
     'referencia_transferencia': cobro.referenciaTransferencia,
     'banco_origen': cobro.bancoOrigen,
+    // La marca de anulado sube con la fecha y el motivo de la lista; lo que se escribe con «Otro» no
+    // (decisión de Cristian, 23/10, «Anulación»).
+    'anulado_at': cobro.anuladoAt?.toIso8601String(),
+    'motivo_anulacion': cobro.motivoAnulacion?.codigo,
     ...auditoriaAJson(cobro.auditoria),
   };
 

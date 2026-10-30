@@ -41,6 +41,12 @@ abstract final class EventoAuditoriaLocal {
   /// problemas por nombre (`corrupt`, `brokenLink`…), nunca contenido del backup.
   static const backupIntegridadProblema = 'backup_integrity_problem';
 
+  /// Un cobro anulado (HU-COB-006, «Audit log»): `uuid` es el `id` del cobro, `creado_en` la hora de la
+  /// anulación (el mismo `anulado_at` del cobro) y `motivo` lo que se eligió: el texto que escribió la
+  /// colportora con «Otro» («Justificar», solo local) o, con otro motivo, el de la lista. Nunca el monto
+  /// ni el nombre del cliente.
+  static const cobroAnulado = 'cobro_anulado';
+
   /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
   static const uuidBackup = 'backup';
 }

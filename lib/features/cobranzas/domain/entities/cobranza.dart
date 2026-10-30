@@ -21,6 +21,28 @@ enum MedioCobranza { efectivo, tarjeta, transferencia }
 /// los mismos valores que `ticket`).
 enum TipoTarjeta { debito, credito }
 
+/// Por qué se anuló un cobro (HU-COB-006, vista 30 B, 30B-02): la lista del canvas. [codigo] es el texto
+/// que guarda `cobranza.motivo_anulacion` y que acepta el CHECK del servidor (backend 0072); «Otro»
+/// pide además un texto que se queda en el teléfono.
+enum MotivoDeAnulacion {
+  montoEquivocado('Monto equivocado'),
+  clienteEquivocado('Cliente equivocado'),
+  registreDosVeces('Lo registré dos veces'),
+  otro('Otro');
+
+  const MotivoDeAnulacion(this.codigo);
+
+  final String codigo;
+
+  /// El motivo de un código guardado; `null` si no hay o no se reconoce.
+  static MotivoDeAnulacion? desdeCodigo(String? codigo) {
+    for (final m in values) {
+      if (m.codigo == codigo) return m;
+    }
+    return null;
+  }
+}
+
 class Cobranza extends Equatable {
   Cobranza({
     required this.id,
@@ -35,8 +57,11 @@ class Cobranza extends Equatable {
     this.numeroAprobacion,
     this.referenciaTransferencia,
     this.bancoOrigen,
+    DateTime? anuladoAt,
+    this.motivoAnulacion,
     required this.auditoria,
-  }) : fecha = fecha.toUtc();
+  }) : fecha = fecha.toUtc(),
+       anuladoAt = anuladoAt?.toUtc();
 
   final String id;
 
@@ -76,7 +101,16 @@ class Cobranza extends Equatable {
   /// sumar un banco no cambia el modelo), 1 a 60 caracteres. Opcional.
   final String? bancoOrigen;
 
+  /// Cuándo se anuló (hora del teléfono, UTC), o `null` si está vigente (HU-COB-006). Un cobro anulado
+  /// no se borra, no se reabre y no cuenta para el saldo ni para el color de la casa.
+  final DateTime? anuladoAt;
+
+  /// El motivo de la lista con que se anuló; va junto con [anuladoAt].
+  final MotivoDeAnulacion? motivoAnulacion;
+
   final Auditoria auditoria;
+
+  bool get estaAnulado => anuladoAt != null;
 
   bool get estaBorrada => auditoria.estaBorrada;
 
@@ -94,6 +128,8 @@ class Cobranza extends Equatable {
     numeroAprobacion,
     referenciaTransferencia,
     bancoOrigen,
+    anuladoAt,
+    motivoAnulacion,
     auditoria,
   ];
 }
