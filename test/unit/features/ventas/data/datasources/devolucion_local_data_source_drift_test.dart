@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_table.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/devolucion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/entrega_local_data_source_drift.dart';
@@ -229,6 +230,98 @@ void main() {
         expect(cola().skip(1).every((c) => c.startsWith('house_status')), isTrue);
       },
     );
+  });
+
+  group('audit_log_local (HU-VEN-004)', () {
+    Future<List<AuditLogFila>> auditoria() =>
+        (db.select(db.auditLogLocal)..orderBy([(a) => OrderingTerm.asc(a.id)])).get();
+
+    test(
+      'dado el motivo, deja una fila con el id de la devolución, el motivo y la fecha',
+      () async {
+        await venderElCanvas(cobrado: 0);
+
+        await local.registrar(pedido({'i-hijos': 1}, motivo: 'no le gustó'));
+
+        final fila = (await auditoria()).single;
+        expect(fila.evento, EventoAuditoriaLocal.devolucionRegistrada);
+        expect(fila.uuid, 'd-1');
+        expect(fila.motivo, 'no le gustó');
+        expect(fila.creadoEn, _ahora);
+      },
+    );
+
+    test('dado que no escribió motivo, la fila se escribe igual y sin motivo', () async {
+      await venderElCanvas(cobrado: 0);
+
+      await local.registrar(pedido({'i-hijos': 1}));
+
+      final fila = (await auditoria()).single;
+      expect(fila.evento, EventoAuditoriaLocal.devolucionRegistrada);
+      expect(fila.uuid, 'd-1');
+      expect(fila.motivo, isNull);
+    });
+
+    test('dado dos devoluciones, deja una fila por cada una, en orden', () async {
+      await venderElCanvas(cobrado: 0);
+
+      await local.registrar(pedido({'i-hijos': 1}, motivo: 'uno'));
+      await local.registrar(pedido({'i-salud': 1}, id: 'd-2', motivo: 'dos'));
+
+      expect(
+        [for (final a in await auditoria()) (a.uuid, a.motivo)],
+        [('d-1', 'uno'), ('d-2', 'dos')],
+      );
+    });
+
+    test('dado el mismo id dos veces (doble toque o reintento), la fila es una sola', () async {
+      await venderElCanvas(cobrado: 0);
+
+      await Future.wait([
+        local.registrar(pedido({'i-hijos': 1}, motivo: 'x')),
+        local.registrar(pedido({'i-hijos': 1}, motivo: 'x')),
+      ]);
+      await local.registrar(pedido({'i-hijos': 1}, motivo: 'x'));
+
+      expect(await auditoria(), hasLength(1));
+    });
+
+    test('dado un pedido rechazado, no deja fila', () async {
+      await venderElCanvas();
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1})),
+        throwsA(isA<DevolucionInvalidaException>()),
+      );
+      await expectLater(
+        local.registrar(
+          pedido(
+            {'i-hijos': 1},
+            queHacer: QueHacerConLaDiferencia.retener,
+            ahora: _venta.add(const Duration(hours: 73)),
+          ),
+        ),
+        throwsA(isA<DevolucionFueraDePlazoException>()),
+      );
+
+      expect(await auditoria(), isEmpty);
+    });
+
+    test('dado que el motor de sync falla, no queda fila y el reintento deja una', () async {
+      await venderElCanvas(cobrado: 0);
+      encolador.fallarCon = StateError('motor apagado');
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1}, motivo: 'x')),
+        throwsA(isA<StateError>()),
+      );
+      expect(await auditoria(), isEmpty);
+
+      encolador.fallarCon = null;
+      await local.registrar(pedido({'i-hijos': 1}, motivo: 'x'));
+
+      expect(await auditoria(), hasLength(1));
+    });
   });
 
   group('combos', () {

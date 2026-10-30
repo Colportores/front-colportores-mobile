@@ -33,6 +33,13 @@ abstract final class EventoAuditoriaLocal {
   /// venta (`motivo_monto_manual`).
   static const ventaMontoManual = 'venta_monto_manual';
 
+  /// Una devolución registrada (HU-VEN-004, «`audit_log_local` con el motivo siempre»): `uuid` es el
+  /// `id` de la devolución, `creado_en` su `fecha_devolucion` y `motivo` el que escribió la colportora
+  /// (`null` si no lo dijo, el campo es opcional). La fila se escribe **siempre**, con o sin motivo,
+  /// en la misma transacción que la devolución. Solo local: el `audit_log` de la nube deja su propio
+  /// evento (`devolucion_registrada`, migración 0121) y no copia el texto.
+  static const devolucionRegistrada = 'devolucion_registrada';
+
   /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
   /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
   static const backupIntegridadOk = 'backup_integrity_ok';
