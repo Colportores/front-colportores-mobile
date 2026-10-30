@@ -85,10 +85,13 @@ void main() {
   });
 
   group('datos límite', () {
-    test('dado un nombre con ñ y diéresis, se compara sin tildes pero con las letras distintas', () {
-      expect(parece(persona(nombre: 'Muñoz', apellido: 'Güemes'), 'Munoz', 'Guemes'), isFalse);
-      expect(parece(persona(nombre: 'Muñoz', apellido: 'Güemes'), 'Pérez', 'López'), isTrue);
-    });
+    test(
+      'dado un nombre con ñ y diéresis, se compara sin tildes pero con las letras distintas',
+      () {
+        expect(parece(persona(nombre: 'Muñoz', apellido: 'Güemes'), 'Munoz', 'Guemes'), isFalse);
+        expect(parece(persona(nombre: 'Muñoz', apellido: 'Güemes'), 'Pérez', 'López'), isTrue);
+      },
+    );
 
     test('dado el apellido borrado por completo (con el nombre cambiado), cuenta como cambio', () {
       expect(parece(persona(), 'Roberto', ''), isTrue);
