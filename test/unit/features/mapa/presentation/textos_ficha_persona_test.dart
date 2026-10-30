@@ -67,6 +67,7 @@ void main() {
       fecha: DateTime(2026, 10, 20, 12),
       montoCentavos: 60000,
       efectivo: true,
+      ventaId: 'ven-1',
       numeroTalonario: '0042',
     );
     final entrega = EntregaEnFicha(

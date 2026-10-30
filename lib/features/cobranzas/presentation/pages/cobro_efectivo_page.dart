@@ -559,8 +559,8 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
 
   Widget _resumen(VentaConSaldo venta) => ResumenDeLaVenta(
     titulo: TextosCobro.ventaDel(venta.numeroTalonario, ReglasDeVenta.diaDeMontevideo(venta.fecha)),
-    totalCentavos: venta.montoTotalCentavos,
-    cobradoCentavos: venta.cobradoCentavos,
+    totalCentavos: venta.seQuedaConCentavos,
+    cobradoCentavos: venta.yaPagoCentavos,
     saldoCentavos: venta.saldoCentavos,
   );
 

@@ -1842,26 +1842,6 @@
             "dsl_features": []
           },
           {
-            "name": "venta_id",
-            "getter_name": "ventaId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "monto_previsto",
-            "getter_name": "montoPrevisto",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -1928,8 +1908,7 @@
         "without_rowid": false,
         "constraints": [
           "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
-          "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
-          "CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL))"
+          "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))"
         ],
         "explicit_pk": [
           "id"
@@ -4347,6 +4326,167 @@
     },
     {
       "id": 33,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "devolucion",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "venta_id",
+            "getter_name": "ventaId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "productos_devueltos",
+            "getter_name": "productosDevueltos",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const ProductosDevueltosConverter()",
+              "dart_type_name": "List<Object?>"
+            }
+          },
+          {
+            "name": "dinero_retenido",
+            "getter_name": "dineroRetenido",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "monto_reembolsado",
+            "getter_name": "montoReembolsado",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "motivo",
+            "getter_name": "motivo",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "fecha_devolucion",
+            "getter_name": "fechaDevolucion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (dinero_retenido >= 0)",
+          "CHECK (monto_reembolsado IS NULL OR monto_reembolsado >= 0)",
+          "CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)"
+        ],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 34,
       "references": [
         0
       ],
@@ -4369,7 +4509,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "references": [
         1
       ],
@@ -4392,7 +4532,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "references": [
         2
       ],
@@ -4411,7 +4551,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "references": [
         4
       ],
@@ -4430,7 +4570,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "references": [
         5
       ],
@@ -4449,7 +4589,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 39,
       "references": [
         6
       ],
@@ -4472,7 +4612,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 40,
       "references": [
         8
       ],
@@ -4495,7 +4635,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "references": [
         9
       ],
@@ -4522,7 +4662,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 42,
       "references": [
         9
       ],
@@ -4545,7 +4685,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 43,
       "references": [
         9
       ],
@@ -4568,7 +4708,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 44,
       "references": [
         13
       ],
@@ -4587,7 +4727,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 45,
       "references": [
         13
       ],
@@ -4606,7 +4746,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 46,
       "references": [
         14
       ],
@@ -4629,7 +4769,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 47,
       "references": [
         15
       ],
@@ -4652,7 +4792,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 48,
       "references": [
         15
       ],
@@ -4671,7 +4811,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 49,
       "references": [
         15
       ],
@@ -4684,25 +4824,6 @@
         "columns": [
           {
             "column": "espacio_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 49,
-      "references": [
-        15
-      ],
-      "type": "index",
-      "data": {
-        "on": 15,
-        "name": "agenda_venta_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "venta_id",
             "order_by": null
           }
         ]
@@ -5038,6 +5159,25 @@
           }
         ]
       }
+    },
+    {
+      "id": 67,
+      "references": [
+        33
+      ],
+      "type": "index",
+      "data": {
+        "on": 33,
+        "name": "devolucion_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
     }
   ],
   "fixed_sql": [
@@ -5181,7 +5321,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"agenda\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"fecha_programada\" INTEGER NOT NULL, \"slot_codigo\" TEXT NULL, \"es_estricta\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_estricta\" IN (0, 1)), \"ubicacion_alt_id\" TEXT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PROGRAMADA', \"colportor_id\" TEXT NOT NULL, \"visita_id\" TEXT NULL, \"venta_id\" TEXT NULL, \"monto_previsto\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo IN ('ENTREVISTA', 'COBRANZA')), CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA')), CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL)));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"agenda\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"fecha_programada\" INTEGER NOT NULL, \"slot_codigo\" TEXT NULL, \"es_estricta\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_estricta\" IN (0, 1)), \"ubicacion_alt_id\" TEXT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PROGRAMADA', \"colportor_id\" TEXT NOT NULL, \"visita_id\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo IN ('ENTREVISTA', 'COBRANZA')), CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA')));"
         }
       ]
     },
@@ -5339,6 +5479,15 @@
       ]
     },
     {
+      "name": "devolucion",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"devolucion\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"productos_devueltos\" TEXT NOT NULL, \"dinero_retenido\" INTEGER NOT NULL DEFAULT 0, \"monto_reembolsado\" INTEGER NULL, \"motivo\" TEXT NULL, \"fecha_devolucion\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (dinero_retenido >= 0), CHECK (monto_reembolsado IS NULL OR monto_reembolsado >= 0), CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500));"
+        }
+      ]
+    },
+    {
       "name": "jornada_colportor_idx",
       "sql": [
         {
@@ -5479,15 +5628,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)"
-        }
-      ]
-    },
-    {
-      "name": "agenda_venta_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX agenda_venta_idx ON agenda (venta_id)"
         }
       ]
     },
@@ -5641,6 +5781,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX entrega_venta_idx ON entrega (venta_id)"
+        }
+      ]
+    },
+    {
+      "name": "devolucion_venta_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX devolucion_venta_idx ON devolucion (venta_id)"
         }
       ]
     }

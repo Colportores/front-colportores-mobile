@@ -63,6 +63,7 @@ import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
 import 'plataforma/identidad_instalacion.dart';
@@ -261,6 +262,22 @@ Future<void> main() async {
               colportorId: cobro.colportorId,
               espacioId: cobro.espacioId,
               espacioPersonaId: cobro.espacioPersonaId,
+            );
+          },
+        ),
+        // Tocar una venta en la ficha de la persona (vista 32 B → vista 31, HU-VEN-004): la devolución
+        // de esa venta, con la venta, la casa y la persona ya resueltas. Devuelve `true` si se registró.
+        devolverVentaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null || colportorId.trim().isEmpty) return false;
+            return DevolucionPage.abrir(
+              contexto,
+              ventaId: datos.ventaId,
+              colportorId: colportorId,
+              espacioId: datos.espacioId,
+              personaId: datos.personaId,
             );
           },
         ),
