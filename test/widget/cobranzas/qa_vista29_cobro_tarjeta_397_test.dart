@@ -166,6 +166,14 @@ void main() {
       tester,
     ) async {
       final a = await llegarA164(tester, Estado164.b02Otro);
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('cobro_banco_otro')),
+          matching: find.byType(TextField),
+        ),
+        '😀' * 60,
+      );
+      await asentarAgendar(tester, 3);
       await tester.tap(bancoListo164);
       await asentarAgendar(tester);
       await escribir164(tester, 'cobro_referencia', '😀' * 40);
@@ -173,6 +181,7 @@ void main() {
       await asentarAgendar(tester);
       expect(find.text('Reintentar'), findsNothing);
       expect(a.repo.recibidos, hasLength(1));
+      expect(a.repo.recibidos.single.bancoOrigen, '😀' * 60);
     });
   });
 
