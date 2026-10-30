@@ -99,3 +99,15 @@ final entidadesQueEscribeElMotor = {
   for (final s in specsDeLaApp)
     if (s.policy != SyncPolicy.local) s.entity,
 };
+
+/// Las tablas que entran al backup E2E (HU-SYNC-005): las que no se pueden volver a bajar del
+/// servidor. Las `push` (lo que escribió el colportor, y puede no haber subido todavía) y las
+/// `local` (personas, notas, historial: solo viven en el teléfono), más la cola de sync, porque los
+/// jobs encolados al momento del backup tienen que volver a existir (contrato §7, fase 1). Las
+/// réplicas de solo lectura (`pull`) las reconstruye el pull, y `sesion_usuario` es de la sesión de
+/// este teléfono.
+final entidadesDelBackup = {
+  for (final s in specsDeLaApp)
+    if (s.policy != SyncPolicy.pull && s.entity != 'sesion_usuario') s.entity,
+  'sync_queue',
+};

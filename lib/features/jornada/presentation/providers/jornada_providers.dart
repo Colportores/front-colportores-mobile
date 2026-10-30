@@ -4,11 +4,12 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import '../../data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import '../../data/datasources/jornada_local_data_source.dart';
 import '../../data/datasources/jornada_local_data_source_drift.dart';
 import '../../data/repositories/jornada_repository_impl.dart';
-import '../../data/services/disparador_backup_pendiente.dart';
+import '../../data/services/disparador_backup_respaldo.dart';
 import '../../domain/repositories/jornada_repository.dart';
 import '../../domain/services/disparador_backup.dart';
 import '../../domain/usecases/finalizar_jornada_use_case.dart';
@@ -60,10 +61,11 @@ IniciarJornadaUseCase iniciarJornadaUseCase(Ref ref) => IniciarJornadaUseCase(
 ObtenerJornadaActivaUseCase obtenerJornadaActivaUseCase(Ref ref) =>
     ObtenerJornadaActivaUseCase(ref.watch(jornadaRepositoryProvider));
 
-/// El backup automático que se pide al cerrar la jornada (HU-SYNC-005). Hasta que exista, solo
-/// registra el pedido ([DisparadorBackupPendiente], TODO(#74)).
+/// El backup automático que se pide al cerrar la jornada (HU-JOR-002 → HU-SYNC-005): lo hace el
+/// respaldo en Drive si hay Wi-Fi y batería ≥ 30 %, y si no, queda para la próxima vuelta a la app.
 @Riverpod(keepAlive: true)
-DisparadorBackup disparadorBackup(Ref ref) => DisparadorBackupPendiente();
+DisparadorBackup disparadorBackup(Ref ref) =>
+    DisparadorBackupRespaldo(ref.watch(servicioRespaldoProvider));
 
 @Riverpod(keepAlive: true)
 FinalizarJornadaUseCase finalizarJornadaUseCase(Ref ref) => FinalizarJornadaUseCase(

@@ -679,6 +679,35 @@ void runArchiveContract(String nombre, ArchivePort Function() crear) {
       expect(ids, hasLength(2),
           reason: 'list no puede perder ni repetir entradas');
     });
+
+    test('exportedAt viaja con la entrada y vuelve en list', () async {
+      final instante = DateTime.utc(2026, 10, 28, 22, 15, 3, 120);
+      final e = await archivo.upload(
+        payload: const [1],
+        parentId: null,
+        watermark: 'w-1',
+        exportedAt: instante,
+      );
+
+      expect(e.exportedAt, instante);
+      expect((await archivo.list()).single.exportedAt, instante,
+          reason: 'el incremental siguiente parte de este instante, no de la '
+              'fecha de subida: sin él se pierden las filas escritas mientras '
+              'subía');
+    });
+
+    test('delete saca la entrada del listado y borrar dos veces no falla',
+        () async {
+      final base = await archivo
+          .upload(payload: const [1], parentId: null, watermark: 'w-1');
+      final otra = await archivo
+          .upload(payload: const [2], parentId: null, watermark: 'w-2');
+
+      await archivo.delete(base.id);
+      await archivo.delete(base.id);
+
+      expect((await archivo.list()).map((e) => e.id), [otra.id]);
+    });
   });
 }
 
