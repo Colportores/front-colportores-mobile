@@ -70,17 +70,30 @@ abstract final class EstadoDeDevolucion {
 
   /// El resumen de cada venta de [ventaIds] que tiene alguna devolución viva. Las que no tienen no
   /// aparecen en el mapa (usar [ResumenDeDevoluciones.ninguna]).
+  ///
+  /// Con [hasta], solo cuentan las devoluciones hechas hasta ese momento: cómo estaba la venta
+  /// entonces (la comparación de Mi Cuenta contra la semana pasada, HU-CTA-001).
   static Future<Map<String, ResumenDeDevoluciones>> resumenesDe(
     AppDatabase db,
-    Iterable<String> ventaIds,
-  ) async {
+    Iterable<String> ventaIds, {
+    DateTime? hasta,
+  }) async {
     final ids = ventaIds.toSet().toList();
     final salida = <String, ResumenDeDevoluciones>{};
     for (var desde = 0; desde < ids.length; desde += _porConsulta) {
       final lote = ids.sublist(desde, (desde + _porConsulta).clamp(0, ids.length));
       final filas =
           await (db.select(db.devoluciones)
-                ..where((d) => d.ventaId.isIn(lote) & d.deletedAt.isNull())
+                ..where(
+                  (d) =>
+                      d.ventaId.isIn(lote) &
+                      d.deletedAt.isNull() &
+                      (hasta == null
+                          ? const Constant(true)
+                          : d.fechaDevolucion.isSmallerOrEqualValue(
+                              hasta.toUtc().millisecondsSinceEpoch,
+                            )),
+                )
                 ..orderBy([(d) => OrderingTerm.asc(d.createdAt), (d) => OrderingTerm.asc(d.id)]))
               .get();
       if (filas.isEmpty) continue;
