@@ -76,6 +76,9 @@ final class _RepoFalso implements TicketRepository {
   }
 
   @override
+  Stream<TicketRegistrado?> observarTicket(String ticketId) => const Stream.empty();
+
+  @override
   Stream<Set<String>> cobrosConTicketPendiente() => const Stream.empty();
 }
 

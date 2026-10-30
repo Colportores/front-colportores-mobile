@@ -17,6 +17,7 @@ import '../../data/repositories/ticket_repository_impl.dart';
 import '../../data/services/servidor_de_fotos_supabase.dart';
 import '../../domain/entities/ticket.dart';
 import '../../domain/repositories/ticket_repository.dart';
+import '../../domain/services/captura_de_foto.dart';
 import '../../domain/services/politica_de_compresion.dart';
 import '../../domain/services/puertos_de_fotos.dart';
 import '../../domain/usecases/borrar_copia_local_de_ticket_use_case.dart';
@@ -95,6 +96,18 @@ final class _CompresorSinAdaptador implements CompresorDeImagen {
   );
 }
 
+/// La cámara y la galería (vista 29 C, #427). **Sin adaptador todavía**: elegir la librería de cámara
+/// es una decisión de stack que espera a Cristian (pendiente del issue #427), junto con la del
+/// compresor. Mientras sea `null` la app no ofrece «Sacar foto del ticket» y el cobro con tarjeta
+/// muestra el aviso de guardar el ticket (29A·02). `main.dart` la reemplaza cuando haya adaptador.
+final capturadorDeFotoProvider = Provider<CapturadorDeFoto?>((ref) => null);
+
+/// Se puede cargar la foto del ticket: hay cámara y galería. El compresor viene con el mismo
+/// adaptador (misma decisión de stack).
+final fotoDelTicketDisponibleProvider = Provider<bool>(
+  (ref) => ref.watch(capturadorDeFotoProvider) != null,
+);
+
 /// Persistencia de los tickets: encola el sync en la misma transacción.
 final ticketRepositoryProvider = Provider<TicketRepository>(
   (ref) => TicketRepositoryImpl(
@@ -133,6 +146,12 @@ final subirFotosDeTicketsUseCaseProvider = Provider<SubirFotosDeTicketsUseCase>(
 /// «Borrar copia local» (supuesto S41): solo con la foto ya subida.
 final borrarCopiaLocalDeTicketUseCaseProvider = Provider<BorrarCopiaLocalDeTicketUseCase>(
   (ref) => BorrarCopiaLocalDeTicketUseCase(ref.watch(ticketRepositoryProvider)),
+);
+
+/// Un ticket con su copia local, mientras la pantalla de la vista 29 C está abierta: de ahí salen
+/// «subiendo», «subido», «en cola» y el error.
+final ticketObservadoProvider = StreamProvider.autoDispose.family<TicketRegistrado?, String>(
+  (ref, ticketId) => ref.watch(ticketRepositoryProvider).observarTicket(ticketId),
 );
 
 /// Los ids de los cobros cuyo ticket todavía no subió su foto (el cobro con «ticket pendiente»).

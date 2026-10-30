@@ -202,6 +202,20 @@ void main() {
     });
   });
 
+  group('observarTicket', () {
+    test('devuelve el ticket guardado con su copia local y null si no existe', () async {
+      await registrar('t-1');
+
+      final r = (await repo.observarTicket('t-1').first)!;
+
+      expect(r.ticket.id, 't-1');
+      expect(r.foto.estado, EstadoDeSubida.pendiente);
+      expect(r.foto.hayCopiaLocal, isTrue);
+      expect(r.yaEstaba, isFalse);
+      expect(await repo.observarTicket('no-existe').first, isNull);
+    });
+  });
+
   group('TicketModel', () {
     test('los códigos de ida y vuelta, y un estado desconocido se lee como pendiente', () {
       for (final t in TipoDeTicket.values) {

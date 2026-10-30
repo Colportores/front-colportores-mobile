@@ -139,6 +139,11 @@ final class TicketRepositoryImpl implements TicketRepository {
   }
 
   @override
+  Stream<TicketRegistrado?> observarTicket(String ticketId) => _local
+      .observarTicket(ticketId)
+      .map((r) => r == null ? null : TicketRegistrado(ticket: r.ticket, foto: r.foto));
+
+  @override
   Stream<int> cantidadDeFotosPorSubir() => _local.cantidadDeFotosPorSubir();
 
   @override

@@ -134,6 +134,40 @@ void main() {
       expect(mejor, isNotNull);
     });
 
+    test('conMasCalidad sube exactamente un paso, aunque ese paso no entre en 200 KB', () async {
+      final compresor = CompresorDePrueba([objetivo + 1, objetivo + 1, 5000, 100 * 1024]);
+      final politica = PoliticaDeCompresion(compresor);
+      final primera = (await politica.comprimir(original))!;
+      expect(primera.indiceDelPaso, 2);
+
+      final mejor = (await politica.conMasCalidad(original, primera))!;
+
+      expect(mejor.indiceDelPaso, 1);
+      expect(mejor.paso.calidad, PoliticaDeCompresion.escalera[1].calidad);
+      expect(mejor.bytes.length, 100 * 1024);
+    });
+
+    test('conMasCalidad no tiene nada que hacer con el paso de más calidad', () async {
+      final compresor = CompresorDePrueba([10]);
+      final politica = PoliticaDeCompresion(compresor);
+      final primera = (await politica.comprimir(original))!;
+      expect(primera.indiceDelPaso, 0);
+      compresor.llamadas.clear();
+
+      expect(await politica.conMasCalidad(original, primera), isNull);
+      expect(compresor.llamadas, isEmpty);
+    });
+
+    test('conMasCalidad devuelve null si no se puede leer o no entra en 2 MiB', () async {
+      final politica = PoliticaDeCompresion(CompresorDePrueba([objetivo + 1, objetivo + 1, 5000]));
+      final primera = (await politica.comprimir(original))!;
+
+      final pesada = PoliticaDeCompresion(CompresorDePrueba([3 * 1024 * 1024]));
+      expect(await pesada.conMasCalidad(original, primera), isNull);
+      final ilegible = PoliticaDeCompresion(CompresorDePrueba([10], legible: false));
+      expect(await ilegible.conMasCalidad(original, primera), isNull);
+    });
+
     test('desdeElPaso fuera de la escalera se acota', () async {
       final compresor = CompresorDePrueba([10]);
 

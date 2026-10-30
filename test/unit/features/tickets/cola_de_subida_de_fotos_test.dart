@@ -74,6 +74,9 @@ final class _Repo implements TicketRepository {
   Future<Either<Failure, Unit>> borrarCopiaLocal(String ticketId) => throw UnimplementedError();
 
   @override
+  Stream<TicketRegistrado?> observarTicket(String ticketId) => const Stream.empty();
+
+  @override
   Stream<Set<String>> cobrosConTicketPendiente() => const Stream.empty();
 }
 

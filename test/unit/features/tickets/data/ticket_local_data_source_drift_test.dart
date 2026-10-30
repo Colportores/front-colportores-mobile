@@ -447,6 +447,40 @@ void main() {
     });
   });
 
+  group('observarTicket', () {
+    test('emite el ticket con su copia ahora y cada vez que cambia', () async {
+      final emisiones = <TicketConFoto?>[];
+      final suscripcion = local.observarTicket('t-1').listen(emisiones.add);
+      await pumpEventQueue();
+
+      await registrar('t-1');
+      await pumpEventQueue();
+      await servidorAcepto('t-1');
+      await local.anotarIntentoFallido('t-1', codigo: 'red', definitivo: false);
+      await pumpEventQueue();
+      await local.marcarFotoSubida('t-1', 'u/t-1.jpg', ahoraTicket);
+      await pumpEventQueue();
+      await local.soltarCopiaLocal('t-1');
+      await pumpEventQueue();
+      await suscripcion.cancel();
+
+      expect(emisiones.first, isNull);
+      final con = emisiones.whereType<({Ticket ticket, FotoLocalDeTicket foto})>().toList();
+      expect(con.first.foto.estado, EstadoDeSubida.pendiente);
+      expect(con.any((e) => e.foto.ultimoError == 'red'), isTrue);
+      expect(con.any((e) => e.ticket.urlCloud == 'u/t-1.jpg'), isTrue);
+      expect(con.last.foto.estado, EstadoDeSubida.subida);
+      expect(con.last.foto.hayCopiaLocal, isFalse);
+    });
+
+    test('un ticket que no existe es null, y el de otro id no se mezcla', () async {
+      await registrar('t-1');
+
+      expect(await local.observarTicket('t-2').first, isNull);
+      expect((await local.observarTicket('t-1').first)!.ticket.id, 't-1');
+    });
+  });
+
   group('cobrosConTicketPendiente', () {
     test('el cobro está «con ticket pendiente» hasta que la foto sube', () async {
       await cobro('c-1');

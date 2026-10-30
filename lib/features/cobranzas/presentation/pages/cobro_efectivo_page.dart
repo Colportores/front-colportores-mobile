@@ -13,6 +13,11 @@ import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
 import '../../../mapa/presentation/widgets/dialogos_modificar.dart'
     show confirmarDescartarLoEscrito;
+import '../../../tickets/presentation/flujo_ticket_de_tarjeta.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart'
+    show fotoDelTicketDisponibleProvider;
+import '../../../tickets/presentation/textos_ticket.dart';
+import '../../../tickets/presentation/widgets/piezas_ticket.dart' show BotonSecundarioDeTicket;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
@@ -35,7 +40,8 @@ import '../widgets/piezas_medio_de_cobro.dart';
 ///   carga débito o crédito, la marca y el número de aprobación; con transferencia, la referencia y el
 ///   banco de origen (hoja 29B·02). Todo eso es opcional y solo viaja el del medio elegido.
 /// - **Registrada** (29A·02 y 29B·03): tarjeta y transferencia suman al dinero depositado, no al dinero
-///   en mano; la tarjeta recuerda guardar el ticket.
+///   en mano; la tarjeta recuerda guardar el ticket. Con cámara disponible (HU-COB-007, 29A·03) pide
+///   en cambio «Sacar foto del ticket» o «Después» y abre la vista 29 C (`FlujoTicketDeTarjeta`).
 ///
 /// - **Monto vacío** (28·02): el botón está apagado y dice por qué.
 /// - **Monto mayor al saldo** (28·03): el campo se marca con el saldo y el botón queda apagado. Se
@@ -689,6 +695,9 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
   /// canvas); con saldo, también «Agendar la próxima cobranza», como el cobro parcial en efectivo.
   Widget _exitoDepositado(CobroRegistrado registrado, String? subtitulo) {
     final cobro = registrado.cobranza;
+    // Hay cámara: la tarjeta pide la foto del ticket (29A·03); si no, el aviso de guardarlo (29A·02).
+    final conFoto =
+        cobro.medio == MedioCobranza.tarjeta && ref.watch(fotoDelTicketDisponibleProvider);
     return _marco(
       cabecera: _cabecera(
         subtitulo,
@@ -705,7 +714,7 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
             referencia: cobro.referenciaTransferencia,
           ),
         ),
-        if (cobro.medio == MedioCobranza.tarjeta) ...[
+        if (cobro.medio == MedioCobranza.tarjeta && !conFoto) ...[
           const SizedBox(height: 9),
           const AvisoDeVenta(
             key: Key('cobro_aviso_ticket'),
@@ -714,7 +723,9 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
           ),
         ],
       ],
-      cta: registrado.ventaPagada
+      cta: conFoto
+          ? _ctaDeLaFotoDelTicket(registrado, subtitulo)
+          : registrado.ventaPagada
           ? BotonDeVenta(
               key: const Key('cobro_listo'),
               texto: TextosCobro.listo,
@@ -722,6 +733,51 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
             )
           : _ctaDeCobroParcial(),
     );
+  }
+
+  /// 29A·03 (V2, con foto): «Sacar foto del ticket» y «Después». Con saldo, también «Agendar la
+  /// próxima cobranza», como el cobro parcial en efectivo.
+  Widget _ctaDeLaFotoDelTicket(CobroRegistrado registrado, String? subtitulo) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      BotonDeVenta(
+        key: const Key('cobro_sacar_foto_del_ticket'),
+        texto: TextosTicket.sacarFotoDelTicket,
+        alPresionar: () => unawaited(_sacarFotoDelTicket(registrado, subtitulo)),
+      ),
+      if (!registrado.ventaPagada)
+        BotonSecundarioDeTicket(
+          key: const Key('cobro_agendar_con_foto'),
+          texto: TextosCobro.agendarLaProxima,
+          alPresionar: () => unawaited(_agendarLaProxima()),
+        ),
+      BotonSecundarioDeTicket(
+        key: const Key('cobro_listo'),
+        texto: TextosTicket.despues,
+        alPresionar: () => _cerrar(cobrado: true),
+      ),
+    ],
+  );
+
+  /// Abre la foto del ticket (vista 29 C). Al terminar o con «Después» se vuelve a la casa; si se cerró
+  /// la cámara sin sacar nada, el cobro sigue a la vista.
+  Future<void> _sacarFotoDelTicket(CobroRegistrado registrado, String? subtitulo) async {
+    if (_navegando || _cerrando) return;
+    _navegando = true;
+    try {
+      final resultado = await FlujoTicketDeTarjeta.abrir(
+        context,
+        cobro: registrado.cobranza,
+        colportorId: widget.colportorId,
+        subtitulo: subtitulo,
+      );
+      if (resultado != ResultadoDelFlujoDeTicket.cancelado && mounted) {
+        _cerrar(cobrado: true);
+      }
+    } finally {
+      _navegando = false;
+    }
   }
 
   /// «Agendar la próxima cobranza» y «Listo».
