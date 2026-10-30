@@ -185,9 +185,5 @@ void main() {
       expect(_conSaldo.entregasPendientes, 1);
       expect(_conSaldo.tieneSaldo, isTrue);
     });
-
-    test('la fuente por defecto no sabe de nadie', () async {
-      expect(await const CuentasDePersonasSinFuente().resumenDe('p1'), isNull);
-    });
   });
 }

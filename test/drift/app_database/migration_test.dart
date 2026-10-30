@@ -27,6 +27,8 @@ import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
+import 'generated/schema_v23.dart' as v23;
+import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1298,10 +1300,118 @@ void main() {
     },
   );
 
-  test('dado un cobro guardado en la versión 21, cuando migra a la 22, no se pierde nada, queda '
+  test(
+    'dado lo guardado en la versión 21, cuando migra a la 22, no se pierde nada y aparece la devolución '
+    'vacía, con sus CHECK y sin encolar nada',
+    () async {
+      // HU-VEN-004 (#161): `devolucion` sube por el motor; al migrar solo se crea.
+      const venta = v21.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 21,
+        newVersion: 22,
+        createOld: v21.DatabaseAtV21.new,
+        createNew: v22.DatabaseAtV22.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.devolucion).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO devolucion (id, venta_id, productos_devueltos, dinero_retenido, '
+              'monto_reembolsado, motivo, fecha_devolucion, created_at, updated_at) VALUES ';
+          const libros = "'[{\"producto_id\":\"p-1\",\"cantidad\":1,\"venta_item_id\":\"i-1\"}]'";
+          await nuevo.customStatement("$columnas('d-1', 'v-1', $libros, 0, NULL, NULL, 1, 1, 1)");
+          await nuevo.customStatement("$columnas('d-2', 'v-1', $libros, 100, 50, 'x', 1, 1, 1)");
+          expect(await nuevo.select(nuevo.devolucion).get(), hasLength(2));
+          for (final malo in [
+            "('d-3', 'v-1', $libros, -1, NULL, NULL, 1, 1, 1)",
+            "('d-4', 'v-1', $libros, 0, -5, NULL, 1, 1, 1)",
+            "('d-5', 'v-1', $libros, 0, NULL, '', 1, 1, 1)",
+            "('d-6', 'v-1', $libros, 0, NULL, '${'a' * 501}', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 22, cuando migra a la 23, no se pierde nada y aparece el depósito '
+    'vacío, con sus CHECK y sin encolar nada',
+    () async {
+      // HU-CTA-004 (#442): `deposito` sube por el motor; al migrar solo se crea.
+      const entrega = v22.EntregaData(
+        id: 'e-1',
+        ventaId: 'v-1',
+        productoId: 'p-1',
+        cantidad: 3,
+        pendiente: 0,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 22,
+        newVersion: 23,
+        createOld: v22.DatabaseAtV22.new,
+        createNew: v23.DatabaseAtV23.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.entrega, entrega),
+        validateItems: (nuevo) async {
+          expect((await nuevo.select(nuevo.entrega).get()).map((e) => e.id), ['e-1']);
+          expect(await nuevo.select(nuevo.deposito).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO deposito (id, monto, fecha, destino, concepto, campania_id, ticket_id, '
+              'created_at, updated_at) VALUES ';
+          await nuevo.customStatement(
+            "$columnas('d-1', 180000, 1, 'BANCO', 'CASA_EDITORA', NULL, 't-1', 1, 1)",
+          );
+          final deposito = await nuevo.select(nuevo.deposito).getSingle();
+          expect(deposito.monto, 180000);
+          expect(deposito.destino, 'BANCO');
+          expect(deposito.ticketId, 't-1');
+          expect(deposito.syncVersion, 0);
+          for (final malo in [
+            "('d-2', 0, 1, 'BANCO', 'CASA_EDITORA', NULL, 't-2', 1, 1)",
+            "('d-3', 100, 1, 'CAJERO', 'CASA_EDITORA', NULL, 't-3', 1, 1)",
+            "('d-4', 100, 1, 'BANCO', 'OTRO', NULL, 't-4', 1, 1)",
+            "('d-5', 100, 1, 'RETIRO_COORDINADOR', 'CASA_EDITORA', NULL, 't-5', 1, 1)",
+            "('d-6', 100, 1, 'BANCO', 'CASA_EDITORA', NULL, NULL, 1, 1)",
+            "('d-7', 100, 1, 'RETIRO_COORDINADOR', 'ALQUILER', NULL, NULL, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+          await nuevo.customStatement(
+            "$columnas('d-8', 100, 1, 'RETIRO_COORDINADOR', 'ALQUILER', 'camp-1', NULL, 1, 1)",
+          );
+          expect(await nuevo.select(nuevo.deposito).get(), hasLength(2));
+        },
+      );
+    },
+  );
+
+  test('dado un cobro guardado en la versión 23, cuando migra a la 24, no se pierde nada, queda '
       'vigente (sin marca de anulado) y no se encola nada', () async {
     // HU-COB-006 (#422): `anulado_at` y `motivo_anulacion` opcionales en `cobranza`.
-    const venta = v21.VentaData(
+    const venta = v23.VentaData(
       id: 'v-1',
       espacioPersonaId: 'ep-1',
       numeroTalonario: '0042',
@@ -1312,7 +1422,7 @@ void main() {
       updatedAt: 1,
       syncVersion: 0,
     );
-    const cobro = v21.CobranzaData(
+    const cobro = v23.CobranzaData(
       id: 'c-1',
       ventaId: 'v-1',
       monto: 500,
@@ -1326,10 +1436,10 @@ void main() {
     );
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 21,
-      newVersion: 22,
-      createOld: v21.DatabaseAtV21.new,
-      createNew: v22.DatabaseAtV22.new,
+      oldVersion: 23,
+      newVersion: 24,
+      createOld: v23.DatabaseAtV23.new,
+      createNew: v24.DatabaseAtV24.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch.insert(viejo.venta, venta);

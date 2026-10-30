@@ -20,6 +20,7 @@ abstract final class ClavesFicha {
   static const opcionEditar = Key('ficha_opcion_editar');
   static const opcionBaja = Key('ficha_opcion_baja');
   static const cuenta = Key('ficha_cuenta');
+  static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
   static const ultimaNota = Key('ficha_ultima_nota');
@@ -344,6 +345,26 @@ class TarjetaCuenta extends StatelessWidget {
   }
 }
 
+/// La cuenta de quien todavía no tiene ventas ni pagos (HU-UBI-009, «Sin movimientos aún»): ocupa el lugar
+/// de [TarjetaCuenta]. Sin ventas no hay nada que sumar, y decirlo evita que parezca que la ficha no
+/// terminó de cargar.
+class SinMovimientosDeCuenta extends StatelessWidget {
+  const SinMovimientosDeCuenta({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const KeyedSubtree(
+      key: ClavesFicha.sinMovimientos,
+      child: _Cuadro(
+        hijo: Text(
+          TextosFicha.sinMovimientos,
+          style: TextStyle(fontSize: 14, color: ColoresAlta.gris),
+        ),
+      ),
+    );
+  }
+}
+
 /// La última nota (32B·01): el día y «1 DE 2», y las primeras 200 caracteres. Se toca entera para abrir
 /// todas las notas.
 class TarjetaUltimaNota extends StatelessWidget {
@@ -464,7 +485,8 @@ class FilaDeHistorial extends StatelessWidget {
   final MovimientoDeFicha movimiento;
   final DateTime ahora;
 
-  /// Abre el detalle de la fila (un cobro, vista 30 B); `null` = la fila no se toca.
+  /// Lo que pasa al tocar la fila (la venta abre su devolución, HU-VEN-004); `null`: la fila no se
+  /// toca.
   final VoidCallback? alTocar;
 
   @override
@@ -478,67 +500,53 @@ class FilaDeHistorial extends StatelessWidget {
     };
     final pendiente = m is EntregaEnFicha && m.pendiente;
     final sub = FormatoFicha.subtitulo(m);
-    return Semantics(
-      container: true,
-      button: alTocar != null,
-      label: FormatoFicha.paraLector(m, ahora),
-      excludeSemantics: true,
-      onTap: alTocar,
-      child: KeyedSubtree(
-        key: ClavesFicha.fila(m.id),
-        child: _Tocable(
-          alTocar: alTocar,
-          hijo: _Cuadro(
-            hijo: Row(
+    final cuadro = _Cuadro(
+      hijo: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        FormatoFicha.antetitulo(m, ahora),
-                        style: _estiloRotulo.copyWith(
-                          color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        FormatoFicha.titulo(m),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
-                        ),
-                      ),
-                      if (sub != null)
-                        Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
-                    ],
+                Text(
+                  FormatoFicha.antetitulo(m, ahora),
+                  style: _estiloRotulo.copyWith(
+                    color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
                   ),
                 ),
+                const SizedBox(height: 2),
+                Text(
+                  FormatoFicha.titulo(m),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
+                ),
+                if (sub != null)
+                  Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
               ],
             ),
           ),
-        ),
+          if (alTocar != null)
+            const Padding(
+              padding: EdgeInsets.only(left: 8, top: 2),
+              child: Icon(Icons.chevron_right, color: ColoresAlta.gris, size: 22),
+            ),
+        ],
       ),
     );
-  }
-}
-
-/// Una fila que se toca (con su ripple y un alto táctil de 48) o, sin destino, tal cual.
-class _Tocable extends StatelessWidget {
-  const _Tocable({required this.alTocar, required this.hijo});
-
-  final VoidCallback? alTocar;
-  final Widget hijo;
-
-  @override
-  Widget build(BuildContext context) {
-    final alTocar = this.alTocar;
-    if (alTocar == null) return hijo;
-    return InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: hijo);
+    return Semantics(
+      container: true,
+      button: alTocar != null,
+      onTap: alTocar,
+      label: FormatoFicha.paraLector(m, ahora),
+      excludeSemantics: true,
+      child: KeyedSubtree(
+        key: ClavesFicha.fila(m.id),
+        child: alTocar == null
+            ? cuadro
+            : InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: cuadro),
+      ),
+    );
   }
 }
 

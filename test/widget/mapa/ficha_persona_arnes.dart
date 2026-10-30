@@ -115,8 +115,15 @@ final class MundoFicha {
   /// Lo que devuelve la edición, si queda esperando.
   Completer<void>? compuertaEdicion;
 
+  /// Las ventas que se tocaron para devolverlas (vista 31, HU-VEN-004).
+  final devoluciones = <ContextoDeDevolucion>[];
+
+  /// Lo que devuelve el destino de la devolución, si queda esperando.
+  Completer<void>? compuertaDevolucion;
+
   var conEdicion = false;
   var conRegistrarVisita = false;
+  var conDevolucion = false;
 
   /// Con destino para tocar un cobro del historial (vista 30 B): guarda cada `id` que se abrió.
   var conVerCobro = false;
@@ -180,6 +187,12 @@ Future<void> montarFicha(
           verCobroDesdeLaFichaProvider.overrideWithValue((id) {
             mundo.cobrosAbiertos.add(id);
             return null;
+          }),
+        if (mundo.conDevolucion)
+          devolverVentaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.devoluciones.add(c);
+            await mundo.compuertaDevolucion?.future;
+            return true;
           }),
         if (mundo.conRegistrarVisita)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {

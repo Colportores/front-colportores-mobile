@@ -5,6 +5,7 @@ import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
+import '../../../ventas/data/datasources/estado_de_devolucion.dart';
 import '../../../ventas/data/models/venta_model.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
@@ -251,18 +252,20 @@ final class CobranzaLocalDataSourceDrift {
 
   // ---- Saldo pendiente reactivo (HU-COB-005) ----------------------------------------------------
   //
-  // `saldo = monto_total_venta − SUM(cobros válidos)`, por venta, nunca negativo, y los cortes suman
-  // el saldo de cada venta viva. Una sola fórmula ([_sqlSaldo]) para los tres cortes y para
-  // [saldosPorPersona]; la de la venta suelta ([_conSaldo]) y el color de la casa usan [CobroValido]. Cada `Stream`
-  // emite el valor de ahora al suscribirse y uno nuevo solo si cambió, cuando se registra, se da de
-  // baja o llega por el pull cualquier venta o cobro (Drift avisa por tabla), sin recargar nada.
+  // `saldo = lo que el cliente se queda − lo que ya pagó`, por venta, nunca negativo, con las
+  // devoluciones (HU-VEN-004) adentro: se queda con = monto de la venta − lo devuelto; ya pagó = cobros
+  // válidos − lo reembolsado. Los cortes suman el saldo de cada venta viva. Una sola fórmula
+  // ([CuentaDeLaVenta]) para los tres cortes, para [saldosPorPersona], para la venta suelta
+  // ([_conSaldo]) y para el color de la casa. Cada `Stream` emite el valor de ahora al suscribirse y uno
+  // nuevo solo si cambió, cuando se registra, se da de baja o llega por el pull cualquier venta, cobro o
+  // devolución (Drift avisa por tabla), sin recargar nada.
 
-  /// Las ventas vivas con la parte de lo que debe cada una. `SUM(MAX(a, 0))`: una venta cobrada de
-  /// más no resta de lo que deben las demás.
-  static const _sqlSaldo =
-      'SELECT COALESCE(SUM(MAX(v.monto_total - COALESCE('
-      '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql}), 0), 0)), 0) '
-      'AS saldo FROM venta v WHERE v.deleted_at IS NULL AND ';
+  /// Las ventas vivas de un corte con lo que lleva cobrado cada una; las devoluciones se suman en
+  /// Dart ([_saldoDe]), porque devolver un combo se cuenta por renglón.
+  static const _sqlVentas =
+      'SELECT v.id AS id, v.monto_total AS monto, COALESCE('
+      '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql}), 0) '
+      'AS cobrado FROM venta v WHERE v.deleted_at IS NULL AND ';
 
   /// Las ventas de una persona, por sus vínculos vivos con un espacio.
   static const _cortePersona =
@@ -284,27 +287,39 @@ final class CobranzaLocalDataSourceDrift {
     _db.cobranzas,
     _db.espacioPersonas,
     _db.espacios,
+    _db.devoluciones,
+    _db.ventaItems,
   };
 
+  /// Lo que se debe en un corte: la suma del saldo de cada venta viva, `SUM(MAX(a, 0))` (una venta
+  /// cobrada de más no resta de lo que deben las demás).
   Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async {
-    final fila = await _db.customSelect('$_sqlSaldo$corte', variables: variables).getSingle();
-    return fila.read<int>('saldo');
+    final filas = await _db.customSelect('$_sqlVentas$corte', variables: variables).get();
+    final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
+      for (final fila in filas) fila.read<String>('id'),
+    ]);
+    var saldo = 0;
+    for (final fila in filas) {
+      saldo += (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
+          .cuentaDe(
+            montoTotalCentavos: fila.read<int>('monto'),
+            cobradoCentavos: fila.read<int>('cobrado'),
+          )
+          .saldoCentavos;
+    }
+    return saldo;
   }
 
   Stream<int> _observarSaldo(String corte, String id) => _db
-      .customSelect(
-        '$_sqlSaldo$corte',
-        variables: [Variable<String>(id)],
-        readsFrom: _tablasDelSaldo,
-      )
+      .customSelect('SELECT 1', readsFrom: _tablasDelSaldo)
       .watch()
-      .map((filas) => filas.single.read<int>('saldo'))
+      .asyncMap((_) => _saldoDe(corte, [Variable<String>(id)]))
       .distinct();
 
   /// La venta [ventaId] con su saldo cada vez que cambia ella, sus cobros o lo que se vendió; `null`
   /// si no está o se dio de baja.
   Stream<VentaConSaldo?> observarVentaConSaldo(String ventaId) => _db
-      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.ventaItems, _db.productos})
+      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.productos})
       .watch()
       .asyncMap((_) => ventaConSaldo(ventaId))
       .distinct();
@@ -322,12 +337,16 @@ final class CobranzaLocalDataSourceDrift {
       _observarSaldo(_corteColportor, colportorId);
 
   Future<VentaConSaldo> _conSaldo(VentaFila venta) async {
+    final devoluciones = await EstadoDeDevolucion.resumenDe(_db, venta.id);
     return VentaConSaldo(
       ventaId: venta.id,
       numeroTalonario: venta.numeroTalonario,
       fecha: venta.fecha,
       montoTotalCentavos: venta.montoTotal,
       cobradoCentavos: await CobroValido.cobradoDe(_db, venta.id),
+      devueltoCentavos: devoluciones.todoDevuelto ? venta.montoTotal : devoluciones.valorCentavos,
+      reembolsadoCentavos: devoluciones.reembolsadoCentavos,
+      retenidoCentavos: devoluciones.retenidoCentavos,
       descripcion: await _descripcion(venta.id),
     );
   }
