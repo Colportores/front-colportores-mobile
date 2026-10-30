@@ -21,7 +21,13 @@ const _formaHoja = RoundedRectangleBorder(
   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
 );
 
-const _estiloSegmento = TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600);
+// 13 y no 13,5: con Inter de verdad (y el espaciado del tema) «Transferencia» mide ~90 dp y la fila de
+// tres del canvas tiene que entrar en 360 dp (308 dp útiles, a un tercio cada uno) sin apilarse.
+const _estiloSegmento = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+
+/// Relleno horizontal de cada segmento y borde (1,5 por lado): lo que se suma al ancho del rótulo.
+const _rellenoDelSegmento = 4.0;
+const _bordeDelSegmento = 1.5;
 
 /// Un control de opciones excluyentes (el «MEDIO» y el «Débito / Crédito» del canvas): una fila de
 /// segmentos iguales, o una columna si con la letra grande los rótulos no entran en una fila.
@@ -73,10 +79,13 @@ class SegmentadoDeCobro extends StatelessWidget {
             builder: (context, caja) {
               // Si el rótulo más largo no entra en su parte del ancho, los segmentos se apilan: con
               // letra grande nada se corta ni se parte a la mitad de una palabra.
+              // Se mide con el mismo estilo con que se dibuja: el del tema (Inter) más el del segmento. Con
+              // `_estiloSegmento` solo, el `TextPainter` usa la fuente por defecto y no la de la app.
+              final estilo = DefaultTextStyle.of(context).style.merge(_estiloSegmento);
               var masAncho = 0.0;
               for (final texto in opciones) {
                 final medida = TextPainter(
-                  text: TextSpan(text: texto, style: _estiloSegmento),
+                  text: TextSpan(text: texto, style: estilo),
                   textDirection: TextDirection.ltr,
                   textScaler: escala,
                   maxLines: 1,
@@ -85,7 +94,7 @@ class SegmentadoDeCobro extends StatelessWidget {
                 medida.dispose();
               }
               final cuanto = (caja.maxWidth - _hueco * (opciones.length - 1)) / opciones.length;
-              final enFila = masAncho + 28 <= cuanto;
+              final enFila = masAncho + 2 * (_rellenoDelSegmento + _bordeDelSegmento) <= cuanto;
               final segmentos = [
                 for (var i = 0; i < opciones.length; i++)
                   _Segmento(
@@ -152,14 +161,14 @@ class _Segmento extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: Container(
             constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: _rellenoDelSegmento, vertical: 8),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: elegido ? ColoresAgenda.navy : Colors.white,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: elegido ? ColoresAgenda.navy : ColoresAgenda.bordeChip,
-                width: 1.5,
+                width: _bordeDelSegmento,
               ),
             ),
             child: Text(

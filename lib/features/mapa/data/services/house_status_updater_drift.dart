@@ -8,6 +8,7 @@ import '../../../agenda/domain/entities/estado_agenda.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../../agenda/domain/entities/visita.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
+import '../../../ventas/data/datasources/estado_de_entrega.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/house_status.dart';
 import '../../domain/services/calculador_color_casa.dart';
@@ -151,9 +152,13 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
     final salida = <({int montoCentavos, int cobradoCentavos, bool entregada})>[];
     for (final fila in filas) {
       final cobrado = await CobroValido.cobradoDe(_db, fila.id);
-      // La tabla `entrega` llega con HU-VEN-002 (#430): hasta entonces el teléfono no sabe si se
-      // entregó y no lo da por hecho, así que una venta pagada sigue pendiente.
-      salida.add((montoCentavos: fila.montoTotal, cobradoCentavos: cobrado, entregada: false));
+      // Entregada = todo lo vendido tiene su entrega hecha (HU-VEN-002, `EstadoDeEntrega`): la misma
+      // cuenta que usa «Entregar ahora». Sin entrega registrada, la venta sigue pendiente.
+      salida.add((
+        montoCentavos: fila.montoTotal,
+        cobradoCentavos: cobrado,
+        entregada: await EstadoDeEntrega.estaEntregada(_db, fila.id),
+      ));
     }
     return salida;
   }

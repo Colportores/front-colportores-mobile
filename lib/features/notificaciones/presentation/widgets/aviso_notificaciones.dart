@@ -24,9 +24,10 @@ abstract final class TextosNotificaciones {
   /// Lo mismo, pero desde Configuración, donde no hay «Ahora no». Propuesta.
   static const activarFallo = 'No pudimos pedir el permiso. Probá de nuevo.';
 
-  /// 24A·03. El texto es el de la HU; el canvas dice «Las notificaciones están apagadas. Podés
-  /// activarlas en configuración.» y la diferencia va en el PR (manda la HU).
-  static const avisoApagadas = 'Notificaciones desactivadas. Activá en Configuración.';
+  /// 24A·03. El texto es el del canvas (decisión del orquestador, 26/10, P4: gana el canvas
+  /// aprobado); la HU decía «Notificaciones desactivadas. Activá en Configuración.».
+  static const avisoApagadas =
+      'Las notificaciones están apagadas. Podés activarlas en configuración.';
   static const avisoIrAConfiguracion = 'Ir a configuración';
   static const avisoCerrar = 'Cerrar aviso';
 
@@ -43,9 +44,11 @@ abstract final class TextosNotificaciones {
   static const abrirAjustes = 'Abrir ajustes del teléfono';
 
   /// Cuando el teléfono no pudo abrir la pantalla de ajustes. Propuesta: el canvas no lo dibuja.
+  /// Sin el nombre de la app (decisión del orquestador, 26/10, P3): el teléfono la muestra como
+  /// «colportores_mobile» y nombrarla con otra palabra mentiría.
   static const ajustesNoAbren =
-      'No pudimos abrir los ajustes. Buscá «Colportaje» en los ajustes del teléfono, en '
-      'Notificaciones.';
+      'No pudimos abrir los ajustes. Abrí los ajustes del teléfono, buscá esta app y activá las '
+      'notificaciones.';
 
   /// 24B·04: Configuración › Notificaciones con el permiso del teléfono sin pedir.
   static const apagadas =

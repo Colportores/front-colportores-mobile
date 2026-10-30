@@ -55,8 +55,10 @@ import 'features/notificaciones/presentation/providers/conciliacion_recordatorio
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
+import 'features/respaldo/data/services/nivel_bateria_canal.dart';
 import 'features/respaldo/data/services/servicio_google.dart';
 import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
@@ -206,12 +208,18 @@ Future<void> main() async {
         // El respaldo en el Drive de la persona (HU-SYNC-004): sin los identificadores de cliente de
         // Google (`--dart-define`, docs/google-drive-oauth.md) no se puede conectar y la fila
         // «Cuenta Drive» lo dice con «No pudimos conectar tu Drive».
-        respaldoDriveRepositoryProvider.overrideWithValue(
-          RespaldoDriveRepositoryImpl(
+        // El primer respaldo al conectar (HU-SYNC-005): lo pide el repositorio cuando termina de
+        // conectar, y el servicio se arma recién ahí (necesita el motor, que se arma después).
+        respaldoDriveRepositoryProvider.overrideWith(
+          (ref) => RespaldoDriveRepositoryImpl(
             almacenSeguro,
             ConfigGoogle.configurada ? ServicioGoogleSignIn() : const ServicioGoogleSinConfigurar(),
+            primerRespaldo: PrimerRespaldoConServicio(() => ref.read(servicioRespaldoProvider)),
           ),
         ),
+        // La batería para el respaldo automático (R-SY10): canal nativo propio (MainActivity.kt,
+        // AppDelegate.swift).
+        nivelBateriaProvider.overrideWithValue(NivelBateriaCanal()),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
         // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en

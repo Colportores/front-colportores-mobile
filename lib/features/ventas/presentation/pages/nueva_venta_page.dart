@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../../catalogo/domain/entities/catalogo_local.dart';
 import '../../../catalogo/domain/entities/ciudad_consultable.dart' show CampaniaTerminada;
@@ -96,10 +97,24 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
     });
   }
 
+  /// Una validación rechazada por el caso de uso se dice tal cual (reintentar igual no la arregla);
+  /// cualquier otra falla es «No pudimos guardar… probá de nuevo».
+  static String _textoDeLaFalla(Failure? falla) => switch (falla) {
+    // La persona ausente no se arregla editando lo cargado: se vuelve atrás y se la elige de nuevo.
+    FailureValidacion(:final campos) when campos.containsKey('persona') =>
+      TextosVenta.personaYaNoEsta,
+    FailureValidacion(:final campos) when campos.isNotEmpty => TextosVenta.revisaLoCargado(
+      campos.values.first,
+    ),
+    _ => TextosVenta.errorAlGuardar,
+  };
+
   Future<void> _confirmarSalida() async {
     final salir = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // Con texto grande el cuerpo y los botones tienen que poder desplazarse.
+        scrollable: true,
         title: const Text(TextosVenta.salirTitulo),
         content: const Text(TextosVenta.salirCuerpo),
         actions: [
@@ -242,9 +257,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
 
     final hayAlgo = venta.renglones.isNotEmpty || !venta.talonarioVacio;
     return PopScope(
-      canPop: !hayAlgo || venta.guardada != null,
+      // Con el guardado en curso no se sale: la venta ya se está yendo a la base y «se pierde lo que
+      // cargaste» sería falso. Termina y la pantalla se cierra sola (o muestra la falla).
+      canPop: !venta.guardando && (!hayAlgo || venta.guardada != null),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_confirmarSalida());
+        if (!didPop && !venta.guardando) unawaited(_confirmarSalida());
       },
       child: cuerpo,
     );
@@ -367,7 +384,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           const SizedBox(height: 9),
           KeyedSubtree(
             key: _avisoDeGuardado,
-            child: const AvisoDeVenta(key: Key('venta_error'), texto: TextosVenta.errorAlGuardar),
+            child: AvisoDeVenta(key: const Key('venta_error'), texto: _textoDeLaFalla(venta.falla)),
           ),
         ],
         const SizedBox(height: 9),
@@ -418,6 +435,8 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
               ocupado: venta.guardando,
               nota: venta.talonarioVacio
                   ? TextosVenta.talonarioVacio
+                  : repetido != null
+                  ? TextosVenta.talonarioRepetidoNota
                   : venta.motivoFalta
                   ? TextosVenta.motivoFalta
                   : null,

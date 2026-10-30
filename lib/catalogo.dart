@@ -34,6 +34,10 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('venta'),
   SyncSpec.push('venta_item'),
+  // La entrega de lo vendido (HU-VEN-002, #430): una fila por producto, ya entregada o pendiente. Sube
+  // con ids opacos, después de la venta que entrega; `stock_inconsistente` (backend 0118) la pone el
+  // servidor y el push la descarta. Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('entrega'),
   // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
   // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('cobranza', critical: true),
@@ -98,4 +102,16 @@ SpecRegistry registroDeLaApp(Iterable<String> tablasLocales) =>
 final entidadesQueEscribeElMotor = {
   for (final s in specsDeLaApp)
     if (s.policy != SyncPolicy.local) s.entity,
+};
+
+/// Las tablas que entran al backup E2E (HU-SYNC-005): las que no se pueden volver a bajar del
+/// servidor. Las `push` (lo que escribió el colportor, y puede no haber subido todavía) y las
+/// `local` (personas, notas, historial: solo viven en el teléfono), más la cola de sync, porque los
+/// jobs encolados al momento del backup tienen que volver a existir (contrato §7, fase 1). Las
+/// réplicas de solo lectura (`pull`) las reconstruye el pull, y `sesion_usuario` es de la sesión de
+/// este teléfono.
+final entidadesDelBackup = {
+  for (final s in specsDeLaApp)
+    if (s.policy != SyncPolicy.pull && s.entity != 'sesion_usuario') s.entity,
+  'sync_queue',
 };

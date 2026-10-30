@@ -23,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/entrevista_falsos.dart';
 import '../../helpers/qa_vista39_450_arnes.dart';
+import '../../helpers/venta_ui_falsos.dart' show EntornoDeVenta;
 
 void main() {
   group('texto literal del canvas 39', () {
@@ -505,18 +506,37 @@ void main() {
     });
   });
 
-  group('«Sí, registrar la venta»', () {
-    testWidgets('devuelve las horas, no guarda y deja la entrevista y su aviso a la vista', (
+  group('«Sí, registrar la venta» (#428)', () {
+    testWidgets('abre la venta con la casa y la persona, y no guarda nada hasta que se guarde', (
       tester,
     ) async {
-      final r = await llegar(tester, Estado39.r06);
+      final montaje = MontajeEntrevista()..extra.addAll(EntornoDeVenta().overrides);
+      final r = await llegar(tester, Estado39.r06, montaje: montaje);
 
       await tocar(tester, find.byKey(ClavesEntrevista.registrarVenta));
 
-      expect(r.salida, isA<QuiereRegistrarLaVenta>());
+      expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
+      expect(r.montaje.agenda.recibidas, isEmpty);
+      expect(r.montaje.almacen.guardadas, hasLength(1));
+    });
+
+    testWidgets('si la venta no se completa, la entrevista y su aviso siguen a la vista', (
+      tester,
+    ) async {
+      final montaje = MontajeEntrevista()..extra.addAll(EntornoDeVenta().overrides);
+      final r = await llegar(tester, Estado39.r06, montaje: montaje);
+
+      await tocar(tester, find.byKey(ClavesEntrevista.registrarVenta));
+      await tocar(tester, find.byKey(const Key('venta_atras')));
+
+      expect(r.salida, isA<VentaSinCompletar>());
       expect(r.montaje.agenda.recibidas, isEmpty);
       expect(r.montaje.almacen.guardadas, hasLength(1));
       expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
+      expect(
+        find.text('La venta no se guardó. La entrevista con Pedro Gómez sigue en curso.'),
+        findsOneWidget,
+      );
     });
   });
 

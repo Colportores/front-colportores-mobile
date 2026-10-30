@@ -33,6 +33,7 @@ import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -327,6 +328,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
+    // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
+    ref.watch(respaldoAlVolverProvider);
     // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.

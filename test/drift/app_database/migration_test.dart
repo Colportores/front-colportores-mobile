@@ -26,6 +26,7 @@ import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v21.dart' as v21;
+import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1249,10 +1250,59 @@ void main() {
   });
 
   test(
-    'dado una agenda guardada en la versión 20, cuando migra a la 21, no se pierde nada, suma la '
+    'dado lo guardado en la versión 20, cuando migra a la 21, no se pierde nada y aparece la entrega '
+    'vacía, con su CHECK y sin encolar nada',
+    () async {
+      // HU-VEN-002 (#430): `entrega` sube por el motor; al migrar solo se crea.
+      const venta = v20.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 20,
+        newVersion: 21,
+        createOld: v20.DatabaseAtV20.new,
+        createNew: v21.DatabaseAtV21.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.entrega).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO entrega (id, venta_id, producto_id, cantidad, created_at, updated_at) '
+              'VALUES ';
+          await nuevo.customStatement("$columnas('e-1', 'v-1', 'p-1', 3, 1, 1)");
+          final entrega = await nuevo.select(nuevo.entrega).getSingle();
+          // Sin decir nada, la fila queda pendiente (el valor por defecto del servidor).
+          expect(entrega.pendiente, 1);
+          expect(entrega.fechaEntrega, isNull);
+          for (final malo in [
+            "('e-2', 'v-1', 'p-1', 0, 1, 1)",
+            "('e-3', 'v-1', 'p-1', -2, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'dado una agenda guardada en la versión 21, cuando migra a la 22, no se pierde nada, suma la '
     'venta y el monto previsto vacíos y deja guardar una cuota (HU-COB-004, #166)',
     () async {
-      const agenda = v20.AgendaData(
+      const agenda = v21.AgendaData(
         id: 'a-1',
         espacioId: 'es-1',
         espacioPersonaId: 'ep-1',
@@ -1267,10 +1317,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 20,
-        newVersion: 21,
-        createOld: v20.DatabaseAtV20.new,
-        createNew: v21.DatabaseAtV21.new,
+        oldVersion: 21,
+        newVersion: 22,
+        createOld: v21.DatabaseAtV21.new,
+        createNew: v22.DatabaseAtV22.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) {
           batch.insert(viejo.agenda, agenda);

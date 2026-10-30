@@ -79,7 +79,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_ajustesNoAbren, findsOneWidget);
-      expect(find.textContaining('Buscá «Colportaje» en los ajustes del teléfono'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'Abrí los ajustes del teléfono, buscá esta app y activá las notificaciones',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Colportaje'), findsNothing);
       // Puede volver a intentarlo.
       expect(tester.widget<TextButton>(_abrirAjustes).onPressed, isNotNull);
     });

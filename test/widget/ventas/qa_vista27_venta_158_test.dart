@@ -3,7 +3,8 @@
 // HU, entradas límite, acciones superpuestas, navegación y privacidad). Las guías de accesibilidad
 // están en `qa_vista27_venta_158_guias_test.dart`.
 //
-// Los casos con `skip:` documentan un hallazgo del QA (el implementador saca el `skip` al arreglarlo).
+// Los hallazgos menores que quedaron abiertos al aprobar el PR #531 se arreglaron en #425 y sus casos
+// corren sin `skip`.
 // `--dart-define=QA_CAPTURAS=true` guarda una captura por celda en `.dart_tool/qa_capturas/`.
 import 'dart:async';
 
@@ -15,15 +16,15 @@ import 'package:colportores_mobile/features/ventas/presentation/formato_venta.da
     show TextosVenta;
 import 'package:colportores_mobile/features/ventas/presentation/pages/venta_registrada_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/providers/nueva_venta_notifier.dart';
+import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_venta.dart'
+    show TarjetaDeRenglon;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista27_venta_158_arnes.dart';
 import '../../helpers/venta_falsos.dart';
 import '../../helpers/venta_ui_falsos.dart';
-
-/// `--dart-define=QA_HALLAZGOS=true` corre los casos que documentan un hallazgo (hoy fallan).
-const conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _tamanos = {'360x640': chico531, '412x915': grande531};
 const _escalas = [1.0, 2.0];
@@ -48,14 +49,29 @@ void main() {
   });
 
   group('Texto muy grande y pantalla chica', () {
-    testWidgets(
-      'la confirmación de salida a 360×640 y texto 3,0 no desborda',
-      (tester) async {
-        await llegar531(tester, Estado531.confirmaSalida, tamano: chico531, escala: 3);
-        expect(tester.takeException(), isNull, reason: 'el AlertDialog no se desplaza');
-      },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — el diálogo de salida (AlertDialog sin scrollable) desborda a 3,0
+    testWidgets('la confirmación de salida a 360×640 y texto 3,0 no desborda', (tester) async {
+      await llegar531(tester, Estado531.confirmaSalida, tamano: chico531, escala: 3);
+      expect(tester.takeException(), isNull, reason: 'el AlertDialog se desplaza');
+    });
+    for (final t in _tamanos.entries) {
+      testWidgets('la tarjeta del renglón a ${t.key} y texto 2,0 no parte las palabras', (
+        tester,
+      ) async {
+        await llegar531(tester, Estado531.a05Venta, tamano: t.value, escala: 2);
+        final tarjeta = find.byType(TarjetaDeRenglon);
+        expect(tarjeta, findsOneWidget);
+        for (final e in find.descendant(of: tarjeta, matching: find.byType(RichText)).evaluate()) {
+          final p = e.renderObject! as RenderParagraph;
+          // El ancho mínimo es el de la palabra más larga: si el párrafo es más angosto, la partió.
+          expect(
+            p.size.width + 0.5,
+            greaterThanOrEqualTo(p.getMinIntrinsicWidth(double.infinity)),
+            reason: 'palabra partida: ${p.text.toPlainText()}',
+          );
+        }
+      });
+    }
+
     testWidgets('la confirmación de salida a 320×568 y texto 2,0 no desborda', (tester) async {
       await llegar531(tester, Estado531.confirmaSalida, tamano: const Size(320, 568), escala: 2);
       expect(tester.takeException(), isNull, reason: 'el AlertDialog no se desplaza');
@@ -235,23 +251,21 @@ void main() {
       expect(e.ventas.recibidas.map((r) => r.venta.id).toSet(), hasLength(1));
     });
 
-    testWidgets(
-      'con el botón apagado por un talonario repetido, abajo no dice por qué',
-      (tester) async {
-        await llegar531(tester, Estado531.a11TalonarioRepetido, tamano: chico531, escala: 2);
-        await alFinal531(tester);
+    testWidgets('con el botón apagado por un talonario repetido, abajo dice por qué', (
+      tester,
+    ) async {
+      await llegar531(tester, Estado531.a11TalonarioRepetido, tamano: chico531, escala: 2);
+      await alFinal531(tester);
 
-        expect(habilitado531(tester), isFalse);
-        final error = find.textContaining('Ya usaste el talonario');
-        // El error está en el campo de arriba: a 2,0 y con la lista abajo no se ve cuando el botón está apagado.
-        expect(
-          enVistaEnLaLista531(tester, error),
-          isTrue,
-          reason: 'el botón está apagado y la razón no se ve sin subir la lista',
-        );
-      },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — «Registrar venta» apagado por talonario repetido sin razón a la vista
+      expect(habilitado531(tester), isFalse);
+      // El error del campo está arriba y con la lista abajo no se ve: la razón va también sobre el botón.
+      final nota = find.text(TextosVenta.talonarioRepetidoNota);
+      expect(nota, findsOneWidget);
+      final pantalla = tester.view.physicalSize / tester.view.devicePixelRatio;
+      final r = tester.getRect(nota);
+      expect(r.top >= 0 && r.bottom <= pantalla.height, isTrue, reason: 'la nota se ve entera');
+      expect(r.bottom <= tester.getRect(cta531).top, isTrue, reason: 'está justo sobre el botón');
+    });
   });
 
   // ---------------------------------------------------------------------------------------------
@@ -300,22 +314,20 @@ void main() {
       expect(e.ventas.recibidas.single.venta.numeroTalonario, "T/100-ñ'\"<b>🙂");
     });
 
-    testWidgets(
-      '30 emoji compuestos (cada uno son varios puntos de código): no deja un error sin salida',
-      (tester) async {
-        final e = await venta(tester, talonario: '👨‍👩‍👧' * 30);
-        await tocar(tester, cta531);
-        // O se guarda, o el campo lo rechaza: nunca «No pudimos guardar… probá de nuevo» que no sirve.
-        final fallo = find.byKey(const Key('venta_error'));
-        expect(
-          fallo.evaluate().isEmpty || e.ventas.recibidas.isNotEmpty,
-          isTrue,
-          reason: 'el aviso de «probá de nuevo» sale por una validación que reintentar no arregla',
-        );
-        expect(habilitado531(tester), isTrue);
-      },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — 30 emoji compuestos pasan el campo y la validación los rechaza
+    testWidgets('30 emoji compuestos (cada uno son varios puntos de código): el campo los corta', (
+      tester,
+    ) async {
+      final e = await venta(tester, talonario: '👨‍👩‍👧' * 30);
+      // El tope cuenta puntos de código (como el caso de uso y el servidor): entran 6 de 5 puntos.
+      expect(
+        tester.widget<TextField>(campo531('venta_talonario')).controller!.text.runes.length,
+        30,
+      );
+      await tocar(tester, cta531);
+      expect(find.byKey(const Key('venta_error')), findsNothing);
+      expect(e.ventas.recibidas, hasLength(1));
+      expect(e.ventas.recibidas.single.venta.numeroTalonario.runes.length, 30);
+    });
 
     for (final malo in ['abc', '-100', '8.50', '8,5,5', r'$$', '1e3', '99999999999', '']) {
       testWidgets('monto «$malo»: no es un monto, no deja registrar y lo explica en el campo', (
@@ -436,9 +448,10 @@ void main() {
         await asentar(tester);
 
         expect(find.text(TextosVenta.salirTitulo), findsNothing);
+        // Y la pantalla sigue ahí, guardando: no se salió.
+        expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
       },
-      skip: !conHallazgos,
-    ); // skip: QA #158 — con el guardado en curso, «Volver» ofrece salir y perder lo cargado
+    );
 
     testWidgets('falla a mitad de la acción: ningún estado de «guardando» queda trabado', (
       tester,
