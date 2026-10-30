@@ -181,6 +181,21 @@ void main() {
       }
       expect(repo.recibidos, isEmpty);
     });
+
+    test(
+      'el largo se mide en puntos de código, como el campo y el servidor: 40 emoji pasan, 41 no',
+      () async {
+        final justo = '😀' * RegistrarCobroUseCase.maximoMarca;
+        final ok = await caso(params(medio: MedioCobranza.tarjeta, marca: justo));
+        expect(ok.isRight(), isTrue);
+        expect(repo.recibidos.single.tarjetaMarca, justo);
+        repo.recibidos.clear();
+
+        final r = await caso(params(medio: MedioCobranza.tarjeta, marca: '$justo😀'));
+        expect(r.fold((f) => f, (_) => null), isA<FailureCobroDatoDelMedioInvalido>());
+        expect(repo.recibidos, isEmpty);
+      },
+    );
   });
 
   group('por transferencia (HU-COB-003)', () {

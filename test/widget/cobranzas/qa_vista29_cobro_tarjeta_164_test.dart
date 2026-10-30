@@ -4,7 +4,7 @@
 // validación de los campos nuevos (emoji, pegados larguísimos, caracteres especiales), los casos límite
 // (falla a mitad, acciones superpuestas, atrás de cada estado, teclado abierto) y la accesibilidad de
 // lo que se anuncia. Las capturas solo con `--dart-define=QA_CAPTURAS=true` (van a `.dart_tool/qa_capturas`).
-// Los hallazgos van con `skip` y el motivo; `--dart-define=QA_HALLAZGOS=true` los corre.
+// Los hallazgos de la QA ya están corregidos y sus tests corren sin `skip`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -15,8 +15,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/agendar_visita_arnes.dart' show asentarAgendar;
 import '../../helpers/cobro_arnes.dart';
 import '../../helpers/qa_vista29_164_arnes.dart';
-
-const verHallazgos164 = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _texto(String clave) => (find.byKey(Key(clave)).evaluate().single.widget as Text).data!;
 
@@ -323,9 +321,8 @@ void main() {
       expect(find.text('Cobro registrado'), findsOneWidget);
     });
 
-    // skip: QA #164 — el campo cuenta caracteres visibles (40 emoji entran) pero el caso de uso mide
-    // unidades UTF-16 (cada emoji son 2): un dato que el campo dejó escribir se rechaza al registrar
-    // con el aviso genérico «probá de nuevo» y «Reintentar» repite lo mismo para siempre.
+    // Hallazgo 3 de la QA de #164: el campo deja escribir 40 puntos de código (40 emoji) y el caso de
+    // uso los medía en unidades UTF-16: se rechazaban con un aviso sin salida. Ahora miden lo mismo.
     testWidgets(
       '40 emoji en la referencia (el campo los deja escribir) se registran, no dan un error sin salida',
       (tester) async {
@@ -343,7 +340,6 @@ void main() {
         );
         expect(a.repo.recibidos, isNotEmpty);
       },
-      skip: !verHallazgos164,
     );
 
     testWidgets('tipo de tarjeta: crédito se guarda como crédito y débito de entrada como débito', (
@@ -598,9 +594,8 @@ void main() {
 
   group('El selector «MEDIO» con las fuentes reales', () {
     for (final tamano in [chico164, grande164]) {
-      // skip: QA #164 — con Inter de verdad, «Transferencia» no entra en un tercio del ancho a 360 ni a
-      // 412 dp: el selector se apila en tres filas de ancho completo y no es la fila de tres del canvas
-      // (29A·01 y 29B·01). Los tests del PR no lo ven: con la fuente de prueba el texto mide menos.
+      // Hallazgo 4 de la QA de #164: con Inter de verdad el selector se apilaba en tres filas a 360 y a
+      // 412 dp; el canvas (29A·01 y 29B·01) lo dibuja en una fila. Con la fuente de prueba no se veía.
       testWidgets(
         'a ${tamano.width.toInt()} dp, Efectivo, Tarjeta y Transferencia van en una sola fila',
         (tester) async {
@@ -612,7 +607,6 @@ void main() {
             reason: 'los tres segmentos no están en la misma fila',
           );
         },
-        skip: !verHallazgos164,
       );
     }
   });
