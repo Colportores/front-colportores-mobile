@@ -40,6 +40,11 @@ abstract final class EventoAuditoriaLocal {
   /// evento (`devolucion_registrada`, migración 0121) y no copia el texto.
   static const devolucionRegistrada = 'devolucion_registrada';
 
+  /// Un depósito de efectivo registrado (HU-CTA-004, «Audit log local»): `uuid` es el `id` del depósito
+  /// y `creado_en` el instante en que se registró. Sin motivo: el monto, el destino y el ticket viajan
+  /// en el depósito mismo y no se copian acá.
+  static const depositoRegistrado = 'deposito_registrado';
+
   /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
   /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
   static const backupIntegridadOk = 'backup_integrity_ok';
