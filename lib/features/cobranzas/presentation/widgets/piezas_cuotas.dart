@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
+import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cuota.dart';
 import '../textos_cuotas.dart';
 
@@ -355,7 +356,10 @@ class TarjetaDeCuota extends StatelessWidget {
         ? TextosCuotas.pagadoDe(cuota.pagadoCentavos, cuota.montoCentavos)
         : TextosCuotas.montoDeCuota(cuota.montoCentavos);
     final linea = switch (situacion) {
-      SituacionDeCuota.pagada => TextosCuotas.pagadaEl((cuota.cubiertaEl ?? cuota.fecha).toLocal()),
+      SituacionDeCuota.pagada => TextosCuotas.pagadaEl(
+        cuota.cubiertaEl == null ? null : ReglasDeVenta.diaDeMontevideo(cuota.cubiertaEl!),
+        cuota.medios,
+      ),
       SituacionDeCuota.parcial => TextosCuotas.parcialFaltan(cuota.faltanCentavos),
       SituacionDeCuota.vencida =>
         cuota.pagadoCentavos > 0

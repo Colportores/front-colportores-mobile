@@ -3,7 +3,10 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agendar_visita_page.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cuota.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,7 +54,7 @@ void main() {
 
         expect(find.text('CUOTA 1 · 26/10'), findsOneWidget);
         expect(find.text('\$ 833'), findsOneWidget);
-        expect(find.text('Pagada el 26/10'), findsOneWidget);
+        expect(find.text('Pagada el 26/10 · efectivo'), findsOneWidget);
 
         expect(find.text('CUOTA 2 · 02/11'), findsOneWidget);
         expect(find.text('\$ 400 de \$ 833'), findsOneWidget);
@@ -64,6 +67,41 @@ void main() {
 
         expect(find.text('Modificar cuotas'), findsOneWidget);
         expect(find.byKey(const Key('cuotas_aviso_vencida')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dada una cuota cubierta con dos medios, o que los cobros no explican, cuando se abre, dice los medios o solo «Pagada»',
+      (tester) async {
+        await montarCuotas(
+          tester,
+          pantalla: PantallaDeCuotas.lista,
+          plan: PlanDeCuotasEnMemoria(
+            cobradoCentavos: 250000,
+            cuotas: [
+              cuotaDe(
+                1,
+                dia: 26,
+                mes: 10,
+                monto: 125000,
+                cubierta: true,
+                cubiertaEl: DateTime(2026, 10, 24, 12),
+                medios: const [MedioCobranza.efectivo, MedioCobranza.tarjeta],
+              ),
+              Cuota(
+                agendaId: 'q-2',
+                numero: 2,
+                fecha: DateTime(2026, 11, 2, 10),
+                montoCentavos: 125000,
+                estado: EstadoAgenda.cumplida,
+                pagadoCentavos: 125000,
+              ),
+            ],
+          ),
+        );
+
+        expect(find.text('Pagada el 24/10 · efectivo y tarjeta'), findsOneWidget);
+        expect(find.text('Pagada'), findsOneWidget);
       },
     );
 
@@ -101,7 +139,7 @@ void main() {
 
         expect(find.text('\$ 400 de \$ 833'), findsNothing);
         expect(find.text('Parcial'), findsNothing);
-        expect(find.text('Pagada el 26/10'), findsNWidgets(2));
+        expect(find.text('Pagada el 26/10 · efectivo'), findsNWidgets(2));
       },
     );
 

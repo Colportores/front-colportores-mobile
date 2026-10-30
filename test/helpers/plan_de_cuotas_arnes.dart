@@ -5,6 +5,8 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart'
+    show MedioCobranza;
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cuota.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/pedido_de_plan.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/venta_con_saldo.dart';
@@ -164,6 +166,7 @@ Cuota cuotaDe(
   int pagado = 0,
   bool cubierta = false,
   DateTime? cubiertaEl,
+  List<MedioCobranza> medios = const [MedioCobranza.efectivo],
 }) => Cuota(
   agendaId: 'q-$numero',
   numero: numero,
@@ -172,4 +175,5 @@ Cuota cuotaDe(
   estado: cubierta ? EstadoAgenda.cumplida : EstadoAgenda.programada,
   pagadoCentavos: cubierta ? monto : pagado,
   cubiertaEl: cubierta ? (cubiertaEl ?? DateTime(2026, 10, 26, 12)) : null,
+  medios: cubierta ? medios : const [],
 );

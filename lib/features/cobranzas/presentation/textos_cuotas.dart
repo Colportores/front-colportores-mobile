@@ -1,5 +1,6 @@
 import '../../agenda/presentation/formato_agendar_visita.dart';
 import '../../ventas/presentation/formato_venta.dart';
+import '../domain/entities/cobranza.dart' show MedioCobranza;
 import '../domain/entities/cuota.dart';
 import '../domain/services/reparto_de_cuotas.dart';
 
@@ -75,8 +76,25 @@ abstract final class TextosCuotas {
   static String antetituloDeCuota(Cuota cuota) =>
       'CUOTA ${cuota.numero} · ${FormatoAgendarVisita.diaYMes(cuota.fecha)}';
 
-  /// «Pagada el 26/10» (30A-04); el canvas suma «· efectivo» (A confirmar: ver el pendiente del medio).
-  static String pagadaEl(DateTime dia) => 'Pagada el ${FormatoAgendarVisita.diaYMes(dia)}';
+  /// «Pagada el 26/10 · efectivo» (30A-04): el día del cobro que completó la cuota y los medios de los
+  /// cobros que la cubrieron («efectivo y tarjeta»). Si los cobros no lo dicen, solo «Pagada» (decisión
+  /// del 29/10, P5 de #166).
+  static String pagadaEl(DateTime? dia, List<MedioCobranza> medios) {
+    if (dia == null) return pagada;
+    final fecha = 'Pagada el ${FormatoAgendarVisita.diaYMes(dia)}';
+    if (medios.isEmpty) return fecha;
+    final nombres = [for (final m in medios) _nombreDelMedio(m)];
+    final lista = nombres.length == 1
+        ? nombres.first
+        : '${nombres.sublist(0, nombres.length - 1).join(', ')} y ${nombres.last}';
+    return '$fecha · $lista';
+  }
+
+  static String _nombreDelMedio(MedioCobranza medio) => switch (medio) {
+    MedioCobranza.efectivo => 'efectivo',
+    MedioCobranza.tarjeta => 'tarjeta',
+    MedioCobranza.transferencia => 'transferencia',
+  };
 
   /// «$ 833».
   static String montoDeCuota(int centavos) => FormatoVenta.monto(centavos);

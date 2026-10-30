@@ -27,11 +27,17 @@ import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/venta_falsos.dart';
 
 /// Un cobro de [monto] centavos registrado en [creado].
-Cobranza cobroDe(String id, int monto, DateTime creado, {String venta = 'v-1'}) => Cobranza(
+Cobranza cobroDe(
+  String id,
+  int monto,
+  DateTime creado, {
+  String venta = 'v-1',
+  MedioCobranza medio = MedioCobranza.efectivo,
+}) => Cobranza(
   id: id,
   ventaId: venta,
   montoCentavos: monto,
-  medio: MedioCobranza.efectivo,
+  medio: medio,
   fecha: creado,
   auditoria: Auditoria(createdAt: creado, updatedAt: creado, createdBy: 'col-1'),
 );
@@ -290,6 +296,21 @@ void main() {
     );
 
     test(
+      'dada una cuota cubierta con efectivo y tarjeta, cuando se lee el plan, dice el día del cobro que la completó y los dos medios',
+      () async {
+        await cobros.registrar(cobroDe('c-1', 40000, despues));
+        final completa = despues.add(const Duration(days: 1));
+        await cobros.registrar(cobroDe('c-2', 43300, completa, medio: MedioCobranza.tarjeta));
+
+        final primera = (await cuotas.leerPlan('v-1'))!.cuotas.first;
+
+        expect(primera.estaCubierta, isTrue);
+        expect(primera.cubiertaEl, completa);
+        expect(primera.medios, [MedioCobranza.efectivo, MedioCobranza.tarjeta]);
+      },
+    );
+
+    test(
       'dado el mismo cobro registrado dos veces, cuando se repite, no vuelve a tocar las cuotas',
       () async {
         await cobros.registrar(cobroDe('c-1', 83300, despues));
@@ -418,6 +439,39 @@ void main() {
       await cuotas.crearPlan(plan());
       encolador.encolados.clear();
     });
+
+    test(
+      'dada una cuota con un pago parcial, cuando se cancela, pasa a las que siguen solo lo que le faltaba y ninguna supera el saldo',
+      () async {
+        await cobros.registrar(cobroDe('c-1', 30000, despues));
+        encolador.encolados.clear();
+
+        await agendas.cancelar('q-1', ahora: despues);
+
+        final filas = await citas();
+        // 83.300 + 83.400 + lo que le faltaba a la primera (53.300), en dos partes.
+        expect(filas.firstWhere((a) => a.id == 'q-2').montoPrevisto, 110000);
+        expect(filas.firstWhere((a) => a.id == 'q-3').montoPrevisto, 110000);
+        final saldo = (await cuotas.leerPlan('v-1'))!.venta.saldoCentavos;
+        expect(saldo, 220000);
+        expect(filas.every((a) => (a.montoPrevisto ?? 0) <= saldo), isTrue);
+      },
+    );
+
+    test(
+      'dado un plan de 2 cuotas y \$ 300 cobrados, cuando se cancela la primera, la segunda queda en el saldo y el servidor la admite',
+      () async {
+        await sembrarVenta(id: 'v-2');
+        await cuotas.crearPlan(plan(venta: 'v-2', montos: [125000, 125000], prefijo: 'w'));
+        await cobros.registrar(cobroDe('c-2', 30000, despues, venta: 'v-2'));
+
+        await agendas.cancelar('w-1', ahora: despues);
+
+        final segunda = await (db.select(db.agendas)..where((a) => a.id.equals('w-2'))).getSingle();
+        expect(segunda.montoPrevisto, 220000);
+        expect((await cuotas.leerPlan('v-2'))!.venta.saldoCentavos, 220000);
+      },
+    );
 
     test(
       'dada la cuota 1 cancelada, cuando se cancela, su monto pasa a las que siguen en partes iguales',

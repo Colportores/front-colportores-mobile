@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../entities/cobranza.dart' show MedioCobranza;
 import '../entities/cuota.dart';
 
 /// Por qué el monto de una cuota no sirve (30A-02C y los casos que el canvas no dibuja).
@@ -98,7 +99,6 @@ final class CitaDeCuota extends Equatable {
     required this.montoCentavos,
     required this.estado,
     required this.creadaEn,
-    required this.actualizadaEn,
   });
 
   final String agendaId;
@@ -107,22 +107,30 @@ final class CitaDeCuota extends Equatable {
   final EstadoAgenda estado;
   final DateTime creadaEn;
 
-  /// La última vez que se tocó la cita: en una `CUMPLIDA`, cuándo se cubrió.
-  final DateTime actualizadaEn;
-
   @override
-  List<Object?> get props => [agendaId, fecha, montoCentavos, estado, creadaEn, actualizadaEn];
+  List<Object?> get props => [agendaId, fecha, montoCentavos, estado, creadaEn];
 }
 
 /// Un cobro vivo de la venta, para saber cuánto se cobró desde que se armó el plan.
 final class CobroDelPlan extends Equatable {
-  const CobroDelPlan({required this.montoCentavos, required this.creadoEn});
+  const CobroDelPlan({
+    required this.montoCentavos,
+    required this.creadoEn,
+    this.fecha,
+    this.medio = MedioCobranza.efectivo,
+  });
 
   final int montoCentavos;
+
+  /// Cuándo se registró el cobro: ordena los cobros y dice si es de antes del plan.
   final DateTime creadoEn;
 
+  /// Cuándo pagó el cliente (`fecha`); sin ella, el día en que se registró.
+  final DateTime? fecha;
+  final MedioCobranza medio;
+
   @override
-  List<Object?> get props => [montoCentavos, creadoEn];
+  List<Object?> get props => [montoCentavos, creadoEn, fecha, medio];
 }
 
 /// Las cuotas tal como están hoy y las que un cobro deja cubiertas.
@@ -278,8 +286,10 @@ abstract final class RepartoDeCuotas {
   ///
   /// Solo cuentan las citas `PROGRAMADA` y `CUMPLIDA` (una cancelada o no cumplida deja de ser cuota).
   /// Lo cobrado para el plan es lo que se cobró desde que se armó (los cobros anteriores bajaron el
-  /// saldo que se repartió), menos lo de las cuotas que ya estaban cubiertas; se aplica a las abiertas
-  /// en orden de fecha. Así nada se guarda de más: lo pagado de cada cuota sale de los cobros.
+  /// saldo que se repartió). Los cobros, en el orden en que llegaron, van primero a las cuotas que ya
+  /// estaban cubiertas y después a las abiertas en orden de fecha. Así nada se guarda de más: lo
+  /// pagado de cada cuota sale de los cobros, y cada cuota cubierta sabe con qué cobros se cubrió
+  /// (el día del que la completó y los medios de todos los que la cubrieron).
   static EstadoDeLasCuotas estadoDe({
     required Iterable<CitaDeCuota> citas,
     required Iterable<CobroDelPlan> cobros,
@@ -293,16 +303,22 @@ abstract final class RepartoDeCuotas {
         if (c.estado == EstadoAgenda.programada) c,
     ];
 
-    var disponible = 0;
-    if (abiertas.isNotEmpty) {
-      final desde = abiertas.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
-      final cobrado = cobros
-          .where((c) => !c.creadoEn.isBefore(desde))
-          .fold<int>(0, (a, c) => a + c.montoCentavos);
-      final yaCubierto = vivas
-          .where((c) => c.estado == EstadoAgenda.cumplida && !c.creadaEn.isBefore(desde))
-          .fold<int>(0, (a, c) => a + c.montoCentavos);
-      disponible = cobrado > yaCubierto ? cobrado - yaCubierto : 0;
+    final base = abiertas.isNotEmpty ? abiertas : vivas;
+    final cola = <_CobroPendiente>[];
+    if (base.isNotEmpty) {
+      final desde = base.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
+      final ordenados = cobros.where((c) => !c.creadoEn.isBefore(desde)).toList()
+        ..sort((a, b) => a.creadoEn.compareTo(b.creadoEn));
+      for (final c in ordenados) {
+        cola.add(_CobroPendiente(c));
+      }
+    }
+
+    // Lo que cubrió cada cuota que ya estaba cerrada, en orden de fecha.
+    final cubiertas = <String, _Cobertura>{};
+    for (final cita in vivas) {
+      if (cita.estado != EstadoAgenda.cumplida) continue;
+      cubiertas[cita.agendaId] = _consumir(cola, cita.montoCentavos);
     }
 
     final cuotas = <Cuota>[];
@@ -311,20 +327,36 @@ abstract final class RepartoDeCuotas {
       final cita = vivas[i];
       if (cita.estado == EstadoAgenda.cumplida) {
         cuotas.add(
-          _cuota(cita, i + 1, cita.montoCentavos, EstadoAgenda.cumplida, cita.actualizadaEn),
+          _cuota(cita, i + 1, cita.montoCentavos, EstadoAgenda.cumplida, cubiertas[cita.agendaId]),
         );
         continue;
       }
-      if (disponible >= cita.montoCentavos) {
-        disponible -= cita.montoCentavos;
+      final cobertura = _consumir(cola, cita.montoCentavos);
+      if (cobertura.consumido >= cita.montoCentavos) {
         aCerrar.add(cita.agendaId);
-        cuotas.add(_cuota(cita, i + 1, cita.montoCentavos, EstadoAgenda.cumplida));
+        cuotas.add(_cuota(cita, i + 1, cita.montoCentavos, EstadoAgenda.cumplida, cobertura));
       } else {
-        cuotas.add(_cuota(cita, i + 1, disponible, EstadoAgenda.programada));
-        disponible = 0;
+        cuotas.add(_cuota(cita, i + 1, cobertura.consumido, EstadoAgenda.programada));
       }
     }
     return EstadoDeLasCuotas(cuotas: cuotas, aCerrar: aCerrar);
+  }
+
+  /// Saca de [cola] hasta [necesita] centavos, del cobro más viejo al más nuevo.
+  static _Cobertura _consumir(List<_CobroPendiente> cola, int necesita) {
+    var consumido = 0;
+    DateTime? ultimoDia;
+    final medios = <MedioCobranza>[];
+    for (final c in cola) {
+      if (consumido >= necesita) break;
+      if (c.resta <= 0) continue;
+      final toma = c.resta < necesita - consumido ? c.resta : necesita - consumido;
+      c.resta -= toma;
+      consumido += toma;
+      ultimoDia = c.cobro.fecha ?? c.cobro.creadoEn;
+      if (!medios.contains(c.cobro.medio)) medios.add(c.cobro.medio);
+    }
+    return _Cobertura(consumido, ultimoDia, medios);
   }
 
   static Cuota _cuota(
@@ -332,16 +364,21 @@ abstract final class RepartoDeCuotas {
     int numero,
     int pagado,
     EstadoAgenda estado, [
-    DateTime? cubiertaEl,
-  ]) => Cuota(
-    agendaId: c.agendaId,
-    numero: numero,
-    fecha: c.fecha,
-    montoCentavos: c.montoCentavos,
-    estado: estado,
-    pagadoCentavos: pagado,
-    cubiertaEl: cubiertaEl,
-  );
+    _Cobertura? cobertura,
+  ]) {
+    // Una cuota cubierta que los cobros no explican (la cita se cerró de otro modo) no dice día ni medio.
+    final explicada = cobertura != null && cobertura.consumido >= c.montoCentavos;
+    return Cuota(
+      agendaId: c.agendaId,
+      numero: numero,
+      fecha: c.fecha,
+      montoCentavos: c.montoCentavos,
+      estado: estado,
+      pagadoCentavos: pagado,
+      cubiertaEl: explicada ? cobertura.ultimoDia : null,
+      medios: explicada ? cobertura.medios : const [],
+    );
+  }
 
   static int _porFecha(CitaDeCuota a, CitaDeCuota b) {
     final porDia = a.fecha.compareTo(b.fecha);
@@ -364,4 +401,21 @@ abstract final class RepartoDeCuotas {
     }
     return AplicacionDePago(partes: partes, sobranteCentavos: resto > 0 ? resto : 0);
   }
+}
+
+/// Un cobro de la cola con lo que todavía no se aplicó a ninguna cuota.
+final class _CobroPendiente {
+  _CobroPendiente(this.cobro) : resta = cobro.montoCentavos;
+
+  final CobroDelPlan cobro;
+  int resta;
+}
+
+/// Lo que se sacó de los cobros para cubrir (o empezar a cubrir) una cuota.
+final class _Cobertura {
+  const _Cobertura(this.consumido, this.ultimoDia, this.medios);
+
+  final int consumido;
+  final DateTime? ultimoDia;
+  final List<MedioCobranza> medios;
 }

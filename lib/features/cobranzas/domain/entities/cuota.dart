@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../agenda/domain/entities/estado_agenda.dart';
+import 'cobranza.dart' show MedioCobranza;
 import 'venta_con_saldo.dart';
 
 /// Cada cuánto vence una cuota del plan (HU-COB-004: semanal o mensual).
@@ -41,6 +42,7 @@ final class Cuota extends Equatable {
     required this.estado,
     this.pagadoCentavos = 0,
     this.cubiertaEl,
+    this.medios = const [],
   });
 
   /// `agenda.id` de la cita.
@@ -62,8 +64,12 @@ final class Cuota extends Equatable {
   /// lleva su monto entero.
   final int pagadoCentavos;
 
-  /// Cuándo se cubrió (la última vez que se tocó la cita cumplida); `null` si no lo está.
+  /// El día en que pagó el cliente el cobro que la completó; `null` si no está cubierta o si los
+  /// cobros no dicen cómo se cubrió (la cita se cerró de otro modo).
   final DateTime? cubiertaEl;
+
+  /// Los medios de los cobros que la cubrieron, sin repetir y en el orden en que llegaron.
+  final List<MedioCobranza> medios;
 
   bool get estaCubierta => estado == EstadoAgenda.cumplida;
 
@@ -95,6 +101,7 @@ final class Cuota extends Equatable {
     estado,
     pagadoCentavos,
     cubiertaEl,
+    medios,
   ];
 }
 

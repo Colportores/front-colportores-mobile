@@ -15,6 +15,7 @@ import '../../domain/entities/cuota.dart';
 import '../../domain/entities/pedido_de_plan.dart';
 import '../../domain/entities/venta_con_saldo.dart';
 import '../../domain/services/reparto_de_cuotas.dart';
+import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
 
 /// La persistencia rechazó el plan o el cambio de cuotas: el repositorio lo traduce a un `Failure`.
@@ -209,9 +210,10 @@ final class CuotasLocalDataSourceDrift {
     return estado.aCerrar.length;
   }
 
-  /// La cuota [agendaId] se canceló: su monto pasa a las cuotas que siguen, que se reparten en
-  /// partes iguales lo que queda («Plan cuotas» y «Reparto»). Sin cuotas después, no hay a quién
-  /// pasárselo y el monto sale del plan (la deuda sigue en la venta). Se llama **antes** de pasar la
+  /// La cuota [agendaId] se canceló: lo que le falta cobrar (su monto menos lo ya cobrado) pasa a las
+  /// cuotas que siguen, que se reparten en partes iguales lo que queda («Plan cuotas» y «Reparto»);
+  /// pasar el monto entero haría que una cuota supere el saldo y el servidor la rechace (AG002). Sin
+  /// cuotas después, no hay a quién pasárselo y ese monto sale del plan (la deuda sigue en la venta). Se llama **antes** de pasar la
   /// cita a `CANCELADA`, dentro de la transacción de cancelar. Devuelve cuántas cuotas cambió.
   Future<int> trasladarLaCancelada(String agendaId, {required DateTime ahora}) async {
     final fila = await (_db.select(_db.agendas)..where((a) => a.id.equals(agendaId))).getSingle();
@@ -228,7 +230,7 @@ final class CuotasLocalDataSourceDrift {
     ];
     if (siguientes.isEmpty) return 0;
 
-    final total = siguientes.fold<int>(monto, (a, c) => a + c.montoCentavos);
+    final total = siguientes.fold<int>(cuota.faltanCentavos, (a, c) => a + c.montoCentavos);
     final partes = RepartoDeCuotas.partesIguales(total, siguientes.length);
     var cambiadas = 0;
     for (var i = 0; i < siguientes.length; i++) {
@@ -278,7 +280,8 @@ final class CuotasLocalDataSourceDrift {
     if (citas.isEmpty) return const EstadoDeLasCuotas(cuotas: [], aCerrar: []);
     final cobros = await _db
         .customSelect(
-          'SELECT c.monto AS monto, c.created_at AS creado FROM cobranza c '
+          'SELECT c.monto AS monto, c.created_at AS creado, c.fecha AS fecha, c.medio AS medio '
+          'FROM cobranza c '
           'WHERE c.venta_id = ? AND ${CobroValido.sql}',
           variables: [Variable<String>(ventaId)],
         )
@@ -292,7 +295,6 @@ final class CuotasLocalDataSourceDrift {
             montoCentavos: a.montoPrevisto!,
             estado: EstadoAgenda.desdeCodigo(a.estado),
             creadaEn: a.createdAt,
-            actualizadaEn: a.updatedAt,
           ),
       ],
       cobros: [
@@ -300,6 +302,8 @@ final class CuotasLocalDataSourceDrift {
           CobroDelPlan(
             montoCentavos: c.read<int>('monto'),
             creadoEn: DateTime.fromMillisecondsSinceEpoch(c.read<int>('creado'), isUtc: true),
+            fecha: DateTime.fromMillisecondsSinceEpoch(c.read<int>('fecha'), isUtc: true),
+            medio: CobranzaModel.medioDesdeCodigo(c.read<String>('medio')),
           ),
       ],
     );

@@ -1,6 +1,7 @@
 // Las reglas puras del plan de cuotas (HU-COB-004, #166): el reparto de «Reparto» (Cristian, 23/10) y
 // a qué cuota va cada pago («Plan cuotas»). Sin pantalla ni base.
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cuota.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/services/reparto_de_cuotas.dart';
 import 'package:test/test.dart';
@@ -11,18 +12,25 @@ CitaDeCuota cita(
   int monto, {
   EstadoAgenda estado = EstadoAgenda.programada,
   DateTime? creada,
-  DateTime? actualizada,
 }) => CitaDeCuota(
   agendaId: id,
   fecha: DateTime(2026, 10, dia, 10),
   montoCentavos: monto,
   estado: estado,
   creadaEn: creada ?? DateTime.utc(2026, 10, 20),
-  actualizadaEn: actualizada ?? DateTime.utc(2026, 10, 20),
 );
 
-CobroDelPlan cobro(int monto, {DateTime? creado}) =>
-    CobroDelPlan(montoCentavos: monto, creadoEn: creado ?? DateTime.utc(2026, 10, 21));
+CobroDelPlan cobro(
+  int monto, {
+  DateTime? creado,
+  DateTime? fecha,
+  MedioCobranza medio = MedioCobranza.efectivo,
+}) => CobroDelPlan(
+  montoCentavos: monto,
+  creadoEn: creado ?? DateTime.utc(2026, 10, 21),
+  fecha: fecha,
+  medio: medio,
+);
 
 void main() {
   group('partesIguales', () {
@@ -351,6 +359,76 @@ void main() {
       expect(e.cuotas[1].pagadoCentavos, 10000);
       expect(e.aCerrar, isEmpty);
     });
+
+    test(
+      'dada una cuota cubierta por un cobro en efectivo, cuando se arma, dice el día del cobro y el medio',
+      () {
+        final dia = DateTime.utc(2026, 10, 26, 15);
+        final e = RepartoDeCuotas.estadoDe(
+          citas: plan,
+          cobros: [cobro(83300, fecha: dia)],
+        );
+        expect(e.cuotas.first.cubiertaEl, dia);
+        expect(e.cuotas.first.medios, [MedioCobranza.efectivo]);
+        expect(e.cuotas[1].cubiertaEl, isNull);
+        expect(e.cuotas[1].medios, isEmpty);
+      },
+    );
+
+    test(
+      'dada una cuota cubierta por dos cobros de medios distintos, cuando se arma, dice el día del que la completó y los dos medios',
+      () {
+        final primero = DateTime.utc(2026, 10, 24, 15);
+        final segundo = DateTime.utc(2026, 10, 27, 15);
+        final e = RepartoDeCuotas.estadoDe(
+          citas: plan,
+          cobros: [
+            cobro(40000, creado: DateTime.utc(2026, 10, 24, 16), fecha: primero),
+            cobro(
+              43300,
+              creado: DateTime.utc(2026, 10, 27, 16),
+              fecha: segundo,
+              medio: MedioCobranza.tarjeta,
+            ),
+          ],
+        );
+        expect(e.cuotas.first.cubiertaEl, segundo);
+        expect(e.cuotas.first.medios, [MedioCobranza.efectivo, MedioCobranza.tarjeta]);
+      },
+    );
+
+    test(
+      'dados dos cobros que cubren una cuota y adelantan la siguiente, cuando se arma, la cubierta solo cuenta lo que usó',
+      () {
+        final e = RepartoDeCuotas.estadoDe(
+          citas: plan,
+          cobros: [
+            cobro(50000, creado: DateTime.utc(2026, 10, 22), fecha: DateTime.utc(2026, 10, 22, 15)),
+            cobro(
+              50000,
+              creado: DateTime.utc(2026, 10, 23),
+              fecha: DateTime.utc(2026, 10, 23, 15),
+              medio: MedioCobranza.transferencia,
+            ),
+          ],
+        );
+        expect(e.cuotas.first.cubiertaEl, DateTime.utc(2026, 10, 23, 15));
+        expect(e.cuotas.first.medios, [MedioCobranza.efectivo, MedioCobranza.transferencia]);
+        expect(e.cuotas[1].pagadoCentavos, 16700);
+        expect(e.cuotas[1].medios, isEmpty);
+      },
+    );
+
+    test(
+      'dada una cuota cerrada que los cobros no cubren, cuando se arma, queda pagada sin día ni medio',
+      () {
+        final citas = [cita('a1', 26, 83300, estado: EstadoAgenda.cumplida), cita('a2', 28, 83300)];
+        final e = RepartoDeCuotas.estadoDe(citas: citas, cobros: const []);
+        expect(e.cuotas.first.estaCubierta, isTrue);
+        expect(e.cuotas.first.cubiertaEl, isNull);
+        expect(e.cuotas.first.medios, isEmpty);
+      },
+    );
 
     test('dados cobros anteriores al plan, cuando se arma, no cuentan para las cuotas', () {
       final e = RepartoDeCuotas.estadoDe(
