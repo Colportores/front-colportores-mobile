@@ -174,6 +174,15 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
   });
 
+  /// Tocar una venta del historial abre su devolución (vista 31, HU-VEN-004). Al volver, la ficha, que
+  /// lee en vivo, ya muestra el saldo nuevo.
+  Future<void> _devolver(String ventaId) => _unaAlaVez(() async {
+    final destino = ref.read(devolverVentaDesdeLaFichaProvider);
+    if (destino == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((ventaId: ventaId, personaId: widget.personaId, espacioId: widget.espacioId));
+  });
+
   Future<void> _registrarVisita(FichaDePersona ficha) => _unaAlaVez(() async {
     final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
     final lugar = ficha.lugar;
@@ -276,6 +285,9 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
           _filtro = f;
           _mostrar = FichaPersonaPage.pagina;
         }),
+        alDevolver: ref.watch(devolverVentaDesdeLaFichaProvider) == null || ficha.soloLectura
+            ? null
+            : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
@@ -434,6 +446,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alVerNotas,
     required this.alVerMas,
     required this.alElegirFiltro,
+    required this.alDevolver,
     required this.alRegistrarVisita,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
@@ -454,6 +467,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   final VoidCallback alVerNotas;
   final VoidCallback alVerMas;
   final ValueChanged<FiltroDeHistorial> alElegirFiltro;
+
+  /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
+  final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
@@ -560,7 +576,13 @@ class _CuerpoDeLaFicha extends StatelessWidget {
               for (final m in visibles)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: FilaDeHistorial(movimiento: m, ahora: ahora),
+                  child: FilaDeHistorial(
+                    movimiento: m,
+                    ahora: ahora,
+                    alTocar: m is VentaEnFicha && alDevolver != null
+                        ? () => alDevolver!(m.id)
+                        : null,
+                  ),
                 ),
             ],
           ),
