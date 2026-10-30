@@ -126,6 +126,16 @@ final fichaDePersonaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(Co
   (ref) => null,
 );
 
+/// Lo que recibe «Devolver» de una venta de la ficha (vista 31, HU-VEN-004): la venta, la persona y el
+/// espacio ya puestos.
+typedef ContextoDeDevolucion = ({String ventaId, String personaId, String espacioId});
+
+/// A dónde lleva tocar una venta en el historial de la ficha de la persona (la devolución de esa venta,
+/// vista 31, HU-VEN-004). Devuelve `true` si se registró una devolución. **Sin destino**: mientras sea
+/// `null` la fila de la venta no se puede tocar y no lleva «›».
+final devolverVentaDesdeLaFichaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeDevolucion)?>((ref) => null);
+
 /// Lo que recibe el contenido de una pestaña de la hoja arriba (Historial o Notas) para dibujarse: la
 /// casa y el espacio ya resueltos, el colportor con la sesión iniciada y si la casa está dada de baja
 /// (solo lectura).

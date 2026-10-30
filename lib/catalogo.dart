@@ -41,6 +41,12 @@ final specsDeLaApp = <SyncSpec>[
   // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
   // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
   SyncSpec.push('cobranza', critical: true),
+  // La devolución de una venta (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142): sube después de la
+  // venta y sus ítems, que nombra, sin dato del cliente (`venta_id` y los ids de producto y de renglón son
+  // opacos). El `motivo` es la única prosa que sube (decisión de Cristian, 27/10). `colportor_id` lo pone
+  // el servidor y el push lo descarta. Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo
+  // escritor.
+  SyncSpec.push('devolucion', critical: true),
   // El depósito de efectivo (HU-CTA-004, #442): sube sin dato de ninguna persona (no marca qué cobros
   // incluye, decisión «Cobro en dep.»). Solo de alta: el servidor rechaza un update o una baja con
   // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor. Sin `alsoPull`: que el

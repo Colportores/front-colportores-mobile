@@ -31,7 +31,9 @@ import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
+import '../../features/ventas/data/datasources/productos_devueltos_converter.dart';
 import '../../features/ventas/data/datasources/venta_items_table.dart';
 import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
@@ -89,6 +91,7 @@ part 'app_database.g.dart';
     VentaItems,
     Cobranzas,
     Entregas,
+    Devoluciones,
     Depositos,
   ],
 )
@@ -133,12 +136,14 @@ class AppDatabase extends _$AppDatabase {
   ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
   /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
-  /// - 22: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
+  /// - 22: `devolucion`, las devoluciones de una venta (qué libros vuelven y qué se hace con la plata de
+  ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142).
+  /// - 23: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
   ///   que sube (HU-CTA-004, #442).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 22;
+  static const int versionEsquema = 23;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -362,8 +367,13 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.entrega);
       await m.createIndex(esquema.entregaVentaIdx);
     },
-    // Solo crea la tabla de los depósitos, vacía: nada de lo guardado cambia ni se encola al migrar.
+    // Solo crea la tabla de las devoluciones, vacía: nada de lo guardado cambia ni se encola al migrar.
     from21To22: (m, esquema) async {
+      await m.createTable(esquema.devolucion);
+      await m.createIndex(esquema.devolucionVentaIdx);
+    },
+    // Solo crea la tabla de los depósitos, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from22To23: (m, esquema) async {
       await m.createTable(esquema.deposito);
       await m.createIndex(esquema.depositoTicketIdx);
     },

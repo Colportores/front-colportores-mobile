@@ -25,8 +25,8 @@ abstract final class FiltroDeHistorialDeFicha {
   /// Los movimientos de [historial] que quedan con [filtro].
   ///
   /// - [FiltroDeHistorial.todo]: todos.
-  /// - [FiltroDeHistorial.conSaldo]: las ventas cuyo monto supera lo cobrado con su número de
-  ///   talonario. Si [resumen] dice que la persona no debe nada, o no se sabe ([resumen] `null`),
+  /// - [FiltroDeHistorial.conSaldo]: las ventas cuyo monto supera lo cobrado en esa venta (los cobros se
+  ///   cruzan por el `id` de la venta: el talonario se puede repetir entre años). Si [resumen] dice que la persona no debe nada, o no se sabe ([resumen] `null`),
   ///   ninguna: el filtro y la cuenta de arriba no se contradicen ni se afirma una deuda.
   /// - [FiltroDeHistorial.entregaPendiente]: las entregas pendientes.
   static List<MovimientoDeFicha> aplicar(
@@ -46,17 +46,13 @@ abstract final class FiltroDeHistorialDeFicha {
         if (resumen == null || !resumen.tieneSaldo) return const <MovimientoDeFicha>[];
         final cobrado = <String, int>{};
         for (final m in historial) {
-          if (m is CobroEnFicha && m.numeroTalonario != null) {
-            cobrado.update(
-              m.numeroTalonario!,
-              (v) => v + m.montoCentavos,
-              ifAbsent: () => m.montoCentavos,
-            );
+          if (m is CobroEnFicha) {
+            cobrado.update(m.ventaId, (v) => v + m.montoCentavos, ifAbsent: () => m.montoCentavos);
           }
         }
         return [
           for (final m in historial)
-            if (m is VentaEnFicha && m.montoCentavos > (cobrado[m.numeroTalonario] ?? 0)) m,
+            if (m is VentaEnFicha && m.montoCentavos > (cobrado[m.id] ?? 0)) m,
         ];
     }
   }

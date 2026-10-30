@@ -27,6 +27,7 @@ import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
+import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1299,11 +1300,61 @@ void main() {
   );
 
   test(
-    'dado lo guardado en la versión 21, cuando migra a la 22, no se pierde nada y aparece el depósito '
+    'dado lo guardado en la versión 21, cuando migra a la 22, no se pierde nada y aparece la devolución '
+    'vacía, con sus CHECK y sin encolar nada',
+    () async {
+      // HU-VEN-004 (#161): `devolucion` sube por el motor; al migrar solo se crea.
+      const venta = v21.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 21,
+        newVersion: 22,
+        createOld: v21.DatabaseAtV21.new,
+        createNew: v22.DatabaseAtV22.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.devolucion).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO devolucion (id, venta_id, productos_devueltos, dinero_retenido, '
+              'monto_reembolsado, motivo, fecha_devolucion, created_at, updated_at) VALUES ';
+          const libros = "'[{\"producto_id\":\"p-1\",\"cantidad\":1,\"venta_item_id\":\"i-1\"}]'";
+          await nuevo.customStatement("$columnas('d-1', 'v-1', $libros, 0, NULL, NULL, 1, 1, 1)");
+          await nuevo.customStatement("$columnas('d-2', 'v-1', $libros, 100, 50, 'x', 1, 1, 1)");
+          expect(await nuevo.select(nuevo.devolucion).get(), hasLength(2));
+          for (final malo in [
+            "('d-3', 'v-1', $libros, -1, NULL, NULL, 1, 1, 1)",
+            "('d-4', 'v-1', $libros, 0, -5, NULL, 1, 1, 1)",
+            "('d-5', 'v-1', $libros, 0, NULL, '', 1, 1, 1)",
+            "('d-6', 'v-1', $libros, 0, NULL, '${'a' * 501}', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 22, cuando migra a la 23, no se pierde nada y aparece el depósito '
     'vacío, con sus CHECK y sin encolar nada',
     () async {
       // HU-CTA-004 (#442): `deposito` sube por el motor; al migrar solo se crea.
-      const entrega = v21.EntregaData(
+      const entrega = v22.EntregaData(
         id: 'e-1',
         ventaId: 'v-1',
         productoId: 'p-1',
@@ -1315,10 +1366,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 21,
-        newVersion: 22,
-        createOld: v21.DatabaseAtV21.new,
-        createNew: v22.DatabaseAtV22.new,
+        oldVersion: 22,
+        newVersion: 23,
+        createOld: v22.DatabaseAtV22.new,
+        createNew: v23.DatabaseAtV23.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) => batch.insert(viejo.entrega, entrega),
         validateItems: (nuevo) async {

@@ -16998,11 +16998,11 @@ class EntregaCompanion extends UpdateCompanion<EntregaData> {
   }
 }
 
-class Deposito extends Table with TableInfo<Deposito, DepositoData> {
+class Devolucion extends Table with TableInfo<Devolucion, DevolucionData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  Deposito(this.attachedDatabase, [this._alias]);
+  Devolucion(this.attachedDatabase, [this._alias]);
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
     'id',
     aliasedName,
@@ -17011,53 +17011,55 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> monto = GeneratedColumn<int>(
-    'monto',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> fecha = GeneratedColumn<int>(
-    'fecha',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> destino = GeneratedColumn<String>(
-    'destino',
+  late final GeneratedColumn<String> ventaId = GeneratedColumn<String>(
+    'venta_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<String> concepto = GeneratedColumn<String>(
-    'concepto',
+  late final GeneratedColumn<String> productosDevueltos =
+      GeneratedColumn<String>(
+        'productos_devueltos',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+        $customConstraints: 'NOT NULL',
+      );
+  late final GeneratedColumn<int> dineroRetenido = GeneratedColumn<int>(
+    'dinero_retenido',
     aliasedName,
     false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
   );
-  late final GeneratedColumn<String> campaniaId = GeneratedColumn<String>(
-    'campania_id',
+  late final GeneratedColumn<int> montoReembolsado = GeneratedColumn<int>(
+    'monto_reembolsado',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<String> motivo = GeneratedColumn<String>(
+    'motivo',
     aliasedName,
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<String> ticketId = GeneratedColumn<String>(
-    'ticket_id',
+  late final GeneratedColumn<int> fechaDevolucion = GeneratedColumn<int>(
+    'fecha_devolucion',
     aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
   );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
@@ -17103,12 +17105,12 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
-    monto,
-    fecha,
-    destino,
-    concepto,
-    campaniaId,
-    ticketId,
+    ventaId,
+    productosDevueltos,
+    dineroRetenido,
+    montoReembolsado,
+    motivo,
+    fechaDevolucion,
     createdAt,
     updatedAt,
     createdBy,
@@ -17119,41 +17121,41 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'deposito';
+  static const String $name = 'devolucion';
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  DepositoData map(Map<String, dynamic> data, {String? tablePrefix}) {
+  DevolucionData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DepositoData(
+    return DevolucionData(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
-      monto: attachedDatabase.typeMapping.read(
+      ventaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}venta_id'],
+      )!,
+      productosDevueltos: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}productos_devueltos'],
+      )!,
+      dineroRetenido: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}monto'],
+        data['${effectivePrefix}dinero_retenido'],
       )!,
-      fecha: attachedDatabase.typeMapping.read(
+      montoReembolsado: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}fecha'],
-      )!,
-      destino: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}destino'],
-      )!,
-      concepto: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}concepto'],
-      )!,
-      campaniaId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}campania_id'],
+        data['${effectivePrefix}monto_reembolsado'],
       ),
-      ticketId: attachedDatabase.typeMapping.read(
+      motivo: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}ticket_id'],
+        data['${effectivePrefix}motivo'],
       ),
+      fechaDevolucion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fecha_devolucion'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -17178,45 +17180,42 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
   }
 
   @override
-  Deposito createAlias(String alias) {
-    return Deposito(attachedDatabase, alias);
+  Devolucion createAlias(String alias) {
+    return Devolucion(attachedDatabase, alias);
   }
 
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(id)',
-    'CHECK(monto > 0)',
-    'CHECK(destino IN (\'BANCO\', \'OFICINA\', \'RETIRO_COORDINADOR\'))',
-    'CHECK(concepto IN (\'CASA_EDITORA\', \'ALQUILER\'))',
-    'CHECK(destino <> \'RETIRO_COORDINADOR\' OR ticket_id IS NULL)',
-    'CHECK(destino = \'RETIRO_COORDINADOR\' OR ticket_id IS NOT NULL)',
-    'CHECK(concepto <> \'ALQUILER\' OR campania_id IS NOT NULL)',
+    'CHECK(dinero_retenido >= 0)',
+    'CHECK(monto_reembolsado IS NULL OR monto_reembolsado >= 0)',
+    'CHECK(motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)',
   ];
   @override
   bool get dontWriteConstraints => true;
 }
 
-class DepositoData extends DataClass implements Insertable<DepositoData> {
+class DevolucionData extends DataClass implements Insertable<DevolucionData> {
   final String id;
-  final int monto;
-  final int fecha;
-  final String destino;
-  final String concepto;
-  final String? campaniaId;
-  final String? ticketId;
+  final String ventaId;
+  final String productosDevueltos;
+  final int dineroRetenido;
+  final int? montoReembolsado;
+  final String? motivo;
+  final int fechaDevolucion;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
   final int? deletedAt;
   final int syncVersion;
-  const DepositoData({
+  const DevolucionData({
     required this.id,
-    required this.monto,
-    required this.fecha,
-    required this.destino,
-    required this.concepto,
-    this.campaniaId,
-    this.ticketId,
+    required this.ventaId,
+    required this.productosDevueltos,
+    required this.dineroRetenido,
+    this.montoReembolsado,
+    this.motivo,
+    required this.fechaDevolucion,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -17227,16 +17226,16 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['monto'] = Variable<int>(monto);
-    map['fecha'] = Variable<int>(fecha);
-    map['destino'] = Variable<String>(destino);
-    map['concepto'] = Variable<String>(concepto);
-    if (!nullToAbsent || campaniaId != null) {
-      map['campania_id'] = Variable<String>(campaniaId);
+    map['venta_id'] = Variable<String>(ventaId);
+    map['productos_devueltos'] = Variable<String>(productosDevueltos);
+    map['dinero_retenido'] = Variable<int>(dineroRetenido);
+    if (!nullToAbsent || montoReembolsado != null) {
+      map['monto_reembolsado'] = Variable<int>(montoReembolsado);
     }
-    if (!nullToAbsent || ticketId != null) {
-      map['ticket_id'] = Variable<String>(ticketId);
+    if (!nullToAbsent || motivo != null) {
+      map['motivo'] = Variable<String>(motivo);
     }
+    map['fecha_devolucion'] = Variable<int>(fechaDevolucion);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     if (!nullToAbsent || createdBy != null) {
@@ -17249,19 +17248,19 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     return map;
   }
 
-  DepositoCompanion toCompanion(bool nullToAbsent) {
-    return DepositoCompanion(
+  DevolucionCompanion toCompanion(bool nullToAbsent) {
+    return DevolucionCompanion(
       id: Value(id),
-      monto: Value(monto),
-      fecha: Value(fecha),
-      destino: Value(destino),
-      concepto: Value(concepto),
-      campaniaId: campaniaId == null && nullToAbsent
+      ventaId: Value(ventaId),
+      productosDevueltos: Value(productosDevueltos),
+      dineroRetenido: Value(dineroRetenido),
+      montoReembolsado: montoReembolsado == null && nullToAbsent
           ? const Value.absent()
-          : Value(campaniaId),
-      ticketId: ticketId == null && nullToAbsent
+          : Value(montoReembolsado),
+      motivo: motivo == null && nullToAbsent
           ? const Value.absent()
-          : Value(ticketId),
+          : Value(motivo),
+      fechaDevolucion: Value(fechaDevolucion),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -17274,19 +17273,21 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     );
   }
 
-  factory DepositoData.fromJson(
+  factory DevolucionData.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DepositoData(
+    return DevolucionData(
       id: serializer.fromJson<String>(json['id']),
-      monto: serializer.fromJson<int>(json['monto']),
-      fecha: serializer.fromJson<int>(json['fecha']),
-      destino: serializer.fromJson<String>(json['destino']),
-      concepto: serializer.fromJson<String>(json['concepto']),
-      campaniaId: serializer.fromJson<String?>(json['campaniaId']),
-      ticketId: serializer.fromJson<String?>(json['ticketId']),
+      ventaId: serializer.fromJson<String>(json['ventaId']),
+      productosDevueltos: serializer.fromJson<String>(
+        json['productosDevueltos'],
+      ),
+      dineroRetenido: serializer.fromJson<int>(json['dineroRetenido']),
+      montoReembolsado: serializer.fromJson<int?>(json['montoReembolsado']),
+      motivo: serializer.fromJson<String?>(json['motivo']),
+      fechaDevolucion: serializer.fromJson<int>(json['fechaDevolucion']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -17299,12 +17300,12 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'monto': serializer.toJson<int>(monto),
-      'fecha': serializer.toJson<int>(fecha),
-      'destino': serializer.toJson<String>(destino),
-      'concepto': serializer.toJson<String>(concepto),
-      'campaniaId': serializer.toJson<String?>(campaniaId),
-      'ticketId': serializer.toJson<String?>(ticketId),
+      'ventaId': serializer.toJson<String>(ventaId),
+      'productosDevueltos': serializer.toJson<String>(productosDevueltos),
+      'dineroRetenido': serializer.toJson<int>(dineroRetenido),
+      'montoReembolsado': serializer.toJson<int?>(montoReembolsado),
+      'motivo': serializer.toJson<String?>(motivo),
+      'fechaDevolucion': serializer.toJson<int>(fechaDevolucion),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -17313,44 +17314,52 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     };
   }
 
-  DepositoData copyWith({
+  DevolucionData copyWith({
     String? id,
-    int? monto,
-    int? fecha,
-    String? destino,
-    String? concepto,
-    Value<String?> campaniaId = const Value.absent(),
-    Value<String?> ticketId = const Value.absent(),
+    String? ventaId,
+    String? productosDevueltos,
+    int? dineroRetenido,
+    Value<int?> montoReembolsado = const Value.absent(),
+    Value<String?> motivo = const Value.absent(),
+    int? fechaDevolucion,
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
-  }) => DepositoData(
+  }) => DevolucionData(
     id: id ?? this.id,
-    monto: monto ?? this.monto,
-    fecha: fecha ?? this.fecha,
-    destino: destino ?? this.destino,
-    concepto: concepto ?? this.concepto,
-    campaniaId: campaniaId.present ? campaniaId.value : this.campaniaId,
-    ticketId: ticketId.present ? ticketId.value : this.ticketId,
+    ventaId: ventaId ?? this.ventaId,
+    productosDevueltos: productosDevueltos ?? this.productosDevueltos,
+    dineroRetenido: dineroRetenido ?? this.dineroRetenido,
+    montoReembolsado: montoReembolsado.present
+        ? montoReembolsado.value
+        : this.montoReembolsado,
+    motivo: motivo.present ? motivo.value : this.motivo,
+    fechaDevolucion: fechaDevolucion ?? this.fechaDevolucion,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
   );
-  DepositoData copyWithCompanion(DepositoCompanion data) {
-    return DepositoData(
+  DevolucionData copyWithCompanion(DevolucionCompanion data) {
+    return DevolucionData(
       id: data.id.present ? data.id.value : this.id,
-      monto: data.monto.present ? data.monto.value : this.monto,
-      fecha: data.fecha.present ? data.fecha.value : this.fecha,
-      destino: data.destino.present ? data.destino.value : this.destino,
-      concepto: data.concepto.present ? data.concepto.value : this.concepto,
-      campaniaId: data.campaniaId.present
-          ? data.campaniaId.value
-          : this.campaniaId,
-      ticketId: data.ticketId.present ? data.ticketId.value : this.ticketId,
+      ventaId: data.ventaId.present ? data.ventaId.value : this.ventaId,
+      productosDevueltos: data.productosDevueltos.present
+          ? data.productosDevueltos.value
+          : this.productosDevueltos,
+      dineroRetenido: data.dineroRetenido.present
+          ? data.dineroRetenido.value
+          : this.dineroRetenido,
+      montoReembolsado: data.montoReembolsado.present
+          ? data.montoReembolsado.value
+          : this.montoReembolsado,
+      motivo: data.motivo.present ? data.motivo.value : this.motivo,
+      fechaDevolucion: data.fechaDevolucion.present
+          ? data.fechaDevolucion.value
+          : this.fechaDevolucion,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -17363,14 +17372,14 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
 
   @override
   String toString() {
-    return (StringBuffer('DepositoData(')
+    return (StringBuffer('DevolucionData(')
           ..write('id: $id, ')
-          ..write('monto: $monto, ')
-          ..write('fecha: $fecha, ')
-          ..write('destino: $destino, ')
-          ..write('concepto: $concepto, ')
-          ..write('campaniaId: $campaniaId, ')
-          ..write('ticketId: $ticketId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('productosDevueltos: $productosDevueltos, ')
+          ..write('dineroRetenido: $dineroRetenido, ')
+          ..write('montoReembolsado: $montoReembolsado, ')
+          ..write('motivo: $motivo, ')
+          ..write('fechaDevolucion: $fechaDevolucion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -17383,12 +17392,12 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
   @override
   int get hashCode => Object.hash(
     id,
-    monto,
-    fecha,
-    destino,
-    concepto,
-    campaniaId,
-    ticketId,
+    ventaId,
+    productosDevueltos,
+    dineroRetenido,
+    montoReembolsado,
+    motivo,
+    fechaDevolucion,
     createdAt,
     updatedAt,
     createdBy,
@@ -17398,14 +17407,14 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is DepositoData &&
+      (other is DevolucionData &&
           other.id == this.id &&
-          other.monto == this.monto &&
-          other.fecha == this.fecha &&
-          other.destino == this.destino &&
-          other.concepto == this.concepto &&
-          other.campaniaId == this.campaniaId &&
-          other.ticketId == this.ticketId &&
+          other.ventaId == this.ventaId &&
+          other.productosDevueltos == this.productosDevueltos &&
+          other.dineroRetenido == this.dineroRetenido &&
+          other.montoReembolsado == this.montoReembolsado &&
+          other.motivo == this.motivo &&
+          other.fechaDevolucion == this.fechaDevolucion &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -17413,28 +17422,28 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
           other.syncVersion == this.syncVersion);
 }
 
-class DepositoCompanion extends UpdateCompanion<DepositoData> {
+class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
   final Value<String> id;
-  final Value<int> monto;
-  final Value<int> fecha;
-  final Value<String> destino;
-  final Value<String> concepto;
-  final Value<String?> campaniaId;
-  final Value<String?> ticketId;
+  final Value<String> ventaId;
+  final Value<String> productosDevueltos;
+  final Value<int> dineroRetenido;
+  final Value<int?> montoReembolsado;
+  final Value<String?> motivo;
+  final Value<int> fechaDevolucion;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<int> rowid;
-  const DepositoCompanion({
+  const DevolucionCompanion({
     this.id = const Value.absent(),
-    this.monto = const Value.absent(),
-    this.fecha = const Value.absent(),
-    this.destino = const Value.absent(),
-    this.concepto = const Value.absent(),
-    this.campaniaId = const Value.absent(),
-    this.ticketId = const Value.absent(),
+    this.ventaId = const Value.absent(),
+    this.productosDevueltos = const Value.absent(),
+    this.dineroRetenido = const Value.absent(),
+    this.montoReembolsado = const Value.absent(),
+    this.motivo = const Value.absent(),
+    this.fechaDevolucion = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -17442,14 +17451,14 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  DepositoCompanion.insert({
+  DevolucionCompanion.insert({
     required String id,
-    required int monto,
-    required int fecha,
-    required String destino,
-    required String concepto,
-    this.campaniaId = const Value.absent(),
-    this.ticketId = const Value.absent(),
+    required String ventaId,
+    required String productosDevueltos,
+    this.dineroRetenido = const Value.absent(),
+    this.montoReembolsado = const Value.absent(),
+    this.motivo = const Value.absent(),
+    required int fechaDevolucion,
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -17457,20 +17466,19 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
-       monto = Value(monto),
-       fecha = Value(fecha),
-       destino = Value(destino),
-       concepto = Value(concepto),
+       ventaId = Value(ventaId),
+       productosDevueltos = Value(productosDevueltos),
+       fechaDevolucion = Value(fechaDevolucion),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
-  static Insertable<DepositoData> custom({
+  static Insertable<DevolucionData> custom({
     Expression<String>? id,
-    Expression<int>? monto,
-    Expression<int>? fecha,
-    Expression<String>? destino,
-    Expression<String>? concepto,
-    Expression<String>? campaniaId,
-    Expression<String>? ticketId,
+    Expression<String>? ventaId,
+    Expression<String>? productosDevueltos,
+    Expression<int>? dineroRetenido,
+    Expression<int>? montoReembolsado,
+    Expression<String>? motivo,
+    Expression<int>? fechaDevolucion,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -17480,12 +17488,12 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (monto != null) 'monto': monto,
-      if (fecha != null) 'fecha': fecha,
-      if (destino != null) 'destino': destino,
-      if (concepto != null) 'concepto': concepto,
-      if (campaniaId != null) 'campania_id': campaniaId,
-      if (ticketId != null) 'ticket_id': ticketId,
+      if (ventaId != null) 'venta_id': ventaId,
+      if (productosDevueltos != null) 'productos_devueltos': productosDevueltos,
+      if (dineroRetenido != null) 'dinero_retenido': dineroRetenido,
+      if (montoReembolsado != null) 'monto_reembolsado': montoReembolsado,
+      if (motivo != null) 'motivo': motivo,
+      if (fechaDevolucion != null) 'fecha_devolucion': fechaDevolucion,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -17495,14 +17503,14 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     });
   }
 
-  DepositoCompanion copyWith({
+  DevolucionCompanion copyWith({
     Value<String>? id,
-    Value<int>? monto,
-    Value<int>? fecha,
-    Value<String>? destino,
-    Value<String>? concepto,
-    Value<String?>? campaniaId,
-    Value<String?>? ticketId,
+    Value<String>? ventaId,
+    Value<String>? productosDevueltos,
+    Value<int>? dineroRetenido,
+    Value<int?>? montoReembolsado,
+    Value<String?>? motivo,
+    Value<int>? fechaDevolucion,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -17510,14 +17518,14 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     Value<int>? syncVersion,
     Value<int>? rowid,
   }) {
-    return DepositoCompanion(
+    return DevolucionCompanion(
       id: id ?? this.id,
-      monto: monto ?? this.monto,
-      fecha: fecha ?? this.fecha,
-      destino: destino ?? this.destino,
-      concepto: concepto ?? this.concepto,
-      campaniaId: campaniaId ?? this.campaniaId,
-      ticketId: ticketId ?? this.ticketId,
+      ventaId: ventaId ?? this.ventaId,
+      productosDevueltos: productosDevueltos ?? this.productosDevueltos,
+      dineroRetenido: dineroRetenido ?? this.dineroRetenido,
+      montoReembolsado: montoReembolsado ?? this.montoReembolsado,
+      motivo: motivo ?? this.motivo,
+      fechaDevolucion: fechaDevolucion ?? this.fechaDevolucion,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -17533,23 +17541,23 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (monto.present) {
-      map['monto'] = Variable<int>(monto.value);
+    if (ventaId.present) {
+      map['venta_id'] = Variable<String>(ventaId.value);
     }
-    if (fecha.present) {
-      map['fecha'] = Variable<int>(fecha.value);
+    if (productosDevueltos.present) {
+      map['productos_devueltos'] = Variable<String>(productosDevueltos.value);
     }
-    if (destino.present) {
-      map['destino'] = Variable<String>(destino.value);
+    if (dineroRetenido.present) {
+      map['dinero_retenido'] = Variable<int>(dineroRetenido.value);
     }
-    if (concepto.present) {
-      map['concepto'] = Variable<String>(concepto.value);
+    if (montoReembolsado.present) {
+      map['monto_reembolsado'] = Variable<int>(montoReembolsado.value);
     }
-    if (campaniaId.present) {
-      map['campania_id'] = Variable<String>(campaniaId.value);
+    if (motivo.present) {
+      map['motivo'] = Variable<String>(motivo.value);
     }
-    if (ticketId.present) {
-      map['ticket_id'] = Variable<String>(ticketId.value);
+    if (fechaDevolucion.present) {
+      map['fecha_devolucion'] = Variable<int>(fechaDevolucion.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
@@ -17574,14 +17582,14 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
 
   @override
   String toString() {
-    return (StringBuffer('DepositoCompanion(')
+    return (StringBuffer('DevolucionCompanion(')
           ..write('id: $id, ')
-          ..write('monto: $monto, ')
-          ..write('fecha: $fecha, ')
-          ..write('destino: $destino, ')
-          ..write('concepto: $concepto, ')
-          ..write('campaniaId: $campaniaId, ')
-          ..write('ticketId: $ticketId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('productosDevueltos: $productosDevueltos, ')
+          ..write('dineroRetenido: $dineroRetenido, ')
+          ..write('montoReembolsado: $montoReembolsado, ')
+          ..write('motivo: $motivo, ')
+          ..write('fechaDevolucion: $fechaDevolucion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -17631,7 +17639,7 @@ class DatabaseAtV22 extends GeneratedDatabase {
   late final VentaItem ventaItem = VentaItem(this);
   late final Cobranza cobranza = Cobranza(this);
   late final Entrega entrega = Entrega(this);
-  late final Deposito deposito = Deposito(this);
+  late final Devolucion devolucion = Devolucion(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -17764,9 +17772,9 @@ class DatabaseAtV22 extends GeneratedDatabase {
     'entrega_venta_idx',
     'CREATE INDEX entrega_venta_idx ON entrega (venta_id)',
   );
-  late final Index depositoTicketIdx = Index(
-    'deposito_ticket_idx',
-    'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
+  late final Index devolucionVentaIdx = Index(
+    'devolucion_venta_idx',
+    'CREATE INDEX devolucion_venta_idx ON devolucion (venta_id)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -17806,7 +17814,7 @@ class DatabaseAtV22 extends GeneratedDatabase {
     ventaItem,
     cobranza,
     entrega,
-    deposito,
+    devolucion,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,
@@ -17840,7 +17848,7 @@ class DatabaseAtV22 extends GeneratedDatabase {
     ventaItemVentaIdx,
     cobranzaVentaIdx,
     entregaVentaIdx,
-    depositoTicketIdx,
+    devolucionVentaIdx,
   ];
   @override
   int get schemaVersion => 22;
