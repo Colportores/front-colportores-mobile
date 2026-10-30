@@ -245,6 +245,30 @@ void main() {
       expect(find.text('Registrando…'), findsNothing);
     });
 
+    testWidgets(
+      'aviso de «Invalida»: es región viva, queda a la vista a 360×640 ×2 y se va al cambiar lo elegido',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        final repo = RepoFalso161(ventaCanvas161());
+        repo.respuestas.add(() async => const Left(FailureDevolucionInvalida(causa: 'x')));
+        await _hastaSeguir(tester, repo, escala: 2);
+        await tocar(tester, _opcion('retener'));
+        await confirmarEnLaHoja161(tester);
+
+        final aviso = find.byKey(const Key('devolucion_invalida'));
+        expect(aviso, findsOneWidget);
+        expect(tester.getSemantics(aviso).flagsCollection.isLiveRegion, isTrue);
+        final rect = tester.getRect(aviso);
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.bottom, lessThanOrEqualTo(640));
+        expect(tester.takeException(), isNull);
+
+        await tocar(tester, menos161('Nuestros Hijos'));
+        expect(aviso, findsNothing);
+        semantica.dispose();
+      },
+    );
+
     testWidgets('Invalida con la venta sin cambios: el registro se rechaza y la pantalla lo dice', (
       tester,
     ) async {
