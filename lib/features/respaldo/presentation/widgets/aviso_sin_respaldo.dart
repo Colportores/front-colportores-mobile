@@ -39,6 +39,9 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
   /// tocar; si salió bien, el aviso se va solo y no queda nada que mostrar.
   String? _detalle;
 
+  /// El aviso entero, para llevarlo a la vista cuando aparece el motivo del reintento.
+  final _avisoKey = GlobalKey();
+
   Future<void> _reintentar() async {
     if (_reintentando) return;
     setState(() {
@@ -67,8 +70,21 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
           _reintentando = false;
           _detalle = detalle;
         });
+        if (detalle != null) _mostrarElMotivo();
       }
     }
+  }
+
+  /// Con el texto grande el aviso se desplaza (tope de 40 % propio, y el de la franja de Inicio): el
+  /// motivo y «Reintentar» están al pie y quedarían fuera de la vista, y la persona vería el mismo
+  /// aviso de antes sin enterarse del error (QA #185, ronda 2). Se lleva el pie del aviso a la vista,
+  /// en cada desplazable que lo contiene, sin animación.
+  void _mostrarElMotivo() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _avisoKey.currentContext;
+      if (!mounted || contexto == null || !contexto.mounted) return;
+      unawaited(Scrollable.ensureVisible(contexto, alignment: 1));
+    });
   }
 
   @override
@@ -86,13 +102,18 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-        child: AvisoDrive(
-          key: const Key('aviso_sin_respaldo'),
-          clase: ClaseAvisoDrive.error,
-          texto: TextosRespaldoDrive.avisoSinRespaldo(dias),
-          detalle: _detalle,
-          accion: _reintentando ? TextosRespaldoDrive.reintentando : TextosRespaldoDrive.reintentar,
-          alAccionar: _reintentando ? null : () => unawaited(_reintentar()),
+        child: SizedBox(
+          key: _avisoKey,
+          child: AvisoDrive(
+            key: const Key('aviso_sin_respaldo'),
+            clase: ClaseAvisoDrive.error,
+            texto: TextosRespaldoDrive.avisoSinRespaldo(dias),
+            detalle: _detalle,
+            accion: _reintentando
+                ? TextosRespaldoDrive.reintentando
+                : TextosRespaldoDrive.reintentar,
+            alAccionar: _reintentando ? null : () => unawaited(_reintentar()),
+          ),
         ),
       ),
     );

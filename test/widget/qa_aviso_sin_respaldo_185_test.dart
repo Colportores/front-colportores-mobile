@@ -33,7 +33,6 @@ import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../helpers/notificaciones_arnes.dart';
 
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 // El reloj real: Inicio usa `DateTime.now()` y el aviso solo se puede probar contra él.
 final _ahora = DateTime.now().toUtc();
@@ -740,9 +739,8 @@ void main() {
   });
 
   group('el motivo del reintento a la vista, sin desplazar', () {
-    // skip: QA #185 r2 — a 360×640 con texto 2,0× el motivo («Necesitás conexión…» / «No pudimos…»)
-    // y «Reintentar» quedan bajo el borde del aviso (tope de 40 %): al fallar, la persona ve el mismo
-    // aviso de antes y no se entera de nada.
+    // Ronda 2: a 360×640 con texto 2,0× el motivo y «Reintentar» quedaban bajo el borde del aviso
+    // (tope de 40 %). Al aparecer el motivo, el aviso se desplaza hasta mostrarlo.
     for (final tam in [_chico, _grande]) {
       testWidgets(
         'tras un fallo, el motivo se ve sin desplazar el aviso (${tam.width.toInt()}×${tam.height.toInt()}, 2,0×)',
@@ -766,10 +764,33 @@ void main() {
           );
           expect(tester.getRect(_reintentar).bottom, lessThanOrEqualTo(aviso.bottom + 0.5));
         },
-        skip: tam == _chico && !_verHallazgos,
       );
     }
   });
+
+  testWidgets(
+    'en Inicio con dos avisos (360×640, 2,0×), tras un fallo el motivo queda dentro de la franja',
+    (tester) async {
+      await _montarInicio(
+        tester,
+        tam: _chico,
+        escala: 2,
+        servicio: _Servicio(const RespaldoFallido(CausaFalloRespaldo.otra)),
+        ultimo: _haceDias(9),
+        apagadas: true,
+      );
+      await tester.ensureVisible(_reintentar);
+      await tester.pump();
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+
+      final franja = tester.getRect(find.byKey(const Key('inicio_franja_avisos')));
+      final detalle = tester.getRect(find.byKey(const Key('aviso_drive_detalle')));
+      expect(detalle.top, greaterThanOrEqualTo(franja.top - 0.5));
+      expect(detalle.bottom, lessThanOrEqualTo(franja.bottom + 0.5));
+      expect(tester.getRect(_reintentar).bottom, lessThanOrEqualTo(franja.bottom + 0.5));
+    },
+  );
 
   group('hallazgos', () {
     // Decisión del 29/10 (P1): tras «Reintentar» sin conexión o con un fallo, el aviso lo dice, dentro
