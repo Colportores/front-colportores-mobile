@@ -38,6 +38,11 @@ abstract final class EventoAuditoriaLocal {
   /// en el depósito mismo y no se copian acá.
   static const depositoRegistrado = 'deposito_registrado';
 
+  /// Un ticket de tarjeta o de depósito registrado (HU-COB-007, «Audit log local»): `uuid` es el `id` del
+  /// ticket y `creado_en` el instante en que se registró. Sin motivo: el monto, la autorización y la
+  /// tarjeta viajan en el ticket mismo y no se copian acá.
+  static const ticketRegistrado = 'ticket_registrado';
+
   /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
   /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
   static const backupIntegridadOk = 'backup_integrity_ok';

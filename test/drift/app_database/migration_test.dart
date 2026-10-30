@@ -28,6 +28,7 @@ import 'generated/schema_v20.dart' as v20;
 import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
+import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1402,6 +1403,74 @@ void main() {
             "$columnas('d-8', 100, 1, 'RETIRO_COORDINADOR', 'ALQUILER', 'camp-1', NULL, 1, 1)",
           );
           expect(await nuevo.select(nuevo.deposito).get(), hasLength(2));
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 23, cuando migra a la 24, no se pierde nada, aparecen los tickets '
+    'vacíos con sus CHECK y el cobro gana ticket_id vacío, sin encolar nada',
+    () async {
+      // HU-COB-007 (#426): `ticket` sube y baja por el motor, `ticket_foto_local` es solo del teléfono y
+      // `cobranza.ticket_id` liga el cobro con tarjeta a su ticket.
+      const cobro = v23.CobranzaData(
+        id: 'c-1',
+        ventaId: 'v-1',
+        monto: 150000,
+        medio: 'TARJETA',
+        fecha: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 23,
+        newVersion: 24,
+        createOld: v23.DatabaseAtV23.new,
+        createNew: v24.DatabaseAtV24.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.cobranza, cobro),
+        validateItems: (nuevo) async {
+          final c = await nuevo.select(nuevo.cobranza).getSingle();
+          expect((c.id, c.monto, c.syncVersion), ('c-1', 150000, 4));
+          expect(c.ticketId, isNull);
+          expect(await nuevo.select(nuevo.ticket).get(), isEmpty);
+          expect(await nuevo.select(nuevo.ticketFotoLocal).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO ticket (id, tipo, monto, fecha, estado, created_at, updated_at) VALUES ';
+          await nuevo.customStatement(
+            "$columnas('t-1', 'COBRO_TARJETA', 150000, 1, 'PENDIENTE', 1, 1)",
+          );
+          final ticket = await nuevo.select(nuevo.ticket).getSingle();
+          expect(
+            (ticket.tipo, ticket.monto, ticket.estado),
+            ('COBRO_TARJETA', 150000, 'PENDIENTE'),
+          );
+          expect(ticket.urlCloud, isNull);
+          expect(ticket.usuarioId, isNull);
+          expect(ticket.syncVersion, 0);
+          for (final malo in [
+            "('t-2', 'COBRO_TARJETA', 0, 1, 'PENDIENTE', 1, 1)",
+            "('t-3', 'OTRA_COSA', 100, 1, 'PENDIENTE', 1, 1)",
+            "('t-4', 'DEPOSITO', 100, 1, 'HECHO', 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+
+          const foto =
+              'INSERT INTO ticket_foto_local (ticket_id, tipo_de_imagen, bytes, creada_en) VALUES ';
+          await nuevo.customStatement("$foto('t-1', 'image/jpeg', 1000, 1)");
+          final f = await nuevo.select(nuevo.ticketFotoLocal).getSingle();
+          expect((f.estado, f.intentos), ('PENDIENTE', 0));
+          expect(f.rutaLocal, isNull);
+          await expectLater(
+            nuevo.customStatement("$foto('t-2', 'image/jpeg', 0, 1)"),
+            throwsA(anything),
+          );
         },
       );
     },

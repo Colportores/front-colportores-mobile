@@ -632,6 +632,7 @@ void main() {
         'numero_aprobacion',
         'referencia_transferencia',
         'banco_origen',
+        'ticket_id',
         'created_at',
         'updated_at',
         'created_by',
