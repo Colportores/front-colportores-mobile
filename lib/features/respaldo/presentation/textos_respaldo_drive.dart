@@ -36,7 +36,7 @@ abstract final class TextosRespaldoDrive {
   /// sin backup»): el literal de la HU, con [dias] en lugar del número. «Reintentar» y
   /// «Reintentando…» son propuesta (mapa §2, texto, a confirmar).
   static String avisoSinRespaldo(int dias) =>
-      'Llevás $dias días sin backup. Revisá tu conexión y reintentá.';
+      'Llevás $dias días sin respaldo. Revisá tu conexión y reintentá.';
   static const reintentando = 'Reintentando…';
 
   /// Lo que se le dice tras tocar «Reintentar» si no se pudo (decisión del 29/10, QA #185): sin

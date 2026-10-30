@@ -1,4 +1,4 @@
-// HU-SYNC-005 — «Aviso por > 7 días sin backup»: «Llevás N días sin backup. Revisá tu conexión y
+// HU-SYNC-005 — «Aviso por > 7 días sin backup»: «Llevás N días sin respaldo. Revisá tu conexión y
 // reintentá.» con «Reintentar», en Inicio. Solo con Drive conectado y un respaldo anterior desde el
 // cual contar. Casos límite: doble toque, falla a mitad, dos pedidos seguidos, volver y reentrar,
 // texto al 200 %.
@@ -106,7 +106,7 @@ void main() {
 
       expect(_aviso, findsOneWidget);
       expect(
-        find.text('Llevás 8 días sin backup. Revisá tu conexión y reintentá.'),
+        find.text('Llevás 8 días sin respaldo. Revisá tu conexión y reintentá.'),
         findsOneWidget,
       );
       expect(find.text('Reintentar'), findsOneWidget);
@@ -290,7 +290,7 @@ void main() {
       );
 
       expect(
-        find.text('Llevás 120 días sin backup. Revisá tu conexión y reintentá.'),
+        find.text('Llevás 120 días sin respaldo. Revisá tu conexión y reintentá.'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
@@ -313,7 +313,7 @@ void main() {
 
       expect(
         tester.getSemantics(
-          find.text('Llevás 10 días sin backup. Revisá tu conexión y reintentá.'),
+          find.text('Llevás 10 días sin respaldo. Revisá tu conexión y reintentá.'),
         ),
         isNotNull,
       );

@@ -482,7 +482,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       expect(
-        find.text('Llevás 36500 días sin backup. Revisá tu conexión y reintentá.'),
+        find.text('Llevás 36500 días sin respaldo. Revisá tu conexión y reintentá.'),
         findsOneWidget,
       );
     });
@@ -501,7 +501,7 @@ void main() {
   });
 
   group('en Inicio, con los otros avisos', () {
-    testWidgets('aparece arriba en cada pestaña y «Reintentar» funciona desde Inicio', (
+    testWidgets('aparece solo en Hoy (decisión del 29/10) y «Reintentar» funciona desde Inicio', (
       tester,
     ) async {
       final servicio = _Servicio();
@@ -513,11 +513,12 @@ void main() {
         ultimo: _haceDias(9),
       );
       expect(_aviso, findsOneWidget);
-      for (final pestana in ['Agenda', 'Hoy']) {
-        await tester.tap(find.text(pestana));
-        await tester.pumpAndSettle();
-        expect(_aviso, findsOneWidget, reason: 'pestaña $pestana');
-      }
+      await tester.tap(find.text('Agenda'));
+      await tester.pumpAndSettle();
+      expect(_aviso, findsNothing, reason: 'fuera de Hoy no hay aviso');
+      await tester.tap(find.text('Hoy'));
+      await tester.pumpAndSettle();
+      expect(_aviso, findsOneWidget, reason: 'vuelve en Hoy');
       await tester.tap(_reintentar);
       await tester.pumpAndSettle();
       expect(servicio.pedidos, 1);
@@ -832,7 +833,7 @@ void main() {
             estado: estado,
           );
 
-          expect(find.textContaining('backup'), findsAtLeastNWidgets(1));
+          expect(find.textContaining('respaldo'), findsAtLeastNWidgets(1));
         },
         skip: true,
       );

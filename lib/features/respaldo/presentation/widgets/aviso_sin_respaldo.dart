@@ -11,7 +11,7 @@ import '../textos_respaldo_drive.dart';
 import 'aviso_drive.dart';
 
 /// El aviso de Inicio cuando la persona lleva más de 7 días sin un respaldo exitoso (HU-SYNC-005):
-/// «Llevás N días sin backup. Revisá tu conexión y reintentá.», con «Reintentar».
+/// «Llevás N días sin respaldo. Revisá tu conexión y reintentá.», con «Reintentar».
 ///
 /// Sale solo con Drive conectado y un respaldo anterior desde el cual contar. «Reintentar» pide el
 /// respaldo ya mismo, sin esperar a Wi-Fi ni batería: lo pidió la persona. Mientras corre, el botón

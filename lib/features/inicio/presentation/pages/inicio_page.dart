@@ -162,8 +162,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
               // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
               _AvisosDeZona(colportorId: widget.sesion.usuarioId),
               // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa
-              // lugar. Con el teclado abierto gana el campo que se escribe.
-              const _AvisoSinRespaldo(),
+              // lugar. Solo en Hoy (decisión del 29/10); con el teclado abierto gana el campo.
+              if (_actual == PestanaInicio.hoy) const _AvisoSinRespaldo(),
               // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
               if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
             ],
