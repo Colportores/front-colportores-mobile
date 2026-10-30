@@ -31,6 +31,22 @@ void main() {
     });
   });
 
+  group('nombre al editar (32C·02)', () {
+    test('dado un nombre vaciado, cuando se pide su texto, dice que no puede quedar vacío', () {
+      expect(
+        ValidadorPersona.mensajeNombreEdicion(ProblemaNombre.vacio),
+        'El nombre no puede quedar vacío.',
+      );
+    });
+
+    test('dado un nombre de una letra, cuando se pide su texto, es el mismo del alta', () {
+      expect(
+        ValidadorPersona.mensajeNombreEdicion(ProblemaNombre.corto),
+        ValidadorPersona.mensajeNombre(ProblemaNombre.corto),
+      );
+    });
+  });
+
   group('teléfono', () {
     test('dado un teléfono vacío o solo separadores, cuando se valida, sirve (es opcional)', () {
       expect(ValidadorPersona.problemaTelefono(null), isNull);

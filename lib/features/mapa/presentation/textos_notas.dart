@@ -59,12 +59,16 @@ abstract final class TextosNotas {
   /// Lo que se puede hacer en solo lectura; va después de la causa.
   static const soloLecturaAyuda = 'Podés ver sus notas, pero no agregar, editar ni borrar ninguna.';
 
-  /// El aviso de solo lectura (mapa §2, P3 de #144): la causa como la ficha (32B·04: «María está de baja
-  /// desde el 22/10.», 32B·08: «El depto 3B de Mataojo 2044 está dado de baja.») y qué se puede hacer.
-  /// «De baja» y no «dada de baja»: no depende del género de la persona.
-  static String soloLectura(ContextoNotasPersona contexto, DateTime ahora) {
+  /// El aviso de solo lectura (mapa §2, P3 de #144): la causa y qué se puede hacer.
+  static String soloLectura(ContextoNotasPersona contexto, DateTime ahora) =>
+      '${causaSoloLectura(contexto, ahora)} $soloLecturaAyuda';
+
+  /// Por qué una persona está en solo lectura, como la ficha (32B·04: «María está de baja desde el
+  /// 22/10.», 32B·08: «El depto 3B de Mataojo 2044 está dado de baja.»). «De baja» y no «dada de
+  /// baja»: no depende del género de la persona. Lo usan las notas y la edición de la persona.
+  static String causaSoloLectura(ContextoNotasPersona contexto, DateTime ahora) {
     final nombre = contexto.nombre;
-    final causa = switch (contexto.causa) {
+    return switch (contexto.causa) {
       CausaSoloLectura.personaDeBaja => () {
         final desde = contexto.bajaDesde;
         return desde == null
@@ -82,7 +86,6 @@ abstract final class TextosNotas {
       CausaSoloLectura.sinEspacioActivo => '$nombre ya no está en ningún depto activo.',
       null => '',
     };
-    return '$causa $soloLecturaAyuda';
   }
 
   static String verBorradas(int cantidad) => 'Ver borradas ($cantidad)';

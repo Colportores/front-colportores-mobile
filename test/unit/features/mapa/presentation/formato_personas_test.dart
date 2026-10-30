@@ -29,6 +29,41 @@ void main() {
     });
   });
 
+  group('editar (32C)', () {
+    test('dado los campos que cambió, cuando se dicen, van separados con comas y una «y»', () {
+      expect(TextosPersonas.cambiaste(['nombre']), 'Cambiaste nombre.');
+      expect(TextosPersonas.cambiaste(['nombre', 'apellido']), 'Cambiaste nombre y apellido.');
+      expect(
+        TextosPersonas.cambiaste(['nombre', 'apellido', 'teléfono']),
+        'Cambiaste nombre, apellido y teléfono.',
+      );
+    });
+
+    test(
+      'dado el cambio grande del canvas 32C·03, cuando se arma el aviso, es el texto literal',
+      () {
+        expect(
+          TextosPersonas.otraPersona(
+            campos: ['nombre', 'apellido', 'teléfono'],
+            antes: 'María',
+            despues: 'Roberto',
+          ),
+          'Cambiaste nombre, apellido y teléfono. Si es otra persona, conviene dar de baja a María '
+          'y registrar a Roberto aparte, para no mezclar el historial.',
+        );
+      },
+    );
+
+    test('dado el canvas 32C, cuando se piden los textos, son los de las tres pantallas', () {
+      expect(TextosPersonas.editarRotulo, 'EDITAR PERSONA');
+      expect(TextosPersonas.editarTitulo, 'Editar persona');
+      expect(TextosPersonas.guardarCambios, 'Guardar cambios');
+      expect(TextosPersonas.guardarIgual, 'Guardar igual');
+      expect(TextosPersonas.darDeBajaYCrearNueva, 'Dar de baja y crear nueva');
+      expect(TextosPersonas.cambiosGuardados, 'Cambios guardados en tu teléfono.');
+    });
+  });
+
   group('teléfono tapado', () {
     test('dado un celular, cuando se tapa, deja el comienzo y el final', () {
       expect(FormatoPersonas.telefonoOculto('099 123 412'), 'Tel. 099 ••• 412');
