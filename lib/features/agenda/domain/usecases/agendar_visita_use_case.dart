@@ -7,6 +7,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/agenda.dart';
 import '../entities/franja_horaria.dart';
+import '../entities/motivo_rechazo_agenda.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/recordatorio_de_visita.dart';
 import '../entities/tipo_agenda.dart';
@@ -41,6 +42,7 @@ final class AgendarVisitaParams extends Equatable {
     this.esEstricta = false,
     this.nota = '',
     this.direccion = '',
+    this.ubicacionAltId,
     this.confirmoHoraPasada = false,
   });
 
@@ -74,6 +76,12 @@ final class AgendarVisitaParams extends Equatable {
   /// La dirección que lleva el aviso («Av. Italia 1234»); puede ir vacía.
   final String direccion;
 
+  /// HU-VIS-006: la ubicación alternativa donde se cobra (`agenda.ubicacion_alt_id`), o `null` si se
+  /// cobra donde está el espacio. Solo para una cobranza de una persona que la tiene como alternativa
+  /// (`DestinoDeCobranza.ubicacionAltId`). En ese caso [direccion] es la de esa ubicación
+  /// (`DestinoDeCobranza.direccionDelAviso`): el recordatorio menciona la dirección alternativa.
+  final String? ubicacionAltId;
+
   /// La persona ya vio «Esa hora ya pasó» y eligió «Agendar igual» (HU-VIS-001, «Edge - hora ya
   /// pasó»).
   final bool confirmoHoraPasada;
@@ -94,6 +102,7 @@ final class AgendarVisitaParams extends Equatable {
     esEstricta,
     nota,
     direccion,
+    ubicacionAltId,
     confirmoHoraPasada,
   ];
 }
@@ -132,7 +141,9 @@ final class HoraPasadaSinConfirmar extends ResultadoAgendar {
 /// HU-VIS-001 — Agendar una visita (entrevista o cobranza), sin pantalla.
 ///
 /// 1. Valida: ids, espacio y colportor. Sin alguno, `Left(FailureValidacion)` con el detalle por
-///    campo y no toca la DB.
+///    campo y no toca la DB. Una ubicación alternativa en una agenda que no es de cobranza también es
+///    una falla de validación (HU-VIS-006: «solo aplica para tipo = COBRANZA»); que la ubicación esté
+///    activa y sea la de la persona lo comprueba el repositorio, dentro de la transacción.
 /// 2. Si la hora ya pasó (se compara al minuto) y la persona no lo confirmó, no guarda nada y
 ///    devuelve [HoraPasadaSinConfirmar].
 /// 3. Guarda la agenda `PROGRAMADA` y su nota opcional; el repositorio lo hace en **una transacción
@@ -164,12 +175,17 @@ final class AgendarVisitaUseCase implements UseCase<ResultadoAgendar, AgendarVis
     final espacioId = params.espacioId.trim();
     final colportorId = params.colportorId.trim();
     final ids = params.ids;
+    final alternativaId = params.ubicacionAltId?.trim();
+    final conAlternativa = alternativaId != null && alternativaId.isNotEmpty;
 
     final campos = <String, String>{
       if (ids.agenda.trim().isEmpty || ids.nota.trim().isEmpty)
         'ids': 'Falta el identificador de la agenda',
       if (espacioId.isEmpty) 'espacio': 'Falta la casa de la visita',
       if (colportorId.isEmpty) 'colportorId': 'No hay un colportor para agendar la visita',
+      if (conAlternativa && params.tipo != TipoAgenda.cobranza)
+        MotivoRechazoAgenda.alternativaSoloCobranza.campo:
+            MotivoRechazoAgenda.alternativaSoloCobranza.mensaje,
     };
     if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
 
@@ -192,6 +208,7 @@ final class AgendarVisitaUseCase implements UseCase<ResultadoAgendar, AgendarVis
         fechaProgramada: params.fechaProgramada,
         slotCodigo: params.franja?.codigo,
         esEstricta: params.esEstricta,
+        ubicacionAltId: conAlternativa ? alternativaId : null,
         colportorId: colportorId,
         auditoria: auditoria(),
       ),

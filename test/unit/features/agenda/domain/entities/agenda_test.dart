@@ -142,7 +142,10 @@ void main() {
 
     test('dado cada motivo de rechazo, cuando se lee, dice a qué campo va y guía a la persona', () {
       for (final motivo in MotivoRechazoAgenda.values) {
-        expect(motivo.campo, anyOf('espacio', 'persona', 'agenda', 'visita'));
+        expect(
+          motivo.campo,
+          anyOf('espacio', 'persona', 'agenda', 'visita', 'ubicacionAlternativa'),
+        );
         expect(motivo.mensaje, endsWith('.'));
       }
     });

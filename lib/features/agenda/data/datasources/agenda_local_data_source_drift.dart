@@ -59,6 +59,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     if (existente != null) return (agenda: _aAgenda(existente), yaEstaba: true);
 
     await _exigirEspacioYVinculo(agenda.espacioId, agenda.espacioPersonaId);
+    await _exigirAlternativaDeCobranza(agenda);
     await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
     await _encolador.encolar(
       'agenda',
@@ -415,6 +416,35 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     )..where((v) => v.id.equals(espacioPersonaId))).getSingleOrNull();
     if (vinculo == null || vinculo.deletedAt != null || vinculo.espacioId != espacioId) {
       throw const AgendaRechazadaException(_Motivo.personaInexistente);
+    }
+  }
+
+  /// HU-VIS-006: cobrar en otra ubicación (`agenda.ubicacion_alt_id`) solo vale para una **cobranza**,
+  /// de una persona que tiene esa ubicación como alternativa (HU-UBI-013) y que sigue activa. Sin
+  /// `ubicacion_alt_id` no se pide nada. El orden es el de lo que la persona puede arreglar: el tipo,
+  /// la persona, la baja de la ubicación y, al final, que siga siendo la de la persona.
+  Future<void> _exigirAlternativaDeCobranza(Agenda agenda) async {
+    final alternativaId = agenda.ubicacionAltId;
+    if (alternativaId == null) return;
+    if (agenda.tipo != TipoAgenda.cobranza) {
+      throw const AgendaRechazadaException(_Motivo.alternativaSoloCobranza);
+    }
+    final vinculoId = agenda.espacioPersonaId;
+    if (vinculoId == null) {
+      throw const AgendaRechazadaException(_Motivo.alternativaSinPersona);
+    }
+    final ubicacion = await (_db.select(
+      _db.ubicaciones,
+    )..where((u) => u.id.equals(alternativaId))).getSingleOrNull();
+    if (ubicacion == null) throw const AgendaRechazadaException(_Motivo.alternativaFaltante);
+    if (ubicacion.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.alternativaInactiva);
+    }
+    final vinculo = await (_db.select(
+      _db.espacioPersonas,
+    )..where((v) => v.id.equals(vinculoId))).getSingle();
+    if (vinculo.ubicacionCobranzaAltId != alternativaId) {
+      throw const AgendaRechazadaException(_Motivo.alternativaCambio);
     }
   }
 

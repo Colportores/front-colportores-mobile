@@ -180,7 +180,7 @@ void main() {
 
     test(
       'dado que una agenda y un vínculo nombran a B como casa alternativa (y otros a una tercera), '
-      'cuando se une, pasan a nombrar a A y lo de la tercera no se toca ni se encola nada por fila',
+      'cuando se une, la agenda pasa a nombrar a A, el vínculo de A queda sin alternativa y lo de la tercera no se toca',
       () async {
         await sembrarCasasConGente();
         await ubicacion('ub-c', lat: -34.95);
@@ -210,12 +210,20 @@ void main() {
         final alternativasDeVinculos = {
           for (final x in await db.select(db.espacioPersonas).get()) x.id: x.ubicacionCobranzaAltId,
         };
-        expect(alternativasDeVinculos['ep-a1'], 'ub-a');
+        // ep-a1 vive en A y cobraba en B: tras la unión su alternativa sería su propia ubicación, que
+        // la HU-UBI-013 no admite, así que se quita (y esa fila se encola: el servidor no la produce).
+        expect(alternativasDeVinculos['ep-a1'], isNull);
         expect(alternativasDeVinculos['ep-b1'], 'ub-c');
         expect(
           encolador.encolados.map((c) => c.entidad).toSet().difference({'house_status'}),
-          isEmpty,
-          reason: 'sin encolar por fila: el servidor reapunta las suyas con el trabajo',
+          {'espacio_persona'},
+          reason: 'solo el vínculo que quedó sin alternativa; el servidor reapunta el resto',
+        );
+        expect(
+          encolador.encolados
+              .where((c) => c.entidad == 'espacio_persona')
+              .map((c) => c.payload['id']),
+          ['ep-a1'],
         );
       },
     );
