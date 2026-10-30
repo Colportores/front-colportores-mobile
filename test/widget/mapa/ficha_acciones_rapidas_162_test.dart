@@ -7,12 +7,14 @@ import 'dart:async';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agendar_visita_page.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/piezas_agendar_visita.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/cuenta_de_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/filtro_de_historial.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_ficha_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'baja_persona_arnes.dart' show cuentaConSaldo;
 import 'ficha_persona_arnes.dart';
 
 void main() {
@@ -200,6 +202,97 @@ void main() {
 
       expect(find.byKey(ClavesFicha.sinMovimientos), findsOneWidget);
       expect(acciones, findsNothing);
+    });
+  });
+
+  group('cada acción solo si hay algo que hacer (decisión del 30/10, regla R4)', () {
+    // Pagó todo: comprado $ 4.500, pagado $ 4.500, 1 de 2 entregado.
+    const sinSaldo = ResumenCuentaPersona(
+      compradoCentavos: 450000,
+      pagadoCentavos: 450000,
+      saldoCentavos: 0,
+      entregasHechas: 1,
+      entregasTotales: 2,
+    );
+    // Debe $ 1.200 pero ya recibió todo: 2 de 2 entregado.
+    const sinEntregas = ResumenCuentaPersona(
+      compradoCentavos: 450000,
+      pagadoCentavos: 330000,
+      saldoCentavos: 120000,
+      entregasHechas: 2,
+      entregasTotales: 2,
+    );
+    // Pagó y recibió todo.
+    const alDia = ResumenCuentaPersona(
+      compradoCentavos: 450000,
+      pagadoCentavos: 450000,
+      saldoCentavos: 0,
+      entregasHechas: 2,
+      entregasTotales: 2,
+    );
+
+    Future<void> montarCon(
+      WidgetTester tester,
+      ResumenCuentaPersona cuenta, {
+      bool conEntrega = true,
+    }) async {
+      final m = mundo(conEntrega: conEntrega)..cuentas.cuenta = cuenta;
+      await montarFicha(tester, m, tamano: const Size(390, 1600));
+    }
+
+    testWidgets('con saldo y entregas pendientes están las dos', (tester) async {
+      await montarCon(tester, cuentaConSaldo);
+
+      expect(agendar, findsOneWidget);
+      expect(entrega, findsOneWidget);
+    });
+
+    testWidgets('sin saldo no hay «+ Agendar cobranza» y «Registrar entrega» sigue', (
+      tester,
+    ) async {
+      await montarCon(tester, sinSaldo);
+
+      expect(agendar, findsNothing);
+      expect(entrega, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('sin entregas pendientes no hay «Registrar entrega» y «+ Agendar cobranza» sigue', (
+      tester,
+    ) async {
+      await montarCon(tester, sinEntregas);
+
+      expect(entrega, findsNothing);
+      expect(agendar, findsOneWidget);
+    });
+
+    testWidgets('al día en saldo y en entregas no hay bloque de acciones', (tester) async {
+      await montarCon(tester, alDia);
+
+      expect(acciones, findsNothing);
+      expect(agendar, findsNothing);
+      expect(entrega, findsNothing);
+      // La cuenta sigue a la vista: lo que desaparece son las acciones, no la ficha.
+      expect(find.byKey(ClavesFicha.cuenta), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con entregas pendientes pero sin destino y sin saldo no hay bloque', (
+      tester,
+    ) async {
+      await montarCon(tester, sinSaldo, conEntrega: false);
+
+      expect(acciones, findsNothing);
+    });
+
+    testWidgets('con una sola acción a letra doble se llega a ella y no desborda', (tester) async {
+      final m = mundo()..cuentas.cuenta = sinSaldo;
+      await montarFicha(tester, m, tamano: const Size(320, 568), escala: 2);
+
+      await tester.ensureVisible(entrega);
+      expect(entrega, findsOneWidget);
+      expect(agendar, findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 

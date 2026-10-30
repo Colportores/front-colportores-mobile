@@ -598,11 +598,16 @@ class _CuerpoDeLaFicha extends StatelessWidget {
           if (ficha.resumen case final cuenta?) ...[
             TarjetaCuenta(cuenta: cuenta),
             // 32B·01: agendar la cobranza y registrar la entrega sin salir de la ficha. Con la persona o
-            // el depto de baja (32B·04 y 32B·08) la ficha es de solo lectura y no se ofrecen.
-            if (!soloLectura && lugar != null) ...[
+            // el depto de baja (32B·04 y 32B·08) la ficha es de solo lectura y no se ofrecen. Cada acción
+            // aparece solo si hay algo que hacer (decisión del 30/10, regla R4): «Agendar cobranza» con
+            // saldo y «Registrar entrega» con entregas pendientes; sin ninguna, no hay bloque.
+            if (!soloLectura &&
+                lugar != null &&
+                (cuenta.tieneSaldo || (conEntrega && cuenta.entregasPendientes > 0))) ...[
               const SizedBox(height: 10),
               AccionesRapidasDeLaFicha(
-                conEntrega: conEntrega,
+                conCobranza: cuenta.tieneSaldo,
+                conEntrega: conEntrega && cuenta.entregasPendientes > 0,
                 ocupado: ocupado,
                 alAgendarCobranza: alAgendarCobranza,
                 alRegistrarEntrega: alRegistrarEntrega,

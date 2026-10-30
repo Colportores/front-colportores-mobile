@@ -357,12 +357,18 @@ class AccionesRapidasDeLaFicha extends StatelessWidget {
     super.key,
     required this.alAgendarCobranza,
     required this.alRegistrarEntrega,
+    this.conCobranza = true,
     this.conEntrega = true,
     this.ocupado = false,
   });
 
   final VoidCallback alAgendarCobranza;
   final VoidCallback alRegistrarEntrega;
+
+  /// Hay saldo que cobrar; sin él no se ofrece «+ Agendar cobranza».
+  final bool conCobranza;
+
+  /// Hay entregas pendientes y el caso de uso está disponible; si no, no se ofrece «Registrar entrega».
   final bool conEntrega;
   final bool ocupado;
 
@@ -373,11 +379,12 @@ class AccionesRapidasDeLaFicha extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        _AccionRapida(
-          clave: ClavesFicha.botonAgendarCobranza,
-          texto: TextosFicha.agendarCobranza,
-          alTocar: ocupado ? null : alAgendarCobranza,
-        ),
+        if (conCobranza)
+          _AccionRapida(
+            clave: ClavesFicha.botonAgendarCobranza,
+            texto: TextosFicha.agendarCobranza,
+            alTocar: ocupado ? null : alAgendarCobranza,
+          ),
         if (conEntrega)
           _AccionRapida(
             clave: ClavesFicha.botonRegistrarEntrega,
