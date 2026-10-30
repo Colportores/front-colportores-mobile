@@ -20,13 +20,14 @@ typedef UnionLocal = ({
 
 /// Una ubicación con la cantidad de espacios sin baja que tiene, el color de su fila de
 /// `house_status` (`null` si no tiene: la casa es «Sin visita») y, si está de baja, el motivo con que
-/// se dio de baja (`audit_log` local), para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005,
-/// HU-VIS-005).
+/// se dio de baja (`audit_log` local) y la hora de su próxima entrevista agendada (`null` si no tiene),
+/// para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005, HU-VIS-005, #491).
 typedef UbicacionConEspacios = ({
   UbicacionModel ubicacion,
   int cantidadEspacios,
   ColorHouseStatus? color,
   String? motivoBaja,
+  DateTime? proximaEntrevista,
 });
 
 /// Persistencia local de las ubicaciones y sus espacios.
@@ -42,10 +43,14 @@ abstract interface class UbicacionLocalDataSource {
   /// - Si llega [duplicados] y hay candidatas, no escribe nada y lanza
   ///   [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
+  /// - Si llega [justificacion] (el texto de «Crear igual»), se guarda en el `audit_log` local
+  ///   (`ubicacion_crear_igual`) con el `id` de la ubicación, **en la misma transacción** y solo si
+  ///   la inserta (no si ya estaba ni si frena por duplicados). No va a la cola de sync.
   Future<InsercionUbicacion> insertar(
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   });
 
   /// La ubicación [id] (con baja o sin ella) o `null` si no está.
@@ -73,7 +78,7 @@ abstract interface class UbicacionLocalDataSource {
   ///   `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA`, S17), **dentro de la
   ///   misma transacción** se cuentan los espacios sin baja: con dos o más no escribe nada y lanza
   ///   [UbicacionConEspaciosException]; con exactamente uno, a ese espacio se le quita el
-  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
+  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso` y el resto quedan
   ///   igual) y se encola su `update` con la fila entera, después del de la ubicación. Si ya no
   ///   tenía número, no se escribe ni se encola nada del espacio. Los espacios dados de baja no
   ///   cuentan ni se tocan. Con **ninguno** y con [espacioSiNoTiene] (el caso de uso lo manda al
@@ -86,12 +91,16 @@ abstract interface class UbicacionLocalDataSource {
   /// - Si llega [duplicados] y hay candidatas (que nunca incluyen a la misma ubicación): no
   ///   escribe y lanza [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
+  /// - Si llega [justificacion] («Crear igual» de la edición), se guarda en el `audit_log` local
+  ///   (`ubicacion_crear_igual`) con el `id` de la ubicación y el `updated_at` nuevo, en la misma
+  ///   transacción y solo si escribe. No va a la cola de sync.
   Future<UbicacionModel> actualizar(
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   });
 
   /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con

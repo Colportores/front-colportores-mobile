@@ -27,6 +27,7 @@ import 'package:test/test.dart';
 
 import 'src/core/model.dart';
 import 'src/core/ports.dart';
+import 'src/core/queue.dart';
 
 final _t0 = DateTime.utc(2026, 11, 13, 8);
 
@@ -677,6 +678,98 @@ void runArchiveContract(String nombre, ArchivePort Function() crear) {
       final ids = (await archivo.list()).map((e) => e.id).toSet();
       expect(ids, hasLength(2),
           reason: 'list no puede perder ni repetir entradas');
+    });
+
+    test('exportedAt viaja con la entrada y vuelve en list', () async {
+      final instante = DateTime.utc(2026, 10, 28, 22, 15, 3, 120);
+      final e = await archivo.upload(
+        payload: const [1],
+        parentId: null,
+        watermark: 'w-1',
+        exportedAt: instante,
+      );
+
+      expect(e.exportedAt, instante);
+      expect((await archivo.list()).single.exportedAt, instante,
+          reason: 'el incremental siguiente parte de este instante, no de la '
+              'fecha de subida: sin él se pierden las filas escritas mientras '
+              'subía');
+    });
+
+    test('delete saca la entrada del listado y borrar dos veces no falla',
+        () async {
+      final base = await archivo
+          .upload(payload: const [1], parentId: null, watermark: 'w-1');
+      final otra = await archivo
+          .upload(payload: const [2], parentId: null, watermark: 'w-2');
+
+      await archivo.delete(base.id);
+      await archivo.delete(base.id);
+
+      expect((await archivo.list()).map((e) => e.id), [otra.id]);
+    });
+  });
+}
+
+/// Lo que el motor da por sentado de un [SyncMetaPort] (HU-SYNC-007).
+void runSyncMetaContract(String nombre, SyncMetaPort Function() crear) {
+  group('$nombre · contrato de SyncMetaPort', () {
+    late SyncMetaPort meta;
+    setUp(() => meta = crear());
+
+    test('sin nada anotado, todo es null: «todavía no hubo»', () async {
+      final m = await meta.read();
+
+      expect(m.lastPullAt, isNull);
+      expect(m.lastBackupAt, isNull);
+      expect(m.lastPushAt, isNull);
+      expect(m.lastPushNetwork, isNull);
+    });
+
+    test('lo anotado vuelve igual', () async {
+      await meta.write(
+        lastPullAt: _t0,
+        lastBackupAt: _t0.add(const Duration(hours: 1)),
+        lastPushAt: _t0.add(const Duration(hours: 2)),
+        lastPushNetwork: SyncNetwork.mobile,
+      );
+
+      final m = await meta.read();
+      expect(m.lastPullAt, _t0);
+      expect(m.lastBackupAt, _t0.add(const Duration(hours: 1)));
+      expect(m.lastPushAt, _t0.add(const Duration(hours: 2)));
+      expect(m.lastPushNetwork, SyncNetwork.mobile);
+    });
+
+    test('anotar un campo no borra los demás', () async {
+      await meta.write(lastPullAt: _t0, lastBackupAt: _t0);
+      await meta.write(lastPullAt: _t0.add(const Duration(minutes: 5)));
+
+      final m = await meta.read();
+      expect(m.lastPullAt, _t0.add(const Duration(minutes: 5)));
+      expect(m.lastBackupAt, _t0,
+          reason: 'un campo null es «no lo toques», nunca «borralo»');
+    });
+
+    test('un envío más viejo que el anotado no lo pisa', () async {
+      final nuevo = _t0.add(const Duration(hours: 1));
+      await meta.write(lastPushAt: nuevo, lastPushNetwork: SyncNetwork.wifi);
+      await meta.write(lastPushAt: _t0, lastPushNetwork: SyncNetwork.mobile);
+
+      final m = await meta.read();
+      expect(m.lastPushAt, nuevo);
+      expect(m.lastPushNetwork, SyncNetwork.wifi,
+          reason: 'la red es la del envío más nuevo');
+    });
+
+    test('un envío nuevo sin red conocida borra la red del anterior', () async {
+      await meta.write(lastPushAt: _t0, lastPushNetwork: SyncNetwork.mobile);
+      await meta.write(lastPushAt: _t0.add(const Duration(minutes: 1)));
+
+      final m = await meta.read();
+      expect(m.lastPushAt, _t0.add(const Duration(minutes: 1)));
+      expect(m.lastPushNetwork, isNull,
+          reason: 'decir «por datos» de un envío que salió por otra red miente');
     });
   });
 }

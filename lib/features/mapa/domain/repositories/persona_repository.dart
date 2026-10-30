@@ -51,4 +51,26 @@ abstract interface class PersonaRepository {
     required String? telefono,
     required DateTime ahora,
   });
+
+  /// Las personas **dadas de baja** de [espacioId] (su vínculo sigue activo), la baja más reciente
+  /// primero; se actualiza sola. Es la lista de «Ver bajas» (32D·04). Un error de lectura sale por el
+  /// `Stream`.
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId);
+
+  /// Da de baja a [personaId] (`deleted_at = ahora`, soft delete, HU-UBI-011) y deja el evento
+  /// `persona_baja` en la auditoría local, con el [motivo] si lo hay, **todo o nada**. No se borra
+  /// nada: el historial y las notas quedan. Si ya estaba de baja no escribe nada y devuelve la que
+  /// estaba (idempotente ante doble toque). Es local: no se encola nada al sync.
+  ///
+  /// La persona tiene que estar y tener un espacio activo (si no, es de solo lectura):
+  /// `FailureValidacion` con el campo `persona`.
+  Future<Either<Failure, Persona>> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  });
+
+  /// Deshace [darDeBaja]: `deleted_at = null`. Si no estaba de baja no escribe nada. Mismas condiciones
+  /// que la baja (`FailureValidacion`, campo `persona`).
+  Future<Either<Failure, Persona>> reactivar({required String personaId, required DateTime ahora});
 }

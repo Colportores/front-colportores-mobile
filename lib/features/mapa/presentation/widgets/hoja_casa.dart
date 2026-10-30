@@ -3,18 +3,28 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
+    show frenaPorCuentaRestringida;
 import '../../domain/entities/contexto_de_la_casa.dart';
+import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_hoja_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
+import '../pages/alta_persona_page.dart';
 import '../providers/hoja_casa_providers.dart';
+import '../textos_personas.dart' show TextosPersonas;
+import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
+import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
+import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import 'piezas_hoja_casa.dart';
 import 'piezas_lista_ubicaciones.dart' show ColoresLista;
 import 'piezas_mapa_ubicaciones.dart' show ClavesMapaUbicaciones;
+import 'visitas_agendadas_de_la_casa.dart';
 
 /// La hoja de la casa (vista 39, C·01 «Tocar una casa: resumen»): la dirección, una línea con el tipo,
 /// el estado y la distancia, la persona de la casa, la nota más reciente del lugar y un solo botón,
@@ -31,6 +41,27 @@ import 'piezas_mapa_ubicaciones.dart' show ClavesMapaUbicaciones;
 /// - **E·05** si el colportor está a 100 m o más ([CercaniaDeLaCasa]): un aviso informativo; no frena
 ///   ni pide confirmar.
 ///
+/// **Hoja arriba** ([arriba], C·02): con la hoja subida a la mitad, en vez del resumen se ve
+/// «Registrar visita» arriba, las pestañas Personas, Historial y Notas, y el contenido de la elegida.
+/// Personas lista a todas las personas del lugar con «+ Agregar persona» (abre el alta corta, 32A, con
+/// el espacio puesto) y, si [fichaDePersonaDesdeLaCasaProvider] tiene destino, tocar una abre su
+/// ficha (32B); al volver la hoja sigue donde estaba. Historial y Notas llegan con sus issues (#446 y
+/// #447) por [pestanaHistorialDeLaCasaProvider] y [pestanaNotasDeLaCasaProvider]: mientras no estén,
+/// la pestaña no se ofrece. En un edificio sin depto elegido no hay espacio ni personas: se ve el
+/// resumen.
+///
+/// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —lo mismo en la hoja
+/// arriba, antes de las pestañas— va la lista de las visitas `PROGRAMADA` de la casa
+/// ([VisitasAgendadasDeLaCasa]); si no se puede leer, el aviso con «Reintentar»
+/// ([AvisoErrorVisitasAgendadas]) va arriba de la persona, bajo el subtítulo;
+/// tocar una abre su detalle. Debajo de «Registrar visita», «+ Agendar»
+/// ([programarEntrevistaDesdeLaCasaProvider]): abre «Agendar visita» con la casa y su espacio ya
+/// puestos y pregunta con quién es la cita como «Programar entrevista» (una persona, va con ella;
+/// varias, el selector de R·02; ninguna, «Sin persona»). En un edificio sin depto elegido se dibuja y,
+/// al tocarlo, avisa que el depto se elige antes (decisiones del 29/10, #491). Sin destino no se
+/// dibuja. Con la casa de baja no hay ni lista ni «+ Agendar» (la agenda de una casa de baja está
+/// oculta).
+///
 /// Los dos botones dependen de pantallas que se enganchan por [registrarVisitaDesdeLaCasaProvider] y
 /// [cobrarDesdeLaCasaProvider]: sin destino no se dibujan (HU-UBI-003: «los botones no se muestran
 /// mientras no tengan a dónde llevar»).
@@ -45,6 +76,8 @@ class HojaCasa extends ConsumerStatefulWidget {
     required this.ahora,
     required this.alCerrar,
     this.alReactivar,
+    this.arriba = false,
+    this.colportorId,
   });
 
   final ItemListaUbicacion item;
@@ -56,6 +89,13 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// «Reactivar» de E·04; `null` = el aviso va sin acción (la baja por unión de duplicados no se
   /// reactiva, HU-UBI-005).
   final FutureOr<void> Function()? alReactivar;
+
+  /// La hoja está subida (a la mitad): se ve el contenido con pestañas (C·02) y no el resumen (C·01).
+  final bool arriba;
+
+  /// UUID del colportor con la sesión iniciada (`created_by` de las altas). Sin él no se ofrece
+  /// «+ Agregar persona».
+  final String? colportorId;
 
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
@@ -69,10 +109,22 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
   /// Qué falló en la última acción, para decirlo en la hoja; `null` si nada falló.
   String? _falla;
 
+  /// La pestaña elegida de la hoja arriba.
+  PestanaHojaCasa _pestana = PestanaHojaCasa.personas;
+
+  /// «Guardamos a Jorge en este teléfono.» después de un alta (32A·05); `null` si no hay.
+  String? _guardada;
+
+  /// Para llevar a la vista el aviso de una falla si la hoja estaba desplazada.
+  final _claveFalla = GlobalKey();
+
   Future<void> _correr(FutureOr<void> Function() accion, String textoSiFalla) async {
     if (_enCurso) return;
     _enCurso = true;
-    setState(() => _falla = null);
+    setState(() {
+      _falla = null;
+      _guardada = null;
+    });
     try {
       await accion();
     } on Object {
@@ -80,8 +132,20 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       if (mounted) _falla = textoSiFalla;
     } finally {
       _enCurso = false;
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        if (_falla != null) _mostrarLaFalla();
+      }
     }
+  }
+
+  /// La hoja se desplaza: si el aviso de la falla quedó fuera de la vista, se lo trae.
+  void _mostrarLaFalla() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveFalla.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(Scrollable.ensureVisible(contexto, duration: const Duration(milliseconds: 150)));
+    });
   }
 
   @override
@@ -93,15 +157,41 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
     final cuerpo = contexto.when(
       skipLoadingOnReload: true,
       skipError: true,
-      data: (datos) => _Resumen(
-        item: item,
-        contexto: datos,
-        ocupado: _enCurso,
-        falla: _falla,
-        alReactivar: widget.alReactivar,
-        alRegistrarVisita: _registrarVisita(datos),
-        alCobrar: _cobrar(datos),
-      ),
+      data: (datos) => widget.arriba && datos.espacioId != null
+          ? _Arriba(
+              item: item,
+              contexto: datos,
+              ocupado: _enCurso,
+              falla: _falla,
+              claveFalla: _claveFalla,
+              guardada: _guardada,
+              pestana: _pestana,
+              colportorId: widget.colportorId,
+              alReactivar: widget.alReactivar,
+              ahora: widget.ahora,
+              alRegistrarVisita: _registrarVisita(datos),
+              alAgendar: _agendar(datos),
+              alCobrar: _cobrar(datos),
+              alAbrirFicha: _abrirFicha(datos),
+              alAgregarPersona: _agregarPersona(datos),
+              alElegirPestana: (pestana) => setState(() {
+                _pestana = pestana;
+                _guardada = null;
+              }),
+            )
+          : _Resumen(
+              item: item,
+              contexto: datos,
+              ocupado: _enCurso,
+              falla: _falla,
+              claveFalla: _claveFalla,
+              alReactivar: widget.alReactivar,
+              ahora: widget.ahora,
+              colportorId: widget.colportorId,
+              alRegistrarVisita: _registrarVisita(datos),
+              alAgendar: _agendar(datos),
+              alCobrar: _cobrar(datos),
+            ),
       error: (_, _) => AvisoHojaCasa.errorAlLeer(
         alReintentar: () => ref.invalidate(contextoDeLaCasaProvider(clave)),
       ),
@@ -148,10 +238,80 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       final resuelta = await destino((
         ubicacionId: widget.item.ubicacion.id,
         espacioId: contexto.espacioId,
+        agendaId: null,
       ));
       // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa muestra el color nuevo.
       if (resuelta == true && mounted) widget.alCerrar();
     }, TextosHojaCasa.noPudimosAbrirVisita);
+  }
+
+  /// Lo que hace «+ Agendar», o `null` si no se ofrece: sin destino enganchado, con la casa de baja o
+  /// sin saber quién es el colportor. Abre «Agendar visita» con la casa y su espacio ya puestos y, como
+  /// «Programar entrevista» de «¿Qué pasó?», pregunta con quién es la cita (`mostrarHojaConQuienParaProgramar`):
+  /// con **una** sola persona va con ella; con **varias**, el selector de R·02; sin personas, queda
+  /// «Sin persona». En un edificio sin depto elegido (todavía no hay espacio) el botón se ve y, al
+  /// tocarlo, avisa que el depto se elige antes, como «Registrar visita» (decisiones del 29/10, #491).
+  VoidCallback? _agendar(ContextoDeLaCasa contexto) {
+    final destino = ref.watch(programarEntrevistaDesdeLaCasaProvider);
+    final colportorId = widget.colportorId;
+    if (destino == null || widget.item.esBaja || colportorId == null) return null;
+    return () => _correr(() async {
+      final espacioId = contexto.espacioId;
+      if (espacioId == null) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDepto)));
+        return;
+      }
+      final eleccion = await mostrarHojaConQuienParaProgramar(
+        context,
+        espacioId: espacioId,
+        colportorId: colportorId,
+      );
+      if (eleccion == null || !mounted) return;
+      await destino((
+        ubicacionId: widget.item.ubicacion.id,
+        espacioId: espacioId,
+        espacioPersonaId: eleccion.espacioPersonaId,
+        personaId: switch (eleccion) {
+          CitaConPersona(:final persona) => persona.personaId,
+          CitaSinPersona() => null,
+        },
+      ));
+    }, TextosAgenda.noPudimosAbrir);
+  }
+
+  /// Lo que hace tocar a la persona [personaId] (abrir su ficha, 32B), o `null` si no se ofrece: sin
+  /// destino enganchado la fila no se toca. Se puede abrir con la casa dada de baja (es solo ver).
+  VoidCallback? Function(String personaId) _abrirFicha(ContextoDeLaCasa contexto) {
+    final destino = ref.watch(fichaDePersonaDesdeLaCasaProvider);
+    final espacioId = contexto.espacioId;
+    return (personaId) {
+      if (destino == null || espacioId == null) return null;
+      return () => _correr(
+        () => destino((personaId: personaId, espacioId: espacioId)),
+        TextosPestanasHojaCasa.noPudimosAbrirFicha,
+      );
+    };
+  }
+
+  /// Lo que hace «+ Agregar persona»: abre el alta corta (32A) con el espacio puesto; al volver con una
+  /// persona nueva la pestaña lo dice (32A·05). `null` si no se ofrece: la casa está dada de baja, no
+  /// hay espacio o no se sabe quién es el colportor.
+  VoidCallback? _agregarPersona(ContextoDeLaCasa contexto) {
+    final espacioId = contexto.espacioId;
+    final colportorId = widget.colportorId;
+    if (espacioId == null || colportorId == null || widget.item.esBaja) return null;
+    return () => _correr(() async {
+      // Con la cuenta restringida mientras la hoja estaba abierta no se da de alta a nadie.
+      if (frenaPorCuentaRestringida(context, ref)) return;
+      final nueva = await AltaPersonaPage.abrir(
+        context,
+        espacioId: espacioId,
+        colportorId: colportorId,
+      );
+      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.nombre);
+    }, TextosPestanasHojaCasa.noPudimosAbrirAlta);
   }
 
   /// Lo que hace «$ Cobrar» de la persona [personaId], o `null` si no se ofrece.
@@ -249,8 +409,12 @@ class _Resumen extends StatelessWidget {
     required this.contexto,
     required this.ocupado,
     required this.falla,
+    required this.claveFalla,
     required this.alReactivar,
+    required this.ahora,
+    required this.colportorId,
     required this.alRegistrarVisita,
+    required this.alAgendar,
     required this.alCobrar,
   });
 
@@ -258,8 +422,12 @@ class _Resumen extends StatelessWidget {
   final ContextoDeLaCasa contexto;
   final bool ocupado;
   final String? falla;
+  final GlobalKey claveFalla;
   final FutureOr<void> Function()? alReactivar;
+  final DateTime ahora;
+  final String? colportorId;
   final VoidCallback? alRegistrarVisita;
+  final VoidCallback? alAgendar;
   final VoidCallback? Function(String personaId) alCobrar;
 
   @override
@@ -275,6 +443,8 @@ class _Resumen extends StatelessWidget {
       children: [
         if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
         if (persona != null)
           FilaPersonaDeLaCasa(
             persona: persona.persona,
@@ -283,9 +453,128 @@ class _Resumen extends StatelessWidget {
             ocupada: ocupado,
           ),
         if (nota != null) FilaNotaDelLugar(nota: nota),
-        if (falla != null) AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: falla!),
+        if (colportorId != null && !item.esBaja)
+          VisitasAgendadasDeLaCasa(
+            colportorId: colportorId!,
+            ubicacionId: item.ubicacion.id,
+            ahora: ahora,
+          ),
+        if (falla != null)
+          AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
         if (alRegistrarVisita != null)
           BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
+      ],
+    );
+  }
+}
+
+/// La hoja subida (C·02): los avisos que correspondan, «Registrar visita», las pestañas y el contenido
+/// de la elegida.
+class _Arriba extends ConsumerWidget {
+  const _Arriba({
+    required this.item,
+    required this.contexto,
+    required this.ocupado,
+    required this.falla,
+    required this.claveFalla,
+    required this.guardada,
+    required this.pestana,
+    required this.colportorId,
+    required this.alReactivar,
+    required this.ahora,
+    required this.alRegistrarVisita,
+    required this.alAgendar,
+    required this.alCobrar,
+    required this.alAbrirFicha,
+    required this.alAgregarPersona,
+    required this.alElegirPestana,
+  });
+
+  final ItemListaUbicacion item;
+  final ContextoDeLaCasa contexto;
+  final bool ocupado;
+  final String? falla;
+  final GlobalKey claveFalla;
+  final String? guardada;
+  final PestanaHojaCasa pestana;
+  final String? colportorId;
+  final FutureOr<void> Function()? alReactivar;
+  final DateTime ahora;
+  final VoidCallback? alRegistrarVisita;
+  final VoidCallback? alAgendar;
+  final VoidCallback? Function(String personaId) alCobrar;
+  final VoidCallback? Function(String personaId) alAbrirFicha;
+  final VoidCallback? alAgregarPersona;
+  final ValueChanged<PestanaHojaCasa> alElegirPestana;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final distancia = item.distanciaMetros;
+    final lejos = !item.esBaja && CercaniaDeLaCasa.estaLejos(distancia);
+    final historial = ref.watch(pestanaHistorialDeLaCasaProvider);
+    final notas = ref.watch(pestanaNotasDeLaCasaProvider);
+    final disponibles = [
+      PestanaHojaCasa.personas,
+      if (historial != null) PestanaHojaCasa.historial,
+      if (notas != null) PestanaHojaCasa.notas,
+    ];
+    final elegida = disponibles.contains(pestana) ? pestana : PestanaHojaCasa.personas;
+    final espacioId = contexto.espacioId!;
+    final paraLaPestana = (
+      ubicacionId: item.ubicacion.id,
+      espacioId: espacioId,
+      colportorId: colportorId,
+      esBaja: item.esBaja,
+    );
+    final nota = contexto.nota;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      spacing: 10,
+      children: [
+        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
+        if (falla != null)
+          AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
+        // El mismo orden que el resumen (23B·10): la lista, «Registrar visita» y «+ Agendar».
+        if (colportorId != null && !item.esBaja)
+          VisitasAgendadasDeLaCasa(
+            colportorId: colportorId!,
+            ubicacionId: item.ubicacion.id,
+            ahora: ahora,
+          ),
+        if (alRegistrarVisita != null)
+          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
+        PestanasDeLaHoja(pestanas: disponibles, elegida: elegida, alElegir: alElegirPestana),
+        switch (elegida) {
+          PestanaHojaCasa.personas => PestanaPersonasDeLaCasa(
+            filas: [
+              for (final p in contexto.personas)
+                (
+                  persona: p,
+                  saldoCentavos: contexto.saldoDe(p.persona.id),
+                  detalle: switch (contexto.ultimaEntrevistaDe[p.persona.id]) {
+                    final fecha? => TextosPestanasHojaCasa.entrevistaDada(fecha),
+                    null => null,
+                  },
+                  alCobrar: alCobrar(p.persona.id),
+                  alAbrir: alAbrirFicha(p.persona.id),
+                ),
+            ],
+            alAgregar: alAgregarPersona,
+            ocupada: ocupado,
+            guardada: guardada,
+          ),
+          PestanaHojaCasa.historial => historial!(context, paraLaPestana),
+          PestanaHojaCasa.notas => notas!(context, paraLaPestana),
+        },
+        // Hasta que llegue la pestaña Notas (#447) la nota más reciente del lugar sigue a la vista, como
+        // en el resumen: subir la hoja no puede esconder lo que ya se veía.
+        if (notas == null && nota != null) FilaNotaDelLugar(nota: nota),
       ],
     );
   }

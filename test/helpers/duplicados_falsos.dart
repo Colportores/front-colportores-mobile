@@ -256,6 +256,7 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override

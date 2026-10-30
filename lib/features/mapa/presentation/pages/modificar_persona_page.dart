@@ -73,22 +73,29 @@ final class DarDeBajaYCrearNuevaElegido extends ResultadoEdicionPersona {
 /// [PersonaEditada], [abrir] muestra «Cambios guardados en tu teléfono.» (C·04) en la pantalla que la
 /// abrió.
 class ModificarPersonaPage extends ConsumerWidget {
-  const ModificarPersonaPage({super.key, required this.personaId});
+  const ModificarPersonaPage({super.key, required this.personaId, required this.colportorId});
 
   /// La persona que se edita.
   final String personaId;
+
+  /// UUID del usuario con la sesión iniciada: la preferencia de «No volver a mostrar» del aviso de
+  /// privacidad es de su cuenta (#445).
+  final String colportorId;
 
   /// Abre la edición encima de la pantalla actual.
   static Future<ResultadoEdicionPersona?> abrir(
     BuildContext context, {
     required String personaId,
+    required String colportorId,
   }) async {
     // Se leen antes de esperar: cuando la edición se cierre, `context` puede ya no ser el mismo.
     final mensajero = ScaffoldMessenger.of(context);
     final mediaQuery = MediaQuery.of(context);
     mensajero.hideCurrentSnackBar();
     final resultado = await Navigator.of(context).push<ResultadoEdicionPersona>(
-      MaterialPageRoute(builder: (_) => ModificarPersonaPage(personaId: personaId)),
+      MaterialPageRoute(
+        builder: (_) => ModificarPersonaPage(personaId: personaId, colportorId: colportorId),
+      ),
     );
     if (resultado is PersonaEditada && mensajero.mounted) {
       mostrarAvisoDeNota(mensajero, mediaQuery: mediaQuery, texto: TextosPersonas.cambiosGuardados);
@@ -132,7 +139,7 @@ class ModificarPersonaPage extends ConsumerWidget {
             ),
           );
         }
-        return _Formulario(contexto: contexto);
+        return _Formulario(contexto: contexto, colportorId: colportorId);
       },
     );
   }
@@ -296,9 +303,10 @@ class _Aviso extends StatelessWidget {
 }
 
 class _Formulario extends ConsumerStatefulWidget {
-  const _Formulario({required this.contexto});
+  const _Formulario({required this.contexto, required this.colportorId});
 
   final ContextoEdicionPersona contexto;
+  final String colportorId;
 
   @override
   ConsumerState<_Formulario> createState() => _FormularioState();
@@ -550,7 +558,7 @@ class _FormularioState extends ConsumerState<_Formulario> {
                     children: [
                       _Titulo(donde: donde),
                       const SizedBox(height: 16),
-                      const AvisoPrivacidadPersona(),
+                      AvisoPrivacidadPersona(colportorId: widget.colportorId),
                       const SizedBox(height: 20),
                       CampoPersona(
                         etiqueta: TextosPersonas.etiquetaNombre,

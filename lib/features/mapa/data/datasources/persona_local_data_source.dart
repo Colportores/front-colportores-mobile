@@ -45,6 +45,21 @@ abstract interface class PersonaLocalDataSource {
     required String? telefono,
     required DateTime ahora,
   });
+
+  /// Las personas dadas de baja de [espacioId] (persona con `deleted_at`, vínculo sin baja), la baja
+  /// más reciente primero.
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId);
+
+  /// Da de baja a [personaId] (`deleted_at` y `updated_at` en [ahora], que no retrocede) y deja el
+  /// evento `persona_baja` en el `audit_log` local con el [motivo], en **una** transacción. No se
+  /// encola nada: la persona es local. Si ya estaba de baja no escribe y la devuelve.
+  ///
+  /// Lanza [PersonaRechazadaException] si la persona no está o ninguno de sus vínculos sigue activo
+  /// con un espacio y una ubicación activos (solo lectura).
+  Future<Persona> darDeBaja({required String personaId, required DateTime ahora, String? motivo});
+
+  /// Deshace [darDeBaja]. Mismas condiciones; si no estaba de baja no escribe y la devuelve.
+  Future<Persona> reactivar({required String personaId, required DateTime ahora});
 }
 
 /// La persistencia rechazó la operación por [motivo]; el repositorio la traduce a un `Failure`.

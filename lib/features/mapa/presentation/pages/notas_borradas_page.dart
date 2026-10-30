@@ -99,6 +99,7 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
 
     final encabezado = EncabezadoNotas(
       titulo: datos == null ? TextosNotas.tituloGenerico : TextosNotas.titulo(datos.nombre),
+      colportorId: widget.colportorId,
     );
     final Widget cuerpo;
     if (contexto.hasError || notas.hasError) {

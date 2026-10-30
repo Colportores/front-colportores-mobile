@@ -35,11 +35,17 @@ abstract interface class UbicacionRepository {
   /// [origen] es el `coords_source` de HU-UBI-001 ("para auditoría"). La tabla `ubicacion` no
   /// tiene esa columna —ni local ni en el cloud—, así que hoy queda en el log del alta. Dónde se
   /// guarda está para decidir en #192.
+  ///
+  /// [justificacion] es el texto de «Crear igual»: se guarda en la auditoría local (`audit_log`,
+  /// evento `ubicacion_crear_igual`, R-UB09) con el `id` de la ubicación, en la misma transacción que
+  /// el alta y solo si el alta se escribe. Nunca va a la cola de sync, a una columna ni a los logs
+  /// (decisión de Cristian, 06/10, «Justificar»).
   Future<Either<Failure, ResultadoAltaUbicacion>> registrar(
     Ubicacion ubicacion, {
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   });
 
   /// La ubicación [id], **con baja o sin ella**, o `null` si no está en el teléfono.
@@ -87,12 +93,16 @@ abstract interface class UbicacionRepository {
   /// decisión de Cristian 21/10): si al contar dentro de la transacción no hay ningún espacio
   /// activo, se inserta y se encola su `insert` junto al `update` de la ubicación; con alguno, no
   /// se crea otro.
+  ///
+  /// [justificacion] es el texto del «Crear igual» de la edición: va a la auditoría local como en
+  /// [registrar], con el `id` de [nueva], y solo si la edición se escribe.
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     Espacio? espacioSiNoTiene,
+    String? justificacion,
   });
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación
@@ -129,7 +139,9 @@ abstract interface class UbicacionRepository {
   /// [conservadaId] los espacios de [duplicadaId] (los únicos se funden en el de la conservada), la
   /// conservada pasa a edificio si es una casa y queda con más de un espacio, la duplicada queda de
   /// baja con el motivo `duplicado_de_<conservadaId>` en la auditoría local y se encola el trabajo
-  /// «marcar como duplicado». Ver `UnirDuplicadosUseCase`.
+  /// «marcar como duplicado». Lo que colgaba de un espacio fundido (personas, visitas, agendas) pasa
+  /// al único de la conservada, y el `house_status` de las dos se recalcula en la misma transacción.
+  /// Ver `UnirDuplicadosUseCase`.
   ///
   /// - [conservadaId] no existe, o [duplicadaId] no existe: `Left(FailureUbicacionInexistente)`.
   /// - [conservadaId] de baja: `Left(FailureConservadaDeBaja)`; no cambia nada.

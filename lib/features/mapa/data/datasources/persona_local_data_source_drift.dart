@@ -149,6 +149,97 @@ final class PersonaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       (select(personas)..where((p) => p.id.equals(id))).getSingleOrNull();
 
   @override
+  Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) {
+    final consulta =
+        select(
+            espacioPersonas,
+          ).join([innerJoin(personas, personas.id.equalsExp(espacioPersonas.personaId))])
+          ..where(
+            espacioPersonas.espacioId.equals(espacioId) &
+                espacioPersonas.deletedAt.isNull() &
+                personas.deletedAt.isNotNull(),
+          )
+          ..orderBy([OrderingTerm.desc(personas.deletedAt), OrderingTerm.asc(personas.id)]);
+    return consulta.watch().map(
+      (filas) => [
+        for (final fila in filas)
+          PersonaDelEspacio(
+            persona: _aPersona(fila.readTable(personas)),
+            vinculo: _aVinculo(fila.readTable(espacioPersonas)),
+          ),
+      ],
+    );
+  }
+
+  /// Una sola transacción: Drift no corre dos a la vez, así que dos toques seguidos se serializan y el
+  /// segundo ya ve la baja del primero (devuelve la persona sin escribir, ni una segunda fila de
+  /// auditoría).
+  @override
+  Future<Persona> darDeBaja({
+    required String personaId,
+    required DateTime ahora,
+    String? motivo,
+  }) => transaction(() async {
+    final fila = await _filaPersona(personaId);
+    if (fila.deletedAt != null) return _aPersona(fila);
+    await _exigirEscribible(fila);
+    final cuando = _instante(fila, ahora);
+    await (update(personas)..where((p) => p.id.equals(personaId))).write(
+      PersonasCompanion(updatedAt: Value(cuando), deletedAt: Value(cuando)),
+    );
+    // La auditoría local (R-UB09): el evento va siempre; el motivo, solo si lo hay. `creado_en` es el
+    // mismo instante que `deleted_at`. Sin sync: no sale del teléfono.
+    final db = attachedDatabase;
+    await db
+        .into(db.auditLogLocal)
+        .insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.personaBaja,
+            uuid: personaId,
+            motivo: Value(motivo),
+            creadoEn: cuando,
+          ),
+        );
+    return _aPersona(await _filaPersona(personaId));
+  });
+
+  @override
+  Future<Persona> reactivar({required String personaId, required DateTime ahora}) =>
+      transaction(() async {
+        final fila = await _filaPersona(personaId);
+        if (fila.deletedAt == null) return _aPersona(fila);
+        await _exigirEscribible(fila);
+        await (update(personas)..where((p) => p.id.equals(personaId))).write(
+          PersonasCompanion(updatedAt: Value(_instante(fila, ahora)), deletedAt: const Value(null)),
+        );
+        return _aPersona(await _filaPersona(personaId));
+      });
+
+  Future<PersonaFila> _filaPersona(String id) async =>
+      await (select(personas)..where((p) => p.id.equals(id))).getSingleOrNull() ??
+      (throw const PersonaRechazadaException(_Motivo.personaInexistente));
+
+  /// El reloj no retrocede: un `updated_at` nunca queda antes del que ya tenía la fila.
+  static DateTime _instante(PersonaFila fila, DateTime ahora) =>
+      ahora.isBefore(fila.updatedAt) ? fila.updatedAt : ahora;
+
+  /// La baja y la reactivación son escrituras: la persona tiene que tener al menos un vínculo activo
+  /// con un espacio y una ubicación activos; si no, es de solo lectura (32B·08). Si la ubicación no
+  /// está en el teléfono (el pull no garantiza el orden) no se la cuenta como de baja: ante una fila
+  /// que falta no se inventa un motivo para frenar.
+  Future<void> _exigirEscribible(PersonaFila persona) async {
+    final consulta = select(espacioPersonas).join([
+      innerJoin(espacios, espacios.id.equalsExp(espacioPersonas.espacioId)),
+      leftOuterJoin(ubicaciones, ubicaciones.id.equalsExp(espacios.ubicacionId)),
+    ])..where(espacioPersonas.personaId.equals(persona.id) & espacioPersonas.deletedAt.isNull());
+    for (final fila in await consulta.get()) {
+      final ubicacion = fila.readTableOrNull(ubicaciones);
+      if (fila.readTable(espacios).deletedAt == null && ubicacion?.deletedAt == null) return;
+    }
+    throw const PersonaRechazadaException(_Motivo.personaSoloLectura);
+  }
+
+  @override
   Future<int> activasEn(String espacioId) async {
     final cantidad = personas.id.count();
     final consulta =

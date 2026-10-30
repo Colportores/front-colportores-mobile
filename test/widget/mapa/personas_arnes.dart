@@ -147,7 +147,11 @@ Future<ResultadoEdicion> montarEdicion(
             body: Center(
               child: TextButton(
                 onPressed: () async {
-                  final r = await ModificarPersonaPage.abrir(context, personaId: 'per-1');
+                  final r = await ModificarPersonaPage.abrir(
+                    context,
+                    personaId: 'per-1',
+                    colportorId: 'col-1',
+                  );
                   resultado
                     ..resultado = r
                     ..cierres += 1;

@@ -23,6 +23,11 @@ import 'piezas_persona.dart';
 /// Cuánto se espera la lectura previa de las personas antes de mostrar la hoja «cargando».
 const _esperaPrevia = Duration(milliseconds: 250);
 
+/// Los pasos «¿Con quién?» que están leyendo las personas antes de abrirse (por espacio y modo): un
+/// segundo toque en el disparador durante la lectura no abre una segunda hoja. Se suelta apenas termina
+/// la lectura, antes de mostrar la hoja (que ya tapa la pantalla): nunca queda trabado.
+final _leyendoPrevias = <String>{};
+
 /// Abre el paso «¿Con quién?» de la vista 39 para el espacio [espacioId] (la casa o el depto que se
 /// visita) y devuelve con quién es la entrevista, o `null` si la colportora tocó «Volver» o cerró sin
 /// elegir (HU-VIS-005, HU-UBI-008; artboards R·04 y C·07). Es el paso que sigue a «Entrevista dada».
@@ -76,6 +81,10 @@ Future<Object?> _abrir(
   required String colportorId,
   required bool paraProgramar,
 }) async {
+  // Un segundo toque mientras la primera lectura no terminó no abre otro paso: devuelve `null`, como
+  // si no se hubiera elegido nada (el primero es el que sigue el flujo).
+  final lectura = '$espacioId|$paraProgramar';
+  if (!_leyendoPrevias.add(lectura)) return null;
   // La lectura previa evita que, con una sola persona, la hoja se abra para cerrarse enseguida.
   try {
     final repo = ProviderScope.containerOf(context, listen: false).read(personaRepositoryProvider);
@@ -87,6 +96,8 @@ Future<Object?> _abrir(
     if (paso is SinPersonas && paraProgramar) return const CitaSinPersona();
   } on Object {
     // Sin lectura a tiempo o con una falla: la hoja lo muestra («cargando» o el aviso con «Reintentar»).
+  } finally {
+    _leyendoPrevias.remove(lectura);
   }
   if (!context.mounted) return null;
   return showModalBottomSheet<Object>(
@@ -360,7 +371,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
             ayuda: TextosConQuien.ayudaSinPersonas(donde),
           ),
           const SizedBox(height: 16),
-          const AvisoPrivacidadPersona(),
+          AvisoPrivacidadPersona(colportorId: widget.colportorId),
           const SizedBox(height: 16),
           CampoPersona(
             etiqueta: TextosPersonas.etiquetaNombre,

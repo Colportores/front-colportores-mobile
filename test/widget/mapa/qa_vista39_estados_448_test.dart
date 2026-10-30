@@ -426,20 +426,15 @@ void main() {
       );
     });
 
-    test(
-      'E·05: la distancia en la frontera del kilómetro nunca dice «1000 m»',
-      () {
-        for (final m in [999.4, 999.5, 999.9, 1000.0, 1049.0, 1050.0]) {
-          expect(
-            TextosEstadosHojaCasa.lejos(m),
-            isNot(contains('1000')),
-            reason: 'a $m m dice «${TextosEstadosHojaCasa.lejos(m)}»',
-          );
-        }
-      },
-      skip:
-          true, // skip: QA #448 — 999,5 a 999,99 m se redondea a «1000 m» en vez de «1,0 km» (FormatoUbicaciones.distancia).
-    );
+    test('E·05: la distancia en la frontera del kilómetro nunca dice «1000 m»', () {
+      for (final m in [999.4, 999.5, 999.9, 1000.0, 1049.0, 1050.0]) {
+        expect(
+          TextosEstadosHojaCasa.lejos(m),
+          isNot(contains('1000')),
+          reason: 'a $m m dice «${TextosEstadosHojaCasa.lejos(m)}»',
+        );
+      }
+    });
 
     test('E·05: las distancias de siempre', () {
       const nbsp = FormatoUbicaciones.espacioDuro;

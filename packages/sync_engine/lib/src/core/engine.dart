@@ -77,6 +77,7 @@ class SyncEngine {
     ConnectivityPort? connectivity,
     RealtimePort? realtime,
     BackupService? backup,
+    SyncMetaPort? meta,
     DateTime Function()? clock,
     UuidV7? uuid,
     this.batchLimit = 500,
@@ -87,6 +88,7 @@ class SyncEngine {
        _uuid = uuid ?? UuidV7(),
        _adapters = {for (final a in adapters) a.remoteName: a},
        _backup = backup,
+       _meta = meta,
        _connectivity = connectivity,
        _realtimePort = realtime,
        _transport = transport,
@@ -106,8 +108,12 @@ class SyncEngine {
     // HU-SYNC-007: la fecha del último backup sale del propio servicio.
     _backup?.alTerminarUnBackup = (entrada) async {
       _ultimoBackup = entrada.createdAt;
+      await _anotarMeta(lastBackupAt: entrada.createdAt);
       await _emit();
     };
+    // El backup guarda el watermark de pull de la DB (§7 fase 3): la app llama
+    // a `backup.backupNow()` sin saber qué es.
+    _backup?.watermarkProvider = () => _store.watermarkOf(_scopeMirror);
     resubscribe();
   }
 
@@ -119,6 +125,7 @@ class SyncEngine {
   final UuidV7 _uuid;
   final Map<String, SyncTableAdapter<Object?>> _adapters;
   final BackupService? _backup;
+  final SyncMetaPort? _meta;
   final ConnectivityPort? _connectivity;
   final DateTime Function() _clock;
 
@@ -207,6 +214,7 @@ class SyncEngine {
   bool _dataSaver = false;
   DateTime? _lastSuccessAt;
   DateTime? _ultimoPush;
+  SyncNetwork? _ultimaRed;
   DateTime? _ultimoPull;
   DateTime? _ultimoBackup;
 
@@ -392,11 +400,51 @@ class SyncEngine {
     if (destino.state != JobState.pending || destino.job.op == Op.delete) {
       return null;
     }
-    await _jobs.replacePayload(destino.id, {
-      ...destino.job.payload,
-      ...job.payload,
-    });
+    final fundido = {...destino.job.payload, ...job.payload};
+    await _jobs.replacePayload(destino.id, fundido);
+    await _pasarDetrasDeLoQueNombra(destino, fundido, job.createdAt);
     return destino.id;
+  }
+
+  /// El payload fundido de [destino] puede nombrar una fila cuyo alta se
+  /// encoló **después** de él: la agenda que se agenda y más tarde se cumple
+  /// con una visita funde el cumplimiento en su alta, y ahora lleva `visita_id`
+  /// aunque el alta de la visita viaje detrás. El servidor aplica el lote en
+  /// orden y comprueba cada FK en el momento (`23503`): la agenda quedaba
+  /// `INVALID` y la cita cumplida no subía nunca.
+  ///
+  /// Si pasa, [destino] se reubica detrás de esas altas, con lo que cuelga de
+  /// él (el mismo criterio de [_absorber]). Si no nombra nada que vaya
+  /// después, no se mueve: conserva su lugar en la cola.
+  ///
+  /// Solo cuentan las altas de entidades con PK propia (`id`): `house_status`
+  /// se identifica con el id de la ubicación y nadie lo nombra, así que su PK
+  /// no es una referencia posible (y confundiría a la ubicación con su propio
+  /// color).
+  Future<void> _pasarDetrasDeLoQueNombra(
+    QueuedJob destino,
+    Map<String, Object?> payload,
+    DateTime ahora,
+  ) async {
+    final pendientes = await _jobs.listPending();
+    final lugar = pendientes.indexWhere((q) => q.id == destino.id);
+    if (lugar < 0) return;
+    final propia = _specs.of(destino.job.entity).pk;
+    final detras = <String>{};
+    for (final q in pendientes.skip(lugar + 1)) {
+      if (q.job.op != Op.insert || _specs.of(q.job.entity).pk != 'id') continue;
+      if (pkDe(_specs, q.job) case final pk?) detras.add(pk);
+    }
+    if (detras.isEmpty) return;
+    final nombra = payload.entries.any(
+      (e) => e.key != propia && e.value is String && detras.contains(e.value),
+    );
+    if (!nombra) return;
+    final cuelgan = _pendientesQueCuelgan([destino], pendientes);
+    await _jobs.release([
+      destino.id,
+      for (final q in _enOrdenDeCreacion(cuelgan)) q.id,
+    ], at: ahora);
   }
 
   /// Las `sync_version` que el servidor les dio a las filas de un lote vuelven
@@ -775,6 +823,7 @@ class SyncEngine {
     resubscribe();
 
     _lastSuccessAt = _ultimoPull = _clock();
+    await _anotarMeta(lastPullAt: _ultimoPull);
     await _emit();
 
     // En un reintento, la fecha sale de la marca: el reporte tiene que decir de
@@ -805,6 +854,7 @@ class SyncEngine {
     await _conn?.cancel();
     await _wifiSub?.cancel();
     _backup?.alTerminarUnBackup = null;
+    _backup?.watermarkProvider = null;
     await _status.close();
   }
 
@@ -918,6 +968,7 @@ class SyncEngine {
     }
 
     _lastSuccessAt = _ultimoPull = _clock();
+    await _anotarMeta(lastPullAt: _ultimoPull);
     _pullEnPausa = null;
     _anotarSesion(null);
     await _emit();
@@ -948,6 +999,56 @@ class SyncEngine {
     return kDataSaverOnMobile;
   }
 
+  /// Con qué red sale un envío, o `null` si no se sabe: sin puerto de
+  /// conectividad, sin red o si el puerto falla. Nunca se inventa un Wi-Fi: la
+  /// vista dice «por datos» solo cuando lo sabe, y no por eso se cae un envío.
+  Future<SyncNetwork?> _redActual() async {
+    final red = _connectivity;
+    if (red == null) return null;
+    try {
+      if (!await red.isOnline) return null;
+      return await red.isOnWifi ? SyncNetwork.wifi : SyncNetwork.mobile;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Anota en el teléfono lo que la pantalla de estado muestra después de
+  /// reiniciar (HU-SYNC-007). Si la DB local falla no pasa nada grave: la
+  /// bajada, el respaldo o el envío ya están hechos y el dato sigue en memoria;
+  /// lo único que se pierde es acordarse de ellos tras cerrar la app.
+  Future<void> _anotarMeta({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    final meta = _meta;
+    if (meta == null) return;
+    try {
+      await meta.write(
+        lastPullAt: lastPullAt,
+        lastBackupAt: lastBackupAt,
+        lastPushAt: lastPushAt,
+        lastPushNetwork: lastPushNetwork,
+      );
+    } on Object {
+      // Ver arriba.
+    }
+  }
+
+  /// Lo que quedó anotado en el teléfono. Sin puerto, o si falla la lectura,
+  /// no hay nada: el estado sale solo de lo que sabe el motor en memoria.
+  Future<SyncMeta> _leerMeta() async {
+    final meta = _meta;
+    if (meta == null) return const SyncMeta();
+    try {
+      return await meta.read();
+    } on Object {
+      return const SyncMeta();
+    }
+  }
+
   /// Sin puerto de conectividad no hay forma de saber que es un dato móvil: se
   /// asume Wi-Fi, que es el comportamiento de antes del ahorro de datos.
   Future<bool> _estaEnWifi() async {
@@ -971,6 +1072,8 @@ class SyncEngine {
     await _jobs.reclaimInFlight(inFlightLease);
 
     final tomados = await _jobs.claimPending(limit: batchLimit);
+    // La red por la que sale este envío, mirada antes de mandar (HU-SYNC-007).
+    final red = tomados.isEmpty ? null : await _redActual();
     // Un mapa una vez por ciclo, en vez de recorrer la lista por cada
     // resultado: con lotes de 500 son 500 búsquedas de 500 elementos.
     final idPorOpId = {for (final q in tomados) q.job.clientOpId: q.id};
@@ -1119,6 +1222,8 @@ class SyncEngine {
             final ahora = _clock();
             await _jobs.markDone(hechos, at: ahora);
             _ultimoPush = ahora;
+            _ultimaRed = red;
+            await _anotarMeta(lastPushAt: ahora, lastPushNetwork: red);
             sinResolver.removeAll(hechos);
           }
         }
@@ -1279,13 +1384,23 @@ class SyncEngine {
   /// El estado de ahora: lo que cuenta la cola más lo que sabe el motor.
   Future<SyncStatus> _foto() async {
     final s = await _jobs.status();
+    final meta = await _leerMeta();
+    // El envío anotado más nuevo, de memoria o del teléfono, con su red.
+    final (anotadoAt, anotadaRed) = switch ((_ultimoPush, meta.lastPushAt)) {
+      (final m?, final d?) when d.isAfter(m) => (d, meta.lastPushNetwork),
+      (final m?, _) => (m, _ultimaRed),
+      (null, final d?) => (d, meta.lastPushNetwork),
+      (null, null) => (null, null),
+    };
     // El último envío se acuerda de los `DONE` de la cola (sobrevive a cerrar
     // la app); el de memoria cubre un store que no lo sabe contar.
-    final ultimoPush = switch ((_ultimoPush, s.lastPushAt)) {
-      (final a?, final b?) => a.isAfter(b) ? a : b,
-      (final a?, null) => a,
-      (null, final b) => b,
-    };
+    final ultimoPush = _masNuevo(anotadoAt, s.lastPushAt);
+    // Si la cola sabe de un envío más nuevo que el anotado (uno de antes de que
+    // el motor anotara la red), la red del anotado no es la de ese: no se sabe.
+    final redDelEnvio =
+        anotadoAt != null && (s.lastPushAt?.isAfter(anotadoAt) ?? false)
+        ? null
+        : anotadaRed;
     return SyncStatus(
       pending: s.pending,
       inFlight: s.inFlight,
@@ -1294,8 +1409,9 @@ class SyncEngine {
       waiting: s.waiting,
       lastSuccessAt: _lastSuccessAt,
       lastPushAt: ultimoPush,
-      lastPullAt: _ultimoPull,
-      lastBackupAt: _ultimoBackup,
+      lastPullAt: _masNuevo(_ultimoPull, meta.lastPullAt),
+      lastBackupAt: _masNuevo(_ultimoBackup, meta.lastBackupAt),
+      lastPushNetwork: redDelEnvio,
       pullPausedReason: _dataSaver ? _pullEnPausa : null,
       dataSaver: _dataSaver,
       unauthorizedSince: _sinSesionDesde,
@@ -1320,3 +1436,9 @@ class SyncEngine {
   String _entidadDe(List<QueuedJob> tomados, String id) =>
       tomados.firstWhere((q) => q.id == id).job.entity;
 }
+
+DateTime? _masNuevo(DateTime? a, DateTime? b) => switch ((a, b)) {
+  (final x?, final y?) => x.isAfter(y) ? x : y,
+  (final x?, null) => x,
+  (null, final y) => y,
+};

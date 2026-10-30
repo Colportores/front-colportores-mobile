@@ -7,11 +7,13 @@ import '../entities/persona_del_espacio.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/espacio_repository.dart';
 import '../repositories/persona_repository.dart';
+import '../services/lector_entrevistas_de_personas.dart';
 import '../services/lector_notas_del_lugar.dart';
 import '../services/saldos_de_personas.dart';
 
 /// Arma, y mantiene al día, lo que la hoja de la casa muestra de una ubicación (vista 39, C·01): su
-/// espacio, las personas, lo que debe cada una y la nota más reciente.
+/// espacio, las personas, lo que debe cada una, cuándo fue su última entrevista y la nota más
+/// reciente.
 ///
 /// - Una casa o un negocio tiene un solo espacio (el que crea el alta): ese es el contexto. Un
 ///   **edificio** no: el contexto es siempre el depto (39, «Reglas comunes») y sin uno elegido no hay
@@ -26,12 +28,14 @@ final class ObservarContextoDeLaCasaUseCase {
     required this._personas,
     required this._saldos,
     required this._notas,
+    this._entrevistas = const LectorEntrevistasSinFuente(),
   });
 
   final EspacioRepository _espacios;
   final PersonaRepository _personas;
   final SaldosDePersonas _saldos;
   final LectorNotasDelLugar _notas;
+  final LectorEntrevistasDePersonas _entrevistas;
 
   /// El contexto de la ubicación [ubicacionId], que es de tipo [tipo] (el tipo decide si hay un solo
   /// espacio o un depto por elegir).
@@ -44,6 +48,7 @@ final class ObservarContextoDeLaCasaUseCase {
     String? espacioId;
     List<PersonaDelEspacio>? personas;
     var saldos = const <String, int>{};
+    var entrevistas = const <String, DateTime>{};
     NotaDelLugar? nota;
     var notaLeida = false;
     // Cada lista de personas pide sus saldos: la respuesta de una lista vieja se descarta.
@@ -53,7 +58,13 @@ final class ObservarContextoDeLaCasaUseCase {
       final lista = personas;
       if (cancelado || lista == null || !notaLeida) return;
       salida.add(
-        ContextoDeLaCasa(espacioId: espacioId, personas: lista, saldosCentavos: saldos, nota: nota),
+        ContextoDeLaCasa(
+          espacioId: espacioId,
+          personas: lista,
+          saldosCentavos: saldos,
+          ultimaEntrevistaDe: entrevistas,
+          nota: nota,
+        ),
       );
     }
 
@@ -65,9 +76,19 @@ final class ObservarContextoDeLaCasaUseCase {
       } on Object {
         // Sin saldo conocido, no se muestra ninguno.
       }
+      var entrevistasLeidas = const <String, DateTime>{};
+      try {
+        final porVinculo = await _entrevistas.ultimaEntrevistaDe([
+          for (final p in lista) p.vinculo.id,
+        ]);
+        entrevistasLeidas = {for (final p in lista) p.persona.id: ?porVinculo[p.vinculo.id]};
+      } on Object {
+        // Sin fecha conocida, la fila no dice nada (no se afirma lo que no se sabe).
+      }
       if (cancelado || numero != secuencia) return;
       personas = lista;
       saldos = leidos;
+      entrevistas = entrevistasLeidas;
       emitir();
     }
 

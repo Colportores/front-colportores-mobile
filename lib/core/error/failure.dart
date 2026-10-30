@@ -112,6 +112,37 @@ final class FailureBackupDriveNoBorrado extends Failure {
       );
 }
 
+/// La persona cerró o rechazó la pantalla de Google al conectar el respaldo en Drive (HU-SYNC-004,
+/// vista 16, 16D·07). No es un error: la app dice que no se conectó y que puede hacerlo cuando
+/// quiera.
+final class FailureDriveCancelado extends Failure {
+  const FailureDriveCancelado()
+    : super(
+        mensaje: 'No conectamos tu Drive. Podés hacerlo cuando quieras.',
+        codigo: 'DRIVE_CANCELADO',
+      );
+}
+
+/// Google conectó la cuenta pero la persona no dejó marcado el permiso de Drive (HU-SYNC-004): sin
+/// él el respaldo no puede guardar nada, así que no se da por conectado.
+final class FailureDrivePermisoIncompleto extends Failure {
+  const FailureDrivePermisoIncompleto()
+    : super(
+        mensaje:
+            'Para guardar tu respaldo necesitamos el permiso de Drive. Probá de nuevo y dejá '
+            'marcado el permiso de Drive.',
+        codigo: 'DRIVE_PERMISO_INCOMPLETO',
+      );
+}
+
+/// No se pudo conectar el respaldo en Drive por una causa que la persona no puede arreglar sola
+/// (Google falló, la app no está registrada en Google, etc.). La causa va a los logs, nunca acá
+/// (HU-SYNC-004, vista 16, 16D·09).
+final class FailureDriveNoConectado extends Failure {
+  const FailureDriveNoConectado()
+    : super(mensaje: 'No pudimos conectar tu Drive. Probá de nuevo.', codigo: 'DRIVE_NO_CONECTADO');
+}
+
 /// El enlace de recuperación de contraseña ya no sirve (HU-AUTH-005, "Error - token expirado"):
 /// venció, ya se usó o se abrió en otro teléfono. Supabase no distingue vencido de usado (mismo
 /// `otp_expired`), así que la app tampoco: [mensaje] no afirma «expiró» sino las dos cosas
@@ -469,8 +500,8 @@ final class FailureCiudadRequerida extends Failure {
 }
 
 /// No se pudieron leer las ciudades de la campaña del colportor (vista 03, «No pudimos leer las
-/// ciudades de tu campaña…»): la base local no se pudo leer o todavía no existe de dónde leerlas
-/// (`CiudadesParaAltaSinFuente`, hasta el adaptador real de front-colportores-mobile#274). Es **otra
+/// ciudades de tu campaña…»): la base local no se pudo leer, o el teléfono todavía no bajó el
+/// catálogo (`CiudadesParaAltaLocal`, front-colportores-mobile#274). Es **otra
 /// cosa** que una campaña sin ciudades: aquí no se sabe, y afirmar que no tiene mandaría al colportor
 /// a molestar al coordinador por algo que no es de la campaña. Se puede reintentar.
 ///
@@ -480,6 +511,37 @@ final class FailureCiudadesNoDisponibles extends Failure {
     : super(
         mensaje: 'No pudimos leer las ciudades de tu campaña. Probá de nuevo.',
         codigo: 'UBI_CIUDADES_NO_DISPONIBLES',
+      );
+}
+
+/// No se pudo saber en qué zona y ciudad trabaja el colportor, que es lo que «Mapas offline» necesita
+/// para ofrecerle su mapa (HU-SYNC-010): la base local no se pudo leer o todavía no existe de dónde
+/// leerlo (`FuenteLugarDeTrabajoSinFuente`, hasta la réplica local de front-colportores-mobile#274).
+/// Es **otra cosa** que «no tenés zona asignada»: aquí no se sabe, y afirmarlo mandaría al colportor
+/// a reclamar una zona que quizá tiene. Se puede reintentar.
+///
+/// La HU no trae texto: el de acá es de mapa §2 (texto que guía), a confirmar.
+final class FailureLugarDeTrabajoNoDisponible extends Failure {
+  const FailureLugarDeTrabajoNoDisponible()
+    : super(
+        mensaje: 'No pudimos saber en qué zona y ciudad trabajás. Probá de nuevo.',
+        codigo: 'TILES_LUGAR_NO_DISPONIBLE',
+      );
+}
+
+/// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
+/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
+/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
+/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
+/// Se puede reintentar.
+///
+/// El texto es el del canvas (26·10).
+final class FailurePreciosNoDisponibles extends Failure {
+  const FailurePreciosNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer los precios guardados en tu teléfono.',
+        codigo: 'CAT_PRECIOS_NO_DISPONIBLES',
       );
 }
 
@@ -777,4 +839,226 @@ final class FailureSincronizacionNoDisponible extends Failure {
             'subir tus operaciones y borrar los datos.',
         codigo: 'SYNC_NO_DISPONIBLE',
       );
+}
+
+/// El número de talonario ya está en una venta del mismo colportor en el mismo año (HU-VEN-001,
+/// «Talonario duplicado»; vista 27, 27A·11). El año es el de la fecha de la venta en hora de
+/// Uruguay, y la regla es la misma en el teléfono y en el servidor (backend 0071).
+///
+/// El texto es el del canvas. El número de talonario no es un dato personal.
+final class FailureTalonarioRepetido extends Failure {
+  FailureTalonarioRepetido({required this.numero, required this.ventaDel})
+    : super(
+        mensaje:
+            'Ya usaste el talonario $numero este año (venta del '
+            '${ventaDel.day.toString().padLeft(2, '0')}/'
+            '${ventaDel.month.toString().padLeft(2, '0')}). Revisá el número.',
+        codigo: 'VENTA_TALONARIO_REPETIDO',
+      );
+
+  /// El número tal como lo escribió la colportora (sin los espacios de los bordes).
+  final String numero;
+
+  /// El día de Montevideo en que se hizo la venta que ya lo usó.
+  final DateTime ventaDel;
+
+  @override
+  List<Object?> get props => [...super.props, numero, ventaDel];
+}
+
+/// La venta no se pudo guardar en el teléfono (vista 27, 27A·13). No se perdió nada de lo cargado:
+/// la pantalla sigue como estaba y se puede reintentar.
+///
+/// El texto es el del canvas.
+final class FailureVentaNoGuardada extends Failure {
+  const FailureVentaNoGuardada({this.causa})
+    : super(
+        mensaje:
+            'No pudimos guardar la venta en tu teléfono. No se perdió nada de lo que cargaste: '
+            'probá de nuevo.',
+        codigo: 'VENTA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// La entrega no se pudo guardar en el teléfono (HU-VEN-002). No se registró nada: se puede
+/// reintentar. El texto adapta el de 27A·13 a la entrega: a confirmar con la pantalla (#432).
+final class FailureEntregaNoGuardada extends Failure {
+  const FailureEntregaNoGuardada({this.causa})
+    : super(
+        mensaje:
+            'No pudimos guardar la entrega en tu teléfono. No se registró nada: probá de nuevo.',
+        codigo: 'VENTA_ENTREGA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer lo que se entregó de una venta (HU-VEN-002): la base local no se pudo leer. Es
+/// **otra cosa** que «nada entregado»: aquí no se sabe, y afirmar que no se entregó mandaría a la
+/// colportora a entregar dos veces. Se puede reintentar. El texto es a confirmar (el canvas no dibuja
+/// este estado).
+final class FailureEntregaNoDisponible extends Failure {
+  const FailureEntregaNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer lo que entregaste en tu teléfono. Probá de nuevo.',
+        codigo: 'VENTA_ENTREGA_NO_DISPONIBLE',
+      );
+}
+
+/// La devolución no se pudo guardar en el teléfono (HU-VEN-004, vista 31, 31-10). No cambió nada: la
+/// pantalla conserva lo elegido y se puede reintentar. El texto es el del canvas.
+final class FailureDevolucionNoGuardada extends Failure {
+  const FailureDevolucionNoGuardada({this.causa})
+    : super(
+        mensaje: 'No pudimos registrar la devolución. No cambió nada.',
+        codigo: 'VENTA_DEVOLUCION_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer la venta para devolverla (HU-VEN-004): la base local no se pudo leer. Es **otra
+/// cosa** que «la venta no está»: acá no se sabe. Se puede reintentar. El canvas no dibuja este estado;
+/// el texto es a confirmar.
+final class FailureDevolucionNoDisponible extends Failure {
+  const FailureDevolucionNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer la venta guardada en tu teléfono.',
+        codigo: 'VENTA_DEVOLUCION_NO_DISPONIBLE',
+      );
+}
+
+/// La venta que se quiere devolver no está en el teléfono o se dio de baja (HU-VEN-004). Reintentar no
+/// lo arregla. El texto es a confirmar.
+final class FailureDevolucionSinVenta extends Failure {
+  const FailureDevolucionSinVenta()
+    : super(
+        mensaje: 'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
+        codigo: 'VENTA_DEVOLUCION_SIN_VENTA',
+      );
+}
+
+/// Pasaron más de 72 h desde la venta: la devolución la registra el coordinador (HU-VEN-004, escenario
+/// «Devolución más allá de 72h»; vista 31, 31-08). La primera frase es la literal de la HU; la segunda,
+/// la del canvas dicho como una guía (qué hacer).
+final class FailureDevolucionFueraDePlazo extends Failure {
+  const FailureDevolucionFueraDePlazo()
+    : super(
+        mensaje:
+            'Solo el coordinador puede registrar devoluciones > 72h. Pasaron más de 72 h desde la '
+            'venta: pedile a tu coordinador que la registre.',
+        codigo: 'VENTA_DEVOLUCION_FUERA_DE_PLAZO',
+      );
+}
+
+/// Lo que se quiere devolver no se puede registrar tal cual (HU-VEN-004): no hay nada elegido, se
+/// eligió más de lo que queda por devolver, o el cliente pagó de más y falta decir qué hacer con la
+/// diferencia. La pantalla lo evita; esto es la última barrera. [causa] es un código estable para el
+/// log: `sin_productos`, `de_mas` o `sin_eleccion`.
+final class FailureDevolucionInvalida extends Failure {
+  const FailureDevolucionInvalida({required this.causa})
+    : super(
+        mensaje: 'Revisá lo que elegiste para devolver y probá de nuevo.',
+        codigo: 'VENTA_DEVOLUCION_INVALIDA',
+      );
+
+  final String causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// El cobro es mayor que lo que debe la venta (HU-COB-001, vista 28, 28·03). Se rechaza: no hay saldo
+/// a favor (decisión del 23/10: sumarlo sería una función nueva). El texto es el del canvas;
+/// [saldoCentavos] lo arma la pantalla con su formato de dinero.
+final class FailureCobroMayorAlSaldo extends Failure {
+  const FailureCobroMayorAlSaldo({required this.saldoCentavos})
+    : super(
+        mensaje: 'El cobro es mayor que el saldo de la venta. Ingresá hasta ese monto.',
+        codigo: 'COBRO_MAYOR_AL_SALDO',
+      );
+
+  /// Lo que todavía debe la venta, en centavos.
+  final int saldoCentavos;
+
+  @override
+  List<Object?> get props => [...super.props, saldoCentavos];
+}
+
+/// La fecha del cobro no es válida: antes de la venta o después de hoy (28·04).
+final class FailureCobroFechaInvalida extends Failure {
+  const FailureCobroFechaInvalida()
+    : super(
+        mensaje: 'La fecha no puede ser antes de la venta ni después de hoy.',
+        codigo: 'COBRO_FECHA_INVALIDA',
+      );
+}
+
+/// El monto del cobro no es un monto (vacío, cero o negativo; 28·02).
+final class FailureCobroMontoInvalido extends Failure {
+  const FailureCobroMontoInvalido()
+    : super(mensaje: 'Ingresá el monto que te pagaron.', codigo: 'COBRO_MONTO_INVALIDO');
+}
+
+/// La venta que se cobra ya no está en el teléfono (o se dio de baja).
+final class FailureCobroSinVenta extends Failure {
+  const FailureCobroSinVenta()
+    : super(
+        mensaje: 'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
+        codigo: 'COBRO_SIN_VENTA',
+      );
+}
+
+/// Un dato de la tarjeta o de la transferencia (marca, aprobación, referencia o banco) es más largo
+/// de lo que acepta el servidor (HU-COB-002 y HU-COB-003). La pantalla no deja escribir de más, así
+/// que esto no debería verse; si llega, no se registra nada.
+final class FailureCobroDatoDelMedioInvalido extends Failure {
+  const FailureCobroDatoDelMedioInvalido()
+    : super(
+        mensaje: 'Algún dato de la tarjeta o de la transferencia es demasiado largo.',
+        codigo: 'COBRO_DATO_DEL_MEDIO_INVALIDO',
+      );
+}
+
+/// No se pudo calcular el saldo pendiente (HU-COB-005): la base local no se pudo leer. Es **otra cosa**
+/// que «no debe nada»: nadie muestra «$ 0» ni «sin saldo» ante esta falla, y los cobros y las ventas
+/// siguen guardados. Se puede reintentar. El texto es para confirmar (el canvas no dibuja este caso).
+final class FailureSaldoNoDisponible extends Failure {
+  const FailureSaldoNoDisponible()
+    : super(
+        mensaje:
+            'No pudimos calcular lo que te deben. Tus ventas y cobros siguen guardados: '
+            'cerrá y abrí la app para volver a intentar.',
+        codigo: 'COBRO_SALDO_NO_DISPONIBLE',
+      );
+}
+
+/// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
+/// texto es el del canvas.
+final class FailureCobroNoGuardado extends Failure {
+  const FailureCobroNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el cobro. No se registró nada: probá de nuevo.',
+        codigo: 'COBRO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
 }

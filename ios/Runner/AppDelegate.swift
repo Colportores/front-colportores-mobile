@@ -9,6 +9,9 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Recordatorios de las visitas (HU-NOT-002), flutter_local_notifications: el centro de
+    // notificaciones le avisa a este delegado cuando el aviso llega o se toca.
+    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -17,6 +20,33 @@ import UserNotifications
     registrarCanalSeguridadDispositivo(engineBridge.pluginRegistry)
     registrarCanalAlmacenamientoTiles(engineBridge.pluginRegistry)
     registrarCanalNotificaciones(engineBridge.pluginRegistry)
+    registrarCanalBateria(engineBridge.pluginRegistry)
+  }
+
+  /// Canal `colportores/bateria` (HU-SYNC-005, R-SY10): el nivel de la batería, para que el backup
+  /// automático no corra con menos del 30 %. Del lado de Dart, `NivelBateriaCanal`.
+  ///
+  /// - `nivel`: el porcentaje (0 a 100, `UIDevice.batteryLevel`) o `nil` si iOS no lo informa (el
+  ///   simulador devuelve -1).
+  private func registrarCanalBateria(_ registry: FlutterPluginRegistry) {
+    guard let registrar = registry.registrar(forPlugin: "NivelBateria") else { return }
+    let canal = FlutterMethodChannel(
+      name: "colportores/bateria",
+      binaryMessenger: registrar.messenger()
+    )
+    canal.setMethodCallHandler { call, result in
+      switch call.method {
+      case "nivel":
+        DispatchQueue.main.async {
+          let dispositivo = UIDevice.current
+          dispositivo.isBatteryMonitoringEnabled = true
+          let nivel = dispositivo.batteryLevel
+          result(nivel < 0 ? nil : Int((nivel * 100).rounded()))
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   /// Canal `colportores/notificaciones` (HU-NOT-001, vista 24): el permiso de notificaciones del

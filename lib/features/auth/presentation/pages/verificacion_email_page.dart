@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/reenvios_guardados.dart';
 import '../../domain/services/validador_email.dart';
@@ -537,8 +538,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     return switch (failure) {
       FailureSinConexion() => 'Necesitás conexión para $accion. Conectate y probá de nuevo.',
       FailureInesperado() => '$noPudimos Probá de nuevo en unos minutos.',
-      FailureServidor(:final mensaje) when mensaje == const FailureServidor().mensaje =>
-        '$noPudimos Probá de nuevo en unos minutos.',
+      final FailureServidor servidor => mensajeDeServidor(servidor, noPudimos: noPudimos),
       _ => failure.mensaje,
     };
   }

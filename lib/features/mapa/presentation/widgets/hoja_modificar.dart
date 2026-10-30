@@ -476,28 +476,86 @@ class _Encabezado extends ConsumerWidget {
       if (espacios != null) TextosModificar.espacios(espacios!),
       TextosModificar.creada(original.auditoria.createdAt, ahora),
     ].join(' · ');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(
-            FormatoUbicaciones.direccion(original),
-            style: const TextStyle(
-              fontFamily: 'SourceSerif4',
-              fontSize: 22,
-              fontWeight: FontWeight.w600,
+    return _SinPisarCerrar(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
+              FormatoUbicaciones.direccion(original),
+              style: const TextStyle(
+                fontFamily: 'SourceSerif4',
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          resumen,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: ColoresAlta.gris, fontSize: 13),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            resumen,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: ColoresAlta.gris, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Corre el encabezado a la derecha de «Cerrar» cuando quedaría debajo de él (#540, QA).
+///
+/// «Cerrar» (48 dp, a 14 dp del borde izquierdo y a `barra + 8` dp de arriba) va sobre el mapa y por
+/// encima de la hoja (canvas 07·01). Con el teclado arriba, el texto grande y una barra de estado alta
+/// (320×568, barra de 48 dp) el mapa mide menos que eso y la hoja empieza más arriba que el borde de
+/// abajo de «Cerrar»: el botón tapa el comienzo de «Av. Italia 1234». En ese caso, y solo en ese, el
+/// encabezado deja libre el ancho de «Cerrar» (más 8 dp de aire); «Cerrar» no se mueve.
+class _SinPisarCerrar extends StatefulWidget {
+  const _SinPisarCerrar({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SinPisarCerrar> createState() => _SinPisarCerrarState();
+}
+
+class _SinPisarCerrarState extends State<_SinPisarCerrar> {
+  /// El origen de la hoja (sin el relleno de acá): su posición no depende de [_izquierda].
+  final _origen = GlobalKey();
+
+  /// Cuánto se corre el encabezado a la derecha; 0 si «Cerrar» no lo tapa.
+  double _izquierda = 0;
+
+  /// Borde derecho de «Cerrar» (14 + 48) más 8 dp de aire.
+  static const _libreAIzquierda = 14.0 + 48 + 8;
+
+  void _medir() {
+    if (!mounted) return;
+    final caja = _origen.currentContext?.findRenderObject();
+    if (caja is! RenderBox || !caja.attached || !caja.hasSize) return;
+    // Con la hoja desplazada el encabezado sube y se esconde debajo del borde de la hoja: no se mide, se
+    // queda con lo que se decidió con la hoja en su lugar.
+    if ((Scrollable.maybeOf(context)?.position.pixels ?? 0) > 0.5) return;
+    final origen = caja.localToGlobal(Offset.zero);
+    // Menos de 2 dp de roce no cuenta: es el borde de la caja, no el texto (barra de 24 dp: 0,4 dp).
+    final abajoDeCerrar = MediaQuery.paddingOf(context).top + 8 + 48 - 2;
+    final nueva = origen.dy < abajoDeCerrar
+        ? (_libreAIzquierda - origen.dx).clamp(0.0, 200.0)
+        : 0.0;
+    if ((nueva - _izquierda).abs() > 0.5) setState(() => _izquierda = nueva);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _medir());
+    return ConstrainedBox(
+      key: _origen,
+      constraints: const BoxConstraints(),
+      child: Padding(
+        padding: EdgeInsets.only(left: _izquierda),
+        child: widget.child,
+      ),
     );
   }
 }

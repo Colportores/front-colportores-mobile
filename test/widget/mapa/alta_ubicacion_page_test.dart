@@ -4,7 +4,6 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
@@ -28,7 +27,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
-import '../../helpers/logger_mudo.dart';
 import '../../helpers/mapa_base_falso.dart';
 
 /// Atajo: el GPS que no da ubicación por [motivo].
@@ -729,32 +727,32 @@ void main() {
       expect((e.salidas.single! as UbicacionCreada).ubicacion.ciudadId, canelones.id);
     });
 
-    testWidgets('sin la fuente de ciudades (lo que hay hoy en producción): la falla de lectura con '
-        '«Reintentar» y nunca «Tu campaña todavía no tiene ciudades»', (tester) async {
-      final e = await _montar(
-        tester,
-        puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()),
-      );
-      await _tocar(tester, find.text('Casa'));
+    testWidgets(
+      'con las ciudades sin poder leerse (la base ilegible o el catálogo sin bajar): la falla de lectura con '
+      '«Reintentar» y nunca «Tu campaña todavía no tiene ciudades»',
+      (tester) async {
+        final e = await _montar(tester, puertoCiudades: const CiudadesQueNoSePuedenLeer());
+        await _tocar(tester, find.text('Casa'));
 
-      expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
-      expect(find.text(TextosAlta.sinCiudades), findsNothing);
-      expect(find.text('Buscando la ciudad…'), findsNothing);
-      expect(find.text('Reintentar'), findsOneWidget);
-      expect(_habilitado(tester, _registrar), isFalse);
+        expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
+        expect(find.text(TextosAlta.sinCiudades), findsNothing);
+        expect(find.text('Buscando la ciudad…'), findsNothing);
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(_habilitado(tester, _registrar), isFalse);
 
-      await _tocar(tester, find.text('Reintentar'));
-      expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
-      expect(find.text(TextosAlta.sinCiudades), findsNothing);
+        await _tocar(tester, find.text('Reintentar'));
+        expect(find.text(TextosAlta.ciudadesNoLeidas), findsOneWidget);
+        expect(find.text(TextosAlta.sinCiudades), findsNothing);
 
-      // «Elegir»: la lista tampoco dice que la campaña no tiene ciudades, da el error y «Reintentar».
-      await _tocar(tester, find.text('Elegir'));
-      expect(_enHoja(find.text(TextosAlta.ciudadesNoLeidas)), findsOneWidget);
-      expect(_enHoja(find.text(TextosAlta.sinCiudades)), findsNothing);
-      expect(_enHoja(find.text('Reintentar')), findsOneWidget);
-      expect(e.repo.llamadas, isEmpty);
-      _sinEstadosViejos();
-    });
+        // «Elegir»: la lista tampoco dice que la campaña no tiene ciudades, da el error y «Reintentar».
+        await _tocar(tester, find.text('Elegir'));
+        expect(_enHoja(find.text(TextosAlta.ciudadesNoLeidas)), findsOneWidget);
+        expect(_enHoja(find.text(TextosAlta.sinCiudades)), findsNothing);
+        expect(_enHoja(find.text('Reintentar')), findsOneWidget);
+        expect(e.repo.llamadas, isEmpty);
+        _sinEstadosViejos();
+      },
+    );
 
     testWidgets('si no se pueden leer y se reintenta con éxito, la ciudad se propone sola', (
       tester,
@@ -1199,7 +1197,7 @@ void main() {
       expect(find.text('Otra puerta en el mismo número'), findsOneWidget);
       expect(find.text('Local en planta baja'), findsOneWidget);
       expect(find.text('Otra unidad del edificio'), findsOneWidget);
-      expect(find.text('La ve tu coordinador.'), findsOneWidget);
+      expect(find.text('Queda guardada en tu teléfono.'), findsOneWidget);
       expect(find.text('0 / 200'), findsOneWidget);
       final crear = find.widgetWithText(FilledButton, 'Crear igual');
       expect(tester.widget<FilledButton>(crear).onPressed, isNull);

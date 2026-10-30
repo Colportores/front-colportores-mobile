@@ -12,14 +12,16 @@ enum MotivoRechazoPersona {
     'La ubicación está dada de baja: reactivala para agregar clientes a sus espacios.',
   ),
 
-  /// Al modificar (HU-UBI-010): la persona se borró del teléfono entre abrir la edición y guardar.
+  /// Al modificar (HU-UBI-010) o dar de baja o reactivar (HU-UBI-011): la persona se borró del
+  /// teléfono entre abrir la pantalla y confirmar.
   personaInexistente('persona', 'La persona ya no está en tu teléfono. Volvé atrás.'),
 
-  /// Al modificar (HU-UBI-010): la persona está dada de baja, o ninguno de sus espacios sigue activo
-  /// (32B·04 y 32B·08): se ve, pero no se cambia.
+  /// Al modificar (HU-UBI-010) o dar de baja o reactivar (HU-UBI-011): la persona está dada de baja,
+  /// o ninguno de sus espacios sigue activo (32B·04 y 32B·08): se ve, pero no se cambia.
   personaSoloLectura(
     'persona',
-    'Esta persona está en solo lectura: sus datos no se pueden cambiar. Volvé atrás.',
+    'Esta persona está en solo lectura: su espacio está dado de baja. Reactivá el espacio para '
+        'modificarla, darla de baja o reactivarla.',
   );
 
   const MotivoRechazoPersona(this.campo, this.mensaje);

@@ -30,6 +30,7 @@ final class ComposicionTiles {
     required this.repository,
     required this.descargador,
     required this.sonda,
+    required this.espacio,
     required this.directorio,
     required this.reconciliacion,
   });
@@ -39,6 +40,10 @@ final class ComposicionTiles {
 
   /// La prueba del archivo del mapa en línea (#299): le pide 1 byte al `.pmtiles` del bucket.
   final SondaArchivoTiles sonda;
+
+  /// El espacio libre del volumen donde se guardan los paquetes: «Mapas offline» lo muestra antes de
+  /// bajar un mapa.
+  final MedidorEspacioDisco espacio;
 
   /// La carpeta de los `.pmtiles`, los `.part` y el manifiesto.
   final Directory directorio;
@@ -94,6 +99,7 @@ final class ComposicionTiles {
       repository: repository,
       descargador: descargador,
       sonda: SondaArchivoTilesHttp(cliente: web),
+      espacio: almacenamiento,
       directorio: directorio,
       // Primero la limpieza (olvida las descargas de más de 7 días y no toca el `.part` de las
       // vigentes); después se retoma lo que sigue vigente.

@@ -1,4 +1,6 @@
 import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
@@ -10,6 +12,10 @@ typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
 /// Resultado de [AgendaLocalDataSource.cancelar]: la agenda como quedó y si esta llamada escribió
 /// (`false` si ya estaba cancelada).
 typedef AgendaCancelada = ({Agenda agenda, bool escribio});
+
+/// Resultado de [AgendaLocalDataSource.modificar]: la agenda como quedó y si esta llamada escribió
+/// (`false` si ya tenía esos valores).
+typedef AgendaEditada = ({Agenda agenda, bool escribio});
 
 /// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba, si la
 /// agenda indicada no servía, por qué se guardó sin ella, si la agenda sirve pero el resultado no la
@@ -47,6 +53,16 @@ abstract interface class AgendaLocalDataSource {
   /// Pasa la agenda [agendaId] a `CANCELADA`, en el instante [ahora]. Si ya estaba cancelada, no
   /// escribe nada. Si estaba cumplida o no existe, lanza [AgendaRechazadaException].
   Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora});
+
+  /// Aplica [cambios] a la agenda `PROGRAMADA` (HU-VIS-003) en una transacción: la fila (tipo, día y
+  /// hora, franja), su job de sync, la nota (local-only: se crea, se cambia o se da de baja), el
+  /// `audit_log` local y el color de la casa. Si nada cambia, no escribe nada (`escribio: false`).
+  /// Lanza [AgendaRechazadaException] si la agenda no existe o ya no está programada.
+  Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora});
+
+  /// La agenda [id] con su nota y la visita que la cerró, o `null` si no está en el teléfono o está
+  /// dada de baja.
+  Future<DetalleDeAgenda?> obtenerDetalle(String id);
 
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
   /// `CUMPLIDA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,

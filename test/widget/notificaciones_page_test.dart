@@ -1,6 +1,6 @@
 // Configuración › Notificaciones (HU-NOT-001, vista 24): 24A·06 (bloqueadas en el teléfono) y los demás
 // estados del permiso: cargando, activadas, apagadas sin pedir («Activar»), error al leer. Las
-// opciones de los recordatorios llegan con HU-NOT-004.
+// opciones de los recordatorios (HU-NOT-004, grupo B) tienen su propio archivo.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/notificaciones_arnes.dart';
 
 final _cargando = find.byKey(const Key('notificaciones_cargando'));
-final _activadas = find.byKey(const Key('notificaciones_activadas'));
+final _interruptor = find.byKey(const Key('pref_recordatorios_interruptor'));
 final _apagadas = find.byKey(const Key('notificaciones_apagadas'));
 final _bloqueadas = find.byKey(const Key('notificaciones_bloqueadas'));
 final _activar = find.byKey(const Key('notificaciones_activar'));
@@ -79,7 +79,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_ajustesNoAbren, findsOneWidget);
-      expect(find.textContaining('Buscá «Colportaje» en los ajustes del teléfono'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'Abrí los ajustes del teléfono, buscá esta app y activá las notificaciones',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Colportaje'), findsNothing);
       // Puede volver a intentarlo.
       expect(tester.widget<TextButton>(_abrirAjustes).onPressed, isNotNull);
     });
@@ -106,7 +112,7 @@ void main() {
         await contenedorDe(tester).read(notificacionesProvider.notifier).refrescar();
         await tester.pumpAndSettle();
 
-        expect(_activadas, findsOneWidget);
+        expect(_interruptor, findsOneWidget);
         expect(_bloqueadas, findsNothing);
       },
     );
@@ -132,11 +138,12 @@ void main() {
   });
 
   group('activadas', () {
-    testWidgets('dice que están activadas en este teléfono', (tester) async {
+    testWidgets('no hay nada que decir del permiso: se ven las preferencias', (tester) async {
       await _abrir(tester, Telefono(estado: EstadoSistemaNotificaciones.activadas));
 
-      expect(_activadas, findsOneWidget);
-      expect(find.text('Las notificaciones están activadas en este teléfono.'), findsOneWidget);
+      expect(_interruptor, findsOneWidget);
+      expect(_apagadas, findsNothing);
+      expect(_bloqueadas, findsNothing);
       expect(_activar, findsNothing);
       expect(_abrirAjustes, findsNothing);
     });
@@ -148,7 +155,7 @@ void main() {
       telefono.recuerdo.pedido = PedidoNotificaciones.ahoraNo;
       await _abrir(tester, telefono);
 
-      expect(find.text('Las notificaciones están apagadas en el teléfono.'), findsOneWidget);
+      expect(find.text(textoApagadas), findsOneWidget);
       expect(find.text('Activar'), findsOneWidget);
       expect(_abrirAjustes, findsNothing);
     });
@@ -162,7 +169,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
 
       expect(telefono.sistema.pedidos, 1);
-      expect(_activadas, findsOneWidget);
+      expect(_interruptor, findsOneWidget);
       expect(_apagadas, findsNothing);
       expect(find.text(textoToast), findsOneWidget);
       expect(telefono.recuerdo.pedido, PedidoNotificaciones.sistema);
@@ -238,7 +245,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
 
       expect(_fallo, findsNothing);
-      expect(_activadas, findsOneWidget);
+      expect(_interruptor, findsOneWidget);
     });
   });
 

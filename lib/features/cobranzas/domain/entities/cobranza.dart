@@ -17,6 +17,10 @@ import '../../../../core/domain/entities/auditoria.dart';
 /// documenta. **Bloqueado/pendiente**: ¿cuáles son los campos de `cobranza_item`?
 enum MedioCobranza { efectivo, tarjeta, transferencia }
 
+/// Si la tarjeta del cobro era de débito o de crédito (`cobranza.tarjeta_tipo`: `DEBITO` / `CREDITO`,
+/// los mismos valores que `ticket`).
+enum TipoTarjeta { debito, credito }
+
 class Cobranza extends Equatable {
   Cobranza({
     required this.id,
@@ -25,7 +29,12 @@ class Cobranza extends Equatable {
     required this.medio,
     required DateTime fecha,
     this.ticketId,
-    required this.numeroCuota,
+    this.numeroCuota,
+    this.tarjetaTipo,
+    this.tarjetaMarca,
+    this.numeroAprobacion,
+    this.referenciaTransferencia,
+    this.bancoOrigen,
     required this.auditoria,
   }) : fecha = fecha.toUtc();
 
@@ -45,7 +54,27 @@ class Cobranza extends Equatable {
   /// FK opcional a `ticket.id` (esquema-datos.md: "ticket_id (FK opcional)").
   final String? ticketId;
 
-  final int numeroCuota;
+  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota (el servidor lo admite).
+  final int? numeroCuota;
+
+  /// Solo con [MedioCobranza.tarjeta] (HU-COB-002, #396): débito o crédito. Opcional.
+  final TipoTarjeta? tarjetaTipo;
+
+  /// Solo con [MedioCobranza.tarjeta]: la marca («Visa», «Mastercard», «OCA» o la que escribió la
+  /// colportora), 1 a 40 caracteres. Opcional.
+  final String? tarjetaMarca;
+
+  /// Solo con [MedioCobranza.tarjeta]: el número de aprobación del ticket del POS, 1 a 40 caracteres.
+  /// Opcional en V1.
+  final String? numeroAprobacion;
+
+  /// Solo con [MedioCobranza.transferencia] (HU-COB-003): el número de operación, 1 a 40 caracteres.
+  /// Opcional.
+  final String? referenciaTransferencia;
+
+  /// Solo con [MedioCobranza.transferencia]: el banco de origen **como texto** (no una lista cerrada:
+  /// sumar un banco no cambia el modelo), 1 a 60 caracteres. Opcional.
+  final String? bancoOrigen;
 
   final Auditoria auditoria;
 
@@ -60,6 +89,11 @@ class Cobranza extends Equatable {
     fecha,
     ticketId,
     numeroCuota,
+    tarjetaTipo,
+    tarjetaMarca,
+    numeroAprobacion,
+    referenciaTransferencia,
+    bancoOrigen,
     auditoria,
   ];
 }

@@ -36,7 +36,7 @@ abstract final class TextosDuplicado {
   static const porQue = '¿Por qué es otra ubicación?';
   static const justificacion = 'JUSTIFICACIÓN · OBLIGATORIA';
   static const cuenta = 'Contá por qué es otro lugar';
-  static const laVeTuCoordinador = 'La ve tu coordinador.';
+  static const quedaEnTuTelefono = 'Queda guardada en tu teléfono.';
   static const laNueva = 'La nueva';
   static const yaRegistrada = 'Ya registrada';
   static const registrando = 'Registrando…';
@@ -423,7 +423,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           children: [
             const Expanded(
               child: Text(
-                TextosDuplicado.laVeTuCoordinador,
+                TextosDuplicado.quedaEnTuTelefono,
                 style: TextStyle(fontSize: 12.5, color: ColoresAlta.gris),
               ),
             ),

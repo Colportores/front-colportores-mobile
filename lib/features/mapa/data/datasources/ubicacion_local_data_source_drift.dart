@@ -3,11 +3,15 @@ import 'dart:math' as math;
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
@@ -15,14 +19,17 @@ import '../../domain/entities/motivo_rechazo_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/services/encolador_marcar_duplicado.dart';
+import '../../domain/services/house_status_updater.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
 import '../models/ubicacion_model.dart';
 import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
+import '../services/house_status_updater_drift.dart';
 import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
 import 'house_status_table.dart';
+import 'notas_table.dart' show TipoObjetivoNota;
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
 
@@ -42,14 +49,26 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10). El trabajo
   /// «marcar como duplicado» entra por [_marcarDuplicado]: sin motor de sync (#178), falla.
+  /// [estadoDeLasCasas] recalcula el color de las dos casas al unirlas (R-UB08); sin él se usa el
+  /// de siempre (`HouseStatusUpdaterDrift`, con este mismo encolador).
   UbicacionLocalDataSourceDrift(
     super.attachedDatabase, {
     required this._encolador,
     this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
-  });
+    HouseStatusUpdater? estadoDeLasCasas,
+    DateTime Function()? ahora,
+  }) : _estadoInyectado = estadoDeLasCasas,
+       _ahora = ahora ?? DateTime.now;
 
   final EncoladorSync _encolador;
   final EncoladorMarcarDuplicado _marcarDuplicado;
+  final HouseStatusUpdater? _estadoInyectado;
+
+  /// El reloj de «la próxima entrevista» de la lista: solo cuenta la que todavía no pasó.
+  final DateTime Function() _ahora;
+
+  late final HouseStatusUpdater _estadoDeLasCasas =
+      _estadoInyectado ?? HouseStatusUpdaterDrift(attachedDatabase, encolador: _encolador);
 
   /// Metros por grado de latitud (y de longitud en el ecuador).
   static const _metrosPorGrado = 111320.0;
@@ -62,6 +81,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => transaction(() async {
     final existente = await (select(
       ubicaciones,
@@ -79,6 +99,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacio));
       await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
     }
+    await _guardarJustificacion(ubicacion.id, justificacion, ubicacion.auditoria.updatedAt);
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
@@ -122,6 +143,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -182,8 +204,29 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacioSiNoTiene!));
       await _encolador.encolar('espacio', OperacionSync.insert, espacioSiNoTiene.toJson());
     }
+    await _guardarJustificacion(guardada.id, justificacion, guardada.auditoria.updatedAt);
     return guardada;
   });
+
+  /// La justificación de «Crear igual» (HU-UBI-001, #282) en la auditoría local, dentro de la
+  /// transacción que escribe la ubicación. Sin texto (o en blanco) no escribe nada. Nunca entra a
+  /// la cola de sync ni a una columna de `ubicacion`.
+  Future<void> _guardarJustificacion(
+    String ubicacionId,
+    String? justificacion,
+    DateTime cuando,
+  ) async {
+    final texto = justificacion?.trim();
+    if (texto == null || texto.isEmpty) return;
+    await into(auditLogLocal).insert(
+      AuditLogLocalCompanion.insert(
+        evento: EventoAuditoriaLocal.ubicacionCrearIgual,
+        uuid: ubicacionId,
+        motivo: Value(texto),
+        creadoEn: cuando,
+      ),
+    );
+  }
 
   @override
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
@@ -369,6 +412,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     var fundidos = 0;
     for (final e in deB) {
       if (unePorUnico && esUnico(e) && unicoDeA != null) {
+        // Lo que colgaba del espacio de B (sus personas, visitas y agendas) pasa al único de A
+        // antes de dar de baja el de B: no se borra ni se deja huérfano nada.
+        await _pasarLoQueCuelgaDe(e.id, a: unicoDeA, instante: instante);
         await (update(espacios)..where((x) => x.id.equals(e.id))).write(
           EspaciosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
         );
@@ -393,7 +439,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       );
     }
 
+    // Quien hace la unión es el dueño de las casas: el `created_by` de una fila de `house_status`
+    // nueva. Las casas del par son suyas (el scan compara solo las propias).
+    final colportorId = conservada.createdBy ?? duplicada.createdBy ?? '';
+    await _reapuntarAlternativas(duplicadaId, a: conservadaId, instante: instante);
+    await _pasarNotasDelLugar(duplicadaId, a: conservadaId, instante: instante);
     if (duplicada.deletedAt == null) {
+      // Ya sin espacios activos ni nada colgado: su fila de `house_status` se da de baja con B
+      // (el recálculo de una ubicación viva sin eventos), antes de marcar la baja.
+      await _estadoDeLasCasas.recalcular(duplicadaId, ahora: ahora, colportorId: colportorId);
       await (update(ubicaciones)..where((u) => u.id.equals(duplicadaId))).write(
         UbicacionesCompanion(updatedAt: Value(instante), deletedAt: Value(instante)),
       );
@@ -413,6 +467,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       final guardada = await _ubicacionPorId(conservadaId);
       await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
     }
+    // El color de A se recalcula con todo lo que ahora cuelga de ella (lo suyo y lo de B), con la
+    // prioridad de siempre y en la misma transacción (R-UB08, ADR-003).
+    await _estadoDeLasCasas.recalcular(conservadaId, ahora: ahora, colportorId: colportorId);
     await _marcarDuplicado.encolarMarcarDuplicado(
       duplicadaId: duplicadaId,
       conservadaId: conservadaId,
@@ -424,6 +481,62 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       conservadaPasoAEdificio: pasoAEdificio,
     );
   });
+
+  /// Las notas del lugar de [deB] (`nota` con `target_type = UBICACION`) pasan al lugar [a], también
+  /// las dadas de baja: la hoja de A muestra las de las dos y nada se pierde. Cuelgan de la
+  /// ubicación y no del espacio, así que pasan aunque el único de B no se funda. Son solo locales
+  /// (`SyncSpec.local`): no hay nada que encolar.
+  Future<void> _pasarNotasDelLugar(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.notas)
+          ..where((x) => x.targetType.equals(TipoObjetivoNota.ubicacion) & x.targetId.equals(deB)))
+        .write(NotasCompanion(targetId: Value(a), updatedAt: Value(instante)));
+  }
+
+  /// Lo que nombraba a la ubicación [deB] como casa alternativa (`agenda.ubicacion_alt_id` y
+  /// `espacio_persona.ubicacion_cobranza_alt_id`) pasa a nombrar a [a]: B queda de baja y una
+  /// referencia a ella no llevaría a ningún lado (HU-UBI-006, «Venta ajena»: el servidor hace lo
+  /// mismo con las suyas). Sin encolar por fila, como el resto de la unión.
+  Future<void> _reapuntarAlternativas(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.agendas)..where((x) => x.ubicacionAltId.equals(deB))).write(
+      AgendasCompanion(ubicacionAltId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.espacioPersonas)..where((x) => x.ubicacionCobranzaAltId.equals(deB))).write(
+      EspacioPersonasCompanion(ubicacionCobranzaAltId: Value(a), updatedAt: Value(instante)),
+    );
+  }
+
+  /// Repunta al espacio [a] lo que colgaba del espacio fundido [deB]: los vínculos con sus
+  /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).
+  /// Las filas siguen con su vínculo y su persona; solo cambia el espacio al que pertenecen. No se
+  /// encola nada por fila: el servidor repite la unión cuando le llega el trabajo «marcar como
+  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, entregas y
+  /// cobranzas todavía no están en el teléfono.
+  Future<void> _pasarLoQueCuelgaDe(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    await (db.update(db.espacioPersonas)..where((x) => x.espacioId.equals(deB))).write(
+      EspacioPersonasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.visitas)..where((x) => x.espacioId.equals(deB))).write(
+      VisitasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.agendas)..where((x) => x.espacioId.equals(deB))).write(
+      AgendasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+  }
 
   @override
   Stream<List<UbicacionModel>> observarDelColportor({
@@ -447,6 +560,12 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
     // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
     final motivo = auditLogLocal.motivo.max();
+    // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
+    // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
+    // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
+    final agendas = attachedDatabase.agendas;
+    final proxima = agendas.fechaProgramada.min();
+    final desde = const FechaUtcConverter().toSql(_ahora());
     final consulta =
         select(ubicaciones).join([
             leftOuterJoin(
@@ -467,8 +586,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               houseStatuses.ubicacionId.equalsExp(ubicaciones.id) &
                   houseStatuses.deletedAt.isNull(),
             ),
+            leftOuterJoin(
+              agendas,
+              agendas.espacioId.equalsExp(espacios.id) &
+                  agendas.colportorId.equals(colportorId) &
+                  agendas.estado.equals(EstadoAgenda.programada.codigo) &
+                  agendas.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  agendas.deletedAt.isNull() &
+                  agendas.fechaProgramada.isBiggerOrEqualValue(desde),
+            ),
           ])
-          ..addColumns([cantidad, motivo])
+          ..addColumns([cantidad, motivo, proxima])
           ..where(ubicaciones.createdBy.equals(colportorId))
           ..groupBy([ubicaciones.id]);
     if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
@@ -480,10 +608,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             cantidadEspacios: fila.read(cantidad) ?? 0,
             color: _colorDe(fila.readTableOrNull(houseStatuses)),
             motivoBaja: fila.read(motivo),
+            proximaEntrevista: _fechaDe(fila.read(proxima)),
           ),
       ],
     );
   }
+
+  static DateTime? _fechaDe(int? ms) => ms == null ? null : const FechaUtcConverter().fromSql(ms);
 
   /// El color de la fila de `house_status`, o `null` si la ubicación no tiene (es «Sin visita»).
   static ColorHouseStatus? _colorDe(HouseStatusFila? fila) =>
@@ -609,7 +740,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: e.ubicacionId,
     numeroDepto: Value(e.numeroDepto),
     piso: Value(e.piso),
-    descripcion: Value(e.descripcion),
     createdAt: e.auditoria.createdAt,
     updatedAt: e.auditoria.updatedAt,
     createdBy: Value(e.auditoria.createdBy),
@@ -650,19 +780,28 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   @override
-  Future<EspacioModel> actualizarNumeroDepto(
+  Future<EspacioModel> actualizarEspacio(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) => transaction(() async {
     final fila = await _espacioActivoOLanzar(id);
     await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: false);
-    if (fila.numeroDepto == numeroDepto) return _aModeloEspacio(fila);
+    if (fila.numeroDepto == numeroDepto && fila.piso == piso) return _aModeloEspacio(fila);
 
-    await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    // Solo un número nuevo se compara con los demás: cambiar el piso de un depto que ya estaba no
+    // tiene que fallar por un repetido que venía de antes (por ejemplo, de otro teléfono).
+    if (_claveDepto(fila.numeroDepto) != _claveDepto(numeroDepto)) {
+      await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    }
     return _escribirEspacio(
       id,
-      EspaciosCompanion(numeroDepto: Value(numeroDepto), updatedAt: Value(instanteMs(ahora))),
+      EspaciosCompanion(
+        numeroDepto: Value(numeroDepto),
+        piso: Value(piso),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
     );
   });
 
@@ -746,8 +885,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios en los
-  /// bordes ni distinción de mayúsculas). Un número `null` no se compara.
+  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios ni distinción
+  /// de mayúsculas: «3B» y «3 b» son el mismo). Un número `null` no se compara.
   Future<void> _exigirSinDuplicado(
     String ubicacionId,
     String? numeroDepto, {
@@ -763,10 +902,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  static String? _claveDepto(String? numeroDepto) {
-    final limpio = numeroDepto?.trim().toLowerCase();
-    return limpio == null || limpio.isEmpty ? null : limpio;
-  }
+  static String? _claveDepto(String? numeroDepto) => Espacio.claveDeNumero(numeroDepto);
 
   /// Aplica [cambios] a [id], lee la fila resultante y encola su `update` con la fila entera.
   Future<EspacioModel> _escribirEspacio(String id, EspaciosCompanion cambios) async {
@@ -781,7 +917,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: fila.ubicacionId,
     numeroDepto: fila.numeroDepto,
     piso: fila.piso,
-    descripcion: fila.descripcion,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

@@ -144,7 +144,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           _errorGeneral = BannerErrorConAccion.servicioNoDisponible;
           _errorEsReintentable = true;
         case Failure():
-          _errorGeneral = mensajePara(failure, accion: _accionSinConexion);
+          _errorGeneral = mensajePara(
+            failure,
+            accion: _accionSinConexion,
+            noPudimos: 'No pudimos iniciar tu sesión.',
+          );
       }
     });
     // Con el texto grande y «Entrar» al borde de la pantalla el aviso (y «Reintentar») nacía

@@ -7,6 +7,7 @@ import 'core/conectividad/conectividad_providers.dart';
 import 'core/error/failure.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
 import 'features/auth/domain/entities/estado_cuenta.dart';
@@ -29,7 +30,10 @@ import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
+import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -324,6 +328,14 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
+    // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
+    ref.watch(respaldoAlVolverProvider);
+    // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
+    ref.watch(aperturasDesdeRecordatorioProvider);
+    // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
+    ref.watch(conciliacionRecordatoriosProvider);
+    // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
+    ref.watch(recordatoriosPorBajaProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

@@ -6,14 +6,17 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/persona_local_data_source_drift.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/ultima_visita_del_espacio_drift.dart';
 import '../../data/repositories/espacio_repository_impl.dart';
 import '../../data/repositories/persona_repository_impl.dart';
 import '../../domain/entities/contexto_edicion_persona.dart';
 import '../../domain/entities/persona_del_espacio.dart';
+import '../../domain/entities/ultima_visita_del_espacio.dart';
 import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
 import '../../domain/services/criterio_otra_persona.dart';
+import '../../domain/services/lector_ultima_visita_del_espacio.dart';
 import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/modificar_persona_use_case.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
@@ -102,6 +105,22 @@ final contextoEspacioProvider = FutureProvider.autoDispose.family<EspacioConUbic
 final personasDelEspacioProvider = StreamProvider.autoDispose
     .family<List<PersonaDelEspacio>, String>(
       (ref, espacioId) => ref.watch(personaRepositoryProvider).observarDelEspacio(espacioId),
+    );
+
+/// De dónde sale la última visita de un espacio (el estado del encabezado de la ficha del depto, vista
+/// 11·04, #151). Sin la DB local abierta no hay de dónde: lanza, y quien lo lee no dice ningún estado.
+final lectorUltimaVisitaDelEspacioProvider = Provider<LectorUltimaVisitaDelEspacio>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UltimaVisitaDelEspacioDrift(db);
+});
+
+/// La última visita de [espacioId], al día cuando se registra o se deshace una; `null` si no tiene
+/// ninguna. Una falla de lectura sale como error del provider (el encabezado no afirma nada).
+final ultimaVisitaDelEspacioProvider = StreamProvider.autoDispose
+    .family<UltimaVisitaDelEspacio?, String>(
+      (ref, espacioId) => ref.watch(lectorUltimaVisitaDelEspacioProvider).observar(espacioId),
+      retry: _sinReintentos,
     );
 
 /// De dónde sale lo que debe cada persona (la línea «Saldo» de «¿Con quién?»). Sin ventas locales

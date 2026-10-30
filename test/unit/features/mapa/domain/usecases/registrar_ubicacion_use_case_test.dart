@@ -29,6 +29,7 @@ final class _RepositorioQueAnota
           Espacio? espacio,
           OrigenCoordenadas origen,
           CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
         })
       >[];
   Either<Failure, ResultadoAltaUbicacion>? respuesta;
@@ -45,8 +46,15 @@ final class _RepositorioQueAnota
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
-    llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
     return respuesta ?? Right(AltaRegistrada(ubicacion: ubicacion, espacio: espacio));
   }
 
@@ -246,6 +254,19 @@ void main() {
         await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
 
         expect(repositorio.llamadas.single.duplicados, isNull);
+      });
+
+      test('cuando elige "Crear igual", la justificación (sin espacios en los bordes) llega al '
+          'repositorio para guardarla en la auditoría local', () async {
+        await registrar(params(justificacionDuplicado: '  Es la casa del fondo  '));
+
+        expect(repositorio.llamadas.single.justificacion, 'Es la casa del fondo');
+      });
+
+      test('sin "Crear igual", no manda ninguna justificación', () async {
+        await registrar(params());
+
+        expect(repositorio.llamadas.single.justificacion, isNull);
       });
 
       test('cuando elige "Crear igual" con la justificación en blanco, devuelve FailureValidacion '

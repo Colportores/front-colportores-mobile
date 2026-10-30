@@ -17,17 +17,20 @@ abstract interface class EspacioLocalDataSource {
   ///
   /// - Si ya hay un espacio con ese `id`, no escribe nada y lo devuelve con `yaEstaba: true`.
   /// - La ubicación tiene que existir, estar activa y no ser `CASA`; el `numero_depto` no puede
-  ///   repetir el de otro espacio activo de la misma ubicación (sin distinguir mayúsculas).
+  ///   repetir el de otro espacio activo de la misma ubicación (sin distinguir mayúsculas ni
+  ///   espacios).
   Future<InsercionEspacio> insertarEspacio(EspacioModel espacio);
 
-  /// Cambia el `numero_depto` de [id] y encola el `update` con la fila entera. No toca
-  /// `sync_version` (la asigna el servidor). Si el valor no cambia, no escribe ni encola.
+  /// Cambia el `numero_depto` y el `piso` de [id] (`null`: sin piso) y encola el `update` con la
+  /// fila entera. No toca `sync_version` (la asigna el servidor) ni la `descripcion`. Si nada
+  /// cambia, no escribe ni encola.
   ///
   /// El espacio tiene que existir y estar activo, su ubicación no puede ser `CASA` (el espacio
-  /// default no se edita) y el número no puede repetir el de otro espacio activo.
-  Future<EspacioModel> actualizarNumeroDepto(
+  /// default no se edita) y, si el número cambia, no puede repetir el de otro espacio activo.
+  Future<EspacioModel> actualizarEspacio(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   });
 

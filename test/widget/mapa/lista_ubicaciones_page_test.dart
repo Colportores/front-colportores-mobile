@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
@@ -375,7 +374,11 @@ void main() {
     testWidgets('dado «Mostrar bajas» activo, entonces la baja se ve con su etiqueta y sin flecha, '
         'no abre la ubicación (se reactiva); el contador suma las bajas', (tester) async {
       final abiertas = <String>[];
-      await montarLista(tester, repo: RepoListaFalso(conBaja), alAbrir: abiertas.add);
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(conBaja),
+        alAbrir: (id, _) => abiertas.add(id),
+      );
       expect(find.text('Gral. Flores 1500'), findsNothing);
       expect(find.text('3 de 3'), findsOneWidget);
 
@@ -656,30 +659,27 @@ void main() {
       },
     );
 
-    testWidgets(
-      'dado el puerto de ciudades de hoy, sin adaptador, entonces la hoja avisa en vez de '
-      'inventar ciudades',
-      (tester) async {
-        await montarLista(
-          tester,
-          repo: RepoListaFalso(_muestra()),
-          ciudades: CiudadesParaAltaSinFuente(),
-        );
-        await abrirHojaFiltros(tester);
-        expect(find.text('Todas'), findsOneWidget);
+    testWidgets('dadas unas ciudades que no se pueden leer, entonces la hoja avisa en vez de '
+        'inventar ciudades', (tester) async {
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_muestra()),
+        ciudades: const CiudadesQueNoSePuedenLeer(),
+      );
+      await abrirHojaFiltros(tester);
+      expect(find.text('Todas'), findsOneWidget);
 
-        await tester.tap(find.text('Todas'));
-        await asentarLista(tester);
+      await tester.tap(find.text('Todas'));
+      await asentarLista(tester);
 
-        expect(
-          find.text('No pudimos leer las ciudades de tu campaña. Probá de nuevo.'),
-          findsOneWidget,
-        );
-        expect(find.text(TextosListaUbicaciones.reintentar), findsOneWidget);
-        expect(find.text('Montevideo'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-    );
+      expect(
+        find.text('No pudimos leer las ciudades de tu campaña. Probá de nuevo.'),
+        findsOneWidget,
+      );
+      expect(find.text(TextosListaUbicaciones.reintentar), findsOneWidget);
+      expect(find.text('Montevideo'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('dado que no hay ciudades en la campaña, entonces la hoja de ciudades lo dice', (
       tester,
@@ -1097,13 +1097,38 @@ void main() {
       'dado un destino, cuando toca una fila, entonces avisa cuál; una sola vez por toque',
       (tester) async {
         final abiertas = <String>[];
-        await montarLista(tester, repo: RepoListaFalso(_muestra()), alAbrir: abiertas.add);
+        await montarLista(
+          tester,
+          repo: RepoListaFalso(_muestra()),
+          alAbrir: (id, _) => abiertas.add(id),
+        );
 
         await tester.tap(find.text('Colonia 2020'));
         await tester.pump();
 
         expect(abiertas, ['neg-1']);
         expect(find.text('›'), findsNWidgets(3));
+      },
+    );
+
+    testWidgets(
+      'entrega también la distancia que muestra la fila (el rótulo de la hoja la repite)',
+      (tester) async {
+        final abiertas = <(String, double?)>[];
+        await montarLista(
+          tester,
+          repo: RepoListaFalso([
+            filaLista('casa-1', calle: 'Rivadavia', numero: '100', metrosAlNorte: 40),
+          ]),
+          alAbrir: (id, distancia) => abiertas.add((id, distancia)),
+        );
+
+        await tester.tap(find.text('Rivadavia 100'));
+        await tester.pump();
+
+        expect(abiertas, hasLength(1));
+        expect(abiertas.single.$1, 'casa-1');
+        expect(abiertas.single.$2, closeTo(40, 1));
       },
     );
 

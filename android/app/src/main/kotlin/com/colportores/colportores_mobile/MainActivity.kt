@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.StatFs
 import android.provider.Settings
@@ -26,6 +27,32 @@ class MainActivity : FlutterActivity() {
         registrarCanalSeguridadDispositivo(flutterEngine)
         registrarCanalAlmacenamientoTiles(flutterEngine)
         registrarCanalNotificaciones(flutterEngine)
+        registrarCanalBateria(flutterEngine)
+    }
+
+    /**
+     * Canal `colportores/bateria` (HU-SYNC-005, R-SY10): el nivel de la batería, para que el backup
+     * automático no corra con menos del 30 %. Del lado de Dart, `NivelBateriaCanal`.
+     *
+     * - `nivel` -> el porcentaje (0 a 100, `BatteryManager.BATTERY_PROPERTY_CAPACITY`) o `null` si el
+     *   sistema no lo informa.
+     */
+    private fun registrarCanalBateria(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_BATERIA).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "nivel" -> {
+                        val bateria = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                        val nivel = bateria.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                        // Sin dato, Android devuelve 0 o `Integer.MIN_VALUE`.
+                        result.success(if (nivel in 1..100) nivel else null)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("BATERIA", e.javaClass.simpleName, null)
+            }
+        }
     }
 
     /**
@@ -87,6 +114,13 @@ class MainActivity : FlutterActivity() {
         if (requestCode != CODIGO_NOTIFICACIONES) return
         val pedido = pedidoNotificaciones ?: return
         pedidoNotificaciones = null
+        if (grantResults.isEmpty()) {
+            // El sistema canceló el pedido sin que la persona contestara (por ejemplo, al girar la
+            // pantalla o cambiar de app con el diálogo abierto): no es un «no». La app lo cuenta como
+            // falla recuperable y ofrece volver a intentarlo.
+            pedido.error("NOTIFICACIONES", "Interrumpido", null)
+            return
+        }
         // El permiso concedido puede convivir con las notificaciones apagadas de la app en los ajustes:
         // lo que vale es lo que el sistema dice ahora.
         pedido.success(notificacionesActivadas())
@@ -219,6 +253,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Abre el marcador del sistema con [numero] escrito (`ACTION_DIAL`, sin permiso: no llama solo).
+     * `false` si el número no es de dígitos con un `+` al comienzo, o si ninguna app lo abre. El número
+     * no se registra ni se devuelve a Dart.
+     */
+    private fun marcarTelefono(numero: String?): Boolean {
+        if (numero == null || !Regex("^\\+?[0-9]{1,20}$").matches(numero)) return false
+        return try {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", numero, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun tieneBloqueoPantalla(): Boolean {
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         return keyguard.isDeviceSecure
@@ -274,6 +323,7 @@ class MainActivity : FlutterActivity() {
         private const val CANAL = "colportores/seguridad_dispositivo"
         private const val CANAL_TILES = "colportores/almacenamiento_tiles"
         private const val CANAL_NOTIFICACIONES = "colportores/notificaciones"
+        private const val CANAL_BATERIA = "colportores/bateria"
         private const val CODIGO_NOTIFICACIONES = 4711
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ALIAS_PRUEBA = "colportores_sonda_nivel_keystore"

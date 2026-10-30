@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/database_providers.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/services/ciudades_para_alta.dart';
 import '../../domain/value_objects/coordenadas.dart';
@@ -20,8 +22,9 @@ import 'mapa_ubicaciones_notifier.dart';
 /// si todavía no había, **una sola vez más** con la primera lectura del GPS (sin punto el puerto solo
 /// sabe contestar cuando hay zona asignada o una única ciudad). Mientras no hay ciudad (el puerto
 /// falla, la campaña no tiene ciudades o falta el punto) el ámbito está vacío: el mapa se ve sin
-/// calles, sin aviso y sin «Descargar mapa» (no hay a qué ciudad pedirlo). Hasta que el adaptador
-/// real exista (#274) la app es siempre así.
+/// calles, sin aviso y sin «Descargar mapa» (no hay a qué ciudad pedirlo). Se vuelve a pedir cuando el
+/// pull cambia las réplicas de las que sale la ciudad ([replicaDeCampaniasCambioProvider]): quien abre
+/// el mapa antes de que termine la primera bajada ve las calles apenas llega, sin salir de la pestaña.
 class AmbitoMapaUbicacionesNotifier extends Notifier<AmbitoTrabajo> {
   AmbitoMapaUbicacionesNotifier(this.colportorId);
 
@@ -39,6 +42,11 @@ class AmbitoMapaUbicacionesNotifier extends Notifier<AmbitoTrabajo> {
     final proveedor = mapaUbicacionesProvider(colportorId);
     ref.listen(proveedor.select((estado) => estado.posicion), (_, posicion) {
       if (posicion != null && !_pidioConElGps) unawaited(_pedir(posicion));
+    });
+    // El pull escribió las campañas o las ciudades: la respuesta de antes puede haber sido «no sé».
+    // Con un punto del GPS ya pedido, se vuelve a preguntar con el último que hay.
+    ref.listen(replicaDeCampaniasCambioProvider, (_, _) {
+      unawaited(_pedir(ref.read(proveedor).posicion));
     });
     final posicion = ref.read(proveedor).posicion;
     // Todavía no hay `state` dentro de `build`: la respuesta del puerto llega después de él.
@@ -71,6 +79,30 @@ class AmbitoMapaUbicacionesNotifier extends Notifier<AmbitoTrabajo> {
     if (nuevo != state) state = nuevo;
   }
 }
+
+/// Avisa cada vez que se escribe en las réplicas de las que sale la ciudad del mapa (`ciudad`,
+/// `campania`, `campania_colportor`, `campania_ciudad` y `zona`) o en la fecha de la última bajada
+/// (`sync_meta`). No emite al suscribirse. Sin base abierta no emite nunca.
+final replicaDeCampaniasCambioProvider = StreamProvider.autoDispose<int>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return const Stream<int>.empty();
+  // Un número que crece: dos avisos seguidos no son «el mismo valor» y no se pierden.
+  var n = 0;
+  return db
+      .tableUpdates(
+        TableUpdateQuery.onAllTables([
+          db.ciudades,
+          db.campanias,
+          db.campaniasColportor,
+          db.campaniasCiudad,
+          db.zonas,
+          // El motor anota la bajada al terminar el ciclo, después de las filas: sin esto la lectura
+          // anterior a esa nota («todavía no sé») sería la última.
+          db.syncMetas,
+        ]),
+      )
+      .map((_) => ++n);
+});
 
 /// La ciudad del mapa de la vista 06 del colportor [colportorId]. Se descarta con la pestaña.
 final ambitoMapaUbicacionesProvider = NotifierProvider.autoDispose

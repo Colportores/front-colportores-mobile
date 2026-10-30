@@ -7,7 +7,7 @@
 // rompe el test, y un `ALTER TABLE … ADD COLUMN` no da un falso fallo.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
@@ -15,7 +15,18 @@ import 'package:logger/logger.dart';
 import 'generated/schema.dart';
 import 'generated/schema_v10.dart' as v10;
 import 'generated/schema_v11.dart' as v11;
+import 'generated/schema_v12.dart' as v12;
+import 'generated/schema_v13.dart' as v13;
+import 'generated/schema_v14.dart' as v14;
+import 'generated/schema_v15.dart' as v15;
+import 'generated/schema_v16.dart' as v16;
+import 'generated/schema_v17.dart' as v17;
+import 'generated/schema_v18.dart' as v18;
+import 'generated/schema_v19.dart' as v19;
 import 'generated/schema_v2.dart' as v2;
+import 'generated/schema_v20.dart' as v20;
+import 'generated/schema_v21.dart' as v21;
+import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -784,4 +795,556 @@ void main() {
       },
     );
   });
+
+  test('dado lo guardado en la versión 11, cuando migra a la 12, no se pierde nada y aparece el '
+      'historial de avisos vacío y sin encolar nada', () async {
+    // #156: `notificacion_historial` es local-only (no se sincroniza): al migrar solo se crea.
+    const jornada = v11.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 11,
+      newVersion: 12,
+      createOld: v11.DatabaseAtV11.new,
+      createNew: v12.DatabaseAtV12.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(jornadas.single.syncVersion, 1);
+        expect(await nuevo.select(nuevo.notificacionHistorial).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nueva guarda un aviso y rechaza repetir el id.
+        await nuevo.customStatement(
+          'INSERT INTO notificacion_historial (id, tipo, titulo, recibida_en) '
+          "VALUES ('n-1', 'RECORDATORIO_VISITA', 'Cobranza a las 16:00', 1)",
+        );
+        await expectLater(
+          nuevo.customStatement(
+            'INSERT INTO notificacion_historial (id, tipo, titulo, recibida_en) '
+            "VALUES ('n-1', 'RECORDATORIO_VISITA', 'otro', 2)",
+          ),
+          throwsA(anything),
+        );
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 12, cuando migra a la 13, no se pierde nada y aparece la '
+      'tabla de metadatos del motor vacía y sin encolar nada', () async {
+    // #486: `sync_meta` es solo local (infraestructura del motor): al migrar solo se crea. La vista
+    // de estado de sync dice «Todavía no hubo» hasta que el motor anote algo.
+    const jornada = v12.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 12,
+      newVersion: 13,
+      createOld: v12.DatabaseAtV12.new,
+      createNew: v13.DatabaseAtV13.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(jornadas.single.syncVersion, 1);
+        expect(await nuevo.select(nuevo.syncMeta).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nueva guarda un dato y rechaza repetir la clave.
+        await nuevo.customStatement(
+          "INSERT INTO sync_meta (clave, valor) VALUES ('last_pull_at', '2026-10-27T08:00:00.000Z')",
+        );
+        await expectLater(
+          nuevo.customStatement(
+            "INSERT INTO sync_meta (clave, valor) VALUES ('last_pull_at', 'otro')",
+          ),
+          throwsA(anything),
+        );
+      },
+    );
+  });
+
+  test('dado la versión 13, cuando migra a la 14, crea las réplicas del catálogo vacías y no toca '
+      'lo guardado', () async {
+    const jornada = v13.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 13,
+      newVersion: 14,
+      createOld: v13.DatabaseAtV13.new,
+      createNew: v14.DatabaseAtV14.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.producto).get(), isEmpty);
+        expect(await nuevo.select(nuevo.coleccion).get(), isEmpty);
+        expect(await nuevo.select(nuevo.productoColeccion).get(), isEmpty);
+        expect(await nuevo.select(nuevo.precioPorCiudad).get(), isEmpty);
+        expect(await nuevo.select(nuevo.precioGeneral).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado la versión 14, cuando migra a la 15, crea la réplica del stock vacía y no toca '
+      'lo guardado', () async {
+    const jornada = v14.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 14,
+      newVersion: 15,
+      createOld: v14.DatabaseAtV14.new,
+      createNew: v15.DatabaseAtV15.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.stock).get(), isEmpty);
+        // Nada se encola al migrar: el stock es una réplica de solo lectura.
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+      },
+    );
+  });
+
+  test(
+    'dado la versión 15 con una bajada anotada, cuando migra a la 16, crea las réplicas de ciudad y '
+    'de las campañas del colportor vacías, no toca lo guardado y olvida la última bajada',
+    () async {
+      const jornada = v15.JornadaData(
+        id: 'jor-1',
+        colportorId: 'col-1',
+        inicio: 1758700000000,
+        totalVisitas: 0,
+        totalVentas: 0,
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        createdBy: 'col-1',
+        syncVersion: 1,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 15,
+        newVersion: 16,
+        createOld: v15.DatabaseAtV15.new,
+        createNew: v16.DatabaseAtV16.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.jornada, jornada);
+          batch.insertAll(viejo.syncMeta, [
+            const v15.SyncMetaData(clave: 'last_pull_at', valor: '2026-10-20T12:00:00.000Z'),
+            const v15.SyncMetaData(clave: 'last_backup_at', valor: '2026-10-19T12:00:00.000Z'),
+          ]);
+        },
+        validateItems: (nuevo) async {
+          final jornadas = await nuevo.select(nuevo.jornada).get();
+          expect(jornadas.map((j) => j.id), ['jor-1']);
+          expect(await nuevo.select(nuevo.ciudad).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campania).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campaniaColportor).get(), isEmpty);
+          // Las réplicas nuevas todavía no bajaron: «hubo una bajada» ya no se puede afirmar, y lo
+          // demás que el motor anotó se queda.
+          final meta = {for (final f in await nuevo.select(nuevo.syncMeta).get()) f.clave: f.valor};
+          expect(meta, {'last_backup_at': '2026-10-19T12:00:00.000Z'});
+          // Nada se encola al migrar: son réplicas de solo lectura.
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+        },
+      );
+    },
+  );
+
+  test('dado la versión 14 con jornadas guardadas, cuando migra de una vez a la 16 (stock y las '
+      'réplicas de campañas), se conservan y las dos réplicas nacen vacías', () async {
+    const jornada = v14.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 14,
+      newVersion: 16,
+      createOld: v14.DatabaseAtV14.new,
+      createNew: v16.DatabaseAtV16.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.stock).get(), isEmpty);
+        expect(await nuevo.select(nuevo.ciudad).get(), isEmpty);
+        expect(await nuevo.select(nuevo.campania).get(), isEmpty);
+        expect(await nuevo.select(nuevo.campaniaColportor).get(), isEmpty);
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 16, cuando migra a la 17, no se pierde nada y aparecen la venta '
+      'y sus ítems vacíos, con los CHECK del servidor y sin encolar nada', () async {
+    // HU-VEN-001 (#423): `venta` y `venta_item` suben por el motor; al migrar solo se crean.
+    const jornada = v16.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 16,
+      newVersion: 17,
+      createOld: v16.DatabaseAtV16.new,
+      createNew: v17.DatabaseAtV17.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.jornada, jornada),
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.id), ['jor-1']);
+        expect(await nuevo.select(nuevo.venta).get(), isEmpty);
+        expect(await nuevo.select(nuevo.ventaItem).get(), isEmpty);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        const venta =
+            'INSERT INTO venta (id, espacio_persona_id, numero_talonario, monto_total, fecha, '
+            "colportor_id, created_at, updated_at) VALUES ('v-1', 'ep-1', '0042', 1200, 1, 'col-1', 1, 1)";
+        await nuevo.customStatement(venta);
+        // Un producto suelto: bien. Un combo sin `componentes`, o un ítem con producto y combo, no.
+        const columnas =
+            'INSERT INTO venta_item (id, venta_id, producto_id, coleccion_id, cantidad, '
+            'precio_unitario, subtotal, componentes, created_at, updated_at) VALUES ';
+        await nuevo.customStatement(
+          "$columnas('i-1', 'v-1', 'p-1', NULL, 2, 600, 1200, NULL, 1, 1)",
+        );
+        for (final malo in [
+          "('i-2', 'v-1', NULL, 'c-1', 1, 600, 600, NULL, 1, 1)",
+          "('i-3', 'v-1', 'p-1', 'c-1', 1, 600, 600, '[]', 1, 1)",
+          "('i-4', 'v-1', 'p-1', NULL, 2, 600, 999, NULL, 1, 1)",
+          "('i-5', 'v-1', 'p-1', NULL, 0, 600, 0, NULL, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+        }
+        await expectLater(
+          nuevo.customStatement(venta.replaceFirst("'v-1'", "'v-2'").replaceFirst('1200', '-1')),
+          throwsA(anything),
+        );
+      },
+    );
+  });
+
+  test(
+    'dado lo guardado en la versión 17, cuando migra a la 18, el producto conserva todo, queda sin '
+    'código del editor, aparece parametro_global vacío y no se encola nada',
+    () async {
+      // HU-CAT-006 (#419): `producto.codigo_editor` es una columna nueva y opcional, y `parametro_global`
+      // una réplica de solo lectura que llena el pull. Al migrar no se toca nada de lo guardado.
+      const producto = v17.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 3,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 17,
+        newVersion: 18,
+        createOld: v17.DatabaseAtV17.new,
+        createNew: v18.DatabaseAtV18.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.producto, producto),
+        validateItems: (nuevo) async {
+          final productos = await nuevo.select(nuevo.producto).get();
+          expect(productos.map((p) => p.id), ['pro-1']);
+          expect(productos.single.nombre, 'El Conflicto de los Siglos');
+          expect(productos.single.precioBaseCompra, 18000);
+          expect(productos.single.syncVersion, 3);
+          expect(productos.single.codigoEditor, isNull);
+          expect(await nuevo.select(nuevo.parametroGlobal).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta un código; la tabla nueva, una fila como la del servidor.
+          await nuevo.customStatement(
+            "UPDATE producto SET codigo_editor = 'CS-01' WHERE id = 'pro-1'",
+          );
+          await nuevo.customStatement(
+            'INSERT INTO parametro_global (id, clave, valor, created_at, updated_at) '
+            "VALUES ('pg-1', 'dias_antiguedad_precios', 15, 1, 1)",
+          );
+          expect((await nuevo.select(nuevo.producto).getSingle()).codigoEditor, 'CS-01');
+          expect((await nuevo.select(nuevo.parametroGlobal).getSingle()).valor, 15);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 18, cuando migra a la 19, no se pierde nada y aparece el cobro '
+    'vacío, con los CHECK del servidor y sin encolar nada',
+    () async {
+      // HU-COB-001 (#436): `cobranza` sube por el motor; al migrar solo se crea.
+      const venta = v18.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 18,
+        newVersion: 19,
+        createOld: v18.DatabaseAtV18.new,
+        createNew: v19.DatabaseAtV19.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.cobranza).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO cobranza (id, venta_id, monto, medio, fecha, created_at, updated_at) '
+              'VALUES ';
+          await nuevo.customStatement("$columnas('c-1', 'v-1', 500, 'EFECTIVO', 1, 1, 1)");
+          for (final malo in [
+            "('c-2', 'v-1', 0, 'EFECTIVO', 1, 1, 1)",
+            "('c-3', 'v-1', -5, 'EFECTIVO', 1, 1, 1)",
+            "('c-4', 'v-1', 500, 'CHEQUE', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
+
+  test('dado un cobro en efectivo guardado en la versión 19, cuando migra a la 20, no se pierde nada, '
+      'los datos de la tarjeta y de la transferencia quedan vacíos y no se encola nada', () async {
+    // HU-COB-002 y HU-COB-003 (#396): cinco columnas opcionales nuevas en `cobranza`.
+    const venta = v19.VentaData(
+      id: 'v-1',
+      espacioPersonaId: 'ep-1',
+      numeroTalonario: '0042',
+      montoTotal: 4500,
+      fecha: 1,
+      colportorId: 'col-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 0,
+    );
+    const cobro = v19.CobranzaData(
+      id: 'c-1',
+      ventaId: 'v-1',
+      monto: 500,
+      medio: 'EFECTIVO',
+      fecha: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 2,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 19,
+      newVersion: 20,
+      createOld: v19.DatabaseAtV19.new,
+      createNew: v20.DatabaseAtV20.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.venta, venta);
+        batch.insert(viejo.cobranza, cobro);
+      },
+      validateItems: (nuevo) async {
+        final cobros = await nuevo.select(nuevo.cobranza).get();
+        expect(cobros.map((c) => c.id), ['c-1']);
+        expect(cobros.single.monto, 500);
+        expect(cobros.single.medio, 'EFECTIVO');
+        expect(cobros.single.syncVersion, 2);
+        expect(cobros.single.tarjetaTipo, isNull);
+        expect(cobros.single.tarjetaMarca, isNull);
+        expect(cobros.single.numeroAprobacion, isNull);
+        expect(cobros.single.referenciaTransferencia, isNull);
+        expect(cobros.single.bancoOrigen, isNull);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // Las columnas aceptan lo que llevan el cobro con tarjeta y el de transferencia.
+        await nuevo.customStatement(
+          "UPDATE cobranza SET medio = 'TARJETA', tarjeta_tipo = 'DEBITO', tarjeta_marca = 'Visa', "
+          "numero_aprobacion = '884213' WHERE id = 'c-1'",
+        );
+        final tarjeta = await nuevo.select(nuevo.cobranza).getSingle();
+        expect(tarjeta.tarjetaTipo, 'DEBITO');
+        expect(tarjeta.tarjetaMarca, 'Visa');
+        expect(tarjeta.numeroAprobacion, '884213');
+        await nuevo.customStatement(
+          "UPDATE cobranza SET medio = 'TRANSFERENCIA', tarjeta_tipo = NULL, tarjeta_marca = NULL, "
+          "numero_aprobacion = NULL, referencia_transferencia = 'TX-12345', banco_origen = 'BROU' "
+          "WHERE id = 'c-1'",
+        );
+        final transferencia = await nuevo.select(nuevo.cobranza).getSingle();
+        expect(transferencia.referenciaTransferencia, 'TX-12345');
+        expect(transferencia.bancoOrigen, 'BROU');
+      },
+    );
+  });
+
+  test(
+    'dado lo guardado en la versión 20, cuando migra a la 21, no se pierde nada y aparece la entrega '
+    'vacía, con su CHECK y sin encolar nada',
+    () async {
+      // HU-VEN-002 (#430): `entrega` sube por el motor; al migrar solo se crea.
+      const venta = v20.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 20,
+        newVersion: 21,
+        createOld: v20.DatabaseAtV20.new,
+        createNew: v21.DatabaseAtV21.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.entrega).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO entrega (id, venta_id, producto_id, cantidad, created_at, updated_at) '
+              'VALUES ';
+          await nuevo.customStatement("$columnas('e-1', 'v-1', 'p-1', 3, 1, 1)");
+          final entrega = await nuevo.select(nuevo.entrega).getSingle();
+          // Sin decir nada, la fila queda pendiente (el valor por defecto del servidor).
+          expect(entrega.pendiente, 1);
+          expect(entrega.fechaEntrega, isNull);
+          for (final malo in [
+            "('e-2', 'v-1', 'p-1', 0, 1, 1)",
+            "('e-3', 'v-1', 'p-1', -2, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 21, cuando migra a la 22, no se pierde nada y aparece la devolución '
+    'vacía, con sus CHECK y sin encolar nada',
+    () async {
+      // HU-VEN-004 (#161): `devolucion` sube por el motor; al migrar solo se crea.
+      const venta = v21.VentaData(
+        id: 'v-1',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0042',
+        montoTotal: 1200,
+        fecha: 1,
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 0,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 21,
+        newVersion: 22,
+        createOld: v21.DatabaseAtV21.new,
+        createNew: v22.DatabaseAtV22.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.venta, venta),
+        validateItems: (nuevo) async {
+          final ventas = await nuevo.select(nuevo.venta).get();
+          expect(ventas.map((v) => v.id), ['v-1']);
+          expect(await nuevo.select(nuevo.devolucion).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO devolucion (id, venta_id, productos_devueltos, dinero_retenido, '
+              'monto_reembolsado, motivo, fecha_devolucion, created_at, updated_at) VALUES ';
+          const libros = "'[{\"producto_id\":\"p-1\",\"cantidad\":1,\"venta_item_id\":\"i-1\"}]'";
+          await nuevo.customStatement("$columnas('d-1', 'v-1', $libros, 0, NULL, NULL, 1, 1, 1)");
+          await nuevo.customStatement("$columnas('d-2', 'v-1', $libros, 100, 50, 'x', 1, 1, 1)");
+          expect(await nuevo.select(nuevo.devolucion).get(), hasLength(2));
+          for (final malo in [
+            "('d-3', 'v-1', $libros, -1, NULL, NULL, 1, 1, 1)",
+            "('d-4', 'v-1', $libros, 0, -5, NULL, 1, 1, 1)",
+            "('d-5', 'v-1', $libros, 0, NULL, '', 1, 1, 1)",
+            "('d-6', 'v-1', $libros, 0, NULL, '${'a' * 501}', 1, 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+        },
+      );
+    },
+  );
 }

@@ -4,9 +4,19 @@ import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
+import '../../features/catalogo/data/datasources/colecciones_table.dart';
+import '../../features/catalogo/data/datasources/parametros_globales_table.dart';
+import '../../features/catalogo/data/datasources/precios_generales_table.dart';
+import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
+import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
+import '../../features/catalogo/data/datasources/productos_table.dart';
+import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
+import '../../features/mapa/data/datasources/campanias_colportor_table.dart';
+import '../../features/mapa/data/datasources/campanias_table.dart';
+import '../../features/mapa/data/datasources/ciudades_table.dart';
 import '../../features/mapa/data/datasources/espacio_personas_table.dart';
 import '../../features/mapa/data/datasources/espacios_table.dart';
 import '../../features/mapa/data/datasources/geojson_converter.dart';
@@ -17,6 +27,14 @@ import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
+import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
+import '../../features/stock/data/datasources/stocks_table.dart';
+import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/devoluciones_table.dart';
+import '../../features/ventas/data/datasources/entregas_table.dart';
+import '../../features/ventas/data/datasources/productos_devueltos_converter.dart';
+import '../../features/ventas/data/datasources/venta_items_table.dart';
+import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
@@ -50,12 +68,29 @@ part 'app_database.g.dart';
     AuditLogLocal,
     SyncQueue,
     SyncWatermarks,
+    SyncMetas,
     Personas,
     EspacioPersonas,
     Notas,
     Agendas,
     Visitas,
     HouseStatuses,
+    NotificacionesHistorial,
+    Productos,
+    Colecciones,
+    ProductoColecciones,
+    PreciosPorCiudad,
+    PreciosGenerales,
+    ParametrosGlobales,
+    Stocks,
+    Ciudades,
+    Campanias,
+    CampaniasColportor,
+    Ventas,
+    VentaItems,
+    Cobranzas,
+    Entregas,
+    Devoluciones,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -81,10 +116,30 @@ class AppDatabase extends _$AppDatabase {
   /// - 11: `agenda` y `visita` cuelgan del espacio (`espacio_id`), la persona es opcional, la agenda
   ///   usa los estados de la HU (`PROGRAMADA`, `CUMPLIDA`, `NO_CUMPLIDA`, `CANCELADA`) y la visita
   ///   suma el resultado `COBRANZA` (backend 0068 y 0069, #411).
+  /// - 12: `notificacion_historial`, el historial del centro de notificaciones, solo local
+  ///   (HU-NOT-005, #156).
+  /// - 13: `sync_meta`, lo que el motor se acuerda entre aperturas: última bajada, último respaldo y
+  ///   la red del último envío (HU-SYNC-007, #486).
+  /// - 14: las réplicas del catálogo de ventas, `producto`, `coleccion`, `producto_coleccion`,
+  ///   `precio_por_ciudad` y `precio_general` (HU-SYNC-002, HU-SYNC-003, HU-CAT-007, #180).
+  /// - 15: `stock`, la réplica de solo lectura del inventario del colportor (HU-STK-004, #545).
+  /// - 16: las réplicas de `ciudad`, `campania` y `campania_colportor` (las inscripciones propias):
+  ///   de dónde salen las ciudades de la campaña del colportor sin red (#274).
+  /// - 17: `venta` y `venta_item`, las ventas del colportor (HU-VEN-001, #423).
+  /// - 18: `producto.codigo_editor` (el código de la casa editora, opcional) y `parametro_global`, la
+  ///   réplica de solo lectura de los parámetros de toda la aplicación, hoy los días del aviso de
+  ///   precios viejos (backend-supabase 0070, HU-CAT-006, #419).
+  /// - 19: `cobranza`, el cobro en efectivo, que sube (HU-COB-001, #436).
+  /// - 20: `cobranza` suma los datos opcionales de la tarjeta (`tarjeta_tipo`, `tarjeta_marca`,
+  ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
+  ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
+  /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
+  /// - 22: `devolucion`, las devoluciones de una venta (qué libros vuelven y qué se hace con la plata de
+  ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 11;
+  static const int versionEsquema = 22;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -225,6 +280,93 @@ class AppDatabase extends _$AppDatabase {
       // `alterTable` vuelve a crear los índices que ya tenía cada tabla, no los nuevos.
       await m.createIndex(esquema.visitaEspacioIdx);
       await m.createIndex(esquema.agendaEspacioIdx);
+    },
+    // Solo crea el historial de avisos, vacío: nada de lo guardado cambia.
+    from11To12: (m, esquema) async {
+      await m.createTable(esquema.notificacionHistorial);
+      await m.createIndex(esquema.notificacionHistorialRecibidaIdx);
+    },
+    // Solo crea la tabla de metadatos del motor, vacía: nada de lo guardado cambia. Hasta que el
+    // motor anote algo, la vista de estado dice «Todavía no hubo».
+    from12To13: (m, esquema) async {
+      await m.createTable(esquema.syncMeta);
+    },
+    // Solo crea las réplicas del catálogo de ventas, vacías (las llena el pull, entero la primera
+    // vez): nada de lo guardado cambia. El servidor baja desde cero toda entidad que el watermark
+    // del teléfono no tiene, así que no hace falta tocar `sync_watermark`.
+    from13To14: (m, esquema) async {
+      await m.createTable(esquema.producto);
+      await m.createTable(esquema.coleccion);
+      await m.createTable(esquema.productoColeccion);
+      await m.createIndex(esquema.productoColeccionColeccionIdx);
+      await m.createTable(esquema.precioPorCiudad);
+      await m.createIndex(esquema.precioPorCiudadCampaniaCiudadIdx);
+      await m.createIndex(esquema.precioPorCiudadProductoIdx);
+      await m.createIndex(esquema.precioPorCiudadColeccionIdx);
+      await m.createTable(esquema.precioGeneral);
+      await m.createIndex(esquema.precioGeneralProductoIdx);
+      await m.createIndex(esquema.precioGeneralColeccionIdx);
+    },
+    // Solo crea la réplica del stock, vacía (la llena el pull, entero la primera vez): nada de lo
+    // guardado cambia ni se encola al migrar.
+    from14To15: (m, esquema) async {
+      await m.createTable(esquema.stock);
+      await m.createIndex(esquema.stockUsuarioIdx);
+    },
+    // Solo crea las réplicas de las ciudades y de las campañas del colportor, vacías (las llena el
+    // pull, entero la primera vez): nada de lo guardado cambia. Borra la fecha de la última bajada
+    // de `sync_meta`: una instalación que viene de la versión anterior ya bajó alguna vez, pero estas
+    // réplicas todavía no, y «hubo una bajada y no hay inscripciones» no es «no hay campañas» sino
+    // «todavía no sé» (`CampaniasDelColportorLocalDataSourceDrift.leer`). El watermark de cada
+    // entidad no se toca: el servidor baja desde cero las que el teléfono nunca bajó.
+    from15To16: (m, esquema) async {
+      await m.createTable(esquema.ciudad);
+      await m.createTable(esquema.campania);
+      await m.createTable(esquema.campaniaColportor);
+      await m.createIndex(esquema.campaniaColportorUsuarioIdx);
+      await m.database.customStatement("DELETE FROM sync_meta WHERE clave = 'last_pull_at'");
+    },
+    // Solo crea las ventas y sus ítems, vacíos: nada de lo guardado cambia ni se encola al migrar.
+    from16To17: (m, esquema) async {
+      await m.createTable(esquema.venta);
+      await m.createIndex(esquema.ventaColportorIdx);
+      await m.createIndex(esquema.ventaEspacioPersonaIdx);
+      await m.createTable(esquema.ventaItem);
+      await m.createIndex(esquema.ventaItemVentaIdx);
+    },
+    // Suma la columna `codigo_editor` a `producto` (vacía: ninguna fila que ya estaba cambia) y crea
+    // `parametro_global`, vacía (la llena el pull, entero la primera vez: el servidor baja desde cero
+    // toda entidad que el watermark del teléfono no tiene). Sin código, el producto se encuentra por
+    // nombre, que es lo que pasaba hasta ahora. Un producto ya bajado recibe su código cuando
+    // Administración lo cambia en el servidor (agregar la columna no mueve el cursor del delta).
+    from17To18: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.codigoEditor);
+      await m.createTable(esquema.parametroGlobal);
+    },
+    // Solo crea los cobros, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from18To19: (m, esquema) async {
+      await m.createTable(esquema.cobranza);
+      await m.createIndex(esquema.cobranzaVentaIdx);
+    },
+    // Suma a `cobranza` los datos opcionales de la tarjeta y de la transferencia, vacíos: ningún cobro
+    // que ya estaba cambia ni se vuelve a encolar al migrar.
+    from19To20: (m, esquema) async {
+      await m.addColumn(esquema.cobranza, esquema.cobranza.tarjetaTipo);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.tarjetaMarca);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.numeroAprobacion);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.referenciaTransferencia);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.bancoOrigen);
+    },
+    // Solo crea la tabla de las entregas, vacía: nada de lo guardado cambia ni se encola al migrar.
+    // Las ventas de antes quedan sin entrega registrada (los datos son simulados hasta diciembre).
+    from20To21: (m, esquema) async {
+      await m.createTable(esquema.entrega);
+      await m.createIndex(esquema.entregaVentaIdx);
+    },
+    // Solo crea la tabla de las devoluciones, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from21To22: (m, esquema) async {
+      await m.createTable(esquema.devolucion);
+      await m.createIndex(esquema.devolucionVentaIdx);
     },
   );
 }

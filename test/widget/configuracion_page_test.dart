@@ -3,7 +3,9 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/sync/sync_providers.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_local_data_source.dart';
@@ -20,19 +22,30 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
+import 'package:colportores_mobile/features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/borrar_datos_locales_page.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/configuracion_page.dart';
+import 'package:colportores_mobile/features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/widgets/hoja_cerrar_sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
+import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
+import 'package:colportores_mobile/features/tiles/presentation/providers/mapas_offline_providers.dart';
+import 'package:colportores_mobile/features/tiles/presentation/providers/tiles_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sync_engine/sync_engine.dart'
+    show JobState, Op, PullDelta, PushBatch, PushResult, SpecRegistry, SyncEngine, SyncSpec;
+import 'package:sync_engine/testing.dart'
+    show FakeSyncTransport, InMemoryJobStore, InMemoryLocalStore;
 
 import '../helpers/db_local_repository_en_memoria.dart';
+import '../helpers/mapa_descargas_arnes.dart';
+import '../helpers/tiles_falsos.dart';
 
 const _resumenBase = ResumenDatosLocales(
   personas: 12,
@@ -95,6 +108,43 @@ final class _LocalQueNoBorra implements AuthLocalDataSource {
   }
 }
 
+/// Backend en memoria cuyas llamadas esperan a que el test las suelte: un ciclo de sync "en vuelo".
+final class _TransporteQueSeTraba extends FakeSyncTransport {
+  final Completer<void> compuerta = Completer<void>();
+
+  /// Cuántas llamadas (push o pull) llegaron a la compuerta.
+  int llamadas = 0;
+
+  @override
+  Future<PushResult> push(PushBatch batch) async {
+    llamadas++;
+    await compuerta.future;
+    return super.push(batch);
+  }
+
+  @override
+  Future<PullDelta> pull({required List<String> entities, String? watermark, int? limit}) async {
+    llamadas++;
+    await compuerta.future;
+    return super.pull(entities: entities, watermark: watermark, limit: limit);
+  }
+}
+
+/// Backend en memoria que **aplica** el primer lote y cuya respuesta no llega hasta que el test la
+/// suelta: la señal se corta justo después de que el servidor guardó la operación, y el teléfono no
+/// se entera.
+final class _TransporteQuePierdeLaPrimeraRespuesta extends FakeSyncTransport {
+  final Completer<void> respuesta = Completer<void>();
+  int _lotes = 0;
+
+  @override
+  Future<PushResult> push(PushBatch batch) async {
+    final resultado = await super.push(batch);
+    if (++_lotes == 1) await respuesta.future;
+    return resultado;
+  }
+}
+
 late AuthRemoteDataSourceEnMemoria _remote;
 late _DatosLocalesFake _datos;
 
@@ -122,6 +172,12 @@ Future<ProviderContainer> _montar(
     ],
   );
   addTearDown(container.dispose);
+  // La pantalla de los tests (800 × 600) no alcanza para ver «Cerrar sesión» sin desplazar con la fila
+  // «Mostrar el aviso de privacidad» (#445): se la alarga, salvo que el test ya haya elegido un tamaño.
+  if (tester.view.physicalSize == const Size(2400, 1800)) {
+    tester.view.physicalSize = const Size(2400, 3000);
+    addTearDown(tester.view.reset);
+  }
   await container.read(sesionProvider.future);
   await container
       .read(sesionProvider.notifier)
@@ -184,6 +240,7 @@ void main() {
       final container = await _montar(tester);
       expect(find.text('ana@example.com'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       expect(
@@ -213,6 +270,7 @@ void main() {
       );
       final container = await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -231,6 +289,7 @@ void main() {
       expect(container.read(sesionProvider).value, isNotNull, reason: 'cancelar no cierra nada');
       expect(find.byType(ConfiguracionPage), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cerrar sesión igual'));
@@ -242,6 +301,7 @@ void main() {
       final container = await _montar(tester);
       _remote.simularSinConexion = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -271,6 +331,7 @@ void main() {
       final container = await _montar(tester, local: local);
       local.fallar = true;
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -292,9 +353,11 @@ void main() {
       _datos.demoraResumen = Completer<void>();
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
       expect(find.byKey(const Key('configuracion_cerrando')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pump();
 
@@ -349,12 +412,91 @@ void main() {
         expect(find.text('A'), findsOneWidget);
       });
 
-      testWidgets('la fila «Mapas offline» no está hasta que exista la pantalla (#190)', (
+      testWidgets(
+        'vista 35 (#132): la sección «Mapas» con la fila «Mapas offline» va entre «Tu cuenta» y «Privacidad y datos»',
+        (tester) async {
+          await _montar(tester);
+
+          expect(find.text('Mapas'), findsOneWidget);
+          expect(find.text('Mapas offline'), findsOneWidget);
+          final cuenta = tester.getTopLeft(find.text('Tu cuenta')).dy;
+          final mapas = tester.getTopLeft(find.text('Mapas')).dy;
+          final privacidad = tester.getTopLeft(find.text('Privacidad y datos')).dy;
+          expect(mapas, greaterThan(cuenta));
+          expect(mapas, lessThan(privacidad));
+        },
+      );
+
+      testWidgets('la fila «Mapas offline» no afirma nada mientras no se sabe qué hay descargado', (
         tester,
       ) async {
         await _montar(tester);
 
-        expect(find.text('Mapas offline'), findsNothing);
+        final resumen = tester.widget<Text>(
+          find.byKey(const Key('configuracion_mapas_offline_resumen')),
+        );
+        expect(resumen.data, isEmpty);
+      });
+
+      testWidgets(
+        'la fila «Mapas offline» dice «Sin mapas descargados» y luego el mapa que se baja',
+        (tester) async {
+          final repositorio = RepositorioTilesEnMemoria();
+          await _montar(
+            tester,
+            extras: [paquetesTilesRepositoryProvider.overrideWithValue(repositorio)],
+          );
+          Text resumen() =>
+              tester.widget<Text>(find.byKey(const Key('configuracion_mapas_offline_resumen')));
+
+          expect(resumen().data, 'Sin mapas descargados');
+
+          await repositorio.registrar(descargadoDe(paqueteDe(bytesDePrueba(1500000))));
+          await tester.pumpAndSettle();
+
+          expect(resumen().data, 'Centro descargado · 2 MB');
+
+          await repositorio.registrar(
+            descargadoDe(
+              paqueteDe(bytesDePrueba(3000000), id: 'zona-2', nivel: NivelCobertura.zona),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(resumen().data, '2 mapas descargados · 5 MB');
+        },
+      );
+
+      testWidgets('tocar la fila «Mapas offline» abre la pantalla de la vista 35 y se vuelve', (
+        tester,
+      ) async {
+        final arnes = ArnesMapa(servirPaqueteMontevideo: false);
+        addTearDown(() => unawaited(arnes.cerrar()));
+        await _montar(
+          tester,
+          extras: [
+            ...arnes.overrides,
+            medidorEspacioDiscoProvider.overrideWithValue(EspacioFalso()),
+          ],
+        );
+
+        await tester.tap(find.byKey(const Key('configuracion_mapas_offline')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('mapas_offline_pagina')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('mapas_offline_atras')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('configuracion_mapas_offline')), findsOneWidget);
+      });
+
+      testWidgets('con la cuenta pendiente de asignación la sección «Mapas» no se muestra', (
+        tester,
+      ) async {
+        await _montar(tester, estado: EstadoCuenta.pendienteAsignacion);
+
+        expect(find.byKey(const Key('configuracion_mapas_offline')), findsNothing);
         expect(find.text('Mapas'), findsNothing);
       });
 
@@ -392,6 +534,7 @@ void main() {
 
         expect(find.byType(ConfiguracionPage), findsOneWidget);
         expect(find.byKey(const Key('configuracion_dialogo_cierre')), findsNothing);
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -407,6 +550,7 @@ void main() {
       setUp(() => local = _LocalQueNoBorra());
 
       Future<void> abrirHoja(WidgetTester tester) async {
+        await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
         await tester.pumpAndSettle();
       }
@@ -747,31 +891,215 @@ void main() {
       });
     });
 
-    // Los siguientes tres escenarios de HU-AUTH-006 no tienen nada que probar todavía: el código
-    // no tiene motor de sync, backup en background ni push notifications. `testWidgets.skip` es
-    // `bool?` (a diferencia de `test.skip`, que acepta un motivo en texto), así que el motivo va
-    // en el comentario de cada uno, apuntando al issue #56 en vez de omitirse en silencio.
+    // Los escenarios de backup nocturno y de push entrante de HU-AUTH-006 siguen como marcadores:
+    // dependen de #185 y #187. `testWidgets.skip` es `bool?` (a diferencia de `test.skip`, que
+    // acepta un motivo en texto), así que el motivo va en el comentario de cada uno.
 
-    // skip: QA #56 — HU-AUTH-006 (criterios de aceptación, escenario Edge) pide que cerrarSesion()
-    // espere el sync activo con timeout de 5s, o lo cancele limpiamente. El código no tiene ningún
-    // concepto de "job de sincronización" (feature/sync-engine y feature/sync-queue sin mergear a
-    // develop) — nada que testear hasta que exista.
+    // QA #56 — HU-AUTH-006, «Edge -logout en medio de un sync activo»: el motor de sync real, con
+    // un backend en memoria que no contesta hasta que el test lo suelta, y la app armada como en
+    // producción (`app.dart` dispara un ciclo al abrir la pantalla principal). El cierre espera al
+    // ciclo hasta 5 s y, si no termina, cierra la DB igual.
+    Future<({SyncEngine motor, _TransporteQueSeTraba servidor, ProviderContainer container})>
+    montarConSyncEnVuelo(WidgetTester tester) async {
+      final servidor = _TransporteQueSeTraba();
+      final motor = SyncEngine(
+        specs: SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'}),
+        transport: servidor,
+        jobs: InMemoryJobStore(),
+        store: InMemoryLocalStore(),
+      );
+      addTearDown(() async {
+        if (!servidor.compuerta.isCompleted) servidor.compuerta.complete();
+        await motor.dispose();
+      });
+      // Una venta sin subir: el ciclo que arranca al abrir la pantalla principal la manda al backend.
+      await motor.stage('venta', Op.insert, {'id': 'venta-1'}, clientOpId: 'op-1');
+      final container = await _montar(tester, extras: [motorSyncProvider.overrideWithValue(motor)]);
+      expect(servidor.llamadas, greaterThan(0), reason: 'hay un ciclo de sync en vuelo');
+      return (motor: motor, servidor: servidor, container: container);
+    }
+
+    Future<void> cerrarSesionConfirmando(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
+      await tester.pump();
+    }
+
     testWidgets(
       'Escenario: Edge -logout en medio de un sync activo (espera con timeout de 5s, o cancela '
-      'limpiamente)',
+      'limpiamente): si el ciclo termina antes del timeout, la DB se cierra recién después',
       (tester) async {
-        fail(
-          'no hay nada que probar: el código no tiene ningún concepto de "job de sincronización" '
-          'que cerrarSesion() pueda esperar o cancelar (feature/sync-engine y feature/sync-queue '
-          'sin mergear a develop)',
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(seconds: 3));
+        expect(
+          container.read(cierresDbLocalProvider).pedidos,
+          0,
+          reason: 'el ciclo en curso todavía usa la DB: no se cierra debajo',
         );
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(container.read(sesionProvider).value, isNull);
+        expect(_login, findsOneWidget);
+        expect(_datos.borrados, isEmpty, reason: 'cerrar sesión nunca borra datos locales');
+        expect(tester.takeException(), isNull);
+        await motor.settled;
       },
-      skip: true,
     );
 
+    testWidgets(
+      'Edge -logout en medio de un sync activo: si el ciclo no termina en 5 s, el cierre sigue y '
+      'cierra la DB igual',
+      (tester) async {
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(milliseconds: 4900));
+        expect(
+          container.read(cierresDbLocalProvider).pedidos,
+          0,
+          reason: 'todavía dentro de los 5 s',
+        );
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(container.read(sesionProvider).value, isNull);
+        expect(
+          _login,
+          findsOneWidget,
+          reason: 'la UI llega al login aunque el backend no conteste',
+        );
+        expect(_remote.llamadasCerrarSesion, 1);
+        expect(_datos.borrados, isEmpty);
+
+        // El backend contesta tarde: el ciclo termina sin dejar nada colgado ni lanzar.
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await motor.settled;
+      },
+    );
+
+    // Decisión del 29/10 en #542 (P3): el motor no cancela el ciclo; vencidos los 5 s se cierra la
+    // DB igual, lo que no subió queda en la cola y se retoma al volver a entrar, sin duplicarse.
+    testWidgets(
+      'Edge -logout en medio de un sync activo: la operación que iba en vuelo se retoma al volver '
+      'a entrar y sube una sola vez',
+      (tester) async {
+        var ahora = DateTime.utc(2026, 10, 29, 12);
+        final cola = InMemoryJobStore(clock: () => ahora);
+        final servidor = _TransporteQuePierdeLaPrimeraRespuesta();
+        final specs = SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'});
+        final motor = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        SyncEngine? motorDeLaNuevaSesion;
+        addTearDown(() async {
+          if (!servidor.respuesta.isCompleted) servidor.respuesta.complete();
+          await motor.dispose();
+          await motorDeLaNuevaSesion?.dispose();
+        });
+        await motor.stage('venta', Op.insert, {'id': 'venta-1'}, clientOpId: 'op-1');
+        final container = await _montar(
+          tester,
+          extras: [motorSyncProvider.overrideWithValue(motor)],
+        );
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor guardó la venta');
+        expect(cola.withState(JobState.inFlight), hasLength(1), reason: 'el teléfono no se enteró');
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(milliseconds: 5100));
+        await tester.pumpAndSettle();
+
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_login, findsOneWidget);
+        expect(
+          cola.withState(JobState.inFlight),
+          hasLength(1),
+          reason: 'cerrar sesión no pierde la operación: queda en la cola',
+        );
+        expect(cola.withState(JobState.done), isEmpty);
+
+        // Vuelve a entrar: un motor nuevo sobre la misma cola. La operación colgada ya pasó su plazo.
+        ahora = ahora.add(const Duration(minutes: 11));
+        motorDeLaNuevaSesion = SyncEngine(
+          specs: specs,
+          transport: servidor,
+          jobs: cola,
+          store: InMemoryLocalStore(),
+        );
+        final salida = (await tester.runAsync(() => motorDeLaNuevaSesion!.syncNow()))!;
+
+        expect(salida.ok, isTrue);
+        expect(servidor.batches, hasLength(2), reason: 'se volvió a mandar');
+        expect(servidor.appliedOpIds, {'op-1'}, reason: 'el servidor la reconoce: una sola vez');
+        expect(servidor.rowsOf('venta'), hasLength(1));
+        expect(cola.withState(JobState.done), hasLength(1));
+        expect(cola.withState(JobState.inFlight), isEmpty);
+        expect(cola.withState(JobState.pending), isEmpty);
+      },
+    );
+
+    // QA #542: la espera de hasta 5 s no puede dejar a la persona mirando una pantalla que parece no
+    // haber hecho caso, ni permitirle pedir el cierre dos veces o salir de la hoja a la mitad.
+    testWidgets(
+      'mientras el cierre espera al ciclo de sync la hoja dice «Cerrando sesión», no admite '
+      'un segundo pedido ni el atrás, y la DB se cierra una sola vez',
+      (tester) async {
+        final (:motor, :servidor, :container) = await montarConSyncEnVuelo(tester);
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('Cerrando sesión'), findsWidgets);
+        expect(container.read(sesionProvider).value, isNotNull);
+
+        // Un segundo toque en el botón de la hoja y el atrás del sistema: no hacen nada.
+        await tester.tap(
+          find.byKey(const Key('configuracion_dialogo_confirmar')),
+          warnIfMissed: false,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.binding.handlePopRoute();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Cerrando sesión'), findsWidgets, reason: 'la hoja sigue hasta terminar');
+
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_remote.llamadasCerrarSesion, 1);
+        expect(_login, findsOneWidget);
+        servidor.compuerta.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await motor.settled;
+      },
+    );
+
+    testWidgets('sin ningún sync en curso el cierre no espera nada', (tester) async {
+      final container = await _montar(tester);
+
+      await cerrarSesionConfirmando(tester);
+      await tester.pumpAndSettle();
+
+      expect(container.read(sesionProvider).value, isNull);
+      expect(_login, findsOneWidget);
+    });
+
     // skip: QA #56 — HU-AUTH-006 (casos borde) pide cancelar limpiamente un backup nocturno en
-    // curso al cerrar sesión. No hay job de backup en background en el código todavía — nada que
-    // testear hasta que exista.
+    // curso al cerrar sesión. Espera #185 (HU-SYNC-005): test real cuando mergee.
     testWidgets('caso borde: logout en medio de un backup nocturno cancela el backup limpiamente', (
       tester,
     ) async {
@@ -779,8 +1107,7 @@ void main() {
     }, skip: true);
 
     // skip: QA #56 — HU-AUTH-006 (casos borde) pide descartar un push notification que entra
-    // justo al cerrar sesión. La app no tiene push notifications implementadas todavía — nada que
-    // testear hasta que exista.
+    // justo al cerrar sesión. Espera #187 (HU-NOT-003): test real cuando mergee.
     testWidgets('caso borde: logout justo cuando entra un push notification descarta el push', (
       tester,
     ) async {
@@ -827,6 +1154,7 @@ void main() {
       );
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
 
@@ -843,6 +1171,7 @@ void main() {
       final local = _LocalQueNoBorra()..fallar = true;
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -862,6 +1191,7 @@ void main() {
       final local = _LocalQueNoBorra()..demora = Completer<void>();
       await _montar(tester, local: local);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -942,6 +1272,125 @@ void main() {
       expect(find.ancestor(of: correo, matching: find.byType(FittedBox)), findsNothing);
       expect(tester.getRect(correo).right, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Aviso de privacidad (#445) — «Mostrar el aviso de privacidad»', () {
+    final interruptor = find.byKey(const Key('configuracion_aviso_privacidad'));
+
+    bool encendido(WidgetTester tester) => tester.widget<SwitchListTile>(interruptor).value;
+
+    Future<({ProviderContainer container, AvisoPrivacidadEnMemoria repo, String cuenta})> abrir(
+      WidgetTester tester, {
+      bool escondidoAntes = false,
+      void Function(AvisoPrivacidadEnMemoria repo)? preparar,
+    }) async {
+      final repo = AvisoPrivacidadEnMemoria();
+      preparar?.call(repo);
+      final container = await _montar(
+        tester,
+        extras: [avisoPrivacidadRepositoryProvider.overrideWithValue(repo)],
+      );
+      final cuenta = container.read(sesionProvider).value!.usuarioId;
+      if (escondidoAntes) {
+        await repo.ocultar(cuenta);
+        container.invalidate(avisoPrivacidadOcultoProvider(cuenta));
+        await tester.pumpAndSettle();
+      }
+      return (container: container, repo: repo, cuenta: cuenta);
+    }
+
+    testWidgets('por defecto el aviso se muestra: el interruptor está encendido y dice qué hace', (
+      tester,
+    ) async {
+      await abrir(tester);
+
+      expect(find.text('Mostrar el aviso de privacidad'), findsOneWidget);
+      expect(
+        find.text(
+          'Sale cuando agregás una persona o una nota, para recordarte que esos datos solo viven en tu celular.',
+        ),
+        findsOneWidget,
+      );
+      expect(encendido(tester), isTrue);
+    });
+
+    testWidgets('apagarlo esconde el aviso de esta cuenta y lo guarda', (tester) async {
+      final a = await abrir(tester);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(encendido(tester), isFalse);
+      expect(a.repo.ocultas, {a.cuenta});
+    });
+
+    testWidgets('si la cuenta lo había escondido, el interruptor aparece apagado y encenderlo lo '
+        'vuelve a mostrar', (tester) async {
+      final a = await abrir(tester, escondidoAntes: true);
+      expect(encendido(tester), isFalse);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(encendido(tester), isTrue);
+      expect(a.repo.ocultas, isEmpty);
+    });
+
+    testWidgets('falla a mitad: avisa que no se guardó, el interruptor queda como estaba y se '
+        'puede reintentar', (tester) async {
+      final a = await abrir(tester, preparar: (repo) => repo.fallaAlEscribir = true);
+
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('configuracion_aviso_privacidad_falla')), findsOneWidget);
+      expect(find.text('No pudimos guardar el cambio. Probá de nuevo.'), findsOneWidget);
+      expect(encendido(tester), isTrue, reason: 'no cambió nada');
+      expect(a.repo.ocultas, isEmpty);
+      expect(
+        tester.widget<SwitchListTile>(interruptor).onChanged,
+        isNotNull,
+        reason: 'nada quedó trabado',
+      );
+
+      a.repo.fallaAlEscribir = false;
+      await tester.tap(interruptor);
+      await tester.pumpAndSettle();
+      expect(encendido(tester), isFalse);
+      expect(a.repo.ocultas, {a.cuenta});
+    });
+
+    testWidgets('doble toque: mientras guarda el interruptor se apaga y se guarda una sola vez', (
+      tester,
+    ) async {
+      final compuerta = Completer<void>();
+      final a = await abrir(tester, preparar: (repo) => repo.compuerta = compuerta);
+
+      await tester.tap(interruptor);
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(interruptor).onChanged, isNull);
+      await tester.tap(interruptor, warnIfMissed: false);
+      await tester.pump();
+
+      compuerta.complete();
+      await tester.pumpAndSettle();
+
+      expect(a.repo.escrituras, 1);
+      expect(encendido(tester), isFalse);
+    });
+
+    testWidgets('a 360 px y texto 2.0 no desborda y el interruptor mide al menos 48', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(360, 740));
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await abrir(tester);
+      await tester.scrollUntilVisible(interruptor, 200, scrollable: find.byType(Scrollable).first);
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(interruptor).height, greaterThanOrEqualTo(48));
     });
   });
 }

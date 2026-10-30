@@ -380,6 +380,7 @@ void main() {
       );
       await _cambioTotal(tester);
 
+      await tester.ensureVisible(find.text(_bajaYNueva));
       await tester.tap(find.text(_bajaYNueva));
       await asentar(tester);
 
@@ -402,6 +403,7 @@ void main() {
       await _cambioTotal(tester);
 
       final enlace = find.text(_bajaYNueva);
+      await tester.ensureVisible(enlace);
       await tester.tap(enlace);
       await tester.tap(enlace, warnIfMissed: false);
       await asentar(tester);
