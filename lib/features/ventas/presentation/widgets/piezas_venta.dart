@@ -873,11 +873,15 @@ class BotonDeVenta extends StatelessWidget {
     this.nota,
     this.ocupado = false,
     this.textoOcupado,
+    this.peligro = false,
   });
 
   final String texto;
   final VoidCallback? alPresionar;
   final String? nota;
+
+  /// Una acción que no se deshace («Anular cobro», vista 30 B): el botón va en rojo.
+  final bool peligro;
 
   /// Guardando: el botón no responde (un doble toque no hace nada) y lo dice con una ruedita.
   final bool ocupado;
@@ -906,12 +910,12 @@ class BotonDeVenta extends StatelessWidget {
           onPressed: ocupado ? null : alPresionar,
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(56),
-            backgroundColor: ColoresAgenda.navy,
+            backgroundColor: peligro ? ColoresAgenda.rojo : ColoresAgenda.navy,
             // Un botón apagado de Material pinta el rótulo con `onSurface` al 38 %: ilegible sobre
             // azul. Ocupado («Registrando…») se ve lleno, como en el canvas; apagado por falta de
             // datos queda más claro, pero con el rótulo blanco.
             disabledBackgroundColor: ocupado
-                ? ColoresAgenda.navy
+                ? (peligro ? ColoresAgenda.rojo : ColoresAgenda.navy)
                 : ColoresAgenda.navy.withValues(alpha: .6),
             disabledForegroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

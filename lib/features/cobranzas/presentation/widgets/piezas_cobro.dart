@@ -274,7 +274,10 @@ class MarcaDeVentaPagada extends StatelessWidget {
 
 /// Las filas grises mientras se lee la venta.
 class EsqueletoDelCobro extends StatelessWidget {
-  const EsqueletoDelCobro({super.key});
+  const EsqueletoDelCobro({super.key, this.etiqueta = TextosCobro.cargandoLaVenta});
+
+  /// Lo que dice el lector de pantalla mientras carga.
+  final String etiqueta;
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +290,7 @@ class EsqueletoDelCobro extends StatelessWidget {
     );
     return Semantics(
       liveRegion: true,
-      label: TextosCobro.cargandoLaVenta,
+      label: etiqueta,
       child: ExcludeSemantics(
         child: Column(
           key: const Key('cobro_cargando'),

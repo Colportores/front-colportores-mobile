@@ -632,6 +632,8 @@ void main() {
         'numero_aprobacion',
         'referencia_transferencia',
         'banco_origen',
+        'anulado_at',
+        'motivo_anulacion',
         'created_at',
         'updated_at',
         'created_by',

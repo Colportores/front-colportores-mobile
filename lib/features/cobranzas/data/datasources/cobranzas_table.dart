@@ -9,8 +9,8 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// servidor. El dinero va en **centavos** (`int`), nunca `double`.
 ///
 /// Esta versión lleva las columnas del cobro en efectivo (HU-COB-001) y los datos opcionales de la
-/// tarjeta y de la transferencia (HU-COB-002 y HU-COB-003, #396; migración 0072 del backend). La
-/// anulación (#422) suma sus columnas con su HU. El servidor cuida que los datos de la tarjeta vayan
+/// tarjeta y de la transferencia (HU-COB-002 y HU-COB-003, #396; migración 0072 del backend) y la
+/// marca de anulado con su motivo (HU-COB-006, #422). El servidor cuida que los datos de la tarjeta vayan
 /// solo en un cobro con TARJETA y los de la transferencia solo en uno con TRANSFERENCIA; acá lo cuida
 /// el caso de uso, que nunca arma otra cosa.
 ///
@@ -52,6 +52,17 @@ class Cobranzas extends Table {
 
   /// El banco de origen, como texto de 1 a 60 caracteres; solo con TRANSFERENCIA. Opcional.
   TextColumn get bancoOrigen => text().nullable()();
+
+  /// Cuándo se anuló el cobro, con la hora del teléfono (HU-COB-006, #422; backend 0072 y 0151); `null`
+  /// si está vigente. Anular no es dar de baja: [deletedAt] es otra cosa. Va junto con
+  /// [motivoAnulacion] y no se reabre.
+  IntColumn get anuladoAt => integer().nullable().map(const FechaUtcConverter())();
+
+  /// El motivo de la lista del canvas (el servidor lo cuida con un CHECK; acá lo cuida el caso de uso, que
+  /// nunca arma otro, porque SQLite no suma un CHECK de tabla a una tabla que ya existe): `Monto equivocado`, `Cliente equivocado`, `Lo registré dos
+  /// veces` u `Otro`. Lo que se escribe con «Otro» no está acá ni sube: queda en el `audit_log` local
+  /// («Justificar»).
+  TextColumn get motivoAnulacion => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

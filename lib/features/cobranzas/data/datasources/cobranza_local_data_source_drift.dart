@@ -3,11 +3,13 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../../ventas/data/datasources/estado_de_devolucion.dart';
 import '../../../ventas/data/models/venta_model.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
+import '../../domain/entities/detalle_del_cobro.dart';
 import '../../domain/entities/venta_con_saldo.dart';
 import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
@@ -41,6 +43,22 @@ final class CobroFechaAnteriorException extends CobroRechazadoException {
 
   @override
   String toString() => 'CobroFechaAnteriorException';
+}
+
+/// El cobro que se quiere ver o anular no está en el teléfono, está dado de baja o es de otra cuenta.
+final class CobroAusenteException extends CobroRechazadoException {
+  const CobroAusenteException();
+
+  @override
+  String toString() => 'CobroAusenteException';
+}
+
+/// Pasaron más de 72 horas desde el cobro (HU-COB-006).
+final class AnulacionFueraDePlazoException extends CobroRechazadoException {
+  const AnulacionFueraDePlazoException();
+
+  @override
+  String toString() => 'AnulacionFueraDePlazoException';
 }
 
 /// Lee y escribe los cobros en las tablas `cobranza` y `venta` de la DB cifrada.
@@ -92,10 +110,107 @@ final class CobranzaLocalDataSourceDrift {
 
     await _db.into(_db.cobranzas).insert(_aFila(cobro));
     await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(cobro));
-    await _recalcular(venta.espacioPersonaId, cobro);
+    await _recalcular(
+      venta.espacioPersonaId,
+      ahora: cobro.auditoria.updatedAt,
+      colportorId: cobro.auditoria.createdBy ?? '',
+    );
 
     return CobroRegistrado(cobranza: cobro, venta: await _conSaldo(venta));
   });
+
+  // ---- Anular un cobro (HU-COB-006, #422) ---------------------------------------------------------
+
+  /// Ver [AnulacionDeCobroRepository.detalle].
+  Future<DetalleDelCobro?> detalle(String cobranzaId) async {
+    final fila = await _cobroPorId(cobranzaId);
+    if (fila == null || fila.deletedAt != null) return null;
+    final venta = await (_db.select(
+      _db.ventas,
+    )..where((v) => v.id.equals(fila.ventaId))).getSingleOrNull();
+    if (venta == null || venta.deletedAt != null) return null;
+    return _detalleDe(fila, venta);
+  }
+
+  /// Ver [AnulacionDeCobroRepository.anular]. Lanza una [CobroRechazadoException] si no se puede.
+  ///
+  /// Una sola transacción (contrato-sync-engine §3): marca el cobro, lo encola con la fila entera, deja el
+  /// evento en el `audit_log` local y recalcula el color de la casa. El saldo no se guarda: sale de
+  /// [CobroValido], que ya no cuenta el cobro. Si algo falla, el cobro queda como estaba.
+  Future<AnulacionHecha> anular({
+    required String cobranzaId,
+    required MotivoDeAnulacion motivo,
+    required String colportorId,
+    required DateTime ahora,
+    String? justificacion,
+  }) => _db.transaction(() async {
+    final fila = await _cobroPorId(cobranzaId);
+    if (fila == null || fila.deletedAt != null) throw const CobroAusenteException();
+    final venta = await (_db.select(
+      _db.ventas,
+    )..where((v) => v.id.equals(fila.ventaId))).getSingleOrNull();
+    if (venta == null || venta.deletedAt != null || venta.colportorId != colportorId) {
+      throw const CobroAusenteException();
+    }
+    if (fila.anuladoAt != null) {
+      // Un segundo toque o un reintento: no se escribe nada y la respuesta dice lo mismo que la primera.
+      return AnulacionHecha(detalle: await _detalleDe(fila, venta), yaEstaba: true);
+    }
+    final instante = ahora.toUtc();
+    if (instante.isAfter(fila.fecha.add(DetalleDelCobro.ventana))) {
+      throw const AnulacionFueraDePlazoException();
+    }
+
+    await (_db.update(_db.cobranzas)..where((c) => c.id.equals(cobranzaId))).write(
+      CobranzasCompanion(
+        anuladoAt: Value(instante),
+        motivoAnulacion: Value(motivo.codigo),
+        updatedAt: Value(instante),
+      ),
+    );
+    final anulado = (await _cobroPorId(cobranzaId))!;
+    await _encolador.encolar(
+      'cobranza',
+      OperacionSync.update,
+      CobranzaModel.toJson(_aCobranza(anulado)),
+    );
+    // «Audit log» de la HU: solo el id del cobro y el motivo. Con «Otro» el motivo es lo que escribió la
+    // colportora («Justificar»): se queda en el teléfono; nunca el monto ni el nombre del cliente.
+    await _db
+        .into(_db.auditLogLocal)
+        .insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.cobroAnulado,
+            uuid: cobranzaId,
+            motivo: Value(motivo == MotivoDeAnulacion.otro ? justificacion : motivo.codigo),
+            creadoEn: instante,
+          ),
+        );
+    await _recalcular(venta.espacioPersonaId, ahora: instante, colportorId: colportorId);
+
+    return AnulacionHecha(detalle: await _detalleDe(anulado, venta));
+  });
+
+  Future<CobranzaFila?> _cobroPorId(String id) =>
+      (_db.select(_db.cobranzas)..where((c) => c.id.equals(id))).getSingleOrNull();
+
+  Future<DetalleDelCobro> _detalleDe(CobranzaFila fila, VentaFila venta) async => DetalleDelCobro(
+    cobranza: _aCobranza(fila),
+    venta: await _conSaldo(venta),
+    cliente: await _clienteDe(venta.espacioPersonaId),
+  );
+
+  /// «María Fernández», o `null` si el vínculo o la persona no están en el teléfono.
+  Future<String?> _clienteDe(String espacioPersonaId) async {
+    final consulta = _db.select(_db.espacioPersonas).join([
+      innerJoin(_db.personas, _db.personas.id.equalsExp(_db.espacioPersonas.personaId)),
+    ])..where(_db.espacioPersonas.id.equals(espacioPersonaId));
+    final fila = await consulta.getSingleOrNull();
+    final persona = fila?.readTable(_db.personas);
+    if (persona == null) return null;
+    final nombre = '${persona.nombre} ${persona.apellido}'.trim();
+    return nombre.isEmpty ? null : nombre;
+  }
 
   /// Ver [CobranzaRepository.ventaConSaldo].
   Future<VentaConSaldo?> ventaConSaldo(String ventaId) async {
@@ -282,7 +397,11 @@ final class CobranzaLocalDataSourceDrift {
   /// Recalcula el color de la casa del cobro. Si la ubicación del espacio no está en el teléfono no
   /// hay casa que pintar: el cobro se guarda igual, porque no se pierde un cobro por una fila que
   /// falta.
-  Future<void> _recalcular(String espacioPersonaId, Cobranza cobro) async {
+  Future<void> _recalcular(
+    String espacioPersonaId, {
+    required DateTime ahora,
+    required String colportorId,
+  }) async {
     final consulta =
         _db.selectOnly(_db.espacioPersonas).join([
             innerJoin(_db.espacios, _db.espacios.id.equalsExp(_db.espacioPersonas.espacioId)),
@@ -292,11 +411,7 @@ final class CobranzaLocalDataSourceDrift {
     final fila = await consulta.getSingleOrNull();
     final ubicacionId = fila?.read(_db.espacios.ubicacionId);
     if (ubicacionId == null) return;
-    await _estadoDeLasCasas.recalcular(
-      ubicacionId,
-      ahora: cobro.auditoria.updatedAt,
-      colportorId: cobro.auditoria.createdBy ?? '',
-    );
+    await _estadoDeLasCasas.recalcular(ubicacionId, ahora: ahora, colportorId: colportorId);
   }
 
   static Cobranza _aCobranza(CobranzaFila fila) => Cobranza(
@@ -311,6 +426,8 @@ final class CobranzaLocalDataSourceDrift {
     numeroAprobacion: fila.numeroAprobacion,
     referenciaTransferencia: fila.referenciaTransferencia,
     bancoOrigen: fila.bancoOrigen,
+    anuladoAt: fila.anuladoAt,
+    motivoAnulacion: MotivoDeAnulacion.desdeCodigo(fila.motivoAnulacion),
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -334,6 +451,8 @@ final class CobranzaLocalDataSourceDrift {
     numeroAprobacion: Value(c.numeroAprobacion),
     referenciaTransferencia: Value(c.referenciaTransferencia),
     bancoOrigen: Value(c.bancoOrigen),
+    anuladoAt: Value(c.anuladoAt),
+    motivoAnulacion: Value(c.motivoAnulacion?.codigo),
     createdAt: c.auditoria.createdAt,
     updatedAt: c.auditoria.updatedAt,
     createdBy: Value(c.auditoria.createdBy),

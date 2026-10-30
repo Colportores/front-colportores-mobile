@@ -54,6 +54,50 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('un cobro del historial se toca y abre su detalle; lo demás no (vista 30 B)', (
+      tester,
+    ) async {
+      final m = mundoDelCanvas()..conVerCobro = true;
+      m.movimientos.poner([
+        CobroEnFicha(
+          id: 'cob-1',
+          fecha: DateTime(2026, 10, 20, 12),
+          montoCentavos: 60000,
+          efectivo: true,
+          ventaId: 'ven-1',
+          numeroTalonario: '0042',
+        ),
+      ]);
+      await montarFicha(tester, m);
+
+      await tester.tap(find.byKey(ClavesFicha.fila('cob-1')));
+      await asentar(tester);
+      expect(m.cobrosAbiertos, ['cob-1']);
+
+      await tester.tap(find.byKey(ClavesFicha.fila('ven-1')));
+      await asentar(tester);
+      expect(m.cobrosAbiertos, ['cob-1'], reason: 'una venta no abre un cobro');
+    });
+
+    testWidgets('sin destino para el cobro, la fila no es un botón', (tester) async {
+      final m = mundoDelCanvas();
+      m.movimientos.poner([
+        CobroEnFicha(
+          id: 'cob-1',
+          fecha: DateTime(2026, 10, 20, 12),
+          montoCentavos: 60000,
+          efectivo: true,
+          ventaId: 'ven-1',
+        ),
+      ]);
+      await montarFicha(tester, m);
+
+      expect(
+        find.descendant(of: find.byKey(ClavesFicha.fila('cob-1')), matching: find.byType(InkWell)),
+        findsNothing,
+      );
+    });
+
     testWidgets('el historial junta entregas y cobros con las visitas y ventas', (tester) async {
       final m = mundoDelCanvas();
       m.movimientos.poner([

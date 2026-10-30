@@ -140,10 +140,12 @@ class AppDatabase extends _$AppDatabase {
   ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142).
   /// - 23: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
   ///   que sube (HU-CTA-004, #442).
+  /// - 24: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
+  ///   (backend-supabase 0072, HU-COB-006, #422).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 23;
+  static const int versionEsquema = 24;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -376,6 +378,12 @@ class AppDatabase extends _$AppDatabase {
     from22To23: (m, esquema) async {
       await m.createTable(esquema.deposito);
       await m.createIndex(esquema.depositoTicketIdx);
+    },
+    // Suma a `cobranza` la marca de anulado y su motivo, vacíos: ningún cobro que ya estaba cambia (todos
+    // quedan vigentes) ni se vuelve a encolar al migrar.
+    from23To24: (m, esquema) async {
+      await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
     },
   );
 }
