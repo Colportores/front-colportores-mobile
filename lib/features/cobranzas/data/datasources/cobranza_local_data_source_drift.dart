@@ -9,8 +9,10 @@ import '../../../ventas/data/models/venta_model.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
+import '../../domain/services/reparto_de_cuotas.dart';
 import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
+import 'cuotas_local_data_source_drift.dart';
 
 /// La persistencia rechazó el cobro: el repositorio la traduce a un `Failure`.
 sealed class CobroRechazadoException implements Exception {
@@ -55,11 +57,18 @@ final class CobranzaLocalDataSourceDrift {
     this._db, {
     required this._encolador,
     required this._estadoDeLasCasas,
-  });
+  }) : _cuotas = CuotasLocalDataSourceDrift(
+         _db,
+         encolador: _encolador,
+         estadoDeLasCasas: _estadoDeLasCasas,
+       );
 
   final AppDatabase _db;
   final EncoladorSync _encolador;
   final HouseStatusUpdater _estadoDeLasCasas;
+
+  /// Las cuotas del plan de la venta: un cobro se aplica a la más próxima (HU-COB-004).
+  final CuotasLocalDataSourceDrift _cuotas;
 
   /// Ver [CobranzaRepository.registrar]. Lanza una [CobroRechazadoException] si el cobro no entra.
   Future<CobroRegistrado> registrar(Cobranza cobro) => _db.transaction(() async {
@@ -90,11 +99,20 @@ final class CobranzaLocalDataSourceDrift {
       throw const CobroFechaAnteriorException();
     }
 
-    await _db.into(_db.cobranzas).insert(_aFila(cobro));
-    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(cobro));
-    await _recalcular(venta.espacioPersonaId, cobro);
+    // Con un plan de cuotas, el cobro lleva el número de la primera cuota a la que va (HU-COB-004).
+    final plan = await _cuotas.leerPlanDe(venta);
+    final numeroCuota =
+        cobro.numeroCuota ??
+        RepartoDeCuotas.aplicarPago(plan.cuotas, cobro.montoCentavos).primeraCuota;
+    final guardado = numeroCuota == cobro.numeroCuota ? cobro : cobro.conNumeroCuota(numeroCuota);
 
-    return CobroRegistrado(cobranza: cobro, venta: await _conSaldo(venta));
+    await _db.into(_db.cobranzas).insert(_aFila(guardado));
+    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(guardado));
+    // Las cuotas que este cobro cubre pasan a CUMPLIDA y suben por el motor, en la misma transacción.
+    await _cuotas.cerrarLasCubiertas(venta.id, ahora: guardado.auditoria.updatedAt);
+    await _recalcular(venta.espacioPersonaId, guardado);
+
+    return CobroRegistrado(cobranza: guardado, venta: await _conSaldo(venta));
   });
 
   /// Ver [CobranzaRepository.ventaConSaldo].

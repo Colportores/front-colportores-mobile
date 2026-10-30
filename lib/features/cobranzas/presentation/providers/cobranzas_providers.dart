@@ -2,15 +2,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
+import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../agenda/presentation/providers/recordatorios_providers.dart';
 import '../../../mapa/domain/services/saldos_de_personas.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
+import '../../data/datasources/cuotas_local_data_source_drift.dart';
 import '../../data/repositories/cobranza_repository_impl.dart';
+import '../../data/repositories/plan_de_cuotas_repository_impl.dart';
 import '../../data/repositories/saldo_pendiente_repository_impl.dart';
+import '../../domain/entities/cuota.dart';
 import '../../domain/entities/venta_con_saldo.dart';
 import '../../domain/repositories/cobranza_repository.dart';
+import '../../domain/repositories/plan_de_cuotas_repository.dart';
 import '../../domain/repositories/saldo_pendiente_repository.dart';
+import '../../domain/usecases/armar_plan_de_cuotas_use_case.dart';
+import '../../domain/usecases/modificar_cuotas_use_case.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
 
 // Cableado de los cobros (BACK-HU-COB-001, #436). Presentation conoce domain; data se inyecta acá.
@@ -99,3 +107,53 @@ final saldoTotalDelColportorProvider = StreamProvider.autoDispose.family<int, St
   (ref, colportorId) => ref.watch(saldoPendienteRepositoryProvider).observarTotal(colportorId),
   retry: _sinReintentos,
 );
+
+// Plan de cuotas (HU-COB-004, #399): cada cuota es una cita de cobranza con su venta y su monto.
+
+/// El plan de cuotas de una venta en la DB local: las citas de cobranza con monto, sus cobros y su
+/// saldo. Sin DB abierta no hay dónde leer ni guardar: lanza, y quien lo lee lo traduce a un error de
+/// la pantalla.
+final planDeCuotasRepositoryProvider = Provider<PlanDeCuotasRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return PlanDeCuotasRepositoryImpl(
+    CuotasLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      estadoDeLasCasas: ref.watch(houseStatusUpdaterProvider),
+    ),
+  );
+});
+
+/// Arma el plan de cuotas de una venta (vista 30 A, 30A-01 a 30A-08).
+final armarPlanDeCuotasUseCaseProvider = Provider<ArmarPlanDeCuotasUseCase>(
+  (ref) => ArmarPlanDeCuotasUseCase(
+    ref.watch(planDeCuotasRepositoryProvider),
+    ref.watch(recordatoriosProvider),
+    ahora: ref.watch(relojCobroProvider),
+  ),
+);
+
+/// Modifica las cuotas que no están cerradas (30A-09).
+final modificarCuotasUseCaseProvider = Provider<ModificarCuotasUseCase>(
+  (ref) => ModificarCuotasUseCase(
+    ref.watch(planDeCuotasRepositoryProvider),
+    ahora: ref.watch(relojCobroProvider),
+  ),
+);
+
+/// El plan de la venta con sus cuotas al día después de cada cobro, cada alta y cada cancelación;
+/// `null` si la venta no está o se dio de baja. Si no se puede leer, falla con
+/// `FailureCuotasNoDisponibles` (no se lee como «sin plan»).
+final planDeLaVentaProvider = StreamProvider.autoDispose.family<PlanDeCuotas?, String>((
+  ref,
+  ventaId,
+) {
+  final PlanDeCuotasRepository repositorio;
+  try {
+    repositorio = ref.watch(planDeCuotasRepositoryProvider);
+  } on StateError {
+    return Stream<PlanDeCuotas?>.error(const FailureCuotasNoDisponibles());
+  }
+  return repositorio.observar(ventaId);
+}, retry: _sinReintentos);

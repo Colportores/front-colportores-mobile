@@ -17,13 +17,19 @@ import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
 import '../../domain/entities/cobranza.dart';
+import '../../domain/entities/cuota.dart';
 import '../../domain/entities/venta_con_saldo.dart';
+import '../../domain/services/reparto_de_cuotas.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
 import '../providers/cobranzas_providers.dart';
 import '../textos_cobro.dart';
+import '../textos_cuotas.dart';
 import '../textos_medio_de_cobro.dart';
 import '../widgets/piezas_cobro.dart';
+import '../widgets/piezas_cuotas.dart';
 import '../widgets/piezas_medio_de_cobro.dart';
+import 'cuotas_de_la_venta_page.dart';
+import 'plan_de_cuotas_page.dart';
 
 /// «Cobrar» (vista 28, HU-COB-001, artboards 28·01 a 28·09, y vista 29, HU-COB-002 y HU-COB-003,
 /// artboards 29A y 29B): la colportora registra lo que le pagó el cliente de una venta —el medio,
@@ -558,6 +564,77 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
     saldoCentavos: venta.saldoCentavos,
   );
 
+  // --- Cuotas (vista 30 A, HU-COB-004) -------------------------------------------------------
+
+  /// El plan de la venta, si hay base y se pudo leer; sin él, la pantalla es la de siempre.
+  PlanDeCuotas? get _plan => ref.watch(planDeLaVentaProvider(widget.ventaId)).asData?.value;
+
+  /// 30A-05: con un plan por cobrar, dice a qué cuota se aplica el pago que se está escribiendo.
+  List<Widget> _avisoDeCuota(String? errorDelMonto) {
+    final plan = _plan;
+    final centavos = _centavos;
+    if (plan == null || !plan.tieneCuotasAbiertas || centavos == null || errorDelMonto != null) {
+      return const [];
+    }
+    final pago = RepartoDeCuotas.aplicarPago(plan.abiertas, centavos);
+    if (pago.esVacia) return const [];
+    return [
+      const SizedBox(height: 9),
+      AvisoInformativoDeCuotas(
+        key: const Key('cobro_aviso_cuota'),
+        texto: TextosCuotas.avisoDePago(pago),
+      ),
+    ];
+  }
+
+  /// «Pagar en cuotas» (sin plan) o «Ver las cuotas» (con plan): el acceso a la vista 30.
+  List<Widget> _accesoALasCuotas(VentaConSaldo venta) {
+    final plan = _plan;
+    if (plan == null || !venta.tieneSaldo) return const [];
+    final conPlan = plan.tieneCuotasAbiertas;
+    return [
+      const SizedBox(height: 4),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton(
+          key: const Key('cobro_cuotas'),
+          onPressed: _enviando ? null : () => unawaited(_abrirLasCuotas(conPlan)),
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          child: Text(
+            conPlan ? TextosCuotas.verLasCuotas : TextosCuotas.pagarEnCuotas,
+            style: const TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _abrirLasCuotas(bool conPlan) async {
+    if (_navegando || _cerrando) return;
+    _navegando = true;
+    try {
+      if (conPlan) {
+        await CuotasDeLaVentaPage.abrir(
+          context,
+          ventaId: widget.ventaId,
+          colportorId: widget.colportorId,
+          espacioId: widget.espacioId,
+          espacioPersonaId: widget.espacioPersonaId,
+        );
+      } else {
+        await PlanDeCuotasPage.abrir(
+          context,
+          ventaId: widget.ventaId,
+          colportorId: widget.colportorId,
+          espacioId: widget.espacioId,
+          espacioPersonaId: widget.espacioPersonaId,
+        );
+      }
+    } finally {
+      _navegando = false;
+    }
+  }
+
   /// 28·01 a 28·05, 28·08 y 28·09: el formulario.
   Widget _formulario(VentaConSaldo venta, String? subtitulo) {
     final errorDelMonto = _errorDelMonto(venta);
@@ -597,6 +674,7 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
           habilitado: !_enviando,
           autofocus: true,
         ),
+        ..._avisoDeCuota(errorDelMonto),
         if (_medio == MedioCobranza.tarjeta) ...[
           const SizedBox(height: 12),
           BloqueDeTarjeta(
@@ -630,6 +708,7 @@ class _CobroEfectivoPageState extends ConsumerState<CobroEfectivoPage> {
                 )
               : null,
         ),
+        ..._accesoALasCuotas(venta),
       ],
       cta: BotonDeVenta(
         texto: _falla != null ? TextosCobro.reintentar : TextosCobro.registrarCobro,

@@ -140,10 +140,12 @@ class AppDatabase extends _$AppDatabase {
   ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142).
   /// - 23: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
   ///   que sube (HU-CTA-004, #442).
+  /// - 24: `agenda` suma `venta_id` y `monto_previsto` (backend-supabase 0068): una cuota del plan de
+  ///   una venta es una cita de cobranza con su venta y su monto (HU-COB-004, #166).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 23;
+  static const int versionEsquema = 24;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -376,6 +378,19 @@ class AppDatabase extends _$AppDatabase {
     from22To23: (m, esquema) async {
       await m.createTable(esquema.deposito);
       await m.createIndex(esquema.depositoTicketIdx);
+    },
+    // Suma a `agenda` la venta de la que sale la cita y el monto previsto (una cuota del plan de una
+    // venta, HU-COB-004): vacíos, ninguna cita que ya estaba cambia ni se vuelve a encolar al migrar.
+    // Se reescribe la tabla porque suma el `CHECK` del monto previsto, y `alterTable` no recrea el
+    // índice nuevo.
+    from23To24: (m, esquema) async {
+      await m.alterTable(
+        TableMigration(
+          esquema.agenda,
+          newColumns: [esquema.agenda.ventaId, esquema.agenda.montoPrevisto],
+        ),
+      );
+      await m.createIndex(esquema.agendaVentaIdx);
     },
   );
 }
