@@ -412,11 +412,23 @@ void main() {
       expect(find.text('abrir edición'), findsOneWidget);
     });
 
-    testWidgets('dado que la regla todavía no está decidida (criterio por defecto), cuando se '
-        'cambia todo, no sale el aviso y el botón sigue en «Guardar cambios»', (tester) async {
+    testWidgets('dado el criterio real (el del provider), cuando cambian el nombre y el apellido a '
+        'la vez, sale el aviso y el botón pasa a «Guardar igual»', (tester) async {
       await montarEdicion(tester);
 
       await _cambioTotal(tester);
+
+      expect(find.textContaining('Si es otra persona'), findsOneWidget);
+      expect(find.text(_bajaYNueva), findsOneWidget);
+      expect(_boton(_guardarIgual), findsOneWidget);
+    });
+
+    testWidgets('dado el criterio real, cuando se corrige solo el apellido o el teléfono, no sale '
+        'el aviso y el botón sigue en «Guardar cambios»', (tester) async {
+      await montarEdicion(tester);
+
+      await _escribir(tester, _apellido, 'Suárez');
+      await _escribir(tester, _telefono, '091 222 333');
 
       expect(find.textContaining('Si es otra persona'), findsNothing);
       expect(find.text(_bajaYNueva), findsNothing);
@@ -1017,7 +1029,7 @@ void main() {
       tester,
     ) async {
       final repo = PersonaRepositorioFalso();
-      await montarEdicion(tester, repo: repo);
+      await montarEdicion(tester, repo: repo, criterio: CriterioOtraPersonaFijo(respuesta: false));
 
       await _escribir(tester, _nombre, 'N' * 100);
       await _escribir(tester, _apellido, 'A' * 100);
@@ -1043,7 +1055,7 @@ void main() {
       tester,
     ) async {
       final repo = PersonaRepositorioFalso();
-      await montarEdicion(tester, repo: repo);
+      await montarEdicion(tester, repo: repo, criterio: CriterioOtraPersonaFijo(respuesta: false));
 
       await _escribir(tester, _nombre, 'Ñandú 🙂');
       await _escribir(tester, _apellido, "O'Brien-Núñez");

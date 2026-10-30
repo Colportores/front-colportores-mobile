@@ -60,8 +60,9 @@ final class DarDeBajaYCrearNuevaElegido extends ResultadoEdicionPersona {
 ///   puede tocar**: el toque muestra qué falta, lleva el foco al primer campo con problema y lo
 ///   anuncia al lector de pantalla.
 /// - Un cambio que parece «otra persona» (C·03) muestra el aviso con «Dar de baja y crear nueva» y el
-///   botón pasa a decir «Guardar igual», que guarda sin más. Qué cambio es «demasiado grande» **no está
-///   decidido** (`CriterioOtraPersona`): hasta entonces el aviso no sale.
+///   botón pasa a decir «Guardar igual», que guarda sin más. Es «demasiado grande» cuando cambian el
+///   nombre y el apellido a la vez (`CriterioOtraPersonaPorNombreYApellido`, decisión del 27/10): una
+///   tilde, un apellido o el teléfono solos no lo muestran.
 /// - Si guardar falla, el formulario conserva lo escrito, el botón vuelve a habilitarse y pasa a decir
 ///   «Reintentar». Un doble toque no guarda dos veces; mientras se guarda no se puede salir.
 /// - Sin cambios, «Guardar cambios» cierra sin escribir nada (no se toca `updated_at`). La ✕ y el

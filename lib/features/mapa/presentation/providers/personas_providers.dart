@@ -72,11 +72,10 @@ final modificarPersonaUseCaseProvider = Provider<ModificarPersonaUseCase>(
   ),
 );
 
-/// Cuándo un cambio a una persona parece «otra persona» (HU-UBI-010, canvas 32C·03). **Pendiente
-/// «Cristian §3: regla de negocio»**: hasta que se decida es [CriterioOtraPersonaSinDefinir], que no
-/// sugiere nada. Un test o la decisión lo reemplazan.
+/// Cuándo un cambio a una persona parece «otra persona» (HU-UBI-010, canvas 32C·03): la regla que
+/// decidió Cristian el 27/10, [CriterioOtraPersonaPorNombreYApellido]. Un test lo reemplaza.
 final criterioOtraPersonaProvider = Provider<CriterioOtraPersona>(
-  (ref) => const CriterioOtraPersonaSinDefinir(),
+  (ref) => const CriterioOtraPersonaPorNombreYApellido(),
 );
 
 /// Riverpod 3 reintenta 10 veces lo que falla: la pantalla muestra el error enseguida y el
