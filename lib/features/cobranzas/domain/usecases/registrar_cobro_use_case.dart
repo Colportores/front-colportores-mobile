@@ -125,10 +125,13 @@ final class RegistrarCobroUseCase implements UseCase<CobroRegistrado, RegistrarC
     final aprobacion = conTarjeta ? limpiar(params.numeroAprobacion) : null;
     final referencia = conTransferencia ? limpiar(params.referenciaTransferencia) : null;
     final banco = conTransferencia ? limpiar(params.bancoOrigen) : null;
-    if ((marca?.length ?? 0) > maximoMarca ||
-        (aprobacion?.length ?? 0) > maximoAprobacion ||
-        (referencia?.length ?? 0) > maximoReferencia ||
-        (banco?.length ?? 0) > maximoBanco) {
+    // En puntos de código (`runes`), la misma medida del campo (`LimitarPuntosDeCodigo`) y del
+    // servidor (`char_length`): con `String.length` (UTF-16) 21 emoji ya «no entrarían» aunque el
+    // campo y la base los acepten.
+    if ((marca?.runes.length ?? 0) > maximoMarca ||
+        (aprobacion?.runes.length ?? 0) > maximoAprobacion ||
+        (referencia?.runes.length ?? 0) > maximoReferencia ||
+        (banco?.runes.length ?? 0) > maximoBanco) {
       return const Left(FailureCobroDatoDelMedioInvalido());
     }
 

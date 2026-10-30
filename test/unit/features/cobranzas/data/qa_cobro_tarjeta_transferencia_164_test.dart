@@ -22,8 +22,6 @@ import '../../../../helpers/campo_falsos.dart';
 import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/venta_falsos.dart';
 
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 T _derecha<T>(Either<Failure, T> e) =>
     e.fold((f) => fail('se esperaba un éxito y vino $f'), (v) => v);
 
@@ -243,14 +241,13 @@ void main() {
       expect((await cobros()).length, 2);
     });
 
-    // skip: QA #164 — el largo se mide en unidades UTF-16 (`String.length`) y el servidor mide
-    // caracteres (`char_length`, puntos de código); la pantalla (grapheme) deja escribir más de lo que
-    // el caso de uso acepta con emoji.
+    // Hallazgo 3 de la QA de #164: el largo se medía en unidades UTF-16 (`String.length`) y el servidor
+    // mide caracteres (`char_length`, puntos de código): con emoji el campo dejaba escribir de más.
     test('40 emoji en la referencia son 40 caracteres para el servidor y entran', () async {
       final r = await caso(params(medio: MedioCobranza.transferencia, referencia: '😀' * 40));
 
       expect(r.isRight(), isTrue, reason: 'el servidor acepta 40 caracteres (char_length)');
-    }, skip: !_verHallazgos);
+    });
 
     test(
       'espacios no separables, de ancho cero y saltos de línea se limpian; solo espacios = sin dato',
