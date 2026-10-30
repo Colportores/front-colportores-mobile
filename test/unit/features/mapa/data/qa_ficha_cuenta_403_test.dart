@@ -320,6 +320,68 @@ void main() {
       expect(cuenta.saldoCentavos, 80000, reason: 'nunca negativo ni compensado entre ventas');
     });
 
+    test('«Entregado» cuenta unidades: 3 ejemplares con 1 entregado es «1 de 3»', () async {
+      await venta('ven-1');
+      await renglon('it-1', 'ven-1', 'pro-1', cantidad: 3);
+      await entrega('ent-1', 'ven-1', 'pro-1', cuando: DateTime.utc(2026, 10, 13));
+
+      final cuenta = (await local.resumenDe('per-1'))!;
+
+      expect(cuenta.entregasHechas, 1);
+      expect(cuenta.entregasTotales, 3);
+      expect(
+        TextosBajaPersona.resumenDeSaldo('María', cuenta),
+        'María te debe \$\u00A04.500 y tiene 2 entregas pendientes.',
+      );
+    });
+
+    test(
+      'una entrega de más no pasa de lo vendido ni tapa lo que falta de otro producto',
+      () async {
+        await venta('ven-1');
+        await renglon('it-1', 'ven-1', 'pro-1');
+        await renglon('it-2', 'ven-1', 'pro-2');
+        await entrega('ent-1', 'ven-1', 'pro-1', cuando: DateTime.utc(2026, 10, 13), cantidad: 5);
+
+        final cuenta = (await local.resumenDe('per-1'))!;
+
+        expect(cuenta.entregasHechas, 1, reason: 'los 5 entregados no pasan de 1 vendido');
+        expect(cuenta.entregasTotales, 2);
+        expect(cuenta.entregasPendientes, 1);
+      },
+    );
+
+    test(
+      'las unidades se suman entre las ventas de la persona y no cuentan lo dado de baja',
+      () async {
+        await venta('ven-1', talonario: '0001');
+        await renglon('it-1', 'ven-1', 'pro-1', cantidad: 2);
+        await entrega('ent-1', 'ven-1', 'pro-1', cuando: DateTime.utc(2026, 10, 13), cantidad: 2);
+        await venta('ven-2', talonario: '0002');
+        await renglon('it-2', 'ven-2', 'pro-2');
+        await venta('ven-3', talonario: '0003', borrada: t0);
+        await renglon('it-3', 'ven-3', 'pro-2', cantidad: 9);
+
+        final cuenta = (await local.resumenDe('per-1'))!;
+
+        expect(cuenta.entregasHechas, 2);
+        expect(cuenta.entregasTotales, 3);
+      },
+    );
+
+    test('una entrega pendiente o dada de baja no cuenta como entregada', () async {
+      await venta('ven-1');
+      await renglon('it-1', 'ven-1', 'pro-1');
+      await renglon('it-2', 'ven-1', 'pro-2');
+      await entrega('e-pend', 'ven-1', 'pro-1', pendiente: true);
+      await entrega('e-baja', 'ven-1', 'pro-2', cuando: DateTime.utc(2026, 10, 13), borrada: t0);
+
+      final cuenta = (await local.resumenDe('per-1'))!;
+
+      expect(cuenta.entregasHechas, 0);
+      expect(cuenta.entregasTotales, 2);
+    });
+
     test('una venta sin renglones no cuenta como entrega y no rompe nada', () async {
       await venta('ven-1', monto: 100000);
 
