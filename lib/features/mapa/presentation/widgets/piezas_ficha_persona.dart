@@ -459,10 +459,14 @@ class FiltroDelHistorial extends StatelessWidget {
 }
 
 class FilaDeHistorial extends StatelessWidget {
-  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora});
+  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora, this.alTocar});
 
   final MovimientoDeFicha movimiento;
   final DateTime ahora;
+
+  /// Lo que pasa al tocar la fila (la venta abre su devolución, HU-VEN-004); `null`: la fila no se
+  /// toca.
+  final VoidCallback? alTocar;
 
   @override
   Widget build(BuildContext context) {
@@ -475,45 +479,51 @@ class FilaDeHistorial extends StatelessWidget {
     };
     final pendiente = m is EntregaEnFicha && m.pendiente;
     final sub = FormatoFicha.subtitulo(m);
+    final cuadro = _Cuadro(
+      hijo: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  FormatoFicha.antetitulo(m, ahora),
+                  style: _estiloRotulo.copyWith(
+                    color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  FormatoFicha.titulo(m),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
+                ),
+                if (sub != null)
+                  Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
+              ],
+            ),
+          ),
+          if (alTocar != null)
+            const Padding(
+              padding: EdgeInsets.only(left: 8, top: 2),
+              child: Icon(Icons.chevron_right, color: ColoresAlta.gris, size: 22),
+            ),
+        ],
+      ),
+    );
     return Semantics(
       container: true,
+      button: alTocar != null,
+      onTap: alTocar,
       label: FormatoFicha.paraLector(m, ahora),
       excludeSemantics: true,
       child: KeyedSubtree(
         key: ClavesFicha.fila(m.id),
-        child: _Cuadro(
-          hijo: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Glyph(glyph: glyph, fondo: fondo, color: color, radio: 8),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      FormatoFicha.antetitulo(m, ahora),
-                      style: _estiloRotulo.copyWith(
-                        color: pendiente ? ColoresAlta.ambar : ColoresAlta.gris,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      FormatoFicha.titulo(m),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                      ),
-                    ),
-                    if (sub != null)
-                      Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        child: alTocar == null
+            ? cuadro
+            : InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: cuadro),
       ),
     );
   }
