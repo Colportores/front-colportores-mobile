@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/filtro_de_historial.dart';
@@ -23,6 +24,7 @@ import '../widgets/hoja_baja_persona.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_ficha_persona.dart';
 import '../widgets/piezas_notas.dart';
+import '../widgets/proxima_visita_de_la_ficha.dart';
 import 'nota_persona_form_page.dart';
 import 'notas_de_persona_page.dart';
 
@@ -40,6 +42,8 @@ import 'notas_de_persona_page.dart';
 /// - Más de 100 movimientos: se muestran de a 100 con «Ver más».
 /// - «MOSTRAR» (32B·03) filtra el historial por estado: «Todo», «Con saldo» o «Entrega pendiente». No
 ///   se guarda: al reentrar vuelve a «Todo».
+/// - «PRÓXIMA VISITA» (23A·05) muestra la visita agendada que viene y ofrece «+ Agendar»: abre «Agendar
+///   visita» con la casa y la persona puestas y, al guardar, vuelve acá con la tarjeta.
 /// - Los chips «+ Agendar cobranza» y «Registrar entrega» son de HU-VEN-005, y la ubicación
 ///   alternativa, de la vista 22: no están acá.
 class FichaPersonaPage extends ConsumerStatefulWidget {
@@ -169,6 +173,29 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await editar(widget.personaId);
   });
 
+  /// «+ Agendar» de «PRÓXIMA VISITA» (23A·05): «Agendar visita» con la casa y la persona ya puestas.
+  /// Al guardar vuelve acá, con el aviso «Agendada…» y la tarjeta de la visita.
+  Future<void> _agendar() => _unaAlaVez(() async {
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    // El vínculo de la persona con este depto: la agenda cuelga de él.
+    final personas = await ref
+        .read(personaRepositoryProvider)
+        .observarDelEspacio(widget.espacioId)
+        .first;
+    final vinculo = personas.where((p) => p.persona.id == widget.personaId).firstOrNull?.vinculo;
+    if (!mounted) return;
+    if (vinculo == null) {
+      _avisar(TextosFicha.noPudimosAbrir);
+      return;
+    }
+    await FlujoAgendarVisita.abrir(
+      context,
+      espacioId: widget.espacioId,
+      espacioPersonaId: vinculo.id,
+      colportorId: widget.colportorId,
+    );
+  });
+
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
@@ -268,6 +295,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     } else {
       cuerpo = _CuerpoDeLaFicha(
         ficha: ficha,
+        colportorId: widget.colportorId,
         ahora: ahora,
         telefonoVisible: _telefonoVisible,
         mostrar: _mostrar,
@@ -289,6 +317,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
             ? null
             : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
+        alAgendar: _abriendo ? null : _agendar,
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
       );
@@ -432,6 +461,7 @@ class _Mensaje extends StatelessWidget {
 class _CuerpoDeLaFicha extends StatelessWidget {
   const _CuerpoDeLaFicha({
     required this.ficha,
+    required this.colportorId,
     required this.ahora,
     required this.telefonoVisible,
     required this.mostrar,
@@ -448,11 +478,13 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alElegirFiltro,
     required this.alDevolver,
     required this.alRegistrarVisita,
+    required this.alAgendar,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
   });
 
   final FichaDePersona ficha;
+  final String colportorId;
   final DateTime ahora;
   final bool telefonoVisible;
   final int mostrar;
@@ -471,6 +503,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
   final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
+  final VoidCallback? alAgendar;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
 
@@ -545,6 +578,16 @@ class _CuerpoDeLaFicha extends StatelessWidget {
           else
             const SinMovimientosDeCuenta(),
         ],
+        // 23A·05: la visita que viene. La ficha vacía (32B·05) no ofrece agendar: solo muestra una visita
+        // que ya exista.
+        ProximaVisitaDeLaFicha(
+          personaId: persona.id,
+          colportorId: colportorId,
+          ahora: ahora,
+          soloLectura: soloLectura,
+          alAgendar: lugar == null ? null : alAgendar,
+          mostrarSinVisita: !vacia,
+        ),
         if (mostrarNotas) ...[
           const SizedBox(height: 14),
           _SeccionDeNotas(
