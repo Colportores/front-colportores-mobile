@@ -305,9 +305,13 @@ abstract final class RepartoDeCuotas {
 
     final base = abiertas.isNotEmpty ? abiertas : vivas;
     final cola = <_CobroPendiente>[];
+    // Desde cuándo vale el plan de hoy: lo anterior (cobros y cuotas de un plan que ya se cumplió)
+    // no cuenta para él.
+    DateTime? desde;
     if (base.isNotEmpty) {
-      final desde = base.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
-      final ordenados = cobros.where((c) => !c.creadoEn.isBefore(desde)).toList()
+      final inicio = base.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
+      desde = inicio;
+      final ordenados = cobros.where((c) => !c.creadoEn.isBefore(inicio)).toList()
         ..sort((a, b) => a.creadoEn.compareTo(b.creadoEn));
       for (final c in ordenados) {
         cola.add(_CobroPendiente(c));
@@ -318,6 +322,7 @@ abstract final class RepartoDeCuotas {
     final cubiertas = <String, _Cobertura>{};
     for (final cita in vivas) {
       if (cita.estado != EstadoAgenda.cumplida) continue;
+      if (desde != null && cita.creadaEn.isBefore(desde)) continue;
       cubiertas[cita.agendaId] = _consumir(cola, cita.montoCentavos);
     }
 

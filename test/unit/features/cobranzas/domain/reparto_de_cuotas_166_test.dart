@@ -430,6 +430,24 @@ void main() {
       },
     );
 
+    test(
+      'dado un plan anterior ya cumplido, cuando se arma el plan nuevo, las cuotas viejas no consumen los cobros del nuevo',
+      () {
+        final viejo = DateTime.utc(2026, 9, 1);
+        final citas = [
+          cita('v1', 5, 100000, estado: EstadoAgenda.cumplida, creada: viejo),
+          cita('n1', 26, 75000),
+          cita('n2', 28, 75000),
+        ];
+        final e = RepartoDeCuotas.estadoDe(citas: citas, cobros: [cobro(75000)]);
+        expect(e.cuotas.map((c) => c.agendaId), ['v1', 'n1', 'n2']);
+        expect(e.cuotas[1].estaCubierta, isTrue);
+        expect(e.cuotas[2].pagadoCentavos, 0);
+        expect(e.aCerrar, ['n1']);
+        expect(e.cuotas[0].cubiertaEl, isNull);
+      },
+    );
+
     test('dados cobros anteriores al plan, cuando se arma, no cuentan para las cuotas', () {
       final e = RepartoDeCuotas.estadoDe(
         citas: plan,
