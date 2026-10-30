@@ -1047,6 +1047,14 @@ final class FailureSaldoNoDisponible extends Failure {
       );
 }
 
+/// No se pudo calcular el resumen de Mi Cuenta (HU-CTA-001, 33A·05): la base local no se pudo leer.
+/// Es **otra cosa** que «no tenés nada»: nadie muestra «$ 0» ante esta falla, y los cobros y las
+/// ventas siguen guardados. Se puede reintentar. El texto es el del canvas.
+final class FailureCuentaNoDisponible extends Failure {
+  const FailureCuentaNoDisponible()
+    : super(mensaje: 'No pudimos calcular tu cuenta.', codigo: 'CUENTA_NO_DISPONIBLE');
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {

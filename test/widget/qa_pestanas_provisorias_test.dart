@@ -68,7 +68,10 @@ Future<void> _montar(
 );
 
 bool _sinPantallaTodavia(PestanaInicio p) =>
-    p != PestanaInicio.mapa && p != PestanaInicio.lista && p != PestanaInicio.agenda;
+    p != PestanaInicio.mapa &&
+    p != PestanaInicio.lista &&
+    p != PestanaInicio.agenda &&
+    p != PestanaInicio.cuenta;
 
 void main() {
   const tamanios = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
