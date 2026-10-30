@@ -178,11 +178,37 @@ final class CobranzaLocalDataSourceDrift {
 
   /// Lo que se debe en un corte: la suma del saldo de cada venta viva, `SUM(MAX(a, 0))` (una venta
   /// cobrada de más no resta de lo que deben las demás).
-  Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async {
-    final filas = await _db.customSelect('$_sqlVentas$corte', variables: variables).get();
+  Future<int> _saldoDe(String corte, List<Variable<Object>> variables) async =>
+      _sumarSaldos(await _db.customSelect('$_sqlVentas$corte', variables: variables).get());
+
+  /// Lo que le deben al colportor [colportorId] ahora, en centavos, sumando todas sus ventas vivas
+  /// (una lectura; [observarSaldoTotal] es la misma cuenta cada vez que cambia).
+  Future<int> saldoTotalDe(String colportorId) =>
+      _saldoDe(_corteColportor, [Variable<String>(colportorId)]);
+
+  /// Lo que le debían al colportor [colportorId] en el momento [hasta], en centavos: la misma cuenta
+  /// que [observarSaldoTotal], con solo las ventas, los cobros y las devoluciones hechos hasta
+  /// entonces. Es la mitad de la comparación «contra la semana pasada» de Mi Cuenta (HU-CTA-001).
+  Future<int> saldoTotalHasta(String colportorId, DateTime hasta) async {
+    final ms = hasta.toUtc().millisecondsSinceEpoch;
+    final filas = await _db
+        .customSelect(
+          'SELECT v.id AS id, v.monto_total AS monto, COALESCE('
+          '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql} '
+          'AND c.fecha <= ?), 0) AS cobrado FROM venta v '
+          'WHERE v.deleted_at IS NULL AND v.fecha <= ? AND $_corteColportor',
+          variables: [Variable<int>(ms), Variable<int>(ms), Variable<String>(colportorId)],
+        )
+        .get();
+    return _sumarSaldos(filas, hasta: hasta);
+  }
+
+  /// La suma del saldo de las ventas de [filas] (`id`, `monto`, `cobrado`); con [hasta], con las
+  /// devoluciones de ese momento.
+  Future<int> _sumarSaldos(List<QueryRow> filas, {DateTime? hasta}) async {
     final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
       for (final fila in filas) fila.read<String>('id'),
-    ]);
+    ], hasta: hasta);
     var saldo = 0;
     for (final fila in filas) {
       saldo += (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
