@@ -90,8 +90,10 @@ class TarjetaDeDatos extends StatelessWidget {
   }
 }
 
-/// «¿QUÉ HACÉS CON $ 1.900?» y las tres salidas (31-02 a 31-04): se elige una, sin ninguna por
-/// defecto.
+/// «¿QUÉ HACÉS CON $ 1.900?» y las tres salidas (31-02 a 31-04). Primero va «Lo retengo», la que no
+/// devuelve plata, y viene elegida; «Se lo devuelvo ahora» y «Se lo devuelvo después» quedan a mano
+/// debajo (decisión de Cristian, 23/10, «Debo cliente»: la devolución de plata es opcional y no se
+/// propone primero).
 class OpcionesDeLaDiferencia extends StatelessWidget {
   const OpcionesDeLaDiferencia({
     super.key,
@@ -103,6 +105,13 @@ class OpcionesDeLaDiferencia extends StatelessWidget {
   final String rotulo;
   final QueHacerConLaDiferencia? elegida;
   final ValueChanged<QueHacerConLaDiferencia>? alElegir;
+
+  /// El orden en pantalla: la salida que no devuelve plata va primera.
+  static const _orden = [
+    QueHacerConLaDiferencia.retener,
+    QueHacerConLaDiferencia.devolverAhora,
+    QueHacerConLaDiferencia.devolverDespues,
+  ];
 
   static const _textos = {
     QueHacerConLaDiferencia.devolverAhora: (TextosDevolucion.ahora, TextosDevolucion.ahoraSub),
@@ -121,7 +130,7 @@ class OpcionesDeLaDiferencia extends StatelessWidget {
       children: [
         RotuloDeSeccion(rotulo),
         const SizedBox(height: 8),
-        for (final opcion in QueHacerConLaDiferencia.values) ...[
+        for (final opcion in _orden) ...[
           FilaElegible(
             key: Key('devolucion_opcion_${opcion.name}'),
             titulo: _textos[opcion]!.$1,
