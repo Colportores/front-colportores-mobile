@@ -178,12 +178,12 @@ void main() {
           ],
           child: MaterialApp(
             theme: temaClaro(),
-            home: Consumer(
-              builder: (context, ref, _) => Scaffold(
+            home: Builder(
+              builder: (context) => Scaffold(
                 body: TextButton(
                   onPressed: () async => agendo = await FlujoCuandoCobrar.preguntar(
                     context,
-                    ref,
+                    ProviderScope.containerOf(context),
                     guardada: venta,
                     espacioId: 'esp-1',
                     espacioPersonaId: 'ep-1',

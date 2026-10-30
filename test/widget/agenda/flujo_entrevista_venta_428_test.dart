@@ -21,18 +21,28 @@ import 'package:colportores_mobile/features/agenda/presentation/widgets/aviso_en
 import 'package:colportores_mobile/features/agenda/presentation/widgets/flujo_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/venta_con_saldo.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/repositories/saldo_pendiente_repository.dart';
+import 'package:colportores_mobile/features/cobranzas/presentation/providers/cobranzas_providers.dart'
+    show saldoPendienteRepositoryProvider;
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart' show TipoUbicacion;
+import 'package:colportores_mobile/features/mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
+import 'package:colportores_mobile/features/ventas/presentation/providers/ventas_providers.dart';
 import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
 import '../../helpers/entrevista_falsos.dart';
+import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
@@ -81,6 +91,33 @@ final class _AgendaDeTodo implements AgendaRepository {
   }) => throw UnimplementedError();
 }
 
+/// Lo que quedó sin cobrar de la venta, tal como lo diría la DB local.
+final class _SaldoFalso implements SaldoPendienteRepository {
+  _SaldoFalso(this.saldoCentavos);
+
+  final int saldoCentavos;
+
+  @override
+  Stream<VentaConSaldo?> observarVenta(String ventaId) => Stream.value(
+    VentaConSaldo(
+      ventaId: ventaId,
+      numeroTalonario: '0039',
+      fecha: DateTime(2026, 10, 23),
+      montoTotalCentavos: 300000,
+      cobradoCentavos: 300000 - saldoCentavos,
+    ),
+  );
+
+  @override
+  Stream<int> observarDePersona(String personaId) => throw UnimplementedError();
+
+  @override
+  Stream<int> observarDeUbicacion(String ubicacionId) => throw UnimplementedError();
+
+  @override
+  Stream<int> observarTotal(String colportorId) => throw UnimplementedError();
+}
+
 ProviderContainer contenedor(WidgetTester tester) =>
     ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
 
@@ -96,8 +133,10 @@ void main() {
   late Telefono telefono;
   SalidaTerminoEntrevista? salida;
   var devolvio = false;
+  var extras = <Override>[];
 
   setUp(() {
+    extras = [];
     montaje = MontajeEntrevista();
     entorno = EntornoDeVenta();
     agendas = AgendaRepositorioQueAgenda();
@@ -132,6 +171,7 @@ void main() {
           ...montaje.overrides,
           ...entorno.overrides,
           ...telefono.overrides,
+          ...extras,
           if (conMapa) ...overridesLista(repo: RepoListaFalso()),
           personaRepositoryProvider.overrideWithValue(personas),
           espacioRepositoryProvider.overrideWithValue(
@@ -149,7 +189,15 @@ void main() {
               builder: (context, ref, _) => SingleChildScrollView(
                 child: Column(
                   children: [
-                    const AvisoEntrevistaEnCurso(colportorId: 'col-1'),
+                    // Como en el mapa: sin entrevista, el aviso sale del árbol (no queda vacío).
+                    Consumer(
+                      builder: (context, ref, _) =>
+                          ref.watch(
+                            entrevistaEnCursoProvider('col-1').select((e) => e.hayEntrevista),
+                          )
+                          ? const AvisoEntrevistaEnCurso(colportorId: 'col-1')
+                          : const SizedBox.shrink(),
+                    ),
                     ElevatedButton(
                       key: const Key('abrir'),
                       onPressed: () => corre(
@@ -223,8 +271,8 @@ void main() {
   }
 
   /// R·05 → R·06 → «Sí, registrar la venta».
-  Future<void> hastaLaVenta(WidgetTester tester) async {
-    await tocarKey(tester, const Key('abrir'));
+  Future<void> hastaLaVenta(WidgetTester tester, {bool desdeElAviso = false}) async {
+    await tocarKey(tester, desdeElAviso ? ClavesEntrevista.avisoFijo : const Key('abrir'));
     await tocarKey(tester, ClavesEntrevista.finalizar);
     await tocarKey(tester, ClavesEntrevista.registrarVenta);
   }
@@ -242,10 +290,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 27A·14 «Venta registrada: ¿y ahora?» → «Listo». Si la pantalla no está, no hace nada.
+  Future<void> listo(WidgetTester tester) async {
+    if (find.byKey(const Key('venta_terminar')).evaluate().isEmpty) return;
+    await tocarKey(tester, const Key('venta_terminar'));
+  }
+
+  /// Lo elegido en «¿Cuándo volvés a cobrar?», pasando antes por «Venta registrada».
+  Future<void> elegirCuando(WidgetTester tester, CuandoCobrar opcion) async {
+    await listo(tester);
+    await tocarKey(tester, ClavesCuandoCobrar.opcion(opcion));
+  }
+
   Future<void> hastaLaPregunta(WidgetTester tester) async {
     await hastaLaVenta(tester);
     await armarLaVenta(tester);
     await registrar(tester);
+    await listo(tester);
   }
 
   group('de «Sí, registrar la venta» a la venta (R·06 → 27)', () {
@@ -270,7 +331,7 @@ void main() {
       await hastaLaPregunta(tester);
 
       expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       final visita = montaje.agenda.recibidas.single.visita;
       expect(visita.tipoResultado, TipoResultadoVisita.venta);
@@ -295,7 +356,7 @@ void main() {
       await tocarKey(tester, ClavesEntrevista.registrarVenta);
       await armarLaVenta(tester);
       await registrar(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(montaje.agenda.recibidas.single.visita.tipoResultado, TipoResultadoVisita.venta);
       expect(montaje.agenda.recibidas.single.nota!.texto, 'volver con la esposa');
@@ -311,7 +372,7 @@ void main() {
       await montar(tester);
 
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       final visita = montaje.agenda.recibidas.single.visita;
       expect(visita.espacioId, 'esp-2');
@@ -377,7 +438,7 @@ void main() {
 
       entorno.ventas.respuesta = null;
       await registrar(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(montaje.agenda.recibidas, hasLength(1));
       expect(montaje.almacen.guardadas, isEmpty);
@@ -398,7 +459,7 @@ void main() {
       await hastaLaVenta(tester);
       await armarLaVenta(tester);
       await registrar(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(montaje.agenda.recibidas, hasLength(1));
       expect(entorno.ventas.recibidas, hasLength(1));
@@ -480,7 +541,7 @@ void main() {
       montaje.rota.fallaAlBorrar = true;
 
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(entorno.ventas.recibidas, hasLength(1));
       expect(montaje.agenda.recibidas, hasLength(1));
@@ -500,7 +561,7 @@ void main() {
       expect(seleccionada(tester), isNull);
 
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(seleccionada(tester), 'ub-1');
     });
@@ -519,7 +580,7 @@ void main() {
       await montar(tester);
 
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(tester.takeException(), isNull);
       expect(salida, isA<VentaGuardadaEnLaEntrevista>());
@@ -541,7 +602,7 @@ void main() {
       await hastaLaVentaDesdeLaJornada(tester);
       await armarLaVenta(tester);
       await registrar(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(salida, isA<VentaGuardadaEnLaEntrevista>());
       expect(salida, isNot(isA<EntrevistaGuardada>()));
@@ -604,7 +665,7 @@ void main() {
       expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
       await armarLaVenta(tester);
       await registrar(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(montaje.agenda.recibidas.single.visita.tipoResultado, TipoResultadoVisita.venta);
       expect(salida, isA<VentaGuardadaEnLaEntrevista>());
@@ -654,7 +715,7 @@ void main() {
       await montar(tester);
       await hastaLaPregunta(tester);
 
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(agendas.recibidas, isEmpty);
       expect(salida, isA<VentaGuardadaEnLaEntrevista>());
@@ -666,7 +727,7 @@ void main() {
       await montar(tester);
       await hastaLaPregunta(tester);
 
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
+      await elegirCuando(tester, CuandoCobrar.manana);
       expect(find.byKey(const Key('agendar_hoja_listo')), findsOneWidget);
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
@@ -689,7 +750,7 @@ void main() {
       await montar(tester);
       await hastaLaPregunta(tester);
 
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.hoy));
+      await elegirCuando(tester, CuandoCobrar.hoy);
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
       final agenda = agendas.recibidas.single.agenda;
@@ -702,7 +763,7 @@ void main() {
     ) async {
       await montar(tester);
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.hoy));
+      await elegirCuando(tester, CuandoCobrar.hoy);
       // 14:45 → 14:40: ya pasó (son las 14:41).
       await tocarKey(tester, const Key('agendar_hoja_menos'));
       await tocarKey(tester, const Key('agendar_hoja_listo'));
@@ -718,7 +779,7 @@ void main() {
     testWidgets('una hora de hoy que ya pasó se puede agendar igual', (tester) async {
       await montar(tester);
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.hoy));
+      await elegirCuando(tester, CuandoCobrar.hoy);
       await tocarKey(tester, const Key('agendar_hoja_menos'));
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
@@ -728,10 +789,29 @@ void main() {
       expect(find.textContaining('Cobranza agendada para'), findsOneWidget);
     });
 
+    testWidgets('la hoja de la casa que ya estaba abierta vuelve a leer lo que la persona debe', (
+      tester,
+    ) async {
+      final lecturas = <ClaveDeLaCasa>[];
+      extras.addAll(overridesHojaCasa(lecturas: lecturas));
+      await montar(tester, conMapa: true);
+      const clave = (ubicacionId: 'ub-1', tipo: TipoUbicacion.casa);
+      final suscripcion = contenedor(tester).listen(contextoDeLaCasaProvider(clave), (_, _) {});
+      addTearDown(suscripcion.close);
+      await tester.pump();
+      expect(lecturas, hasLength(1));
+
+      await hastaLaPregunta(tester);
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
+      await tester.pump();
+
+      expect(lecturas.length, greaterThan(1), reason: 'se pidió el contexto de nuevo (R·08)');
+    });
+
     testWidgets('cerrar «Día y hora» sin confirmar vuelve a la pregunta', (tester) async {
       await montar(tester);
       await hastaLaPregunta(tester);
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
+      await elegirCuando(tester, CuandoCobrar.manana);
 
       await tester.tapAt(const Offset(195, 20));
       await tester.pumpAndSettle();
@@ -746,7 +826,7 @@ void main() {
       await hastaLaPregunta(tester);
       agendas.fallas.add(const FailureInesperado());
 
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
+      await elegirCuando(tester, CuandoCobrar.manana);
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
       expect(find.text(TextosCuandoCobrar.noSePudoAgendar), findsOneWidget);
@@ -761,7 +841,7 @@ void main() {
       await hastaLaPregunta(tester);
       agendas.lanzar = StateError('sin base');
 
-      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
+      await elegirCuando(tester, CuandoCobrar.manana);
       await tocarKey(tester, const Key('agendar_hoja_listo'));
 
       expect(find.text(TextosCuandoCobrar.noSePudoAgendar), findsOneWidget);
@@ -786,5 +866,197 @@ void main() {
       expect(agendas.recibidas, hasLength(1));
       semantica.dispose();
     });
+  });
+
+  group('27A·14 «Venta registrada: ¿y ahora?» (decisión P2 del 29/10)', () {
+    Future<void> hastaVentaRegistrada(WidgetTester tester) async {
+      await hastaLaVenta(tester);
+      await armarLaVenta(tester);
+      await registrar(tester);
+    }
+
+    void conCobro(List<ContextoDeCobroDeLaVenta> recibidos, {bool? cobra, Object? lanza}) {
+      extras.add(
+        cobrarDespuesDeLaVentaProvider.overrideWithValue((contexto) async {
+          recibidos.add(contexto);
+          if (lanza != null) throw lanza;
+          return cobra ?? true;
+        }),
+      );
+    }
+
+    testWidgets('al guardar se monta la pantalla, antes de preguntar cuándo volver a cobrar', (
+      tester,
+    ) async {
+      await montar(tester);
+
+      await hastaVentaRegistrada(tester);
+
+      expect(find.byKey(const Key('venta_registrada_pagina')), findsOneWidget);
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsNothing);
+      expect(
+        find.text(TextosVenta.clienteYMonto('Pedro Gómez', FormatoVenta.monto(300000))),
+        findsOneWidget,
+      );
+      expect(devolvio, isFalse);
+      expect(entorno.ventas.recibidas, hasLength(1), reason: 'la venta ya está guardada');
+    });
+
+    testWidgets('sin cobro enganchado y sin entrega, no dibuja grupos: solo «Listo»', (
+      tester,
+    ) async {
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      expect(find.text(TextosVenta.cobro), findsNothing);
+      expect(find.text(TextosVenta.entrega), findsNothing);
+      expect(find.text(TextosVenta.cobrarAhora), findsNothing);
+
+      await tocarKey(tester, const Key('venta_terminar'));
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+    });
+
+    testWidgets('el atrás no sale de la pantalla: la venta ya está guardada', (tester) async {
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('venta_registrada_pagina')), findsOneWidget);
+    });
+
+    testWidgets('con el cobro enganchado se ofrece «Cobrar ahora»; sin elegirlo, sigue la '
+        'pregunta', (tester) async {
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conCobro(cobros);
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      expect(find.text(TextosVenta.cobrarAhora), findsOneWidget);
+      await tocar(tester, find.text(TextosVenta.continuar));
+
+      expect(cobros, isEmpty);
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+    });
+
+    testWidgets('«Cobrar ahora» abre el cobro con la venta; si queda saldo, pregunta con lo que '
+        'queda', (tester) async {
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conCobro(cobros);
+      extras.add(saldoPendienteRepositoryProvider.overrideWithValue(_SaldoFalso(120000)));
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.cobrarAhora));
+      await tocar(tester, find.text(TextosVenta.continuar));
+
+      expect(cobros, hasLength(1));
+      expect(cobros.single.ventaId, entorno.ventas.recibidas.single.venta.id);
+      expect(cobros.single.espacioId, 'esp-1');
+      expect(cobros.single.espacioPersonaId, 'ep-1');
+      expect(cobros.single.colportorId, 'col-1');
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+      expect(find.text(TextosCuandoCobrar.saldo(120000, 'Pedro Gómez')), findsOneWidget);
+    });
+
+    testWidgets('si «Cobrar ahora» cobra todo, no pregunta cuándo volver a cobrar', (tester) async {
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conCobro(cobros);
+      extras.add(saldoPendienteRepositoryProvider.overrideWithValue(_SaldoFalso(0)));
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.cobrarAhora));
+      await tocar(tester, find.text(TextosVenta.continuar));
+
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsNothing);
+      expect(salida, isA<VentaGuardadaEnLaEntrevista>());
+      expect(agendas.recibidas, isEmpty);
+    });
+
+    testWidgets('si no se cobró, o el cobro falla, pregunta con el total y no queda nada trabado', (
+      tester,
+    ) async {
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conCobro(cobros, lanza: StateError('sin base'));
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.cobrarAhora));
+      await tocar(tester, find.text(TextosVenta.continuar));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(TextosCuandoCobrar.saldo(300000, 'Pedro Gómez')), findsOneWidget);
+      await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      expect(salida, isA<VentaGuardadaEnLaEntrevista>());
+    });
+
+    testWidgets('dos toques seguidos en «Continuar» abren el cobro una sola vez', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conCobro(cobros, cobra: false);
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.cobrarAhora));
+      final continuar = find.semantics.byLabel(RegExp('^Continuar'));
+      tester.semantics.performAction(continuar, SemanticsAction.tap);
+      tester.semantics.performAction(continuar, SemanticsAction.tap);
+      await tester.pumpAndSettle();
+
+      expect(cobros, hasLength(1));
+      semantica.dispose();
+    });
+
+    testWidgets('con «Mañana» la cobranza queda marcada para la tarjeta de R·08 (con «Cambiar»)', (
+      tester,
+    ) async {
+      await montar(tester, conMapa: true);
+      await hastaLaPregunta(tester);
+      await elegirCuando(tester, CuandoCobrar.manana);
+      await tocarKey(tester, const Key('agendar_hoja_listo'));
+
+      final cita = agendas.recibidas.single.agenda;
+      final marca = contenedor(tester).read(cobranzaRecienAgendadaProvider);
+      expect(marca, isNotNull);
+      expect(marca!.agendaId, cita.id);
+      expect(marca.ubicacionId, 'ub-1');
+      expect(marca.persona, 'Pedro Gómez');
+    });
+
+    testWidgets('sin cobranza agendada («Sin fecha») no se marca nada para R·08', (tester) async {
+      await montar(tester, conMapa: true);
+      await hastaLaPregunta(tester);
+      await elegirCuando(tester, CuandoCobrar.sinFecha);
+
+      expect(contenedor(tester).read(cobranzaRecienAgendadaProvider), isNull);
+    });
+  });
+
+  group('desde el aviso fijo del mapa', () {
+    testWidgets(
+      'al guardar la venta el aviso sale del árbol y el flujo sigue: agenda la cobranza',
+      (tester) async {
+        await montar(tester, conMapa: true);
+
+        await hastaLaVenta(tester, desdeElAviso: true);
+        await armarLaVenta(tester);
+        await registrar(tester);
+        expect(
+          find.byKey(ClavesEntrevista.avisoFijo),
+          findsNothing,
+          reason: 'la entrevista se soltó: el aviso ya no está',
+        );
+        await elegirCuando(tester, CuandoCobrar.manana);
+        await tocarKey(tester, const Key('agendar_hoja_listo'));
+
+        expect(agendas.recibidas, hasLength(1), reason: 'la cobranza se agendó igual');
+        expect(agendas.recibidas.single.agenda.tipo, TipoAgenda.cobranza);
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Cobranza agendada para'), findsOneWidget);
+        expect(contenedor(tester).read(mapaUbicacionesProvider('col-1')).seleccionadaId, 'ub-1');
+      },
+    );
   });
 }

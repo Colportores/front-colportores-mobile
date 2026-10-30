@@ -220,9 +220,13 @@ final class Arnes428 {
     );
   }
 
+  /// Registra la venta y pasa por 27A·14 «Venta registrada» con «Listo», que lleva a la pregunta.
   Future<void> registrar(WidgetTester tester) async {
     await tocar(tester, find.byKey(const Key('venta_cta')));
     await tester.pumpAndSettle();
+    if (find.byKey(const Key('venta_terminar')).evaluate().isNotEmpty) {
+      await tocarKey(tester, const Key('venta_terminar'));
+    }
   }
 
   Future<void> hastaLaPregunta(WidgetTester tester, {Size? tamano, double? letra}) async {

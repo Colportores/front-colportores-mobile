@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agenda/domain/entities/agenda.dart';
 import '../../agenda/domain/entities/franja_horaria.dart';
 import '../../agenda/domain/entities/tipo_agenda.dart';
 import '../../agenda/domain/usecases/agendar_visita_use_case.dart';
@@ -24,17 +25,23 @@ abstract final class FlujoCuandoCobrar {
   /// No pregunta nada si la venta no deja saldo (por ejemplo, una venta de misioneros a \$ 0).
   /// Cerrar la hoja de día y hora sin confirmar vuelve a la pregunta; «Sin fecha» siempre es una
   /// salida. [persona] es el nombre de quien debe, para el texto de la pregunta.
+  ///
+  /// [saldoCentavos] es lo que queda por cobrar: sin él, el total de la venta. Después de «Cobrar
+  /// ahora» (27A·14) es lo que quedó sin cobrar, y si ya no queda nada no se pregunta. [alAgendar]
+  /// recibe la cobranza que quedó agendada, para que quien llama la muestre (R·08).
   static Future<bool> preguntar(
     BuildContext context,
-    WidgetRef ref, {
+    ProviderContainer ref, {
     required VentaGuardada guardada,
     required String espacioId,
     required String espacioPersonaId,
     required String colportorId,
     required String persona,
     required String direccion,
+    int? saldoCentavos,
+    void Function(Agenda agenda)? alAgendar,
   }) async {
-    final saldo = guardada.totalCentavos;
+    final saldo = saldoCentavos ?? guardada.totalCentavos;
     if (saldo <= 0) return false;
     final mensajero = ScaffoldMessenger.maybeOf(context);
     final agendar = ref.read(agendarVisitaUseCaseProvider);
@@ -82,7 +89,8 @@ abstract final class FlujoCuandoCobrar {
           confirmoHoraPasada: confirmoHoraPasada,
         );
         switch (resultado) {
-          case VisitaAgendada():
+          case VisitaAgendada(:final agenda):
+            alAgendar?.call(agenda);
             // Reemplaza al «Venta 0039 guardada.» (que sigue a la vista abajo de la hoja) en vez de
             // quedar en la cola detrás de él, y lo repite.
             mensajero
@@ -136,7 +144,7 @@ abstract final class FlujoCuandoCobrar {
   }
 
   static Future<ResultadoAgendar?> _agendar(
-    WidgetRef ref,
+    ProviderContainer ref,
     AgendarVisitaUseCase agendar, {
     required IdsAgendarVisita ids,
     required String espacioId,

@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/agenda/presentation/providers/consul
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
@@ -53,6 +54,16 @@ ItemAgenda _cobranza(String id, DateTime cuando, {String ub = 'u-1'}) => itemAge
   ubicacionId: ub,
 );
 
+/// Arranca con la cobranza que se acaba de agendar al guardar una venta (R·08).
+final class _ConCobranza extends CobranzaRecienAgendadaNotifier {
+  _ConCobranza(this.inicial);
+
+  final CobranzaRecienAgendada inicial;
+
+  @override
+  CobranzaRecienAgendada? build() => inicial;
+}
+
 /// Lo que un test necesita después de montar la hoja.
 final class _Montaje {
   final detalles = <String>[];
@@ -75,12 +86,14 @@ Future<_Montaje> _montar(
   ContextoDeLaCasa? contexto,
   double escala = 1,
   Size tamano = const Size(390, 844),
+  CobranzaRecienAgendada? recien,
 }) async {
   final m = _Montaje();
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final overrides = <Override>[
+    if (recien != null) cobranzaRecienAgendadaProvider.overrideWith(() => _ConCobranza(recien)),
     ...overridesHojaCasa(
       registrarVisita: m.visitas.add,
       agendas: repo,
@@ -746,6 +759,141 @@ void main() {
       await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', DateTime(2027, 1, 7, 10))]));
 
       expect(find.text('JUE 07/01/2027 · 10:00'), findsOneWidget);
+    });
+  });
+
+  group('R·08 · la cobranza recién agendada al guardar la venta', () {
+    const marca = (ubicacionId: 'u-1', agendaId: 'cob', persona: 'Pedro Gómez');
+    Finder tarjeta() => find.byKey(ClavesVisitasAgendadas.tarjetaCobranza);
+
+    _probar('se dibuja como tarjeta con «Cambiar» y no se repite en la lista', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([_cobranza('cob', _sabado)]), recien: marca);
+
+      expect(tarjeta(), findsOneWidget);
+      expect(find.text('SÁB 10/10 · 12:30'), findsOneWidget);
+      expect(find.text('Cobranza · Pedro Gómez'), findsOneWidget);
+      expect(find.text('Agendada al registrar la venta'), findsOneWidget);
+      expect(find.byKey(ClavesVisitasAgendadas.cambiar), findsOneWidget);
+      expect(_filas, findsNothing, reason: 'la cita no se repite en «Visitas agendadas»');
+      expect(find.text('VISITAS AGENDADAS'), findsNothing);
+    });
+
+    _probar('las demás visitas siguen en su lista, con el rótulo', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado), _entrevista('ent', _jueves)]),
+        recien: marca,
+      );
+
+      expect(tarjeta(), findsOneWidget);
+      expect(_filas, findsOneWidget);
+      expect(_fila('ent'), findsOneWidget);
+      expect(find.text('VISITAS AGENDADAS'), findsOneWidget);
+    });
+
+    _probar('«Cambiar» abre el mismo detalle (23C·01) que la fila', (tester) async {
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: marca,
+      );
+
+      await tester.tap(find.byKey(ClavesVisitasAgendadas.cambiar));
+      await tester.pumpAndSettle();
+
+      expect(m.detalles, ['cob']);
+    });
+
+    _probar('dos toques seguidos abren el detalle una sola vez', (tester) async {
+      final completer = Completer<Object?>();
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: marca,
+        detalle: (_) => completer.future,
+      );
+
+      await tester.tap(find.byKey(ClavesVisitasAgendadas.cambiar));
+      await tester.tap(find.byKey(ClavesVisitasAgendadas.cambiar));
+      await tester.pump();
+      expect(m.detalles, ['cob']);
+
+      completer.complete(null);
+      await tester.pumpAndSettle();
+    });
+
+    _probar('si el detalle falla avisa y la tarjeta vuelve a poder tocarse', (tester) async {
+      var intentos = 0;
+      final m = await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: marca,
+        detalle: (_) {
+          if (++intentos == 1) throw StateError('sin base');
+          return null;
+        },
+      );
+
+      await tester.tap(find.byKey(ClavesVisitasAgendadas.cambiar));
+      await tester.pumpAndSettle();
+      expect(find.text('No pudimos abrir eso. Probá de nuevo.'), findsOneWidget);
+
+      await tester.tap(find.byKey(ClavesVisitasAgendadas.cambiar));
+      await tester.pumpAndSettle();
+      expect(m.detalles, ['cob', 'cob']);
+    });
+
+    _probar('sin destino para el detalle la tarjeta no se toca y no dice «Cambiar»', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: marca,
+        conDetalle: false,
+      );
+
+      expect(tarjeta(), findsOneWidget);
+      expect(find.byKey(ClavesVisitasAgendadas.cambiar), findsNothing);
+    });
+
+    _probar('de otra casa, o ya cumplida o cancelada, no hay tarjeta: la cita sigue la regla '
+        'común', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: (ubicacionId: 'u-9', agendaId: 'cob', persona: 'Pedro'),
+      );
+      expect(tarjeta(), findsNothing);
+      expect(_fila('cob'), findsOneWidget);
+
+      await _montar(tester, ConsultaAgendaFalsa([_entrevista('ent', _jueves)]), recien: marca);
+      expect(tarjeta(), findsNothing);
+      expect(_fila('ent'), findsOneWidget);
+    });
+
+    _probar('la hoja toma la cobranza una vez: al reabrir la casa es una fila más', (tester) async {
+      await _montar(tester, ConsultaAgendaFalsa([_cobranza('cob', _sabado)]), recien: marca);
+      expect(tarjeta(), findsOneWidget);
+      final contenedor = ProviderScope.containerOf(tester.element(find.byType(HojaCasa)));
+      expect(contenedor.read(cobranzaRecienAgendadaProvider), isNull);
+    });
+
+    _probar('con el texto al 300 % y el teléfono angosto no desborda', (tester) async {
+      await _montar(
+        tester,
+        ConsultaAgendaFalsa([_cobranza('cob', _sabado)]),
+        recien: (
+          ubicacionId: 'u-1',
+          agendaId: 'cob',
+          persona: 'Pedro Gómez de la Santísima Trinidad Fernández',
+        ),
+        escala: 3,
+        tamano: const Size(320, 700),
+      );
+
+      expect(tarjeta(), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

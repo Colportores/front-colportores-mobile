@@ -22,6 +22,14 @@ abstract final class TextosAgenda {
   static const agendar = '+ Agendar';
   static const visitasAgendadas = 'VISITAS AGENDADAS';
   static const registrar = 'Registrar';
+
+  /// La tarjeta de la cobranza recién agendada al registrar una venta (vista 39, R·08).
+  static const agendadaAlRegistrarLaVenta = 'Agendada al registrar la venta';
+  static const cambiarLaCita = 'Cambiar';
+
+  /// «Cobranza · Pedro», o «Cobranza» si no se sabe con quién es.
+  static String cobranzaDe(String persona) =>
+      persona.trim().isEmpty ? tagCobranza : '$tagCobranza · ${persona.trim()}';
   static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
 
