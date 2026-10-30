@@ -31,7 +31,8 @@ final class ProductoDevuelto extends Equatable {
 }
 
 /// Qué hace la colportora con la plata que el cliente pagó de más (vista 31, 31-02): las tres salidas
-/// de HU-VEN-004. La elección es **explícita**: no hay una por defecto.
+/// de HU-VEN-004. La pantalla propone «Lo retengo», la que no devuelve plata (decisión de Cristian, 23/10,
+/// «Debo cliente»); el use case recibe siempre la salida elegida.
 enum QueHacerConLaDiferencia {
   /// «Se lo devuelvo ahora»: la devolución guarda lo devuelto en `monto_reembolsado` y «En mano» lo
   /// resta (decisión de Cristian, 23/10, «Reembolso»).

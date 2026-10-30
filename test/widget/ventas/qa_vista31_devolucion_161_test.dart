@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
 import 'package:colportores_mobile/features/ventas/domain/services/reglas_de_devolucion.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
+import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_venta.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -573,7 +574,7 @@ void main() {
     });
 
     testWidgets(
-      'cambiar la cantidad después de elegir qué hacer no deja elegida la opción de otro monto',
+      'cambiar la cantidad después de elegir qué hacer no deja elegida la opción de otro monto: vuelve a «Lo retengo»',
       (tester) async {
         final repo = RepoFalso161(ventaCanvas161());
         await _hastaSeguir(tester, repo);
@@ -582,11 +583,10 @@ void main() {
         await alPrincipio161(tester);
         await tocar(tester, mas161('Salud y Hogar'));
         expect(find.text('¿QUÉ HACÉS CON ${_m(450000)}?'), findsOneWidget);
-        expect(
-          boton161(tester).onPressed,
-          isNull,
-          reason: 'la elección era para \$ 1.900; para \$ 4.500 hay que volver a elegir',
-        );
+        // La elección era para $ 1.900; para $ 4.500 rige otra vez la salida que no devuelve plata.
+        expect(tester.widget<FilaElegible>(_opcion('devolverAhora')).elegida, isFalse);
+        expect(tester.widget<FilaElegible>(_opcion('retener')).elegida, isTrue);
+        expect(boton161(tester).onPressed, isNotNull);
       },
     );
 
@@ -704,13 +704,29 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('31-02: el botón apagado dice por qué («Elegí qué hacés con la diferencia.»)', (
-      tester,
-    ) async {
-      await llegar161(tester, Estado161.a02PagoDeMas);
-      expect(find.text('Elegí qué hacés con la diferencia.'), findsOneWidget);
-      expect(boton161(tester).onPressed, isNull);
-    });
+    testWidgets(
+      '31-02: «Lo retengo» viene elegida, para el lector también, y el botón está listo',
+      (tester) async {
+        final semantica = tester.ensureSemantics();
+        await llegar161(tester, Estado161.a02PagoDeMas);
+        expect(find.text('Elegí qué hacés con la diferencia.'), findsNothing);
+        expect(boton161(tester).onPressed, isNotNull);
+        expect(
+          tester.getSemantics(_opcion('retener')),
+          isSemantics(
+            isButton: true,
+            isSelected: true,
+            isInMutuallyExclusiveGroup: true,
+            label: 'Lo retengo. Como compensación; el saldo queda en cero',
+          ),
+        );
+        expect(
+          tester.getSemantics(_opcion('devolverDespues')),
+          isSemantics(isButton: true, isSelected: false, isInMutuallyExclusiveGroup: true),
+        );
+        semantica.dispose();
+      },
+    );
 
     testWidgets('«Registrando…»: el botón ocupado dice que está guardando', (tester) async {
       final semantica = tester.ensureSemantics();

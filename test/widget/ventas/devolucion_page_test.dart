@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/ventas/domain/services/reglas_de_dev
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/devolucion_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/providers/devolucion_providers.dart';
+import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_venta.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -204,6 +205,10 @@ Finder get _cta => find.byKey(const Key('venta_cta'));
 
 FilledButton _boton(WidgetTester tester) => tester.widget<FilledButton>(_cta);
 
+/// Si la fila de esa salida de la plata de más está elegida.
+bool _estaElegida(WidgetTester tester, String clave) =>
+    tester.widget<FilaElegible>(find.byKey(Key(clave))).elegida;
+
 Future<void> _seguir(WidgetTester tester) async {
   await tocar(tester, _cta);
 }
@@ -268,7 +273,7 @@ void main() {
   });
 
   group('31-02 a 31-04 y 31-05, pagó de más', () {
-    testWidgets('31-02 «Seguir» muestra las cuentas y obliga a elegir qué hace con la diferencia', (
+    testWidgets('31-02 «Seguir» muestra las cuentas y propone «Lo retengo», la salida sin plata', (
       tester,
     ) async {
       await _montar(tester, _RepoFalso(_ventaDelCanvas()));
@@ -287,8 +292,31 @@ void main() {
       expect(find.byKey(const Key('devolucion_opcion_retener')), findsOneWidget);
       expect(find.byKey(const Key('devolucion_opcion_devolverDespues')), findsOneWidget);
       expect(find.text('Registrar devolución'), findsOneWidget);
-      expect(find.text('Elegí qué hacés con la diferencia.'), findsOneWidget);
-      expect(_boton(tester).onPressed, isNull);
+      // Decisión de Cristian (23/10, «Debo cliente»): la que no devuelve plata va primera y elegida; no
+      // hay nada que elegir para poder registrar.
+      expect(find.text('Elegí qué hacés con la diferencia.'), findsNothing);
+      expect(_boton(tester).onPressed, isNotNull);
+      final retener = tester.getTopLeft(find.byKey(const Key('devolucion_opcion_retener'))).dy;
+      final ahora = tester.getTopLeft(find.byKey(const Key('devolucion_opcion_devolverAhora'))).dy;
+      final despues = tester
+          .getTopLeft(find.byKey(const Key('devolucion_opcion_devolverDespues')))
+          .dy;
+      expect(retener, lessThan(ahora));
+      expect(ahora, lessThan(despues));
+      expect(_estaElegida(tester, 'devolucion_opcion_retener'), isTrue);
+      expect(_estaElegida(tester, 'devolucion_opcion_devolverAhora'), isFalse);
+      expect(_estaElegida(tester, 'devolucion_opcion_devolverDespues'), isFalse);
+    });
+
+    testWidgets('sin tocar las opciones, registrar retiene la plata de más', (tester) async {
+      final repo = _RepoFalso(_ventaDelCanvas());
+      await _montar(tester, repo);
+      await tocar(tester, _mas('Nuestros Hijos'));
+      await _seguir(tester);
+
+      await _confirmarEnLaHoja(tester);
+
+      expect(repo.pedidos.single.queHacer, QueHacerConLaDiferencia.retener);
     });
 
     testWidgets(
@@ -308,7 +336,7 @@ void main() {
       },
     );
 
-    testWidgets('31-03 elegir «Se lo devuelvo ahora» enciende «Registrar devolución»', (
+    testWidgets('31-03 elegir «Se lo devuelvo ahora» pasa la elección de «Lo retengo» a esa', (
       tester,
     ) async {
       await _montar(tester, _RepoFalso(_ventaDelCanvas()));
@@ -318,7 +346,8 @@ void main() {
       await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverAhora')));
 
       expect(_boton(tester).onPressed, isNotNull);
-      expect(find.text('Elegí qué hacés con la diferencia.'), findsNothing);
+      expect(_estaElegida(tester, 'devolucion_opcion_devolverAhora'), isTrue);
+      expect(_estaElegida(tester, 'devolucion_opcion_retener'), isFalse);
     });
 
     testWidgets('31-04 la hoja pide confirmar y «Volver» no registra nada', (tester) async {
@@ -484,7 +513,7 @@ void main() {
     });
 
     testWidgets(
-      'si cambia el monto a decidir, la opción elegida se borra y hay que volver a elegir',
+      'si cambia el monto a decidir, la opción elegida vuelve a «Lo retengo» y devolver se elige de nuevo',
       (tester) async {
         await _montar(tester, _RepoFalso(_ventaDelCanvas()));
         await tocar(tester, _mas('Nuestros Hijos'));
@@ -496,8 +525,9 @@ void main() {
         await tocar(tester, _mas('Salud y Hogar'));
 
         expect(find.text('¿QUÉ HACÉS CON ${_m(450000)}?'), findsOneWidget);
-        expect(_boton(tester).onPressed, isNull);
-        expect(find.text('Elegí qué hacés con la diferencia.'), findsOneWidget);
+        expect(_estaElegida(tester, 'devolucion_opcion_devolverAhora'), isFalse);
+        expect(_estaElegida(tester, 'devolucion_opcion_retener'), isTrue);
+        expect(_boton(tester).onPressed, isNotNull);
       },
     );
 
