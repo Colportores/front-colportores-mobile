@@ -995,3 +995,87 @@ final class FailureCobroNoGuardado extends Failure {
   @override
   List<Object?> get props => [...super.props, causa];
 }
+
+/// El depósito no se pudo guardar en el teléfono (HU-CTA-004, 33D-05). No se registró nada: se puede
+/// reintentar. El texto es el del canvas.
+final class FailureDepositoNoGuardado extends Failure {
+  const FailureDepositoNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos registrar el depósito. No cambió nada.',
+        codigo: 'DEPOSITO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer los depósitos (HU-CTA-004): la base local no se pudo leer. Es **otra cosa**
+/// que «no depositaste nada»: nadie muestra «$ 0» ante esta falla. Se puede reintentar. El texto es
+/// a confirmar con la pantalla (#443): el canvas no dibuja este caso.
+final class FailureDepositoNoDisponible extends Failure {
+  const FailureDepositoNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer tus depósitos. Tus depósitos siguen guardados: probá de nuevo.',
+        codigo: 'DEPOSITO_NO_DISPONIBLE',
+      );
+}
+
+/// El monto del depósito no es un monto (vacío, cero, negativo o demasiado grande). El texto es a
+/// confirmar con la pantalla (#443): el canvas no dibuja el campo vacío.
+final class FailureDepositoMontoInvalido extends Failure {
+  const FailureDepositoMontoInvalido()
+    : super(mensaje: 'Ingresá el monto que depositaste.', codigo: 'DEPOSITO_MONTO_INVALIDO');
+}
+
+/// La fecha del depósito es después de hoy (el servidor lo rechaza con `23514`). El texto es a
+/// confirmar con la pantalla (#443).
+final class FailureDepositoFechaInvalida extends Failure {
+  const FailureDepositoFechaInvalida()
+    : super(
+        mensaje: 'La fecha del depósito no puede ser después de hoy.',
+        codigo: 'DEPOSITO_FECHA_INVALIDA',
+      );
+}
+
+/// Un depósito en el banco o en la oficina se registra con el ticket (decisión «Paso ticket»; el
+/// servidor lo exige con `23514`). Nada se guardó. El texto es a confirmar con la pantalla (#443).
+final class FailureDepositoSinTicket extends Failure {
+  const FailureDepositoSinTicket()
+    : super(
+        mensaje: 'Un depósito en el banco o en la oficina se registra con el ticket.',
+        codigo: 'DEPOSITO_SIN_TICKET',
+      );
+}
+
+/// El retiro por el coordinador no lleva ticket (no hay comprobante del banco; el servidor lo rechaza
+/// con `23514`). Nada se guardó. El texto es a confirmar con la pantalla (#443).
+final class FailureDepositoRetiroConTicket extends Failure {
+  const FailureDepositoRetiroConTicket()
+    : super(
+        mensaje: 'Un retiro por el coordinador no lleva ticket.',
+        codigo: 'DEPOSITO_RETIRO_CON_TICKET',
+      );
+}
+
+/// El depósito del alquiler tiene que decir a qué campaña paga (decisión «Alq. campaña»; el servidor
+/// lo exige con `23514`). Nada se guardó. El texto es a confirmar con la pantalla (#443).
+final class FailureDepositoSinCampania extends Failure {
+  const FailureDepositoSinCampania()
+    : super(
+        mensaje: 'Elegí la campaña a la que corresponde el alquiler.',
+        codigo: 'DEPOSITO_SIN_CAMPANIA',
+      );
+}
+
+/// Ese ticket ya respalda otro depósito (un ticket respalda un solo depósito; el servidor lo rechaza
+/// con `23505`). Nada se guardó. El texto es a confirmar con la pantalla (#443).
+final class FailureDepositoTicketYaUsado extends Failure {
+  const FailureDepositoTicketYaUsado()
+    : super(
+        mensaje: 'Ese ticket ya está registrado en otro depósito.',
+        codigo: 'DEPOSITO_TICKET_YA_USADO',
+      );
+}

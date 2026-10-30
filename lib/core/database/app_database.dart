@@ -11,6 +11,7 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
+import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -88,6 +89,7 @@ part 'app_database.g.dart';
     VentaItems,
     Cobranzas,
     Entregas,
+    Depositos,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -131,10 +133,12 @@ class AppDatabase extends _$AppDatabase {
   ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
   /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
+  /// - 22: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
+  ///   que sube (HU-CTA-004, #442).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 21;
+  static const int versionEsquema = 22;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -357,6 +361,11 @@ class AppDatabase extends _$AppDatabase {
     from20To21: (m, esquema) async {
       await m.createTable(esquema.entrega);
       await m.createIndex(esquema.entregaVentaIdx);
+    },
+    // Solo crea la tabla de los depósitos, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from21To22: (m, esquema) async {
+      await m.createTable(esquema.deposito);
+      await m.createIndex(esquema.depositoTicketIdx);
     },
   );
 }
