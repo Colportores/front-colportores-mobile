@@ -20,8 +20,8 @@ enum MotivoRechazoPersona {
   /// o ninguno de sus espacios sigue activo (32B·04 y 32B·08): se ve, pero no se cambia.
   personaSoloLectura(
     'persona',
-    'Esta persona está en solo lectura: su espacio está dado de baja. Reactivá el espacio para '
-        'modificarla, darla de baja o reactivarla.',
+    'Su espacio está dado de baja: solo lectura. Reactivá el espacio para modificar, dar de baja o '
+        'reactivar a sus clientes.',
   );
 
   const MotivoRechazoPersona(this.campo, this.mensaje);
