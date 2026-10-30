@@ -131,6 +131,7 @@ class _Opcion extends StatelessWidget {
 typedef FilaDePersona = ({
   PersonaDelEspacio persona,
   int? saldoCentavos,
+  DateTime? cuota,
   String? detalle,
   VoidCallback? alCobrar,
   VoidCallback? alAbrir,
@@ -149,9 +150,13 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
     required this.alAgregar,
     required this.ocupada,
     this.guardada,
+    this.ahora,
   });
 
   final List<FilaDePersona> filas;
+
+  /// «Hoy», para saber si la cuota de una fila venció.
+  final DateTime? ahora;
   final VoidCallback? alAgregar;
   final bool ocupada;
   final String? guardada;
@@ -190,6 +195,8 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
             key: ValueKey('fila_persona_${fila.persona.persona.id}'),
             persona: fila.persona.persona,
             saldoCentavos: fila.saldoCentavos,
+            cuota: fila.cuota,
+            ahora: ahora,
             detalle: fila.detalle,
             alCobrar: fila.alCobrar,
             alAbrir: fila.alAbrir,

@@ -14,6 +14,7 @@ import '../../domain/entities/ultima_visita_del_espacio.dart';
 import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
+import '../../domain/services/cuotas_de_personas.dart';
 import '../../domain/services/lector_ultima_visita_del_espacio.dart';
 import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
@@ -100,6 +101,19 @@ final ultimaVisitaDelEspacioProvider = StreamProvider.autoDispose
 /// todavía (S9) no hay fuente: [SaldosDePersonasSinFuente]. Un test o el S9 lo reemplazan.
 final saldosDePersonasProvider = Provider<SaldosDePersonas>(
   (ref) => const SaldosDePersonasSinFuente(),
+);
+
+/// De dónde sale el día de la cuota que toca de cada persona que debe (la línea «Debe $ 1.200 · cuota
+/// sáb 26/10» de la hoja de la casa). Los planes de cuotas (vista 30, HU-COB-004) todavía no están en la
+/// rama de integración: sin fuente la fila dice solo lo que debe. Quien los trae lo reemplaza.
+final cuotasDePersonasProvider = Provider<CuotasDePersonas>(
+  (ref) => const CuotasDePersonasSinFuente(),
+);
+
+/// Cuándo vuelve a leer la hoja de la casa lo que debe cada persona: un aviso por cada cambio en las
+/// ventas, los cobros o las cuotas. Sin fuente (los tests) lee una sola vez.
+final cambiosDeLoQueSeDebeProvider = Provider<CambiosDeLoQueSeDebe>(
+  (ref) => sinCambiosDeLoQueSeDebe,
 );
 
 /// Lo que debe cada persona de [espacioId], en centavos, por `persona.id`. Una falla al leerlo no

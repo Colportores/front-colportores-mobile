@@ -194,6 +194,12 @@ final class CobranzaLocalDataSourceDrift {
       .asyncMap((_) => ventaConSaldo(ventaId))
       .distinct();
 
+  /// Avisa, al suscribirse y cada vez que cambia una venta, un cobro o el vínculo de una persona con una
+  /// casa, que lo que se debe pudo cambiar (Drift avisa por tabla). Es la señal con la que la hoja de la
+  /// casa vuelve a leer lo que debe cada persona sin que nadie recargue (HU-COB-005); no lleva datos.
+  Stream<void> alCambiarLoQueSeDebe() =>
+      _db.customSelect('SELECT 1', readsFrom: _tablasDelSaldo).watch().map((_) {});
+
   /// Lo que debe la persona [personaId], en centavos, sumando sus ventas vivas.
   Stream<int> observarSaldoDePersona(String personaId) => _observarSaldo(_cortePersona, personaId);
 

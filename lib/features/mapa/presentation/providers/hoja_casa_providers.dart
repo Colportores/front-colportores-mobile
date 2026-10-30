@@ -41,6 +41,8 @@ final observarContextoDeLaCasaUseCaseProvider = Provider<ObservarContextoDeLaCas
     saldos: ref.watch(saldosDePersonasProvider),
     notas: ref.watch(lectorNotasDelLugarProvider),
     entrevistas: ref.watch(lectorEntrevistasDePersonasProvider),
+    cuotas: ref.watch(cuotasDePersonasProvider),
+    cambios: ref.watch(cambiosDeLoQueSeDebeProvider),
   ),
 );
 
