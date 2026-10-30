@@ -33,6 +33,7 @@ import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../helpers/notificaciones_arnes.dart';
 
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
+const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 // El reloj real: Inicio usa `DateTime.now()` y el aviso solo se puede probar contra él.
 final _ahora = DateTime.now().toUtc();
@@ -631,6 +632,142 @@ void main() {
         );
         expect(boton.hitTestable(), findsOneWidget);
       });
+    }
+  });
+
+  group('con el motivo del último reintento (decisión del 29/10)', () {
+    for (final tam in [_chico, _grande]) {
+      for (final escala in [1.0, 2.0]) {
+        for (final (id, resultado, texto) in [
+          (
+            'sin_conexion',
+            const RespaldoOmitido(MotivoOmision.sinConexion),
+            'Necesitás conexión para hacer el respaldo.',
+          ),
+          (
+            'fallido',
+            const RespaldoFallido(CausaFalloRespaldo.otra),
+            'No pudimos hacer el respaldo. Probá de nuevo en un rato.',
+          ),
+        ]) {
+          final celda = '${id}_${tam.width.toInt()}x${tam.height.toInt()}_x${escala.toInt()}';
+          testWidgets('$celda: se lee entero, sin overflow, con guías y botón a la vista', (
+            tester,
+          ) async {
+            final semantica = tester.ensureSemantics();
+            await _montarAviso(
+              tester,
+              tam: tam,
+              escala: escala,
+              servicio: _Servicio(resultado),
+              ultimo: _haceDias(9),
+            );
+            await tester.tap(_reintentar);
+            await tester.pumpAndSettle();
+
+            expect(find.text(texto), findsOneWidget);
+            expect(tester.takeException(), isNull);
+            _sinTextoFueraDeLosCostados(tester, tam);
+            final caja = tester.getRect(find.byType(AvisoSinRespaldo));
+            expect(caja.height, lessThanOrEqualTo(tam.height * 0.4 + 0.5));
+            // Con el motivo agregado el botón sigue pudiéndose tocar sin desplazar el aviso... o,
+            // si el aviso se desplaza, queda alcanzable.
+            await tester.ensureVisible(_reintentar);
+            await tester.pump();
+            expect(_reintentar.hitTestable(), findsOneWidget);
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            await _capturar(tester, celda);
+            semantica.dispose();
+          });
+        }
+      }
+    }
+
+    testWidgets('reintentar otra vez borra el motivo, y si sale bien el aviso se va', (
+      tester,
+    ) async {
+      final servicio = _Servicio(const RespaldoFallido(CausaFalloRespaldo.otra));
+      await _montarAviso(tester, tam: _chico, escala: 1, servicio: servicio, ultimo: _haceDias(9));
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('aviso_drive_detalle')), findsOneWidget);
+
+      servicio
+        ..resultado = null
+        ..espera = Completer<ResultadoRespaldo>();
+      await tester.tap(_reintentar);
+      await tester.pump();
+      expect(
+        find.byKey(const Key('aviso_drive_detalle')),
+        findsNothing,
+        reason: 'durante el reintento',
+      );
+      servicio.espera!.complete(RespaldoHecho(fecha: _ahora, esBase: false));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('aviso_drive_detalle')), findsNothing);
+    });
+
+    testWidgets('límites del número: 7 días justos no avisa; 7 d 3 h dice 8; 8 d justos dice 8', (
+      tester,
+    ) async {
+      await _montarAviso(
+        tester,
+        tam: _chico,
+        escala: 1,
+        servicio: _Servicio(),
+        ultimo: _haceDias(7),
+      );
+      expect(_aviso, findsNothing);
+      await _montarAviso(
+        tester,
+        tam: _chico,
+        escala: 1,
+        servicio: _Servicio(),
+        ultimo: _haceDias(7, horas: 3),
+      );
+      expect(find.textContaining('Llevás 8 días'), findsOneWidget);
+      await _montarAviso(
+        tester,
+        tam: _chico,
+        escala: 1,
+        servicio: _Servicio(),
+        ultimo: _haceDias(8),
+      );
+      expect(find.textContaining('Llevás 8 días'), findsOneWidget);
+    });
+  });
+
+  group('el motivo del reintento a la vista, sin desplazar', () {
+    // skip: QA #185 r2 — a 360×640 con texto 2,0× el motivo («Necesitás conexión…» / «No pudimos…»)
+    // y «Reintentar» quedan bajo el borde del aviso (tope de 40 %): al fallar, la persona ve el mismo
+    // aviso de antes y no se entera de nada.
+    for (final tam in [_chico, _grande]) {
+      testWidgets(
+        'tras un fallo, el motivo se ve sin desplazar el aviso (${tam.width.toInt()}×${tam.height.toInt()}, 2,0×)',
+        (tester) async {
+          await _montarAviso(
+            tester,
+            tam: tam,
+            escala: 2,
+            servicio: _Servicio(const RespaldoFallido(CausaFalloRespaldo.otra)),
+            ultimo: _haceDias(9),
+          );
+          await tester.tap(_reintentar);
+          await tester.pumpAndSettle();
+
+          final aviso = tester.getRect(find.byType(AvisoSinRespaldo));
+          final detalle = tester.getRect(find.byKey(const Key('aviso_drive_detalle')));
+          expect(
+            detalle.bottom,
+            lessThanOrEqualTo(aviso.bottom + 0.5),
+            reason: 'el motivo queda ${detalle.bottom - aviso.bottom} dp bajo el borde del aviso',
+          );
+          expect(tester.getRect(_reintentar).bottom, lessThanOrEqualTo(aviso.bottom + 0.5));
+        },
+        skip: tam == _chico && !_verHallazgos,
+      );
     }
   });
 
