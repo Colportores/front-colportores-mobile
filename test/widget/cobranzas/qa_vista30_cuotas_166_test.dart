@@ -388,23 +388,17 @@ void main() {
     });
   });
 
-  group('hallazgos', () {
-    // skip: QA #166 — P5 (decisión del 29/10) sin aplicar: la lista dice «Pagada el 26/10» sin
-    // «· efectivo», como pide el canvas 30A-04 y la decisión; la fecha sale de la última edición de la
-    // cita (`cubiertaEl`), no del cobro que la completó.
-    testWidgets(
-      'dada una cuota pagada en efectivo, cuando se abre la lista, dice «Pagada el 26/10 · efectivo» (30A-04, P5)',
-      (tester) async {
-        await montarCuotas(
-          tester,
-          pantalla: PantallaDeCuotas.lista,
-          plan: _conUnaPagadaYUnaParcial(),
-        );
-        expect(find.text('Pagada el 26/10 · efectivo'), findsOneWidget);
-      },
-      skip: !_hallazgos,
-    );
-  });
+  testWidgets(
+    'dada una cuota pagada en efectivo, cuando se abre la lista, dice «Pagada el 26/10 · efectivo» (30A-04, P5)',
+    (tester) async {
+      await montarCuotas(
+        tester,
+        pantalla: PantallaDeCuotas.lista,
+        plan: _conUnaPagadaYUnaParcial(),
+      );
+      expect(find.text('Pagada el 26/10 · efectivo'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'modificar con 8 cuotas abiertas en 360×640: escribir en la 1.ª, bajar y escribir en la última no cruza los campos',
