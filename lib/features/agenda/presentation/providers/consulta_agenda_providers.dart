@@ -72,6 +72,20 @@ final visitasAgendadasDeLaCasaProvider = StreamProvider.autoDispose
       retry: _sinReintentos,
     );
 
+/// Qué visitas agendadas se leen en la ficha de una persona.
+typedef ClaveVisitasDeLaPersona = ({String colportorId, String personaId});
+
+/// Las visitas `PROGRAMADA` de una persona, reactivas (la tarjeta «PRÓXIMA VISITA» de su ficha, vista
+/// 32, 23A·05, #405). Agendar, cancelar o registrar una visita, o dar de baja el depto, las vuelve a
+/// emitir.
+final visitasAgendadasDeLaPersonaProvider = StreamProvider.autoDispose
+    .family<List<ItemAgenda>, ClaveVisitasDeLaPersona>(
+      (ref, clave) => ref
+          .watch(consultaAgendaRepositoryProvider)
+          .observarDeLaPersona(colportorId: clave.colportorId, personaId: clave.personaId),
+      retry: _sinReintentos,
+    );
+
 /// Los filtros de la agenda del colportor [colportorId]: por tipo y por estado. Se conservan mientras
 /// la pantalla esté montada (la hoja «Agendados» del mapa usa los mismos).
 final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {

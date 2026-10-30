@@ -67,6 +67,24 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
   }
 
   @override
+  Stream<List<ItemAgenda>> observarDeLaPersona({
+    required String colportorId,
+    required String personaId,
+  }) {
+    final vinculos = _db.espacioPersonas;
+    final dePersona = _db.selectOnly(vinculos)
+      ..addColumns([vinculos.id])
+      ..where(vinculos.personaId.equals(personaId));
+    return _leer(
+      colportorId,
+      (agendas) =>
+          agendas.estado.equals(EstadoAgenda.programada.codigo) &
+          agendas.espacioPersonaId.isInQuery(dePersona),
+      ascendente: true,
+    );
+  }
+
+  @override
   Stream<List<ItemAgenda>> observarCampania({required String colportorId, required DateTime hoy}) {
     late final StreamController<List<ItemAgenda>> salida;
     StreamSubscription<RangoDeCampania>? rangos;

@@ -23,6 +23,11 @@ abstract final class ClavesFicha {
   static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
+  static const proximaVisita = Key('ficha_proxima_visita');
+  static const botonAgendar = Key('ficha_boton_agendar');
+  static const tarjetaProximaVisita = Key('ficha_tarjeta_proxima_visita');
+  static const sinProximaVisita = Key('ficha_sin_proxima_visita');
+  static const errorProximaVisita = Key('ficha_error_proxima_visita');
   static const ultimaNota = Key('ficha_ultima_nota');
   static const historial = Key('ficha_historial');
   static const verMas = Key('ficha_ver_mas');

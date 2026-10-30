@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/detalle_agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
@@ -19,11 +21,14 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_pe
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/agenda_items_falsos.dart';
 import '../../helpers/ficha_persona_falsos.dart';
 import '../../helpers/nota_persona_falsos.dart';
 import '../../helpers/persona_falsos.dart';
@@ -106,6 +111,25 @@ final class MundoFicha {
   final marcador = MarcadorFalso();
   final personas = PersonaRepositorioFalso();
 
+  /// La agenda de la persona (23A·05, «PRÓXIMA VISITA»): `per-1` tiene el vínculo `ep-per-1`.
+  final agendas = ConsultaAgendaFalsa()
+    ..vinculosDe = {
+      'per-1': {'ep-per-1'},
+    };
+
+  /// Las preferencias de los recordatorios; `null`: no se pudieron leer (valores de fábrica).
+  PreferenciasRecordatorios? preferencias;
+
+  /// Con destino para el detalle de una agenda (tocar la tarjeta): las agendas que abrió, y si espera
+  /// o falla.
+  var conDetalleDeAgenda = false;
+  final detallesAbiertos = <String>[];
+  Completer<void>? compuertaDetalle;
+  Object? fallaDelDetalle;
+
+  /// Más overrides, para los tests que montan otras pantallas encima de la ficha.
+  List<Override> extra = [];
+
   /// Las veces que se tocó «Editar persona» y con qué persona.
   final ediciones = <String>[];
 
@@ -163,6 +187,17 @@ Future<void> montarFicha(
         movimientosDeCuentaProvider.overrideWithValue(mundo.movimientos),
         marcadorDeTelefonoProvider.overrideWithValue(mundo.marcador),
         personaRepositoryProvider.overrideWithValue(mundo.personas),
+        consultaAgendaRepositoryProvider.overrideWithValue(mundo.agendas),
+        preferenciasDelAvisoProvider.overrideWith((ref) async => mundo.preferencias),
+        if (mundo.conDetalleDeAgenda)
+          abrirDetalleDeAgendaProvider.overrideWithValue((id) async {
+            mundo.detallesAbiertos.add(id);
+            await mundo.compuertaDetalle?.future;
+            final falla = mundo.fallaDelDetalle;
+            if (falla != null) throw falla;
+            return null;
+          }),
+        ...mundo.extra,
         restaurarEspacioUseCaseProvider.overrideWithValue(RestaurarEspacioUseCase(mundo.espacios)),
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
