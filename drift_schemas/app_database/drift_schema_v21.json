@@ -4102,30 +4102,6 @@
             "dsl_features": []
           },
           {
-            "name": "anulado_at",
-            "getter_name": "anuladoAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "motivo_anulacion",
-            "getter_name": "motivoAnulacion",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -4201,6 +4177,155 @@
     },
     {
       "id": 32,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "entrega",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "venta_id",
+            "getter_name": "ventaId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "producto_id",
+            "getter_name": "productoId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "cantidad",
+            "getter_name": "cantidad",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "fecha_entrega",
+            "getter_name": "fechaEntrega",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "pendiente",
+            "getter_name": "pendiente",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"pendiente\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"pendiente\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('1')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (cantidad > 0)"
+        ],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 33,
       "references": [
         0
       ],
@@ -4223,7 +4348,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 34,
       "references": [
         1
       ],
@@ -4246,7 +4371,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "references": [
         2
       ],
@@ -4265,7 +4390,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "references": [
         4
       ],
@@ -4284,7 +4409,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "references": [
         5
       ],
@@ -4303,7 +4428,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "references": [
         6
       ],
@@ -4326,7 +4451,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 39,
       "references": [
         8
       ],
@@ -4349,7 +4474,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 40,
       "references": [
         9
       ],
@@ -4376,7 +4501,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "references": [
         9
       ],
@@ -4399,7 +4524,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 42,
       "references": [
         9
       ],
@@ -4422,7 +4547,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 43,
       "references": [
         13
       ],
@@ -4441,7 +4566,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 44,
       "references": [
         13
       ],
@@ -4460,7 +4585,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 45,
       "references": [
         14
       ],
@@ -4483,7 +4608,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 46,
       "references": [
         15
       ],
@@ -4506,7 +4631,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 47,
       "references": [
         15
       ],
@@ -4525,7 +4650,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 48,
       "references": [
         15
       ],
@@ -4544,7 +4669,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 49,
       "references": [
         16
       ],
@@ -4567,7 +4692,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 50,
       "references": [
         16
       ],
@@ -4586,7 +4711,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 51,
       "references": [
         16
       ],
@@ -4605,7 +4730,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 52,
       "references": [
         18
       ],
@@ -4624,7 +4749,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 53,
       "references": [
         21
       ],
@@ -4643,7 +4768,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 54,
       "references": [
         22
       ],
@@ -4662,7 +4787,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 55,
       "references": [
         22
       ],
@@ -4681,7 +4806,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 56,
       "references": [
         22
       ],
@@ -4700,7 +4825,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 57,
       "references": [
         23
       ],
@@ -4719,7 +4844,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 58,
       "references": [
         23
       ],
@@ -4738,7 +4863,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 59,
       "references": [
         25
       ],
@@ -4757,7 +4882,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 60,
       "references": [
         28
       ],
@@ -4776,7 +4901,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 61,
       "references": [
         29
       ],
@@ -4799,7 +4924,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 62,
       "references": [
         29
       ],
@@ -4818,7 +4943,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 63,
       "references": [
         30
       ],
@@ -4837,7 +4962,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 64,
       "references": [
         31
       ],
@@ -4845,6 +4970,25 @@
       "data": {
         "on": 31,
         "name": "cobranza_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 65,
+      "references": [
+        32
+      ],
+      "type": "index",
+      "data": {
+        "on": 32,
+        "name": "entrega_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -5141,7 +5285,16 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"anulado_at\" INTEGER NULL, \"motivo_anulacion\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+        }
+      ]
+    },
+    {
+      "name": "entrega",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"entrega\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad\" INTEGER NOT NULL, \"fecha_entrega\" INTEGER NULL, \"pendiente\" INTEGER NOT NULL DEFAULT 1 CHECK (\"pendiente\" IN (0, 1)), \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad > 0));"
         }
       ]
     },
@@ -5430,6 +5583,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX cobranza_venta_idx ON cobranza (venta_id)"
+        }
+      ]
+    },
+    {
+      "name": "entrega_venta_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX entrega_venta_idx ON entrega (venta_id)"
         }
       ]
     }

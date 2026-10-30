@@ -30,6 +30,7 @@ import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/entregas_table.dart';
 import '../../features/ventas/data/datasources/venta_items_table.dart';
 import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
@@ -86,6 +87,7 @@ part 'app_database.g.dart';
     Ventas,
     VentaItems,
     Cobranzas,
+    Entregas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -128,12 +130,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 20: `cobranza` suma los datos opcionales de la tarjeta (`tarjeta_tipo`, `tarjeta_marca`,
   ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
-  /// - 21: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
+  /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
+  /// - 22: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
   ///   (backend-supabase 0072, HU-COB-006, #422).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 21;
+  static const int versionEsquema = 22;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -351,9 +354,15 @@ class AppDatabase extends _$AppDatabase {
       await m.addColumn(esquema.cobranza, esquema.cobranza.referenciaTransferencia);
       await m.addColumn(esquema.cobranza, esquema.cobranza.bancoOrigen);
     },
+    // Solo crea la tabla de las entregas, vacía: nada de lo guardado cambia ni se encola al migrar.
+    // Las ventas de antes quedan sin entrega registrada (los datos son simulados hasta diciembre).
+    from20To21: (m, esquema) async {
+      await m.createTable(esquema.entrega);
+      await m.createIndex(esquema.entregaVentaIdx);
+    },
     // Suma a `cobranza` la marca de anulado y su motivo, vacíos: ningún cobro que ya estaba cambia (todos
     // quedan vigentes) ni se vuelve a encolar al migrar.
-    from20To21: (m, esquema) async {
+    from21To22: (m, esquema) async {
       await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
       await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
     },
