@@ -1,10 +1,11 @@
+import 'dart:math' show min;
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../../../core/database/app_database.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../../ventas/data/datasources/estado_de_entrega.dart';
-import '../../../ventas/domain/services/reglas_de_entrega.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/cuenta_de_persona.dart';
 
@@ -67,7 +68,7 @@ final class CuentaDePersonaLocalDataSourceDrift {
   Future<List<MovimientoDeFicha>> _cobros(String personaId) async {
     final filas = await _db
         .customSelect(
-          'SELECT c.id AS id, c.monto AS monto, c.medio AS medio, c.fecha AS fecha, '
+          'SELECT c.id AS id, c.venta_id AS venta_id, c.monto AS monto, c.medio AS medio, c.fecha AS fecha, '
           'v.numero_talonario AS talonario FROM cobranza c JOIN venta v ON v.id = c.venta_id '
           'WHERE ${CobroValido.sql} AND c.venta_id IN ($_ventasDeLaPersona)',
           variables: [Variable<String>(personaId)],
@@ -81,6 +82,7 @@ final class CuentaDePersonaLocalDataSourceDrift {
           fecha: _fecha(fila.read<int>('fecha')),
           montoCentavos: fila.read<int>('monto'),
           efectivo: fila.read<String>('medio') == 'EFECTIVO',
+          ventaId: fila.read<String>('venta_id'),
           numeroTalonario: fila.read<String>('talonario'),
         ),
     ];
@@ -126,13 +128,15 @@ final class CuentaDePersonaLocalDataSourceDrift {
     ];
   }
 
-  /// La cuenta de [personaId]: lo comprado, lo pagado, lo que debe y cuántas de sus ventas están
-  /// entregadas; `null` si no tiene ventas.
+  /// La cuenta de [personaId]: lo comprado, lo pagado, lo que debe y cuántas de las unidades vendidas
+  /// ya se entregaron; `null` si no tiene ventas.
   ///
   /// El saldo es la suma del saldo de cada venta (`monto − cobros válidos`, nunca negativo): una venta
-  /// cobrada de más no resta de lo que debe otra (HU-COB-005). Las «entregas» son ventas: una está
-  /// hecha si todo lo vendido está entregado, y una sin renglones no cuenta (no hay nada que
-  /// entregar).
+  /// cobrada de más no resta de lo que debe otra (HU-COB-005). Las «entregas» son **unidades**
+  /// (decisión del 30/10, gana el canvas: «Entregado 1 de 2» con una venta de dos libros y uno
+  /// entregado): lo vendido son las unidades de cada producto (un combo, las de sus componentes) y lo
+  /// entregado, las que tienen su fila hecha, sin pasarse de lo vendido de cada producto. Una venta sin
+  /// renglones no suma (no hay nada que entregar).
   Future<ResumenCuentaPersona?> resumenDe(String personaId) => _db.transaction(() async {
     final ventas = await _db
         .customSelect(
@@ -173,9 +177,10 @@ final class CuentaDePersonaLocalDataSourceDrift {
 
       final vendido = await EstadoDeEntrega.vendidoDe(_db, id);
       if (vendido.isEmpty) continue;
-      entregasTotales++;
-      if (ReglasDeEntrega.estaEntregada(vendido, await EstadoDeEntrega.entregadoDe(_db, id))) {
-        entregasHechas++;
+      final entregado = await EstadoDeEntrega.entregadoDe(_db, id);
+      for (final MapEntry(:key, :value) in vendido.entries) {
+        entregasTotales += value;
+        entregasHechas += min(value, entregado[key] ?? 0);
       }
     }
     return ResumenCuentaPersona(

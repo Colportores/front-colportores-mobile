@@ -4,8 +4,6 @@
 // prueban la cuenta del canvas (32B·01), los datos hostiles (baja, otra persona, talonarios repetidos,
 // productos que el catálogo no trae), la ficha abierta mientras la base cambia, la falla a mitad de la
 // lectura y la privacidad.
-//
-// Los tests de hallazgos van con `skip` y se corren con `--dart-define=QA_HALLAZGOS=true`.
 import 'dart:async';
 import 'dart:io';
 
@@ -31,8 +29,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../helpers/campo_falsos.dart';
 import '../../../../helpers/logger_mudo.dart';
-
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -189,6 +185,9 @@ void main() {
       expect(cuenta.pagadoCentavos, 330000);
       expect(cuenta.saldoCentavos, 120000);
       expect(cuenta.tieneSaldo, isTrue);
+      // «Entregado 1 de 2»: dos libros vendidos, uno entregado (decisión del 30/10: se cuentan unidades).
+      expect(cuenta.entregasHechas, 1);
+      expect(cuenta.entregasTotales, 2);
       expect(cuenta.entregasPendientes, 1, reason: 'falta «Nuestros Hijos»');
       final cobros = f.historial.whereType<CobroEnFicha>().toList();
       expect(cobros.map((c) => c.efectivo), [false, true]);
@@ -246,30 +245,23 @@ void main() {
       expect(filtrado.map((m) => m.id), ['ven-2']);
     });
 
-    test(
-      'QA #403: «Con saldo» no confunde dos ventas con el mismo talonario (de otro año)',
-      () async {
-        // El talonario es único «por colportor y año»: la misma persona puede tener la 0042 de 2025 y
-        // la 0042 de 2026. La tarjeta dice «Saldo \$ 500» pero el filtro cruza los cobros por talonario.
-        await venta('ven-a', monto: 100000, talonario: '0042', fecha: DateTime.utc(2025, 3, 1));
-        await venta('ven-b', monto: 50000, talonario: '0042', fecha: DateTime.utc(2026, 3, 1));
-        await cobro('cob-a', 'ven-a', 100000);
+    test('QA #403: «Con saldo» no confunde dos ventas con el mismo talonario (de otro año)', () async {
+      // El talonario es único «por colportor y año»: la misma persona puede tener la 0042 de 2025 y
+      // la 0042 de 2026. La tarjeta dice «Saldo \$ 500» pero el filtro cruza los cobros por talonario.
+      await venta('ven-a', monto: 100000, talonario: '0042', fecha: DateTime.utc(2025, 3, 1));
+      await venta('ven-b', monto: 50000, talonario: '0042', fecha: DateTime.utc(2026, 3, 1));
+      await cobro('cob-a', 'ven-a', 100000);
 
-        final f = (await ficha())!;
-        expect(f.resumen!.saldoCentavos, 50000);
-        final filtrado = FiltroDeHistorialDeFicha.aplicar(
-          f.historial,
-          FiltroDeHistorial.conSaldo,
-          resumen: f.resumen,
-        );
+      final f = (await ficha())!;
+      expect(f.resumen!.saldoCentavos, 50000);
+      final filtrado = FiltroDeHistorialDeFicha.aplicar(
+        f.historial,
+        FiltroDeHistorial.conSaldo,
+        resumen: f.resumen,
+      );
 
-        expect(filtrado.map((m) => m.id), ['ven-b']);
-      },
-      skip: _conHallazgos
-          ? false
-          : 'QA #403: «Con saldo» cruza los cobros por talonario: con dos ventas de igual '
-                'talonario (años distintos) la que debe desaparece del filtro',
-    );
+      expect(filtrado.map((m) => m.id), ['ven-b']);
+    });
   });
 
   group('datos hostiles', () {

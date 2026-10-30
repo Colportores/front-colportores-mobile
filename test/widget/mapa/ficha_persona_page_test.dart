@@ -62,6 +62,7 @@ void main() {
           fecha: DateTime(2026, 10, 20, 12),
           montoCentavos: 60000,
           efectivo: true,
+          ventaId: 'ven-1',
           numeroTalonario: '0042',
         ),
         EntregaEnFicha(
@@ -698,6 +699,7 @@ void main() {
           fecha: DateTime(2026, 9, 10, 12),
           montoCentavos: 50000,
           efectivo: true,
+          ventaId: 'ven-1',
           numeroTalonario: '0030',
         ),
         EntregaEnFicha(

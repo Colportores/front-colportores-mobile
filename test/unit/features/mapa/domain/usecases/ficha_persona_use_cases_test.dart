@@ -79,6 +79,7 @@ void main() {
             fecha: DateTime.utc(2026, 10, 20, 12),
             montoCentavos: 60000,
             efectivo: true,
+            ventaId: 'ven-1',
           ),
           EntregaEnFicha(
             id: 'ent-1',

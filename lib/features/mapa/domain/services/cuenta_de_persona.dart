@@ -20,14 +20,15 @@ final class ResumenCuentaPersona extends Equatable {
   /// Lo que todavía debe. Mayor que 0 = tiene saldo pendiente.
   final int saldoCentavos;
 
-  /// Entregas hechas y entregas en total: «1 de 2».
+  /// Unidades entregadas y unidades vendidas en total: «1 de 2» (una venta de dos libros con uno
+  /// entregado).
   final int entregasHechas;
   final int entregasTotales;
 
   /// Debe algo: la baja pide la doble confirmación (HU-UBI-011).
   bool get tieneSaldo => saldoCentavos > 0;
 
-  /// Las entregas que todavía no se hicieron (nunca negativo).
+  /// Las unidades que todavía no se entregaron (nunca negativo).
   int get entregasPendientes =>
       entregasTotales > entregasHechas ? entregasTotales - entregasHechas : 0;
 

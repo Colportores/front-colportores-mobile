@@ -370,20 +370,46 @@ void main() {
 
         expect(r.saldoCentavos, 0);
         expect(r.tieneSaldo, isFalse);
-        expect(r.entregasHechas, 1);
+        expect(r.entregasHechas, 2);
         expect(r.entregasPendientes, 0);
       },
     );
 
-    test('una entrega parcial no deja la venta entregada', () async {
+    test('una entrega parcial cuenta las unidades entregadas sobre las vendidas', () async {
       await venta('ven-1');
       await renglon('it-1', 'ven-1', 'pro-1', cantidad: 3);
       await entrega('ent-1', 'ven-1', 'pro-1', cantidad: 2);
 
       final r = (await fuente.resumenDe('per-1'))!;
 
-      expect(r.entregasHechas, 0);
-      expect(r.entregasTotales, 1);
+      expect(r.entregasHechas, 2);
+      expect(r.entregasTotales, 3);
+    });
+
+    test('entregar de más un producto no suma de más ni tapa lo que falta de otro', () async {
+      await venta('ven-1');
+      await renglon('it-1', 'ven-1', 'pro-1');
+      await renglon('it-2', 'ven-1', 'pro-2', cantidad: 2);
+      await entrega('ent-1', 'ven-1', 'pro-1', cantidad: 5);
+
+      final r = (await fuente.resumenDe('per-1'))!;
+
+      expect(r.entregasHechas, 1);
+      expect(r.entregasTotales, 3);
+      expect(r.entregasPendientes, 2);
+    });
+
+    test('suma las unidades de todas las ventas de la persona (canvas: «Entregado 1 de 2»)', () async {
+      await venta('ven-1');
+      await venta('ven-2', talonario: '0043');
+      await renglon('it-1', 'ven-1', 'pro-1');
+      await renglon('it-2', 'ven-2', 'pro-2');
+      await entrega('ent-1', 'ven-1', 'pro-1');
+
+      final r = (await fuente.resumenDe('per-1'))!;
+
+      expect(r.entregasHechas, 1);
+      expect(r.entregasTotales, 2);
     });
 
     test('una fila pendiente o dada de baja no cuenta como entregada', () async {
@@ -470,11 +496,11 @@ void main() {
           );
       await entrega('ent-1', 'ven-1', 'pro-1', cantidad: 2);
 
-      expect((await fuente.resumenDe('per-1'))!.entregasHechas, 0);
+      expect((await fuente.resumenDe('per-1'))!.entregasHechas, 2);
 
       await entrega('ent-2', 'ven-1', 'pro-2', cantidad: 2);
 
-      expect((await fuente.resumenDe('per-1'))!.entregasHechas, 1);
+      expect((await fuente.resumenDe('per-1'))!.entregasHechas, 4);
     });
   });
 }
