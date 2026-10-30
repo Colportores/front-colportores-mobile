@@ -30,6 +30,21 @@ abstract final class TextosHojaCasa {
   /// «Debe $ 1.200» (el canvas no usa «$U» en la 39).
   static String debe(int centavos) => 'Debe ${monto(centavos)}';
 
+  /// «Debe $ 1.200 · cuota sáb 26/10» (canvas C·01): lo que debe y el día de la cuota que toca. Si la
+  /// cuota ya venció (su día quedó atrás) dice «Debe $ 1.200 · cuota vencida el 02/11».
+  ///
+  /// A confirmar (mapa §2: texto): el canvas dibuja solo la cuota que viene; la vencida la dice con las
+  /// palabras del aviso de 30A-06 («La cuota 2 venció el 02/11»), sin el número porque la persona
+  /// puede tener cuotas de varias ventas.
+  static String debeConCuota(int centavos, DateTime cuota, DateTime ahora) =>
+      cuotaVencida(cuota, ahora)
+      ? '${debe(centavos)} · cuota vencida el ${FormatoListaUbicaciones.diaMes(cuota)}'
+      : '${debe(centavos)} · cuota ${FormatoListaUbicaciones.diaSemanaYMes(cuota)}';
+
+  /// La cuota venció: su día ya pasó («venció» se mide por día: la cuota de hoy todavía no venció).
+  static bool cuotaVencida(DateTime cuota, DateTime ahora) =>
+      FormatoListaUbicaciones.diasDeCalendario(cuota, ahora) > 0;
+
   /// «$ 1.200»: pesos con punto de miles y, si no son pesos justos, coma decimal.
   static String monto(int centavos) => FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$');
 }

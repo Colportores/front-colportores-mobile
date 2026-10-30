@@ -14,6 +14,7 @@ abstract final class ClavesHojaCasa {
   static const subtitulo = Key('hoja_casa_subtitulo');
   static const persona = Key('hoja_casa_persona');
   static const cobrar = Key('hoja_casa_cobrar');
+  static const cuotaVencida = Key('hoja_casa_cuota_vencida');
   static const abrirPersona = Key('hoja_casa_abrir_persona');
   static const asaDeLaLista = Key('hoja_casa_asa_de_la_lista');
   static const pestanas = Key('hoja_casa_pestanas');
@@ -56,6 +57,8 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
     super.key,
     required this.persona,
     this.saldoCentavos,
+    this.cuota,
+    this.ahora,
     this.detalle,
     this.alCobrar,
     this.alAbrir,
@@ -66,6 +69,14 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
 
   /// Lo que debe, en centavos; `null` si no debe o no se sabe (no se escribe «$ 0»).
   final int? saldoCentavos;
+
+  /// El día de la cuota que toca (vista 39 C·01: «Debe $ 1.200 · cuota sáb 26/10»); `null` si no tiene
+  /// plan de cuotas o no se sabe. Sin saldo no se muestra (quien no debe no tiene cuota que cobrar).
+  /// Si el día ya pasó, la línea lo dice y toma el color del aviso (30A-06).
+  final DateTime? cuota;
+
+  /// «Hoy», para saber si la [cuota] venció. Hace falta cuando hay [cuota].
+  final DateTime? ahora;
 
   /// La línea de abajo cuando no debe nada; `null` = ninguna. Si debe, manda «Debe $ 1.200».
   final String? detalle;
@@ -82,7 +93,15 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nombre = FormatoPersonas.nombreCompleto(persona);
-    final debe = saldoCentavos == null ? null : TextosHojaCasa.debe(saldoCentavos!);
+    final dia = cuota;
+    final hoy = ahora;
+    final conCuota = saldoCentavos != null && dia != null && hoy != null;
+    final vencida = conCuota && TextosHojaCasa.cuotaVencida(dia, hoy);
+    final debe = saldoCentavos == null
+        ? null
+        : conCuota
+        ? TextosHojaCasa.debeConCuota(saldoCentavos!, dia, hoy)
+        : TextosHojaCasa.debe(saldoCentavos!);
     final linea = debe ?? detalle;
     final cobra = saldoCentavos != null && alCobrar != null;
     final grande = textoGrande(context);
@@ -124,11 +143,15 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
         if (linea != null)
           Text(
             linea,
-            style: const TextStyle(
+            key: vencida ? ClavesHojaCasa.cuotaVencida : null,
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
               height: 1.4,
-              color: ColoresLista.grisTexto,
+              // La cuota vencida toma el ámbar del aviso de 30A-06 (7A5A12 sobre blanco: más de 6:1) y
+              // un peso más: el color solo no alcanza para decirlo.
+              fontWeight: vencida ? FontWeight.w600 : null,
+              color: vencida ? ColoresAlta.ambar : ColoresLista.grisTexto,
             ),
           ),
       ],

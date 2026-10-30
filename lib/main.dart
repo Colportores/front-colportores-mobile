@@ -235,6 +235,12 @@ Future<void> main() async {
         saldosDePersonasProvider.overrideWith(
           (ref) => SaldosDePersonasLocal(ref.watch(cobranzaLocalProvider)),
         ),
+        // La hoja de la casa vuelve a leer lo que debe cada persona cuando cambia una venta o un cobro
+        // (HU-COB-005): el saldo queda al día después de cobrar, sin recargar.
+        cambiosDeLoQueSeDebeProvider.overrideWith(
+          (ref) =>
+              () => ref.read(cobranzaLocalProvider).alCambiarLoQueSeDebe(),
+        ),
         // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
         // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
         // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.

@@ -52,6 +52,12 @@ abstract final class FormatoListaUbicaciones {
     return '${_dos(m.day)}/${_dos(m.month)}';
   }
 
+  /// «sáb 26/10»: el día de la semana abreviado y «dd/MM», en hora local.
+  static String diaSemanaYMes(DateTime momento) {
+    final m = momento.toLocal();
+    return '${_diasSemana[m.weekday - 1]} ${diaMes(m)}';
+  }
+
   static String _dos(int n) => n.toString().padLeft(2, '0');
 
   /// Cuántos días de calendario (en hora local) hay de [desde] a [hasta]: 0 = el mismo día.
