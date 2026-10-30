@@ -33,6 +33,13 @@ abstract final class EventoAuditoriaLocal {
   /// venta (`motivo_monto_manual`).
   static const ventaMontoManual = 'venta_monto_manual';
 
+  /// Una devolución registrada (HU-VEN-004, «`audit_log_local` con el motivo siempre»): `uuid` es el
+  /// `id` de la devolución, `creado_en` su `fecha_devolucion` y `motivo` el que escribió la colportora
+  /// (`null` si no lo dijo, el campo es opcional). La fila se escribe **siempre**, con o sin motivo,
+  /// en la misma transacción que la devolución. Solo local: el `audit_log` de la nube deja su propio
+  /// evento (`devolucion_registrada`, migración 0121) y no copia el texto.
+  static const devolucionRegistrada = 'devolucion_registrada';
+
   /// Un depósito de efectivo registrado (HU-CTA-004, «Audit log local»): `uuid` es el `id` del depósito
   /// y `creado_en` el instante en que se registró. Sin motivo: el monto, el destino y el ticket viajan
   /// en el depósito mismo y no se copian acá.

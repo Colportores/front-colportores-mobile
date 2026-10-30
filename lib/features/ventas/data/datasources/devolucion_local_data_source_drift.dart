@@ -4,6 +4,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
+import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/domain/entities/color_house_status.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../domain/entities/devolucion.dart';
@@ -131,6 +132,18 @@ final class DevolucionLocalDataSourceDrift {
       OperacionSync.insert,
       DevolucionModel.toJson(devolucion),
     );
+    // `audit_log_local` con el motivo siempre (HU-VEN-004): una fila por devolución, con o sin motivo,
+    // en la misma transacción. Solo el id de la devolución y lo que escribió la colportora.
+    await _db
+        .into(_db.auditLogLocal)
+        .insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.devolucionRegistrada,
+            uuid: devolucion.id,
+            motivo: Value(devolucion.motivo),
+            creadoEn: devolucion.fechaDevolucion,
+          ),
+        );
     final color = await _recalcular(
       venta.espacioPersonaId,
       ahora: pedido.ahora,
