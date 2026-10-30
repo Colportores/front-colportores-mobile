@@ -1300,7 +1300,7 @@ void main() {
           "UPDATE cobranza SET anulado_at = 5, motivo_anulacion = 'Otro' WHERE id = 'c-1'",
         );
         final anulado = await nuevo.select(nuevo.cobranza).getSingle();
-        expect(anulado.anuladoAt, isA<DateTime>());
+        expect(anulado.anuladoAt, 5);
         expect(anulado.motivoAnulacion, 'Otro');
       },
     );
