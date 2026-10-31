@@ -883,6 +883,13 @@ void main() {
       expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.respaldoDrive));
       expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.respaldoDrive)));
     });
+
+    test('la marca de que el asistente de recuperación se resolvió (HU-SYNC-006) sobrevive a '
+        'reconstruir el almacén y se va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.recuperacionResuelta)));
+    });
   });
 
   group('CustodiaClaveDb — invariantes de seguridad', () {

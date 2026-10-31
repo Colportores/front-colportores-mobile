@@ -54,10 +54,12 @@ import 'features/notificaciones/data/repositories/preferencias_recordatorios_rep
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
 import 'features/respaldo/data/services/servicio_google.dart';
 import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -200,6 +202,11 @@ Future<void> main() async {
         ),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
+        ),
+        // HU-SYNC-006 (vista 34): el asistente de recuperación del primer arranque.
+        asistenteDeRecuperacionHabilitadoProvider.overrideWithValue(true),
+        recuperacionResueltaRepositoryProvider.overrideWithValue(
+          RecuperacionResueltaRepositoryImpl(almacenSeguro),
         ),
         // Qué cuentas escondieron el aviso de privacidad con «No volver a mostrar» (#445, #447): es
         // por cuenta y se vuelve a encender desde Configuración.
