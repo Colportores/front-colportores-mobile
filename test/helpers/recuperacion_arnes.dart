@@ -238,6 +238,7 @@ final titulo = find.byKey(const Key('recuperacion_titulo'));
 final paso = find.byKey(const Key('recuperacion_paso'));
 final cta = find.byKey(const Key('recuperacion_cta'));
 final cta2 = find.byKey(const Key('recuperacion_cta2'));
+final cta3 = find.byKey(const Key('recuperacion_cta3'));
 final buscando = find.byKey(const Key('recuperacion_buscando'));
 final tarjeta = find.byKey(const Key('recuperacion_tarjeta'));
 final campoContrasena = find.byKey(const Key('recuperacion_contrasena'));

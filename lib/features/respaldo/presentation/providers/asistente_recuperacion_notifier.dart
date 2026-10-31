@@ -81,6 +81,7 @@ final class EstadoAsistente extends Equatable {
     this.avisoDeDrive,
     this.sinConexionAlCortarse = false,
     this.terminando = false,
+    this.reintentoFallido = false,
   });
 
   final PantallaAsistente pantalla;
@@ -120,6 +121,9 @@ final class EstadoAsistente extends Equatable {
   /// «Ir a mi inicio» (o «Empezar sin recuperar») en curso: no admite otro toque.
   final bool terminando;
 
+  /// 34·07: el «Reintentar» no llegó a terminar y se volvió acá; lo recuperado sigue en el teléfono.
+  final bool reintentoFallido;
+
   EstadoAsistente copyWith({
     PantallaAsistente? pantalla,
     RespaldoEnDrive? respaldo,
@@ -133,6 +137,7 @@ final class EstadoAsistente extends Equatable {
     ({ClaseAvisoDrive clase, String texto})? Function()? avisoDeDrive,
     bool? sinConexionAlCortarse,
     bool? terminando,
+    bool? reintentoFallido,
   }) => EstadoAsistente(
     pantalla: pantalla ?? this.pantalla,
     respaldo: respaldo ?? this.respaldo,
@@ -146,6 +151,7 @@ final class EstadoAsistente extends Equatable {
     avisoDeDrive: avisoDeDrive != null ? avisoDeDrive() : this.avisoDeDrive,
     sinConexionAlCortarse: sinConexionAlCortarse ?? this.sinConexionAlCortarse,
     terminando: terminando ?? this.terminando,
+    reintentoFallido: reintentoFallido ?? this.reintentoFallido,
   );
 
   @override
@@ -169,6 +175,7 @@ final class EstadoAsistente extends Equatable {
     avisoDeDrive?.texto,
     sinConexionAlCortarse,
     terminando,
+    reintentoFallido,
   ];
 }
 
@@ -326,7 +333,17 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
     await _restaurar(respaldo);
   }
 
-  Future<void> _restaurar(RespaldoEnDrive respaldo) async {
+  /// 34·07 «Reintentar»: vuelve a correr la recuperación entera con la misma contraseña. Lo ya
+  /// recuperado sigue en el teléfono: si el nuevo intento no termina (se corta, se cancela o falla)
+  /// se vuelve a 34·07 como estaba; si termina, manda su resultado (34·08 o un nuevo 34·07).
+  Future<void> reintentarDesdeParcial() async {
+    final respaldo = state.respaldo;
+    if (state.pantalla != PantallaAsistente.parcial || _restaurando || _terminando) return;
+    if (respaldo == null || _password == null) return;
+    await _restaurar(respaldo, volverA: state.copyWith(reintentoFallido: false));
+  }
+
+  Future<void> _restaurar(RespaldoEnDrive respaldo, {EstadoAsistente? volverA}) async {
     final password = _password;
     if (_restaurando || password == null) return;
     _restaurando = true;
@@ -350,14 +367,33 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
         cancelar: cancelacion,
       );
       if (!ref.mounted) return;
-      await _alTerminar(resultado);
+      if (volverA != null && resultado is! RecuperacionHecha) {
+        _volverAlParcial(volverA);
+      } else {
+        await _alTerminar(resultado);
+      }
     } on Object catch (e) {
       _registrarFallo('RECUPERACION_RESTAURAR', e);
-      if (ref.mounted) state = state.copyWith(pantalla: PantallaAsistente.fallida);
+      if (ref.mounted) {
+        if (volverA != null) {
+          _volverAlParcial(volverA);
+        } else {
+          state = state.copyWith(pantalla: PantallaAsistente.fallida);
+        }
+      }
     } finally {
       _restaurando = false;
       if (identical(_cancelacion, cancelacion)) _cancelacion = null;
     }
+  }
+
+  void _volverAlParcial(EstadoAsistente parcial) {
+    state = parcial.copyWith(
+      reintentoFallido: true,
+      cancelando: false,
+      sinConexionAlCortarse: false,
+      progreso: () => null,
+    );
   }
 
   void _alAvanzar(ProgresoRecuperacion progreso) {
@@ -375,7 +411,8 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
   Future<void> _alTerminar(ResultadoRecuperacion resultado) async {
     switch (resultado) {
       case RecuperacionHecha(:final informe):
-        _password = null;
+        // Con una parte dañada la contraseña queda en memoria para el «Reintentar» de 34·07.
+        if (!informe.parcial) _password = null;
         final usuarioId = ref.read(sesionProvider).value?.usuarioId;
         if (usuarioId != null) {
           // Ya hay datos recuperados: aunque la app se cierre acá, el asistente no se vuelve a ofrecer.
@@ -394,6 +431,7 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
           informe: informe,
           resumen: () => resumen,
           progreso: () => null,
+          reintentoFallido: false,
         );
       case ContrasenaNoAbreElRespaldo():
         _password = null;
@@ -465,6 +503,7 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
   Future<void> terminar() async {
     if (_terminando || _restaurando) return;
     _terminando = true;
+    _password = null;
     state = state.copyWith(terminando: true);
     try {
       // Las jornadas que quedaron abiertas con otra después (HU-JOR-002) se leen recién ahora: la

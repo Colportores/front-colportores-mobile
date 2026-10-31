@@ -133,6 +133,16 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
                             ),
                             child: Text(cta2.texto, textAlign: TextAlign.center),
                           ),
+                        if (vista.cta3 case final cta3?)
+                          TextButton(
+                            key: const Key('recuperacion_cta3'),
+                            onPressed: cta3.alTocar,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52),
+                              shape: forma,
+                            ),
+                            child: Text(cta3.texto, textAlign: TextAlign.center),
+                          ),
                       ],
                     ),
                   ),
@@ -421,6 +431,11 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
           ],
         ),
         _Texto(TextosRecuperacion.telefonoViejo(dia), clave: 'recuperacion_telefono_viejo'),
+        if (estado.reintentoFallido)
+          const AvisoDrive(
+            clase: ClaseAvisoDrive.error,
+            texto: TextosRecuperacion.reintentoParcialFallo,
+          ),
         if (_verAfuera)
           const _Texto(
             TextosRecuperacion.detalleQueQuedoAfuera,
@@ -437,6 +452,10 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
             ? TextosRecuperacion.ocultarQueQuedoAfuera
             : TextosRecuperacion.verQueQuedoAfuera,
         () => setState(() => _verAfuera = !_verAfuera),
+      ),
+      cta3: _Accion(
+        TextosRecuperacion.reintentar,
+        estado.terminando ? null : () => unawaited(_asistente.reintentarDesdeParcial()),
       ),
     );
   }
@@ -472,6 +491,7 @@ final class _Vista {
     required this.cuerpo,
     this.cta,
     this.cta2,
+    this.cta3,
   });
 
   final int paso;
@@ -479,6 +499,9 @@ final class _Vista {
   final List<Widget> cuerpo;
   final _Accion? cta;
   final _Accion? cta2;
+
+  /// Una tercera acción, más liviana (34·07: «Reintentar»).
+  final _Accion? cta3;
 }
 
 /// Un botón: su texto y qué hace (`null` = apagado).

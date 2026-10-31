@@ -4,8 +4,10 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/respaldo/domain/services/servicio_recuperacion.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/asistente_recuperacion_notifier.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -37,6 +39,8 @@ Future<void> abrirCopia(WidgetTester tester, {String contrasena = 'la-de-antes'}
   await irAContrasena(tester, contrasena: contrasena);
   await tocar(tester, cta);
 }
+
+const textoReintentoFallo = 'No pudimos reintentar. Lo que ya recuperaste sigue en este teléfono.';
 
 bool botonApagado(WidgetTester tester, Finder boton) =>
     tester.widget<ButtonStyleButton>(boton).onPressed == null;
@@ -117,6 +121,14 @@ void main() {
       expect(tester.widget<Text>(paso).data, 'RECUPERAR · PASO 1 DE 3');
       expect(textoDe(cta), 'Conectar con Google');
       expect(textoDe(cta2), 'Empezar sin recuperar');
+      expect(
+        find.text(
+          'Si ya usaste Colportaje en otro teléfono, tu respaldo está en tu Google Drive. '
+          'Conectalo para buscarlo; solo esta app puede abrir esos archivos. Si es la primera '
+          'vez que usás la app, tocá «Empezar sin recuperar».',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('al conectar, sigue con la búsqueda y muestra el respaldo', (tester) async {
@@ -458,6 +470,101 @@ void main() {
       expect(find.textContaining('Si tenés el teléfono viejo'), findsOneWidget);
       expect(textoDe(cta), 'Seguir con lo recuperado');
       expect(textoDe(cta2), 'Ver qué quedó afuera');
+      expect(
+        textoDe(cta3),
+        'Reintentar',
+        reason: 'HU-SYNC-006: «Reintentar» o «Aceptar y continuar»',
+      );
+    });
+
+    testWidgets('«Reintentar» vuelve a correr la recuperación con la misma contraseña y, si '
+        'termina completa, llega a 34·08', (tester) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester, contrasena: 'la-de-antes');
+      expect(arnes.servicio.recuperaciones, 1);
+
+      arnes.servicio.resultado = RecuperacionHecha(informeDePrueba());
+      await tocar(tester, cta3);
+
+      expect(arnes.servicio.recuperaciones, 2);
+      expect(arnes.servicio.ultimaContrasena, 'la-de-antes');
+      expect(tester.widget<Text>(titulo).data, 'Tus datos están de vuelta');
+    });
+
+    testWidgets('si el reintento vuelve a salir dañado, queda en 34·07', (tester) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester);
+
+      await tocar(tester, cta3);
+
+      expect(arnes.servicio.recuperaciones, 2);
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+      expect(find.text(textoReintentoFallo), findsNothing);
+    });
+
+    testWidgets('si el reintento falla o se corta, vuelve a 34·07 sin perder lo recuperado y '
+        'el botón queda libre', (tester) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester);
+
+      arnes.servicio.resultado = const RecuperacionFallida();
+      await tocar(tester, cta3);
+
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+      expect(find.text(textoReintentoFallo), findsOneWidget);
+      expect(botonApagado(tester, cta), isFalse);
+      expect(botonApagado(tester, cta3), isFalse);
+
+      arnes.servicio.resultado = const RecuperacionSinConexion(hechas: 3, total: 15);
+      await tocar(tester, cta3);
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+
+      arnes.servicio.errorAlRecuperar = StateError('se cayó');
+      await tocar(tester, cta3);
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+      expect(find.text(textoReintentoFallo), findsOneWidget);
+    });
+
+    testWidgets('doble toque en «Reintentar»: un solo reintento', (tester) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester);
+
+      arnes.servicio.frenarRecuperar = true;
+      await tester.tap(cta3);
+      await tester.tap(cta3, warnIfMissed: false);
+      await asentar(tester);
+      expect(arnes.servicio.recuperaciones, 2);
+
+      arnes.servicio.compuertaRecuperar!.complete();
+      await asentar(tester);
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+    });
+
+    testWidgets('«Cancelar» durante el reintento vuelve a 34·07', (tester) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester);
+
+      arnes.servicio.frenarRecuperar = true;
+      await tocar(tester, cta3);
+      expect(tester.widget<Text>(titulo).data, 'Restaurando');
+      await tocar(tester, cta2);
+      arnes.servicio.compuertaRecuperar!.complete();
+      await asentar(tester);
+
+      expect(tester.widget<Text>(titulo).data, 'Recuperamos casi todo');
+    });
+
+    testWidgets('después de «Seguir con lo recuperado» ya no hay contraseña para reintentar', (
+      tester,
+    ) async {
+      await abrirAsistente(tester, arnes);
+      await abrirCopia(tester);
+      final c = ProviderScope.containerOf(tester.element(pagina));
+
+      await tocar(tester, cta);
+      await c.read(asistenteRecuperacionProvider.notifier).reintentarDesdeParcial();
+
+      expect(arnes.servicio.recuperaciones, 1);
     });
 
     testWidgets('«Ver qué quedó afuera» abre y cierra el detalle', (tester) async {

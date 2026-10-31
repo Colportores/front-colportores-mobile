@@ -32,9 +32,11 @@ abstract final class TextosRecuperacion {
   static const empezarSinRecuperar = 'Empezar sin recuperar';
 
   // 34·02.
+  /// No afirma que haya un respaldo: dice los dos casos (decisión del agente de decisiones, P3).
   static const textoConectar =
-      'Tu respaldo está en tu Google Drive. Conectalo para buscarlo; solo esta app puede abrir '
-      'esos archivos.';
+      'Si ya usaste Colportaje en otro teléfono, tu respaldo está en tu Google Drive. Conectalo '
+      'para buscarlo; solo esta app puede abrir esos archivos. Si es la primera vez que usás la '
+      'app, tocá «Empezar sin recuperar».';
   static const conectarConGoogle = 'Conectar con Google';
   static const conectando = 'Conectando…';
 
@@ -82,6 +84,8 @@ abstract final class TextosRecuperacion {
   static String parteDanada(int n, int total, String hasta) =>
       'La parte $n de $total está dañada. Restauramos todo hasta el $hasta; lo posterior quedó '
       'afuera.';
+  static const reintentoParcialFallo =
+      'No pudimos reintentar. Lo que ya recuperaste sigue en este teléfono.';
   static const quedoAfuera = 'Quedó afuera';
   static const restaurado = 'Restaurado';
   static const todoLoAnterior = 'Todo lo anterior';
