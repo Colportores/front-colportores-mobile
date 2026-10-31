@@ -73,7 +73,18 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
   Future<void> terminar() async {
     final usuarioId = _usuarioId;
     if (usuarioId != null) {
-      await ref.read(recuperacionResueltaRepositoryProvider).marcarResuelta(usuarioId);
+      try {
+        await ref.read(recuperacionResueltaRepositoryProvider).marcarResuelta(usuarioId);
+      } on Object catch (e) {
+        // La persona no puede hacer nada con esto: la app sigue. Si la base ya tiene datos el
+        // asistente no se vuelve a ofrecer; si quedó vacía, vuelve en el próximo arranque (seguro).
+        AppLogger.instance.warn(
+          LogModulo.backup,
+          'RECUPERACION_MARCA',
+          'no se pudo anotar que el asistente de recuperación terminó: la app sigue',
+          {'error': e.runtimeType.toString()},
+        );
+      }
     }
     if (ref.mounted) state = const AsyncData(false);
   }

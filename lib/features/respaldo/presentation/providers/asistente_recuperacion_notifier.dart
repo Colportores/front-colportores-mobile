@@ -416,7 +416,12 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
         final usuarioId = ref.read(sesionProvider).value?.usuarioId;
         if (usuarioId != null) {
           // Ya hay datos recuperados: aunque la app se cierre acá, el asistente no se vuelve a ofrecer.
-          await ref.read(recuperacionResueltaRepositoryProvider).marcarResuelta(usuarioId);
+          // Si no se pudo anotar, lo recuperado sigue ahí y la pantalla no puede decir lo contrario.
+          try {
+            await ref.read(recuperacionResueltaRepositoryProvider).marcarResuelta(usuarioId);
+          } on Object catch (e) {
+            _registrarFallo('RECUPERACION_MARCA', e);
+          }
         }
         ResumenDeLoRecuperado? resumen;
         try {

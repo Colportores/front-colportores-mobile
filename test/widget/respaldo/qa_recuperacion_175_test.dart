@@ -6,9 +6,11 @@
 // Las capturas solo con `--dart-define=QA_CAPTURAS=true` (van a `.dart_tool/qa_capturas`).
 import 'dart:async';
 
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/respaldo/domain/repositories/recuperacion_resuelta_repository.dart';
 import 'package:colportores_mobile/features/respaldo/domain/services/servicio_recuperacion.dart';
 import 'package:colportores_mobile/features/respaldo/presentation/providers/asistente_recuperacion_notifier.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -598,40 +600,40 @@ void main() {
   group('Hallazgos', () {
     // skip: QA #175: si el almacén seguro no deja anotar «resuelto» después de restaurar, la
     // pantalla dice «No pudimos recuperar… No se tocó nada de tu teléfono» con los datos ya traídos.
-    testWidgets(
-      'H1: restaurar bien pero fallar al anotar «resuelto» no dice que no se tocó nada',
-      (tester) async {
-        final a = ArnesRecuperacion();
-        final resuelta = ResueltaQueFalla();
-        await _abrirConResuelta(tester, a, resuelta);
-        await abrirCopia175(tester);
-        // Los datos ya volvieron: la pantalla no puede decir lo contrario.
-        expect(find.textContaining('No se tocó nada de tu teléfono'), findsNothing);
-        expect(tester.widget<Text>(titulo).data, isNot('No pudimos recuperar tus datos'));
-        await liberar175(tester, a);
-      },
-      skip: !verHallazgos,
-    );
+    testWidgets('H1: restaurar bien pero fallar al anotar «resuelto» no dice que no se tocó nada', (
+      tester,
+    ) async {
+      final a = ArnesRecuperacion();
+      final resuelta = ResueltaQueFalla();
+      await _abrirConResuelta(tester, a, resuelta);
+      await abrirCopia175(tester);
+      // Los datos ya volvieron: la pantalla no puede decir lo contrario.
+      expect(find.textContaining('No se tocó nada de tu teléfono'), findsNothing);
+      expect(tester.widget<Text>(titulo).data, isNot('No pudimos recuperar tus datos'));
+      await liberar175(tester, a);
+    });
 
-    // skip: QA #175: «Ir a mi inicio»/«Empezar sin recuperar» con el almacén seguro fallando no hace
-    // nada ni avisa (la excepción sale sin atrapar y la persona queda en el asistente).
+    // QA #175 (decidido §2): «Ir a mi inicio»/«Empezar sin recuperar» con el almacén seguro fallando
+    // no lanza ni muestra aviso (la persona no puede hacer nada): solo un log y la app sigue.
     testWidgets(
-      'H2: «Empezar sin recuperar» con el almacén fallando avisa qué pasa y qué hacer',
+      'H2: «Empezar sin recuperar» con el almacén fallando no lanza y la app sigue sin aviso',
       (tester) async {
         final a = ArnesRecuperacion();
         final resuelta = ResueltaQueFalla();
         await _abrirConResuelta(tester, a, resuelta);
+        final c = ProviderScope.containerOf(tester.element(pagina));
+        await c.read(sesionProvider.future);
+        expect(await c.read(recuperacionPendienteProvider.future), isTrue);
+
         await tocar175(tester, cta2);
+
         expect(tester.takeException(), isNull, reason: 'la falla no sale sin atrapar');
+        expect(resuelta.marcas, 1);
+        expect(c.read(recuperacionPendienteProvider).value, isFalse, reason: 'la raíz sigue');
         expect(botonApagado175(tester, cta2), isFalse, reason: 'el botón no queda trabado');
-        // Algo en pantalla le dice a la persona que no se pudo seguir y qué hacer.
-        final hayAviso =
-            find.textContaining('No pudimos').evaluate().isNotEmpty ||
-            find.textContaining('Probá').evaluate().isNotEmpty;
-        expect(hayAviso, isTrue, reason: 'sin aviso la persona toca y no pasa nada');
+        expect(find.textContaining('No pudimos'), findsNothing, reason: 'sin aviso inútil');
         await liberar175(tester, a);
       },
-      skip: !verHallazgos,
     );
     // skip: QA #175: 34·08 «Listo» pinta el círculo con la tilde y «Como el 22/10…» pegados a la
     // izquierda; en el canvas (bloque `hero`) van centrados en la pantalla.
