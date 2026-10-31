@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/jornada/data/repositories/jornada_re
 import 'package:colportores_mobile/features/jornada/domain/entities/jornada.dart';
 import 'package:colportores_mobile/features/jornada/domain/usecases/iniciar_jornada_use_case.dart';
 import 'package:dartz/dartz.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -265,6 +266,55 @@ void main() {
       );
       expect(await filas(), 1);
     });
+  });
+
+  group('JornadaLocalDataSourceDrift — abiertas (#175)', () {
+    /// Dos abiertas solo se llega por `recover()`: `insertar` las rechaza, se siembran en la tabla.
+    Future<void> sembrar(
+      String id,
+      Duration despues, {
+      String colportorId = 'u-1',
+      DateTime? fin,
+      DateTime? borrada,
+    }) {
+      final inicio = t0.add(despues);
+      return db
+          .into(db.jornadas)
+          .insert(
+            JornadasCompanion.insert(
+              id: id,
+              colportorId: colportorId,
+              inicio: inicio,
+              fin: Value(fin),
+              createdAt: inicio,
+              updatedAt: inicio,
+              deletedAt: Value(borrada),
+            ),
+          );
+    }
+
+    test(
+      'dado dos abiertas, cuando se consultan, devuelve las dos, la más vieja primero',
+      () async {
+        await sembrar('nueva', const Duration(hours: 1));
+        await sembrar('vieja', Duration.zero);
+
+        final abiertas = await local.abiertas('u-1');
+
+        expect(abiertas.map((j) => j.id), ['vieja', 'nueva']);
+      },
+    );
+
+    test(
+      'dado cerradas, borradas y de otro colportor, cuando se consultan, ninguna cuenta',
+      () async {
+        await sembrar('cerrada', Duration.zero, fin: t0.add(const Duration(hours: 1)));
+        await sembrar('borrada', const Duration(hours: 2), borrada: t0);
+        await sembrar('otro', const Duration(hours: 3), colportorId: 'u-2');
+
+        expect(await local.abiertas('u-1'), isEmpty);
+      },
+    );
   });
 
   group('JornadaLocalDataSourceDrift — siguienteA (#327)', () {

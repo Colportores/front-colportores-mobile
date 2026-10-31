@@ -29,10 +29,14 @@ import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
+import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
+import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/respaldo/presentation/pages/recuperacion_page.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
@@ -325,6 +329,21 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     );
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    // HU-SYNC-006 (vista 34): en un teléfono sin datos, con la base ya abierta, se ofrece traer el
+    // respaldo de Drive antes de seguir; con datos o ya resuelto, no se ve. Va antes del motor de
+    // sync: una recuperación reemplaza la base y no puede haber nada escuchándola.
+    if (ref.watch(asistenteDeRecuperacionHabilitadoProvider)) {
+      final recuperacion = ref.watch(recuperacionPendienteProvider);
+      if (recuperacion.isLoading && !recuperacion.hasValue) return const _LeyendoElArranque();
+      if (recuperacion.value ?? false) return const RecuperacionPage();
+      // Después de recuperar puede haber jornadas abiertas con otra después: cada una pasa por «¿A qué
+      // hora terminaste?» antes de llegar a Hoy (HU-JOR-002), nunca cerradas con la hora de ahora.
+      final porCerrar = ref.watch(jornadasPorCerrarProvider(widget.sesion.usuarioId));
+      if (porCerrar.isLoading && !porCerrar.hasValue) return const _LeyendoElArranque();
+      if (porCerrar.value case final pendientes? when pendientes.isNotEmpty) {
+        return JornadasPorCerrarPage(sesion: widget.sesion, pendientes: pendientes);
+      }
+    }
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
@@ -358,6 +377,22 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
       _ => const RevisandoCuentaPage(),
     };
   }
+}
+
+/// Mientras se lee lo que decide la primera pantalla (si hay un respaldo para ofrecer, si quedó una
+/// jornada abierta): un instante, con el círculo y el texto.
+class _LeyendoElArranque extends StatelessWidget {
+  const _LeyendoElArranque();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(
+      child: CircularProgressIndicator(
+        key: Key('leyendo_arranque'),
+        semanticsLabel: 'Preparando tu espacio',
+      ),
+    ),
+  );
 }
 
 /// Lleva a la pantalla de la contraseña nueva (o de enlace vencido) desde la raíz de la pila.
