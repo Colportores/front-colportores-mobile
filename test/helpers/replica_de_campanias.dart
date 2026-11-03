@@ -104,6 +104,7 @@ Map<String, Object?> filaZona(
   required double latNorte,
   required double lonOeste,
   required double lonEste,
+  String? color = '#336699',
   bool deBaja = false,
 }) => {
   'id': id,
@@ -125,6 +126,6 @@ Map<String, Object?> filaZona(
       ],
     ],
   },
-  'color': '#336699',
+  'color': color,
   ..._auditoria(deBaja: deBaja),
 };

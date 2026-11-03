@@ -25,6 +25,7 @@ import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_ubicaciones_notifier.dart';
 import '../providers/mapa_ubicaciones_providers.dart';
 import '../providers/situacion_mapa_providers.dart';
+import '../providers/zonas_del_mapa_providers.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
 import '../widgets/mapa_alta.dart';
@@ -445,6 +446,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final ambito = ref.watch(ambitoMapaUbicacionesProvider(widget.colportorId));
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
+    final zonas = ref.watch(zonasParaElMapaProvider(widget.colportorId));
     ref.listen(_proveedor, (anterior, nuevo) {
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
       // se ve la pestaña, y a un tercio, en un teléfono chico, el botón quedaría debajo del borde.
@@ -472,7 +474,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       onPopInvokedWithResult: (salio, _) {
         if (!salio && widget.activa) _notificador.cerrarSeleccion();
       },
-      child: _contenido(context, estado, ambito, ahora, avisoVisible),
+      child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas),
     );
   }
 
@@ -482,6 +484,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     AmbitoTrabajo ambito,
     DateTime ahora,
     bool avisoVisible,
+    ZonasParaElMapa zonas,
   ) {
     final lectura = estado.lectura;
     return LayoutBuilder(
@@ -498,7 +501,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           children: [
             Positioned.fill(
               child: Semantics(
-                label: TextosMapaUbicaciones.mapa,
+                // Las zonas son capas del estilo, no widgets: el lector de pantalla las oye acá.
+                label: [TextosMapaUbicaciones.mapa, ?zonas.paraElLector].join('. '),
                 container: true,
                 child: MapaBase(
                   fuente: ref.watch(fuenteMapaProvider(ambito)),
@@ -510,6 +514,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
                   puntos: _puntos(estado, cuadrados: cuadrados),
+                  zonas: zonas.dibujo,
                   precision: lectura != null
                       ? CirculoPrecision(
                           centro: lectura.coordenadas,
