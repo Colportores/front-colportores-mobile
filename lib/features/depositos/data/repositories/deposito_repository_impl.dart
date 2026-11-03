@@ -3,6 +3,7 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/deposito.dart';
+import '../../domain/entities/totales_de_depositos.dart';
 import '../../domain/repositories/deposito_repository.dart';
 import '../datasources/deposito_local_data_source_drift.dart';
 
@@ -55,6 +56,36 @@ final class DepositoRepositoryImpl implements DepositoRepository {
         'DEPOSITO_LECTURA_FAIL',
         'falló la lectura de los depósitos',
         {'tipo': tipo},
+        null,
+        st,
+      );
+      return const Left(FailureDepositoNoDisponible());
+    }
+  }
+
+  @override
+  Stream<List<Deposito>> observar() => _local.observar().handleError((Object error, StackTrace st) {
+    _log.error(
+      LogModulo.db,
+      'DEPOSITO_STREAM_FAIL',
+      'falló la lectura de los depósitos',
+      {'tipo': error.runtimeType.toString()},
+      null,
+      st,
+    );
+    throw const FailureDepositoNoDisponible();
+  });
+
+  @override
+  Future<Either<Failure, TotalesDeDepositos>> totales() async {
+    try {
+      return Right(await _local.totales());
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.db,
+        'DEPOSITO_TOTALES_FAIL',
+        'falló la suma de los depósitos',
+        {'tipo': e.runtimeType.toString()},
         null,
         st,
       );
