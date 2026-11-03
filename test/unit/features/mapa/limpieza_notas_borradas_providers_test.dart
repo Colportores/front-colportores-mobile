@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
+import 'package:colportores_mobile/core/sync/hora_del_servidor.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/notas_table.dart';
@@ -51,6 +52,9 @@ void main() {
   Future<List<String>> ids() async =>
       [for (final f in await db.select(db.notas).get()) f.id]..sort();
 
+  /// La última hora que dijo el servidor en un push o un pull.
+  Future<void> servidorDijo(DateTime hora) => HoraDelServidorEnDb(() => db).registrar(hora);
+
   Future<void> asentar() async {
     for (var i = 0; i < 5; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -93,6 +97,7 @@ void main() {
       await sembrar('vieja', borrada: DateTime.utc(2026, 10, 26, 14, 20));
       await sembrar('reciente', borrada: DateTime.utc(2026, 12, 1));
       await sembrar('activa');
+      await servidorDijo(sistema);
       final c = armar();
 
       final lectura = c.listen(limpiezaNotasBorradasProvider, (_, _) {});
@@ -106,6 +111,7 @@ void main() {
       'dado que la app vuelve del fondo, limpia otra vez lo que venció mientras tanto',
       () async {
         await sembrar('a', borrada: DateTime.utc(2026, 11, 1));
+        await servidorDijo(sistema);
         final c = armar();
         final lectura = c.listen(limpiezaNotasBorradasProvider, (_, _) {});
         await asentar();
@@ -113,6 +119,7 @@ void main() {
 
         // Pasan los días con el teléfono en el bolsillo: la nota cumple sus 90 días.
         sistema = DateTime.utc(2027, 2, 5);
+        await servidorDijo(sistema);
         volverALaApp();
         await asentar();
 
@@ -139,6 +146,7 @@ void main() {
       await sembrar('n1', borrada: DateTime.utc(2026, 10, 26, 14, 20));
       // La app ya vio el 25/01/2027 (otra apertura); la colportora atrasa el reloj al 01/12/2026.
       await reloj.ahora();
+      await servidorDijo(DateTime.utc(2027, 1, 25, 9));
       sistema = DateTime.utc(2026, 12, 1);
       final c = armar();
 
@@ -146,6 +154,34 @@ void main() {
       await asentar();
 
       expect(await ids(), isEmpty);
+      lectura.close();
+    });
+
+    test(
+      'dada una fecha del teléfono adelantada, no borra lo que el servidor dice que no venció',
+      () async {
+        await sembrar('n1', borrada: DateTime.utc(2026, 10, 26, 14, 20));
+        // El servidor habló por última vez el 15/11/2026; la colportora adelanta el teléfono a 2028.
+        await servidorDijo(DateTime.utc(2026, 11, 15));
+        sistema = DateTime.utc(2028, 6, 1);
+        final c = armar();
+
+        final lectura = c.listen(limpiezaNotasBorradasProvider, (_, _) {});
+        await asentar();
+
+        expect(await ids(), ['n1']);
+        lectura.close();
+      },
+    );
+
+    test('dado un teléfono que nunca habló con el servidor, no borra nada', () async {
+      await sembrar('vieja', borrada: DateTime.utc(2025, 1, 1));
+      final c = armar();
+
+      final lectura = c.listen(limpiezaNotasBorradasProvider, (_, _) {});
+      await asentar();
+
+      expect(await ids(), ['vieja']);
       lectura.close();
     });
 

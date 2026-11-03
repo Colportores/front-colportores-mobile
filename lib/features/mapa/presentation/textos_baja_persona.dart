@@ -35,12 +35,22 @@ abstract final class TextosBajaPersona {
     return '$deuda y tiene ${entregasPendientes(pendientes)}.';
   }
 
-  /// El cuerpo de la segunda confirmación (32D·03). Con deuda, el del canvas, tal cual (con o sin
-  /// entregas pendientes: «Deuda baja» no cambia nada). Con solo entregas pendientes el canvas no lo
-  /// dibuja: repite lo que la colportora está por dejar atrás (a confirmar: mapa §2, texto).
-  static String segundaConfirmacion(String nombre, ResumenCuentaPersona cuenta) => cuenta.tieneSaldo
-      ? deudaSigue(nombre, cuenta.saldoCentavos)
-      : '$nombre tiene ${entregasPendientes(cuenta.entregasPendientes)}.';
+  /// El cuerpo de la segunda confirmación (32D·03). Con deuda, el del canvas, tal cual («Deuda baja»
+  /// no cambia nada). Con entregas pendientes, el canvas no lo dibuja: se suma que la entrega no se
+  /// cancela (decisión del agente de decisiones, #509 P2), primero la frase de la deuda si la hay.
+  static String segundaConfirmacion(String nombre, ResumenCuentaPersona cuenta) {
+    final deuda = cuenta.tieneSaldo ? deudaSigue(nombre, cuenta.saldoCentavos) : null;
+    final pendientes = cuenta.entregasPendientes;
+    if (pendientes == 0) return deuda ?? '';
+    final entrega = entregaSigue(nombre, pendientes);
+    return deuda == null ? entrega : '$deuda $entrega';
+  }
+
+  /// «La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.» (plural:
+  /// «Las entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.»)
+  static String entregaSigue(String nombre, int cantidad) => cantidad == 1
+      ? 'La entrega pendiente no se cancela: queda registrada aunque $nombre esté de baja.'
+      : 'Las entregas pendientes no se cancelan: quedan registradas aunque $nombre esté de baja.';
 
   /// «La deuda de $ 1.200 sigue en tu cuenta aunque María esté de baja.»
   static String deudaSigue(String nombre, int saldoCentavos) =>
