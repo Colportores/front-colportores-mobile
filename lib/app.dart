@@ -31,6 +31,7 @@ import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dar
 import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
 import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
+import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
@@ -353,6 +354,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
     ref.watch(conciliacionRecordatoriosProvider);
+    // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
+    ref.watch(limpiezaNotasBorradasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);

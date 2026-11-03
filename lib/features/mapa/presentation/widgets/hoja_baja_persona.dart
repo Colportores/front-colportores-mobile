@@ -54,8 +54,9 @@ enum _Fase { revisando, errorRevision, sinSaldo, resumen, confirmar }
 /// - **Revisando**: «Revisando la cuenta de …»; si no se pudo leer, el aviso rojo con «Reintentar»
 ///   (no se da de baja a quien quizá debe: ante la duda se frena).
 /// - **32D·01** sin saldo: una confirmación, «Dar de baja».
-/// - **32D·02** con saldo: el resumen (cuánto debe, entregas pendientes, comprado, entregado, pagado
-///   y saldo) y «Dar de baja igual», que no escribe nada: lleva a la segunda confirmación.
+/// - **32D·02** con saldo o con entregas pendientes: el resumen (cuánto debe, entregas pendientes,
+///   comprado, entregado, pagado y saldo) y «Dar de baja igual», que no escribe nada: lleva a la
+///   segunda confirmación.
 /// - **32D·03**: «¿Seguro?», «Sí, dar de baja» escribe; «No, volver» vuelve al resumen.
 /// - Mientras la baja se escribe, «Dando de baja…» y nada se puede tocar ni cerrar; si falla, el aviso
 ///   rojo y el botón vuelve a quedar habilitado.
@@ -97,7 +98,7 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       _cuenta = cuenta;
       _fase = fallo
           ? _Fase.errorRevision
-          : (cuenta?.tieneSaldo ?? false)
+          : (cuenta?.pideConfirmarBaja ?? false)
           ? _Fase.resumen
           : _Fase.sinSaldo;
     });
@@ -124,7 +125,8 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       case PersonaDadaDeBaja(:final persona):
         Navigator.of(context).pop<SalidaHojaBajaPersona>(PersonaBajaRealizada(persona));
       case BajaPersonaRequiereConfirmacion(:final cuenta):
-        // Entre que se abrió la hoja y que se confirmó apareció una deuda: se muestra el resumen.
+        // Entre que se abrió la hoja y que se confirmó apareció una deuda o una entrega: se muestra el
+        // resumen.
         setState(() {
           _enviando = false;
           _cuenta = cuenta;
@@ -189,7 +191,7 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       ),
       _Fase.confirmar when cuenta != null => (
         TextosBajaPersona.seguro,
-        _cuerpo(TextosBajaPersona.deudaSigue(nombre, cuenta.saldoCentavos)),
+        _cuerpo(TextosBajaPersona.segundaConfirmacion(nombre, cuenta)),
         <Widget>[
           _principal(
             TextosBajaPersona.siDarDeBaja,

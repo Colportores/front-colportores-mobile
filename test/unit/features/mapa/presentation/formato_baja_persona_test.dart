@@ -74,6 +74,32 @@ void main() {
       expect(TextosBajaPersona.entregas(_cuenta()), '1 de 2');
     });
 
+    test('sin deuda, el resumen dice solo las entregas pendientes (#509)', () {
+      expect(
+        TextosBajaPersona.resumenDeSaldo('Jorge', _cuenta(saldo: 0)),
+        'Jorge tiene 1 entrega pendiente.',
+      );
+      expect(
+        TextosBajaPersona.resumenDeSaldo('Jorge', _cuenta(saldo: 0, hechas: 0, total: 3)),
+        'Jorge tiene 3 entregas pendientes.',
+      );
+      expect(TextosBajaPersona.entregasPendientes(1), '1 entrega pendiente');
+      expect(TextosBajaPersona.entregasPendientes(2), '2 entregas pendientes');
+    });
+
+    test('la segunda confirmación con deuda es la del canvas, con o sin entregas pendientes', () {
+      const canvas = 'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja.';
+      expect(TextosBajaPersona.segundaConfirmacion('María', _cuenta()), canvas);
+      expect(TextosBajaPersona.segundaConfirmacion('María', _cuenta(hechas: 2)), canvas);
+    });
+
+    test('la segunda confirmación sin deuda repite las entregas pendientes', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0)),
+        'Jorge tiene 1 entrega pendiente.',
+      );
+    });
+
     test('«Baja el 22/10» con el saldo solo si se conoce y es mayor que cero', () {
       final baja = DateTime.utc(2026, 10, 22, 15);
       final ahora = DateTime.utc(2026, 10, 26);
