@@ -101,7 +101,7 @@ void main() {
       );
       expect(
         TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0, hechas: 0, total: 3)),
-        'Las entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.',
+        'Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.',
       );
     });
 

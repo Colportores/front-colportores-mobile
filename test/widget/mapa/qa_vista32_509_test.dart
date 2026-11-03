@@ -96,7 +96,7 @@ void main() {
               // Decisión #509 P2: con entregas, la segunda confirmación dice que no se cancelan
               // (con deuda, después de la frase de la deuda).
               final entrega = esPlural
-                  ? 'Las entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.'
+                  ? 'Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.'
                   : 'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.';
               final cuerpo = conDeuda
                   ? 'La deuda de ${FormatoBajaPersona.monto(120000)} sigue en tu cuenta aunque Jorge esté de baja. $entrega'

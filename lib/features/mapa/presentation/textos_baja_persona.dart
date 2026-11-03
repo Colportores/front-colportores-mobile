@@ -47,10 +47,11 @@ abstract final class TextosBajaPersona {
   }
 
   /// «La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.» (plural:
-  /// «Las entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.»)
+  /// «Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.»)
   static String entregaSigue(String nombre, int cantidad) => cantidad == 1
       ? 'La entrega pendiente no se cancela: queda registrada aunque $nombre esté de baja.'
-      : 'Las entregas pendientes no se cancelan: quedan registradas aunque $nombre esté de baja.';
+      : 'Las $cantidad entregas pendientes no se cancelan: quedan registradas aunque $nombre esté '
+            'de baja.';
 
   /// «La deuda de $ 1.200 sigue en tu cuenta aunque María esté de baja.»
   static String deudaSigue(String nombre, int saldoCentavos) =>
