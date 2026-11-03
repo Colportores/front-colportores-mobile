@@ -5,6 +5,7 @@ import '../../domain/services/fuente_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import 'marcador_estado.dart' show VarianteMarcador;
+import 'zonas_mapa.dart';
 
 /// Colores del mapa que no salen del tema: los del canvas de Claude Design (los mismos del estilo
 /// de backend, `tiles/paleta.json`) y los de los puntos.
@@ -156,6 +157,7 @@ final class ConfigVistaMapa extends Equatable {
     required this.precision,
     required this.cercania,
     required this.puntosTocables,
+    this.zonas = const [],
   });
 
   final FuenteMapa fuente;
@@ -182,6 +184,9 @@ final class ConfigVistaMapa extends Equatable {
   /// Quien usa el mapa quiere saber qué punto se tocó.
   final bool puntosTocables;
 
+  /// Las zonas que se dibujan por debajo de los puntos (#511). No responden al toque.
+  final List<ZonaMapa> zonas;
+
   /// Hay casas dibujadas como cuadrados de 40 dp (vista 39, M·02): el toque elige la más cercana
   /// dentro de 44 dp, en vez del área de 48 dp de los puntos.
   bool get hayCuadrados => puntos.any((p) => p.estilo.esCuadrado);
@@ -201,6 +206,7 @@ final class ConfigVistaMapa extends Equatable {
     precision,
     cercania,
     puntosTocables,
+    zonas,
   ];
 }
 
