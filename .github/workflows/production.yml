@@ -8,7 +8,8 @@ name: Production
 #
 # Environment `production` (lo crea Cristian; con revisores requeridos y solo la rama `production`). Tabla completa,
 # con ejemplos y cómo se carga cada una, en docs/ci-variables.md. Si falta algo, el workflow falla y el mensaje dice cuál.
-#   Variables: APP_ENV=production, SUPABASE_URL, SUPABASE_ANON_KEY (+ opcionales de android-build.yml),
+#   Variables: APP_ENV=production, PRODUCTION_SUPABASE_URL, PRODUCTION_SUPABASE_ANON_KEY (+ opcionales de android-build.yml;
+#              los nombres SUPABASE_URL / SUPABASE_ANON_KEY existen a nivel repositorio con los valores de dev: producción no los lee),
 #              PLAY_PACKAGE_NAME (applicationId; hoy com.colportores.colportores_mobile),
 #              PLAY_TRACK (internal | alpha | beta | production; por defecto internal),
 #              PLAY_RELEASE_STATUS (draft | completed; por defecto draft: la versión queda en borrador en la consola).
@@ -44,6 +45,8 @@ jobs:
       artefacto: colportores-production.aab
       exigir-entorno: true
       exigir-firma: true
+      # El applicationId de producción es el de siempre (tiene que coincidir con PLAY_PACKAGE_NAME).
+      aplicar-identidad: false
       retencion-dias: 30
     secrets: inherit
 

@@ -8,7 +8,9 @@ Actions, por **environment**. No hay valores secretos en el repo (es público): 
   nombre «Colportores (staging)», firma de debug, pre-release de GitHub con el APK).
 - **Production** (`production.yml`, push a `production`): usa el environment `production`. Nada es opcional salvo lo
   que dice la tabla; si falta algo el workflow **falla con un mensaje que dice qué variable falta y dónde cargarla**.
-  Nunca cae a las variables de dev del repo.
+  Nunca cae a las variables de dev del repo: lee sus propios nombres `PRODUCTION_SUPABASE_*`, que no existen a nivel
+  repositorio (las `SUPABASE_URL` / `SUPABASE_ANON_KEY` del repo son las del proyecto dev, y `vars.*` mezcla environment
+  y repo, así que con los mismos nombres un olvido en el environment compilaría con la clave de dev).
 - Ningún paso lee secretos en un PR ni en un fork: los workflows solo disparan por push a `staging` / `production` o a
   mano, y el evento `pull_request` de esos archivos no tiene jobs (solo registra el workflow).
 
@@ -20,12 +22,14 @@ Un environment pisa a las variables del repo (Settings → Secrets and variables
 
 | Nombre | Tipo | Environment | Para qué sirve | Obligatoria | Ejemplo (sin secretos) |
 |---|---|---|---|---|---|
-| `SUPABASE_URL` | variable | staging, production | URL del proyecto Supabase al que se conecta la app | production: sí. staging: no (valen las del repo, hoy el proyecto dev; si no hay ninguna se compila sin conexión y avisa) | `https://abcdefghijklmnop.supabase.co` |
-| `SUPABASE_ANON_KEY` | variable | staging, production | Clave anónima (pública por diseño, la autoridad es la RLS). Nunca la `service_role` | igual que la URL | `eyJ...` (la anon key del proyecto) |
+| `SUPABASE_URL` | variable | staging (y repositorio) | URL del proyecto Supabase dev al que se conecta el APK de staging | no (valen las del repo, hoy el proyecto dev; si no hay ninguna se compila sin conexión y avisa). Production no la lee | `https://abcdefghijklmnop.supabase.co` |
+| `SUPABASE_ANON_KEY` | variable | staging (y repositorio) | Clave anónima del proyecto dev (pública por diseño, la autoridad es la RLS). Nunca la `service_role` | igual que la URL. Production no la lee | `sb_publishable_...` |
+| `PRODUCTION_SUPABASE_URL` | variable | production | URL del proyecto Supabase de producción. Distinta de la de dev (el build falla si contiene el ref dev) | production: sí | `https://qrstuvwxyzabcdef.supabase.co` |
+| `PRODUCTION_SUPABASE_ANON_KEY` | variable | production | Clave anónima del proyecto de producción (pública por diseño). Nunca la `service_role`; el build falla si es igual a la `SUPABASE_ANON_KEY` del repo | production: sí | `sb_publishable_...` |
 | `APP_ENV` | variable | production | Marca de que el environment está configurado: tiene que valer `production` | production: sí | `production` |
-| `COLPORTORES_APP_ID_SUFFIX` | variable | staging, production | Sufijo del `applicationId` para instalar al lado de otra app. `ninguno` fuerza vacío | no (staging: `.staging`; production: vacío) | `.staging` |
-| `COLPORTORES_APP_NAME` | variable | staging, production | Nombre en el lanzador. `ninguno` fuerza el de siempre | no (staging: `Colportores (staging)`) | `Colportores (staging)` |
-| `SUPABASE_REF_DEV` | variable | production | Ref del proyecto dev que producción no puede usar (guarda contra configurarla por descuido) | no (por defecto el de la demo) | `ohdsavwpasfpapbyutrv` |
+| `COLPORTORES_APP_ID_SUFFIX` | variable | staging | Sufijo del `applicationId` para instalar al lado de otra app. `ninguno` fuerza vacío. Production no lo aplica (el `applicationId` tiene que coincidir con `PLAY_PACKAGE_NAME`) | no (`.staging`) | `.staging` |
+| `COLPORTORES_APP_NAME` | variable | staging | Nombre en el lanzador. `ninguno` fuerza el de siempre. Production no lo aplica | no (`Colportores (staging)`) | `Colportores (staging)` |
+| `SUPABASE_REF_DEV` | variable | production | Ref adicional que producción no puede usar. Se suma al de la demo (`ohdsavwpasfpapbyutrv`), que siempre se rechaza | no | `otroproyectodev` |
 | `GOOGLE_SERVER_CLIENT_ID` | variable | staging, production | Cliente OAuth web para el respaldo en Drive (`docs/google-drive-oauth.md`) | no (default del código) | `1234-xxxx.apps.googleusercontent.com` |
 | `SOPORTE_WHATSAPP`, `SOPORTE_WHATSAPP_VISIBLE` | variable | staging, production | WhatsApp de soporte y si se muestra | no (default del código) | `59899123456`, `true` |
 | `LOG_LEVEL` | variable | staging, production | Nivel de logs | no (default del código) | `info` |
@@ -55,7 +59,7 @@ una lista; el workflow no pide nada más y ninguna implica una cuenta o un costo
   sus defaults). Firma: cargar los cuatro `ANDROID_KEY*` como secretos del environment `staging` con una keystore de
   prueba; así el APK se actualiza sin desinstalar. Si se quiere respaldo en Drive en staging, el cliente OAuth Android
   se crea para `…colportores_mobile.staging` con el SHA-1 de esa keystore (`docs/google-drive-oauth.md`).
-- **p3, producción en Google Play.** Con el environment `production` cargado (`APP_ENV`, `SUPABASE_*`, firma,
+- **p3, producción en Google Play.** Con el environment `production` cargado (`APP_ENV`, `PRODUCTION_SUPABASE_*`, firma,
   `PLAY_PACKAGE_NAME`, `PLAY_SERVICE_ACCOUNT_JSON`) cada merge a `production` compila el AAB y lo sube a la pista
   `PLAY_TRACK` (interno) en borrador. La cuenta de Play, la keystore de subida y la cuenta de servicio las crea Cristian;
   la primera versión de la app se sube a mano desde Play Console. Para un canal interno en vez de Play basta no cargar
