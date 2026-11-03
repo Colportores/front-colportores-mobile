@@ -87,16 +87,29 @@ void main() {
       expect(TextosBajaPersona.entregasPendientes(2), '2 entregas pendientes');
     });
 
-    test('la segunda confirmación con deuda es la del canvas, con o sin entregas pendientes', () {
-      const canvas = 'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja.';
-      expect(TextosBajaPersona.segundaConfirmacion('María', _cuenta()), canvas);
-      expect(TextosBajaPersona.segundaConfirmacion('María', _cuenta(hechas: 2)), canvas);
+    test('la segunda confirmación solo con deuda es la del canvas, tal cual', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('María', _cuenta(hechas: 2)),
+        'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja.',
+      );
     });
 
-    test('la segunda confirmación sin deuda repite las entregas pendientes', () {
+    test('la segunda confirmación solo con entregas dice que no se cancelan (#509 P2)', () {
       expect(
         TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0)),
-        'Jorge tiene 1 entrega pendiente.',
+        'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.',
+      );
+      expect(
+        TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0, hechas: 0, total: 3)),
+        'Las entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.',
+      );
+    });
+
+    test('la segunda confirmación con deuda y entregas dice las dos, la deuda primero', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('María', _cuenta()),
+        'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja. '
+        'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
       );
     });
 
