@@ -325,7 +325,7 @@ void main() {
           const PersonasCompanion(nombre: Value('Ana Pérez')),
         );
 
-        await snapshot.restoreCadenas([
+        await snapshot.restoreChains([
           [await exportarDe(viejo)],
           [await exportarDe(nuevo)],
         ]);
@@ -351,7 +351,7 @@ void main() {
         await (viejo.update(viejo.personas)).write(const PersonasCompanion(nombre: Value('Vieja')));
         await (nuevo.update(nuevo.personas)).write(const PersonasCompanion(nombre: Value('Nueva')));
 
-        await snapshot.restoreCadenas([
+        await snapshot.restoreChains([
           [await exportarDe(nuevo)],
           [await exportarDe(viejo)],
         ]);
@@ -368,9 +368,9 @@ void main() {
       await expectLater(
         snapshot.restore([utf8.encode(jsonEncode(json))]),
         throwsA(
-          isA<RespaldoDeEsquemaPosteriorException>()
-              .having((e) => e.esquemaDelRespaldo, 'respaldo', db.schemaVersion + 1)
-              .having((e) => e.esquemaDeLaApp, 'app', db.schemaVersion),
+          isA<SnapshotNewerSchemaException>()
+              .having((e) => e.backupSchema, 'respaldo', db.schemaVersion + 1)
+              .having((e) => e.appSchema, 'app', db.schemaVersion),
         ),
       );
       expect(await nombresYFechas(), isEmpty);
@@ -383,7 +383,7 @@ void main() {
 
         await expectLater(
           snapshot.restore([await exportarDe(origen), utf8.encode('esto no es un respaldo')]),
-          throwsA(isA<RespaldoIlegibleException>()),
+          throwsA(isA<SnapshotUnreadableException>()),
         );
         expect(await nombresYFechas(), isEmpty);
       },
@@ -398,7 +398,7 @@ void main() {
 
       await expectLater(
         snapshot.restore([utf8.encode(jsonEncode(json))]),
-        throwsA(isA<RespaldoIlegibleException>()),
+        throwsA(isA<SnapshotUnreadableException>()),
       );
       expect(await nombresYFechas(), isEmpty, reason: 'ni siquiera Ana, que entró antes');
     });

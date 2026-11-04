@@ -38,6 +38,7 @@ InformeRecuperacion informeDePrueba({
   int restauradas = 15,
   int totales = 15,
   DateTime? fecha,
+  int sinAbrir = 0,
 }) => InformeRecuperacion(
   fechaDelRespaldo: fecha ?? DateTime(2026, 10, 22, 3, 10),
   parcial: parcial,
@@ -46,6 +47,7 @@ InformeRecuperacion informeDePrueba({
   trabajosReenviados: 0,
   filasTraidas: const {},
   ahora: DateTime(2026, 10, 25, 9),
+  respaldosSinAbrir: sinAbrir,
 );
 
 /// [ServicioRecuperacion] que hace lo que el test le diga.
