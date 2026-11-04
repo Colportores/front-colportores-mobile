@@ -65,8 +65,23 @@ abstract final class FormatoCuenta {
   /// queda lo depositado. [bajadoEn] es la última bajada del servidor; [ahora], el reloj de la
   /// pantalla. Para confirmar (mapa §2: texto): el canvas solo dibuja «ayer»; «hoy» y la fecha son
   /// los otros dos días posibles.
-  static String sinConexion(DateTime bajadoEn, DateTime ahora) {
-    final momento = bajadoEn.toLocal();
+  ///
+  /// Decisión del 04/11 (mapa §2, coherencia): si la deuda con la casa editora que se guardó
+  /// ([deudaLeidaEn]) es de otro momento que lo depositado, el aviso suma «La deuda con la casa
+  /// editora es de ayer a las 21:00.»; si coinciden, queda el aviso del canvas.
+  static String sinConexion(DateTime bajadoEn, DateTime ahora, {DateTime? deudaLeidaEn}) {
+    final depositado = _cuandoYHora(bajadoEn, ahora);
+    final aviso =
+        '${TextosCuenta.avisoSinConexion}. Lo depositado es $depositado; en mano y por cobrar '
+        'están al día.';
+    if (deudaLeidaEn == null) return aviso;
+    final deuda = _cuandoYHora(deudaLeidaEn, ahora);
+    return deuda == depositado ? aviso : '$aviso La deuda con la casa editora es $deuda.';
+  }
+
+  /// «de ayer a las 21:00», «de hoy a las 07:05» o «del 28/10 a las 09:00».
+  static String _cuandoYHora(DateTime instante, DateTime ahora) {
+    final momento = instante.toLocal();
     final hoy = DateTime(ahora.year, ahora.month, ahora.day);
     final dia = DateTime(momento.year, momento.month, momento.day);
     String dos(int n) => n.toString().padLeft(2, '0');
@@ -75,8 +90,7 @@ abstract final class FormatoCuenta {
       1 => 'de ayer',
       _ => 'del ${dos(dia.day)}/${dos(dia.month)}',
     };
-    return '${TextosCuenta.avisoSinConexion}. Lo depositado es $cuando a las '
-        '${dos(momento.hour)}:${dos(momento.minute)}; en mano y por cobrar están al día.';
+    return '$cuando a las ${dos(momento.hour)}:${dos(momento.minute)}';
   }
 
   /// Lo mismo para el lector de pantalla, que lee mal las flechas: «Subió $ 1.800 contra la semana

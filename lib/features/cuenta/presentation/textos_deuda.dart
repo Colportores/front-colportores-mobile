@@ -3,7 +3,7 @@ import 'providers/deuda_casa_providers.dart' show FalloDeLaDeuda;
 import 'textos_cuenta.dart';
 
 /// Los textos de la deuda con la casa editora (vista 33B, HU-CTA-002). Los del canvas van tal cual;
-/// los que el canvas no dibuja están marcados «a confirmar» (mapa §2: texto) y se listan en el PR.
+/// los demás los dan las decisiones de Cristian y la del agente de decisiones (04/11, mapa §2).
 abstract final class TextosDeuda {
   // --- Del canvas (33A·01, 33B·01 a 33B·03) ---
   static const eyebrow = 'MI CUENTA';
@@ -15,7 +15,7 @@ abstract final class TextosDeuda {
   static const errorTraer = 'No pudimos traer tus pedidos.';
   static const reintentar = 'Reintentar';
 
-  // --- A confirmar (mapa §2: texto) ---
+  // --- Los que el canvas no dibuja ---
   static const volver = 'Volver';
 
   /// Lo que lee el lector de pantalla mientras se pide (33A·03 lo dibuja sin texto).

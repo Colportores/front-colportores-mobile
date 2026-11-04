@@ -392,6 +392,43 @@ void main() {
     DeudaConLaCasaSupabase fuente(Future<Object?> Function() rpc) =>
         DeudaConLaCasaSupabase(rpc, logger: loggerMudo());
 
+    test('si el servidor no contesta a tiempo, es una falla de red y no queda esperando para '
+        'siempre', () async {
+      final nuncaContesta = Completer<Object?>();
+      final fuenteLenta = DeudaConLaCasaSupabase(
+        () => nuncaContesta.future,
+        tope: const Duration(milliseconds: 20),
+        logger: loggerMudo(),
+      );
+
+      await expectLater(fuenteLenta.leer(), throwsA(isA<DeudaSinConexionException>()));
+    });
+
+    test('con el repositorio, el servidor que no contesta es «sin conexión» y lo guardado '
+        'sigue ahí', () async {
+      final nuncaContesta = Completer<Object?>();
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final repo = DeudaConLaCasaRepositoryImpl(
+        DeudaConLaCasaSupabase(
+          () => nuncaContesta.future,
+          tope: const Duration(milliseconds: 20),
+          logger: loggerMudo(),
+        ),
+        DeudaConLaCasaCacheDrift(db),
+        ahora: () => DateTime.utc(2026, 11, 4, 13),
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.leer('col-1');
+
+      expect(resultado.isLeft(), isTrue);
+      resultado.fold(
+        (falla) => expect(falla, isA<FailureDeudaSinConexion>()),
+        (_) => fail('no debía haber lectura'),
+      );
+    });
+
     test('cuando el servidor contesta, devuelve el JSON tal cual', () async {
       expect(await fuente(() async => _respuestaDelCanvas()).leer(), _respuestaDelCanvas());
     });

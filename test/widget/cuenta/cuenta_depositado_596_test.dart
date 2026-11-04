@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/resumen_de_cuenta.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
+import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/textos_cuenta.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cuenta_arnes.dart';
+import '../../helpers/deuda_casa_arnes.dart';
 
 /// La conexión del teléfono a mano.
 final class _Conexion implements MonitorConectividad {
@@ -179,6 +181,69 @@ void main() {
         expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
       },
     );
+  });
+
+  group('33A·02 · Sin conexión con la deuda guardada (#441, decisión del 04/11)', () {
+    Future<void> montarSinRed(WidgetTester tester, DateTime? deudaLeidaEn) async {
+      final repo = RepositorioDeDeudaControlable(
+        guardada: deudaLeidaEn == null ? null : lectura(deudaDelCanvas, leidaEn: deudaLeidaEn),
+      );
+      await montarCuenta(
+        tester,
+        RepositorioDeCuentaControlable(inicial: _conDepositado),
+        overrides: [
+          ..._overrides(_Conexion(TipoConexion.sinConexion)),
+          deudaConLaCasaRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('si la deuda guardada es del mismo momento que lo depositado, queda el aviso del '
+        'canvas', (tester) async {
+      await montarSinRed(tester, _ayerALas21);
+
+      expect(
+        find.text(
+          'Sin conexión. Lo depositado es de ayer a las 21:00; en mano y por cobrar están al día.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('La deuda con la casa editora es'), findsNothing);
+    });
+
+    testWidgets('si la deuda se guardó en otro momento, el aviso suma su hora', (tester) async {
+      await montarSinRed(tester, DateTime(2026, 10, 30, 7, 5));
+
+      expect(
+        find.text(
+          'Sin conexión. Lo depositado es de ayer a las 21:00; en mano y por cobrar están al día. '
+          'La deuda con la casa editora es de hoy a las 07:05.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+    });
+
+    testWidgets('y si la deuda es la vieja, dice su día y no «al día»', (tester) async {
+      await montarSinRed(tester, DateTime(2026, 10, 28, 9));
+
+      expect(
+        find.text(
+          'Sin conexión. Lo depositado es de ayer a las 21:00; en mano y por cobrar están al día. '
+          'La deuda con la casa editora es del 28/10 a las 09:00.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sin deuda guardada el aviso no nombra la deuda', (tester) async {
+      await montarSinRed(tester, null);
+
+      expect(find.textContaining('La deuda con la casa editora es'), findsNothing);
+      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
+    });
   });
 
   group('33A·02 · Sin conexión', () {

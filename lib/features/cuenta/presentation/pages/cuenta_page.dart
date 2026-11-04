@@ -77,6 +77,10 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       final datos = resumen.requireValue;
       final depositadoAl = datos.depositadoAl;
       final sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
+      // La hora de la deuda guardada: si difiere de la de lo depositado, el aviso la nombra.
+      final deudaLeidaEn = ref.watch(
+        deudaConLaCasaProvider(widget.colportorId).select((e) => e.lectura?.leidaEn),
+      );
       cuerpo = [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -89,7 +93,11 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
               children: [
                 if (sinConexion && depositadoAl != null)
                   AvisoSinConexionCuenta(
-                    texto: FormatoCuenta.sinConexion(depositadoAl, ref.read(relojCuentaProvider)()),
+                    texto: FormatoCuenta.sinConexion(
+                      depositadoAl,
+                      ref.read(relojCuentaProvider)(),
+                      deudaLeidaEn: deudaLeidaEn,
+                    ),
                   ),
                 TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)

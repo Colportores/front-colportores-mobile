@@ -70,16 +70,31 @@ class _DeudaCasaPageState extends ConsumerState<DeudaCasaPage> {
       final deuda = lectura.deuda;
       final fallo = estado.fallo;
       cuerpo = [
-        if (fallo != null)
+        if (fallo == FalloDeLaDeuda.sinConexion)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: AvisoSinConexionCuenta(
                 texto: FormatoDeuda.avisoDeLoGuardado(
-                  fallo,
+                  fallo!,
                   lectura.leidaEn,
                   ref.read(relojCuentaProvider)(),
                 ),
+              ),
+            ),
+          )
+        else if (fallo == FalloDeLaDeuda.noDisponible)
+          // «No pudimos actualizarla…» se puede reintentar (decisión del 04/11, mapa §2).
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: BannerErrorCuenta(
+                texto: FormatoDeuda.avisoDeLoGuardado(
+                  fallo!,
+                  lectura.leidaEn,
+                  ref.read(relojCuentaProvider)(),
+                ),
+                alReintentar: () => ref.read(provider.notifier).actualizar(),
               ),
             ),
           ),

@@ -40,9 +40,14 @@ abstract interface class DeudaConLaCasaRemoteDataSource {
 /// de `supabase_flutter` (ADR-013, sin BFF; backend-supabase 0164). No recibe parámetros: el servidor
 /// usa al usuario del JWT, así que cada colportor ve solo lo suyo. Al log va solo el SQLSTATE.
 final class DeudaConLaCasaSupabase implements DeudaConLaCasaRemoteDataSource {
-  /// [llamarRpc] es la costura de los tests: devuelve lo que contesta el RPC.
-  DeudaConLaCasaSupabase(this._llamarRpc, {AppLogger? logger})
+  /// [llamarRpc] es la costura de los tests: devuelve lo que contesta el RPC. Si no contesta en
+  /// [tope] se da por perdido (sin conexión): una conexión a medias, con el socket abierto y sin
+  /// datos, no puede dejar la pantalla cargando para siempre.
+  DeudaConLaCasaSupabase(this._llamarRpc, {this.tope = topeDeLaLectura, AppLogger? logger})
     : _log = logger ?? AppLogger.instance;
+
+  /// Cuánto se espera la respuesta del servidor antes de contarla como sin conexión.
+  static const topeDeLaLectura = Duration(seconds: 20);
 
   /// Sobre el cliente de Supabase de la app.
   DeudaConLaCasaSupabase.conCliente(SupabaseClient cliente, {AppLogger? logger})
@@ -51,10 +56,13 @@ final class DeudaConLaCasaSupabase implements DeudaConLaCasaRemoteDataSource {
   final Future<Object?> Function() _llamarRpc;
   final AppLogger _log;
 
+  /// Cuánto se espera la respuesta.
+  final Duration tope;
+
   @override
   Future<Object?> leer() async {
     try {
-      return await _llamarRpc();
+      return await _llamarRpc().timeout(tope);
     } on PostgrestException catch (e) {
       _log.warn(LogModulo.net, 'DEUDA_CASA_RPC_FAIL', 'el RPC de la deuda respondió con error', {
         'code': e.code,

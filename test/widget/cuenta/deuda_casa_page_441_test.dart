@@ -342,6 +342,40 @@ void main() {
       );
       expect(find.text(r'$ 18.400'), findsOneWidget);
       expect(find.textContaining('Sin conexión'), findsNothing);
+      // Decisión del 04/11: «No pudimos actualizarla…» se puede reintentar.
+      expect(find.text('Reintentar'), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('cuenta_reintentar'))).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
+
+    testWidgets('«Reintentar» de lo guardado pide de nuevo, deja lo guardado a la vista y dos '
+        'toques seguidos piden una sola vez', (tester) async {
+      final repo = RepositorioDeDeudaControlable(
+        guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
+      );
+      await montarDeuda(tester, repo);
+      repo.fallar();
+      await tester.pump();
+      await tester.pump();
+      expect(repo.lecturas, 1);
+
+      await tester.tap(find.byKey(const Key('cuenta_reintentar')));
+      await tester.tap(find.byKey(const Key('cuenta_reintentar')), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump();
+
+      expect(repo.lecturas, 2);
+      expect(find.text('Reintentar'), findsNothing);
+      expect(find.textContaining('No pudimos actualizarla'), findsNothing);
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+
+      // Y si falla otra vez, el botón vuelve.
+      repo.fallar();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Reintentar'), findsOneWidget);
     });
 
     testWidgets('al volver a pedir, el aviso se va, lo guardado sigue a la vista y lo nuevo '
