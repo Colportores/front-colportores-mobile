@@ -67,6 +67,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
     required this.colportorId,
     this.activa = true,
     this.alAbrirUbicacion,
+    this.casaAbreSuHoja = false,
     this.alRegistrar,
     this.alRevisarDuplicados,
   });
@@ -81,6 +82,11 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// (vista 39, C·01); una pantalla de destino propia (las ubicaciones del espacio, vista 11) la
   /// reemplaza.
   final AlAbrirUbicacion? alAbrirUbicacion;
+
+  /// Con [alAbrirUbicacion], una casa abre igual la hoja de la casa (vista 39, C·01) y el destino queda
+  /// para lo que puede tener deptos (edificio y negocio): una casa no tiene espacios que gestionar, y la
+  /// hoja de la ubicación (vista 11) solo le mostraría «Editar casa».
+  final bool casaAbreSuHoja;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
@@ -218,22 +224,42 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// pasó; su «Reactivar» es el de la fila.
   Future<void> _abrirCasa(ItemListaUbicacion item) async {
     final destino = widget.alAbrirUbicacion;
-    if (destino != null) {
+    if (destino != null && !_laCasaAbreSuHoja(item)) {
       destino(item.ubicacion.id, item.distanciaMetros);
       return;
     }
     if (_abriendoCasa) return;
     _abriendoCasa = true;
     try {
-      await mostrarHojaCasa(
-        context,
-        colportorId: widget.colportorId,
-        item: item,
-        alReactivar: _reactivar,
-      );
+      await _mostrarHojaCasa(item);
     } finally {
       _abriendoCasa = false;
     }
+  }
+
+  bool _laCasaAbreSuHoja(ItemListaUbicacion item) =>
+      widget.casaAbreSuHoja && item.ubicacion.tipo == TipoUbicacion.casa;
+
+  Future<void> _mostrarHojaCasa(ItemListaUbicacion item) => mostrarHojaCasa(
+    context,
+    colportorId: widget.colportorId,
+    item: item,
+    alReactivar: _reactivar,
+  );
+
+  /// «Abrir la existente» del aviso de un duplicado: la hoja de esa ubicación, que es la de la casa si
+  /// es una casa y [ListaUbicacionesPage.casaAbreSuHoja]. No pasa por la guarda de [_abrirCasa]: se
+  /// llega desde la hoja de otra casa, que todavía se está cerrando.
+  void _abrirLaExistente(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId && _laCasaAbreSuHoja(item)) {
+        unawaited(_mostrarHojaCasa(item));
+        return;
+      }
+    }
+    widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
   }
 
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
@@ -260,7 +286,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
+        _abrirLaExistente(ubicacionId);
       case null:
         break;
     }
