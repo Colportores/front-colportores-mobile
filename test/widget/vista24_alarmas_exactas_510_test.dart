@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/recordatorio_
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/pages/notificaciones_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -127,6 +128,25 @@ void main() {
       expect(_apagadas, findsOneWidget);
       expect(_aviso, findsOneWidget);
       expect(_abrir, findsOneWidget);
+    });
+
+    testWidgets('con «Recordatorios de agenda» apagados no hay aviso, y vuelve apenas se prenden', (
+      tester,
+    ) async {
+      final t = _telefono();
+      t.preferencias.preferencias = const PreferenciasRecordatorios(activados: false);
+      await _montar(tester, t);
+
+      expect(_aviso, findsNothing);
+      expect(_abrir, findsNothing);
+
+      await tester.tap(_interruptor);
+      await tester.pumpAndSettle();
+      expect(_aviso, findsOneWidget);
+
+      await tester.tap(_interruptor);
+      await tester.pumpAndSettle();
+      expect(_aviso, findsNothing);
     });
 
     testWidgets('el aviso es de lectura inmediata para el lector de pantalla y el botón tiene '

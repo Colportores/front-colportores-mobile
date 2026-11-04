@@ -26,7 +26,8 @@ import '../widgets/preferencias_recordatorios_widgets.dart';
 /// - Alarmas exactas apagadas («Aviso exacto», #510): un aviso dice que los recordatorios pueden llegar
 ///   tarde y «Abrir ajustes» lleva a «Alarmas y recordatorios». Al volver, el aviso se va solo y los
 ///   recordatorios ya programados se reprograman exactos (`alarmasExactasProvider`). Se ve aunque el
-///   permiso de notificaciones esté apagado: son dos permisos distintos.
+///   permiso de notificaciones esté apagado (son dos permisos distintos), pero no con «Recordatorios de
+///   agenda» apagados.
 /// - Con el permiso apagado las preferencias se ven y se pueden cambiar: valen cuando se activen
 ///   (24B·04).
 /// - Apagar «Recordatorios de agenda» deja la anticipación sin tocar (24B·02); cambiar la anticipación
@@ -180,8 +181,14 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
 
   /// «Aviso exacto» (#510): sin «Alarmas y recordatorios» los recordatorios pueden llegar tarde. Con el
   /// permiso prendido, sin concepto (iOS) o sin saber, no hay nada que decir.
-  List<Widget> _alarmas(AsyncValue<EstadoAlarmasExactas> alarmas) {
+  List<Widget> _alarmas(
+    AsyncValue<EstadoAlarmasExactas> alarmas,
+    AsyncValue<EstadoPreferenciasRecordatorios> preferencias,
+  ) {
     if (alarmas.value != EstadoAlarmasExactas.apagadas) return const [];
+    // Con «Recordatorios de agenda» apagados no hay recordatorios que lleguen tarde (decidido el
+    // 03/11, mapa §2): el aviso vuelve apenas se prenden.
+    if (preferencias.value?.preferencias.activados == false) return const [];
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
     return [
@@ -326,7 +333,7 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
                       const CargandoPreferencias()
                     else ...[
                       ..._permiso(estado),
-                      ..._alarmas(alarmas),
+                      ..._alarmas(alarmas, preferencias),
                       ..._preferencias(preferencias),
                     ],
                   ],
