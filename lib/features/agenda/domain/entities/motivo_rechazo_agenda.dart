@@ -13,6 +13,20 @@ enum MotivoRechazoAgenda {
   /// El vínculo persona ↔ espacio no está en el teléfono (o está dado de baja, o es de otra casa).
   personaInexistente('persona', 'No encontramos a esa persona en tu teléfono. Elegila de nuevo.'),
 
+  /// La ubicación alternativa de la agenda (`ubicacion_alt_id`) no está en el teléfono o está dada de
+  /// baja: el servidor rechaza una FK rota y la agenda no subiría.
+  ubicacionAltInexistente(
+    'ubicacion',
+    'No encontramos esa otra ubicación en tu teléfono. Elegila de nuevo o agendá sin ella.',
+  ),
+
+  /// La jornada de la visita (`jornada_id`) no está en el teléfono o está dada de baja.
+  jornadaInexistente(
+    'jornada',
+    'No encontramos la jornada de esta visita en tu teléfono. Volvé al mapa y registrá la visita de '
+        'nuevo.',
+  ),
+
   /// La visita no está en el teléfono.
   visitaInexistente('visita', 'Esa visita ya no está en tu teléfono.'),
 

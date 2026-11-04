@@ -81,6 +81,12 @@ abstract final class TextosEntrevista {
       'La casa de esta entrevista ya no está en tu teléfono, así que la entrevista se cerró sin '
       'guardar. Podés seguir.';
 
+  /// R·07 (sin inicio) con la casa ya fuera. No hay entrevista que cerrar: lo que no se
+  /// guardó es la visita. Dice qué pasó y qué hacer.
+  static const sinLugarSinInicio =
+      'La casa de esta entrevista ya no está en tu teléfono, así que no pudimos guardar la visita. '
+      'Cerrá esta hoja y volvé al mapa.';
+
   /// Propuesta: ya no hay entrevista (otro toque la terminó).
   static const yaNoHayEntrevista = 'Esta entrevista ya no está en curso.';
 

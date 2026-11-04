@@ -125,6 +125,9 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
   /// La última falla al guardar (23A·06); `null` si no hay.
   Failure? _falla;
 
+  /// Para traer el aviso de falla a la vista si la persona había desplazado el formulario.
+  final _claveAvisoFalla = GlobalKey();
+
   /// La hora que la persona ya confirmó con «Agendar igual». Mientras no cambien el día ni la hora, un
   /// «Reintentar» tras una falla no vuelve a preguntar; si cambian, la hoja vuelve a aparecer.
   DateTime? _horaConfirmada;
@@ -377,7 +380,23 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
           _enviando = false;
           _falla = falla ?? const FailureInesperado();
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _mostrarElAvisoDeFalla());
     }
+  }
+
+  /// El aviso rojo va entre el tipo y la hora: si la persona estaba más abajo (texto grande, nota con
+  /// el teclado) lo trae a la vista para que vea por qué el botón pasó a «Reintentar».
+  void _mostrarElAvisoDeFalla() {
+    if (!mounted) return;
+    final contexto = _claveAvisoFalla.currentContext;
+    if (contexto == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        duration: const Duration(milliseconds: 200),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      ),
+    );
   }
 
   /// «Av. Italia 1234», con el depto si es un edificio: lo que lleva el aviso de la visita. Nunca el
@@ -585,7 +604,14 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
                         const SizedBox(height: 16),
                         KeyedSubtree(
                           key: ClavesAgendarVisita.avisoFalla,
-                          child: AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _textoFalla),
+                          child: KeyedSubtree(
+                            key: _claveAvisoFalla,
+                            child: AvisoAlta(
+                              color: ColoresAlta.rojo,
+                              glyph: '!',
+                              texto: _textoFalla,
+                            ),
+                          ),
                         ),
                       ],
                       if (sinPermiso) ...[

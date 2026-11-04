@@ -65,6 +65,9 @@ Future<SalidaTerminoEntrevista?> mostrarHojaTerminoEntrevista(
   isScrollControlled: true,
   useSafeArea: true,
   showDragHandle: false,
+  // Sin arrastrar para cerrar: con el guardado en vuelo la hoja no se puede cerrar, y el arrastre no
+  // pasa por el `PopScope` (QA #450). Las salidas son el atrás y el toque afuera.
+  enableDrag: false,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -261,85 +264,93 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
     final entrada = _entrada;
     final salida = _salida;
     final aviso = _avisoDeHora;
-    return SafeArea(
-      top: false,
-      child: SingleChildScrollView(
-        key: ClavesEntrevista.hojaTermino,
-        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _Asa(),
-            const SizedBox(height: 14),
-            Semantics(
-              header: true,
-              child: Text(TextosEntrevista.terminoTitulo, style: theme.textTheme.headlineMedium),
-            ),
-            if (lugar.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(lugar, style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris)),
-            ],
-            const SizedBox(height: 16),
-            if (widget.entradaInferida && entrada != null) ...[
-              AvisoAlta(
-                key: ClavesEntrevista.avisoSinInicio,
-                color: ColoresAlta.ambarBorde,
-                glyph: '!',
-                texto: TextosEntrevista.sinInicio(horaCorta(entrada)),
+    return PopScope(
+      // Con el guardado en vuelo la hoja no se cierra: sin ella, nadie recibe el resultado y la
+      // colportora se queda sin la confirmación (o sin el aviso de que no se guardó).
+      canPop: !_guardando,
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          key: ClavesEntrevista.hojaTermino,
+          padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _Asa(),
+              const SizedBox(height: 14),
+              Semantics(
+                header: true,
+                child: Text(TextosEntrevista.terminoTitulo, style: theme.textTheme.headlineMedium),
               ),
-              const SizedBox(height: 12),
-            ],
-            _TarjetaDeHoras(
-              ahora: _ahora(),
-              entrada: entrada,
-              salida: salida,
-              alElegirEntrada: _guardando ? null : _elegirEntrada,
-              alElegirSalida: _guardando ? null : _elegirSalida,
-            ),
-            if (aviso != null) ...[
-              const SizedBox(height: 12),
-              AvisoAlta(
-                key: ClavesEntrevista.avisoPedirHora,
-                color: ColoresAlta.tinta,
-                glyph: 'i',
-                texto: aviso,
+              if (lugar.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(lugar, style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris)),
+              ],
+              const SizedBox(height: 16),
+              if (widget.entradaInferida && entrada != null) ...[
+                AvisoAlta(
+                  key: ClavesEntrevista.avisoSinInicio,
+                  color: ColoresAlta.ambarBorde,
+                  glyph: '!',
+                  texto: TextosEntrevista.sinInicio(horaCorta(entrada)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              _TarjetaDeHoras(
+                ahora: _ahora(),
+                entrada: entrada,
+                salida: salida,
+                alElegirEntrada: _guardando ? null : _elegirEntrada,
+                alElegirSalida: _guardando ? null : _elegirSalida,
+                // R·07: la entrada se tomó de la visita anterior, así que «Duración» no se afirma
+                // (el canvas no la dibuja).
+                conDuracion: !widget.entradaInferida,
               ),
-            ],
-            const SizedBox(height: 18),
-            Semantics(
-              header: true,
-              child: Text(
-                TextosEntrevista.hayVenta,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colores.gris,
-                  letterSpacing: 1.4,
+              if (aviso != null) ...[
+                const SizedBox(height: 12),
+                AvisoAlta(
+                  key: ClavesEntrevista.avisoPedirHora,
+                  color: ColoresAlta.tinta,
+                  glyph: 'i',
+                  texto: aviso,
+                ),
+              ],
+              const SizedBox(height: 18),
+              Semantics(
+                header: true,
+                child: Text(
+                  TextosEntrevista.hayVenta,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colores.gris,
+                    letterSpacing: 1.4,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              key: ClavesEntrevista.registrarVenta,
-              onPressed: _completa && !_guardando ? _registrarVenta : null,
-              child: const Text(TextosEntrevista.registrarVenta),
-            ),
-            const SizedBox(height: 10),
-            if (_error != null) ...[
-              AvisoAlta(
-                key: ClavesEntrevista.avisoError,
-                color: ColoresAlta.rojo,
-                glyph: '!',
-                texto: _error!,
+              const SizedBox(height: 8),
+              FilledButton(
+                key: ClavesEntrevista.registrarVenta,
+                onPressed: _completa && !_guardando ? _registrarVenta : null,
+                child: const Text(TextosEntrevista.registrarVenta),
               ),
               const SizedBox(height: 10),
-            ],
-            OutlinedButton(
-              key: ClavesEntrevista.guardarYVolver,
-              onPressed: _completa && !_guardando ? _guardar : null,
-              child: Text(
-                _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarYVolver,
+              if (_error != null) ...[
+                AvisoAlta(
+                  key: ClavesEntrevista.avisoError,
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _error!,
+                ),
+                const SizedBox(height: 10),
+              ],
+              OutlinedButton(
+                key: ClavesEntrevista.guardarYVolver,
+                onPressed: _completa && !_guardando ? _guardar : null,
+                child: Text(
+                  _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarYVolver,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -355,6 +366,7 @@ class _TarjetaDeHoras extends StatelessWidget {
     required this.salida,
     required this.alElegirEntrada,
     required this.alElegirSalida,
+    required this.conDuracion,
   });
 
   final DateTime ahora;
@@ -363,10 +375,18 @@ class _TarjetaDeHoras extends StatelessWidget {
   final VoidCallback? alElegirEntrada;
   final VoidCallback? alElegirSalida;
 
+  /// `false` en R·07, donde la hora de entrada es una suposición.
+  final bool conDuracion;
+
   @override
   Widget build(BuildContext context) {
     final colores = Theme.of(context).extension<ColoresColportaje>()!;
-    final duracion = entrada != null && salida != null ? salida!.difference(entrada!) : null;
+    // Con el reloj atrasado la salida quedaría antes de la entrada: no se muestra una duración que
+    // miente («menos de 1 min»).
+    final diferencia = entrada != null && salida != null ? salida!.difference(entrada!) : null;
+    final duracion = conDuracion && diferencia != null && !diferencia.isNegative
+        ? diferencia
+        : null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
