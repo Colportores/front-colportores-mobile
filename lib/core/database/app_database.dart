@@ -148,10 +148,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 26: `devolucion` pierde `dinero_retenido` y `monto_reembolsado` (backend-supabase 0157, decisión
   ///   de Cristian, 03/11, «Devol. saldo»): nunca queda plata a favor del cliente, así que la
   ///   devolución ya no guarda dinero (#609).
+  /// - 27: `cobranza` pierde `numero_cuota` (backend-supabase 0156, decisión de Cristian, 03/11): el
+  ///   cobro ya no guarda qué número de cuota paga (#608).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 26;
+  static const int versionEsquema = 27;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -414,6 +416,14 @@ class AppDatabase extends _$AppDatabase {
     // encolar al migrar. `alterTable` vuelve a crear los índices que ya tenía la tabla.
     from25To26: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.devolucion));
+    },
+    // Saca de `cobranza` la columna `numero_cuota` (backend-supabase 0156): el cobro ya no guarda qué
+    // número de cuota paga. Se reescribe la tabla y se conserva cada cobro con el resto de sus columnas
+    // (la venta, el monto, el medio, los datos de la tarjeta y de la transferencia, la auditoría); lo
+    // que valía `numero_cuota` se pierde (datos simulados hasta diciembre) y nada se vuelve a encolar
+    // al migrar. `alterTable` vuelve a crear el índice `cobranza_venta_idx`.
+    from26To27: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.cobranza));
     },
   );
 }
