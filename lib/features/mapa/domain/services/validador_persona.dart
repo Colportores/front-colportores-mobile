@@ -4,7 +4,8 @@ enum ProblemaNombre { vacio, corto }
 /// Lo que está mal en el teléfono de una persona.
 enum ProblemaTelefono { caracteres, incompleto, sobran }
 
-/// Las reglas de los campos del alta de una persona (HU-UBI-008). Dart puro.
+/// Las reglas de los campos del alta (HU-UBI-008) y de la edición (HU-UBI-010) de una persona: las
+/// mismas validaciones. Dart puro.
 ///
 /// **Teléfono — pendiente «mapa §2: validación»** (HU-UBI-008, supuesto S20; PREGUNTA del canvas
 /// 32A·04): la HU pide validar el formato uruguayo «si tiene `+598`», aceptar los números del exterior
@@ -70,6 +71,12 @@ abstract final class ValidadorPersona {
   static String mensajeNombre(ProblemaNombre problema) => switch (problema) {
     ProblemaNombre.vacio => 'Escribí al menos el nombre.',
     ProblemaNombre.corto => 'El nombre necesita al menos 2 letras.',
+  };
+
+  /// Como [mensajeNombre], pero al editar (canvas 32C·02): el nombre ya existía y se lo vació.
+  static String mensajeNombreEdicion(ProblemaNombre problema) => switch (problema) {
+    ProblemaNombre.vacio => 'El nombre no puede quedar vacío.',
+    ProblemaNombre.corto => mensajeNombre(ProblemaNombre.corto),
   };
 
   static String mensajeTelefono(ProblemaTelefono problema) => switch (problema) {

@@ -1,10 +1,15 @@
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
+import '../entities/contexto_edicion_persona.dart';
 import '../entities/espacio_persona.dart';
 import '../entities/nota_persona.dart';
 import '../entities/persona.dart';
 import '../entities/persona_del_espacio.dart';
+
+/// Lo que devuelve [PersonaRepository.modificar]: la persona como quedó y si hubo algo que escribir
+/// (`false` si lo que se pidió ya era lo que estaba).
+typedef ResultadoModificarPersona = ({Persona persona, bool huboCambios});
 
 /// Persistencia de las personas de un espacio (HU-UBI-008, ADR-001).
 ///
@@ -26,6 +31,26 @@ abstract interface class PersonaRepository {
   /// Las personas activas de [espacioId], de la más vieja a la más nueva, que se actualiza sola
   /// cuando se agrega o se da de baja una. Un error de lectura sale por el `Stream`.
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId);
+
+  /// La persona [personaId] con lo que hace falta para editarla (HU-UBI-010): cómo está hoy y si se
+  /// la puede cambiar. `null` si ya no está en el teléfono.
+  Future<Either<Failure, ContextoEdicionPersona?>> leerParaEditar(String personaId);
+
+  /// Cambia el nombre, el apellido y el teléfono de [personaId] (HU-UBI-010), **todo o nada**, y deja
+  /// una fila `persona_modificada` en el `audit_log` local con solo el id (nunca los valores). Los
+  /// textos llegan ya limpios; [telefono] `null` es «sin teléfono». `updated_at` pasa a [ahora] (nunca
+  /// hacia atrás) y `sync_version` no se toca: la persona es local-only, no se encola nada.
+  ///
+  /// Si no cambia nada, no escribe nada (ni `updated_at` ni auditoría) y devuelve `huboCambios: false`.
+  /// Si la persona no está o está en solo lectura (de baja, o sin un espacio activo),
+  /// `FailureValidacion` con el campo `persona`.
+  Future<Either<Failure, ResultadoModificarPersona>> modificar({
+    required String personaId,
+    required String nombre,
+    required String apellido,
+    required String? telefono,
+    required DateTime ahora,
+  });
 
   /// Las personas **dadas de baja** de [espacioId] (su vínculo sigue activo), la baja más reciente
   /// primero; se actualiza sola. Es la lista de «Ver bajas» (32D·04). Un error de lectura sale por el

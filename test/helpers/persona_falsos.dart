@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_edicion_persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.dart';
@@ -16,10 +18,24 @@ import 'package:dartz/dartz.dart';
 /// Un alta que le llegó al repositorio.
 typedef AltaRecibida = ({Persona persona, EspacioPersona vinculo, NotaPersona? nota});
 
+/// Una edición que le llegó al repositorio (HU-UBI-010).
+typedef EdicionRecibida = ({
+  String personaId,
+  String nombre,
+  String apellido,
+  String? telefono,
+  DateTime ahora,
+});
+
 /// [PersonaRepository] en memoria. Cada llamada a [registrar] toma el siguiente resultado de
 /// [resultados] (si no queda, éxito con la persona recibida); si [compuerta] no es `null`, espera a que
 /// se complete antes de contestar (para tener un guardado «en curso»). Las altas exitosas se agregan a
 /// las personas que [observarDelEspacio] emite.
+///
+/// La edición (HU-UBI-010): [contextos] son las personas que [leerParaEditar] sabe leer (por `id`);
+/// cada [modificar] toma el siguiente de [resultadosModificar] (`null` = éxito), espera a
+/// [compuertaModificar] si hay una, anota la edición en [editadas] y, si salió bien, deja la persona
+/// cambiada en [contextos] (así volver a abrirla la lee ya cambiada).
 class PersonaRepositorioFalso implements PersonaRepository {
   PersonaRepositorioFalso({List<Failure?>? resultados, this.compuerta})
     : resultados = resultados ?? [];
@@ -29,6 +45,19 @@ class PersonaRepositorioFalso implements PersonaRepository {
   Completer<void>? compuerta;
 
   final recibidas = <AltaRecibida>[];
+
+  final contextos = <String, ContextoEdicionPersona>{};
+  final resultadosModificar = <Failure?>[];
+  Completer<void>? compuertaModificar;
+  final editadas = <EdicionRecibida>[];
+
+  /// Si no es `null`, [leerParaEditar] falla con esto (una vez, y se limpia).
+  Failure? fallaAlLeerParaEditar;
+
+  /// Si no es `null`, [leerParaEditar] espera a que se complete antes de contestar (el «cargando»).
+  Completer<void>? compuertaLeer;
+  var lecturasParaEditar = 0;
+
   final _guardadas = <PersonaDelEspacio>[];
   final _cambios = StreamController<List<PersonaDelEspacio>>.broadcast();
 
@@ -126,6 +155,53 @@ class PersonaRepositorioFalso implements PersonaRepository {
 
   /// Deja la lista inicial de personas, sin pasar por [registrar].
   void sembrar(List<PersonaDelEspacio> personas) => _guardadas.addAll(personas);
+
+  @override
+  Future<Either<Failure, ContextoEdicionPersona?>> leerParaEditar(String personaId) async {
+    lecturasParaEditar += 1;
+    await compuertaLeer?.future;
+    final falla = fallaAlLeerParaEditar;
+    if (falla != null) {
+      fallaAlLeerParaEditar = null;
+      return Left(falla);
+    }
+    return Right(contextos[personaId]);
+  }
+
+  @override
+  Future<Either<Failure, ResultadoModificarPersona>> modificar({
+    required String personaId,
+    required String nombre,
+    required String apellido,
+    required String? telefono,
+    required DateTime ahora,
+  }) async {
+    editadas.add((
+      personaId: personaId,
+      nombre: nombre,
+      apellido: apellido,
+      telefono: telefono,
+      ahora: ahora,
+    ));
+    await compuertaModificar?.future;
+    final resultado = resultadosModificar.isEmpty ? null : resultadosModificar.removeAt(0);
+    if (resultado != null) return Left(resultado);
+    final actual = contextos[personaId]!;
+    final antes = actual.persona;
+    if (antes.nombre == nombre && antes.apellido == apellido && antes.telefono == telefono) {
+      return Right((persona: antes, huboCambios: false));
+    }
+    final despues = Persona(
+      id: antes.id,
+      nombre: nombre,
+      apellido: apellido,
+      telefono: telefono,
+      notasGlobales: antes.notasGlobales,
+      auditoria: antes.auditoria.copyWith(updatedAt: ahora),
+    );
+    contextos[personaId] = ContextoEdicionPersona(persona: despues, espacioId: actual.espacioId);
+    return Right((persona: despues, huboCambios: true));
+  }
 }
 
 /// [PersonaRepository] cuya lectura falla (error al leer los clientes).
@@ -140,6 +216,19 @@ final class PersonaRepositorioQueNoLee implements PersonaRepository {
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) =>
       Stream.error(StateError('no se pudo leer'));
+
+  @override
+  Future<Either<Failure, ContextoEdicionPersona?>> leerParaEditar(String personaId) async =>
+      const Left(FailureInesperado(causa: 'StateError'));
+
+  @override
+  Future<Either<Failure, ResultadoModificarPersona>> modificar({
+    required String personaId,
+    required String nombre,
+    required String apellido,
+    required String? telefono,
+    required DateTime ahora,
+  }) async => const Left(FailureInesperado(causa: 'StateError'));
 
   @override
   Stream<List<PersonaDelEspacio>> observarBajasDelEspacio(String espacioId) =>
@@ -220,6 +309,32 @@ PersonaDelEspacio clienteDePersonas(
     vinculo: EspacioPersona(id: 'ep-$id', espacioId: 'esp-1', personaId: id, auditoria: a),
   );
 }
+
+/// La persona que se edita en los tests de la vista 32C: «María Fernández», 098 765 432, activa.
+ContextoEdicionPersona contextoDeEdicion({
+  String id = 'per-1',
+  String nombre = 'María',
+  String apellido = 'Fernández',
+  String? telefono = '098 765 432',
+  String? espacioId = 'esp-1',
+  CausaSoloLectura? causa,
+  DateTime? bajaDesde,
+  String? numeroDepto,
+  String? direccion,
+}) => ContextoEdicionPersona(
+  persona: Persona(
+    id: id,
+    nombre: nombre,
+    apellido: apellido,
+    telefono: telefono,
+    auditoria: auditoriaPersonas(deletedAt: bajaDesde),
+  ),
+  espacioId: espacioId,
+  causa: causa,
+  bajaDesde: bajaDesde,
+  numeroDepto: numeroDepto,
+  direccion: direccion,
+);
 
 /// Una persona ya dada de baja el [baja] (por defecto el 22/10 de 2026, 15:00 UTC).
 PersonaDelEspacio clienteDeBajaDePersonas(
