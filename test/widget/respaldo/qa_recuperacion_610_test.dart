@@ -3,7 +3,6 @@
 // textos en el borde (un solo respaldo en la lista de varios), tamaños y capturas.
 // Las capturas solo se sacan con `--dart-define=QA_CAPTURAS=true` y van a `.dart_tool/qa_capturas`.
 import 'package:colportores_mobile/features/respaldo/domain/services/servicio_recuperacion.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -130,13 +129,17 @@ void main() {
       await liberar175(tester, a);
     });
 
-    testWidgets('H1: un solo respaldo dentro de «varios» no dice «1 respaldos»', (tester) async {
-      final a = ArnesRecuperacion();
-      a.servicio.busqueda = VariosRespaldosEnDrive([respaldo610('a')]);
-      await abrirAsistente175(tester, a);
-      expect(find.textContaining('1 respaldos'), findsNothing);
-      await liberar175(tester, a);
-    }, skip: !_verHallazgos); // skip: QA #610: con 1 solo respaldo en VariosRespaldosEnDrive el texto dice «Encontramos 1 respaldos» (menor)
+    testWidgets(
+      'H1: un solo respaldo dentro de «varios» no dice «1 respaldos»',
+      (tester) async {
+        final a = ArnesRecuperacion();
+        a.servicio.busqueda = VariosRespaldosEnDrive([respaldo610('a')]);
+        await abrirAsistente175(tester, a);
+        expect(find.textContaining('1 respaldos'), findsNothing);
+        await liberar175(tester, a);
+      },
+      skip: !_verHallazgos,
+    ); // skip: QA #610: con 1 solo respaldo en VariosRespaldosEnDrive el texto dice «Encontramos 1 respaldos» (menor)
   });
 
   group('Configuración: la fila «Recuperar mi respaldo»', () {

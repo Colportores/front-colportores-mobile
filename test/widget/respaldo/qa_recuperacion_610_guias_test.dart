@@ -1,7 +1,6 @@
 // QA #610: guías de accesibilidad de Flutter sobre lo que suma el PR (varios respaldos juntos, la hoja
 // de «Empezar sin recuperar» y la fila «Recuperar mi respaldo» de Configuración), en 360x640 y 412x915,
 // con texto 1,0 y 2,0. Aparte del resto del QA por el contraste (ver el de #175).
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_recuperacion_175_arnes.dart';
