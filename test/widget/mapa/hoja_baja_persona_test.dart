@@ -195,8 +195,12 @@ void main() {
       await aLaSegunda(tester);
 
       expect(find.text('¿Seguro?'), findsOneWidget);
+      // Con deuda y una entrega pendiente van las dos frases, la deuda primero (#509 P2).
       expect(
-        find.text('La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja.'),
+        find.text(
+          'La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja. '
+          'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+        ),
         findsOneWidget,
       );
       expect(_siDarDeBaja, findsOneWidget);
@@ -285,7 +289,12 @@ void main() {
 
       expect(repo.bajasRecibidas, isEmpty);
       expect(find.text('¿Seguro?'), findsOneWidget);
-      expect(find.text('Jorge tiene 1 entrega pendiente.'), findsOneWidget);
+      expect(
+        find.text(
+          'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.',
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('La deuda'), findsNothing);
 
       await tester.tap(_siDarDeBaja);
@@ -324,7 +333,10 @@ void main() {
       await asentar(tester);
 
       expect(
-        find.text('La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja.'),
+        find.text(
+          'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja. '
+          'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+        ),
         findsOneWidget,
       );
     });

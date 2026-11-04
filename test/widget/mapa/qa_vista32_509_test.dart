@@ -93,9 +93,14 @@ void main() {
               dentroDeLaPantalla(tester, find.text('Cancelar'));
             } else {
               expect(find.text('¿Seguro?'), findsOneWidget);
+              // Decisión #509 P2: con entregas, la segunda confirmación dice que no se cancelan
+              // (con deuda, después de la frase de la deuda).
+              final entrega = esPlural
+                  ? 'Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.'
+                  : 'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.';
               final cuerpo = conDeuda
-                  ? 'La deuda de ${FormatoBajaPersona.monto(120000)} sigue en tu cuenta aunque Jorge esté de baja.'
-                  : 'Jorge tiene $entregas.';
+                  ? 'La deuda de ${FormatoBajaPersona.monto(120000)} sigue en tu cuenta aunque Jorge esté de baja. $entrega'
+                  : entrega;
               expect(find.text(cuerpo), findsOneWidget);
               await verEnPantalla(tester, find.text('Sí, dar de baja'));
               dentroDeLaPantalla(tester, find.text('Sí, dar de baja'));

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/hora_del_servidor.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/notas_borradas_local_data_source_drift.dart';
@@ -22,13 +23,15 @@ final limpiezaNotasBorradasRepositoryProvider = Provider<LimpiezaNotasBorradasRe
   return LimpiezaNotasBorradasRepositoryImpl(NotasBorradasLocalDataSourceDrift(db));
 });
 
-/// Con el reloj de la sesión, que no retrocede: atrasar la hora del teléfono no estira la vida de una
-/// nota borrada. En el equipo `main.dart` lo sobreescribe con el que recuerda el instante más alto
-/// visto; por defecto (tests), en memoria.
+/// Con el menor de dos relojes: el de la sesión, que no retrocede (atrasar la hora del teléfono no
+/// estira la vida de una nota borrada; en el equipo `main.dart` lo sobreescribe con el que recuerda el
+/// instante más alto visto, por defecto —tests— en memoria) y la última hora que dijo el servidor
+/// (adelantarla no adelanta el borrado). Sin ninguna hora del servidor todavía, no se borra nada.
 final limpiarNotasBorradasUseCaseProvider = Provider<LimpiarNotasBorradasUseCase>(
   (ref) => LimpiarNotasBorradasUseCase(
     ref.watch(limpiezaNotasBorradasRepositoryProvider),
     ahora: () => ref.read(relojSesionProvider).ahora(),
+    horaDelServidor: () => ref.read(horaDelServidorProvider).ultima(),
   ),
 );
 

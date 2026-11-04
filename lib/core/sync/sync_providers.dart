@@ -24,6 +24,8 @@ import '../database/database_providers.dart';
 import '../logging/app_logger.dart';
 import '../secure_storage/secure_storage_providers.dart';
 import 'encolador_sync.dart';
+import 'hora_del_servidor.dart';
+import 'transporte_que_anota_la_hora.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
 // `packages/sync_engine`, `lib/datos/`, `lib/plataforma/`); esto lo arma con lo que la app ya tiene:
@@ -47,11 +49,15 @@ final sobreSyncProvider = Provider<ClientEnvelope>(
 /// [cicloDeVidaSyncProvider] dispara un ciclo y el lote sube sin esperar al próximo trigger.
 final transporteSyncProvider = Provider<SyncTransport>((ref) {
   if (!ConfigSupabase.configurada) return const TransporteSinBackend();
-  return SupabaseRpcTransport(
-    projectUrl: Uri.parse(ConfigSupabase.url),
-    anonKey: ConfigSupabase.anonKey,
-    token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
-    device: ref.watch(sobreSyncProvider),
+  // La `server_time` de cada respuesta se anota (la usa lo que borra por tiempo, HU-UBI-012).
+  return TransporteQueAnotaLaHora(
+    SupabaseRpcTransport(
+      projectUrl: Uri.parse(ConfigSupabase.url),
+      anonKey: ConfigSupabase.anonKey,
+      token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
+      device: ref.watch(sobreSyncProvider),
+    ),
+    ref.read(horaDelServidorProvider),
   );
 });
 
