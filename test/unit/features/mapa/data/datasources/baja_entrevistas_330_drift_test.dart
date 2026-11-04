@@ -15,11 +15,13 @@ import 'package:colportores_mobile/features/mapa/data/datasources/audit_log_tabl
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/services/pendientes_ubicacion_drift.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_baja_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/baja_ubicacion_use_cases.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -250,6 +252,85 @@ void main() {
         expect(filas.single.creadoEn, (await guardada()).auditoria.deletedAt);
       },
     );
+  });
+
+  group('el color de la casa con el recálculo real (R-UB08)', () {
+    late HouseStatusUpdaterDrift real;
+    late UbicacionLocalDataSourceDrift conReal;
+
+    Future<HouseStatusFila?> fila() =>
+        (db.select(db.houseStatuses)..where((h) => h.ubicacionId.equals('ub-1'))).getSingleOrNull();
+
+    setUp(() async {
+      real = HouseStatusUpdaterDrift(db, encolador: encolador);
+      conReal = UbicacionLocalDataSourceDrift(
+        db,
+        encolador: encolador,
+        marcarDuplicado: EncoladorMarcarDuplicadoFalso(),
+        estadoDeLasCasas: real,
+      );
+      await insertarAgenda(db, agendaDe('ag-1'));
+      await real.recalcular('ub-1', ahora: t0, colportorId: 'col-1');
+    });
+
+    test('dado una casa pintada por su entrevista, cuando se da de baja, la cancelación recalcula '
+        'y la fila de house_status deja de pintar «Entrevista programada»', () async {
+      expect((await fila())?.deletedAt, isNull, reason: 'antes: la casa está pintada');
+
+      final cuotas = CuotasLocalDataSourceDrift(db, encolador: encolador, estadoDeLasCasas: real);
+      final caso = DarDeBajaUbicacionUseCase(
+        UbicacionRepositoryImpl(conReal, logger: loggerMudo()),
+        PendientesUbicacionDrift(db, cuotas: cuotas, colportorId: 'col-1', logger: loggerMudo()),
+        ahora: () => t1,
+        recordatorios: recordatorios,
+      );
+      await okBaja(baja(confirma: true), caso);
+
+      expect((await agenda('ag-1')).estado, EstadoAgenda.cancelada.codigo);
+      expect((await fila())?.deletedAt, isNotNull);
+    });
+
+    test('dado esa baja, cuando se reactiva, la casa sigue sin el color de la entrevista '
+        'cancelada', () async {
+      final cuotas = CuotasLocalDataSourceDrift(db, encolador: encolador, estadoDeLasCasas: real);
+      final caso = DarDeBajaUbicacionUseCase(
+        UbicacionRepositoryImpl(conReal, logger: loggerMudo()),
+        PendientesUbicacionDrift(db, cuotas: cuotas, colportorId: 'col-1', logger: loggerMudo()),
+        ahora: () => t1,
+        recordatorios: recordatorios,
+      );
+      await okBaja(baja(confirma: true), caso);
+      final base = (await guardada()).auditoria.updatedAt;
+
+      final r = await ReactivarUbicacionUseCase(
+        UbicacionRepositoryImpl(conReal, logger: loggerMudo()),
+        ahora: () => t2,
+      )(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: base));
+
+      expect(r.isRight(), isTrue);
+      expect((await fila())?.deletedAt, isNotNull);
+    });
+
+    test('dado una casa sin entrevistas que ya tenía su color, cuando se da de baja, el recálculo '
+        'no se dispara de más', () async {
+      await (db.update(db.agendas)..where((a) => a.id.equals('ag-1'))).write(
+        AgendasCompanion(estado: Value(EstadoAgenda.cumplida.codigo)),
+      );
+      final antes = await fila();
+      encolador.encolados.clear();
+      final cuotas = CuotasLocalDataSourceDrift(db, encolador: encolador, estadoDeLasCasas: real);
+      final caso = DarDeBajaUbicacionUseCase(
+        UbicacionRepositoryImpl(conReal, logger: loggerMudo()),
+        PendientesUbicacionDrift(db, cuotas: cuotas, colportorId: 'col-1', logger: loggerMudo()),
+        ahora: () => t1,
+        recordatorios: recordatorios,
+      );
+
+      await okBaja(baja(), caso);
+
+      expect(encolador.encolados.map((c) => c.entidad), ['ubicacion']);
+      expect((await fila())?.updatedAt, antes?.updatedAt);
+    });
   });
 
   group('reactivar', () {

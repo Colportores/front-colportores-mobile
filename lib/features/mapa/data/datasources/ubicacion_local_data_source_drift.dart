@@ -258,6 +258,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
     if (deletedAt == null) await _exigirReactivable(fila, duplicados);
 
+    // Las entrevistas agendadas de la casa se cancelan con la baja, en la misma transacción (decisión
+    // de Cristian, 21/10): no se borra nada y siguen canceladas si se reactiva. Va ANTES de escribir
+    // `deleted_at`: el recálculo del color no mira una ubicación ya dada de baja, y así la fila de
+    // `house_status` deja de pintar «Entrevista programada» (R-UB08). Con [conservadaId] (unión de
+    // duplicados) no se tocan: `unirDuplicada` las pasa a la que se conserva.
+    if (deletedAt != null && conservadaId == null) {
+      await _cancelarEntrevistasDe(id, updatedAt, colportorId: fila.createdBy ?? '');
+    }
+
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
       UbicacionesCompanion(updatedAt: Value(updatedAt), deletedAt: Value(deletedAt)),
     );
@@ -275,12 +284,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         ),
       );
     }
-    // Las entrevistas agendadas de la casa se cancelan con la baja, en la misma transacción (decisión
-    // de Cristian, 21/10): no se borra nada y siguen canceladas si se reactiva. Con
-    // [conservadaId] (unión de duplicados) no se tocan: `unirDuplicada` las pasa a la que se conserva.
-    if (deletedAt != null && conservadaId == null) {
-      await _cancelarEntrevistasDe(id, updatedAt);
-    }
     await _encolador.encolar(
       'ubicacion',
       deletedAt == null ? OperacionSync.update : OperacionSync.delete,
@@ -289,9 +292,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (ubicacion: guardada, escribio: true);
   });
 
-  /// Pasa a `CANCELADA` las entrevistas `PROGRAMADA` de [ubicacionId] y las encola como `update`. Las
-  /// cobranzas (cuotas) no se tocan: una ubicación con ventas no se puede dar de baja.
-  Future<void> _cancelarEntrevistasDe(String ubicacionId, DateTime cuando) async {
+  /// Pasa a `CANCELADA` las entrevistas `PROGRAMADA` de [ubicacionId], las encola como `update` y, si
+  /// cambió alguna, recalcula el color de la casa (como la cancelación normal, R-UB08). Las cobranzas
+  /// (cuotas) no se tocan: una ubicación con ventas no se puede dar de baja. Hay que llamarla con la
+  /// ubicación todavía viva: el recálculo no hace nada sobre una que ya tiene `deleted_at`.
+  Future<void> _cancelarEntrevistasDe(
+    String ubicacionId,
+    DateTime cuando, {
+    required String colportorId,
+  }) async {
     final delLugar = selectOnly(espacios)
       ..addColumns([espacios.id])
       ..where(espacios.ubicacionId.equals(ubicacionId));
@@ -315,6 +324,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         OperacionSync.update,
         AgendaModel.fromEntity(AgendaLocalDataSourceDrift.desdeFila(guardada)).toJson(),
       );
+    }
+    if (aCancelar.isNotEmpty) {
+      await _estadoDeLasCasas.recalcular(ubicacionId, ahora: cuando, colportorId: colportorId);
     }
   }
 
