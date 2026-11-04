@@ -83,9 +83,15 @@ void main() {
       expect(PoliticaPassword.excedeLargoMaximo('Ab1defgh'), isFalse);
     });
 
-    test('validar no mira el tope: la contraseña nueva de la vista 15 es #296', () {
-      expect(PoliticaPassword.validar('Ab1${'x' * 100}'), isNull);
-    });
+    test(
+      'validar lo mira (también la vista 15, #296): primero el tope, antes que los requisitos',
+      () {
+        expect(PoliticaPassword.validar('Ab1${'x' * 69}'), isNull, reason: '72 bytes');
+        expect(PoliticaPassword.validar('Ab1${'x' * 70}'), PoliticaPassword.demasiadoLarga);
+        expect(PoliticaPassword.validar('x' * 100), PoliticaPassword.demasiadoLarga);
+        expect(PoliticaPassword.validar('ñ' * 37), PoliticaPassword.demasiadoLarga);
+      },
+    );
 
     test('el texto del tope es el de la decisión del 02/10', () {
       expect(PoliticaPassword.demasiadoLarga, 'Es demasiado larga. Acortala.');
