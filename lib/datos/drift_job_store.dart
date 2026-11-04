@@ -248,12 +248,21 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
               ..groupBy([syncQueue.state]))
             .get();
     final por = {for (final f in filas) f.read(syncQueue.state)!: f.read(cantidad) ?? 0};
+    // El último envío confirmado (HU-SYNC-007): el `DONE` más nuevo. Los `DONE` se
+    // compactan a los 7 días (§5.8), y sin ninguno no hay fecha que mostrar.
+    final ultimo =
+        await (select(syncQueue)
+              ..where((q) => q.state.equals(EstadoJob.done) & q.doneAt.isNotNull())
+              ..orderBy([(q) => OrderingTerm.desc(q.doneAt)])
+              ..limit(1))
+            .getSingleOrNull();
     return SyncStatus(
       pending: por[EstadoJob.pending] ?? 0,
       inFlight: por[EstadoJob.inFlight] ?? 0,
       invalid: por[EstadoJob.invalid] ?? 0,
       blocked: por[EstadoJob.blocked] ?? 0,
       waiting: por[EstadoJob.waiting] ?? 0,
+      lastPushAt: ultimo?.doneAt,
     );
   }
 

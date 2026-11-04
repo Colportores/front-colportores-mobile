@@ -100,7 +100,6 @@ void main() {
       expect(nuevo.numeroDepto, '301');
       expect(nuevo.piso, '3');
       expect(nuevo.ubicacionId, 'ubi-1');
-      expect(nuevo.descripcion, isNull, reason: 'no se escribe `descripcion` (backend#79)');
       expect(nuevo.auditoria.createdBy, 'col-1');
       expect(find.text('Depto 301'), findsOneWidget);
       expect(find.text('PISO 3'), findsOneWidget);

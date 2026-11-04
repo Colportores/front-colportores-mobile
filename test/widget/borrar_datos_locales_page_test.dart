@@ -1467,6 +1467,9 @@ void main() {
       await _montar(tester);
       _datos.demoraResumen = Completer<void>();
 
+      // La sección «Mapas» (vista 35) alarga la pantalla: la fila se lleva a la vista antes de tocarla.
+      await tester.ensureVisible(_k('configuracion_borrar_datos'));
+      await tester.pump();
       await tester.tap(_k('configuracion_borrar_datos'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));

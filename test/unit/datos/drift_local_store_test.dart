@@ -115,15 +115,18 @@ void main() {
       () async {
         final fila = {
           'id': 'age-1',
+          'espacio_id': 'esp-1',
           'espacio_persona_id': 'ep-1',
           'tipo': 'ENTREVISTA',
           'fecha_programada': '2026-10-25T14:00:00.000Z',
           'slot_codigo': 'mid_morning',
           'es_estricta': true,
           'ubicacion_alt_id': null,
-          'estado': 'PENDIENTE',
+          'estado': 'PROGRAMADA',
           'colportor_id': 'col-1',
           'visita_id': null,
+          'venta_id': null,
+          'monto_previsto': null,
           'created_at': '2026-10-23T13:45:10.123Z',
           'updated_at': '2026-10-23T13:45:10.123Z',
           'created_by': 'col-1',
@@ -153,6 +156,7 @@ void main() {
     test('visita y house_status', () async {
       final visita = {
         'id': 'vis-1',
+        'espacio_id': 'esp-1',
         'espacio_persona_id': 'ep-1',
         'fecha': '2026-10-23T13:45:10.123Z',
         'tipo_resultado': 'RECHAZO',

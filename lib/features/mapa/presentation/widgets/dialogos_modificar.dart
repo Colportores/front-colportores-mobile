@@ -42,6 +42,24 @@ Future<bool> confirmarDescartarCambios(BuildContext context, List<String> cambio
   );
 }
 
+/// El aviso de lo que se escribió y no se guardó (mapa §2, P5 de #144): «¿Descartar lo que escribiste?».
+/// Lo usan los formularios de texto libre (las notas de una persona, #144; el alta de persona). Devuelve
+/// `true` solo si eligió «Descartar»; «Seguir escribiendo», cerrar el aviso o el atrás del sistema dejan
+/// todo como está.
+Future<bool> confirmarDescartarLoEscrito(BuildContext context) async {
+  final seguir = await _responder(
+    context,
+    titulo: TextosDescartar.titulo,
+    cuerpo: TextosDescartar.cuerpo,
+    // «Seguir escribiendo» es la respuesta principal (botón lleno); «Descartar» va en rojo y sin relleno.
+    paraNo: TextosDescartar.descartar,
+    paraSi: TextosDescartar.seguirEscribiendo,
+    colorDelNo: ColoresAlta.rojo,
+  );
+  // `paraNo` es «Descartar» (devuelve false); cerrar el aviso devuelve null y sigue escribiendo.
+  return seguir == false;
+}
+
 /// Una pregunta del guardado que el colportor tiene que contestar con «Confirmar» o «Cancelar»:
 /// reactivar la ubicación, cambiarle la ciudad o moverla más de 100 m. [texto] es el aviso de la HU
 /// tal cual. Devuelve `true` si confirmó.
@@ -61,19 +79,37 @@ Future<bool> _preguntar(
   required String paraNo,
   required String paraSi,
   Color? colorDelSi,
-}) async {
-  final respuesta = await showDialog<bool>(
-    context: context,
-    builder: (_) => _Aviso(
+}) async =>
+    await _responder(
+      context,
       titulo: titulo,
       cuerpo: cuerpo,
       paraNo: paraNo,
       paraSi: paraSi,
       colorDelSi: colorDelSi,
-    ),
-  );
-  return respuesta ?? false;
-}
+    ) ??
+    false;
+
+/// Como [_preguntar], pero devuelve `null` si el aviso se cerró sin elegir ninguna de las dos.
+Future<bool?> _responder(
+  BuildContext context, {
+  String? titulo,
+  required String cuerpo,
+  required String paraNo,
+  required String paraSi,
+  Color? colorDelSi,
+  Color? colorDelNo,
+}) => showDialog<bool>(
+  context: context,
+  builder: (_) => _Aviso(
+    titulo: titulo,
+    cuerpo: cuerpo,
+    paraNo: paraNo,
+    paraSi: paraSi,
+    colorDelSi: colorDelSi,
+    colorDelNo: colorDelNo,
+  ),
+);
 
 /// Un aviso de dos respuestas: la que deja todo como está ([paraNo]) y la que sigue ([paraSi]).
 ///
@@ -95,6 +131,7 @@ class _Aviso extends StatelessWidget {
     required this.paraNo,
     required this.paraSi,
     required this.colorDelSi,
+    this.colorDelNo,
   });
 
   final String? titulo;
@@ -102,6 +139,7 @@ class _Aviso extends StatelessWidget {
   final String paraNo;
   final String paraSi;
   final Color? colorDelSi;
+  final Color? colorDelNo;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +159,7 @@ class _Aviso extends StatelessWidget {
 
   Widget _botonNo(BuildContext context) => TextButton(
     onPressed: () => Navigator.of(context).pop(false),
-    style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+    style: TextButton.styleFrom(minimumSize: const Size(64, 48), foregroundColor: colorDelNo),
     child: Text(paraNo),
   );
 

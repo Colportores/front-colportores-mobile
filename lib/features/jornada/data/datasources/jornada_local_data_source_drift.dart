@@ -19,7 +19,7 @@ part 'jornada_local_data_source_drift.g.dart';
 @DriftAccessor(tables: [Jornadas])
 final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$JornadaLocalDataSourceDriftMixin
-    implements JornadaLocalDataSource {
+    implements JornadaLocalDataSource, JornadasAbiertasDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
   JornadaLocalDataSourceDrift(super.attachedDatabase, {required this._encolador});
 
@@ -86,6 +86,18 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               ..limit(1))
             .getSingleOrNull();
     return fila == null ? null : _aModelo(fila);
+  }
+
+  @override
+  Future<List<JornadaModel>> abiertas(String colportorId) async {
+    final filas =
+        await (select(jornadas)
+              ..where(
+                (j) => j.colportorId.equals(colportorId) & j.fin.isNull() & j.deletedAt.isNull(),
+              )
+              ..orderBy([(j) => OrderingTerm.asc(j.inicio)]))
+            .get();
+    return [for (final fila in filas) _aModelo(fila)];
   }
 
   /// La jornada sin `fin` y sin soft delete del colportor. `limit(1)`: la regla de una sola activa

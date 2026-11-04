@@ -10,6 +10,7 @@ import '../../data/repositories/recuperacion_password_repository_impl.dart';
 import '../../domain/entities/enlace_recuperacion.dart';
 import '../../domain/repositories/recuperacion_password_repository.dart';
 import '../../domain/usecases/abandonar_recuperacion_password_use_case.dart';
+import '../../domain/usecases/cerrar_otras_sesiones_pendientes_use_case.dart';
 import '../../domain/usecases/confirmar_recuperacion_password_use_case.dart';
 import '../../domain/usecases/observar_enlaces_recuperacion_use_case.dart';
 import 'db_local_providers.dart';
@@ -63,3 +64,9 @@ ConfirmarRecuperacionPasswordUseCase confirmarRecuperacionPasswordUseCase(Ref re
 @riverpod
 AbandonarRecuperacionPasswordUseCase abandonarRecuperacionPasswordUseCase(Ref ref) =>
     AbandonarRecuperacionPasswordUseCase(ref.watch(recuperacionPasswordRepositoryProvider));
+
+/// `keepAlive`: lo llama el login (`SesionNotifier`) y la marca de lo pendiente vive en el
+/// repositorio, que también lo es.
+@Riverpod(keepAlive: true)
+CerrarOtrasSesionesPendientesUseCase cerrarOtrasSesionesPendientesUseCase(Ref ref) =>
+    CerrarOtrasSesionesPendientesUseCase(ref.watch(recuperacionPasswordRepositoryProvider));

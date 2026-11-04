@@ -84,6 +84,21 @@ Future<void> sembrarVinculo(
       ),
     );
 
+/// Una jornada del colportor `col-1` (por defecto `jor-1`): las visitas con `jornada_id` la exigen en
+/// el teléfono (la FK de `visita.jornada_id`).
+Future<void> sembrarJornada(AppDatabase db, {String id = 'jor-1', DateTime? borrada}) => db
+    .into(db.jornadas)
+    .insert(
+      JornadasCompanion.insert(
+        id: id,
+        colportorId: 'col-1',
+        inicio: t0,
+        createdAt: t0,
+        updatedAt: t0,
+        deletedAt: Value(borrada),
+      ),
+    );
+
 /// Una casa con un espacio y una persona: `ub-1` → `esp-1` → `ep-1`.
 Future<void> sembrarCasa(AppDatabase db) async {
   await sembrarUbicacion(db);
@@ -102,9 +117,10 @@ Future<void> sembrarEdificio(AppDatabase db) async {
 
 Agenda agendaDe(
   String id, {
-  String vinculo = 'ep-1',
+  String espacio = 'esp-1',
+  String? vinculo = 'ep-1',
   TipoAgenda tipo = TipoAgenda.entrevista,
-  EstadoAgenda estado = EstadoAgenda.pendiente,
+  EstadoAgenda estado = EstadoAgenda.programada,
   DateTime? creada,
   DateTime? borrada,
   String? visitaId,
@@ -112,6 +128,7 @@ Agenda agendaDe(
   String? slot,
 }) => Agenda(
   id: id,
+  espacioId: espacio,
   espacioPersonaId: vinculo,
   tipo: tipo,
   fechaProgramada: DateTime.utc(2026, 10, 25, 14),
@@ -125,13 +142,15 @@ Agenda agendaDe(
 
 Visita visitaDe(
   String id, {
-  String vinculo = 'ep-1',
+  String espacio = 'esp-1',
+  String? vinculo = 'ep-1',
   TipoResultadoVisita resultado = TipoResultadoVisita.entrevista,
   DateTime? creada,
   DateTime? borrada,
   String? jornadaId,
 }) => Visita(
   id: id,
+  espacioId: espacio,
   espacioPersonaId: vinculo,
   fecha: creada ?? t0,
   tipoResultado: resultado,
@@ -149,7 +168,8 @@ Future<void> insertarAgenda(AppDatabase db, Agenda a) => db
     .insert(
       AgendasCompanion.insert(
         id: a.id,
-        espacioPersonaId: a.espacioPersonaId,
+        espacioId: a.espacioId,
+        espacioPersonaId: Value(a.espacioPersonaId),
         tipo: a.tipo.codigo,
         fechaProgramada: a.fechaProgramada,
         slotCodigo: Value(a.slotCodigo),
@@ -171,7 +191,8 @@ Future<void> insertarVisita(AppDatabase db, Visita v) => db
     .insert(
       VisitasCompanion.insert(
         id: v.id,
-        espacioPersonaId: v.espacioPersonaId,
+        espacioId: v.espacioId,
+        espacioPersonaId: Value(v.espacioPersonaId),
         fecha: v.fecha,
         tipoResultado: v.tipoResultado.codigo,
         colportorId: v.colportorId,

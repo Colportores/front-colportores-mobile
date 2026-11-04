@@ -346,9 +346,7 @@ void main() {
             textScaler: render.textScaler,
           )..layout(maxWidth: render.size.width)).computeLineMetrics();
           expect(renglones, hasLength(1), reason: '«Editado» baja a 2 renglones');
-          // skip: QA #288: a 360×640 con texto 2x la etiqueta «Editado» de la columna NÚMERO se parte
-          // a mitad de palabra («Editad» / «o»); viene de #193 (HojaAlta), no del delta de #288.
-        }, skip: escala == 2.0);
+        });
       }
     },
   );

@@ -424,6 +424,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('espera_configuracion')));
     await tester.pumpAndSettle();
+    // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+    await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -517,7 +520,7 @@ void main() {
       expect(find.byKey(const Key('espera_configuracion')), findsOneWidget);
     });
 
-    testWidgets('A01: la barra inferior muestra «Hoy» y los cuatro módulos bloqueados', (
+    testWidgets('A01: la barra inferior muestra «Hoy» y los cinco módulos bloqueados', (
       tester,
     ) async {
       await _montar(tester);
@@ -525,7 +528,7 @@ void main() {
       for (final pestana in PestanaInicio.values) {
         expect(find.byKey(Key('inicio_pestana_${pestana.name}')), findsOneWidget);
       }
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
       expect(find.byIcon(Icons.home), findsOneWidget, reason: '«Hoy» sin candado');
     });
 
@@ -629,7 +632,7 @@ void main() {
       expect(find.text('Revisado recién, a las 14:36.'), findsOneWidget);
       expect(find.byKey(const Key('espera_linea_de_tiempo')), findsNothing);
       expect(find.text('Actualizar'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
 
     testWidgets('volver atrás y reentrar desde Configuración: la pantalla queda como estaba', (
@@ -735,7 +738,7 @@ void main() {
       expect(find.text('CUENTA PENDIENTE'), findsNothing);
       expect(find.text('Esperando asignación'), findsNothing);
       expect(find.text('Reintentar'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
   });
 
@@ -750,7 +753,7 @@ void main() {
       expect(find.text('Tu cuenta está suspendida. Contactá al administrador.'), findsOneWidget);
       expect(find.text('Ir a Configuración'), findsOneWidget);
       expect(_actualizar, findsNothing);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
 
     testWidgets('A06: «Ir a Configuración» abre Configuración y se puede volver', (tester) async {
@@ -830,7 +833,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('inicio_barra')), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
 
       await tester.tap(find.byKey(const Key('inicio_pestana_mapa')));
       await tester.pump();
@@ -1071,7 +1074,7 @@ void main() {
         tester.getSemantics(find.byKey(const Key('espera_sin_conexion'))),
         isSemantics(isLiveRegion: true),
       );
-      expect(find.bySemanticsLabel(RegExp('Bloqueado')), findsNWidgets(4));
+      expect(find.bySemanticsLabel(RegExp('Bloqueado')), findsNWidgets(5));
       semantica.dispose();
     });
   });

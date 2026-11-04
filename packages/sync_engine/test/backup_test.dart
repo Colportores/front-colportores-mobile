@@ -80,8 +80,9 @@ void main() {
 
       final inc = await service.backupNow(watermark: 'w-2');
       expect(inc.parentId, base.id);
-      expect(snap.exports.last, base.createdAt,
-          reason: 'solo lo posterior a la base');
+      expect(snap.exports.last, base.exportedAt,
+          reason: 'solo lo posterior a la lectura de la base, que es del '
+              'reloj del teléfono y no de la fecha de subida a Drive');
       expect(drive.entries, hasLength(2));
     });
 

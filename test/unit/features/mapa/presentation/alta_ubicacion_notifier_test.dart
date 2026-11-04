@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
@@ -18,7 +17,6 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../helpers/alta_ubicacion_falsos.dart';
-import '../../../../helpers/logger_mudo.dart';
 
 const _otroPunto = Coordenadas(lat: -34.8900, lon: -56.1300);
 
@@ -831,13 +829,13 @@ void main() {
 
     group('no se pueden leer las ciudades', () {
       Future<_Banco> sinFuente() async {
-        final b = _banco(puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()));
+        final b = _banco(puertoCiudades: const CiudadesQueNoSePuedenLeer());
         await _esperar();
         b.notificador.elegirTipo(TipoUbicacion.casa);
         return b;
       }
 
-      test('sin la fuente de ciudades (producción hoy) es una falla de lectura, no «la campaña '
+      test('con las ciudades sin poder leerse es una falla de lectura, no «la campaña '
           'no tiene ciudades»', () async {
         final b = await sinFuente();
 
@@ -849,10 +847,10 @@ void main() {
         expect(b.repo.llamadas, isEmpty);
       });
 
-      test('sin la fuente y sin punto pasa lo mismo, y «Reintentar» no la inventa', () async {
+      test('sin poder leerlas y sin punto pasa lo mismo, y «Reintentar» no la inventa', () async {
         final b = _banco(
           gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
-          puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()),
+          puertoCiudades: const CiudadesQueNoSePuedenLeer(),
         );
         await _esperar();
 
@@ -861,7 +859,7 @@ void main() {
 
         await b.notificador.reintentarCiudad();
 
-        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer, reason: 'sigue sin fuente');
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer, reason: 'sigue sin poder leerlas');
         expect(b.estado.ciudad, isNull);
       });
 

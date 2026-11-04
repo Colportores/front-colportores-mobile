@@ -9,6 +9,14 @@ enum MotivoRechazoPersona {
   ubicacionDeBaja(
     'espacio',
     'La ubicación está dada de baja: reactivala para agregar clientes a sus espacios.',
+  ),
+
+  /// La baja y la reactivación de una persona (HU-UBI-011).
+  personaInexistente('persona', 'La persona ya no está en tu teléfono. Volvé atrás.'),
+  personaSoloLectura(
+    'persona',
+    'Su espacio está dado de baja: solo lectura. Reactivá el espacio para dar de baja o reactivar a '
+        'sus clientes.',
   );
 
   const MotivoRechazoPersona(this.campo, this.mensaje);

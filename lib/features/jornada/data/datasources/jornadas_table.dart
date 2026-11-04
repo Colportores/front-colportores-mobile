@@ -53,7 +53,7 @@ class Jornadas extends Table {
 
   IntColumn get updatedAt => integer().map(const FechaUtcConverter())();
 
-  /// Nullable como en el cloud y en `Auditoria.createdBy` (TODO(#8) en `Auditoria`).
+  /// Nullable como en el cloud y en `Auditoria.createdBy` (el `SET NULL` al borrar un usuario).
   TextColumn get createdBy => text().nullable()();
 
   /// Soft delete (esquema-datos.md §Principios 6).

@@ -1,10 +1,12 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../../../../core/config/config_supabase.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../data/datasources/estado_cuenta_local_data_source.dart';
 import '../../data/datasources/estado_cuenta_remote_data_source.dart';
+import '../../data/datasources/estado_cuenta_remote_data_source_supabase.dart';
 import '../../data/datasources/fakes/estado_cuenta_en_memoria.dart';
 import '../../data/repositories/cuenta_repository_impl.dart';
 import '../../domain/entities/estado_cuenta.dart';
@@ -18,11 +20,12 @@ part 'estado_cuenta_providers.g.dart';
 // Cableado del estado de cuenta (HU-AUTH-008). Como el remoto de auth: con Supabase, la fuente
 // real; sin Supabase (tests, demo), en memoria con la cuenta activa.
 
-/// Hasta que el BFF exponga el estado de cuenta (#62), con Supabase no hay fuente: ver
-/// [EstadoCuentaSinFuente].
+/// Con Supabase, la RPC `estado_cuenta()` con la sesión de la app (ADR-013, sin BFF): ver
+/// [EstadoCuentaSupabase].
 @Riverpod(keepAlive: true)
-EstadoCuentaRemoteDataSource estadoCuentaRemoteDataSource(Ref ref) =>
-    ConfigSupabase.configurada ? EstadoCuentaSinFuente() : EstadoCuentaEnMemoria();
+EstadoCuentaRemoteDataSource estadoCuentaRemoteDataSource(Ref ref) => ConfigSupabase.configurada
+    ? EstadoCuentaSupabase.conCliente(Supabase.instance.client)
+    : EstadoCuentaEnMemoria();
 
 @Riverpod(keepAlive: true)
 EstadoCuentaLocalDataSource estadoCuentaLocalDataSource(Ref ref) => ConfigSupabase.configurada

@@ -7,6 +7,7 @@ import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
+import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../mapa_base/mapa_base.dart';
 import '../mapa_base/modelo_mapa_base.dart';
@@ -15,6 +16,8 @@ import '../providers/mapa_base_providers.dart';
 import 'hoja_alta.dart';
 import 'mapa_alta.dart';
 import 'piezas_alta.dart';
+import 'piezas_lista_ubicaciones.dart';
+import 'textos_posibles_duplicados.dart';
 
 /// Textos de la vista 04. Los literales de HU-UBI-001 («Reutilizar esta», «Crear igual»,
 /// «Cancelar», «Abrir la existente») van tal cual; el resto es la propuesta del canvas.
@@ -36,7 +39,7 @@ abstract final class TextosDuplicado {
   static const porQue = '¿Por qué es otra ubicación?';
   static const justificacion = 'JUSTIFICACIÓN · OBLIGATORIA';
   static const cuenta = 'Contá por qué es otro lugar';
-  static const laVeTuCoordinador = 'La ve tu coordinador.';
+  static const quedaEnTuTelefono = 'Queda guardada en tu teléfono.';
   static const laNueva = 'La nueva';
   static const yaRegistrada = 'Ya registrada';
   static const registrando = 'Registrando…';
@@ -423,7 +426,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
           children: [
             const Expanded(
               child: Text(
-                TextosDuplicado.laVeTuCoordinador,
+                TextosDuplicado.quedaEnTuTelefono,
                 style: TextStyle(fontSize: 12.5, color: ColoresAlta.gris),
               ),
             ),
@@ -565,7 +568,16 @@ class _TarjetaCandidata extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final u = candidata.ubicacion;
-    final detalle = [FormatoUbicaciones.tipo(u.tipo), ?ciudad].join(' · ');
+    // Vista 04: «Casa · 2 espacios · Montevideo». Sin el conteo de espacios (quien armó la candidata no
+    // lo leyó) queda «Casa · Montevideo»: no se inventa un «sin espacios».
+    final espacios = candidata.cantidadEspacios;
+    final detalle = [
+      espacios == null
+          ? FormatoUbicaciones.tipo(u.tipo)
+          : TextosPosiblesDuplicados.resumen(u, espacios),
+      ?ciudad,
+    ].join(' · ');
+    final estado = candidata.estado;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -588,6 +600,22 @@ class _TarjetaCandidata extends StatelessWidget {
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),
+                    if (estado != null) ...[
+                      Row(
+                        children: [
+                          // El rótulo de abajo ya dice el estado: la insignia no se lee dos veces.
+                          ExcludeSemantics(child: InsigniaEstadoCasa(estado: estado, tamano: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              FormatoListaUbicaciones.estado(estado),
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                    ],
                     Text(detalle, style: theme.textTheme.bodyMedium),
                     Text(
                       'Actualizada ${FormatoUbicaciones.hace(u.auditoria.updatedAt, ahora)}',

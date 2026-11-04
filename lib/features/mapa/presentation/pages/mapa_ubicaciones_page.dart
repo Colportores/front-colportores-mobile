@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/presentation/providers/entrevista_providers.dart';
+import '../../../agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -23,6 +25,7 @@ import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_ubicaciones_notifier.dart';
 import '../providers/mapa_ubicaciones_providers.dart';
 import '../providers/situacion_mapa_providers.dart';
+import '../providers/zonas_del_mapa_providers.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
 import '../widgets/mapa_alta.dart';
@@ -443,6 +446,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final ambito = ref.watch(ambitoMapaUbicacionesProvider(widget.colportorId));
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
+    final zonas = ref.watch(zonasParaElMapaProvider(widget.colportorId));
     ref.listen(_proveedor, (anterior, nuevo) {
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
       // se ve la pestaña, y a un tercio, en un teléfono chico, el botón quedaría debajo del borde.
@@ -470,7 +474,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       onPopInvokedWithResult: (salio, _) {
         if (!salio && widget.activa) _notificador.cerrarSeleccion();
       },
-      child: _contenido(context, estado, ambito, ahora, avisoVisible),
+      child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas),
     );
   }
 
@@ -480,6 +484,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     AmbitoTrabajo ambito,
     DateTime ahora,
     bool avisoVisible,
+    ZonasParaElMapa zonas,
   ) {
     final lectura = estado.lectura;
     return LayoutBuilder(
@@ -496,7 +501,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           children: [
             Positioned.fill(
               child: Semantics(
-                label: TextosMapaUbicaciones.mapa,
+                // Las zonas son capas del estilo, no widgets: el lector de pantalla las oye acá.
+                label: [TextosMapaUbicaciones.mapa, ?zonas.paraElLector].join('. '),
                 container: true,
                 child: MapaBase(
                   fuente: ref.watch(fuenteMapaProvider(ambito)),
@@ -508,6 +514,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
                   puntos: _puntos(estado, cuadrados: cuadrados),
+                  zonas: zonas.dibujo,
                   precision: lectura != null
                       ? CirculoPrecision(
                           centro: lectura.coordenadas,
@@ -538,24 +545,38 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
               right: 0,
               top: 0,
               height: libre,
-              child: Stack(
+              // Con una entrevista en curso, su aviso fijo ocupa el borde de arriba y «Referencias»
+              // y el aviso del mapa quedan debajo, en lo que sobra (decisión de Cristian, 23/10,
+              // #450). Sin entrevista el `Expanded` ocupa todo: el mismo dibujo de siempre.
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // «Referencias» y el aviso comparten el borde de arriba: con el aviso a la vista
-                  // (la tarjeta o la píldora) el chip se corre, el canvas no los dibuja juntos.
-                  if (!avisoVisible)
-                    Positioned(
-                      top: 8,
-                      right: 14,
-                      child: ChipReferencias(
-                        key: ClavesMapaUbicaciones.referencias,
-                        alPresionar: () => unawaited(_abrirReferencias()),
+                  _AvisoDeLaEntrevista(colportorId: widget.colportorId, alturaMaxima: libre),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, restricciones) => Stack(
+                        children: [
+                          // «Referencias» y el aviso comparten el borde de arriba: con el aviso a
+                          // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
+                          // dibuja juntos.
+                          if (!avisoVisible)
+                            Positioned(
+                              top: 8,
+                              right: 14,
+                              child: ChipReferencias(
+                                key: ClavesMapaUbicaciones.referencias,
+                                alPresionar: () => unawaited(_abrirReferencias()),
+                              ),
+                            ),
+                          Positioned.fill(
+                            child: AvisoMapaConectado(
+                              ambito: ambito,
+                              modo: AvisoMapaModo.flotante,
+                              altoLibre: restricciones.maxHeight,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  Positioned.fill(
-                    child: AvisoMapaConectado(
-                      ambito: ambito,
-                      modo: AvisoMapaModo.flotante,
-                      altoLibre: libre,
                     ),
                   ),
                 ],
@@ -608,6 +629,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     alReintentar: _notificador.reintentar,
                     alActivarGps: () => unawaited(_notificador.activarGps()),
                     alRegistrar: () => unawaited(_abrirAlta()),
+                    colportorId: widget.colportorId,
                   ),
                 ],
               ),
@@ -615,6 +637,38 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           ],
         );
       },
+    );
+  }
+}
+
+/// El aviso fijo de la entrevista en curso arriba del mapa, con un margen. Sin entrevista no ocupa
+/// nada.
+class _AvisoDeLaEntrevista extends ConsumerWidget {
+  const _AvisoDeLaEntrevista({required this.colportorId, required this.alturaMaxima});
+
+  final String colportorId;
+
+  /// Lo que queda libre arriba: el aviso no pasa de ahí menos el lugar de «Referencias» (con el
+  /// texto grande se desplaza).
+  final double alturaMaxima;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hay = ref.watch(entrevistaEnCursoProvider(colportorId).select((e) => e.hayEntrevista));
+    if (!hay) return const SizedBox.shrink();
+    // Le deja a «Referencias» su lugar debajo (8 + 48 dp) más el margen: el aviso se desplaza dentro
+    // de lo que sobra y, si no sobra casi nada, conserva una fila (QA de #450).
+    const lugarDeReferencias = 64.0;
+    final tope = math.max(alturaMaxima - lugarDeReferencias, math.min(alturaMaxima, 56.0));
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: tope),
+      child: SingleChildScrollView(
+        primary: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: AvisoEntrevistaEnCurso(colportorId: colportorId),
+        ),
+      ),
     );
   }
 }

@@ -96,7 +96,7 @@ void main() {
       await _tocarVisible(tester, _registrar);
       await tester.pump();
 
-      expect(visitas, [(ubicacionId: 'b', espacioId: 'esp-1')]);
+      expect(visitas, [(ubicacionId: 'b', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('al volver de una vista hija, la hoja ya muestra el estado nuevo de la casa', (
@@ -436,7 +436,7 @@ void main() {
       await _tocarVisible(tester, _registrar);
       await tester.pump();
 
-      expect(visitas, [(ubicacionId: 'casa-1', espacioId: 'esp-1')]);
+      expect(visitas, [(ubicacionId: 'casa-1', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('si la casa cambia mientras la hoja está abierta, la hoja sigue a la Lista', (

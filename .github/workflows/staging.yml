@@ -1,0 +1,119 @@
+name: Staging
+
+# Entorno de prueba: compila la app con las variables de DEV (proyecto Supabase de desarrollo/demo) y la publica como
+# pre-release de GitHub con el APK adjunto.
+#
+# - push a `staging` (merge de develop → staging): APK release, applicationId con sufijo `.staging` y nombre
+#   «Colportores (staging)» para instalarlo al lado del de producción, y pre-release `staging-<n>`.
+# - Corrida manual (Actions → Staging → Run workflow, o `gh workflow run staging.yml --ref develop`): compila desde la
+#   rama elegida y deja el APK como artefacto. Con los valores por defecto sale el mismo `app-debug.apk` que antes subía
+#   el CI de develop (debug, sin sufijo, conectado a Supabase dev): es la ruta para compilar la demo a mano desde develop.
+#   Publicar el pre-release a mano solo se permite desde `staging` o `develop`.
+#
+# Variables y secretos: environment `staging` (tabla completa en docs/ci-variables.md). Si el environment no define
+# SUPABASE_URL / SUPABASE_ANON_KEY valen las del repo, que hoy apuntan al proyecto dev. Todo es opcional: sin nada
+# cargado staging sigue andando con los valores de siempre (sufijo `.staging`, nombre «Colportores (staging)», firma de
+# debug, pre-release de GitHub con el APK). Variables opcionales de este workflow:
+#   COLPORTORES_APP_ID_SUFFIX, COLPORTORES_APP_NAME   identidad de la app (ver android-build.yml).
+#   STAGING_PRERELEASE                                «false» = compila pero no crea el pre-release (por defecto se crea).
+#   STAGING_PRERELEASE_NOTAS                          texto extra para las notas del pre-release.
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "debug (la demo de siempre) o release"
+        type: choice
+        options: [debug, release]
+        default: debug
+      sufijo-staging:
+        description: "applicationId con sufijo .staging (se instala al lado de la app sin sufijo)"
+        type: boolean
+        default: false
+      publicar:
+        description: "Crear el pre-release con el APK (solo desde staging o develop)"
+        type: boolean
+        default: false
+  # Solo para que GitHub registre el workflow cuando un PR lo toca: `workflow_dispatch` exige que el archivo esté en la
+  # rama por defecto (`production`) o que el workflow haya corrido alguna vez. En un PR no corre ningún job.
+  pull_request:
+    paths: [".github/workflows/staging.yml", ".github/workflows/android-build.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/android-build.yml
+    with:
+      environment: staging
+      modo: ${{ github.event_name == 'push' && 'release' || inputs.modo }}
+      formato: apk
+      # Defaults de staging; el environment los pisa con COLPORTORES_APP_ID_SUFFIX / COLPORTORES_APP_NAME.
+      sufijo-id: ".staging"
+      nombre-app: "Colportores (staging)"
+      aplicar-identidad: ${{ github.event_name == 'push' || inputs.sufijo-staging }}
+      artefacto: ${{ github.event_name == 'push' && 'colportores-staging.apk' || format('app-{0}.apk', inputs.modo) }}
+    secrets: inherit
+
+  publicar:
+    name: Pre-release con el APK
+    needs: build
+    if: >-
+      github.event_name == 'push' ||
+      (inputs.publicar && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: write
+    steps:
+      - name: Decidir si se publica
+        id: decidir
+        env:
+          STAGING_PRERELEASE: ${{ vars.STAGING_PRERELEASE }}
+        run: |
+          if [ "${STAGING_PRERELEASE,,}" = false ]; then
+            echo "::notice title=Staging::la variable STAGING_PRERELEASE del environment staging vale «false»: no se crea el pre-release (el APK queda como artefacto de la corrida)."
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publicar=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.decidir.outputs.publicar == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event_name == 'push' && 'colportores-staging.apk' || format('app-{0}.apk', inputs.modo) }}
+          path: apk
+
+      - name: Crear el pre-release
+        if: steps.decidir.outputs.publicar == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ARCHIVO: ${{ needs.build.outputs.archivo }}
+          VERSION: ${{ needs.build.outputs.version }}
+          RAMA: ${{ github.ref_name }}
+          FIRMA: ${{ needs.build.outputs.firma }}
+          NOTAS_EXTRA: ${{ vars.STAGING_PRERELEASE_NOTAS }}
+        run: |
+          etiqueta="staging-${{ github.run_number }}"
+          destino="apk/colportores-staging-${VERSION}.apk"
+          mv "apk/${ARCHIVO}" "$destino"
+          notas="APK de prueba compilado desde \`${RAMA}\` (${GITHUB_SHA:0:7}) con las variables del environment staging (Supabase de desarrollo, datos simulados). No es una versión de producción."
+          if [ "$FIRMA" != keystore ]; then
+            notas="${notas} Firmado con la clave de debug del runner: para actualizar desde una versión anterior hay que desinstalarla (se pierde la base local de prueba)."
+          fi
+          [ -z "$NOTAS_EXTRA" ] || notas="${notas} ${NOTAS_EXTRA}"
+          gh release create "$etiqueta" "$destino" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Staging ${VERSION}" \
+            --notes "$notas"

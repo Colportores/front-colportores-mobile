@@ -4,23 +4,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/persona_del_espacio.dart';
+import '../formato_hoja_casa.dart';
 import '../formato_ubicaciones.dart';
+import '../providers/baja_persona_providers.dart';
+import '../providers/hoja_casa_providers.dart';
 import '../providers/personas_providers.dart';
+import '../textos_baja_persona.dart';
 import '../textos_personas.dart';
 import '../widgets/piezas_alta.dart';
+import '../widgets/piezas_visita_del_depto.dart';
 import 'alta_persona_page.dart';
 
 /// Los clientes de un departamento (HU-UBI-008, vista 11·04 «Departamento con sus clientes»): el título
 /// del espacio y la lista de personas que el colportor guardó en él, con «+ Agregar cliente».
 ///
-/// Lo que el artboard dibuja y no es de esta pantalla queda fuera: «Registrar visita» y el estado de la
-/// entrevista (las visitas, #151), «Editar» (el depto, #211) y las visitas de cada cliente (todavía no
-/// hay visitas que contar). Tampoco hay `›` en las filas: la ficha de la persona (HU-UBI-009) es otro
-/// issue.
+/// **Estado de la última visita y «Registrar visita»** (HU-VIS-005, #151): debajo del título, la píldora
+/// con «Entrevista hecha · 20/09» (o «Sin visitas todavía») y el botón. Se registra por depto, no por
+/// edificio: el botón lleva a «¿Qué pasó?» (vista 39, C·06) con este espacio puesto
+/// ([registrarVisitaDesdeLaCasaProvider]); sin destino enganchado, o con el depto dado de baja, no se
+/// ofrece. Al volver, el estado ya es el nuevo (se lee en vivo) y la pantalla sigue donde estaba.
+///
+/// Lo que el artboard dibuja y no es de esta pantalla queda fuera: «Editar» (el depto, #211) y las
+/// visitas de cada cliente (todavía no hay visitas por persona que contar). Tampoco hay `›` en las
+/// filas: la ficha de la persona (HU-UBI-009) es otro issue.
 ///
 /// - Cargando, vacío, error al leer y espacio que ya no está son estados propios.
 /// - Con el espacio dado de baja es de solo lectura: se ven los clientes y no se puede agregar.
 /// - Al volver del alta con una persona nueva muestra «Guardamos a Jorge en este teléfono.» (32A·05).
+/// - Con personas dadas de baja (HU-UBI-011) aparece «Mostrar bajas» (32D·04): las bajas se ven en gris,
+///   con la fecha y el saldo si se conoce, y «Reactivar» las vuelve a la lista (32D·05). Con el espacio
+///   dado de baja se ven pero no se reactivan.
 class PersonasDelEspacioPage extends ConsumerStatefulWidget {
   const PersonasDelEspacioPage({super.key, required this.espacioId, required this.colportorId});
 
@@ -46,6 +59,61 @@ class PersonasDelEspacioPage extends ConsumerStatefulWidget {
 class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage> {
   /// Ya se está abriendo el alta: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
+
+  /// «Mostrar bajas» (32D·04).
+  var _mostrarBajas = false;
+
+  /// Las personas que se están reactivando: un segundo toque sobre la misma no la pide dos veces.
+  final _reactivando = <String>{};
+
+  /// Ya se está abriendo «Registrar visita»: un segundo toque no abre otro «¿Qué pasó?» encima. El botón
+  /// no se apaga (apagado sobre el azul oscuro no se lee): el segundo toque simplemente no hace nada.
+  var _registrando = false;
+
+  /// El encabezado (título, última visita y «CLIENTES · N») va fijo, como en el canvas 11·04 (`flex:none`).
+  /// Si medido ocupa más de [_topeDelEncabezado] de la altura (texto grande en una pantalla chica), pasa
+  /// a desplazarse con la lista: así nada desborda y la lista de clientes no se queda sin lugar.
+  var _encabezadoEnLista = false;
+  final _claveDelEncabezado = GlobalKey();
+
+  /// Qué parte de la altura puede ocupar el encabezado fijo.
+  static const _topeDelEncabezado = 0.4;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cambió el tamaño o el texto: se vuelve a medir con el encabezado fijo.
+    _encabezadoEnLista = false;
+  }
+
+  /// Mide el encabezado fijo después del cuadro y, si no entra en el tope, lo pasa a la lista.
+  void _medirEncabezado(double alturaDeLaPantalla) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _encabezadoEnLista) return;
+      final tamano = _claveDelEncabezado.currentContext?.size;
+      if (tamano != null && tamano.height > alturaDeLaPantalla * _topeDelEncabezado) {
+        setState(() => _encabezadoEnLista = true);
+      }
+    });
+  }
+
+  /// «Registrar visita» de este depto. Si la apertura falla, el aviso dice qué hacer y el botón sigue
+  /// tocable (la guarda se suelta pase lo que pase).
+  Future<void> _registrarVisita(String ubicacionId) async {
+    if (_registrando) return;
+    final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
+    if (destino == null) return;
+    _registrando = true;
+    // Un aviso viejo (la falla de una vez anterior) se va con el nuevo intento.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    try {
+      await destino((ubicacionId: ubicacionId, espacioId: widget.espacioId, agendaId: null));
+    } on Object {
+      if (mounted) _avisar(TextosHojaCasa.noPudimosAbrirVisita);
+    } finally {
+      _registrando = false;
+    }
+  }
 
   Future<void> _agregar() async {
     if (_abriendoAlta) return;
@@ -76,31 +144,125 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
   void _reintentar() {
     ref
       ..invalidate(contextoEspacioProvider(widget.espacioId))
-      ..invalidate(personasDelEspacioProvider(widget.espacioId));
+      ..invalidate(personasDelEspacioProvider(widget.espacioId))
+      ..invalidate(bajasDelEspacioProvider(widget.espacioId))
+      ..invalidate(ultimaVisitaDelEspacioProvider(widget.espacioId));
+  }
+
+  void _avisar(String texto) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF0E1A2B),
+          content: Text(texto),
+        ),
+      );
+  }
+
+  /// «Reactivar» (32D·04): la persona vuelve a la lista y el aviso lo dice (32D·05). Si falla, el
+  /// botón vuelve a quedar tocable y el aviso dice qué hacer.
+  Future<void> _reactivar(PersonaDelEspacio baja) async {
+    final id = baja.persona.id;
+    if (_reactivando.contains(id)) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se reactiva a nadie.
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    final nombre = FormatoBajaPersona.nombreDePila(baja.persona);
+    setState(() => _reactivando.add(id));
+    var salio = false;
+    try {
+      final r = await ref.read(reactivarPersonaUseCaseProvider)(id);
+      r.fold((falla) {
+        if (mounted) {
+          _avisar(mensajeDeFallaDePersona(falla, TextosBajaPersona.noPudimosReactivar(nombre)));
+        }
+      }, (_) => salio = true);
+    } on Object {
+      if (mounted) _avisar(TextosBajaPersona.noPudimosReactivar(nombre));
+    } finally {
+      if (mounted) setState(() => _reactivando.remove(id));
+    }
+    if (salio && mounted) _avisar(TextosBajaPersona.activaDeNuevo(nombre));
   }
 
   @override
   Widget build(BuildContext context) {
     final contexto = ref.watch(contextoEspacioProvider(widget.espacioId));
     final personas = ref.watch(personasDelEspacioProvider(widget.espacioId));
+    final bajas = ref.watch(bajasDelEspacioProvider(widget.espacioId));
+    final saldosDeBajas =
+        ref.watch(saldosDeBajasDelEspacioProvider(widget.espacioId)).asData?.value ?? const {};
     final datos = contexto.asData?.value;
     final noEncontrado = contexto.hasValue && datos == null;
     final deBaja =
         datos != null && (datos.espacio.auditoria.estaBorrada || datos.ubicacion.estaBorrada);
     final puedeAgregar = datos != null && !deBaja;
     final cantidad = personas.asData?.value.length;
+    // El estado de la última visita: sin la lectura (cargando o con error) no se dice ninguno.
+    final ultima = ref.watch(ultimaVisitaDelEspacioProvider(widget.espacioId));
+    final destinoDeVisita = ref.watch(registrarVisitaDesdeLaCasaProvider);
+    final puedeRegistrar = datos != null && !deBaja && destinoDeVisita != null;
 
-    final Widget cuerpo;
+    // El cuerpo: una pieza por renglón de la lista que se desplaza.
+    final List<Widget Function()> cuerpo;
     if (contexto.hasError || personas.hasError) {
-      cuerpo = _ErrorDeLectura(alReintentar: _reintentar);
+      cuerpo = [() => _ErrorDeLectura(alReintentar: _reintentar)];
     } else if (noEncontrado) {
-      cuerpo = const _Mensaje(texto: TextosPersonas.espacioNoEncontrado);
+      cuerpo = [() => const _Mensaje(texto: TextosPersonas.espacioNoEncontrado)];
     } else if (!contexto.hasValue || !personas.hasValue) {
-      cuerpo = const _Cargando();
-    } else if (personas.requireValue.isEmpty) {
-      cuerpo = _ListaDeClientes(clientes: const [], deBaja: deBaja);
+      cuerpo = [() => const _Cargando()];
     } else {
-      cuerpo = _ListaDeClientes(clientes: personas.requireValue, deBaja: deBaja);
+      cuerpo = _itemsDeClientes(
+        clientes: personas.requireValue,
+        deBaja: deBaja,
+        bajas: bajas.asData?.value ?? const [],
+        bajasConError: bajas.hasError,
+        mostrarBajas: _mostrarBajas,
+        alCambiarMostrarBajas: (valor) => setState(() => _mostrarBajas = valor),
+        saldosDeBajas: saldosDeBajas,
+        reactivando: _reactivando,
+        // Con el espacio dado de baja es de solo lectura: las bajas se ven y no se reactivan.
+        alReactivar: puedeAgregar ? _reactivar : null,
+        alReintentarBajas: () => ref.invalidate(bajasDelEspacioProvider(widget.espacioId)),
+        ahora: ref.read(relojPersonaProvider)(),
+      );
+    }
+    final encabezado = <Widget Function()>[
+      if (datos != null)
+        () => _Titulo(
+          titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
+          piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
+        ),
+      if (datos != null)
+        () => VisitaDelDepto(
+          conEstado: ultima.hasValue,
+          ultima: ultima.asData?.value,
+          alRegistrar: puedeRegistrar ? () => _registrarVisita(datos.ubicacion.id) : null,
+        ),
+      () => const Divider(height: 1),
+      () => _EncabezadoClientes(cantidad: cantidad, alAgregar: puedeAgregar ? _agregar : null),
+    ];
+
+    // Depende del tamaño y del texto: cuando cambian se vuelve a medir (`didChangeDependencies`).
+    final alto = MediaQuery.sizeOf(context).height;
+    MediaQuery.textScalerOf(context);
+    if (!_encabezadoEnLista) _medirEncabezado(alto);
+
+    final Widget lista;
+    if (_encabezadoEnLista) {
+      final items = [...encabezado, ...cuerpo];
+      lista = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16),
+        itemCount: items.length,
+        itemBuilder: (context, i) => items[i](),
+      );
+    } else {
+      lista = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16),
+        itemCount: cuerpo.length,
+        itemBuilder: (context, i) => cuerpo[i](),
+      );
     }
 
     return Scaffold(
@@ -112,14 +274,25 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
                   ? null
                   : FormatoUbicaciones.direccion(datos.ubicacion).toUpperCase(),
             ),
-            if (datos != null)
-              _Titulo(
-                titulo: FormatoPersonas.tituloEspacio(datos.espacio, datos.ubicacion),
-                piso: FormatoPersonas.pisoDelEspacio(datos.espacio),
+            if (!_encabezadoEnLista)
+              // Sin tope propio de altura el encabezado se mide entero; lo que se ve nunca pasa del tope
+              // (si lo pasa, el cuadro siguiente lo manda a la lista).
+              ClipRect(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: alto * _topeDelEncabezado),
+                  child: UnconstrainedBox(
+                    constrainedAxis: Axis.horizontal,
+                    alignment: Alignment.topCenter,
+                    clipBehavior: Clip.hardEdge,
+                    child: Column(
+                      key: _claveDelEncabezado,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [for (final pieza in encabezado) pieza()],
+                    ),
+                  ),
+                ),
               ),
-            const Divider(height: 1),
-            _EncabezadoClientes(cantidad: cantidad, alAgregar: puedeAgregar ? _agregar : null),
-            Expanded(child: cuerpo),
+            Expanded(child: lista),
           ],
         ),
       ),
@@ -236,41 +409,235 @@ class _EncabezadoClientes extends StatelessWidget {
   }
 }
 
-class _ListaDeClientes extends StatelessWidget {
-  const _ListaDeClientes({required this.clientes, required this.deBaja});
+/// Las filas de la lista de clientes, una por renglón de la lista que se desplaza: el aviso del espacio
+/// dado de baja, los clientes (o «Todavía no hay clientes»), «Mostrar bajas» con las bajas, el error
+/// de las bajas y la nota de privacidad.
+///
+/// - [bajas]: las personas dadas de baja del espacio (32D·04).
+/// - [saldosDeBajas]: lo que debe cada baja, por `persona.id`; la que no está no tiene saldo conocido.
+/// - [alReactivar] `null`: no se puede reactivar (el espacio está dado de baja).
+List<Widget Function()> _itemsDeClientes({
+  required List<PersonaDelEspacio> clientes,
+  required bool deBaja,
+  required List<PersonaDelEspacio> bajas,
+  required bool bajasConError,
+  required bool mostrarBajas,
+  required ValueChanged<bool> alCambiarMostrarBajas,
+  required Map<String, int> saldosDeBajas,
+  required Set<String> reactivando,
+  required ValueChanged<PersonaDelEspacio>? alReactivar,
+  required VoidCallback alReintentarBajas,
+  required DateTime ahora,
+}) {
+  final avisoBaja = deBaja
+      ? const Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: AvisoAlta(
+            color: ColoresAlta.ambarBorde,
+            colorInsignia: ColoresAlta.ambar,
+            glyph: '!',
+            texto: TextosPersonas.espacioDeBaja,
+          ),
+        )
+      : null;
+  return [
+    if (avisoBaja != null) () => avisoBaja,
+    if (clientes.isEmpty) () => const _SinClientes(),
+    for (final cliente in clientes) () => _FilaCliente(cliente: cliente),
+    if (bajas.isNotEmpty)
+      () => _MostrarBajas(valor: mostrarBajas, alCambiar: alCambiarMostrarBajas),
+    if (bajas.isNotEmpty && mostrarBajas)
+      for (final baja in bajas)
+        () => _FilaBaja(
+          baja: baja,
+          saldoCentavos: saldosDeBajas[baja.persona.id],
+          ahora: ahora,
+          reactivando: reactivando.contains(baja.persona.id),
+          alReactivar: alReactivar == null ? null : () => alReactivar(baja),
+        ),
+    if (bajasConError) () => _ErrorDeBajas(alReintentar: alReintentarBajas),
+    () => const _NotaDePrivacidad(),
+  ];
+}
 
-  final List<PersonaDelEspacio> clientes;
-  final bool deBaja;
+/// «Mostrar bajas» (canvas 32D·04): el interruptor que muestra o esconde a las personas dadas de baja.
+class _MostrarBajas extends StatelessWidget {
+  const _MostrarBajas({required this.valor, required this.alCambiar});
+
+  final bool valor;
+  final ValueChanged<bool> alCambiar;
 
   @override
   Widget build(BuildContext context) {
-    final avisoBaja = deBaja
-        ? const Padding(
-            padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-            child: AvisoAlta(
-              color: ColoresAlta.ambarBorde,
-              colorInsignia: ColoresAlta.ambar,
-              glyph: '!',
-              texto: TextosPersonas.espacioDeBaja,
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SwitchListTile(
+        value: valor,
+        onChanged: alCambiar,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        title: const Text(
+          TextosBajaPersona.mostrarBajas,
+          style: TextStyle(fontSize: 14, color: ColoresAlta.tinta),
+        ),
+      ),
+    );
+  }
+}
+
+/// Una persona dada de baja (canvas 32D·04): iniciales y nombre en gris, «Baja el 22/10 · saldo
+/// $ 1.200» y «Reactivar». Sin [alReactivar] (el espacio está dado de baja) se ve y no se toca.
+class _FilaBaja extends StatelessWidget {
+  const _FilaBaja({
+    required this.baja,
+    required this.saldoCentavos,
+    required this.ahora,
+    required this.reactivando,
+    required this.alReactivar,
+  });
+
+  final PersonaDelEspacio baja;
+  final int? saldoCentavos;
+  final DateTime ahora;
+  final bool reactivando;
+  final VoidCallback? alReactivar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final persona = baja.persona;
+    final nombre = FormatoPersonas.nombreCompleto(persona);
+    final desde = persona.auditoria.deletedAt;
+    final detalle = desde == null
+        ? ''
+        : TextosBajaPersona.bajaEl(desde, ahora, saldoCentavos: saldoCentavos);
+    // A 2× el botón no entra al lado del nombre: va debajo.
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final datos = Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: '$nombre. $detalle',
+      child: Row(
+        children: [
+          // El círculo es fijo (36 dp) y las iniciales no dicen nada que el nombre de al lado no diga:
+          // no escalan con el texto (partirían en dos renglones) y quedan fuera de la lectura.
+          ExcludeSemantics(
+            child: Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(color: Color(0xFFF3F1EA), shape: BoxShape.circle),
+              child: Text(
+                FormatoPersonas.iniciales(persona),
+                textScaler: TextScaler.noScaling,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: ColoresAlta.gris,
+                ),
+              ),
             ),
-          )
-        : null;
-    // Avisos de arriba + filas + vacío + nota de privacidad: una sola lista que se desplaza.
-    final delante = avisoBaja == null ? 0 : 1;
-    final vacio = clientes.isEmpty ? 1 : 0;
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16),
-      itemCount: delante + vacio + clientes.length + 1,
-      itemBuilder: (context, i) {
-        if (i < delante) return avisoBaja;
-        i -= delante;
-        if (vacio == 1) {
-          if (i == 0) return const _SinClientes();
-          i -= 1;
-        }
-        if (i < clientes.length) return _FilaCliente(cliente: clientes[i]);
-        return const _NotaDePrivacidad();
-      },
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  nombre,
+                  maxLines: _lineasDelNombre(context),
+                  overflow: _desborde(context),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: ColoresAlta.gris,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(detalle, style: theme.textTheme.bodySmall?.copyWith(color: ColoresAlta.gris)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    final boton = alReactivar == null
+        ? null
+        : reactivando
+        ? const _Reactivando()
+        : TextButton(
+            onPressed: alReactivar,
+            style: TextButton.styleFrom(
+              foregroundColor: ColoresAlta.azul,
+              minimumSize: const Size(48, 48),
+              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            child: const Text(TextosBajaPersona.reactivar),
+          );
+    return Container(
+      constraints: const BoxConstraints(minHeight: 62),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: theme.extension<ColoresColportaje>()?.borde ?? ColoresAlta.grisFondo,
+          ),
+        ),
+      ),
+      child: grande || boton == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                datos,
+                if (boton != null) Align(alignment: Alignment.centerRight, child: boton),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: datos),
+                boton,
+              ],
+            ),
+    );
+  }
+}
+
+/// El lugar de «Reactivar» mientras se escribe: no se puede volver a tocar.
+class _Reactivando extends StatelessWidget {
+  const _Reactivando();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Semantics(
+        liveRegion: true,
+        label: TextosBajaPersona.reactivando,
+        child: const ExcludeSemantics(
+          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorDeBajas extends StatelessWidget {
+  const _ErrorDeBajas({required this.alReintentar});
+
+  final VoidCallback alReintentar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: AvisoAlta(
+        color: ColoresAlta.rojo,
+        glyph: '!',
+        texto: TextosBajaPersona.noPudimosLeerBajas,
+        acciones: Align(
+          alignment: Alignment.centerLeft,
+          child: EnlaceAlta(texto: TextosPersonas.reintentar, alPresionar: alReintentar),
+        ),
+      ),
     );
   }
 }
@@ -302,17 +669,23 @@ class _FilaCliente extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(color: ColoresAlta.azulFondo, shape: BoxShape.circle),
-              child: Text(
-                FormatoPersonas.iniciales(persona),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
+            ExcludeSemantics(
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: ColoresAlta.azulFondo,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  FormatoPersonas.iniciales(persona),
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ),
@@ -323,8 +696,8 @@ class _FilaCliente extends StatelessWidget {
                 children: [
                   Text(
                     nombre,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: _lineasDelNombre(context),
+                    overflow: _desborde(context),
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
@@ -485,7 +858,7 @@ class _ErrorDeLectura extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(20),
       child: AvisoAlta(
         color: ColoresAlta.rojo,
@@ -499,3 +872,12 @@ class _ErrorDeLectura extends StatelessWidget {
     );
   }
 }
+
+/// Cuántos renglones tiene el nombre de una fila: tres, salvo con el texto grande (más de 1,5×), donde
+/// no se corta nunca: sin el lector de pantalla no habría otra forma de saber quién es la persona.
+int? _lineasDelNombre(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(1) > 1.5 ? null : 3;
+
+/// Con el nombre sin recorte tampoco lleva «…».
+TextOverflow _desborde(BuildContext context) =>
+    _lineasDelNombre(context) == null ? TextOverflow.clip : TextOverflow.ellipsis;

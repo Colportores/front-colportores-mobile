@@ -24,6 +24,10 @@ class InMemoryJobStore implements JobStorePort {
 
   int _n = 0;
 
+  /// Cuándo se cerró el último job (`SyncStatus.lastPushAt`). Incremental, como
+  /// los contadores.
+  DateTime? _ultimoDone;
+
   /// Orden de llegada de cada job: el desempate de [_enOrden].
   final Map<String, int> _llegada = {};
 
@@ -73,6 +77,10 @@ class InMemoryJobStore implements JobStorePort {
   Future<void> markDone(Iterable<String> jobIds, {required DateTime at}) async {
     for (final id in jobIds) {
       _reemplazar(byId(id).copyWith(state: JobState.done, doneAt: at));
+    }
+    if (jobIds.isNotEmpty &&
+        (_ultimoDone == null || at.isAfter(_ultimoDone!))) {
+      _ultimoDone = at;
     }
   }
 
@@ -258,6 +266,7 @@ class InMemoryJobStore implements JobStorePort {
         invalid: _cuenta[JobState.invalid]!,
         blocked: _cuenta[JobState.blocked]!,
         waiting: _cuenta[JobState.waiting]!,
+        lastPushAt: _ultimoDone,
       );
 
   @override
@@ -352,5 +361,41 @@ class InMemoryLocalStore implements LocalStorePort {
         filas[i] = {...fila, 'sync_version': version};
       }
     }
+  }
+}
+
+/// `sync_meta` en memoria (HU-SYNC-007). Un test que simula reiniciar el
+/// celular arma otro motor con **el mismo** [InMemorySyncMeta], como lo haría la
+/// DB en disco.
+class InMemorySyncMeta implements SyncMetaPort {
+  SyncMeta _meta = const SyncMeta();
+
+  /// Cuántas veces se escribió.
+  int writes = 0;
+
+  /// Si es `true`, [write] lanza: la DB local falló.
+  bool failOnWrite = false;
+
+  @override
+  Future<SyncMeta> read() async => _meta;
+
+  @override
+  Future<void> write({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    if (failOnWrite) throw StateError('la DB local falló al anotar sync_meta');
+    writes++;
+    final previo = _meta;
+    final pushNuevo = lastPushAt != null &&
+        (previo.lastPushAt == null || !lastPushAt.isBefore(previo.lastPushAt!));
+    _meta = SyncMeta(
+      lastPullAt: lastPullAt ?? previo.lastPullAt,
+      lastBackupAt: lastBackupAt ?? previo.lastBackupAt,
+      lastPushAt: pushNuevo ? lastPushAt : previo.lastPushAt,
+      lastPushNetwork: pushNuevo ? lastPushNetwork : previo.lastPushNetwork,
+    );
   }
 }

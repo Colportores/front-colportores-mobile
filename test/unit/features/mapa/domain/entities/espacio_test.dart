@@ -11,7 +11,6 @@ void main() {
     ubicacionId: 'ub-1',
     numeroDepto: numeroDepto,
     piso: null,
-    descripcion: null,
     auditoria: auditoria,
   );
 

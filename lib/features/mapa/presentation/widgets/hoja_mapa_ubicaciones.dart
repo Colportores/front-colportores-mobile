@@ -88,6 +88,7 @@ class HojaMapaUbicaciones extends StatefulWidget {
     required this.alReintentar,
     required this.alActivarGps,
     required this.alRegistrar,
+    this.colportorId,
   });
 
   final MapaUbicacionesState estado;
@@ -110,6 +111,9 @@ class HojaMapaUbicaciones extends StatefulWidget {
   final VoidCallback alReintentar;
   final VoidCallback alActivarGps;
   final VoidCallback alRegistrar;
+
+  /// El colportor con la sesión iniciada: sin él la hoja de la casa no ofrece «+ Agregar persona».
+  final String? colportorId;
 
   @override
   State<HojaMapaUbicaciones> createState() => _HojaMapaUbicacionesState();
@@ -208,6 +212,9 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                             item: seleccionada,
                             ahora: widget.ahora,
                             alCerrar: widget.alCerrarVistaPrevia,
+                            // C·02: con la hoja a la mitad se ven las pestañas; más abajo, el resumen.
+                            arriba: altura == AlturaHoja.mitad,
+                            colportorId: widget.colportorId,
                           )
                         : _ElegirDelPunto(
                             candidatas: candidatas,

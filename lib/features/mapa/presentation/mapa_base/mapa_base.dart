@@ -13,6 +13,7 @@ import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/mapa_base_providers.dart';
 import 'modelo_mapa_base.dart';
+import 'zonas_mapa.dart';
 
 /// El recuadro que tiene que quedar a la vista al abrir el mapa: la cámara más cercana que deja a
 /// todos los [puntos] adentro, con [margen] píxeles libres en cada borde y sin pasar de
@@ -51,6 +52,7 @@ class MapaBase extends ConsumerStatefulWidget {
     this.zoomSobreCentro = false,
     this.fondo = ColoresMapa.fondo,
     this.puntos = const [],
+    this.zonas = const [],
     this.agruparPuntos = false,
     this.precision,
     this.cercania,
@@ -89,6 +91,10 @@ class MapaBase extends ConsumerStatefulWidget {
   /// pantalla un nodo «Tu ubicación» sobre el punto, sin acción, ubicado con la cámara de la última
   /// vez que el mapa quedó quieto; si el punto queda fuera de la pantalla no hay nodo.
   final List<PuntoMapa> puntos;
+
+  /// Las zonas de las campañas del colportor (#511): un relleno y un borde por debajo de los
+  /// puntos, con el nombre encima. No tapan ni reciben toques: el toque sigue siendo de los puntos.
+  final List<ZonaMapa> zonas;
   final bool agruparPuntos;
   final CirculoPrecision? precision;
 
@@ -504,6 +510,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
           precision: widget.precision,
           cercania: widget.cercania,
           puntosTocables: widget.alTocarPunto != null,
+          zonas: widget.zonas,
         );
         final marcaGps = _posicionDelGps();
         Widget vista = constructor(context, config, this);

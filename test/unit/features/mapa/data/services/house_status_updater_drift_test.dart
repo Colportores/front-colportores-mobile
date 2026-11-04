@@ -99,7 +99,7 @@ void main() {
     });
 
     test('una agenda cumplida, cancelada o dada de baja: no cuenta', () async {
-      await insertarAgenda(db, agendaDe('age-1', estado: EstadoAgenda.completada));
+      await insertarAgenda(db, agendaDe('age-1', estado: EstadoAgenda.cumplida));
       await insertarAgenda(db, agendaDe('age-2', estado: EstadoAgenda.cancelada));
       await insertarAgenda(db, agendaDe('age-3', borrada: t1));
 
@@ -155,6 +155,91 @@ void main() {
     );
   });
 
+  group('entre entrevista dada, sin contestar y rechazo manda la visita más reciente', () {
+    Future<void> visita(String id, TipoResultadoVisita resultado, DateTime fecha) =>
+        insertarVisita(db, visitaDe(id, resultado: resultado, creada: fecha));
+
+    test('una entrevista y después un rechazo: la casa queda roja y la entrevista sigue en el '
+        'historial', () async {
+      await visita('vis-1', TipoResultadoVisita.entrevista, t0);
+      await visita('vis-2', TipoResultadoVisita.rechazo, t1);
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'RECHAZO');
+      expect((await filas()).single.prioridad, 7);
+      expect(await db.select(db.visitas).get(), hasLength(2));
+    });
+
+    test('un rechazo y después una entrevista: la casa vuelve a verde', () async {
+      await visita('vis-1', TipoResultadoVisita.rechazo, t0);
+      await visita('vis-2', TipoResultadoVisita.entrevista, t1);
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'ENTREVISTA_SIN_VENTA');
+    });
+
+    test('el orden en que se guardaron no cuenta: manda la fecha de la visita', () async {
+      await visita('vis-1', TipoResultadoVisita.rechazo, t1);
+      await visita('vis-2', TipoResultadoVisita.entrevista, t0);
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'RECHAZO');
+    });
+
+    test(
+      'al llegar la visita nueva, la fila existente cambia de color y encola un update',
+      () async {
+        await visita('vis-1', TipoResultadoVisita.entrevista, t0);
+        await recalcular();
+        encolador.encolados.clear();
+        await visita('vis-2', TipoResultadoVisita.rechazo, t1);
+
+        await recalcular(ahora: t1);
+
+        final job = encolador.encolados.single;
+        expect(job.operacion, OperacionSync.update);
+        expect(job.payload['color'], 'RECHAZO');
+        expect(job.payload['prioridad'], 7);
+      },
+    );
+
+    test('si se da de baja la visita más nueva, la casa vuelve al resultado anterior', () async {
+      await visita('vis-1', TipoResultadoVisita.entrevista, t0);
+      await visita('vis-2', TipoResultadoVisita.rechazo, t1);
+      await recalcular(ahora: t1);
+      await (db.update(
+        db.visitas,
+      )..where((v) => v.id.equals('vis-2'))).write(VisitasCompanion(deletedAt: Value(t1)));
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'ENTREVISTA_SIN_VENTA');
+    });
+
+    test('lo pendiente va por encima: una entrevista agendada gana al rechazo más nuevo', () async {
+      await visita('vis-1', TipoResultadoVisita.entrevista, t0);
+      await visita('vis-2', TipoResultadoVisita.rechazo, t1);
+      await insertarAgenda(db, agendaDe('age-1'));
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'ENTREVISTA_PROGRAMADA');
+    });
+
+    test('una visita de cobranza o de venta más nueva no tapa al último resultado', () async {
+      await visita('vis-1', TipoResultadoVisita.noContesto, t0);
+      await visita('vis-2', TipoResultadoVisita.cobranza, t1);
+      await visita('vis-3', TipoResultadoVisita.venta, t1.add(const Duration(minutes: 1)));
+
+      await recalcular(ahora: t1);
+
+      expect((await filas()).single.color, 'SIN_CONTESTAR');
+    });
+  });
+
   group('dado que la fila ya existe', () {
     test('y nada cambió: no escribe ni encola de nuevo', () async {
       await insertarAgenda(db, agendaDe('age-1'));
@@ -177,7 +262,7 @@ void main() {
       encolador.encolados.clear();
       await (db.update(
         db.agendas,
-      )).write(AgendasCompanion(estado: Value(EstadoAgenda.completada.codigo)));
+      )).write(AgendasCompanion(estado: Value(EstadoAgenda.cumplida.codigo)));
       await insertarVisita(db, visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto));
 
       await updater.recalcular('ub-1', ahora: t1, colportorId: 'col-1');
@@ -282,7 +367,12 @@ void main() {
       await insertarAgenda(db, agendaDe('age-1'));
       await insertarVisita(
         db,
-        visitaDe('vis-1', vinculo: 'ep-2', resultado: TipoResultadoVisita.rechazo),
+        visitaDe(
+          'vis-1',
+          espacio: 'esp-2',
+          vinculo: 'ep-2',
+          resultado: TipoResultadoVisita.rechazo,
+        ),
       );
 
       await recalcular();
@@ -291,10 +381,39 @@ void main() {
       expect((await filas()).single.tipoUbicacion, 'EDIFICIO');
     });
 
+    test(
+      'el último resultado se busca entre todos los deptos: manda el más nuevo de cualquiera',
+      () async {
+        await insertarVisita(
+          db,
+          visitaDe('vis-1', resultado: TipoResultadoVisita.entrevista, creada: t0),
+        );
+        await insertarVisita(
+          db,
+          visitaDe(
+            'vis-2',
+            espacio: 'esp-2',
+            vinculo: 'ep-2',
+            resultado: TipoResultadoVisita.rechazo,
+            creada: t1,
+          ),
+        );
+
+        await recalcular(ahora: t1);
+
+        expect((await filas()).single.color, 'RECHAZO');
+      },
+    );
+
     test('un depto dado de baja no pinta el edificio', () async {
       await insertarVisita(
         db,
-        visitaDe('vis-1', vinculo: 'ep-2', resultado: TipoResultadoVisita.entrevista),
+        visitaDe(
+          'vis-1',
+          espacio: 'esp-2',
+          vinculo: 'ep-2',
+          resultado: TipoResultadoVisita.entrevista,
+        ),
       );
       await (db.update(
         db.espacios,

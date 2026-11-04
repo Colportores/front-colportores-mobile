@@ -3,6 +3,8 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
 import '../../domain/entities/visita_guardada.dart';
@@ -36,6 +38,16 @@ final class AgendaRepositoryImpl implements AgendaRepository {
   );
 
   @override
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
+      _correr('AGENDA_MODIFICAR', {
+        'agenda_id': cambios.agendaId,
+      }, () async => (await _local.modificar(cambios, ahora: ahora)).agenda);
+
+  @override
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) =>
+      _correr('AGENDA_DETALLE', {'agenda_id': agendaId}, () => _local.obtenerDetalle(agendaId));
+
+  @override
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
@@ -49,7 +61,36 @@ final class AgendaRepositoryImpl implements AgendaRepository {
         'motivo': motivo.name,
       });
     }
-    return VisitaGuardada(visita: r.visita, agendaIgnorada: r.agendaIgnorada);
+    return VisitaGuardada(
+      visita: r.visita,
+      agendaIgnorada: r.agendaIgnorada,
+      agendaNoCumplida: r.agendaNoCumplida,
+      agendaCreadaId: r.agendaCreadaId,
+      agendaAfectadaId: r.agendaAfectadaId,
+    );
+  });
+
+  @override
+  Future<Either<Failure, Agenda?>> agendaProgramadaDe(String espacioId) => _correr(
+    'AGENDA_PROGRAMADA',
+    {'espacio_id': espacioId},
+    () => _local.agendaProgramadaDe(espacioId),
+  );
+
+  @override
+  Future<Either<Failure, Visita>> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) => _correr('VISITA_DESHACER', {'visita_id': visitaId}, () async {
+    final r = await _local.deshacerVisita(
+      visitaId,
+      agendaCreadaId: agendaCreadaId,
+      agendaAfectadaId: agendaAfectadaId,
+      ahora: ahora,
+    );
+    return r.visita;
   });
 
   Future<Either<Failure, T>> _correr<T>(
@@ -64,7 +105,11 @@ final class AgendaRepositoryImpl implements AgendaRepository {
         ...contexto,
         'motivo': e.motivo.name,
       });
-      return Left(FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}));
+      // El `mensaje` también va: es el que muestran las pantallas que no leen `campos` (la hoja de
+      // «Terminó la entrevista», el mapa), y sin él dirían «Revisá los datos ingresados».
+      return Left(
+        FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}, mensaje: e.motivo.mensaje),
+      );
     } on Object catch (e, st) {
       // Ni al log ni a la falla va la excepción tal cual: la de Drift trae la sentencia con sus
       // parámetros. Solo su tipo (convenciones §7.5).

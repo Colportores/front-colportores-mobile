@@ -4,9 +4,9 @@ import '../../../../core/database/fecha_utc_converter.dart';
 
 /// Tabla `agenda` de la DB local cifrada (esquema-datos.md §Operaciones de campo).
 ///
-/// Es la misma tabla que `public.agenda` del cloud (`backend-supabase`, migración 0001) —"modelo
-/// único", esquema-datos.md §Principios 1—: mismo nombre, mismas columnas y los mismos `CHECK`. Las
-/// diferencias son las del motor, igual que en `jornada` y `ubicacion`:
+/// Es la misma tabla que `public.agenda` del cloud (`backend-supabase`, migraciones 0001 y 0068)
+/// —"modelo único", esquema-datos.md §Principios 1—: mismo nombre, mismas columnas y los mismos
+/// `CHECK`. Las diferencias son las del motor, igual que en `jornada` y `ubicacion`:
 ///
 /// - Fechas en epoch ms UTC ([FechaUtcConverter]) en vez de `timestamptz`.
 /// - Sin claves foráneas: `espacio_persona`, `ubicacion` y `visita` pueden llegar al teléfono en
@@ -17,11 +17,17 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// local-only, ADR-017). Por eso la fila entera sube: nada de lo que hay acá es personal.
 ///
 /// Los nombres de columna son las claves de `AgendaModel.toJson()` —el payload de sync—; un test
-/// fija que coincidan. Los `CHECK` de `tipo` y `estado` son los del servidor, tal cual (pendiente
-/// P1 de #151: la HU habla de otros nombres de estado).
+/// fija que coincidan. Los `CHECK` de `tipo` y `estado` son los del servidor, tal cual (estados de
+/// la HU, decisión del 23/10, «No cumplida»). **Cuelga del espacio** (`espacio_id`) y la persona es
+/// opcional («Sin persona»). De lo que la origina (0068) está [ventaId] y [montoPrevisto]: una cuota
+/// del plan de una venta es una cita `COBRANZA` con su venta y su monto (HU-COB-004, decisión «Plan
+/// cuotas» del 23/10, sin tablas de plan ni de cuotas). `entrega_id` y el tipo `ENTREGA` los suma la
+/// HU de las entregas.
 @DataClassName('AgendaFila')
 @TableIndex(name: 'agenda_colportor_idx', columns: {#colportorId, #fechaProgramada})
 @TableIndex(name: 'agenda_espacio_persona_idx', columns: {#espacioPersonaId})
+@TableIndex(name: 'agenda_espacio_idx', columns: {#espacioId})
+@TableIndex(name: 'agenda_venta_idx', columns: {#ventaId})
 class Agendas extends Table {
   @override
   String get tableName => 'agenda';
@@ -29,7 +35,11 @@ class Agendas extends Table {
   /// UUID v7 generado en el dispositivo (esquema-datos.md §Principios 2).
   TextColumn get id => text()();
 
-  TextColumn get espacioPersonaId => text()();
+  /// La casa o el depto de la cita.
+  TextColumn get espacioId => text()();
+
+  /// Con quién es; `null` = sin persona.
+  TextColumn get espacioPersonaId => text().nullable()();
 
   /// `ENTREVISTA` o `COBRANZA`.
   TextColumn get tipo => text()();
@@ -42,13 +52,20 @@ class Agendas extends Table {
 
   TextColumn get ubicacionAltId => text().nullable()();
 
-  /// `PENDIENTE`, `COMPLETADA` o `CANCELADA`.
-  TextColumn get estado => text().withDefault(const Constant('PENDIENTE'))();
+  /// `PROGRAMADA`, `CUMPLIDA`, `NO_CUMPLIDA` o `CANCELADA`.
+  TextColumn get estado => text().withDefault(const Constant('PROGRAMADA'))();
 
   TextColumn get colportorId => text()();
 
   /// Se completa al registrar la visita que cumple la agenda.
   TextColumn get visitaId => text().nullable()();
+
+  /// La venta de la que sale la cita (una cuota); `null` si no sale de ninguna.
+  TextColumn get ventaId => text().nullable()();
+
+  /// Lo que se espera cobrar en la cita, en centavos: solo en una cita `COBRANZA` con venta (el
+  /// `CHECK` de abajo). Una cita con monto previsto es una cuota del plan de la venta.
+  IntColumn get montoPrevisto => integer().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 
@@ -67,6 +84,7 @@ class Agendas extends Table {
   @override
   List<String> get customConstraints => const [
     "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
-    "CHECK (estado IN ('PENDIENTE', 'COMPLETADA', 'CANCELADA'))",
+    "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
+    "CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL))",
   ];
 }

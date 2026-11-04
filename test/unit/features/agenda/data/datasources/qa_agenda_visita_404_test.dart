@@ -185,7 +185,7 @@ void main() {
         );
         expect(otra.isRight(), isTrue, reason: 'el reintento con los mismos ids sale bien');
         expect((await db.select(db.visitas).get()).map((v) => v.id), ['vis-1']);
-        expect((await db.select(db.agendas).get()).single.estado, 'COMPLETADA');
+        expect((await db.select(db.agendas).get()).single.estado, 'CUMPLIDA');
         expect((await db.select(db.agendas).get()).single.visitaId, 'vis-1');
         expect((await db.select(db.houseStatuses).get()).single.color, 'RECHAZO');
         expect((await db.select(db.notas).get()).map((x) => x.id).toSet(), {'not-0', 'not-1'});
@@ -250,6 +250,7 @@ void main() {
           db,
           visitaDe(
             'vm$i',
+            espacio: 'e${i % 40}',
             vinculo: 'v${i % 40}',
             resultado: i.isEven ? TipoResultadoVisita.noContesto : TipoResultadoVisita.rechazo,
           ),
@@ -258,13 +259,23 @@ void main() {
       for (var i = 0; i < 300; i++) {
         await insertarAgenda(
           db,
-          agendaDe('am$i', vinculo: 'v${i % 40}', estado: EstadoAgenda.cancelada),
+          agendaDe(
+            'am$i',
+            espacio: 'e${i % 40}',
+            vinculo: 'v${i % 40}',
+            estado: EstadoAgenda.cancelada,
+          ),
         );
       }
 
       final reloj = Stopwatch()..start();
       final r = await repo.agendar(
-        agendaDe('age-nueva', vinculo: 'v7', creada: t0.add(const Duration(minutes: 1))),
+        agendaDe(
+          'age-nueva',
+          espacio: 'e7',
+          vinculo: 'v7',
+          creada: t0.add(const Duration(minutes: 1)),
+        ),
       );
       reloj.stop();
 
@@ -277,6 +288,7 @@ void main() {
   group('acciones superpuestas: la cache y la cola siempre cuentan lo mismo que las tablas', () {
     // Tres casas: un edificio con dos deptos (ub-1) y dos casas (ub-2, ub-3).
     const vinculos = {'ep-1': 'ub-1', 'ep-2': 'ub-1', 'ep-3': 'ub-2', 'ep-4': 'ub-3'};
+    const espacios = {'ep-1': 'es-1', 'ep-2': 'es-2', 'ep-3': 'es-3', 'ep-4': 'es-4'};
 
     Future<void> sembrarTodo() async {
       await db.delete(db.espacioPersonas).go();
@@ -300,26 +312,40 @@ void main() {
       final prioridades = <int, String>{};
       final deLaCasa = vinculos.entries
           .where((e) => e.value == ubicacion)
-          .map((e) => e.key)
+          .map((e) => espacios[e.key])
           .toSet();
       for (final a in await db.select(db.agendas).get()) {
-        if (deLaCasa.contains(a.espacioPersonaId) &&
-            a.estado == 'PENDIENTE' &&
+        if (deLaCasa.contains(a.espacioId) &&
+            a.estado == 'PROGRAMADA' &&
             a.deletedAt == null &&
             a.tipo == 'ENTREVISTA') {
           prioridades[3] = 'ENTREVISTA_PROGRAMADA';
         }
       }
+      // Entre entrevista, no contestó y rechazo manda la visita más reciente («Rojo o verde»,
+      // 23/10, #464); a igual instante, la de número más chico.
+      final ultimaVisita = <int, String>{};
+      DateTime? fechaUltima;
       for (final v in await db.select(db.visitas).get()) {
-        if (!deLaCasa.contains(v.espacioPersonaId) || v.deletedAt != null) continue;
-        switch (v.tipoResultado) {
-          case 'ENTREVISTA':
-            prioridades[5] = 'ENTREVISTA_SIN_VENTA';
-          case 'NO_CONTESTO':
-            prioridades[6] = 'SIN_CONTESTAR';
-          case 'RECHAZO':
-            prioridades[7] = 'RECHAZO';
+        if (!deLaCasa.contains(v.espacioId) || v.deletedAt != null) continue;
+        final (prioridad, color) = switch (v.tipoResultado) {
+          'ENTREVISTA' => (5, 'ENTREVISTA_SIN_VENTA'),
+          'NO_CONTESTO' => (6, 'SIN_CONTESTAR'),
+          'RECHAZO' => (7, 'RECHAZO'),
+          _ => (0, ''),
+        };
+        if (prioridad == 0) continue;
+        if (fechaUltima == null || v.fecha.isAfter(fechaUltima)) {
+          fechaUltima = v.fecha;
+          ultimaVisita
+            ..clear()
+            ..[prioridad] = color;
+        } else if (v.fecha.isAtSameMomentAs(fechaUltima)) {
+          ultimaVisita[prioridad] = color;
         }
+      }
+      if (ultimaVisita.isNotEmpty) {
+        prioridades[ultimaVisita.keys.reduce(min)] = ultimaVisita[ultimaVisita.keys.reduce(min)]!;
       }
       if (prioridades.isEmpty) return null;
       return prioridades[prioridades.keys.reduce(min)];
@@ -343,6 +369,7 @@ void main() {
               return repo.agendar(
                 agendaDe(
                   id,
+                  espacio: espacios[vinculo]!,
                   vinculo: vinculo,
                   tipo: azar.nextBool() ? TipoAgenda.entrevista : TipoAgenda.cobranza,
                   creada: ahora(),
@@ -358,7 +385,9 @@ void main() {
               final id = agendasCreadas.isEmpty
                   ? 'age-1'
                   : agendasCreadas[azar.nextInt(agendasCreadas.length)];
-              return repo.agendar(agendaDe(id, vinculo: vinculo, creada: ahora()));
+              return repo.agendar(
+                agendaDe(id, espacio: espacios[vinculo]!, vinculo: vinculo, creada: ahora()),
+              );
             default:
               final resultado = TipoResultadoVisita.values[azar.nextInt(4)];
               final agendaId = agendasCreadas.isEmpty || azar.nextBool()
@@ -367,6 +396,7 @@ void main() {
               return repo.registrarVisita(
                 visitaDe(
                   'vis-${++contador}',
+                  espacio: espacios[vinculo]!,
                   vinculo: vinculo,
                   resultado: resultado,
                   creada: ahora(),
@@ -428,14 +458,17 @@ void main() {
         }
         final visitas = {for (final v in await db.select(db.visitas).get()) v.id};
         for (final a in await db.select(db.agendas).get()) {
-          if (a.estado == 'COMPLETADA') {
+          if (a.estado == 'CUMPLIDA') {
             expect(visitas, contains(a.visitaId), reason: '${a.id} cumplida sin visita');
             final posAgenda = encolador.encolados.lastIndexWhere(
               (c) => c.entidad == 'agenda' && c.payload['id'] == a.id,
             );
             expect(posicionDeVisita[a.visitaId]!, lessThan(posAgenda), reason: a.id);
+          } else if (a.estado == 'NO_CUMPLIDA') {
+            // La «No contestó» sobre la agenda: apunta a la visita que no la cumplió.
+            expect(visitas, contains(a.visitaId), reason: '${a.id} no cumplida sin visita');
           } else {
-            expect(a.visitaId, isNull, reason: '${a.id} no cumplida con visita');
+            expect(a.visitaId, isNull, reason: '${a.id} programada o cancelada con visita');
           }
         }
       });
@@ -457,15 +490,15 @@ void main() {
     });
   });
 
-  group('hallazgos', () {
+  group('FK rotas: ubicación alternativa y jornada (QA #404, arreglado)', () {
     test(
       'agendar con una ubicación alternativa que no está en el teléfono la rechaza, como '
       'hace con el vínculo (el servidor exige la FK y el job quedaría en la cola de error)',
-      skip: 'QA #404: ubicacion_alt_id no se valida; una FK rota sube y el servidor la rechaza',
       () async {
         final r = await repo.agendar(
           Agenda(
             id: 'age-fk',
+            espacioId: 'esp-1',
             espacioPersonaId: 'ep-1',
             tipo: TipoAgenda.cobranza,
             fechaProgramada: DateTime.utc(2026, 10, 25, 14),
@@ -479,15 +512,83 @@ void main() {
       },
     );
 
+    test('registrar una visita con una jornada que no está en el teléfono la rechaza (FK de '
+        'visita.jornada_id en el servidor)', () async {
+      final r = await repo.registrarVisita(visitaDe('vis-fk', jornadaId: 'jor-que-no-existe'));
+      expect(r.isLeft(), isTrue);
+      expect(await db.select(db.visitas).get(), isEmpty);
+    });
+
     test(
-      'registrar una visita con una jornada que no está en el teléfono la rechaza (FK de '
-      'visita.jornada_id en el servidor)',
-      skip: 'QA #404: jornada_id no se valida; una FK rota sube y el servidor la rechaza',
+      'una ubicación alternativa dada de baja se rechaza con un aviso que dice qué hacer',
       () async {
-        final r = await repo.registrarVisita(visitaDe('vis-fk', jornadaId: 'jor-que-no-existe'));
-        expect(r.isLeft(), isTrue);
-        expect(await db.select(db.visitas).get(), isEmpty);
+        await sembrarUbicacion(db, id: 'ub-alt', borrada: t0);
+
+        final r = await repo.agendar(
+          Agenda(
+            id: 'age-fk-baja',
+            espacioId: 'esp-1',
+            espacioPersonaId: 'ep-1',
+            tipo: TipoAgenda.cobranza,
+            fechaProgramada: DateTime.utc(2026, 10, 25, 14),
+            ubicacionAltId: 'ub-alt',
+            colportorId: 'col-1',
+            auditoria: auditoriaDe(),
+          ),
+        );
+
+        final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
+        expect(falla.campos['ubicacion'], contains('Elegila de nuevo'));
+        expect(
+          falla.mensaje,
+          falla.campos['ubicacion'],
+          reason: 'las pantallas muestran `mensaje`',
+        );
+        expect(await db.select(db.agendas).get(), isEmpty);
+        expect(encolador.encolados.where((c) => c.entidad == 'agenda'), isEmpty);
       },
     );
+
+    test('una ubicación alternativa que sí está en el teléfono se guarda y se encola', () async {
+      await sembrarUbicacion(db, id: 'ub-alt');
+
+      final r = await repo.agendar(
+        Agenda(
+          id: 'age-fk-ok',
+          espacioId: 'esp-1',
+          espacioPersonaId: 'ep-1',
+          tipo: TipoAgenda.cobranza,
+          fechaProgramada: DateTime.utc(2026, 10, 25, 14),
+          ubicacionAltId: 'ub-alt',
+          colportorId: 'col-1',
+          auditoria: auditoriaDe(),
+        ),
+      );
+
+      expect(r.isRight(), isTrue);
+      expect(encolador.encolados.where((c) => c.entidad == 'agenda'), hasLength(1));
+    });
+
+    test('una visita con una jornada dada de baja se rechaza y no encola nada', () async {
+      await sembrarJornada(db, borrada: t0);
+
+      final r = await repo.registrarVisita(visitaDe('vis-fk-baja', jornadaId: 'jor-1'));
+
+      final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
+      expect(falla.campos['jornada'], contains('registrá la visita de nuevo'));
+      expect(falla.mensaje, falla.campos['jornada'], reason: 'las pantallas muestran `mensaje`');
+      expect(await db.select(db.visitas).get(), isEmpty);
+      expect(await db.select(db.agendas).get(), isEmpty);
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('una visita con la jornada en el teléfono se guarda', () async {
+      await sembrarJornada(db);
+
+      final r = await repo.registrarVisita(visitaDe('vis-fk-ok', jornadaId: 'jor-1'));
+
+      expect(r.isRight(), isTrue);
+      expect((await db.select(db.visitas).get()).single.jornadaId, 'jor-1');
+    });
   });
 }

@@ -89,13 +89,13 @@ void main() {
   });
 
   group('EspacioModel', () {
-    test('toJson usa exactamente las columnas de public.espacio (backend-supabase 0001)', () {
+    test('toJson usa exactamente las columnas de public.espacio (backend-supabase 0001 menos la '
+        'descripcion que saca la 0104)', () {
       expect(EspacioModel.fromEntity(espacio).toJson().keys.toSet(), {
         'id',
         'ubicacion_id',
         'numero_depto',
         'piso',
-        'descripcion',
         'created_at',
         'updated_at',
         'created_by',

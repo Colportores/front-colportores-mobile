@@ -11,7 +11,6 @@ class Espacio extends Equatable {
     required this.ubicacionId,
     this.numeroDepto,
     this.piso,
-    this.descripcion,
     required this.auditoria,
   });
 
@@ -50,8 +49,6 @@ class Espacio extends Equatable {
   /// (ej. "PB", "1").
   final String? piso;
 
-  final String? descripcion;
-
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
@@ -64,5 +61,5 @@ class Espacio extends Equatable {
   bool get sinNumero => clave == null;
 
   @override
-  List<Object?> get props => [id, ubicacionId, numeroDepto, piso, descripcion, auditoria];
+  List<Object?> get props => [id, ubicacionId, numeroDepto, piso, auditoria];
 }

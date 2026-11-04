@@ -225,13 +225,13 @@ Future<void> _desmontar(WidgetTester tester) async {
   await tester.pump(const Duration(seconds: 10));
 }
 
-void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo, {bool? skip}) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester tester) cuerpo) {
   testWidgets(descripcion, (tester) async {
     final semantica = tester.ensureSemantics();
     await cuerpo(tester);
     await _desmontar(tester);
     semantica.dispose();
-  }, skip: skip);
+  });
 }
 
 Finder _revisar(String clave) => find.byKey(Key('revisar_$clave'));

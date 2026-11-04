@@ -6,18 +6,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
-import '../../catalogo.dart';
-import '../../datos/drift_job_store.dart';
-import '../../datos/drift_local_store.dart';
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
+import '../../features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
+import '../../plataforma/realtime_de_supabase.dart';
 import '../conectividad/conectividad_providers.dart';
 import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
 import '../logging/app_logger.dart';
+import '../secure_storage/secure_storage_providers.dart';
+import 'armado_del_motor.dart';
 import 'encolador_sync.dart';
+import 'hora_del_servidor.dart';
+import 'transporte_que_anota_la_hora.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
 // `packages/sync_engine`, `lib/datos/`, `lib/plataforma/`); esto lo arma con lo que la app ya tiene:
@@ -41,12 +44,25 @@ final sobreSyncProvider = Provider<ClientEnvelope>(
 /// [cicloDeVidaSyncProvider] dispara un ciclo y el lote sube sin esperar al próximo trigger.
 final transporteSyncProvider = Provider<SyncTransport>((ref) {
   if (!ConfigSupabase.configurada) return const TransporteSinBackend();
-  return SupabaseRpcTransport(
-    projectUrl: Uri.parse(ConfigSupabase.url),
-    anonKey: ConfigSupabase.anonKey,
-    token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
-    device: ref.watch(sobreSyncProvider),
+  // La `server_time` de cada respuesta se anota (la usa lo que borra por tiempo, HU-UBI-012).
+  return TransporteQueAnotaLaHora(
+    SupabaseRpcTransport(
+      projectUrl: Uri.parse(ConfigSupabase.url),
+      anonKey: ConfigSupabase.anonKey,
+      token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
+      device: ref.watch(sobreSyncProvider),
+    ),
+    ref.read(horaDelServidorProvider),
   );
+});
+
+/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto`, de
+/// `precio_por_ciudad` o de `precio_general`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
+/// pull, no lo reemplaza. Sin Supabase configurado (tests, demo) no hay servidor que avise: `null`,
+/// y el motor sigue solo con los triggers del sistema.
+final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
+  if (!ConfigSupabase.configurada) return null;
+  return RealtimeDeSupabase(FuenteDeCambiosSupabase(Supabase.instance.client));
 });
 
 /// El motor, mientras la DB local está abierta (`dbLocalProvider`); `null` sin DB.
@@ -56,12 +72,15 @@ final transporteSyncProvider = Provider<SyncTransport>((ref) {
 final motorSyncProvider = Provider<SyncEngine?>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) return null;
-  final motor = SyncEngine(
-    specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
-    transport: ref.watch(transporteSyncProvider),
-    jobs: DriftJobStore(db),
-    store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
-    connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+  // El backup E2E en el Drive de la persona (HU-SYNC-005, ADR-006) se arma con la receta de
+  // `armarMotorDeSync`, la misma del respaldo nocturno.
+  final motor = armarMotorDeSync(
+    db: db,
+    leerDek: () => ref.read(custodiaClaveDbProvider).leerDek(),
+    tokenDrive: ref.watch(tokenDriveProvider),
+    transporte: ref.watch(transporteSyncProvider),
+    conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+    realtime: ref.watch(realtimeSyncProvider),
   );
   ref.onDispose(() => unawaited(motor.dispose()));
   return motor;
@@ -129,6 +148,14 @@ void _disparar(SyncEngine motor, SyncTrigger trigger) {
             'kind': falla.kind.name,
             'code': falla.code,
             'status': falla.status,
+          });
+        }
+        // HU-SYNC-008: con el ahorro de datos y sin Wi-Fi, el ciclo sube lo pendiente y deja el
+        // pull esperando; el motivo queda registrado (`data_saver_on_mobile`).
+        if (resultado.pausedReason case final motivo?) {
+          AppLogger.instance.info(LogModulo.sync, 'PULL_EN_PAUSA', 'el pull espera al Wi-Fi', {
+            'trigger': trigger.name,
+            'reason': motivo,
           });
         }
       },
