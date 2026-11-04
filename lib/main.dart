@@ -48,6 +48,7 @@ import 'features/configuracion/data/repositories/aviso_privacidad_repository_imp
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
@@ -359,6 +360,11 @@ Future<void> main() async {
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
           sondaArchivoTilesProvider.overrideWithValue(tiles.sonda),
           medidorEspacioDiscoProvider.overrideWithValue(tiles.espacio),
+          // Dónde trabaja la colportora, de las réplicas locales (#619): «Mapas offline» ofrece su
+          // zona, su ciudad y su departamento. La ciudad es la misma que resuelve el mapa de la vista 06.
+          fuenteLugarDeTrabajoProvider.overrideWith(
+            (ref) => ref.watch(fuenteLugarDeTrabajoLocalProvider),
+          ),
         ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de

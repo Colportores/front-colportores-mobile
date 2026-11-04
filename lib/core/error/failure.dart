@@ -529,6 +529,40 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
       );
 }
 
+/// «Mapas offline» sabe que la colportora **todavía no tiene zona** y que su campaña tiene varias
+/// ciudades: sin zona ni punto del GPS no se elige entre ellas, y adivinar una bajaría el mapa
+/// equivocado (HU-SYNC-010, #619). No es una falla de lectura: reintentar no cambia nada. La pantalla
+/// no ofrece «Reintentar» (se vuelve a leer sola cuando la zona llega por el sync) y deja bajar el
+/// mapa de todo Uruguay.
+///
+/// Texto de la decisión del 04/11 en front-colportores-mobile#619 (mapa §2, estados que no se saben).
+final class FailureLugarSinZonaConVariasCiudades extends Failure {
+  const FailureLugarSinZonaConVariasCiudades()
+    : super(
+        mensaje:
+            'Todavía no tenés zona y tu campaña tiene varias ciudades, así que no sabemos cuál '
+            'bajar. Cuando la coordinación te asigne una zona, vas a poder bajar tu ciudad. '
+            'Mientras tanto podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_SIN_ZONA_VARIAS_CIUDADES',
+      );
+}
+
+/// «Mapas offline» sabe que la colportora tiene zonas asignadas en **más de una ciudad** (varias
+/// campañas): sin el punto del GPS no se elige entre ellas, y decir que no tiene zona sería falso
+/// (#619). Misma conducta que [FailureLugarSinZonaConVariasCiudades]: sin «Reintentar», con Uruguay.
+///
+/// El texto no viene de la decisión del 04/11 (que cubre solo el caso sin zona): es de mapa §2
+/// (texto que guía), a confirmar.
+final class FailureLugarZonasEnVariasCiudades extends Failure {
+  const FailureLugarZonasEnVariasCiudades()
+    : super(
+        mensaje:
+            'Tenés zonas en más de una ciudad, así que no sabemos cuál bajar. Mientras tanto '
+            'podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_ZONAS_EN_VARIAS_CIUDADES',
+      );
+}
+
 /// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
 /// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
 /// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de

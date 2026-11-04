@@ -33,6 +33,7 @@ import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v27.dart' as v27;
 import 'generated/schema_v28.dart' as v28;
+import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1660,12 +1661,54 @@ void main() {
   );
 
   test(
-    'dado lo guardado en la versión 27, cuando migra a la 28, no se pierde nada, aparecen los tickets '
+    'dado ciudades guardadas en la versión 27, cuando migra a la 28, no se pierde nada, suman el '
+    'departamento vacío y no se encola nada (#619)',
+    () async {
+      // La ciudad que ya estaba sigue ahí: el pull le trae el departamento después.
+      const ciudad = v27.CiudadData(
+        id: 'ciu-1',
+        nombre: 'Montevideo',
+        latCentro: -34.9,
+        lonCentro: -56.16,
+        zoomInicial: 13,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 27,
+        newVersion: 28,
+        createOld: v27.DatabaseAtV27.new,
+        createNew: v28.DatabaseAtV28.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.ciudad, ciudad),
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ciudad).getSingle();
+          expect(guardada.id, 'ciu-1');
+          expect(guardada.nombre, 'Montevideo');
+          expect(guardada.latCentro, -34.9);
+          expect(guardada.syncVersion, 4);
+          expect(guardada.departamento, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE ciudad SET departamento = 'San José' WHERE id = 'ciu-1'",
+          );
+          expect((await nuevo.select(nuevo.ciudad).getSingle()).departamento, 'San José');
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 28, cuando migra a la 29, no se pierde nada, aparecen los tickets '
     'vacíos con sus CHECK y el cobro gana ticket_id vacío, sin encolar nada',
     () async {
       // HU-COB-007 (#426): `ticket` sube y baja por el motor, `ticket_foto_local` es solo del teléfono y
       // `cobranza.ticket_id` liga el cobro con tarjeta a su ticket.
-      const cobro = v27.CobranzaData(
+      const cobro = v28.CobranzaData(
         id: 'c-1',
         ventaId: 'v-1',
         monto: 150000,
@@ -1677,10 +1720,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 27,
-        newVersion: 28,
-        createOld: v27.DatabaseAtV27.new,
-        createNew: v28.DatabaseAtV28.new,
+        oldVersion: 28,
+        newVersion: 29,
+        createOld: v28.DatabaseAtV28.new,
+        createNew: v29.DatabaseAtV29.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) => batch.insert(viejo.cobranza, cobro),
         validateItems: (nuevo) async {

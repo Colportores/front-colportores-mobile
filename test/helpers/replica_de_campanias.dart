@@ -41,6 +41,7 @@ Map<String, Object?> filaCiudad(
   String nombre, {
   required double lat,
   required double lon,
+  String? departamento = 'Montevideo',
   bool deBaja = false,
 }) => {
   'id': id,
@@ -49,7 +50,7 @@ Map<String, Object?> filaCiudad(
   'lat_centro': lat,
   'lon_centro': lon,
   'zoom_inicial': 13,
-  'departamento': 'Montevideo',
+  'departamento': departamento,
   'origen': 'OSM',
   ..._auditoria(deBaja: deBaja),
 };
