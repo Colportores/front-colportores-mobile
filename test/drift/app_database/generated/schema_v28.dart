@@ -13051,6 +13051,14 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
+  late final GeneratedColumn<String> departamento = GeneratedColumn<String>(
+    'departamento',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> zoomInicial = GeneratedColumn<int>(
     'zoom_inicial',
     aliasedName,
@@ -13107,6 +13115,7 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
     nombre,
     latCentro,
     lonCentro,
+    departamento,
     zoomInicial,
     createdAt,
     updatedAt,
@@ -13141,6 +13150,10 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
         DriftSqlType.double,
         data['${effectivePrefix}lon_centro'],
       )!,
+      departamento: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}departamento'],
+      ),
       zoomInicial: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}zoom_inicial'],
@@ -13184,6 +13197,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
   final String nombre;
   final double latCentro;
   final double lonCentro;
+  final String? departamento;
   final int zoomInicial;
   final int createdAt;
   final int updatedAt;
@@ -13195,6 +13209,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     required this.nombre,
     required this.latCentro,
     required this.lonCentro,
+    this.departamento,
     required this.zoomInicial,
     required this.createdAt,
     required this.updatedAt,
@@ -13209,6 +13224,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     map['nombre'] = Variable<String>(nombre);
     map['lat_centro'] = Variable<double>(latCentro);
     map['lon_centro'] = Variable<double>(lonCentro);
+    if (!nullToAbsent || departamento != null) {
+      map['departamento'] = Variable<String>(departamento);
+    }
     map['zoom_inicial'] = Variable<int>(zoomInicial);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -13228,6 +13246,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: Value(nombre),
       latCentro: Value(latCentro),
       lonCentro: Value(lonCentro),
+      departamento: departamento == null && nullToAbsent
+          ? const Value.absent()
+          : Value(departamento),
       zoomInicial: Value(zoomInicial),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -13251,6 +13272,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: serializer.fromJson<String>(json['nombre']),
       latCentro: serializer.fromJson<double>(json['latCentro']),
       lonCentro: serializer.fromJson<double>(json['lonCentro']),
+      departamento: serializer.fromJson<String?>(json['departamento']),
       zoomInicial: serializer.fromJson<int>(json['zoomInicial']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -13267,6 +13289,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       'nombre': serializer.toJson<String>(nombre),
       'latCentro': serializer.toJson<double>(latCentro),
       'lonCentro': serializer.toJson<double>(lonCentro),
+      'departamento': serializer.toJson<String?>(departamento),
       'zoomInicial': serializer.toJson<int>(zoomInicial),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -13281,6 +13304,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     String? nombre,
     double? latCentro,
     double? lonCentro,
+    Value<String?> departamento = const Value.absent(),
     int? zoomInicial,
     int? createdAt,
     int? updatedAt,
@@ -13292,6 +13316,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     nombre: nombre ?? this.nombre,
     latCentro: latCentro ?? this.latCentro,
     lonCentro: lonCentro ?? this.lonCentro,
+    departamento: departamento.present ? departamento.value : this.departamento,
     zoomInicial: zoomInicial ?? this.zoomInicial,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -13305,6 +13330,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: data.nombre.present ? data.nombre.value : this.nombre,
       latCentro: data.latCentro.present ? data.latCentro.value : this.latCentro,
       lonCentro: data.lonCentro.present ? data.lonCentro.value : this.lonCentro,
+      departamento: data.departamento.present
+          ? data.departamento.value
+          : this.departamento,
       zoomInicial: data.zoomInicial.present
           ? data.zoomInicial.value
           : this.zoomInicial,
@@ -13325,6 +13353,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
           ..write('nombre: $nombre, ')
           ..write('latCentro: $latCentro, ')
           ..write('lonCentro: $lonCentro, ')
+          ..write('departamento: $departamento, ')
           ..write('zoomInicial: $zoomInicial, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -13341,6 +13370,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     nombre,
     latCentro,
     lonCentro,
+    departamento,
     zoomInicial,
     createdAt,
     updatedAt,
@@ -13356,6 +13386,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
           other.nombre == this.nombre &&
           other.latCentro == this.latCentro &&
           other.lonCentro == this.lonCentro &&
+          other.departamento == this.departamento &&
           other.zoomInicial == this.zoomInicial &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -13369,6 +13400,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
   final Value<String> nombre;
   final Value<double> latCentro;
   final Value<double> lonCentro;
+  final Value<String?> departamento;
   final Value<int> zoomInicial;
   final Value<int> createdAt;
   final Value<int> updatedAt;
@@ -13381,6 +13413,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     this.nombre = const Value.absent(),
     this.latCentro = const Value.absent(),
     this.lonCentro = const Value.absent(),
+    this.departamento = const Value.absent(),
     this.zoomInicial = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -13394,6 +13427,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     required String nombre,
     required double latCentro,
     required double lonCentro,
+    this.departamento = const Value.absent(),
     this.zoomInicial = const Value.absent(),
     required int createdAt,
     required int updatedAt,
@@ -13412,6 +13446,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     Expression<String>? nombre,
     Expression<double>? latCentro,
     Expression<double>? lonCentro,
+    Expression<String>? departamento,
     Expression<int>? zoomInicial,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
@@ -13425,6 +13460,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
       if (nombre != null) 'nombre': nombre,
       if (latCentro != null) 'lat_centro': latCentro,
       if (lonCentro != null) 'lon_centro': lonCentro,
+      if (departamento != null) 'departamento': departamento,
       if (zoomInicial != null) 'zoom_inicial': zoomInicial,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -13440,6 +13476,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     Value<String>? nombre,
     Value<double>? latCentro,
     Value<double>? lonCentro,
+    Value<String?>? departamento,
     Value<int>? zoomInicial,
     Value<int>? createdAt,
     Value<int>? updatedAt,
@@ -13453,6 +13490,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
       nombre: nombre ?? this.nombre,
       latCentro: latCentro ?? this.latCentro,
       lonCentro: lonCentro ?? this.lonCentro,
+      departamento: departamento ?? this.departamento,
       zoomInicial: zoomInicial ?? this.zoomInicial,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -13477,6 +13515,9 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     }
     if (lonCentro.present) {
       map['lon_centro'] = Variable<double>(lonCentro.value);
+    }
+    if (departamento.present) {
+      map['departamento'] = Variable<String>(departamento.value);
     }
     if (zoomInicial.present) {
       map['zoom_inicial'] = Variable<int>(zoomInicial.value);
@@ -13509,6 +13550,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
           ..write('nombre: $nombre, ')
           ..write('latCentro: $latCentro, ')
           ..write('lonCentro: $lonCentro, ')
+          ..write('departamento: $departamento, ')
           ..write('zoomInicial: $zoomInicial, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -15840,6 +15882,14 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
+  late final GeneratedColumn<int> numeroCuota = GeneratedColumn<int>(
+    'numero_cuota',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<String> tarjetaTipo = GeneratedColumn<String>(
     'tarjeta_tipo',
     aliasedName,
@@ -15929,6 +15979,7 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     monto,
     medio,
     fecha,
+    numeroCuota,
     tarjetaTipo,
     tarjetaMarca,
     numeroAprobacion,
@@ -15971,6 +16022,10 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
         DriftSqlType.int,
         data['${effectivePrefix}fecha'],
       )!,
+      numeroCuota: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}numero_cuota'],
+      ),
       tarjetaTipo: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}tarjeta_tipo'],
@@ -16035,6 +16090,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
   final int monto;
   final String medio;
   final int fecha;
+  final int? numeroCuota;
   final String? tarjetaTipo;
   final String? tarjetaMarca;
   final String? numeroAprobacion;
@@ -16051,6 +16107,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     required this.monto,
     required this.medio,
     required this.fecha,
+    this.numeroCuota,
     this.tarjetaTipo,
     this.tarjetaMarca,
     this.numeroAprobacion,
@@ -16070,6 +16127,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     map['monto'] = Variable<int>(monto);
     map['medio'] = Variable<String>(medio);
     map['fecha'] = Variable<int>(fecha);
+    if (!nullToAbsent || numeroCuota != null) {
+      map['numero_cuota'] = Variable<int>(numeroCuota);
+    }
     if (!nullToAbsent || tarjetaTipo != null) {
       map['tarjeta_tipo'] = Variable<String>(tarjetaTipo);
     }
@@ -16106,6 +16166,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: Value(monto),
       medio: Value(medio),
       fecha: Value(fecha),
+      numeroCuota: numeroCuota == null && nullToAbsent
+          ? const Value.absent()
+          : Value(numeroCuota),
       tarjetaTipo: tarjetaTipo == null && nullToAbsent
           ? const Value.absent()
           : Value(tarjetaTipo),
@@ -16144,6 +16207,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: serializer.fromJson<int>(json['monto']),
       medio: serializer.fromJson<String>(json['medio']),
       fecha: serializer.fromJson<int>(json['fecha']),
+      numeroCuota: serializer.fromJson<int?>(json['numeroCuota']),
       tarjetaTipo: serializer.fromJson<String?>(json['tarjetaTipo']),
       tarjetaMarca: serializer.fromJson<String?>(json['tarjetaMarca']),
       numeroAprobacion: serializer.fromJson<String?>(json['numeroAprobacion']),
@@ -16167,6 +16231,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       'monto': serializer.toJson<int>(monto),
       'medio': serializer.toJson<String>(medio),
       'fecha': serializer.toJson<int>(fecha),
+      'numeroCuota': serializer.toJson<int?>(numeroCuota),
       'tarjetaTipo': serializer.toJson<String?>(tarjetaTipo),
       'tarjetaMarca': serializer.toJson<String?>(tarjetaMarca),
       'numeroAprobacion': serializer.toJson<String?>(numeroAprobacion),
@@ -16188,6 +16253,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     int? monto,
     String? medio,
     int? fecha,
+    Value<int?> numeroCuota = const Value.absent(),
     Value<String?> tarjetaTipo = const Value.absent(),
     Value<String?> tarjetaMarca = const Value.absent(),
     Value<String?> numeroAprobacion = const Value.absent(),
@@ -16204,6 +16270,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     monto: monto ?? this.monto,
     medio: medio ?? this.medio,
     fecha: fecha ?? this.fecha,
+    numeroCuota: numeroCuota.present ? numeroCuota.value : this.numeroCuota,
     tarjetaTipo: tarjetaTipo.present ? tarjetaTipo.value : this.tarjetaTipo,
     tarjetaMarca: tarjetaMarca.present ? tarjetaMarca.value : this.tarjetaMarca,
     numeroAprobacion: numeroAprobacion.present
@@ -16226,6 +16293,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: data.monto.present ? data.monto.value : this.monto,
       medio: data.medio.present ? data.medio.value : this.medio,
       fecha: data.fecha.present ? data.fecha.value : this.fecha,
+      numeroCuota: data.numeroCuota.present
+          ? data.numeroCuota.value
+          : this.numeroCuota,
       tarjetaTipo: data.tarjetaTipo.present
           ? data.tarjetaTipo.value
           : this.tarjetaTipo,
@@ -16259,6 +16329,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           ..write('monto: $monto, ')
           ..write('medio: $medio, ')
           ..write('fecha: $fecha, ')
+          ..write('numeroCuota: $numeroCuota, ')
           ..write('tarjetaTipo: $tarjetaTipo, ')
           ..write('tarjetaMarca: $tarjetaMarca, ')
           ..write('numeroAprobacion: $numeroAprobacion, ')
@@ -16280,6 +16351,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     monto,
     medio,
     fecha,
+    numeroCuota,
     tarjetaTipo,
     tarjetaMarca,
     numeroAprobacion,
@@ -16300,6 +16372,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           other.monto == this.monto &&
           other.medio == this.medio &&
           other.fecha == this.fecha &&
+          other.numeroCuota == this.numeroCuota &&
           other.tarjetaTipo == this.tarjetaTipo &&
           other.tarjetaMarca == this.tarjetaMarca &&
           other.numeroAprobacion == this.numeroAprobacion &&
@@ -16318,6 +16391,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
   final Value<int> monto;
   final Value<String> medio;
   final Value<int> fecha;
+  final Value<int?> numeroCuota;
   final Value<String?> tarjetaTipo;
   final Value<String?> tarjetaMarca;
   final Value<String?> numeroAprobacion;
@@ -16335,6 +16409,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.monto = const Value.absent(),
     this.medio = const Value.absent(),
     this.fecha = const Value.absent(),
+    this.numeroCuota = const Value.absent(),
     this.tarjetaTipo = const Value.absent(),
     this.tarjetaMarca = const Value.absent(),
     this.numeroAprobacion = const Value.absent(),
@@ -16353,6 +16428,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     required int monto,
     required String medio,
     required int fecha,
+    this.numeroCuota = const Value.absent(),
     this.tarjetaTipo = const Value.absent(),
     this.tarjetaMarca = const Value.absent(),
     this.numeroAprobacion = const Value.absent(),
@@ -16377,6 +16453,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Expression<int>? monto,
     Expression<String>? medio,
     Expression<int>? fecha,
+    Expression<int>? numeroCuota,
     Expression<String>? tarjetaTipo,
     Expression<String>? tarjetaMarca,
     Expression<String>? numeroAprobacion,
@@ -16395,6 +16472,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       if (monto != null) 'monto': monto,
       if (medio != null) 'medio': medio,
       if (fecha != null) 'fecha': fecha,
+      if (numeroCuota != null) 'numero_cuota': numeroCuota,
       if (tarjetaTipo != null) 'tarjeta_tipo': tarjetaTipo,
       if (tarjetaMarca != null) 'tarjeta_marca': tarjetaMarca,
       if (numeroAprobacion != null) 'numero_aprobacion': numeroAprobacion,
@@ -16416,6 +16494,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Value<int>? monto,
     Value<String>? medio,
     Value<int>? fecha,
+    Value<int?>? numeroCuota,
     Value<String?>? tarjetaTipo,
     Value<String?>? tarjetaMarca,
     Value<String?>? numeroAprobacion,
@@ -16434,6 +16513,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       monto: monto ?? this.monto,
       medio: medio ?? this.medio,
       fecha: fecha ?? this.fecha,
+      numeroCuota: numeroCuota ?? this.numeroCuota,
       tarjetaTipo: tarjetaTipo ?? this.tarjetaTipo,
       tarjetaMarca: tarjetaMarca ?? this.tarjetaMarca,
       numeroAprobacion: numeroAprobacion ?? this.numeroAprobacion,
@@ -16466,6 +16546,9 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     }
     if (fecha.present) {
       map['fecha'] = Variable<int>(fecha.value);
+    }
+    if (numeroCuota.present) {
+      map['numero_cuota'] = Variable<int>(numeroCuota.value);
     }
     if (tarjetaTipo.present) {
       map['tarjeta_tipo'] = Variable<String>(tarjetaTipo.value);
@@ -16513,6 +16596,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
           ..write('monto: $monto, ')
           ..write('medio: $medio, ')
           ..write('fecha: $fecha, ')
+          ..write('numeroCuota: $numeroCuota, ')
           ..write('tarjetaTipo: $tarjetaTipo, ')
           ..write('tarjetaMarca: $tarjetaMarca, ')
           ..write('numeroAprobacion: $numeroAprobacion, ')

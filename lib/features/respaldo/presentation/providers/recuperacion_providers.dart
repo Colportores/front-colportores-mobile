@@ -21,7 +21,7 @@ final class _ServicioRecuperacionSinMotor implements ServicioRecuperacion {
 
   @override
   Future<ResultadoRecuperacion> recuperar({
-    required RespaldoEnDrive respaldo,
+    required List<RespaldoEnDrive> respaldos,
     required String password,
     void Function(ProgresoRecuperacion progreso)? alAvanzar,
     CancelacionRecuperacion? cancelar,

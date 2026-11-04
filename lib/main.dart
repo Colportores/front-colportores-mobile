@@ -28,6 +28,7 @@ import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
 import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/flujo_detalle_agenda.dart';
+import 'features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -46,8 +47,10 @@ import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
+import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
@@ -67,6 +70,8 @@ import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
+import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -250,6 +255,10 @@ Future<void> main() async {
         archivoEnvoltorioDekProvider.overrideWithValue(
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
         ),
+        // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
+        almacenDeFotosDeTicketProvider.overrideWithValue(
+          AlmacenDeFotosEnDisco((await getApplicationSupportDirectory()).path),
+        ),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
@@ -331,6 +340,30 @@ Future<void> main() async {
             );
           },
         ),
+        // «+ Agendar» de la pestaña Agenda (vista 23B, #568): elegir la casa en la lista de ubicaciones y,
+        // con ella, «¿Con quién?» y «Agendar visita» (23A·01). Devuelve `true` si se agendó.
+        agendarDesdeLaAgendaProvider.overrideWith(
+          (ref) => () {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «+ Agendar» del rótulo de un día futuro (23B·01, #568): lo mismo, con ese día ya puesto.
+        agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+          (ref) => (dia) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+              dia: dia,
+            );
+          },
+        ),
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
@@ -353,6 +386,11 @@ Future<void> main() async {
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),
           sondaArchivoTilesProvider.overrideWithValue(tiles.sonda),
           medidorEspacioDiscoProvider.overrideWithValue(tiles.espacio),
+          // Dónde trabaja la colportora, de las réplicas locales (#619): «Mapas offline» ofrece su
+          // zona, su ciudad y su departamento. La ciudad es la misma que resuelve el mapa de la vista 06.
+          fuenteLugarDeTrabajoProvider.overrideWith(
+            (ref) => ref.watch(fuenteLugarDeTrabajoLocalProvider),
+          ),
         ],
         // DB local cifrada (ADR-006). Construirlo no abre nada: la abre la preparación de
         // HU-AUTH-009 (`PreparacionDbLocalNotifier`) con la DEK, vía `dbLocalProvider`, después de

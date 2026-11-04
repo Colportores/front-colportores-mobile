@@ -529,6 +529,40 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
       );
 }
 
+/// «Mapas offline» sabe que la colportora **todavía no tiene zona** y que su campaña tiene varias
+/// ciudades: sin zona ni punto del GPS no se elige entre ellas, y adivinar una bajaría el mapa
+/// equivocado (HU-SYNC-010, #619). No es una falla de lectura: reintentar no cambia nada. La pantalla
+/// no ofrece «Reintentar» (se vuelve a leer sola cuando la zona llega por el sync) y deja bajar el
+/// mapa de todo Uruguay.
+///
+/// Texto de la decisión del 04/11 en front-colportores-mobile#619 (mapa §2, estados que no se saben).
+final class FailureLugarSinZonaConVariasCiudades extends Failure {
+  const FailureLugarSinZonaConVariasCiudades()
+    : super(
+        mensaje:
+            'Todavía no tenés zona y tu campaña tiene varias ciudades, así que no sabemos cuál '
+            'bajar. Cuando la coordinación te asigne una zona, vas a poder bajar tu ciudad. '
+            'Mientras tanto podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_SIN_ZONA_VARIAS_CIUDADES',
+      );
+}
+
+/// «Mapas offline» sabe que la colportora tiene zonas asignadas en **más de una ciudad** (varias
+/// campañas): sin el punto del GPS no se elige entre ellas, y decir que no tiene zona sería falso
+/// (#619). Misma conducta que [FailureLugarSinZonaConVariasCiudades]: sin «Reintentar», con Uruguay.
+///
+/// El texto no viene de la decisión del 04/11 (que cubre solo el caso sin zona): es de mapa §2
+/// (texto que guía), a confirmar.
+final class FailureLugarZonasEnVariasCiudades extends Failure {
+  const FailureLugarZonasEnVariasCiudades()
+    : super(
+        mensaje:
+            'Tenés zonas en más de una ciudad, así que no sabemos cuál bajar. Mientras tanto '
+            'podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_ZONAS_EN_VARIAS_CIUDADES',
+      );
+}
+
 /// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
 /// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
 /// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
@@ -1282,4 +1316,126 @@ final class FailureCuotasNoDisponibles extends Failure {
         mensaje: 'No pudimos leer las cuotas guardadas en tu teléfono.',
         codigo: 'COBRO_CUOTAS_NO_DISPONIBLES',
       );
+}
+
+/// No hay conexión para traer la deuda con la casa editora (HU-CTA-002, 33B). Lo último que llegó
+/// sigue guardado en el teléfono: la pantalla lo muestra con su hora. Sin nada guardado es el error
+/// de 33B·03.
+final class FailureDeudaSinConexion extends Failure {
+  const FailureDeudaSinConexion()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_SIN_CONEXION');
+}
+
+/// El servidor no pudo contar la deuda con la casa editora, o contestó algo que la app no entiende
+/// (HU-CTA-002, 33B·03). Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante esta falla.
+/// Se puede reintentar. El texto es el del canvas.
+final class FailureDeudaNoDisponible extends Failure {
+  const FailureDeudaNoDisponible()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
+}
+
+// --- Tickets (HU-COB-007, #426). Los textos son a confirmar con la pantalla (#427). ---
+
+/// El ticket no se pudo guardar en el teléfono. No se registró nada: se puede reintentar.
+final class FailureTicketNoGuardado extends Failure {
+  const FailureTicketNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el ticket. No cambió nada: probá de nuevo.',
+        codigo: 'TICKET_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer el estado de los tickets del teléfono.
+final class FailureTicketNoDisponible extends Failure {
+  const FailureTicketNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer tus tickets. Cerrá y abrí la pantalla de nuevo.',
+        codigo: 'TICKET_NO_DISPONIBLE',
+      );
+}
+
+/// El monto del ticket es cero, negativo o demasiado grande (el servidor lo rechaza con `23514`).
+final class FailureTicketMontoInvalido extends Failure {
+  const FailureTicketMontoInvalido()
+    : super(
+        mensaje: 'Ingresá el monto del ticket, mayor que cero.',
+        codigo: 'TICKET_MONTO_INVALIDO',
+      );
+}
+
+/// La fecha del ticket es después de hoy (el servidor lo rechaza con `23514`).
+final class FailureTicketFechaInvalida extends Failure {
+  const FailureTicketFechaInvalida()
+    : super(
+        mensaje: 'La fecha del ticket no puede ser futura. Revisá el día.',
+        codigo: 'TICKET_FECHA_INVALIDA',
+      );
+}
+
+/// Al ticket de tarjeta le falta el número de autorización (el servidor lo rechaza con `23514`).
+final class FailureTicketSinAutorizacion extends Failure {
+  const FailureTicketSinAutorizacion()
+    : super(
+        mensaje: 'Ingresá el número de autorización que dice el ticket.',
+        codigo: 'TICKET_SIN_AUTORIZACION',
+      );
+}
+
+/// Al ticket de tarjeta le falta decir si es de crédito o de débito (el servidor lo rechaza con
+/// `23514`).
+final class FailureTicketSinTarjeta extends Failure {
+  const FailureTicketSinTarjeta()
+    : super(
+        mensaje: 'Elegí si la tarjeta es de crédito o de débito.',
+        codigo: 'TICKET_SIN_TARJETA',
+      );
+}
+
+/// El número de autorización o la marca de la tarjeta son demasiado largos (40 caracteres como
+/// mucho).
+final class FailureTicketTextoLargo extends Failure {
+  const FailureTicketTextoLargo()
+    : super(
+        mensaje: 'El número de autorización y la tarjeta tienen hasta 40 caracteres.',
+        codigo: 'TICKET_TEXTO_LARGO',
+      );
+}
+
+/// La foto no sirve para subirla: está vacía o pesa más de 2 MiB (el servidor no la acepta).
+final class FailureTicketFotoInvalida extends Failure {
+  const FailureTicketFotoInvalida()
+    : super(
+        mensaje: 'La foto del ticket está vacía o pesa más de 2 MB. Sacala de nuevo.',
+        codigo: 'TICKET_FOTO_INVALIDA',
+      );
+}
+
+/// El cobro al que se quiere ligar el ticket no existe en este teléfono o ya tiene otro ticket.
+final class FailureTicketCobroInvalido extends Failure {
+  const FailureTicketCobroInvalido()
+    : super(
+        mensaje: 'No encontramos ese cobro para ligarle el ticket.',
+        codigo: 'TICKET_COBRO_INVALIDO',
+      );
+}
+
+/// Se quiso borrar la copia local de una foto que todavía no subió: borrarla perdería el ticket.
+final class FailureTicketCopiaSinSubir extends Failure {
+  const FailureTicketCopiaSinSubir()
+    : super(
+        mensaje: 'Esta foto todavía no subió. Cuando haya conexión sube sola y ahí podés borrarla.',
+        codigo: 'TICKET_COPIA_SIN_SUBIR',
+      );
+}
+
+/// No hay ticket con ese id en el teléfono.
+final class FailureTicketNoEncontrado extends Failure {
+  const FailureTicketNoEncontrado()
+    : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
 }

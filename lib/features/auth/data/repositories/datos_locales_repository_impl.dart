@@ -34,6 +34,7 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     this._custodia,
     this._backupDrive, {
     this.retirarPermisoDrive,
+    this.borrarFotosDeTickets,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -46,6 +47,10 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   /// Retira el permiso de Drive en Google (#184, decisión del agente de decisiones). De mejor
   /// esfuerzo; nunca borra el respaldo de Drive.
   final Future<void> Function()? retirarPermisoDrive;
+
+  /// Borra la carpeta `tickets/` con las copias de las fotos de los comprobantes (imágenes sin
+  /// cifrar, fuera de la DB; #426). Falla si no puede: sin esto «borrar todo» dejaría fotos.
+  final Future<void> Function()? borrarFotosDeTickets;
   final AppLogger _log;
 
   @override
@@ -96,6 +101,8 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
       await _cerrarDb();
       await _helper.borrar();
       await _custodia.olvidarDatosDelUsuario();
+      // Las fotos de los tickets viven fuera de la DB cifrada, sin cifrar: se borran también.
+      await borrarFotosDeTickets?.call();
       // Caché de tiles del mapa: llega con el mapa (Sprint 5, ADR-011); hoy no existe.
     } on Object catch (e, st) {
       _log.error(LogModulo.db, 'WIPE_FAIL', 'el borrado local falló', const {}, e, st);

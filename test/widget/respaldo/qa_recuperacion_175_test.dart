@@ -489,7 +489,7 @@ void main() {
     testWidgets('«Empezar sin recuperar» mientras busca: sigue la app y la búsqueda tardía no '
         'rompe nada', (tester) async {
       final a = await llegarA175(tester, Estado175.buscando);
-      await tocar175(tester, cta2);
+      await empezarSinRecuperar(tester, cta2);
       expect(a.resuelta.usuarios, {usuarioDePrueba});
       a.servicio.compuertaBuscar!.complete();
       await asentar175(tester);
@@ -625,7 +625,7 @@ void main() {
         await c.read(sesionProvider.future);
         expect(await c.read(recuperacionPendienteProvider.future), isTrue);
 
-        await tocar175(tester, cta2);
+        await empezarSinRecuperar(tester, cta2);
 
         expect(tester.takeException(), isNull, reason: 'la falla no sale sin atrapar');
         expect(resuelta.marcas, 1);

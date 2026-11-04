@@ -33,7 +33,10 @@ import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v27.dart' as v27;
 import 'generated/schema_v28.dart' as v28;
+import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
+import 'generated/schema_v30.dart' as v30;
+import 'generated/schema_v31.dart' as v31;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -1659,11 +1662,160 @@ void main() {
     },
   );
 
-  test('dado cobros guardados en la versión 27, cuando migra a la 28, no se pierde ninguno, '
+  test(
+    'dado ciudades guardadas en la versión 27, cuando migra a la 28, no se pierde nada, suman el '
+    'departamento vacío y no se encola nada (#619)',
+    () async {
+      // La ciudad que ya estaba sigue ahí: el pull le trae el departamento después.
+      const ciudad = v27.CiudadData(
+        id: 'ciu-1',
+        nombre: 'Montevideo',
+        latCentro: -34.9,
+        lonCentro: -56.16,
+        zoomInicial: 13,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 27,
+        newVersion: 28,
+        createOld: v27.DatabaseAtV27.new,
+        createNew: v28.DatabaseAtV28.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.ciudad, ciudad),
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ciudad).getSingle();
+          expect(guardada.id, 'ciu-1');
+          expect(guardada.nombre, 'Montevideo');
+          expect(guardada.latCentro, -34.9);
+          expect(guardada.syncVersion, 4);
+          expect(guardada.departamento, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE ciudad SET departamento = 'San José' WHERE id = 'ciu-1'",
+          );
+          expect((await nuevo.select(nuevo.ciudad).getSingle()).departamento, 'San José');
+        },
+      );
+    },
+  );
+
+  test('dado depósitos guardados en la versión 28, cuando migra a la 29, no se pierde '
+      'nada y suma la tabla de la deuda guardada, vacía (#441)', () async {
+    const deposito = v28.DepositoData(
+      id: 'd-1',
+      monto: 180000,
+      fecha: 1,
+      destino: 'BANCO',
+      concepto: 'CASA_EDITORA',
+      ticketId: 't-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 4,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 28,
+      newVersion: 29,
+      createOld: v28.DatabaseAtV28.new,
+      createNew: v29.DatabaseAtV29.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.deposito, deposito),
+      validateItems: (nuevo) async {
+        final guardado = await nuevo.select(nuevo.deposito).getSingle();
+        expect(guardado.id, 'd-1');
+        expect(guardado.monto, 180000);
+        expect(guardado.syncVersion, 4);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nace vacía, con una fila por colportor: guardar de nuevo la pisa.
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), isEmpty);
+        const insertar = 'INSERT INTO deuda_casa_cache (colportor_id, respuesta, leida_en) VALUES ';
+        await nuevo.customStatement("$insertar('col-1', '{}', 1)");
+        await nuevo.customStatement("$insertar('col-2', '{}', 2)");
+        await expectLater(nuevo.customStatement("$insertar('col-1', '{}', 3)"), throwsA(anything));
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), hasLength(2));
+      },
+    );
+  });
+
+  test(
+    'dado lo guardado en la versión 29, cuando migra a la 30, no se pierde nada, aparecen los tickets '
+    'vacíos con sus CHECK y el cobro gana ticket_id vacío, sin encolar nada',
+    () async {
+      // HU-COB-007 (#426): `ticket` sube y baja por el motor, `ticket_foto_local` es solo del teléfono y
+      // `cobranza.ticket_id` liga el cobro con tarjeta a su ticket.
+      const cobro = v29.CobranzaData(
+        id: 'c-1',
+        ventaId: 'v-1',
+        monto: 150000,
+        medio: 'TARJETA',
+        fecha: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 29,
+        newVersion: 30,
+        createOld: v29.DatabaseAtV29.new,
+        createNew: v30.DatabaseAtV30.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.cobranza, cobro),
+        validateItems: (nuevo) async {
+          final c = await nuevo.select(nuevo.cobranza).getSingle();
+          expect((c.id, c.monto, c.syncVersion), ('c-1', 150000, 4));
+          expect(c.ticketId, isNull);
+          expect(await nuevo.select(nuevo.ticket).get(), isEmpty);
+          expect(await nuevo.select(nuevo.ticketFotoLocal).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO ticket (id, tipo, monto, fecha, estado, created_at, updated_at) VALUES ';
+          await nuevo.customStatement(
+            "$columnas('t-1', 'COBRO_TARJETA', 150000, 1, 'PENDIENTE', 1, 1)",
+          );
+          final ticket = await nuevo.select(nuevo.ticket).getSingle();
+          expect(
+            (ticket.tipo, ticket.monto, ticket.estado),
+            ('COBRO_TARJETA', 150000, 'PENDIENTE'),
+          );
+          expect(ticket.urlCloud, isNull);
+          expect(ticket.usuarioId, isNull);
+          expect(ticket.syncVersion, 0);
+          for (final malo in [
+            "('t-2', 'COBRO_TARJETA', 0, 1, 'PENDIENTE', 1, 1)",
+            "('t-3', 'OTRA_COSA', 100, 1, 'PENDIENTE', 1, 1)",
+            "('t-4', 'DEPOSITO', 100, 1, 'HECHO', 1, 1)",
+          ]) {
+            await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+          }
+
+          const foto =
+              'INSERT INTO ticket_foto_local (ticket_id, tipo_de_imagen, bytes, creada_en) VALUES ';
+          await nuevo.customStatement("$foto('t-1', 'image/jpeg', 1000, 1)");
+          final f = await nuevo.select(nuevo.ticketFotoLocal).getSingle();
+          expect((f.estado, f.intentos), ('PENDIENTE', 0));
+          expect(f.rutaLocal, isNull);
+          await expectLater(
+            nuevo.customStatement("$foto('t-2', 'image/jpeg', 0, 1)"),
+            throwsA(anything),
+          );
+        },
+      );
+    },
+  );
+
+  test('dado cobros guardados en la versión 30, cuando migra a la 31, no se pierde ninguno, '
       'pierden numero_cuota y no se encola nada (#608)', () async {
     // El cobro ya no guarda qué número de cuota paga: cada cobro sigue con su venta, su monto, su medio,
-    // los datos de la tarjeta y de la transferencia y su auditoría; solo desaparece la columna.
-    const cuota = v27.CobranzaData(
+    // los datos de la tarjeta y de la transferencia, su ticket y su auditoría; solo desaparece la columna.
+    const cuota = v30.CobranzaData(
       id: 'c-1',
       ventaId: 'v-1',
       monto: 50000,
@@ -1675,7 +1827,7 @@ void main() {
       createdBy: 'col-1',
       syncVersion: 4,
     );
-    const tarjeta = v27.CobranzaData(
+    const tarjeta = v30.CobranzaData(
       id: 'c-2',
       ventaId: 'v-1',
       monto: 30000,
@@ -1684,6 +1836,7 @@ void main() {
       tarjetaTipo: 'CREDITO',
       tarjetaMarca: 'OCA',
       numeroAprobacion: 'A-123',
+      ticketId: 't-1',
       createdAt: 8,
       updatedAt: 8,
       deletedAt: 9,
@@ -1691,10 +1844,10 @@ void main() {
     );
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 27,
-      newVersion: 28,
-      createOld: v27.DatabaseAtV27.new,
-      createNew: v28.DatabaseAtV28.new,
+      oldVersion: 30,
+      newVersion: 31,
+      createOld: v30.DatabaseAtV30.new,
+      createNew: v31.DatabaseAtV31.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch.insert(viejo.cobranza, cuota);
@@ -1716,6 +1869,7 @@ void main() {
         expect(filas.last.tarjetaTipo, 'CREDITO');
         expect(filas.last.tarjetaMarca, 'OCA');
         expect(filas.last.numeroAprobacion, 'A-123');
+        expect(filas.last.ticketId, 't-1');
         expect(filas.last.deletedAt, 9);
         expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
 

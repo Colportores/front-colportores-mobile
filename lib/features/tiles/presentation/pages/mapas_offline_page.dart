@@ -215,13 +215,23 @@ class _EleccionDeCobertura extends ConsumerWidget {
 
     final avisos = <Widget>[
       if (estado.falloLugar case final falla?)
-        _Banner(
-          clave: const Key('mapas_offline_sin_lugar'),
-          tipo: _TipoBanner.error,
-          texto: falla.mensaje,
-          accion: TextosMapasOffline.reintentar,
-          alAccionar: () => unawaited(notificador.cargar()),
-        ),
+        // Si es una falla de lectura se puede reintentar. Si no se sabe cuál ciudad bajar porque
+        // todavía no hay zona que decida, reintentar no cambia nada: la pantalla se vuelve a leer
+        // sola cuando la zona llega por el sync, así que no hay botón.
+        if (falla is FailureLugarDeTrabajoNoDisponible)
+          _Banner(
+            clave: const Key('mapas_offline_sin_lugar'),
+            tipo: _TipoBanner.error,
+            texto: falla.mensaje,
+            accion: TextosMapasOffline.reintentar,
+            alAccionar: () => unawaited(notificador.cargar()),
+          )
+        else
+          _Banner(
+            clave: const Key('mapas_offline_sin_ciudad_elegible'),
+            tipo: _TipoBanner.info,
+            texto: falla.mensaje,
+          ),
       if (estado.sinCatalogo)
         _Banner(
           clave: const Key('mapas_offline_sin_catalogo'),

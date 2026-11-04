@@ -67,8 +67,10 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
     required this.colportorId,
     this.activa = true,
     this.alAbrirUbicacion,
+    this.casaAbreSuHoja = false,
     this.alRegistrar,
     this.alRevisarDuplicados,
+    this.paraElegir = false,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -82,6 +84,11 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// reemplaza.
   final AlAbrirUbicacion? alAbrirUbicacion;
 
+  /// Con [alAbrirUbicacion], una casa abre igual la hoja de la casa (vista 39, C·01) y el destino queda
+  /// para lo que puede tener deptos (edificio y negocio): una casa no tiene espacios que gestionar, y la
+  /// hoja de la ubicación (vista 11) solo le mostraría «Editar casa».
+  final bool casaAbreSuHoja;
+
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
   final Future<void> Function()? alRegistrar;
@@ -89,6 +96,14 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// Cómo se abre «Posibles duplicados» desde el aviso «N posibles duplicados · Revisar». Por defecto
   /// abre `PosiblesDuplicadosPage`; un test lo reemplaza.
   final Future<void> Function()? alRevisarDuplicados;
+
+  /// La lista hace de selector (el de la casa de «+ Agendar», #568): tiene su estado propio, aparte
+  /// del de la pestaña Lista, que sigue viva debajo con su búsqueda y sus filtros.
+  final bool paraElegir;
+
+  /// La clave del estado de esta lista.
+  String get clave =>
+      paraElegir ? ListaUbicacionesNotifier.claveDeSeleccion(colportorId) : colportorId;
 
   @override
   ConsumerState<ListaUbicacionesPage> createState() => _ListaUbicacionesPageState();
@@ -112,7 +127,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   var _abriendoCasa = false;
 
   ListaUbicacionesNotifier get _notificador =>
-      ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
+      ref.read(listaUbicacionesProvider(widget.clave).notifier);
 
   @override
   void initState() {
@@ -206,7 +221,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
   double? _distanciaDe(String ubicacionId) {
     for (final item
-        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+        in ref.read(listaUbicacionesProvider(widget.clave)).lista?.items ??
             const <ItemListaUbicacion>[]) {
       if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
     }
@@ -218,22 +233,42 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// pasó; su «Reactivar» es el de la fila.
   Future<void> _abrirCasa(ItemListaUbicacion item) async {
     final destino = widget.alAbrirUbicacion;
-    if (destino != null) {
+    if (destino != null && !_laCasaAbreSuHoja(item)) {
       destino(item.ubicacion.id, item.distanciaMetros);
       return;
     }
     if (_abriendoCasa) return;
     _abriendoCasa = true;
     try {
-      await mostrarHojaCasa(
-        context,
-        colportorId: widget.colportorId,
-        item: item,
-        alReactivar: _reactivar,
-      );
+      await _mostrarHojaCasa(item);
     } finally {
       _abriendoCasa = false;
     }
+  }
+
+  bool _laCasaAbreSuHoja(ItemListaUbicacion item) =>
+      widget.casaAbreSuHoja && item.ubicacion.tipo == TipoUbicacion.casa;
+
+  Future<void> _mostrarHojaCasa(ItemListaUbicacion item) => mostrarHojaCasa(
+    context,
+    colportorId: widget.colportorId,
+    item: item,
+    alReactivar: _reactivar,
+  );
+
+  /// «Abrir la existente» del aviso de un duplicado: la hoja de esa ubicación, que es la de la casa si
+  /// es una casa y [ListaUbicacionesPage.casaAbreSuHoja]. No pasa por la guarda de [_abrirCasa]: se
+  /// llega desde la hoja de otra casa, que todavía se está cerrando.
+  void _abrirLaExistente(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId && _laCasaAbreSuHoja(item)) {
+        unawaited(_mostrarHojaCasa(item));
+        return;
+      }
+    }
+    widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
   }
 
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
@@ -260,7 +295,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
+        _abrirLaExistente(ubicacionId);
       case null:
         break;
     }
@@ -359,7 +394,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   @override
   Widget build(BuildContext context) {
-    final proveedor = listaUbicacionesProvider(widget.colportorId);
+    final proveedor = listaUbicacionesProvider(widget.clave);
     final estado = ref.watch(proveedor);
     // «Limpiar filtros» también vacía la búsqueda: el campo tiene que seguirla.
     ref.listen(proveedor.select((s) => s.filtros.busqueda), (_, texto) {

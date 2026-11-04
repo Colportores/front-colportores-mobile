@@ -3346,6 +3346,16 @@
             "dsl_features": []
           },
           {
+            "name": "departamento",
+            "getter_name": "departamento",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "zoom_inicial",
             "getter_name": "zoomInicial",
             "moor_type": "int",
@@ -4071,6 +4081,16 @@
               "dart_expr": "const FechaUtcConverter()",
               "dart_type_name": "DateTime"
             }
+          },
+          {
+            "name": "numero_cuota",
+            "getter_name": "numeroCuota",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           },
           {
             "name": "tarjeta_tipo",
@@ -5665,7 +5685,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"ciudad\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"lat_centro\" REAL NOT NULL, \"lon_centro\" REAL NOT NULL, \"zoom_inicial\" INTEGER NOT NULL DEFAULT 13, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"ciudad\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"lat_centro\" REAL NOT NULL, \"lon_centro\" REAL NOT NULL, \"departamento\" TEXT NULL, \"zoom_inicial\" INTEGER NOT NULL DEFAULT 13, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -5710,7 +5730,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
         }
       ]
     },
