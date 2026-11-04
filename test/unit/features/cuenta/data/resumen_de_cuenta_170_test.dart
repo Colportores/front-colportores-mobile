@@ -384,6 +384,74 @@ void main() {
     });
   });
 
+  group('«En mano» menos lo depositado (decisión de la QA de #431, 04/11)', () {
+    Future<void> depositar(
+      String id,
+      int monto,
+      DateTime fecha, {
+      DateTime? validadoEn,
+      DateTime? rechazadoEn,
+      DateTime? baja,
+    }) => db.customStatement(
+      'INSERT INTO deposito (id, monto, fecha, destino, concepto, ticket_id, validado_en, '
+      'rechazado_en, created_at, updated_at, deleted_at) '
+      "VALUES ('$id', $monto, ${fecha.millisecondsSinceEpoch}, 'BANCO', 'CASA_EDITORA', 't-$id', "
+      '${validadoEn == null ? 'NULL' : validadoEn.millisecondsSinceEpoch}, '
+      '${rechazadoEn == null ? 'NULL' : rechazadoEn.millisecondsSinceEpoch}, 1, 1, '
+      '${baja == null ? 'NULL' : baja.millisecondsSinceEpoch})',
+    );
+
+    test('un depósito por validar y uno validado bajan «En mano»; el rechazado y el dado de baja '
+        'no', () async {
+      await vender('v-1', 500000, _antes);
+      await cobrar('c-1', 500000, _antes);
+      await depositar('d-1', 100000, _despues);
+      await depositar('d-2', 50000, _despues, validadoEn: _despues);
+      await depositar('d-3', 70000, _despues, rechazadoEn: _despues);
+      await depositar('d-4', 30000, _despues, baja: _despues);
+
+      final r = await leer();
+
+      expect(r.enMano.totalCentavos, 350000);
+    });
+
+    test('nunca baja de cero', () async {
+      await vender('v-1', 100000, _antes);
+      await cobrar('c-1', 100000, _antes);
+      await depositar('d-1', 250000, _despues);
+
+      final r = await leer();
+
+      expect(r.enMano.totalCentavos, 0);
+    });
+
+    test('«contra la semana pasada» resta solo lo depositado hasta entonces', () async {
+      await vender('v-1', 500000, _antes);
+      await cobrar('c-1', 500000, _antes);
+      await depositar('d-1', 100000, _antes);
+      await depositar('d-2', 150000, _despues);
+
+      final r = await leer();
+
+      // Hace 7 días había $ 4.000 (5.000 menos el primer depósito); hoy hay $ 2.500.
+      expect(r.enMano, const CifraDeCuenta(totalCentavos: 250000, variacionCentavos: -150000));
+    });
+
+    test('un depósito rechazado vuelve a la mano: el efectivo está otra vez', () async {
+      await vender('v-1', 500000, _antes);
+      await cobrar('c-1', 500000, _antes);
+      await depositar('d-1', 100000, _despues);
+      expect((await leer()).enMano.totalCentavos, 400000);
+
+      await db.customStatement(
+        'UPDATE deposito SET rechazado_en = ${_despues.millisecondsSinceEpoch} WHERE id = ?',
+        ['d-1'],
+      );
+
+      expect((await leer()).enMano.totalCentavos, 500000);
+    });
+  });
+
   group('«Depositado» (#596): solo lo que el coordinador validó, de lo último que bajó', () {
     Future<void> bajada(DateTime cuando) => DriftSyncMeta(db).write(lastPullAt: cuando);
 
@@ -478,17 +546,20 @@ void main() {
       expect(r.depositado, const CifraDeCuenta(totalCentavos: 25000, variacionCentavos: 0));
     });
 
-    test('«En mano» y «Por cobrar» no cambian por los depósitos (los calcula #431)', () async {
-      await vender('v-1', 150000, _antes);
-      await cobrar('c-1', 50000, _antes);
-      await bajada(_ahora);
-      await deposito('d-1', 50000, validadoEn: _despues);
+    test(
+      '«Por cobrar» no cambia por los depósitos y «En mano» baja lo depositado (#431)',
+      () async {
+        await vender('v-1', 150000, _antes);
+        await cobrar('c-1', 80000, _antes);
+        await bajada(_ahora);
+        await deposito('d-1', 50000, validadoEn: _despues);
 
-      final r = await leer();
+        final r = await leer();
 
-      expect(r.enMano.totalCentavos, 50000);
-      expect(r.porCobrar.totalCentavos, 100000);
-    });
+        expect(r.enMano.totalCentavos, 30000);
+        expect(r.porCobrar.totalCentavos, 70000);
+      },
+    );
 
     test(
       'al día solo: cuando baja la validación de un depósito, el resumen se actualiza',

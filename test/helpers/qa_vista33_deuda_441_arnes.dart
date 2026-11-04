@@ -134,7 +134,7 @@ Future<RepositorioDeDeudaControlable> repoEnEstado(
 enum EstadoQa33A { conDeuda, aFavor, sinDeuda, sinNadaLeido, sinConexion }
 
 /// El resumen de Mi Cuenta con «Depositado» bajado el 29/10 a las 21:00.
-ResumenDeCuenta resumenConDepositado() => ResumenDeCuenta(
+ResumenDeCuenta resumenConDepositado441() => ResumenDeCuenta(
   depositado: cifra(26900, variacion: 5300),
   depositadoAl: DateTime(2026, 10, 29, 21),
   enMano: cifra(2400, variacion: 1800),

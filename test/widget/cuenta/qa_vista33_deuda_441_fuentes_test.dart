@@ -72,7 +72,7 @@ void main() {
             estado,
             tamano: t.value,
             escala: esc,
-            resumen: estado == EstadoQa33A.sinConexion ? resumenConDepositado() : null,
+            resumen: estado == EstadoQa33A.sinConexion ? resumenConDepositado441() : null,
           );
           expect(tester.takeException(), isNull);
           if (_capturar) {

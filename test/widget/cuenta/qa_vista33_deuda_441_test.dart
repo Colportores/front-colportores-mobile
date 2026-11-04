@@ -296,7 +296,7 @@ void main() {
         );
         await montarCuenta(
           tester,
-          RepositorioDeCuentaControlable(inicial: resumenConDepositado()),
+          RepositorioDeCuentaControlable(inicial: resumenConDepositado441()),
           overrides: [
             ...overridesDeDeuda(repo),
             monitorConectividadProvider.overrideWithValue(QaConexion(TipoConexion.sinConexion)),
@@ -322,7 +322,7 @@ void main() {
         );
         await montarCuenta(
           tester,
-          RepositorioDeCuentaControlable(inicial: resumenConDepositado()),
+          RepositorioDeCuentaControlable(inicial: resumenConDepositado441()),
           overrides: [
             ...overridesDeDeuda(repo),
             monitorConectividadProvider.overrideWithValue(QaConexion(TipoConexion.sinConexion)),
