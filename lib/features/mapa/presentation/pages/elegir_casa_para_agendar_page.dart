@@ -30,10 +30,10 @@ abstract final class ClavesElegirCasaParaAgendar {
 ///
 /// - Una casa dada de baja no se elige (no admite visitas): la lista ya no deja tocarla como casa, su
 ///   fila lleva a «Reactivar» (vista 09·03).
-/// - Un edificio no se elige todavía (el depto se elige antes, #452): avisa lo mismo que «Registrar
-///   visita» y «+ Agendar» de la hoja de la casa.
+/// - Un edificio no se elige todavía (el depto se elige antes, #452): avisa lo mismo que «+ Agendar» de
+///   la hoja de la casa.
 /// - Un segundo toque mientras se resuelve el primero no hace nada.
-class ElegirCasaParaAgendarPage extends ConsumerStatefulWidget {
+class ElegirCasaParaAgendarPage extends StatelessWidget {
   const ElegirCasaParaAgendarPage({super.key, required this.colportorId});
 
   final String colportorId;
@@ -45,15 +45,31 @@ class ElegirCasaParaAgendarPage extends ConsumerStatefulWidget {
       );
 
   @override
-  ConsumerState<ElegirCasaParaAgendarPage> createState() => _ElegirCasaParaAgendarPageState();
+  Widget build(BuildContext context) => _SelectorDeCasa(colportorId: colportorId);
 }
 
-class _ElegirCasaParaAgendarPageState extends ConsumerState<ElegirCasaParaAgendarPage> {
+class _SelectorDeCasa extends ConsumerStatefulWidget {
+  const _SelectorDeCasa({required this.colportorId});
+
+  final String colportorId;
+
+  @override
+  ConsumerState<_SelectorDeCasa> createState() => _SelectorDeCasaState();
+}
+
+class _SelectorDeCasaState extends ConsumerState<_SelectorDeCasa> {
   var _resolviendo = false;
 
   ItemListaUbicacion? _itemDe(String ubicacionId) {
     final items =
-        ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+        ref
+            .read(
+              listaUbicacionesProvider(
+                ListaUbicacionesNotifier.claveDeSeleccion(widget.colportorId),
+              ),
+            )
+            .lista
+            ?.items ??
         const <ItemListaUbicacion>[];
     for (final item in items) {
       if (item.ubicacion.id == ubicacionId) return item;
@@ -78,7 +94,7 @@ class _ElegirCasaParaAgendarPageState extends ConsumerState<ElegirCasaParaAgenda
         return;
       }
       if (item.ubicacion.tipo == TipoUbicacion.edificio) {
-        _avisar(TextosRegistrarVisita.edificioSinDepto);
+        _avisar(TextosRegistrarVisita.edificioSinDeptoParaAgendar);
         return;
       }
       final lectura = await ref.read(espacioRepositoryProvider).listar(ubicacionId);
@@ -113,7 +129,11 @@ class _ElegirCasaParaAgendarPageState extends ConsumerState<ElegirCasaParaAgenda
         leading: const BackButton(),
       ),
       body: SafeArea(
-        child: ListaUbicacionesPage(colportorId: widget.colportorId, alAbrirUbicacion: _elegir),
+        child: ListaUbicacionesPage(
+          colportorId: widget.colportorId,
+          paraElegir: true,
+          alAbrirUbicacion: _elegir,
+        ),
       ),
     );
   }

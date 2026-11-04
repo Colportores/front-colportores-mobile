@@ -260,7 +260,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       if (espacioId == null) {
         ScaffoldMessenger.maybeOf(context)
           ?..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDepto)));
+          ..showSnackBar(
+            const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDeptoParaAgendar)),
+          );
         return;
       }
       final eleccion = await mostrarHojaConQuienParaProgramar(

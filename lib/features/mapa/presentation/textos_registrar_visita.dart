@@ -52,6 +52,11 @@ abstract final class TextosRegistrarVisita {
   static const edificioSinDepto =
       'Todavía no se pueden registrar visitas en un edificio desde acá.';
 
+  /// «+ Agendar» sobre un edificio (hoja de la casa y selector de la pestaña Agenda): el depto se
+  /// elige antes (#452) y todavía no está.
+  static const edificioSinDeptoParaAgendar =
+      'Todavía no se puede agendar en un edificio desde acá.';
+
   /// El resultado se deshizo.
   static String seDeshizo(String direccion) => 'Se deshizo. $direccion vuelve a como estaba.';
 

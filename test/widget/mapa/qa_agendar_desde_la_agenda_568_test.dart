@@ -42,8 +42,7 @@ Future<void> _elegirCasa(WidgetTester tester, String direccion) async {
 
 void main() {
   group('la pestaña Lista sigue viva debajo (así monta InicioPage)', () {
-    // skip: QA #568 — el selector comparte el estado de la pestaña Lista: arranca filtrado por una
-    // búsqueda ajena con el buscador vacío.
+    // Hallazgo de QA #568 resuelto: el selector tiene su estado propio (no hereda la búsqueda de la Lista).
     probar568(
       'el selector arranca con la lista completa aunque la pestaña Lista tenga una búsqueda',
       (tester) async {
@@ -66,10 +65,9 @@ void main() {
           reason: 'la lista del selector está filtrada ("Rivera") y el buscador se ve vacío',
         );
       },
-      skip: !verHallazgos,
     );
 
-    // skip: QA #568 — la búsqueda escrita en el selector queda aplicada en la pestaña Lista al volver.
+    // Hallazgo de QA #568 resuelto: lo escrito en el selector no se pega a la pestaña Lista.
     probar568('una búsqueda hecha en el selector no queda en la pestaña Lista al volver', (
       tester,
     ) async {
@@ -85,7 +83,7 @@ void main() {
 
       final estado = m.contenedor.read(listaUbicacionesProvider('col-1'));
       expect(estado.filtros.busqueda, isEmpty, reason: 'el selector dejó su búsqueda en la Lista');
-    }, skip: !verHallazgos);
+    });
 
     probar568('con la Lista viva el flujo completo agenda en la casa elegida', (tester) async {
       final m = await montar568(tester);
@@ -220,33 +218,30 @@ void main() {
       await _elegirCasa(tester, 'Bulevar 9');
       expect(find.text(TextosElegirCasaParaAgendar.sinLugar), findsOneWidget);
       await _elegirCasa(tester, 'Av. Italia 1240');
-      expect(find.text(TextosRegistrarVisita.edificioSinDepto), findsOneWidget);
+      expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsOneWidget);
       expect(_seleccion, findsOneWidget);
       await _elegirCasa(tester, 'Mataojo 2044');
       expect(_formulario, findsOneWidget);
       expect(m.espacios.listados, 2);
     });
 
-    // skip: QA #568 — el aviso del edificio habla de «registrar visitas» (el usuario quería agendar) y
-    // no dice cómo llegar al depto.
-    probar568(
-      'el aviso del edificio dice qué hacer en vez de hablar de «registrar visitas»',
-      (tester) async {
-        await montar568(
-          tester,
-          filas: [
-            filaLista('u-3', tipo: TipoUbicacion.edificio, calle: 'Av. Italia', numero: '1240'),
-          ],
-        );
-        await _tocarAgendar(tester);
+    // Hallazgo de QA #568 resuelto (decisión del mapa §2): el aviso del edificio habla de agendar.
+    probar568('el aviso del edificio dice qué hacer en vez de hablar de «registrar visitas»', (
+      tester,
+    ) async {
+      await montar568(
+        tester,
+        filas: [
+          filaLista('u-3', tipo: TipoUbicacion.edificio, calle: 'Av. Italia', numero: '1240'),
+        ],
+      );
+      await _tocarAgendar(tester);
 
-        await _elegirCasa(tester, 'Av. Italia 1240');
+      await _elegirCasa(tester, 'Av. Italia 1240');
 
-        // El usuario quería AGENDAR y el aviso habla de REGISTRAR; no dice cómo llegar al depto.
-        expect(find.textContaining('agendar'), findsWidgets);
-      },
-      skip: !verHallazgos,
-    );
+      // El usuario quería AGENDAR y el aviso habla de REGISTRAR; no dice cómo llegar al depto.
+      expect(find.textContaining('agendar'), findsWidgets);
+    });
   });
 
   group('texto grande', () {

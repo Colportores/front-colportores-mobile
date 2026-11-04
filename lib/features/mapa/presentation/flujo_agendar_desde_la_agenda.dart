@@ -11,7 +11,14 @@ import 'widgets/hoja_con_quien.dart';
 abstract final class FlujoAgendarDesdeLaAgenda {
   /// Devuelve `true` si la visita quedó agendada. `false` si se volvió atrás en cualquier paso, o si
   /// no hay un usuario con la sesión iniciada (no hay a nombre de quién agendar).
-  static Future<bool> abrir(BuildContext context, {required String? colportorId}) async {
+  ///
+  /// [dia] es el día del rótulo desde el que se tocó «+ Agendar» (23B·01): si es futuro, el formulario
+  /// abre con ese día; `null` (o hoy, o un día pasado, o las atrasadas) con la fecha de siempre.
+  static Future<bool> abrir(
+    BuildContext context, {
+    required String? colportorId,
+    DateTime? dia,
+  }) async {
     final colportor = colportorId?.trim() ?? '';
     if (colportor.isEmpty) return false;
     final casa = await ElegirCasaParaAgendarPage.abrir(context, colportorId: colportor);
@@ -27,6 +34,7 @@ abstract final class FlujoAgendarDesdeLaAgenda {
       espacioId: casa.espacioId,
       espacioPersonaId: eleccion.espacioPersonaId,
       colportorId: colportor,
+      diaInicial: dia,
     );
   }
 }

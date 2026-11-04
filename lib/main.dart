@@ -345,6 +345,18 @@ Future<void> main() async {
             );
           },
         ),
+        // «+ Agendar» del rótulo de un día futuro (23B·01, #568): lo mismo, con ese día ya puesto.
+        agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+          (ref) => (dia) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+              dia: dia,
+            );
+          },
+        ),
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),

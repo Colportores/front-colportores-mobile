@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/formato_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agenda_page.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agendar_visita_page.dart';
@@ -22,6 +23,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_r
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
 import 'package:colportores_mobile/features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/elegir_casa_para_agendar_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/lista_ubicaciones_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
@@ -85,6 +87,9 @@ final class _Montaje {
   final RepoListaFalso lista;
   final GlobalKey<NavigatorState> llave;
   var llamadas = 0;
+
+  /// Los días con que se tocó «+ Agendar» del rótulo de un día futuro.
+  final dias = <DateTime>[];
 }
 
 final _seleccion = find.byKey(ClavesElegirCasaParaAgendar.pantalla);
@@ -110,6 +115,8 @@ Future<_Montaje> _montar(
   List<PersonaDelEspacio>? personas,
   double escala = 1,
   Size tamano = const Size(390, 844),
+  bool conPestanaLista = false,
+  List<ItemAgenda> items = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -135,7 +142,7 @@ Future<_Montaje> _montar(
     ProviderScope(
       overrides: [
         ...overridesLista(repo: lista),
-        consultaAgendaRepositoryProvider.overrideWithValue(ConsultaAgendaFalsa()),
+        consultaAgendaRepositoryProvider.overrideWithValue(ConsultaAgendaFalsa(items)),
         relojAgendaProvider.overrideWithValue(ahoraDelCanvas),
         agendaRepositoryProvider.overrideWithValue(agendas),
         generadorIdVisitaProvider.overrideWithValue(() => 'id-${++n}'),
@@ -152,6 +159,14 @@ Future<_Montaje> _montar(
             return FlujoAgendarDesdeLaAgenda.abrir(contexto, colportorId: sesion);
           },
         ),
+        agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+          (ref) => (dia) {
+            m.dias.add(dia);
+            final contexto = llave.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(contexto, colportorId: sesion, dia: dia);
+          },
+        ),
       ],
       child: MaterialApp(
         navigatorKey: llave,
@@ -160,7 +175,17 @@ Future<_Montaje> _montar(
           data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
           child: child!,
         ),
-        home: const Scaffold(body: AgendaPage(colportorId: 'col-1')),
+        // La pestaña Lista queda viva debajo de la Agenda, como en el `IndexedStack` de Inicio.
+        home: Scaffold(
+          body: conPestanaLista
+              ? const IndexedStack(
+                  children: [
+                    AgendaPage(colportorId: 'col-1'),
+                    ListaUbicacionesPage(colportorId: 'col-1', activa: false),
+                  ],
+                )
+              : const AgendaPage(colportorId: 'col-1'),
+        ),
       ),
     ),
   );
@@ -297,6 +322,91 @@ void main() {
       await tester.tap(_guardar);
       await asentarAgendar(tester);
       expect(m.agendas.recibidas.single.agenda.espacioPersonaId, isNull);
+    });
+  });
+
+  group('«+ Agendar» del rótulo de un día (23B·01) lleva ese día', () {
+    Future<void> guardar(WidgetTester tester) async {
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await asentarAgendar(tester);
+    }
+
+    _probar('un día futuro abre «Agendar visita» con ESE día, a las 10:00', (tester) async {
+      final m = await _montar(tester, items: [itemAgenda('f1', DateTime(2026, 10, 27, 16))]);
+
+      await _tocarAgendar(tester);
+      expect(m.dias, [DateTime(2026, 10, 27)]);
+      await _elegirCasa(tester, 'Mataojo 2044');
+      await guardar(tester);
+
+      expect(
+        m.agendas.recibidas.single.agenda.fechaProgramada.toLocal(),
+        DateTime(2026, 10, 27, 10),
+      );
+    });
+
+    _probar('hoy abre con la fecha de siempre (mañana a las 10:00), no con hoy', (tester) async {
+      final m = await _montar(tester, items: [itemAgenda('h1', DateTime(2026, 10, 23, 16))]);
+
+      await _tocarAgendar(tester);
+      expect(m.dias, isEmpty);
+      expect(m.llamadas, 1);
+      await _elegirCasa(tester, 'Mataojo 2044');
+      await guardar(tester);
+
+      expect(
+        m.agendas.recibidas.single.agenda.fechaProgramada.toLocal(),
+        DateTime(2026, 10, 24, 10),
+      );
+    });
+
+    _probar('con agendas de hoy y de después, «+ Agendar» queda solo en hoy y usa la de siempre', (
+      tester,
+    ) async {
+      final m = await _montar(
+        tester,
+        items: [
+          itemAgenda('h1', DateTime(2026, 10, 23, 16)),
+          itemAgenda('f1', DateTime(2026, 10, 27, 16)),
+        ],
+      );
+
+      expect(_agendarDeLaAgenda, findsOneWidget);
+      await _tocarAgendar(tester);
+
+      expect(m.dias, isEmpty);
+      expect(m.llamadas, 1);
+    });
+
+    _probar('las atrasadas abren con la fecha de siempre', (tester) async {
+      final m = await _montar(tester, items: [itemAgenda('a1', DateTime(2026, 10, 20, 16))]);
+
+      await _tocarAgendar(tester);
+      expect(m.dias, isEmpty);
+      expect(m.llamadas, 1);
+      await _elegirCasa(tester, 'Mataojo 2044');
+      await guardar(tester);
+
+      expect(
+        m.agendas.recibidas.single.agenda.fechaProgramada.toLocal(),
+        DateTime(2026, 10, 24, 10),
+      );
+    });
+
+    _probar('cancelar la elección del día no agenda nada y el rótulo sigue sirviendo', (
+      tester,
+    ) async {
+      final m = await _montar(tester, items: [itemAgenda('f1', DateTime(2026, 10, 27, 16))]);
+      await _tocarAgendar(tester);
+
+      await tester.tap(_atras);
+      await asentarAgendar(tester);
+      expect(m.agendas.recibidas, isEmpty);
+      await _tocarAgendar(tester);
+
+      expect(m.dias, hasLength(2));
+      expect(_seleccion, findsOneWidget);
     });
   });
 
@@ -478,7 +588,7 @@ void main() {
 
       await _elegirCasa(tester, 'Rondeau 900');
 
-      expect(find.text(TextosRegistrarVisita.edificioSinDepto), findsOneWidget);
+      expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsOneWidget);
       expect(_seleccion, findsOneWidget);
       expect(_formulario, findsNothing);
       expect(m.espacios.listados, 0);
@@ -496,7 +606,9 @@ void main() {
       );
       await _tocarAgendar(tester);
       ProviderScope.containerOf(tester.element(_seleccion))
-          .read(listaUbicacionesProvider('col-1').notifier)
+          .read(
+            listaUbicacionesProvider(ListaUbicacionesNotifier.claveDeSeleccion('col-1')).notifier,
+          )
           .aplicar(
             tipos: const {},
             estados: const {},
@@ -513,6 +625,39 @@ void main() {
       expect(_formulario, findsNothing);
       expect(m.espacios.listados, 0);
       expect(m.agendas.recibidas, isEmpty);
+    });
+
+    _probar('el selector no hereda la búsqueda de la pestaña Lista ni le deja la suya', (
+      tester,
+    ) async {
+      await _montar(tester, conPestanaLista: true);
+      final raiz = ProviderScope.containerOf(tester.element(find.byType(AgendaPage)));
+      raiz.read(listaUbicacionesProvider('col-1').notifier).buscar('Rivera');
+      await tester.pump(const Duration(milliseconds: 300));
+      await asentarAgendar(tester);
+      expect(raiz.read(listaUbicacionesProvider('col-1')).filtros.busqueda, 'Rivera');
+
+      await _tocarAgendar(tester);
+
+      final selector = raiz;
+      final claveSel = ListaUbicacionesNotifier.claveDeSeleccion('col-1');
+      final campo = find.descendant(
+        of: _seleccion,
+        matching: find.byKey(const Key('lista_busqueda')),
+      );
+      expect(selector.read(listaUbicacionesProvider(claveSel)).filtros.busqueda, isEmpty);
+      expect(tester.widget<TextField>(campo).controller!.text, isEmpty);
+      expect(find.text('Mataojo 2044'), findsOneWidget);
+
+      await tester.enterText(campo, 'Mataojo');
+      await tester.pump(const Duration(milliseconds: 300));
+      await asentarAgendar(tester);
+      expect(selector.read(listaUbicacionesProvider(claveSel)).filtros.busqueda, 'Mataojo');
+      expect(raiz.read(listaUbicacionesProvider('col-1')).filtros.busqueda, 'Rivera');
+
+      await tester.tap(_atras);
+      await asentarAgendar(tester);
+      expect(raiz.read(listaUbicacionesProvider('col-1')).filtros.busqueda, 'Rivera');
     });
 
     _probar('sin ubicaciones la lista lo dice y se puede volver sin romper nada', (tester) async {

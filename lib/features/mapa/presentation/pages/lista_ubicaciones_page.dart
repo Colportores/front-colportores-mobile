@@ -69,6 +69,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
     this.alAbrirUbicacion,
     this.alRegistrar,
     this.alRevisarDuplicados,
+    this.paraElegir = false,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -89,6 +90,14 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// Cómo se abre «Posibles duplicados» desde el aviso «N posibles duplicados · Revisar». Por defecto
   /// abre `PosiblesDuplicadosPage`; un test lo reemplaza.
   final Future<void> Function()? alRevisarDuplicados;
+
+  /// La lista hace de selector (el de la casa de «+ Agendar», #568): tiene su estado propio, aparte
+  /// del de la pestaña Lista, que sigue viva debajo con su búsqueda y sus filtros.
+  final bool paraElegir;
+
+  /// La clave del estado de esta lista.
+  String get clave =>
+      paraElegir ? ListaUbicacionesNotifier.claveDeSeleccion(colportorId) : colportorId;
 
   @override
   ConsumerState<ListaUbicacionesPage> createState() => _ListaUbicacionesPageState();
@@ -112,7 +121,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   var _abriendoCasa = false;
 
   ListaUbicacionesNotifier get _notificador =>
-      ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
+      ref.read(listaUbicacionesProvider(widget.clave).notifier);
 
   @override
   void initState() {
@@ -206,7 +215,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
   double? _distanciaDe(String ubicacionId) {
     for (final item
-        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+        in ref.read(listaUbicacionesProvider(widget.clave)).lista?.items ??
             const <ItemListaUbicacion>[]) {
       if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
     }
@@ -359,7 +368,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   @override
   Widget build(BuildContext context) {
-    final proveedor = listaUbicacionesProvider(widget.colportorId);
+    final proveedor = listaUbicacionesProvider(widget.clave);
     final estado = ref.watch(proveedor);
     // «Limpiar filtros» también vacía la búsqueda: el campo tiene que seguirla.
     ref.listen(proveedor.select((s) => s.filtros.busqueda), (_, texto) {
