@@ -55,6 +55,14 @@ abstract final class EventoAuditoriaLocal {
 
   /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
   static const uuidBackup = 'backup';
+
+  /// Una push remota se descartó porque traía un campo que no es un tipo de evento ni un UUID
+  /// (HU-NOT-003, R-NO02). `uuid` es [uuidPush] y `motivo` los NOMBRES de los campos separados por
+  /// coma, nunca sus valores. Solo local.
+  static const pushDatosPersonales = 'push_pii_detected';
+
+  /// El `uuid` de los eventos de las push: no hay una fila afectada, es la push recibida.
+  static const uuidPush = 'push';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman

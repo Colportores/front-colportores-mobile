@@ -47,6 +47,7 @@ class FilaNotificacion extends StatelessWidget {
 
   IconData get _icono => switch (notificacion.tipo) {
     TipoNotificacion.recordatorioVisita => Icons.event_note_outlined,
+    TipoNotificacion.pedidoAutorizado => Icons.check_circle_outline,
   };
 
   @override

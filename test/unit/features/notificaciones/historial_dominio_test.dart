@@ -46,7 +46,7 @@ void main() {
     });
 
     test('un código que no existe es un error de programación', () {
-      expect(() => TipoNotificacion.desdeCodigo('PEDIDO_AUTORIZADO'), throwsArgumentError);
+      expect(() => TipoNotificacion.desdeCodigo('TICKET_VALIDADO'), throwsArgumentError);
     });
   });
 

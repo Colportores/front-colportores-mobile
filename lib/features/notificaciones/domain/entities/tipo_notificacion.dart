@@ -1,12 +1,15 @@
 /// De qué trata un aviso del centro de notificaciones (HU-NOT-005). [codigo] es el valor de la
 /// columna `tipo` de `notificacion_historial`.
 ///
-/// Hoy hay un solo tipo: los avisos que llegan por push (pedido autorizado, ticket validado, zona
-/// asignada, cuota pendiente) se suman con HU-NOT-003, en el S11 (decisión de Cristian del 06/10,
-/// «Notif. S8»): cada uno es una línea nueva acá.
+/// Los avisos que llegan por push (HU-NOT-003, S11; decisión de Cristian del 06/10, «Notif. S8») se
+/// suman de a uno, cuando se acuerda su `type` con el servidor (ticket validado, zona asignada, cuota
+/// pendiente…): cada uno es una línea nueva acá.
 enum TipoNotificacion {
   /// El recordatorio local de una visita agendada (HU-NOT-002).
-  recordatorioVisita('RECORDATORIO_VISITA');
+  recordatorioVisita('RECORDATORIO_VISITA'),
+
+  /// El coordinador autorizó un pedido (push remota, HU-NOT-003).
+  pedidoAutorizado('PEDIDO_AUTORIZADO');
 
   const TipoNotificacion(this.codigo);
 

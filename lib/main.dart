@@ -51,6 +51,7 @@ import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
@@ -319,6 +320,11 @@ Future<void> main() async {
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
+        // HU-NOT-003: tocar el aviso de una push (el de arriba con la app abierta o el del sistema)
+        // lo marca como leído y lleva a su destino. El adaptador de `firebase_messaging` que las
+        // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
+        // recibe nada hasta entonces.
+        ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
         // el teléfono. La pestaña Historial se engancha con su HU (#446).
         pestanaNotasDeLaCasaProvider.overrideWithValue(

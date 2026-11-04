@@ -35,7 +35,9 @@ import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.d
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
 import 'features/respaldo/presentation/pages/recuperacion_page.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
@@ -113,6 +115,12 @@ class ColportoresApp extends ConsumerWidget {
         navigatorObservers: [routeObserverColportores],
         title: 'Colportores',
         theme: temaClaro(),
+        // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de
+        // cualquier pantalla, así que no puede ser parte de una.
+        builder: (context, child) => AvisoPushEnAppHost(
+          activo: sesion.value != null,
+          child: child ?? const SizedBox.shrink(),
+        ),
         // Solo la primera lectura de la sesión (arranque) pasa por la pantalla de carga. Un
         // «Entrar» en vuelo vuelve a poner `AsyncLoading`, pero con la sesión (nula) de antes: si
         // eso cambiara la pantalla, el login se desmontaba con la respuesta en camino y el aviso del
@@ -354,6 +362,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
     ref.watch(conciliacionRecordatoriosProvider);
+    // HU-NOT-003: las push remotas se guardan en el historial y, con la app al frente, se avisan.
+    ref.watch(escuchaPushRemotasProvider);
     // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
     ref.watch(limpiezaNotasBorradasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.

@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'fakes/permiso_notificaciones_sistema_en_memoria.dart';
+import 'fakes/push_remotas_en_memoria.dart';
 import 'permiso_notificaciones_sistema.dart';
+import 'push_remotas.dart';
 
 /// El permiso de notificaciones del sistema (HU-NOT-001, vista 24).
 ///
@@ -11,3 +13,10 @@ import 'permiso_notificaciones_sistema.dart';
 final permisoNotificacionesSistemaProvider = Provider<PermisoNotificacionesSistema>(
   (ref) => PermisoNotificacionesSistemaEnMemoria(),
 );
+
+/// Las push remotas (HU-NOT-003, ADR-014).
+///
+/// El default es el fake que no recibe nada: todavía no hay `firebase_messaging` en el proyecto (falta
+/// el proyecto de Firebase y sus archivos de configuración). Cuando lleguen, `main.dart` lo
+/// reemplaza con el adaptador de producción.
+final pushRemotasProvider = Provider<PushRemotas>((ref) => PushRemotasEnMemoria());
