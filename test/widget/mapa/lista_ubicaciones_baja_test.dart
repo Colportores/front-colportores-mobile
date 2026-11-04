@@ -4,20 +4,50 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/consulta_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ultima_visita_del_espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/lector_ultima_visita_de_la_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart'
     show AlAbrirUbicacion;
+import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart'
+    show lectorUltimaVisitaDeLaUbicacionProvider;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_reactivar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/qa_baja_205_arnes.dart' show cargarFuentes205;
 import 'lista_ubicaciones_arnes.dart';
+
+/// El lector de la última visita de la ubicación: devuelve [ultima] (o lanza [lanza]), con la
+/// posibilidad de hacerlo esperar.
+final class _LectorUltimaVisita implements LectorUltimaVisitaDeLaUbicacion {
+  _LectorUltimaVisita({this.ultima, this.lanza, this.espera});
+
+  UltimaVisitaDelEspacio? ultima;
+  Object? lanza;
+  Completer<void>? espera;
+  final consultadas = <String>[];
+
+  @override
+  Future<UltimaVisitaDelEspacio?> de(String ubicacionId) async {
+    consultadas.add(ubicacionId);
+    await espera?.future;
+    final roto = lanza;
+    if (roto != null) throw roto;
+    return ultima;
+  }
+}
+
+List<Override> _conUltimaVisita(_LectorUltimaVisita lector) => [
+  lectorUltimaVisitaDeLaUbicacionProvider.overrideWithValue(lector),
+];
 
 final _bajaEl12DeSetiembre = DateTime.utc(2026, 9, 12, 15);
 
@@ -50,6 +80,7 @@ Future<RepoListaFalso> _montarConBajas(
   ValueNotifier<bool>? activaCambiante,
   ValueNotifier<bool>? montadaCambiante,
   AlAbrirUbicacion? alAbrir,
+  List<Override> masOverrides = const [],
 }) async {
   final r = repo ?? RepoListaFalso(filas ?? [_activa(), _baja()]);
   await montarLista(
@@ -60,6 +91,7 @@ Future<RepoListaFalso> _montarConBajas(
     activaCambiante: activaCambiante,
     montadaCambiante: montadaCambiante,
     alAbrir: alAbrir,
+    masOverrides: masOverrides,
   );
   await abrirHojaFiltros(tester);
   await tester.ensureVisible(find.byKey(const Key('hoja_filtros_bajas')));
@@ -238,6 +270,84 @@ void main() {
 
       expect(find.text('Última visita'), findsNothing);
     });
+
+    testWidgets(
+      'dado que la ubicación tiene visitas, entonces la hoja muestra «Última visita» con el '
+      'resultado y el día de la más reciente (09·03)',
+      (tester) async {
+        final lector = _LectorUltimaVisita(
+          ultima: UltimaVisitaDelEspacio(
+            resultado: TipoResultadoVisita.noContesto,
+            fecha: DateTime.utc(2026, 9, 2, 15),
+          ),
+        );
+        await _montarConBajas(tester, masOverrides: _conUltimaVisita(lector));
+
+        await _abrirReactivar(tester);
+
+        expect(find.text('Última visita'), findsOneWidget);
+        expect(find.text('No contestó · 02/09'), findsOneWidget);
+        expect(lector.consultadas, ['baja-1']);
+      },
+    );
+
+    testWidgets('dado que la ubicación no tiene ninguna visita, entonces no hay renglón «Última '
+        'visita» y la hoja se abre igual', (tester) async {
+      await _montarConBajas(tester, masOverrides: _conUltimaVisita(_LectorUltimaVisita()));
+
+      await _abrirReactivar(tester);
+
+      expect(find.text('Última visita'), findsNothing);
+      expect(_botonReactivar, findsOneWidget);
+      expect(_habilitado(tester, _botonReactivar), isTrue);
+    });
+
+    testWidgets('dado que no se pueden leer las visitas, entonces la hoja se abre sin el renglón: '
+        'nunca se inventa una visita', (tester) async {
+      final lector = _LectorUltimaVisita(lanza: StateError('base cerrada'));
+      await _montarConBajas(tester, masOverrides: _conUltimaVisita(lector));
+
+      await _abrirReactivar(tester);
+
+      expect(find.text('Última visita'), findsNothing);
+      expect(_botonReactivar, findsOneWidget);
+    });
+
+    testWidgets('dado un doble toque en la fila mientras se leen las visitas, entonces se abre una '
+        'sola hoja', (tester) async {
+      final lector = _LectorUltimaVisita(espera: Completer<void>());
+      await _montarConBajas(tester, masOverrides: _conUltimaVisita(lector));
+
+      await tester.tap(_filaBaja);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tap(_filaBaja, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 60));
+      lector.espera!.complete();
+      await asentarLista(tester);
+
+      expect(lector.consultadas, hasLength(1));
+      expect(_botonReactivar, findsOneWidget);
+    });
+
+    testWidgets(
+      'dado una visita de la ubicación y texto a 200 %, entonces el renglón «Última visita» '
+      'se lee entero',
+      (tester) async {
+        final lector = _LectorUltimaVisita(
+          ultima: UltimaVisitaDelEspacio(
+            resultado: TipoResultadoVisita.entrevista,
+            fecha: DateTime.utc(2026, 9, 2, 15),
+          ),
+        );
+        await _montarConBajas(tester, escala: 2, masOverrides: _conUltimaVisita(lector));
+
+        await _abrirReactivar(tester);
+
+        expect(find.text('Última visita'), findsOneWidget);
+        expect(find.text('Entrevista hecha · 02/09'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       'dado una baja sin motivo guardado, entonces la hoja no muestra el renglón «Motivo»',

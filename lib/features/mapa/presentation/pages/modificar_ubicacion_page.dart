@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/pendientes_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart'
     show AltaConCandidatas, AltaCreada, AltaFallida, AltaIgnorada;
 import '../providers/alta_ubicacion_providers.dart';
+import '../providers/baja_ubicacion_providers.dart';
 import '../providers/modificar_ubicacion_notifier.dart';
 import '../widgets/dialogos_modificar.dart';
 import '../widgets/hoja_baja.dart';
@@ -295,10 +297,30 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
     switch (salida) {
       case BajaRealizada(:final ubicacion):
         _terminar(UbicacionBajaRealizada(ubicacion));
-      case IrALaCobranzaElegido(:final ubicacionId):
-        Navigator.of(context).pop(IrALaCobranzaElegida(ubicacionId));
+      case IrALaCobranzaElegido(:final ubicacionId, :final cobranza):
+        if (widget.ofreceIrALaCobranza) {
+          Navigator.of(context).pop(IrALaCobranzaElegida(ubicacionId));
+        } else if (cobranza != null) {
+          await _irALaCobranza(cobranza);
+        }
       case null:
         break;
+    }
+  }
+
+  /// «Ir a la cobranza» con el destino de la app (`irALaCobranzaDesdeLaBajaProvider`): abre el cobro de
+  /// la venta que se debe y, al volver, la edición sigue donde estaba (la baja se puede volver a
+  /// intentar). Si el cobro no se puede abrir, lo dice.
+  Future<void> _irALaCobranza(CobranzaPendiente cobranza) async {
+    final destino = ref.read(irALaCobranzaDesdeLaBajaProvider);
+    if (destino == null) return;
+    try {
+      await destino(cobranza);
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(TextosBaja.noPudimosIrALaCobranza)));
     }
   }
 

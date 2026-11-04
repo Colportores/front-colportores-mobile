@@ -18,7 +18,9 @@ import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
+import '../providers/personas_providers.dart' show lectorUltimaVisitaDeLaUbicacionProvider;
 import '../providers/uniones_pendientes_notifier.dart';
+import '../textos_personas.dart' show FormatoPersonas;
 import '../widgets/aviso_con_deshacer.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
@@ -280,10 +282,13 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     setState(() => _reactivandoId = item.ubicacion.id);
     SalidaHojaReactivar? salida;
     try {
+      final ultimaVisita = await _ultimaVisitaDe(item.ubicacion.id);
+      if (!mounted) return;
       salida = await mostrarHojaReactivar(
         context,
         colportorId: widget.colportorId,
         item: item,
+        ultimaVisita: ultimaVisita,
         ofreceAbrirExistente: widget.alAbrirUbicacion != null,
       );
     } finally {
@@ -298,6 +303,17 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
         _abrirLaExistente(ubicacionId);
       case null:
         break;
+    }
+  }
+
+  /// El renglón «Última visita» de «Reactivar» («No contestó · 02/09»), o `null` si la ubicación no
+  /// tiene ninguna visita o no se pudo leer: el renglón no se dibuja, nunca se inventa (HU-UBI-005).
+  Future<String?> _ultimaVisitaDe(String ubicacionId) async {
+    try {
+      final ultima = await ref.read(lectorUltimaVisitaDeLaUbicacionProvider).de(ubicacionId);
+      return ultima == null ? null : FormatoPersonas.ultimaVisita(ultima);
+    } on Object {
+      return null;
     }
   }
 

@@ -49,6 +49,7 @@ import 'features/configuracion/data/repositories/aviso_privacidad_repository_imp
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
+import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
@@ -323,6 +324,30 @@ Future<void> main() async {
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Ir a la cobranza» de la baja bloqueada (vista 09·02, #330): el cobro en efectivo (vista 28) de
+        // la venta que se debe. Devuelve `true` si se cobró; la baja se puede volver a intentar.
+        irALaCobranzaDesdeLaBajaProvider.overrideWith(
+          (ref) => (cobranza) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            final ventaId = cobranza.ventaId;
+            final espacioId = cobranza.espacioId;
+            if (contexto == null ||
+                ventaId == null ||
+                espacioId == null ||
+                colportorId == null ||
+                colportorId.trim().isEmpty) {
+              return false;
+            }
+            return CobroEfectivoPage.abrir(
+              contexto,
+              ventaId: ventaId,
+              colportorId: colportorId,
+              espacioId: espacioId,
+              espacioPersonaId: cobranza.espacioPersonaId,
             );
           },
         ),
