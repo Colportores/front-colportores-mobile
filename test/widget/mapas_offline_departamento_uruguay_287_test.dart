@@ -83,6 +83,17 @@ Future<void> _asentar(WidgetTester tester) async {
   }
 }
 
+/// Una fuente que no contesta hasta que el test lo pide: la pantalla queda «cargando».
+final class _FuenteLenta implements FuenteLugarDeTrabajo {
+  final espera = Completer<void>();
+
+  @override
+  Future<Either<Failure, LugarDeTrabajo>> leer() async {
+    await espera.future;
+    return Right(_lugarEn('san jose'));
+  }
+}
+
 final class _Montaje {
   _Montaje(this.arnes);
 
@@ -94,6 +105,8 @@ Future<_Montaje> _montar(
   WidgetTester tester, {
   required ArnesMapa arnes,
   LugarDeTrabajo? lugar,
+  FuenteLugarDeTrabajo? fuente,
+  bool asentar = true,
   int libres = 4000 * 1000 * 1000,
   double escala = 1,
   Size tamano = const Size(390, 844),
@@ -108,7 +121,9 @@ Future<_Montaje> _montar(
     ProviderScope(
       overrides: [
         ...arnes.overrides,
-        fuenteLugarDeTrabajoProvider.overrideWithValue(_Fuente(lugar ?? _lugarEn('san jose'))),
+        fuenteLugarDeTrabajoProvider.overrideWithValue(
+          fuente ?? _Fuente(lugar ?? _lugarEn('san jose')),
+        ),
         medidorEspacioDiscoProvider.overrideWithValue(espacio),
       ],
       child: MaterialApp(
@@ -125,7 +140,7 @@ Future<_Montaje> _montar(
       ),
     ),
   );
-  await _asentar(tester);
+  if (asentar) await _asentar(tester);
   return montaje;
 }
 
@@ -192,6 +207,32 @@ void main() {
 
       expect(find.text('Llega con el paso a Pro'), findsNothing);
       expect(find.text('Todavía no está disponible'), findsNWidgets(2));
+    });
+  });
+
+  group('cargando', () {
+    testWidgets('mientras lee dónde trabaja y el catálogo dice «Revisando los mapas…»', (
+      tester,
+    ) async {
+      final fuente = _FuenteLenta();
+      await _montar(
+        tester,
+        arnes: _arnes([_ciudad86, _depto250, _uruguay1200]),
+        fuente: fuente,
+        asentar: false,
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+
+      expect(_clave('mapas_offline_revisando'), findsOneWidget);
+      expect(find.text('Revisando los mapas…'), findsOneWidget);
+      expect(_clave('mapas_offline_descargar'), findsNothing);
+
+      fuente.espera.complete();
+      await _asentar(tester);
+
+      expect(_clave('mapas_offline_revisando'), findsNothing);
+      expect(find.text('Todo Uruguay'), findsOneWidget);
+      expect(_habilitado(tester, 'mapas_offline_descargar'), isTrue);
     });
   });
 
