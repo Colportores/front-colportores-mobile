@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_cas
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
@@ -47,6 +48,7 @@ Future<void> montarLista(
   Key? clave,
   Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
+  List<Override> masOverrides = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -57,6 +59,7 @@ Future<void> montarLista(
         ...overridesLista(repo: repo ?? RepoListaFalso(), gps: gps, ciudades: ciudades),
         // La hoja de la casa (vista 39) lee de la base; acá, de un contexto fijo (el del canvas).
         ...overridesHojaCasa(lectura: lecturaContexto, registrarVisita: registrarVisita),
+        ...masOverrides,
       ],
       child: MaterialApp(
         theme: temaClaro(),
