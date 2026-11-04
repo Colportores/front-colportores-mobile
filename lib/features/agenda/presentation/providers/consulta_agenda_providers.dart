@@ -93,10 +93,18 @@ final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {
 final filtrosAgendaProvider = NotifierProvider.autoDispose
     .family<FiltrosAgendaNotifier, FiltrosAgenda, String>(FiltrosAgendaNotifier.new);
 
-/// A dónde lleva «+ Agendar» (vista 23A, #408): abre el formulario de agendar sin casa elegida.
-/// Devuelve `true` si se agendó. **Sin destino** (`null`) el botón no se muestra, como los de la
-/// hoja de la casa: los botones llegan con la HU que los resuelve.
+/// A dónde lleva «+ Agendar» (vista 23B, #568): elige la casa en la lista de ubicaciones, pregunta con
+/// quién y abre «Agendar visita» (23A·01) con ellas. Devuelve `true` si se agendó. **Sin destino**
+/// (`null`) el botón no se muestra, como los de la hoja de la casa: los botones llegan con la HU que
+/// los resuelve.
 final agendarDesdeLaAgendaProvider = Provider<FutureOr<Object?> Function()?>((ref) => null);
+
+/// A dónde lleva «+ Agendar» del rótulo de un **día futuro** (23B·01, #568): lo mismo que
+/// [agendarDesdeLaAgendaProvider], con ese día como fecha inicial de «Agendar visita». Recibe el día a
+/// medianoche. Sin destino (`null`) el rótulo usa [agendarDesdeLaAgendaProvider], con la fecha de siempre.
+final agendarEnUnDiaDesdeLaAgendaProvider = Provider<FutureOr<Object?> Function(DateTime dia)?>(
+  (ref) => null,
+);
 
 /// A dónde lleva tocar una agenda (vista 23C·01, #409): su detalle. Recibe el `id` de la agenda.
 /// **Sin destino** (`null`) las filas no se tocan y no llevan la flecha «›».

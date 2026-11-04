@@ -30,7 +30,7 @@ import '../../helpers/persona_falsos.dart';
 
 final _agendar = find.byKey(ClavesHojaCasa.agendar);
 final _formulario = find.byType(AgendarVisitaPage);
-final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDepto);
+final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar);
 final _guardar = find.byKey(ClavesAgendarVisita.botonAgendar);
 
 final class _Montaje {

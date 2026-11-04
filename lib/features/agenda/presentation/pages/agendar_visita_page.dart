@@ -58,6 +58,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
     this.espacioPersonaId,
     required this.colportorId,
     this.tipoInicial = TipoAgenda.entrevista,
+    this.diaInicial,
   });
 
   /// La casa o el depto de la visita.
@@ -71,6 +72,11 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
 
   final TipoAgenda tipoInicial;
 
+  /// El día con que abre el formulario (a las 10:00), si viene de «+ Agendar» del rótulo de un día de la
+  /// Agenda (#568). Sin día —o con uno que no es futuro— abre con mañana a las 10:00, como siempre.
+  /// Elegir un día es tocar la fecha: la fecha sugerida por las entrevistas cercanas no la pisa.
+  final DateTime? diaInicial;
+
   /// Cuántos caracteres admite la nota: un resguardo para que un pegado enorme no trabe el
   /// formulario (a confirmar; la HU no fija un tope).
   static const largoNota = 500;
@@ -82,6 +88,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
     String? espacioPersonaId,
     required String colportorId,
     TipoAgenda tipo = TipoAgenda.entrevista,
+    DateTime? diaInicial,
   }) => Navigator.of(context).push<AgendaGuardada>(
     MaterialPageRoute(
       builder: (_) => AgendarVisitaPage(
@@ -89,6 +96,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
         espacioPersonaId: espacioPersonaId,
         colportorId: colportorId,
         tipoInicial: tipo,
+        diaInicial: diaInicial,
       ),
     ),
   );
@@ -152,6 +160,17 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
     final ahora = ref.read(relojVisitaProvider)();
     // Mañana a las 10:00 (media mañana): siempre en el futuro, así que se puede agendar sin tocar nada.
     _cuando = DateTime(ahora.year, ahora.month, ahora.day + 1, 10);
+    final dia = widget.diaInicial;
+    // Solo un día futuro: hoy y los pasados siguen con la fecha de siempre.
+    if (dia != null &&
+        DateTime(
+          dia.year,
+          dia.month,
+          dia.day,
+        ).isAfter(DateTime(ahora.year, ahora.month, ahora.day))) {
+      _cuando = DateTime(dia.year, dia.month, dia.day, 10);
+      _tocoLaFecha = true;
+    }
     _franja = FranjaHoraria.sugeridaPara(_cuando.hour * 60 + _cuando.minute);
     unawaited(_leerAvisos());
     // La fecha sugerida es una ayuda: se lee en segundo plano, sin frenar el formulario, y si falla no
