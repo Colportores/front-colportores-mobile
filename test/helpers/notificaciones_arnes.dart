@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
+import 'package:colportores_mobile/core/notificaciones/fakes/permiso_alarmas_exactas_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/fakes/permiso_notificaciones_sistema_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
@@ -35,6 +36,9 @@ final class Telefono {
   final PermisoNotificacionesSistemaEnMemoria sistema;
   final recuerdo = PermisoNotificacionesRepositoryEnMemoria();
   final sesionGuardada = AuthLocalDataSourceEnMemoria();
+
+  /// «Alarmas y recordatorios» (HU-NOT-002, «Aviso exacto»): sin el concepto salvo que el test diga.
+  final alarmas = PermisoAlarmasExactasEnMemoria();
   final conexion = _Conexion();
 
   /// Las preferencias de los recordatorios (HU-NOT-004), los recordatorios del teléfono y las agendas
@@ -48,6 +52,7 @@ final class Telefono {
     recordatoriosProvider.overrideWithValue(recordatorios),
     agendasParaRecordarProvider.overrideWithValue(agendas),
     permisoNotificacionesSistemaProvider.overrideWithValue(sistema),
+    permisoAlarmasExactasProvider.overrideWithValue(alarmas),
     permisoNotificacionesRepositoryProvider.overrideWithValue(recuerdo),
     monitorConectividadProvider.overrideWithValue(conexion),
   ];
