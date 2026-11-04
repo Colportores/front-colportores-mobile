@@ -47,6 +47,8 @@ import 'notas_de_persona_page.dart';
 ///   entregas pendientes (`registrarEntregaDesdeLaFichaProvider`; sin destino no se dibuja). No están
 ///   con la persona de baja o el depto de baja (32B·04 y 32B·08), ni en la ficha vacía (32B·05) ni
 ///   sin ventas. Con una de las dos abriéndose, la otra queda apagada.
+/// - La tarjeta de una entrega pendiente del historial ofrece «Entregar» (32B·01): el mismo destino, ya en
+///   la venta de esa tarjeta. Sin destino o en solo lectura no se ofrece.
 /// - La ubicación alternativa es de la vista 22: no está acá.
 class FichaPersonaPage extends ConsumerStatefulWidget {
   const FichaPersonaPage({
@@ -205,7 +207,21 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
     if (destino == null) return;
     if (frenaPorCuentaRestringida(context, ref)) return;
-    await destino((personaId: widget.personaId, espacioId: widget.espacioId));
+    await destino((personaId: widget.personaId, espacioId: widget.espacioId, ventaId: null));
+  });
+
+  /// «Entregar» en la tarjeta de una entrega pendiente (32B·01, HU-VEN-005): el mismo destino que
+  /// «Registrar entrega», ya en la venta de esa tarjeta. Sin la venta (no se conoce) llega sin ella y el
+  /// destino pregunta «¿Qué venta?».
+  Future<void> _entregarPendiente(EntregaEnFicha entrega) => _unaAlaVez(() async {
+    final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
+    if (destino == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((
+      personaId: widget.personaId,
+      espacioId: widget.espacioId,
+      ventaId: entrega.ventaId,
+    ));
   });
 
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
@@ -332,6 +348,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
         ocupado: _abriendo,
         alAgendarCobranza: _agendarCobranza,
         alRegistrarEntrega: _registrarEntrega,
+        alEntregar: _entregarPendiente,
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
       );
@@ -495,6 +512,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.ocupado,
     required this.alAgendarCobranza,
     required this.alRegistrarEntrega,
+    required this.alEntregar,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
   });
@@ -525,6 +543,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// Ya se está abriendo algo: las acciones rápidas quedan apagadas.
   final bool ocupado;
   final VoidCallback alAgendarCobranza;
+
+  /// «Entregar» de una entrega pendiente del historial (32B·01).
+  final ValueChanged<EntregaEnFicha> alEntregar;
   final VoidCallback alRegistrarEntrega;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
@@ -653,6 +674,12 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                     alTocar: m is VentaEnFicha && alDevolver != null
                         ? () => alDevolver!(m.id)
                         : null,
+                    // «Entregar» solo con destino y sin solo lectura (32B·04 y 32B·08: no se registra
+                    // nada); la entrega pendiente que no se puede entregar queda como tarjeta sin toque.
+                    alEntregar: m is EntregaEnFicha && m.pendiente && conEntrega && !soloLectura
+                        ? () => alEntregar(m)
+                        : null,
+                    ocupado: ocupado,
                   ),
                 ),
             ],

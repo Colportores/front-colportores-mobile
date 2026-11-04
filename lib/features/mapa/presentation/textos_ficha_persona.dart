@@ -28,6 +28,7 @@ abstract final class TextosFicha {
   static const registrarVisita = 'Registrar visita';
   static const agendarCobranza = '+ Agendar cobranza';
   static const registrarEntrega = 'Registrar entrega';
+  static const entregar = 'Entregar';
   static const reintentar = 'Reintentar';
   static const reactivar = 'Reactivar';
   static const reactivarDepto = 'Reactivar el depto';
