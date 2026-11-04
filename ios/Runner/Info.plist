@@ -59,5 +59,16 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Respaldo de la noche con la app cerrada (HU-SYNC-005, #583), workmanager: iOS despierta la app
+	     con una BGProcessingTask. El identificador es el mismo de AppDelegate.swift y de
+	     `nombreTareaRespaldoNocturno` (lib/features/respaldo/data/services/programador_nocturno_del_sistema.dart). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.colportores.respaldo_nocturno</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
 </dict>
 </plist>

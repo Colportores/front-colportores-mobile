@@ -13,7 +13,8 @@ import 'aviso_drive.dart';
 /// El aviso de Inicio cuando la persona lleva más de 7 días sin un respaldo exitoso (HU-SYNC-005):
 /// «Llevás N días sin respaldo. Revisá tu conexión y reintentá.», con «Reintentar».
 ///
-/// Sale solo con Drive conectado y un respaldo anterior desde el cual contar. «Reintentar» pide el
+/// Sale solo con Drive conectado y una fecha desde la cual contar: el último respaldo o, si nunca hubo
+/// uno, el día en que se conectó Drive (#583). «Reintentar» pide el
 /// respaldo ya mismo, sin esperar a Wi-Fi ni batería: lo pidió la persona. Mientras corre, el botón
 /// queda apagado (un segundo toque no pide otro). Si sale bien, el aviso se va solo: llega el
 /// respaldo nuevo y ya no pasan 7 días. Si no, sigue ahí y la persona puede volver a tocarlo.
@@ -93,8 +94,13 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
       estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada),
     );
     final ultimo = ref.watch(ultimoRespaldoDriveProvider).value;
+    final desde = ref.watch(conectadaDesdeDriveProvider).value;
     final dias = conectada
-        ? diasSinRespaldo(ultimo: ultimo, ahora: (widget.ahora ?? DateTime.now)())
+        ? diasSinRespaldo(
+            ultimo: ultimo,
+            conectadaDesde: desde,
+            ahora: (widget.ahora ?? DateTime.now)(),
+          )
         : null;
     if (dias == null) return const SizedBox.shrink();
 

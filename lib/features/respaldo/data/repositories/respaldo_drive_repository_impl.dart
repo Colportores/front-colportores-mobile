@@ -21,19 +21,25 @@ import '../services/servicio_google.dart';
 /// Serializa las operaciones: cada una espera a la anterior, así dos cambios seguidos no se pisan
 /// y una lectura pedida después de un cambio en vuelo ve lo nuevo. Un valor ilegible (JSON roto)
 /// cuenta como «sin conectar»: al conectar se reescribe. Sin correos ni ids de Google en los logs.
+///
+/// Anota también **cuándo se conectó** cada cuenta (`conectado_en`, #583): sin ningún respaldo, los
+/// días «sin respaldo» se cuentan desde ahí.
 final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   RespaldoDriveRepositoryImpl(
     this._almacen,
     this._google, {
     this.primerRespaldo = const PrimerRespaldoSinMotor(),
+    DateTime Function()? ahora,
     AppLogger? logger,
-  }) : _log = logger ?? AppLogger.instance;
+  }) : _ahora = ahora ?? (() => DateTime.now().toUtc()),
+       _log = logger ?? AppLogger.instance;
 
   final AlmacenSeguro _almacen;
   final ServicioGoogle _google;
 
   /// Hace el primer respaldo al terminar de conectar (hasta #185 no hay motor: no hace nada).
   final PrimerRespaldoDrive primerRespaldo;
+  final DateTime Function() _ahora;
   final AppLogger _log;
 
   Future<void> _cola = Future<void>.value();
@@ -44,11 +50,12 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     return resultado;
   }
 
-  // --- Almacén: {"<usuario>": {"email": …, "id": …, "estado": …}} ------------------------------
+  // --- Almacén: {"<usuario>": {"email": …, "id": …, "estado": …, "conectado_en": …}} ----------
 
   static const _conectada = 'conectada';
   static const _revocada = 'revocada';
   static const _sinEspacio = 'sin_espacio';
+  static const _conectadoEn = 'conectado_en';
 
   Future<Map<String, Map<String, String>>> _leerTodo() async {
     final valor = await _almacen.leer(ClaveSegura.respaldoDrive);
@@ -67,7 +74,13 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       final id = value['id'];
       final estado = value['estado'];
       if (email is String && id is String && estado is String && email.isNotEmpty) {
-        todo[key] = {'email': email, 'id': id, 'estado': estado};
+        final desde = value[_conectadoEn];
+        todo[key] = {
+          'email': email,
+          'id': id,
+          'estado': estado,
+          if (desde is String) _conectadoEn: desde,
+        };
       }
     }
     return todo;
@@ -121,6 +134,26 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   });
 
   @override
+  Future<DateTime?> conectadaDesde(String usuarioId) => _encolar(() async {
+    try {
+      final todo = await _leerTodo();
+      final fila = todo[usuarioId];
+      if (fila == null) return null;
+      final guardada = DateTime.tryParse(fila[_conectadoEn] ?? '');
+      if (guardada != null) return guardada.toUtc();
+      // Una cuenta conectada antes de que se anotara la fecha: lo único que se sabe es que lo está
+      // ahora. Se anota hoy y se cuenta desde hoy; no se inventa una fecha anterior.
+      final ahora = _ahora().toUtc();
+      todo[usuarioId] = {...fila, _conectadoEn: ahora.toIso8601String()};
+      await _escribirTodo(todo);
+      return ahora;
+    } on Object catch (e) {
+      _falloDelAlmacen('leer', e);
+      return null;
+    }
+  });
+
+  @override
   Future<Either<Failure, ConexionDrive>> conectar(String usuarioId) => _encolar(() async {
     final CuentaGoogle cuenta;
     try {
@@ -132,7 +165,12 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     final conectada = DriveConectada(email: cuenta.email, cuentaId: cuenta.id);
     try {
       final todo = await _leerTodoOVacio();
-      todo[usuarioId] = {'email': cuenta.email, 'id': cuenta.id, 'estado': _conectada};
+      todo[usuarioId] = {
+        'email': cuenta.email,
+        'id': cuenta.id,
+        'estado': _conectada,
+        _conectadoEn: _ahora().toUtc().toIso8601String(),
+      };
       await _escribirTodo(todo);
     } on Object catch (e) {
       // Google ya dio el permiso pero la app no pudo anotarlo: se lo retira para no dejar un

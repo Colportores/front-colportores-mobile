@@ -1,6 +1,6 @@
 // HU-SYNC-005 — «Aviso por > 7 días sin backup»: «Llevás N días sin respaldo. Revisá tu conexión y
-// reintentá.» con «Reintentar», en Inicio. Solo con Drive conectado y un respaldo anterior desde el
-// cual contar. Casos límite: doble toque, falla a mitad, dos pedidos seguidos, volver y reentrar,
+// reintentá.» con «Reintentar», en Inicio. Solo con Drive conectado y una fecha desde la cual contar:
+// el último respaldo o, si nunca hubo uno, el día en que se conectó Drive (#583). Casos límite: doble toque, falla a mitad, dos pedidos seguidos, volver y reentrar,
 // texto al 200 %.
 import 'dart:async';
 
@@ -55,6 +55,7 @@ Future<void> _montar(
   required _Servicio servicio,
   EstadoRespaldoDrive estado = _conectada,
   DateTime? ultimo,
+  DateTime? conectadaDesde,
   double escala = 1,
   Size pantalla = const Size(390, 844),
   Stream<DateTime?> Function()? ultimoEnVivo,
@@ -69,6 +70,7 @@ Future<void> _montar(
         ultimoRespaldoDriveProvider.overrideWith(
           (ref) => ultimoEnVivo?.call() ?? Stream.value(ultimo),
         ),
+        conectadaDesdeDriveProvider.overrideWith((ref) async => conectadaDesde),
         servicioRespaldoProvider.overrideWithValue(servicio),
       ],
       child: MaterialApp(
@@ -118,12 +120,71 @@ void main() {
       expect(_aviso, findsNothing);
     });
 
-    testWidgets('sin ningún respaldo anterior no hay desde cuándo contar: no aparece', (
+    testWidgets('sin ningún respaldo ni fecha de conexión no hay desde cuándo contar: no aparece', (
       tester,
     ) async {
       await _montar(tester, servicio: _Servicio());
 
       expect(_aviso, findsNothing);
+    });
+
+    testWidgets(
+      'Escenario: conectó Drive hace 10 días y nunca hubo un respaldo — avisa desde ahí',
+      (tester) async {
+        await _montar(tester, servicio: _Servicio(), conectadaDesde: _haceDias(10));
+
+        expect(_aviso, findsOneWidget);
+        expect(
+          find.text('Llevás 10 días sin respaldo. Revisá tu conexión y reintentá.'),
+          findsOneWidget,
+        );
+        expect(find.text('Reintentar'), findsOneWidget);
+      },
+    );
+
+    testWidgets('conectó hace 7 días justos y nunca hubo un respaldo: todavía no avisa', (
+      tester,
+    ) async {
+      await _montar(tester, servicio: _Servicio(), conectadaDesde: _haceDias(7));
+
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('con un respaldo reciente no avisa aunque haya conectado hace un mes', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        servicio: _Servicio(),
+        ultimo: _haceDias(2),
+        conectadaDesde: _haceDias(30),
+      );
+
+      expect(_aviso, findsNothing);
+    });
+
+    testWidgets('«Reintentar» desde ese aviso pide el respaldo y se va cuando llega', (
+      tester,
+    ) async {
+      final servicio = _Servicio();
+      final ultimo = StreamController<DateTime?>();
+      addTearDown(ultimo.close);
+      await _montar(
+        tester,
+        servicio: servicio,
+        conectadaDesde: _haceDias(10),
+        ultimoEnVivo: () => ultimo.stream,
+      );
+      ultimo.add(null);
+      await tester.pumpAndSettle();
+
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+      expect(servicio.pedidos, [OrigenRespaldo.pedidoPorLaPersona]);
+
+      ultimo.add(_ahora);
+      await tester.pumpAndSettle();
+      expect(_aviso, findsNothing, reason: 'llegó el respaldo: la cuenta pasa a ser del último');
     });
 
     for (final (nombre, estado) in <(String, EstadoRespaldoDrive)>[
