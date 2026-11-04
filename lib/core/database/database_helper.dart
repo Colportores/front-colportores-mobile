@@ -67,6 +67,7 @@ final class DatabaseHelper {
     required this._directorio,
     required this._directorioTemporal,
     this._nombreArchivo = nombreArchivoPorDefecto,
+    this._esperaDeBloqueo,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -78,6 +79,11 @@ final class DatabaseHelper {
   final Future<Directory> Function() _directorio;
   final Future<Directory> Function() _directorioTemporal;
   final String _nombreArchivo;
+
+  /// Cuánto espera esta conexión a que otra suelte el archivo antes de fallar con «database is
+  /// locked» (`PRAGMA busy_timeout`). `null` = no espera (lo de siempre). Lo pide quien abre el
+  /// mismo archivo desde otro isolate sin la UI: el respaldo de la noche (#583).
+  final Duration? _esperaDeBloqueo;
   final AppLogger _log;
 
   AppDatabase? _db;
@@ -147,7 +153,7 @@ final class DatabaseHelper {
           native: DriftNativeOptions(
             databasePath: () async => archivoDb.path,
             tempDirectoryPath: () async => (await _directorioTemporal()).path,
-            setup: _setupCifrado(hex, AppDatabase.versionEsquema),
+            setup: _setupCifrado(hex, AppDatabase.versionEsquema, _esperaDeBloqueo?.inMilliseconds),
           ),
         ),
         logger: _log,
@@ -386,7 +392,11 @@ final class DatabaseHelper {
 ///
 /// El chequeo de `user_version` va acá y no después de abrir porque Drift, al abrir, corre sus
 /// migraciones y **escribe** `user_version`: mirarla después nunca detectaría nada.
-void Function(CommonDatabase) _setupCifrado(String hexClave, int versionEsperada) => (db) {
+void Function(CommonDatabase) _setupCifrado(
+  String hexClave,
+  int versionEsperada,
+  int? esperaDeBloqueoMs,
+) => (db) {
   if (db.select('PRAGMA cipher_version;').isEmpty) {
     throw UnsupportedError(
       'el binario de SQLite de este build no es SQLCipher: revisar `hooks` en pubspec.yaml',
@@ -396,6 +406,7 @@ void Function(CommonDatabase) _setupCifrado(String hexClave, int versionEsperada
   // El pragma no acepta parámetros preparados; el hex no necesita escape.
   db.execute('PRAGMA key = "x\'$hexClave\'";');
   db.execute('SELECT count(*) FROM sqlite_master;');
+  if (esperaDeBloqueoMs != null) db.execute('PRAGMA busy_timeout = $esperaDeBloqueoMs;');
 
   final version = db.select('PRAGMA user_version;').first.columnAt(0) as int?;
   if (version != null && version > versionEsperada) {

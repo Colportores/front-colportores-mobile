@@ -27,6 +27,7 @@ Map<String, Object?> _producto(String id, {String? nombre, int version = 1}) => 
   'nombre': nombre ?? 'Libro $id',
   'descripcion': null,
   'tipo': 'LIBRO',
+  'categoria': 'ESPIRITUALES',
   'es_bonificable': true,
   'es_misionero': false,
   'precio_base_compra': 18000,

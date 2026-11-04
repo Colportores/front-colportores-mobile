@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,8 +60,10 @@ import 'features/notificaciones/presentation/providers/preferencias_recordatorio
 import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
+import 'features/respaldo/data/services/programador_nocturno_del_sistema.dart';
 import 'features/respaldo/data/services/servicio_google.dart';
 import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
@@ -71,6 +74,7 @@ import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
 import 'plataforma/identidad_instalacion.dart';
+import 'plataforma/respaldo_nocturno_workmanager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -158,6 +162,8 @@ Future<void> main() async {
   );
   await recordatorios.iniciar();
 
+  final respaldoNocturno = await _prepararRespaldoNocturno();
+
   runApp(
     ProviderScope(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
@@ -234,6 +240,9 @@ Future<void> main() async {
         // La batería para el respaldo automático (R-SY10): canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         nivelBateriaProvider.overrideWithValue(NivelBateriaCanal()),
+        // El respaldo de la noche con la app cerrada (HU-SYNC-005, ADR-009, #583): WorkManager en
+        // Android y BGTaskScheduler en iOS. Se programa al conectar Drive y se saca al desconectar.
+        programadorDeRespaldoNocturnoProvider.overrideWithValue(respaldoNocturno),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
         // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en
@@ -360,4 +369,32 @@ Future<void> main() async {
       child: const ColportoresApp(),
     ),
   );
+}
+
+/// Deja listo el respaldo de la noche: registra el despachador del segundo plano ante el plugin y
+/// devuelve quien lo programa. Si el plugin no arranca (o no es Android ni iOS), la app sigue sin
+/// respaldo nocturno: el del cierre de jornada y el de la vuelta a la app con más de 24 horas sin uno
+/// (R30) siguen cubriendo.
+Future<ProgramadorDeRespaldoNocturno> _prepararRespaldoNocturno() async {
+  final plataforma = defaultTargetPlatform;
+  if (plataforma != TargetPlatform.android && plataforma != TargetPlatform.iOS) {
+    return const ProgramadorSinSegundoPlano();
+  }
+  try {
+    await TareasWorkmanager.iniciar();
+    return ProgramadorNocturnoDelSistema(
+      TareasWorkmanager(),
+      esIos: plataforma == TargetPlatform.iOS,
+    );
+  } on Object catch (e, st) {
+    AppLogger.instance.error(
+      LogModulo.backup,
+      'main',
+      'no se pudo preparar el respaldo de la noche',
+      const {},
+      e,
+      st,
+    );
+    return const ProgramadorSinSegundoPlano();
+  }
 }

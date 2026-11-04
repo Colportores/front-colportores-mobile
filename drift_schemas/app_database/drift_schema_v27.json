@@ -2507,6 +2507,16 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "categoria",
+            "getter_name": "categoria",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -4694,57 +4704,6 @@
     },
     {
       "id": 35,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "deuda_casa_cache",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "colportor_id",
-            "getter_name": "colportorId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "respuesta",
-            "getter_name": "respuesta",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "leida_en",
-            "getter_name": "leidaEn",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "colportor_id"
-        ]
-      }
-    },
-    {
-      "id": 36,
       "references": [
         0
       ],
@@ -4767,7 +4726,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 36,
       "references": [
         1
       ],
@@ -4790,7 +4749,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 37,
       "references": [
         2
       ],
@@ -4809,7 +4768,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 38,
       "references": [
         4
       ],
@@ -4828,7 +4787,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 39,
       "references": [
         5
       ],
@@ -4847,7 +4806,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 40,
       "references": [
         6
       ],
@@ -4870,7 +4829,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 41,
       "references": [
         8
       ],
@@ -4893,7 +4852,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 42,
       "references": [
         9
       ],
@@ -4920,7 +4879,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 43,
       "references": [
         9
       ],
@@ -4943,7 +4902,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 44,
       "references": [
         9
       ],
@@ -4966,7 +4925,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 45,
       "references": [
         13
       ],
@@ -4985,7 +4944,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 46,
       "references": [
         13
       ],
@@ -5004,7 +4963,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 47,
       "references": [
         14
       ],
@@ -5027,7 +4986,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 48,
       "references": [
         15
       ],
@@ -5050,7 +5009,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 49,
       "references": [
         15
       ],
@@ -5069,7 +5028,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 50,
       "references": [
         15
       ],
@@ -5088,7 +5047,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 51,
       "references": [
         15
       ],
@@ -5107,7 +5066,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 52,
       "references": [
         16
       ],
@@ -5130,7 +5089,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 53,
       "references": [
         16
       ],
@@ -5149,7 +5108,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 54,
       "references": [
         16
       ],
@@ -5168,7 +5127,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 55,
       "references": [
         18
       ],
@@ -5187,7 +5146,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 56,
       "references": [
         21
       ],
@@ -5206,7 +5165,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 57,
       "references": [
         22
       ],
@@ -5225,7 +5184,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 58,
       "references": [
         22
       ],
@@ -5244,7 +5203,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 59,
       "references": [
         22
       ],
@@ -5263,7 +5222,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 60,
       "references": [
         23
       ],
@@ -5282,7 +5241,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 61,
       "references": [
         23
       ],
@@ -5301,7 +5260,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 62,
       "references": [
         25
       ],
@@ -5320,7 +5279,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 63,
       "references": [
         28
       ],
@@ -5339,7 +5298,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 64,
       "references": [
         29
       ],
@@ -5362,7 +5321,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 65,
       "references": [
         29
       ],
@@ -5381,7 +5340,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 66,
       "references": [
         30
       ],
@@ -5400,7 +5359,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 67,
       "references": [
         31
       ],
@@ -5419,7 +5378,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 68,
       "references": [
         32
       ],
@@ -5438,7 +5397,7 @@
       }
     },
     {
-      "id": 70,
+      "id": 69,
       "references": [
         33
       ],
@@ -5457,7 +5416,7 @@
       }
     },
     {
-      "id": 71,
+      "id": 70,
       "references": [
         34
       ],
@@ -5653,7 +5612,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
         }
       ]
     },
@@ -5789,15 +5748,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TABLE IF NOT EXISTS \"deposito\" (\"id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"fecha\" INTEGER NOT NULL, \"destino\" TEXT NOT NULL, \"concepto\" TEXT NOT NULL, \"campania_id\" TEXT NULL, \"ticket_id\" TEXT NULL, \"validado_en\" INTEGER NULL, \"validado_por\" TEXT NULL, \"rechazado_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (destino IN ('BANCO', 'OFICINA', 'RETIRO_COORDINADOR')), CHECK (concepto IN ('CASA_EDITORA', 'ALQUILER')), CHECK (destino <> 'RETIRO_COORDINADOR' OR ticket_id IS NULL), CHECK (destino = 'RETIRO_COORDINADOR' OR ticket_id IS NOT NULL), CHECK (concepto <> 'ALQUILER' OR campania_id IS NOT NULL));"
-        }
-      ]
-    },
-    {
-      "name": "deuda_casa_cache",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"deuda_casa_cache\" (\"colportor_id\" TEXT NOT NULL, \"respuesta\" TEXT NOT NULL, \"leida_en\" INTEGER NOT NULL, PRIMARY KEY (\"colportor_id\"));"
         }
       ]
     },

@@ -9344,6 +9344,14 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> categoria = GeneratedColumn<String>(
+    'categoria',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -9361,6 +9369,7 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
+    categoria,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9433,6 +9442,10 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
         DriftSqlType.string,
         data['${effectivePrefix}codigo_editor'],
       ),
+      categoria: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}categoria'],
+      ),
     );
   }
 
@@ -9466,6 +9479,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
   final int? deletedAt;
   final int syncVersion;
   final String? codigoEditor;
+  final String? categoria;
   const ProductoData({
     required this.id,
     required this.nombre,
@@ -9482,6 +9496,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     this.deletedAt,
     required this.syncVersion,
     this.codigoEditor,
+    this.categoria,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9514,6 +9529,9 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     map['sync_version'] = Variable<int>(syncVersion);
     if (!nullToAbsent || codigoEditor != null) {
       map['codigo_editor'] = Variable<String>(codigoEditor);
+    }
+    if (!nullToAbsent || categoria != null) {
+      map['categoria'] = Variable<String>(categoria);
     }
     return map;
   }
@@ -9549,6 +9567,9 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: codigoEditor == null && nullToAbsent
           ? const Value.absent()
           : Value(codigoEditor),
+      categoria: categoria == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoria),
     );
   }
 
@@ -9573,6 +9594,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
       codigoEditor: serializer.fromJson<String?>(json['codigoEditor']),
+      categoria: serializer.fromJson<String?>(json['categoria']),
     );
   }
   @override
@@ -9594,6 +9616,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'syncVersion': serializer.toJson<int>(syncVersion),
       'codigoEditor': serializer.toJson<String?>(codigoEditor),
+      'categoria': serializer.toJson<String?>(categoria),
     };
   }
 
@@ -9613,6 +9636,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
     Value<String?> codigoEditor = const Value.absent(),
+    Value<String?> categoria = const Value.absent(),
   }) => ProductoData(
     id: id ?? this.id,
     nombre: nombre ?? this.nombre,
@@ -9631,6 +9655,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
     codigoEditor: codigoEditor.present ? codigoEditor.value : this.codigoEditor,
+    categoria: categoria.present ? categoria.value : this.categoria,
   );
   ProductoData copyWithCompanion(ProductoCompanion data) {
     return ProductoData(
@@ -9663,6 +9688,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: data.codigoEditor.present
           ? data.codigoEditor.value
           : this.codigoEditor,
+      categoria: data.categoria.present ? data.categoria.value : this.categoria,
     );
   }
 
@@ -9683,7 +9709,8 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           ..write('createdBy: $createdBy, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
-          ..write('codigoEditor: $codigoEditor')
+          ..write('codigoEditor: $codigoEditor, ')
+          ..write('categoria: $categoria')
           ..write(')'))
         .toString();
   }
@@ -9705,6 +9732,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
+    categoria,
   );
   @override
   bool operator ==(Object other) =>
@@ -9724,7 +9752,8 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           other.createdBy == this.createdBy &&
           other.deletedAt == this.deletedAt &&
           other.syncVersion == this.syncVersion &&
-          other.codigoEditor == this.codigoEditor);
+          other.codigoEditor == this.codigoEditor &&
+          other.categoria == this.categoria);
 }
 
 class ProductoCompanion extends UpdateCompanion<ProductoData> {
@@ -9743,6 +9772,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<String?> codigoEditor;
+  final Value<String?> categoria;
   final Value<int> rowid;
   const ProductoCompanion({
     this.id = const Value.absent(),
@@ -9760,6 +9790,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
+    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductoCompanion.insert({
@@ -9778,6 +9809,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
+    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nombre = Value(nombre),
@@ -9800,6 +9832,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Expression<int>? deletedAt,
     Expression<int>? syncVersion,
     Expression<String>? codigoEditor,
+    Expression<String>? categoria,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -9818,6 +9851,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncVersion != null) 'sync_version': syncVersion,
       if (codigoEditor != null) 'codigo_editor': codigoEditor,
+      if (categoria != null) 'categoria': categoria,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -9838,6 +9872,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Value<int?>? deletedAt,
     Value<int>? syncVersion,
     Value<String?>? codigoEditor,
+    Value<String?>? categoria,
     Value<int>? rowid,
   }) {
     return ProductoCompanion(
@@ -9856,6 +9891,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       deletedAt: deletedAt ?? this.deletedAt,
       syncVersion: syncVersion ?? this.syncVersion,
       codigoEditor: codigoEditor ?? this.codigoEditor,
+      categoria: categoria ?? this.categoria,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9908,6 +9944,9 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     if (codigoEditor.present) {
       map['codigo_editor'] = Variable<String>(codigoEditor.value);
     }
+    if (categoria.present) {
+      map['categoria'] = Variable<String>(categoria.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9932,6 +9971,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
           ..write('codigoEditor: $codigoEditor, ')
+          ..write('categoria: $categoria, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -18366,240 +18406,6 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }
 }
 
-class DeudaCasaCache extends Table
-    with TableInfo<DeudaCasaCache, DeudaCasaCacheData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  DeudaCasaCache(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
-    'colportor_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> respuesta = GeneratedColumn<String>(
-    'respuesta',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> leidaEn = GeneratedColumn<int>(
-    'leida_en',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  @override
-  List<GeneratedColumn> get $columns => [colportorId, respuesta, leidaEn];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'deuda_casa_cache';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {colportorId};
-  @override
-  DeudaCasaCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DeudaCasaCacheData(
-      colportorId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}colportor_id'],
-      )!,
-      respuesta: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}respuesta'],
-      )!,
-      leidaEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}leida_en'],
-      )!,
-    );
-  }
-
-  @override
-  DeudaCasaCache createAlias(String alias) {
-    return DeudaCasaCache(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(colportor_id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class DeudaCasaCacheData extends DataClass
-    implements Insertable<DeudaCasaCacheData> {
-  final String colportorId;
-  final String respuesta;
-  final int leidaEn;
-  const DeudaCasaCacheData({
-    required this.colportorId,
-    required this.respuesta,
-    required this.leidaEn,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['colportor_id'] = Variable<String>(colportorId);
-    map['respuesta'] = Variable<String>(respuesta);
-    map['leida_en'] = Variable<int>(leidaEn);
-    return map;
-  }
-
-  DeudaCasaCacheCompanion toCompanion(bool nullToAbsent) {
-    return DeudaCasaCacheCompanion(
-      colportorId: Value(colportorId),
-      respuesta: Value(respuesta),
-      leidaEn: Value(leidaEn),
-    );
-  }
-
-  factory DeudaCasaCacheData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DeudaCasaCacheData(
-      colportorId: serializer.fromJson<String>(json['colportorId']),
-      respuesta: serializer.fromJson<String>(json['respuesta']),
-      leidaEn: serializer.fromJson<int>(json['leidaEn']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'colportorId': serializer.toJson<String>(colportorId),
-      'respuesta': serializer.toJson<String>(respuesta),
-      'leidaEn': serializer.toJson<int>(leidaEn),
-    };
-  }
-
-  DeudaCasaCacheData copyWith({
-    String? colportorId,
-    String? respuesta,
-    int? leidaEn,
-  }) => DeudaCasaCacheData(
-    colportorId: colportorId ?? this.colportorId,
-    respuesta: respuesta ?? this.respuesta,
-    leidaEn: leidaEn ?? this.leidaEn,
-  );
-  DeudaCasaCacheData copyWithCompanion(DeudaCasaCacheCompanion data) {
-    return DeudaCasaCacheData(
-      colportorId: data.colportorId.present
-          ? data.colportorId.value
-          : this.colportorId,
-      respuesta: data.respuesta.present ? data.respuesta.value : this.respuesta,
-      leidaEn: data.leidaEn.present ? data.leidaEn.value : this.leidaEn,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DeudaCasaCacheData(')
-          ..write('colportorId: $colportorId, ')
-          ..write('respuesta: $respuesta, ')
-          ..write('leidaEn: $leidaEn')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(colportorId, respuesta, leidaEn);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is DeudaCasaCacheData &&
-          other.colportorId == this.colportorId &&
-          other.respuesta == this.respuesta &&
-          other.leidaEn == this.leidaEn);
-}
-
-class DeudaCasaCacheCompanion extends UpdateCompanion<DeudaCasaCacheData> {
-  final Value<String> colportorId;
-  final Value<String> respuesta;
-  final Value<int> leidaEn;
-  final Value<int> rowid;
-  const DeudaCasaCacheCompanion({
-    this.colportorId = const Value.absent(),
-    this.respuesta = const Value.absent(),
-    this.leidaEn = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  DeudaCasaCacheCompanion.insert({
-    required String colportorId,
-    required String respuesta,
-    required int leidaEn,
-    this.rowid = const Value.absent(),
-  }) : colportorId = Value(colportorId),
-       respuesta = Value(respuesta),
-       leidaEn = Value(leidaEn);
-  static Insertable<DeudaCasaCacheData> custom({
-    Expression<String>? colportorId,
-    Expression<String>? respuesta,
-    Expression<int>? leidaEn,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (colportorId != null) 'colportor_id': colportorId,
-      if (respuesta != null) 'respuesta': respuesta,
-      if (leidaEn != null) 'leida_en': leidaEn,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  DeudaCasaCacheCompanion copyWith({
-    Value<String>? colportorId,
-    Value<String>? respuesta,
-    Value<int>? leidaEn,
-    Value<int>? rowid,
-  }) {
-    return DeudaCasaCacheCompanion(
-      colportorId: colportorId ?? this.colportorId,
-      respuesta: respuesta ?? this.respuesta,
-      leidaEn: leidaEn ?? this.leidaEn,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (colportorId.present) {
-      map['colportor_id'] = Variable<String>(colportorId.value);
-    }
-    if (respuesta.present) {
-      map['respuesta'] = Variable<String>(respuesta.value);
-    }
-    if (leidaEn.present) {
-      map['leida_en'] = Variable<int>(leidaEn.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DeudaCasaCacheCompanion(')
-          ..write('colportorId: $colportorId, ')
-          ..write('respuesta: $respuesta, ')
-          ..write('leidaEn: $leidaEn, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class DatabaseAtV27 extends GeneratedDatabase {
   DatabaseAtV27(QueryExecutor e) : super(e);
   late final Jornada jornada = Jornada(this);
@@ -18640,7 +18446,6 @@ class DatabaseAtV27 extends GeneratedDatabase {
   late final Entrega entrega = Entrega(this);
   late final Devolucion devolucion = Devolucion(this);
   late final Deposito deposito = Deposito(this);
-  late final DeudaCasaCache deudaCasaCache = DeudaCasaCache(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -18825,7 +18630,6 @@ class DatabaseAtV27 extends GeneratedDatabase {
     entrega,
     devolucion,
     deposito,
-    deudaCasaCache,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,

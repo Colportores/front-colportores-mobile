@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 27);
+      expect(db.schemaVersion, 28);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -102,7 +102,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":27}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":28}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -142,7 +142,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 27);
+      expect(fila.read<int>('user_version'), 28);
       expect(
         await _esquema(db),
         containsAll([
@@ -180,7 +180,7 @@ void main() {
           'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":27}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":28}']);
     });
   });
 }
