@@ -422,8 +422,8 @@ void main() {
       expect(find.text('Todavía no se puede dar de baja'), findsOneWidget);
       expect(
         find.text(
-          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Registrá el cobro antes de '
-          'darla de baja.',
+          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Una casa con ventas no se puede '
+          'dar de baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -491,7 +491,7 @@ void main() {
 
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+          'No podés dar de baja esta casa porque tiene ventas. '
           'Si ya no existe, avisale a tu coordinador.',
         ),
         findsOneWidget,
@@ -501,16 +501,86 @@ void main() {
       expect(_boton, findsNothing);
     });
 
-    testWidgets('dado una visita de otro colportor, entonces el aviso es el mismo de la HU', (
-      tester,
-    ) async {
+    testWidgets('dado solo una visita de otro colportor, entonces el aviso dice «visitas de otro '
+        'colportor» y no habla de ventas (QA P1, 04/11)', (tester) async {
       await _montar(
         tester,
         pendientes: PendientesFalso(const PendientesUbicacion(tieneVisitasDeOtros: true)),
       );
 
-      expect(find.textContaining('tiene ventas o visitas de otro colportor'), findsOneWidget);
+      expect(
+        find.text(
+          'No podés dar de baja esta casa porque tiene visitas de otro colportor. '
+          'Si ya no existe, avisale a tu coordinador.',
+        ),
+        findsOneWidget,
+      );
     });
+
+    testWidgets(
+      'dado ventas y una visita de otro colportor, entonces el aviso dice las dos cosas',
+      (tester) async {
+        await _montar(
+          tester,
+          pendientes: PendientesFalso(
+            const PendientesUbicacion(tieneVentas: true, tieneVisitasDeOtros: true),
+          ),
+        );
+
+        expect(
+          find.text(
+            'No podés dar de baja esta casa porque tiene ventas y visitas de otro colportor. '
+            'Si ya no existe, avisale a tu coordinador.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    for (final (tipo, esta) in [
+      (TipoUbicacion.edificio, 'este edificio'),
+      (TipoUbicacion.negocio, 'este negocio'),
+    ]) {
+      testWidgets('dado $esta con ventas, entonces el aviso cambia el sujeto', (tester) async {
+        await _montar(
+          tester,
+          pendientes: PendientesFalso(PendientesUbicacion(tipo: tipo, tieneVentas: true)),
+        );
+
+        expect(
+          find.text(
+            'No podés dar de baja $esta porque tiene ventas. '
+            'Si ya no existe, avisale a tu coordinador.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('esta casa'), findsNothing);
+      });
+    }
+
+    testWidgets(
+      'dado un edificio con una cobranza, entonces la segunda oración dice «Un edificio»',
+      (tester) async {
+        await _montar(
+          tester,
+          pendientes: PendientesFalso(
+            const PendientesUbicacion(
+              tipo: TipoUbicacion.edificio,
+              tieneVentas: true,
+              cobranzaPendiente: _cobranza,
+            ),
+          ),
+        );
+
+        expect(
+          find.text(
+            r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Un edificio con ventas no se '
+            'puede dar de baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('dado un bloqueo y además entrevistas agendadas, entonces gana el bloqueo y no '
         'se pide la segunda confirmación', (tester) async {
@@ -605,7 +675,8 @@ void main() {
 
       expect(
         find.text(
-          r'Tiene una cobranza pendiente de $U 1.450. Registrá el cobro antes de darla de baja.',
+          r'Tiene una cobranza pendiente de $U 1.450. Una casa con ventas no se puede dar de baja. '
+          'Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -631,8 +702,9 @@ void main() {
 
         expect(
           find.text(
-            r'Tiene 2 cobranzas pendientes. La más antigua: $U 1.450 (2.ª cuota). Registrá los '
-            'cobros antes de darla de baja.',
+            r'Tiene 2 cobranzas pendientes. La más antigua: $U 1.450 (2.ª cuota). Una casa con '
+            'ventas no se puede dar de baja. Si ya no existe, cobrá lo pendiente y avisale a tu '
+            'coordinador.',
           ),
           findsOneWidget,
         );

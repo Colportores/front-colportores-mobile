@@ -206,7 +206,12 @@ void main() {
 
       final r = await ok(params());
 
-      expect(r, const BajaBloqueada(bloqueo: BloqueoPorVentasOVisitasAjenas()));
+      expect(
+        r,
+        const BajaBloqueada(
+          bloqueo: BloqueoPorVentasOVisitasAjenas(ventas: false, visitasDeOtros: true),
+        ),
+      );
       expect(repositorio.bajas, isEmpty);
     });
 

@@ -445,8 +445,8 @@ void main() {
       expect(find.text('Todavía no se puede dar de baja'), findsOneWidget);
       expect(
         find.text(
-          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Registrá el cobro antes de '
-          'darla de baja.',
+          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Una casa con ventas no se puede '
+          'dar de baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -459,8 +459,8 @@ void main() {
       await _hojaEn(tester, _Hoja.bloqueadaAjena);
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. Si ya '
-          'no existe, avisale a tu coordinador.',
+          'No podés dar de baja esta casa porque tiene ventas. Si ya no existe, avisale a tu '
+          'coordinador.',
         ),
         findsOneWidget,
       );

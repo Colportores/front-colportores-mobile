@@ -28,11 +28,37 @@ void main() {
       },
     );
 
+    test('dado solo una visita de otro, el bloqueo dice visitas y no ventas', () {
+      const p = PendientesUbicacion(tieneVisitasDeOtros: true);
+
+      expect(p.bloqueo, const BloqueoPorVentasOVisitasAjenas(ventas: false, visitasDeOtros: true));
+    });
+
+    test(
+      'dado ventas y visitas de otro en un edificio, el bloqueo lleva las dos cosas y el tipo',
+      () {
+        const p = PendientesUbicacion(
+          tipo: TipoUbicacion.edificio,
+          tieneVentas: true,
+          tieneVisitasDeOtros: true,
+        );
+
+        expect(
+          p.bloqueo,
+          const BloqueoPorVentasOVisitasAjenas(
+            ventas: true,
+            visitasDeOtros: true,
+            tipo: TipoUbicacion.edificio,
+          ),
+        );
+      },
+    );
+
     test('dado una visita de otro colportor, cuando se pregunta el bloqueo, es el de ventas o '
         'visitas de otro', () {
       const p = PendientesUbicacion(tieneVisitasDeOtros: true);
 
-      expect(p.bloqueo, const BloqueoPorVentasOVisitasAjenas());
+      expect(p.bloqueo, isA<BloqueoPorVentasOVisitasAjenas>());
     });
 
     test('dado una cobranza pendiente y una visita de otro, cuando se pregunta el bloqueo, gana la '

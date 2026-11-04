@@ -51,22 +51,37 @@ sealed class BloqueoBaja extends Equatable {
 }
 
 /// Tiene una cobranza pendiente: el aviso dice cuánto y de qué cuota, y ofrece «Ir a la cobranza».
+/// [tipo] es el de la ubicación: el aviso dice «Una casa», «Un edificio» o «Un negocio».
 final class BloqueoPorCobranza extends BloqueoBaja {
-  const BloqueoPorCobranza(this.cobranza);
+  const BloqueoPorCobranza(this.cobranza, {this.tipo = TipoUbicacion.casa});
 
   final CobranzaPendiente cobranza;
+  final TipoUbicacion tipo;
 
   @override
-  List<Object?> get props => [cobranza];
+  List<Object?> get props => [cobranza, tipo];
 }
 
 /// Tiene alguna venta (con o sin cobranza pendiente) o una visita registrada por otro colportor
-/// (decisión de Cristian, 02/10): el aviso manda a avisarle al coordinador.
+/// (decisión de Cristian, 02/10): el aviso manda a avisarle al coordinador. El aviso dice cuál de las
+/// dos cosas es —solo [ventas], solo [visitasDeOtros] o las dos— y el [tipo] de la ubicación
+/// (decisión del 04/11, QA P1).
 final class BloqueoPorVentasOVisitasAjenas extends BloqueoBaja {
-  const BloqueoPorVentasOVisitasAjenas();
+  const BloqueoPorVentasOVisitasAjenas({
+    this.ventas = true,
+    this.visitasDeOtros = false,
+    this.tipo = TipoUbicacion.casa,
+  });
+
+  /// Tiene alguna venta, propia o de otro.
+  final bool ventas;
+
+  /// Hay una visita registrada por otro colportor.
+  final bool visitasDeOtros;
+  final TipoUbicacion tipo;
 
   @override
-  List<Object?> get props => const [];
+  List<Object?> get props => [ventas, visitasDeOtros, tipo];
 }
 
 /// Lo que una ubicación tiene y que la baja toca o impide (HU-UBI-005).
@@ -109,8 +124,14 @@ final class PendientesUbicacion extends Equatable {
   /// con la salida «Ir a la cobranza».
   BloqueoBaja? get bloqueo {
     final cobranza = cobranzaPendiente;
-    if (cobranza != null) return BloqueoPorCobranza(cobranza);
-    if (tieneVentas || tieneVisitasDeOtros) return const BloqueoPorVentasOVisitasAjenas();
+    if (cobranza != null) return BloqueoPorCobranza(cobranza, tipo: tipo);
+    if (tieneVentas || tieneVisitasDeOtros) {
+      return BloqueoPorVentasOVisitasAjenas(
+        ventas: tieneVentas,
+        visitasDeOtros: tieneVisitasDeOtros,
+        tipo: tipo,
+      );
+    }
     return null;
   }
 

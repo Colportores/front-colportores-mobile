@@ -33,17 +33,42 @@ abstract final class TextosBaja {
   static const bloqueadaTitulo = 'Todavía no se puede dar de baja';
   static const irALaCobranza = 'Ir a la cobranza';
   static const noPudimosIrALaCobranza = 'No pudimos abrir el cobro. Probá de nuevo.';
-  static String bloqueoCobranza(CobranzaPendiente cobranza) => cobranza.cantidad > 1
-      ? 'Tiene ${cobranza.cantidad} cobranzas pendientes. '
-            'La más antigua: ${FormatoBaja.cobranza(cobranza)}. '
-            'Registrá los cobros antes de darla de baja.'
-      : 'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}. '
-            'Registrá el cobro antes de darla de baja.';
 
-  // La HU (decisión de Cristian, 02/10): ventas o visitas de otro colportor.
-  static const bloqueoVentasOVisitasAjenas =
-      'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
-      'Si ya no existe, avisale a tu coordinador.';
+  /// La cobranza que bloquea (canvas 09·02): la primera oración es la del canvas; la segunda dice la
+  /// verdad —cobrar no destraba la baja, una ubicación con ventas no se da de baja (decisión de
+  /// Cristian, 02/10)—, decisión del 04/11 (QA P1). Con varias, dice cuántas y muestra la más antigua.
+  static String bloqueoCobranza(
+    CobranzaPendiente cobranza, {
+    TipoUbicacion tipo = TipoUbicacion.casa,
+  }) {
+    final primera = cobranza.cantidad > 1
+        ? 'Tiene ${cobranza.cantidad} cobranzas pendientes. '
+              'La más antigua: ${FormatoBaja.cobranza(cobranza)}.'
+        : 'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}.';
+    final una = switch (tipo) {
+      TipoUbicacion.casa => 'Una casa',
+      TipoUbicacion.edificio => 'Un edificio',
+      TipoUbicacion.negocio => 'Un negocio',
+    };
+    return '$primera $una con ventas no se puede dar de baja. '
+        'Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.';
+  }
+
+  /// El bloqueo por ventas y/o visitas de otro colportor, partido en tres según el caso y con el
+  /// sujeto del tipo de ubicación (HU, decisión de Cristian del 02/10; texto del 04/11, QA P1).
+  static String bloqueoVentasOVisitasAjenas(BloqueoPorVentasOVisitasAjenas bloqueo) {
+    final esta = switch (bloqueo.tipo) {
+      TipoUbicacion.casa => 'esta casa',
+      TipoUbicacion.edificio => 'este edificio',
+      TipoUbicacion.negocio => 'este negocio',
+    };
+    final que = switch ((bloqueo.ventas, bloqueo.visitasDeOtros)) {
+      (true, true) => 'ventas y visitas de otro colportor',
+      (false, true) => 'visitas de otro colportor',
+      _ => 'ventas',
+    };
+    return 'No podés dar de baja $esta porque tiene $que. Si ya no existe, avisale a tu coordinador.';
+  }
 
   // Provisorios: ni la HU ni el canvas los traen.
   static const entendido = 'Entendido';
@@ -493,8 +518,12 @@ class _HojaBajaUbicacionState extends ConsumerState<HojaBajaUbicacion> {
   Widget _bloqueadaVista() {
     final bloqueo = _bloqueo;
     final texto = switch (bloqueo) {
-      BloqueoPorCobranza(:final cobranza) => TextosBaja.bloqueoCobranza(cobranza),
-      _ => TextosBaja.bloqueoVentasOVisitasAjenas,
+      BloqueoPorCobranza(:final cobranza, :final tipo) => TextosBaja.bloqueoCobranza(
+        cobranza,
+        tipo: tipo,
+      ),
+      final BloqueoPorVentasOVisitasAjenas ajeno => TextosBaja.bloqueoVentasOVisitasAjenas(ajeno),
+      null => '',
     };
     return AvisoAlta(color: ColoresAlta.azul, glyph: '!', texto: texto);
   }

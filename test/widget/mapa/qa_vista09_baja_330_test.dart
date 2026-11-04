@@ -356,7 +356,8 @@ void main() {
       expect(find.text(TextosBaja.bloqueadaTitulo), findsOneWidget);
       expect(
         find.text(
-          r'Tiene una cobranza pendiente de $U 1.450. Registrá el cobro antes de darla de baja.',
+          r'Tiene una cobranza pendiente de $U 1.450. Una casa con ventas no se puede dar de baja. '
+          'Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -422,7 +423,7 @@ void main() {
 
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+          'No podés dar de baja esta casa porque tiene visitas de otro colportor. '
           'Si ya no existe, avisale a tu coordinador.',
         ),
         findsOneWidget,

@@ -47,8 +47,13 @@ final _ahora = DateTime.utc(2026, 10, 27, 15, 0, 0, 456);
 /// Cuando se creó y se editó la casa por última vez.
 final _antes = DateTime.utc(2026, 10, 21, 13, 45, 10, 123);
 
-const _avisoBloqueo =
-    'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+const _avisoVentas =
+    'No podés dar de baja esta casa porque tiene ventas. Si ya no existe, avisale a tu coordinador.';
+const _avisoVisitasAjenas =
+    'No podés dar de baja esta casa porque tiene visitas de otro colportor. '
+    'Si ya no existe, avisale a tu coordinador.';
+const _avisoVentasYVisitas =
+    'No podés dar de baja esta casa porque tiene ventas y visitas de otro colportor. '
     'Si ya no existe, avisale a tu coordinador.';
 const _avisoDosEntrevistas =
     'Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.';
@@ -449,12 +454,18 @@ void main() {
           expect(
             find.text(
               'Tiene una cobranza pendiente de \$U 1.450 (2.ª cuota). '
-              'Registrá el cobro antes de darla de baja.',
+              'Una casa con ventas no se puede dar de baja. '
+              'Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
             ),
             findsOneWidget,
           );
         } else {
-          expect(find.text(_avisoBloqueo), findsOneWidget);
+          final esperado = switch ((pendientes.tieneVentas, pendientes.tieneVisitasDeOtros)) {
+            (true, true) => _avisoVentasYVisitas,
+            (false, true) => _avisoVisitasAjenas,
+            _ => _avisoVentas,
+          };
+          expect(find.text(esperado), findsOneWidget);
         }
         expect(_botonBaja, findsNothing, reason: 'no se ofrece «Dar de baja»');
         expect(find.text('MOTIVO · OBLIGATORIO'), findsNothing);
@@ -477,7 +488,7 @@ void main() {
 
       await _tocar(tester, _botonBaja);
 
-      expect(find.text(_avisoBloqueo), findsOneWidget);
+      expect(find.text(_avisoVentas), findsOneWidget);
       expect(_botonBaja, findsNothing);
       await _expectIntacta(tester, t);
       expect(t.salidas, isEmpty);
