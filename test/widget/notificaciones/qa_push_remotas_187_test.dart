@@ -370,9 +370,6 @@ void main() {
 
       expect(tester.getRect(_banner).top, greaterThanOrEqualTo(48));
     });
-
-    // skip: QA #187 — decisión P1 del QA (03/11): el aviso arranca debajo del encabezado y nunca tapa la
-    // campana ni el engranaje de Hoy; hoy es un overlay en top 0 que los cubre.
     for (final (nombre, tam, escala) in [
       ('390x844 ×1,0', const Size(390, 844), 1.0),
       ('360x640 ×2,0', const Size(360, 640), 2.0),
@@ -400,7 +397,6 @@ void main() {
             expect(boton.overlaps(aviso), isFalse, reason: '$clave queda tapado por el aviso');
           }
         },
-        skip: !verHallazgos,
       );
     }
 

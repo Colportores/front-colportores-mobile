@@ -207,14 +207,20 @@ void main() {
     }
 
     testWidgets('dado que llega una push, cuando la app está abierta, entonces el aviso aparece '
-        'arriba, sobre la barra de la pantalla, y la pantalla sigue usable', (tester) async {
+        'arriba, debajo de la barra de la pantalla (no la tapa), y la pantalla sigue usable', (
+      tester,
+    ) async {
       final c = await montar(tester);
       expect(_abrir, findsNothing);
 
       await llega(tester, c, _aviso('a'));
 
       expect(_abrir, findsOneWidget);
-      expect(tester.getTopLeft(find.byType(AvisoPushEnApp)).dy, lessThan(40));
+      expect(
+        tester.getTopLeft(find.byType(AvisoPushEnApp)).dy,
+        greaterThanOrEqualTo(tester.getRect(find.byType(AppBar)).bottom),
+      );
+      expect(tester.getTopLeft(find.byType(AvisoPushEnApp)).dy, lessThan(120));
       await tester.tap(find.text('Botón del fondo'));
       expect(abridor.toquesAlFondo, 1);
       expect(_abrir, findsOneWidget, reason: 'tocar otra cosa no lo cierra');

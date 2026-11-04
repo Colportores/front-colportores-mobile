@@ -141,4 +141,43 @@ void main() {
     expect(find.byType(CentroNotificacionesPage), findsOneWidget);
     expect(_aviso, findsNothing, reason: 'el toque ya abrió el aviso: no se avisa dos veces');
   });
+
+  testWidgets(
+    'dado un aviso a la vista en Hoy, cuando se toca la campana, entonces abre el centro: el '
+    'aviso no la tapa (decisión del 03/11, «P1 del QA»)',
+    (tester) async {
+      await abrirApp(tester, _telefono(), extra: extra());
+      push.llegaConLaAppAbierta(_pedidoAutorizado());
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(_aviso, findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('inicio_notificaciones')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CentroNotificacionesPage), findsOneWidget);
+    },
+  );
+
+  testWidgets('dado un aviso a la vista en Hoy, cuando se toca el engranaje, entonces abre '
+      'Configuración', (tester) async {
+    await abrirApp(tester, _telefono(), extra: extra());
+    push.llegaConLaAppAbierta(_pedidoAutorizado());
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byKey(const Key('inicio_configuracion')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('inicio_configuracion')), findsNothing);
+  });
+
+  testWidgets('dado un aviso a la vista en Hoy, entonces queda debajo del encabezado y no lo '
+      'solapa', (tester) async {
+    await abrirApp(tester, _telefono(), extra: extra());
+    push.llegaConLaAppAbierta(_pedidoAutorizado());
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final aviso = tester.getRect(_aviso);
+    final barra = tester.getRect(find.byType(AppBar));
+    expect(aviso.top, greaterThanOrEqualTo(barra.bottom));
+  });
 }

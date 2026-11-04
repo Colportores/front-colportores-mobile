@@ -339,26 +339,24 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
         children: [
           widget.child,
           if (aviso != null)
+            // Debajo del encabezado de la pantalla (decisión del 03/11, «P1 del QA»): nunca tapa la fecha,
+            // el engranaje ni la campana. Arranca bajo la barra de estado y una barra superior de
+            // altura estándar; en Hoy queda donde lo dibuja el canvas 24C·08, encima de la franja de
+            // avisos.
             Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: FocusScope(
-                    node: _ambito,
-                    onFocusChange: _alCambiarFoco,
-                    child: AvisoPushEnApp(
-                      key: ValueKey(aviso.id),
-                      aviso: aviso,
-                      focoAbrir: _focoAbrir,
-                      focoCerrar: _focoCerrar,
-                      onAbrir: () => unawaited(_abrir(aviso)),
-                      onCerrar: _sacar,
-                    ),
-                  ),
+              top: MediaQuery.paddingOf(context).top + kToolbarHeight + 8,
+              left: 12,
+              right: 12,
+              child: FocusScope(
+                node: _ambito,
+                onFocusChange: _alCambiarFoco,
+                child: AvisoPushEnApp(
+                  key: ValueKey(aviso.id),
+                  aviso: aviso,
+                  focoAbrir: _focoAbrir,
+                  focoCerrar: _focoCerrar,
+                  onAbrir: () => unawaited(_abrir(aviso)),
+                  onCerrar: _sacar,
                 ),
               ),
             ),
