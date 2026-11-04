@@ -68,6 +68,17 @@ Future<void> _capturar(WidgetTester tester, String nombre) async {
   });
 }
 
+final _conTodo = DetalleDeMiPlata(
+  depositado: DepositadoEnMiPlata(
+    validados: detalleDelCanvas.depositado!.validados,
+    porValidar: [depositoDe(1800, 22, validado: false)],
+  ),
+  enManoCentavos: 240000,
+  enMano: detalleDelCanvas.enMano,
+  porCobrarCentavos: 970000,
+  porCobrar: detalleDelCanvas.porCobrar,
+);
+
 /// Cada estado de «Mi plata» con lo que hace falta para llegar a él.
 final _estados = <String, (RepositorioDeDetalleControlable Function(), CategoriaDeMiPlata)>{
   '33C01_en_mano': (
@@ -81,6 +92,10 @@ final _estados = <String, (RepositorioDeDetalleControlable Function(), Categoria
   '33C03_nada_en_mano': (
     () => RepositorioDeDetalleControlable(inicial: DetalleDeMiPlata.vacio),
     CategoriaDeMiPlata.enMano,
+  ),
+  '33C_depositado_con_por_validar': (
+    () => RepositorioDeDetalleControlable(inicial: _conTodo),
+    CategoriaDeMiPlata.depositado,
   ),
   'error': (
     () => RepositorioDeDetalleControlable()..fallaAlSuscribir = true,
@@ -179,6 +194,36 @@ void main() {
       expect(find.text('Pedro Gómez · 21/10'), findsNothing);
       expect(find.text('No tenés efectivo sin depositar.'), findsOneWidget);
     });
+
+    testWidgets(
+      'si «Depositado» estaba abierta y el teléfono pierde la bajada, la pantalla no queda '
+      'en blanco ni con un error',
+      (tester) async {
+        final repo = RepositorioDeDetalleControlable(inicial: _conTodo);
+        await _montar(
+          tester,
+          repo,
+          abierta: CategoriaDeMiPlata.depositado,
+          tamano: const Size(360, 640),
+        );
+        expect(find.byKey(const Key('mi_plata_por_validar')), findsOneWidget);
+
+        repo.emitir(
+          DetalleDeMiPlata(
+            enManoCentavos: detalleDelCanvas.enManoCentavos,
+            enMano: detalleDelCanvas.enMano,
+            porCobrarCentavos: detalleDelCanvas.porCobrarCentavos,
+            porCobrar: detalleDelCanvas.porCobrar,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('mi_plata_categoria_depositado')), findsNothing);
+        expect(find.byKey(const Key('mi_plata_categoria_enMano')), findsOneWidget);
+        expect(find.byKey(const Key('mi_plata_categoria_porCobrar')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('capturas de cada estado (a .dart_tool/qa_capturas/)', skip: !_sacarCapturas, () {

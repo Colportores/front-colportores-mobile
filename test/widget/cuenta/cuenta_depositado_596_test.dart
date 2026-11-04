@@ -156,28 +156,17 @@ void main() {
       expect(repo.suscripciones, 1);
     });
 
-    testWidgets('no se puede tocar: sin detalle todavía, ni flecha ni toque', (tester) async {
+    testWidgets('se toca como las demás: abre su detalle en «Mi plata» (HU-CTA-003)', (
+      tester,
+    ) async {
       await montarCuenta(
         tester,
         RepositorioDeCuentaControlable(inicial: _conDepositado),
         overrides: _overrides(_Conexion(TipoConexion.wifi)),
       );
 
-      // Solo «En mano» y «Por cobrar» tienen su detalle en «Mi plata» (HU-CTA-003): ellas llevan «›» y
-      // se tocan; «Depositado» no.
-      final depositado = find.byKey(const Key('cuenta_depositado'));
-      expect(find.descendant(of: depositado, matching: find.text('›')), findsNothing);
-      expect(find.descendant(of: depositado, matching: find.byType(InkWell)), findsNothing);
-      expect(find.descendant(of: depositado, matching: find.byType(GestureDetector)), findsNothing);
-      for (final tipo in ['enMano', 'porCobrar']) {
-        final tarjeta = find.byKey(Key('cuenta_$tipo'));
-        expect(
-          find.descendant(of: tarjeta, matching: find.text('›')),
-          findsOneWidget,
-          reason: tipo,
-        );
-      }
-      expect(find.text('›'), findsNWidgets(2));
+      expect(find.text('›'), findsNWidgets(3));
+      expect(find.byType(InkWell), findsNWidgets(3));
     });
   });
 

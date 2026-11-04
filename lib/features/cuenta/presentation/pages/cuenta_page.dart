@@ -22,9 +22,7 @@ import 'mi_plata_page.dart';
 /// En V1 son tres tarjetas, Depositado, En mano y Por cobrar. «Depositado» suma solo lo que el
 /// coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada no se dibuja
 /// (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda con la casa editora llega
-/// con los pedidos (V2). «En mano» y «Por cobrar» se tocan y abren su detalle en «Mi plata»
-/// (HU-CTA-003, 33C); «Depositado» todavía no tiene detalle y no se toca: no se dibuja lo que no lleva
-/// a ningún lado.
+/// con los pedidos (V2). Cada tarjeta se toca y abre su detalle en «Mi plata» (HU-CTA-003, 33C).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -49,7 +47,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await MiPlataPage.abrir(
         context,
         colportorId: widget.colportorId,
-        abierta: CategoriaDeMiPlata.de(tipo)!,
+        abierta: CategoriaDeMiPlata.de(tipo),
       );
     } finally {
       _abriendo = false;
@@ -107,9 +105,8 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     TarjetaDeCifra(
                       key: Key('cuenta_${tipo.name}'),
                       tipo: tipo,
+                      alAbrir: () => _abrir(tipo),
                       cifra: cifra,
-                      // «Depositado» no tiene detalle todavía: sin destino no hay toque.
-                      alAbrir: CategoriaDeMiPlata.de(tipo) == null ? null : () => _abrir(tipo),
                     ),
               ],
             ),
