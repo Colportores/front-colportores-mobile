@@ -101,6 +101,13 @@ class Deposito extends Equatable {
 
   bool get estaBorrado => auditoria.estaBorrada;
 
+  /// `EquatableConfig.stringify` arranca en `true` en debug: `'$deposito'` imprimiría [props], y entre
+  /// ellos el [motivoRechazo], que es texto libre del coordinador (puede nombrar a una persona).
+  /// convenciones-desarrollo.md §7.5 ("sin PII en logs: solo IDs"): se apaga acá y no queda a criterio
+  /// de cada call site (QA #596).
+  @override
+  bool? get stringify => false;
+
   /// Por validar, validado o rechazado, según lo que bajó del servidor. **Rechazado gana**: si por un
   /// error llegaran las dos marcas, no se acredita (ante la duda no se suma plata que no está).
   EstadoDeDeposito get estado {

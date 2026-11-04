@@ -359,7 +359,7 @@ void main() {
       addTearDown(() => EquatableConfig.stringify = original);
       final texto = '${_deposito(motivo: 'Falta el sello de Rosalia Techera')}';
       expect(texto, isNot(contains('Rosalia')));
-    }, skip: !_verHallazgos);
+    });
   });
 
   test('con la configuración del proyecto (stringify apagado) el depósito no imprime nada', () {
