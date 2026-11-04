@@ -22,6 +22,8 @@ import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagad
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
+import '../../../ventas/presentation/pages/elegir_persona_para_vender_page.dart';
+import '../../../ventas/presentation/textos_elegir_persona.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -96,6 +98,25 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       if (pestana != null && mounted) _ir(pestana);
     } finally {
       _abriendoPrecios = false;
+    }
+  }
+
+  /// Evita abrir dos veces «¿A quién le vendés?» con dos toques seguidos en «+ Registrar venta».
+  var _abriendoVenta = false;
+
+  /// «+ Registrar venta» (HU-VEN-001, #546), desde la pestaña Ventas: elige a la persona y abre la
+  /// venta. Devuelve la pestaña elegida (si no hay personas, «Ir al mapa»), o `null` al terminar o
+  /// con «volver».
+  Future<void> _registrarVenta() async {
+    if (_abriendoVenta) return;
+    _abriendoVenta = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(ElegirPersonaParaVenderPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoVenta = false;
     }
   }
 
@@ -207,10 +228,12 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.cuenta,
                     ),
-                    // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
+                    // Ventas todavía no tiene su lista: por ahora lleva a «+ Registrar venta» (#546) y a
+                    // «Precios».
                     PestanaInicio.ventas => PestanaProvisoria(
                       key: Key('pestana_${pestana.name}'),
                       pestana: pestana,
+                      alRegistrarVenta: () => unawaited(_registrarVenta()),
                       alAbrirPrecios: () => unawaited(_abrirPrecios()),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
@@ -327,9 +350,18 @@ class _EstadoTeclado extends InheritedWidget {
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
 /// pronto.», sin contenido inventado. Se reemplaza en el issue de cada HU.
 class PestanaProvisoria extends StatelessWidget {
-  const PestanaProvisoria({super.key, required this.pestana, this.alAbrirPrecios});
+  const PestanaProvisoria({
+    super.key,
+    required this.pestana,
+    this.alRegistrarVenta,
+    this.alAbrirPrecios,
+  });
 
   final PestanaInicio pestana;
+
+  /// Solo Ventas: «+ Registrar venta» (vista 27, `00 Navegacion`: Ventas → 27A·01). Abre la lista para
+  /// elegir a la persona. `null`: sin botón.
+  final VoidCallback? alRegistrarVenta;
 
   /// Solo Ventas: abre la consulta de precios (vista 26, «Ventas → Precios»), que es lo único que
   /// tiene esa pestaña hasta que llegue su pantalla (vista 27). `null`: sin botón.
@@ -359,6 +391,13 @@ class PestanaProvisoria extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (alRegistrarVenta != null)
+                FilledButton(
+                  key: const Key('ventas_registrar'),
+                  onPressed: alRegistrarVenta,
+                  style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosElegirPersona.registrarVenta),
+                ),
               if (alAbrirPrecios != null)
                 OutlinedButton(
                   key: const Key('ventas_precios'),

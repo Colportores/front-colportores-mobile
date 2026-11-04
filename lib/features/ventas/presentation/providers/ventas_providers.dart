@@ -4,11 +4,14 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
+import '../../data/datasources/personas_para_vender_drift.dart';
 import '../../data/datasources/venta_local_data_source_drift.dart';
 import '../../data/repositories/venta_repository_impl.dart';
 import '../../data/services/fuente_de_precios_de_la_venta_sin_fuente.dart';
+import '../../domain/entities/persona_para_vender.dart';
 import '../../domain/entities/precios_de_la_venta.dart';
 import '../../domain/repositories/fuente_de_precios_de_la_venta.dart';
+import '../../domain/repositories/lector_de_personas_para_vender.dart';
 import '../../domain/repositories/venta_repository.dart';
 import '../../domain/usecases/registrar_venta_use_case.dart';
 
@@ -77,3 +80,19 @@ typedef ContextoDeCobroDeLaVenta = ({
 final cobrarDespuesDeLaVentaProvider = Provider<Future<bool> Function(ContextoDeCobroDeLaVenta)?>(
   (ref) => null,
 );
+
+/// Lee del teléfono las personas a las que se les puede vender desde la pestaña Ventas (#546). Sin DB
+/// abierta no hay qué leer: lanza, y quien lo lee lo traduce a un error de la pantalla.
+final lectorDePersonasParaVenderProvider = Provider<LectorDePersonasParaVender>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return PersonasParaVenderDrift(db);
+});
+
+/// Las personas del colportor [colportorId] a las que se les puede vender, en vivo: sale de «+
+/// Registrar venta» de la pestaña Ventas.
+final personasParaVenderProvider = StreamProvider.autoDispose
+    .family<List<PersonaParaVender>, String>(
+      (ref, colportorId) => ref.watch(lectorDePersonasParaVenderProvider).observar(colportorId),
+      retry: _sinReintentos,
+    );

@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
-import '../../../cobranzas/presentation/providers/cobranzas_providers.dart'
-    show saldoPendienteRepositoryProvider;
 import '../../../mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show contextoDeLaCasaProvider;
@@ -14,13 +12,12 @@ import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
-import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
+import '../../../ventas/presentation/flujo_despues_de_la_venta.dart';
 import '../../../ventas/presentation/pages/nueva_venta_page.dart';
-import '../../../ventas/presentation/pages/venta_registrada_page.dart';
 import '../../../ventas/presentation/providers/nueva_venta_notifier.dart' show ArgumentosDeVenta;
 import '../../../ventas/presentation/providers/ventas_providers.dart'
-    show ContextoDeCobroDeLaVenta, cobrarDespuesDeLaVentaProvider;
+    show cobrarDespuesDeLaVentaProvider;
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
 import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
@@ -326,7 +323,7 @@ abstract final class FlujoEntrevista {
     Agenda? cita;
     if (contextoFirme.mounted) {
       final cobrar = contenedor.read(cobrarDespuesDeLaVentaProvider);
-      final seguimiento = await _ventaRegistrada(
+      final seguimiento = await FlujoDespuesDeLaVenta.ventaRegistrada(
         contextoFirme,
         guardada: guardada,
         nombre: cliente.nombre,
@@ -334,7 +331,7 @@ abstract final class FlujoEntrevista {
       );
       var saldo = guardada.totalCentavos;
       if (seguimiento?.cobrarAhora == true && cobrar != null) {
-        saldo = await _cobrarAhora(
+        saldo = await FlujoDespuesDeLaVenta.cobrarAhora(
           contenedor,
           cobrar,
           guardada: guardada,
@@ -371,56 +368,6 @@ abstract final class FlujoEntrevista {
       );
     }
     return VentaGuardadaEnLaEntrevista(numeroTalonario: numero);
-  }
-
-  /// 27A·14 «Venta registrada: ¿y ahora?». Sin salida del atrás: se sale con «Listo» (o «Terminar sin
-  /// nada») y es lo que elige lo que se hace después. `null` = terminó sin pedir nada.
-  static Future<SeguimientoDeLaVenta?> _ventaRegistrada(
-    BuildContext context, {
-    required VentaGuardada guardada,
-    required String nombre,
-    required bool conCobro,
-  }) => Navigator.of(context).push<SeguimientoDeLaVenta>(
-    MaterialPageRoute(
-      builder: (ruta) => VentaRegistradaPage(
-        guardada: guardada,
-        nombreDelCliente: nombre,
-        conCobro: conCobro,
-        alContinuar: (seguimiento) => Navigator.of(ruta).pop(seguimiento),
-        alTerminar: () => Navigator.of(ruta).pop(),
-      ),
-    ),
-  );
-
-  /// «Cobrar ahora»: abre el cobro (vista 28) y devuelve lo que quedó sin cobrar, en centavos. Si no
-  /// se cobró, o no se puede leer cuánto, es el total de la venta: preguntar «¿Cuándo volvés a cobrar?»
-  /// de más es mejor que dejar una deuda sin cita.
-  static Future<int> _cobrarAhora(
-    ProviderContainer ref,
-    Future<bool> Function(ContextoDeCobroDeLaVenta) cobrar, {
-    required VentaGuardada guardada,
-    required String espacioId,
-    required String espacioPersonaId,
-    required String colportorId,
-  }) async {
-    final total = guardada.totalCentavos;
-    try {
-      final cobrado = await cobrar((
-        ventaId: guardada.venta.id,
-        espacioId: espacioId,
-        espacioPersonaId: espacioPersonaId,
-        colportorId: colportorId,
-      ));
-      if (!cobrado) return total;
-      final venta = await ref
-          .read(saldoPendienteRepositoryProvider)
-          .observarVenta(guardada.venta.id)
-          .first
-          .timeout(const Duration(seconds: 2));
-      return venta?.saldoCentavos ?? total;
-    } on Object {
-      return total;
-    }
   }
 
   /// A quién y dónde se le vende: el nombre y «Mataojo 2044 · Depto 3B» de lo que hoy hay en el
