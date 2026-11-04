@@ -371,7 +371,20 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
 
   DateTime _masDias(int n) => DateTime(_hoy.year, _hoy.month, _hoy.day + n);
 
-  void _moverHora(int delta) => setState(() => _minutos = (_minutos + delta) % (24 * 60));
+  /// Sube o baja la hora y, al pasar la medianoche, el día con ella: de 23:55 a 00:00 es el día que
+  /// sigue, no el mismo (la cita quedaría 24 h antes de lo que pidió). Hacia atrás vale lo mismo,
+  /// salvo antes de las 00:00 de hoy, donde la hora se queda: no se agenda en el pasado.
+  void _moverHora(int delta) {
+    const dia = 24 * 60;
+    final total = _minutos + delta;
+    final saltoDeDia = total >= dia ? 1 : (total < 0 ? -1 : 0);
+    final nuevoDia = DateTime(_dia.year, _dia.month, _dia.day + saltoDeDia);
+    if (nuevoDia.isBefore(_hoy)) return;
+    setState(() {
+      _dia = nuevoDia;
+      _minutos = ((total % dia) + dia) % dia;
+    });
+  }
 
   Future<void> _elegirOtroDia() async {
     final elegido = await showDatePicker(

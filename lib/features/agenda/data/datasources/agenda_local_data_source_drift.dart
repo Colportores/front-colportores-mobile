@@ -60,6 +60,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     if (existente != null) return (agenda: _aAgenda(existente), yaEstaba: true);
 
     await _exigirEspacioYVinculo(agenda.espacioId, agenda.espacioPersonaId);
+    await _exigirUbicacionAlt(agenda.ubicacionAltId);
     await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
     await _encolador.encolar(
       'agenda',
@@ -260,6 +261,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     }
 
     await _exigirEspacioYVinculo(visita.espacioId, visita.espacioPersonaId);
+    await _exigirJornada(visita.jornadaId);
     final (:agenda, :ignorada) = agendaId == null
         ? (agenda: null, ignorada: null)
         : await _agendaACumplir(agendaId, visita);
@@ -430,6 +432,31 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     )..where((v) => v.id.equals(espacioPersonaId))).getSingleOrNull();
     if (vinculo == null || vinculo.deletedAt != null || vinculo.espacioId != espacioId) {
       throw const AgendaRechazadaException(_Motivo.personaInexistente);
+    }
+  }
+
+  /// La ubicación alternativa de una agenda tiene que estar viva en el teléfono: el servidor exige
+  /// la FK (`agenda.ubicacion_alt_id`) y una rota deja la operación en `INVALID` sin que la agenda
+  /// suba. Sin ubicación alternativa no hay nada que mirar.
+  Future<void> _exigirUbicacionAlt(String? ubicacionId) async {
+    if (ubicacionId == null) return;
+    final fila = await (_db.select(
+      _db.ubicaciones,
+    )..where((u) => u.id.equals(ubicacionId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.ubicacionAltInexistente);
+    }
+  }
+
+  /// La jornada de una visita tiene que estar viva en el teléfono (FK `visita.jornada_id`). Una
+  /// visita sin jornada es válida (la espontánea de otro día, HU-VIS-005).
+  Future<void> _exigirJornada(String? jornadaId) async {
+    if (jornadaId == null) return;
+    final fila = await (_db.select(
+      _db.jornadas,
+    )..where((j) => j.id.equals(jornadaId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.jornadaInexistente);
     }
   }
 
