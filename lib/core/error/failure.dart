@@ -965,10 +965,23 @@ final class FailureDevolucionFueraDePlazo extends Failure {
       );
 }
 
-/// Lo que se quiere devolver no se puede registrar tal cual (HU-VEN-004): no hay nada elegido, se
-/// eligió más de lo que queda por devolver, o el cliente pagó de más y falta decir qué hacer con la
-/// diferencia. La pantalla lo evita; esto es la última barrera. [causa] es un código estable para el
-/// log: `sin_productos`, `de_mas` o `sin_eleccion`.
+/// La venta ya está saldada: el cliente pagó todo lo que se queda comprando y no acepta devoluciones
+/// (decisión de Cristian, 03/11, «Devol. saldo»: nunca queda plata a favor del cliente; el servidor la
+/// rechaza con `23514`). La primera frase es la del servidor; la segunda dice qué hacer. Reintentar no
+/// lo arregla.
+final class FailureDevolucionVentaSaldada extends Failure {
+  const FailureDevolucionVentaSaldada()
+    : super(
+        mensaje:
+            'Esta venta ya está saldada: el cliente pagó todo lo que se queda comprando, así que '
+            'no se puede devolver nada. Si hay un error, pedile a tu coordinador que lo revise.',
+        codigo: 'VENTA_DEVOLUCION_SALDADA',
+      );
+}
+
+/// Lo que se quiere devolver no se puede registrar tal cual (HU-VEN-004): no hay nada elegido o se
+/// eligió más de lo que queda por devolver. La pantalla lo evita; esto es la última barrera. [causa] es
+/// un código estable para el log: `sin_productos` o `de_mas`.
 final class FailureDevolucionInvalida extends Failure {
   const FailureDevolucionInvalida({required this.causa})
     : super(

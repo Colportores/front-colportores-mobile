@@ -30,26 +30,11 @@ final class ProductoDevuelto extends Equatable {
   List<Object?> get props => [productoId, ventaItemId, cantidad];
 }
 
-/// Qué hace la colportora con la plata que el cliente pagó de más (vista 31, 31-02): las tres salidas
-/// de HU-VEN-004. La pantalla propone «Lo retengo», la que no devuelve plata (decisión de Cristian, 23/10,
-/// «Debo cliente»); el use case recibe siempre la salida elegida.
-enum QueHacerConLaDiferencia {
-  /// «Se lo devuelvo ahora»: la devolución guarda lo devuelto en `monto_reembolsado` y «En mano» lo
-  /// resta (decisión de Cristian, 23/10, «Reembolso»).
-  devolverAhora,
-
-  /// «Lo retengo»: la diferencia queda como `dinero_retenido`, como compensación; el saldo queda en
-  /// cero.
-  retener,
-
-  /// «Se lo devuelvo después»: no guarda monto; el saldo negativo es «Debo al cliente».
-  devolverDespues,
-}
-
-/// Una devolución de una venta (`devolucion`, ADR-002, HU-VEN-004): qué libros vuelven y qué se hace
-/// con el dinero. La venta original no se toca ni se anula.
+/// Una devolución de una venta (`devolucion`, ADR-002, HU-VEN-004): qué libros vuelven. No guarda
+/// dinero: lo devuelto se descuenta de la deuda hasta el saldo y nunca queda plata a favor del
+/// cliente (decisión de Cristian, 03/11, «Devol. saldo»). La venta original no se toca ni se anula.
 ///
-/// Todo el dinero va en centavos (`int`). Es una fila del push: sube sin dato del cliente
+/// Es una fila del push: sube sin dato del cliente
 /// (`venta_id` y los ids de producto y de renglón son opacos). El [motivo] es texto libre que lee la
 /// coordinadora (decisión de Cristian, 27/10, «Motivo devol.»): la pantalla avisa que no se pongan
 /// datos del cliente.
@@ -58,8 +43,6 @@ class Devolucion extends Equatable {
     required this.id,
     required this.ventaId,
     required List<ProductoDevuelto> productos,
-    this.dineroRetenidoCentavos = 0,
-    this.montoReembolsadoCentavos,
     this.motivo,
     required DateTime fechaDevolucion,
     required this.auditoria,
@@ -74,14 +57,6 @@ class Devolucion extends Equatable {
   /// Lo que vuelve: al menos un elemento.
   final List<ProductoDevuelto> productos;
 
-  /// Lo que la colportora se queda cuando el cliente pagó de más y elige «Lo retengo»; 0 si no
-  /// retiene nada.
-  final int dineroRetenidoCentavos;
-
-  /// Lo que se le devolvió al cliente en el momento («Se lo devuelvo ahora»); `null` si no devolvió
-  /// plata.
-  final int? montoReembolsadoCentavos;
-
   /// Por qué se devuelve, de 1 a 500 caracteres y sin espacios en los bordes; `null` si no lo dijo.
   final String? motivo;
 
@@ -93,28 +68,18 @@ class Devolucion extends Equatable {
   bool get estaBorrada => auditoria.estaBorrada;
 
   @override
-  List<Object?> get props => [
-    id,
-    ventaId,
-    productos,
-    dineroRetenidoCentavos,
-    montoReembolsadoCentavos,
-    motivo,
-    fechaDevolucion,
-    auditoria,
-  ];
+  List<Object?> get props => [id, ventaId, productos, motivo, fechaDevolucion, auditoria];
 }
 
-/// Lo que pide la colportora al registrar una devolución: qué vuelve y qué hace con la plata de más.
-/// Los libros, los montos y el estado de la venta los calcula y comprueba quien guarda, dentro de la
-/// transacción, con lo que hay en el teléfono en ese momento.
+/// Lo que pide la colportora al registrar una devolución: qué vuelve. Los libros y el estado de la
+/// venta los calcula y comprueba quien guarda, dentro de la transacción, con lo que hay en el teléfono
+/// en ese momento.
 final class PedidoDeDevolucion extends Equatable {
   const PedidoDeDevolucion({
     required this.id,
     required this.ventaId,
     required this.colportorId,
     required this.unidadesPorRenglon,
-    this.queHacer,
     this.motivo,
     required this.ahora,
   });
@@ -130,9 +95,6 @@ final class PedidoDeDevolucion extends Equatable {
   /// Cuántas unidades de cada renglón vuelven: `venta_item.id` → unidades.
   final Map<String, int> unidadesPorRenglon;
 
-  /// Qué hace con la plata de más. Obligatoria si el cliente pagó de más; si no, se ignora.
-  final QueHacerConLaDiferencia? queHacer;
-
   /// El motivo, ya limpio (ver `ReglasDeDevolucion.motivo`); `null` si no lo dijo.
   final String? motivo;
 
@@ -140,15 +102,7 @@ final class PedidoDeDevolucion extends Equatable {
   final DateTime ahora;
 
   @override
-  List<Object?> get props => [
-    id,
-    ventaId,
-    colportorId,
-    unidadesPorRenglon,
-    queHacer,
-    motivo,
-    ahora,
-  ];
+  List<Object?> get props => [id, ventaId, colportorId, unidadesPorRenglon, motivo, ahora];
 }
 
 /// La devolución ya guardada, con cómo quedó la venta y la casa. Todo en centavos.
@@ -157,7 +111,6 @@ final class DevolucionRegistrada extends Equatable {
     required this.devolucion,
     required this.totalCentavos,
     required this.saldoCentavos,
-    required this.deboAlClienteCentavos,
     required this.eraTotal,
     this.colorDeLaCasa,
     this.yaEstaba = false,
@@ -171,9 +124,6 @@ final class DevolucionRegistrada extends Equatable {
 
   /// Lo que todavía debe el cliente de lo que se queda: nunca negativo.
   final int saldoCentavos;
-
-  /// Lo que la colportora le debe al cliente (compromiso de reembolso): nunca negativo.
-  final int deboAlClienteCentavos;
 
   /// Con esta devolución la venta quedó devuelta por completo.
   final bool eraTotal;
@@ -191,7 +141,6 @@ final class DevolucionRegistrada extends Equatable {
     devolucion,
     totalCentavos,
     saldoCentavos,
-    deboAlClienteCentavos,
     eraTotal,
     colorDeLaCasa,
     yaEstaba,

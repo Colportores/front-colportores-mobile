@@ -98,15 +98,16 @@ final class ResumenDeCuentaLocalDataSourceDrift {
   }
 
   /// El efectivo cobrado que todavía no se depositó: los cobros en efectivo vivos de las ventas del
-  /// colportor menos lo que reembolsó a los clientes en el momento al devolver (decisión del 30/10
-  /// en #431), nunca negativo. Con [hasta], como estaba entonces.
+  /// colportor. Una devolución no lo resta: no hay reembolsos, porque nunca queda plata a favor del
+  /// cliente (decisión de Cristian, 03/11, «Devol. saldo»; deja sin efecto la resta de #431). Con
+  /// [hasta], como estaba entonces.
   ///
   /// Una venta dada de baja no resta: el efectivo que se cobró sigue en la mano. Hasta que el
   /// depósito (HU-CTA-004, #442) exista en el teléfono no hay nada que depositar: cuando llegue, lo
   /// depositado se resta acá.
   Future<int> _enMano(String colportorId, {DateTime? hasta}) async {
     final ms = hasta?.toUtc().millisecondsSinceEpoch;
-    final cobrado = await _suma(
+    return _suma(
       'SELECT COALESCE(SUM(c.monto), 0) AS suma FROM cobranza c '
       'JOIN venta v ON v.id = c.venta_id '
       "WHERE v.colportor_id = ? AND c.medio = 'EFECTIVO' AND ${CobroValido.sql}"
@@ -114,16 +115,6 @@ final class ResumenDeCuentaLocalDataSourceDrift {
       colportorId,
       ms,
     );
-    final reembolsado = await _suma(
-      'SELECT COALESCE(SUM(d.monto_reembolsado), 0) AS suma FROM devolucion d '
-      'JOIN venta v ON v.id = d.venta_id '
-      'WHERE v.colportor_id = ? AND d.deleted_at IS NULL'
-      '${ms == null ? '' : ' AND d.fecha_devolucion <= ?'}',
-      colportorId,
-      ms,
-    );
-    final enMano = cobrado - reembolsado;
-    return enMano < 0 ? 0 : enMano;
   }
 
   Future<int> _suma(String sql, String colportorId, int? ms) async {

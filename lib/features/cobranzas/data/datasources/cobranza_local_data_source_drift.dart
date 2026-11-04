@@ -157,7 +157,7 @@ final class CobranzaLocalDataSourceDrift {
   //
   // `saldo = lo que el cliente se queda − lo que ya pagó`, por venta, nunca negativo, con las
   // devoluciones (HU-VEN-004) adentro: se queda con = monto de la venta − lo devuelto; ya pagó = cobros
-  // válidos − lo reembolsado. Los cortes suman el saldo de cada venta viva. Una sola fórmula
+  // válidos. Los cortes suman el saldo de cada venta viva. Una sola fórmula
   // ([CuentaDeLaVenta]) para los tres cortes, para [saldosPorPersona], para la venta suelta
   // ([_conSaldo]) y para el color de la casa. Cada `Stream` emite el valor de ahora al suscribirse y uno
   // nuevo solo si cambió, cuando se registra, se da de baja o llega por el pull cualquier venta, cobro o
@@ -274,8 +274,6 @@ final class CobranzaLocalDataSourceDrift {
       montoTotalCentavos: venta.montoTotal,
       cobradoCentavos: await CobroValido.cobradoDe(_db, venta.id),
       devueltoCentavos: devoluciones.todoDevuelto ? venta.montoTotal : devoluciones.valorCentavos,
-      reembolsadoCentavos: devoluciones.reembolsadoCentavos,
-      retenidoCentavos: devoluciones.retenidoCentavos,
       descripcion: await _descripcion(venta.id),
     );
   }
