@@ -156,16 +156,17 @@ void main() {
       expect(repo.suscripciones, 1);
     });
 
-    testWidgets('no se puede tocar: sin detalle todavía, ni flecha ni toque', (tester) async {
+    testWidgets('se toca como las demás: abre su detalle en «Mi plata» (HU-CTA-003)', (
+      tester,
+    ) async {
       await montarCuenta(
         tester,
         RepositorioDeCuentaControlable(inicial: _conDepositado),
         overrides: _overrides(_Conexion(TipoConexion.wifi)),
       );
 
-      expect(find.text('›'), findsNothing);
-      expect(find.byType(InkWell), findsNothing);
-      expect(find.byType(GestureDetector), findsNothing);
+      expect(find.text('›'), findsNWidgets(3));
+      expect(find.byType(InkWell), findsNWidgets(3));
     });
   });
 

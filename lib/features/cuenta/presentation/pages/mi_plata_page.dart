@@ -10,10 +10,10 @@ import '../widgets/piezas_mi_plata.dart';
 /// «Mi plata» (vista 33C, HU-CTA-003): el detalle de cada cifra de Mi Cuenta, con qué clientes, en qué
 /// fecha y por cuánto. Se abre al tocar una tarjeta de Mi Cuenta, con esa categoría desplegada.
 ///
-/// En V1 son **En mano**, **Por cobrar** y, solo cuando hay algo, **Debo a clientes**. «Depositado» llega
-/// cuando el teléfono sepa qué validó el coordinador (#596) y «Registrar depósito» con HU-CTA-004: hasta
-/// entonces no se dibuja lo que no se puede hacer. Todo sale del teléfono: sin conexión se ve igual.
-/// Cargando y error son los de Mi Cuenta (33A·03, 33A·05).
+/// En V1 son **Depositado**, **En mano** y **Por cobrar**. «Depositado» suma solo lo que el coordinador
+/// validó y muestra aparte lo que espera su validación; no se dibuja mientras el teléfono no bajó nada
+/// del servidor. «Registrar depósito» llega con HU-CTA-004: no se dibuja lo que no se puede hacer. Todo
+/// sale del teléfono: sin conexión se ve igual. Cargando y error son los de Mi Cuenta (33A·03, 33A·05).
 class MiPlataPage extends ConsumerStatefulWidget {
   const MiPlataPage({super.key, required this.colportorId, required this.abierta});
 
@@ -76,7 +76,9 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
   }
 
   List<Widget> _categorias(DetalleDeMiPlata d) {
+    final depositado = d.depositado;
     return [
+      if (depositado != null) _depositado(depositado),
       _categoria(
         CategoriaDeMiPlata.enMano,
         d.enManoCentavos,
@@ -84,10 +86,7 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
         (i) => FilaDeMiPlata(
           key: Key('mi_plata_fila_enMano_$i'),
           detalle: FilasDeMiPlata.cobro(d.enMano[i]),
-          monto: d.enMano[i].esDevolucion
-              ? FormatoCuenta.montoQueBaja(d.enMano[i].centavos)
-              : FormatoCuenta.monto(d.enMano[i].centavos),
-          baja: d.enMano[i].esDevolucion,
+          monto: FormatoCuenta.monto(d.enMano[i].centavos),
         ),
       ),
       _categoria(
@@ -100,18 +99,41 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
           monto: FormatoCuenta.monto(d.porCobrar[i].centavos),
         ),
       ),
-      if (d.hayDeudaConClientes)
-        _categoria(
-          CategoriaDeMiPlata.deboAClientes,
-          d.deboCentavos,
-          d.deboAClientes.length,
-          (i) => FilaDeMiPlata(
-            key: Key('mi_plata_fila_deboAClientes_$i'),
-            detalle: FilasDeMiPlata.saldo(d.deboAClientes[i]),
-            monto: FormatoCuenta.monto(d.deboAClientes[i].centavos),
-          ),
-        ),
     ];
+  }
+
+  /// «Depositado»: primero lo validado (lo que suma a la cifra) y, aparte, lo que espera su validación.
+  Widget _depositado(DepositadoEnMiPlata d) {
+    return _categoria(
+      CategoriaDeMiPlata.depositado,
+      d.validadoCentavos,
+      d.validados.length,
+      (i) => FilaDeMiPlata(
+        key: Key('mi_plata_fila_depositado_$i'),
+        detalle: FilasDeMiPlata.deposito(d.validados[i]),
+        monto: FormatoCuenta.monto(d.validados[i].montoCentavos),
+      ),
+      sinFilas: d.porValidar.isEmpty,
+      aparte: d.porValidar.isEmpty
+          ? const []
+          : [
+              SliverToBoxAdapter(
+                child: SeccionPorValidar(
+                  key: const Key('mi_plata_por_validar'),
+                  centavos: d.porValidarCentavos,
+                ),
+              ),
+              SliverList.builder(
+                itemCount: d.porValidar.length,
+                itemBuilder: (_, i) => FilaDeMiPlata(
+                  key: Key('mi_plata_fila_porValidar_$i'),
+                  detalle: FilasDeMiPlata.deposito(d.porValidar[i]),
+                  monto: FormatoCuenta.monto(d.porValidar[i].montoCentavos),
+                  apagada: true,
+                ),
+              ),
+            ],
+    );
   }
 
   /// La tarjeta de una categoría y, si está abierta, sus filas (o lo que dice cuando no tiene).
@@ -119,8 +141,10 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
     CategoriaDeMiPlata categoria,
     int centavos,
     int cantidad,
-    Widget Function(int) fila,
-  ) {
+    Widget Function(int) fila, {
+    bool sinFilas = true,
+    List<Widget> aparte = const [],
+  }) {
     final abierta = _abiertas.contains(categoria);
     return SliverMainAxisGroup(
       slivers: [
@@ -136,15 +160,16 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
             ),
           ),
         ),
-        if (abierta && cantidad == 0)
+        if (abierta && cantidad == 0 && sinFilas)
           SliverToBoxAdapter(
             child: TextoSinNada(
               key: Key('mi_plata_vacio_${categoria.name}'),
               texto: categoria.sinNada,
             ),
           )
-        else if (abierta)
+        else if (abierta && cantidad > 0)
           SliverList.builder(itemCount: cantidad, itemBuilder: (_, i) => fila(i)),
+        if (abierta) ...aparte,
       ],
     );
   }

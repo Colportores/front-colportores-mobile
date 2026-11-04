@@ -42,12 +42,9 @@ abstract final class TextosMiPlata {
   static const titulo = 'Mi plata';
   static const volver = 'Volver';
 
+  static const depositado = 'Depositado';
   static const enMano = 'En mano';
   static const porCobrar = 'Por cobrar';
-
-  /// Para confirmar: el canvas no lo dibuja; es la fila de «Debo cliente» (Cristian, 23/10), solo
-  /// cuando hay algo.
-  static const deboAClientes = 'Debo a clientes';
 
   /// 33C·03.
   static const sinEfectivoEnMano = 'No tenés efectivo sin depositar.';
@@ -55,11 +52,23 @@ abstract final class TextosMiPlata {
   /// Para confirmar: el canvas no dibuja «Por cobrar» en cero.
   static const sinPorCobrar = 'No tenés nada por cobrar.';
 
-  /// Para confirmar: el mismo cuidado de «Debo a clientes».
-  static const sinDeboAClientes = 'No le debés plata a ningún cliente.';
+  /// Para confirmar: el canvas no dibuja «Depositado» abierto ni en cero. Pasa con el teléfono ya
+  /// sincronizado y sin ningún depósito registrado.
+  static const sinDepositos = 'Todavía no registraste ningún depósito.';
 
-  /// Para confirmar: la plata que se le devolvió a un cliente al devolver un libro, que baja «En mano».
-  static const devolucionA = 'Devolución a';
+  /// Para confirmar: el aparte de lo que espera la validación dentro de «Depositado» (decisión
+  /// «Acredita V1», 23/10: el detalle muestra aparte lo «por validar»).
+  static const porValidar = 'Por validar';
+
+  /// Para confirmar: qué pasa con lo «por validar» y qué esperar.
+  static const avisoPorValidar = 'Suman a «Depositado» cuando tu coordinador los valide.';
+
+  /// Para confirmar: la fila de un depósito dice para qué era y dónde se hizo (los rótulos de 33D).
+  static const casaEditora = 'Casa editora';
+  static const alquiler = 'Alquiler';
+  static const banco = 'Banco';
+  static const oficina = 'Oficina';
+  static const retiro = 'Retiro';
 
   static const desde = 'desde';
 
@@ -74,9 +83,6 @@ abstract final class FormatoCuenta {
     final local = fecha.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
   }
-
-  /// Un monto que baja, con el signo: «− $ 1.900».
-  static String montoQueBaja(int centavos) => '− ${FormatoPrecios.monto(centavos.abs())}';
 
   /// «$ 18.400», o «$ 1.450,50» si no son pesos justos.
   static String monto(int centavos) => FormatoPrecios.monto(centavos);

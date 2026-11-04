@@ -1,40 +1,31 @@
 import 'package:equatable/equatable.dart';
 
-/// Un cobro en efectivo que sigue en la mano, o una devolución de plata que lo bajó (HU-CTA-003,
-/// vista 33C·01).
+import '../../../depositos/domain/entities/totales_de_depositos.dart';
+
+/// Un cobro en efectivo que sigue en la mano (HU-CTA-003, vista 33C·01).
 final class MovimientoEnMano extends Equatable {
-  const MovimientoEnMano({
-    required this.cliente,
-    required this.fecha,
-    required this.centavos,
-    this.esDevolucion = false,
-  });
+  const MovimientoEnMano({required this.cliente, required this.fecha, required this.centavos});
 
   /// El nombre del cliente, tal como está en la lista de personas.
   final String cliente;
 
-  /// Cuándo se cobró o se devolvió.
+  /// Cuándo se cobró.
   final DateTime fecha;
 
-  /// Lo cobrado (positivo) o lo devuelto al cliente en el momento (negativo): así la lista suma lo
-  /// que dice la cifra.
+  /// Lo cobrado, en centavos.
   final int centavos;
 
-  /// Es plata que se le devolvió al cliente al devolver un libro (decisión del 30/10 en #431).
-  final bool esDevolucion;
-
   @override
-  List<Object?> get props => [cliente, fecha, centavos, esDevolucion];
+  List<Object?> get props => [cliente, fecha, centavos];
 }
 
-/// Un cliente con lo que debe, o al que se le debe (HU-CTA-003, vista 33C·02).
+/// Un cliente con lo que debe (HU-CTA-003, vista 33C·02).
 final class SaldoDeCliente extends Equatable {
   const SaldoDeCliente({required this.cliente, required this.desde, required this.centavos});
 
   final String cliente;
 
-  /// Desde cuándo: la venta más vieja que todavía debe, o la primera devolución que dejó plata por
-  /// devolverle.
+  /// Desde cuándo: la venta más vieja que todavía debe.
   final DateTime desde;
 
   /// Siempre mayor que cero: el que no debe nada no aparece.
@@ -44,32 +35,57 @@ final class SaldoDeCliente extends Equatable {
   List<Object?> get props => [cliente, desde, centavos];
 }
 
-/// El detalle de «Mi plata» del colportor (HU-CTA-003, vista 33C): qué clientes, en qué fecha y por
-/// cuánto detrás de cada cifra de Mi Cuenta.
+/// Lo depositado según lo que dijo el coordinador (HU-CTA-003, vista 33C): los depósitos validados,
+/// que son los que suman a «Depositado», y aparte los que esperan su validación (decisión «Acredita
+/// V1», 23/10). Un depósito rechazado no está en ninguna lista.
+final class DepositadoEnMiPlata extends Equatable {
+  const DepositadoEnMiPlata({required this.validados, required this.porValidar});
+
+  /// Los depósitos que el coordinador validó, el más viejo primero.
+  final List<DepositoDeLaLista> validados;
+
+  /// Los depósitos que todavía esperan su validación, el más viejo primero.
+  final List<DepositoDeLaLista> porValidar;
+
+  /// Lo mismo que «Depositado» de Mi Cuenta.
+  int get validadoCentavos => _suma(validados);
+
+  /// Lo que suma a «Depositado» cuando el coordinador valide.
+  int get porValidarCentavos => _suma(porValidar);
+
+  static int _suma(List<DepositoDeLaLista> depositos) =>
+      depositos.fold<int>(0, (suma, d) => suma + d.montoCentavos);
+
+  @override
+  List<Object?> get props => [validados, porValidar];
+}
+
+/// El detalle de «Mi plata» del colportor (HU-CTA-003, vista 33C): qué depósitos, qué clientes, en qué
+/// fecha y por cuánto detrás de cada cifra de Mi Cuenta.
 ///
-/// Todo en centavos y sacado del teléfono. En V1 son tres categorías: En mano, Por cobrar y, solo cuando
-/// hay algo, Debo a clientes. «Depositado» espera que el teléfono sepa qué validó el coordinador.
+/// Todo en centavos y sacado del teléfono. En V1 son tres categorías: Depositado, En mano y Por cobrar.
 final class DetalleDeMiPlata extends Equatable {
   const DetalleDeMiPlata({
+    this.depositado,
     required this.enManoCentavos,
     required this.enMano,
     required this.porCobrarCentavos,
     required this.porCobrar,
-    required this.deboCentavos,
-    required this.deboAClientes,
   });
 
-  /// El detalle de una cuenta sin movimientos.
+  /// El detalle de una cuenta sin movimientos que todavía no bajó nada del servidor.
   static const vacio = DetalleDeMiPlata(
     enManoCentavos: 0,
     enMano: [],
     porCobrarCentavos: 0,
     porCobrar: [],
-    deboCentavos: 0,
-    deboAClientes: [],
   );
 
-  /// Lo mismo que «En mano» de Mi Cuenta: nunca negativo.
+  /// Lo depositado; `null` mientras el teléfono no bajó nada del servidor: ahí «Depositado» no se
+  /// dibuja, ni un cero inventado (igual que en Mi Cuenta).
+  final DepositadoEnMiPlata? depositado;
+
+  /// Lo mismo que «En mano» de Mi Cuenta.
   final int enManoCentavos;
   final List<MovimientoEnMano> enMano;
 
@@ -77,20 +93,6 @@ final class DetalleDeMiPlata extends Equatable {
   final int porCobrarCentavos;
   final List<SaldoDeCliente> porCobrar;
 
-  /// Lo que la colportora le debe a sus clientes por devoluciones («Se lo devuelvo después»).
-  final int deboCentavos;
-  final List<SaldoDeCliente> deboAClientes;
-
-  /// «Debo a clientes» se muestra solo cuando hay algo (decisión de Cristian, 23/10, «Debo cliente»).
-  bool get hayDeudaConClientes => deboCentavos > 0;
-
   @override
-  List<Object?> get props => [
-    enManoCentavos,
-    enMano,
-    porCobrarCentavos,
-    porCobrar,
-    deboCentavos,
-    deboAClientes,
-  ];
+  List<Object?> get props => [depositado, enManoCentavos, enMano, porCobrarCentavos, porCobrar];
 }

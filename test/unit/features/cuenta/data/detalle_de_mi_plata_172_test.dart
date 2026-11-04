@@ -1,19 +1,22 @@
-// El detalle de «Mi plata» (HU-CTA-003, #172) contra las tablas reales: AppDatabase en memoria. Cada
-// lista tiene que sumar lo que dice su tarjeta de Mi Cuenta (HU-CTA-001): En mano (cobros en efectivo
-// menos lo devuelto en el momento), Por cobrar (el saldo de cada venta viva, por cliente) y Debo a
-// clientes (el compromiso de «Se lo devuelvo después»).
+// El detalle de «Mi plata» (HU-CTA-003, #172 y #431) contra las tablas reales: AppDatabase en memoria.
+// Cada lista tiene que sumar lo que dice su tarjeta de Mi Cuenta (HU-CTA-001): Depositado (los
+// depósitos que validó el coordinador, y aparte los que esperan), En mano (los cobros en efectivo) y
+// Por cobrar (el saldo de cada venta viva, por cliente).
 import 'dart:async';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_sync_meta.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/cuenta/data/datasources/detalle_de_mi_plata_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cuenta/data/datasources/resumen_de_cuenta_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cuenta/data/repositories/detalle_de_mi_plata_repository_impl.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/detalle_de_mi_plata.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/totales_de_depositos.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/devolucion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
@@ -27,6 +30,8 @@ import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/venta_falsos.dart';
 
 final _ahora = DateTime.utc(2026, 10, 30, 12);
+
+int _ms(DateTime f) => f.toUtc().millisecondsSinceEpoch;
 
 /// Ventas recientes (la devolución tiene un plazo de 72 h desde la venta).
 final _dia20 = DateTime.utc(2026, 10, 20, 15);
@@ -111,23 +116,41 @@ void main() {
     );
   }
 
-  Future<void> devolver(
-    String id,
-    DateTime fecha, {
-    String venta = 'v-1',
-    QueHacerConLaDiferencia queHacer = QueHacerConLaDiferencia.devolverAhora,
-  }) async {
+  Future<void> devolver(String id, DateTime fecha, {String venta = 'v-1'}) async {
     await devoluciones.registrar(
       PedidoDeDevolucion(
         id: id,
         ventaId: venta,
         colportorId: 'col-1',
         unidadesPorRenglon: {'i-$venta': 1},
-        queHacer: queHacer,
         ahora: fecha,
       ),
     );
   }
+
+  /// Una fila de `deposito` como queda después de un pull.
+  Future<void> depositar(
+    String id,
+    int monto,
+    DateTime fecha, {
+    DateTime? validadoEn,
+    DateTime? rechazadoEn,
+    DateTime? baja,
+    String destino = 'BANCO',
+    String concepto = 'CASA_EDITORA',
+  }) => db.customStatement(
+    'INSERT INTO deposito (id, monto, fecha, destino, concepto, campania_id, ticket_id, '
+    'validado_en, rechazado_en, created_at, updated_at, deleted_at) '
+    "VALUES ('$id', $monto, ${_ms(fecha)}, '$destino', '$concepto', "
+    "${concepto == 'ALQUILER' ? "'camp-1'" : 'NULL'}, "
+    "${destino == 'RETIRO_COORDINADOR' ? 'NULL' : "'t-$id'"}, "
+    '${validadoEn == null ? 'NULL' : _ms(validadoEn)}, '
+    '${rechazadoEn == null ? 'NULL' : _ms(rechazadoEn)}, 1, 1, '
+    '${baja == null ? 'NULL' : _ms(baja)})',
+  );
+
+  /// El teléfono bajó algo del servidor (sin esto, «Depositado» no tiene cifra).
+  Future<void> bajada() => DriftSyncMeta(db).write(lastPullAt: _ahora);
 
   Future<DetalleDeMiPlata> leer({String colportor = 'col-1'}) => local.leer(colportor);
 
@@ -138,15 +161,15 @@ void main() {
       cobranzas: cobranzas,
       ahora: () => _ahora,
     ).leer('col-1');
+    expect(d.depositado?.validadoCentavos, resumen.depositado?.totalCentavos);
     expect(d.enManoCentavos, resumen.enMano.totalCentavos);
     expect(d.porCobrarCentavos, resumen.porCobrar.totalCentavos);
     expect(d.porCobrar.fold<int>(0, (s, c) => s + c.centavos), d.porCobrarCentavos);
   }
 
   group('una cuenta sin movimientos (33C·03)', () {
-    test('dado que no vendió nada, el detalle está vacío', () async {
+    test('dado que no vendió nada ni bajó nada del servidor, el detalle está vacío', () async {
       expect(await leer(), DetalleDeMiPlata.vacio);
-      expect((await leer()).hayDeudaConClientes, isFalse);
     });
   });
 
@@ -192,40 +215,19 @@ void main() {
       expect((await leer()).enMano, isEmpty);
     });
 
-    test('dado que devolvió plata al cliente en el momento, la devolución sale restando y la lista '
-        'sigue sumando lo que dice la cifra', () async {
+    test('una devolución no resta de la mano: nunca queda plata a favor del cliente (Cristian, '
+        '03/11, «Devol. saldo»)', () async {
       await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
+      await cobrar('c-1', 100000, _dia20);
       await devolver('d-1', DateTime.utc(2026, 10, 22, 10));
 
       final d = await leer();
 
       expect(d.enMano, [
-        MovimientoEnMano(cliente: 'María Fernández', fecha: _dia20, centavos: 150000),
-        MovimientoEnMano(
-          cliente: 'María Fernández',
-          fecha: DateTime.utc(2026, 10, 22, 10),
-          centavos: -150000,
-          esDevolucion: true,
-        ),
+        MovimientoEnMano(cliente: 'María Fernández', fecha: _dia20, centavos: 100000),
       ]);
-      expect(d.enManoCentavos, 0);
+      expect(d.enManoCentavos, 100000);
       await esperarQueCoincidaConMiCuenta(d);
-    });
-
-    test('«Se lo devuelvo después» no saca plata de la mano', () async {
-      await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
-      await devolver(
-        'd-1',
-        DateTime.utc(2026, 10, 22, 10),
-        queHacer: QueHacerConLaDiferencia.devolverDespues,
-      );
-
-      final d = await leer();
-
-      expect(d.enMano.where((m) => m.esDevolucion), isEmpty);
-      expect(d.enManoCentavos, 150000);
     });
 
     test('una venta dada de baja no se lleva el efectivo que ya se cobró', () async {
@@ -270,6 +272,19 @@ void main() {
       expect(d.porCobrar, [
         SaldoDeCliente(cliente: 'María Fernández', desde: _dia20, centavos: 150000),
       ]);
+    });
+
+    test('una devolución baja lo que debe el cliente, hasta el saldo', () async {
+      await vender('v-1', 150000, _dia20);
+      await cobrar('c-1', 50000, _dia20);
+      await devolver('d-1', DateTime.utc(2026, 10, 22, 10));
+
+      final d = await leer();
+
+      // Lo devuelto vale más que lo que faltaba: la deuda queda en cero y no hay plata a favor.
+      expect(d.porCobrar, isEmpty);
+      expect(d.porCobrarCentavos, 0);
+      await esperarQueCoincidaConMiCuenta(d);
     });
 
     test('el que ya pagó todo no aparece', () async {
@@ -337,38 +352,120 @@ void main() {
     });
   });
 
-  group('«Debo a clientes»', () {
-    test('dado que eligió «Se lo devuelvo después», aparece lo que debe, por cliente, desde la '
-        'devolución', () async {
-      await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
-      final devuelta = DateTime.utc(2026, 10, 22, 10);
-      await devolver('d-1', devuelta, queHacer: QueHacerConLaDiferencia.devolverDespues);
+  group('«Depositado» (33C)', () {
+    final dia20 = DateTime.utc(2026, 10, 20, 15);
+    final dia22 = DateTime.utc(2026, 10, 22, 15);
+    final dia25 = DateTime.utc(2026, 10, 25, 15);
+
+    test('dado que el teléfono todavía no bajó nada del servidor, no hay cifra: ni un cero '
+        'inventado', () async {
+      await depositar('d-1', 100000, dia20, validadoEn: dia22);
+
+      expect((await leer()).depositado, isNull);
+    });
+
+    test('dado que bajó y no hay depósitos, la categoría existe y está en cero', () async {
+      await bajada();
 
       final d = await leer();
 
-      expect(d.hayDeudaConClientes, isTrue);
-      expect(d.deboAClientes, [
-        SaldoDeCliente(cliente: 'María Fernández', desde: devuelta, centavos: 150000),
-      ]);
-      expect(d.deboCentavos, 150000);
-      // No es plata que le deban a ella: no entra en «Por cobrar».
-      expect(d.porCobrar, isEmpty);
+      expect(d.depositado, const DepositadoEnMiPlata(validados: [], porValidar: []));
+      expect(d.depositado!.validadoCentavos, 0);
+      await esperarQueCoincidaConMiCuenta(d);
     });
 
-    test(
-      'sin compromisos no hay fila: solo cuando hay algo (decisión de Cristian, 23/10)',
-      () async {
-        await vender('v-1', 150000, _dia20);
-        await cobrar('c-1', 150000, _dia20);
-        await devolver('d-1', DateTime.utc(2026, 10, 22, 10));
+    test('lo validado suma a la cifra y lo que espera va aparte, cada uno del más viejo al más '
+        'nuevo', () async {
+      await bajada();
+      await depositar('d-3', 30000, dia25);
+      await depositar('d-1', 100000, dia22, validadoEn: dia25);
+      await depositar('d-2', 50000, dia20, validadoEn: dia22, concepto: 'ALQUILER');
+      await depositar('d-4', 20000, dia20, destino: 'RETIRO_COORDINADOR');
 
-        final d = await leer();
+      final d = await leer();
 
-        expect(d.hayDeudaConClientes, isFalse);
-        expect(d.deboAClientes, isEmpty);
-      },
-    );
+      expect(d.depositado!.validados, [
+        DepositoDeLaLista(
+          montoCentavos: 50000,
+          fecha: dia20,
+          destino: DestinoDeDeposito.banco,
+          concepto: ConceptoDeDeposito.alquiler,
+          validado: true,
+        ),
+        DepositoDeLaLista(
+          montoCentavos: 100000,
+          fecha: dia22,
+          destino: DestinoDeDeposito.banco,
+          concepto: ConceptoDeDeposito.casaEditora,
+          validado: true,
+        ),
+      ]);
+      expect(d.depositado!.porValidar, [
+        DepositoDeLaLista(
+          montoCentavos: 20000,
+          fecha: dia20,
+          destino: DestinoDeDeposito.retiroCoordinador,
+          concepto: ConceptoDeDeposito.casaEditora,
+          validado: false,
+        ),
+        DepositoDeLaLista(
+          montoCentavos: 30000,
+          fecha: dia25,
+          destino: DestinoDeDeposito.banco,
+          concepto: ConceptoDeDeposito.casaEditora,
+          validado: false,
+        ),
+      ]);
+      expect(d.depositado!.validadoCentavos, 150000);
+      expect(d.depositado!.porValidarCentavos, 50000);
+      await esperarQueCoincidaConMiCuenta(d);
+    });
+
+    test('un depósito rechazado o dado de baja no sale en ninguna lista', () async {
+      await bajada();
+      await depositar('d-1', 100000, dia20, rechazadoEn: dia22, destino: 'RETIRO_COORDINADOR');
+      await depositar('d-2', 70000, dia20, validadoEn: dia22, baja: dia25);
+      await depositar('d-3', 40000, dia20, baja: dia25);
+      // Con las dos marcas (no debería pasar) no se acredita: ante la duda, no se suma.
+      await depositar('d-4', 90000, dia20, validadoEn: dia22, rechazadoEn: dia22);
+
+      final d = await leer();
+
+      expect(d.depositado, const DepositadoEnMiPlata(validados: [], porValidar: []));
+      await esperarQueCoincidaConMiCuenta(d);
+    });
+
+    test('cuando baja la validación de un depósito, pasa de «por validar» a «validado» sin '
+        'recargar', () async {
+      await bajada();
+      await depositar('d-1', 100000, dia20);
+      final emitidos = <DetalleDeMiPlata>[];
+      final sub = local.observar('col-1').listen(emitidos.add);
+      await pumpEventQueue();
+      expect(emitidos.last.depositado!.porValidarCentavos, 100000);
+      expect(emitidos.last.depositado!.validadoCentavos, 0);
+
+      await db.customUpdate(
+        'UPDATE deposito SET validado_en = ${_ms(dia22)} WHERE id = ?',
+        variables: [const Variable<String>('d-1')],
+        updates: {db.depositos},
+      );
+      await pumpEventQueue();
+
+      expect(emitidos.last.depositado!.porValidarCentavos, 0);
+      expect(emitidos.last.depositado!.validadoCentavos, 100000);
+      await sub.cancel();
+    });
+
+    test('los depósitos de alquiler también suman, igual que en Mi Cuenta', () async {
+      await vender('v-1', 150000, _dia20);
+      await cobrar('c-1', 50000, _dia20);
+      await bajada();
+      await depositar('d-1', 100000, dia20, validadoEn: dia22);
+      await depositar('d-2', 25000, dia25, validadoEn: dia25, concepto: 'ALQUILER');
+
+      await esperarQueCoincidaConMiCuenta(await leer());
+    });
   });
 
   group('al día solo', () {

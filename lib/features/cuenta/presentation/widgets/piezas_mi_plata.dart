@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../depositos/domain/entities/deposito.dart';
+import '../../../depositos/domain/entities/totales_de_depositos.dart';
 import '../../domain/entities/detalle_de_mi_plata.dart';
 import '../textos_cuenta.dart';
 import 'piezas_cuenta.dart';
@@ -7,6 +9,13 @@ import 'piezas_cuenta.dart';
 /// Las categorías de «Mi plata» (vista 33C): su rótulo, su glifo, sus colores y qué dice si no hay
 /// nada.
 enum CategoriaDeMiPlata {
+  depositado(
+    rotulo: TextosMiPlata.depositado,
+    glifo: '⇣',
+    fondo: ColoresCuenta.verdeFondo,
+    tinta: ColoresCuenta.verde,
+    sinNada: TextosMiPlata.sinDepositos,
+  ),
   enMano(
     rotulo: TextosMiPlata.enMano,
     glifo: r'$',
@@ -20,16 +29,6 @@ enum CategoriaDeMiPlata {
     fondo: ColoresCuenta.azulFondo,
     tinta: ColoresCuenta.azul,
     sinNada: TextosMiPlata.sinPorCobrar,
-  ),
-
-  /// Solo cuando hay algo (decisión de Cristian, 23/10, «Debo cliente»): la devolución es una opción
-  /// a mano y no tiene que ser invasiva, así que va en gris.
-  deboAClientes(
-    rotulo: TextosMiPlata.deboAClientes,
-    glifo: '↩',
-    fondo: ColoresCuenta.grisFondo,
-    tinta: ColoresCuenta.gris,
-    sinNada: TextosMiPlata.sinDeboAClientes,
   );
 
   const CategoriaDeMiPlata({
@@ -50,6 +49,7 @@ enum CategoriaDeMiPlata {
 
   /// La categoría de la tarjeta de Mi Cuenta que se tocó.
   static CategoriaDeMiPlata de(TipoDeCifra tipo) => switch (tipo) {
+    TipoDeCifra.depositado => depositado,
     TipoDeCifra.enMano => enMano,
     TipoDeCifra.porCobrar => porCobrar,
   };
@@ -214,16 +214,21 @@ class CategoriaDesplegable extends StatelessWidget {
 /// Una fila del detalle: quién y cuándo a la izquierda, cuánto a la derecha. Con el texto grande el
 /// monto baja a la línea siguiente en vez de apretar el nombre.
 class FilaDeMiPlata extends StatelessWidget {
-  const FilaDeMiPlata({super.key, required this.detalle, required this.monto, this.baja = false});
+  const FilaDeMiPlata({
+    super.key,
+    required this.detalle,
+    required this.monto,
+    this.apagada = false,
+  });
 
   /// «María Fernández · 20/10».
   final String detalle;
 
-  /// Ya escrito: «$ 1.200» o «− $ 1.900».
+  /// Ya escrito: «$ 1.200».
   final String monto;
 
-  /// Es plata que baja lo que hay (una devolución): va en el color de la baja.
-  final bool baja;
+  /// Todavía no cuenta (un depósito por validar): el monto va en gris.
+  final bool apagada;
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +253,7 @@ class FilaDeMiPlata extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'JetBrainsMono',
                 fontSize: 13.5,
-                color: baja ? ColoresCuenta.rojo : ColoresCuenta.tinta,
+                color: apagada ? ColoresCuenta.gris : ColoresCuenta.tinta,
               ),
             ),
           ],
@@ -276,12 +281,78 @@ class TextoSinNada extends StatelessWidget {
   }
 }
 
+/// El aparte de «Depositado» con lo que espera su validación: «Por validar  $ 1.800» y qué esperar.
+class SeccionPorValidar extends StatelessWidget {
+  const SeccionPorValidar({super.key, required this.centavos});
+
+  final int centavos;
+
+  @override
+  Widget build(BuildContext context) {
+    final monto = FormatoCuenta.monto(centavos);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 4),
+      child: Semantics(
+        container: true,
+        excludeSemantics: true,
+        header: true,
+        label: '${TextosMiPlata.porValidar}, $monto. ${TextosMiPlata.avisoPorValidar}',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                const Text(
+                  TextosMiPlata.porValidar,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  monto,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 13.5,
+                    color: ColoresCuenta.gris,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              TextosMiPlata.avisoPorValidar,
+              style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: ColoresCuenta.gris),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Las filas de cada categoría, con el texto que les toca.
 abstract final class FilasDeMiPlata {
-  static String cobro(MovimientoEnMano m) => m.esDevolucion
-      ? '${TextosMiPlata.devolucionA} ${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}'
-      : '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}';
+  static String cobro(MovimientoEnMano m) => '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}';
 
   static String saldo(SaldoDeCliente s) =>
       '${s.cliente} · ${TextosMiPlata.desde} ${FormatoCuenta.fecha(s.desde)}';
+
+  /// «Casa editora · Banco · 20/10»: un depósito no es de un cliente, sino para qué y dónde.
+  static String deposito(DepositoDeLaLista d) {
+    final concepto = switch (d.concepto) {
+      ConceptoDeDeposito.casaEditora => TextosMiPlata.casaEditora,
+      ConceptoDeDeposito.alquiler => TextosMiPlata.alquiler,
+    };
+    final destino = switch (d.destino) {
+      DestinoDeDeposito.banco => TextosMiPlata.banco,
+      DestinoDeDeposito.oficina => TextosMiPlata.oficina,
+      DestinoDeDeposito.retiroCoordinador => TextosMiPlata.retiro,
+    };
+    return '$concepto · $destino · ${FormatoCuenta.fecha(d.fecha)}';
+  }
 }
