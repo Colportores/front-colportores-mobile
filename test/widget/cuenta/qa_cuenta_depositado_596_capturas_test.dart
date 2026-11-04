@@ -3,7 +3,6 @@
 // `--dart-define=QA_CAPTURAS=true`; sin eso no hace nada.
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
