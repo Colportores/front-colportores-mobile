@@ -1,6 +1,6 @@
 # Registro de capacidades · front-colportores-mobile
 
-> Tope: 300 líneas. Armado leyendo `origin/develop` en 359f1fa4 (04/11). Cada ruta se verificó contra el árbol. Lo que está en un PR abierto y no en develop dice «PR #N».
+> Tope: 300 líneas. Armado leyendo `origin/develop` en c3f0c4d1 (04/11). Cada ruta se verificó contra el árbol. Lo que está en un PR abierto y no en develop dice «PR #N».
 
 **Para qué sirve.** Antes de escribir código, buscá acá por vista (`06`, `39`…), por HU o por palabra (`mapa`, `hoja`, `GPS`). Si lo que necesitás ya está, lo usás. Si hay que cambiarlo, lo cambiás en su lugar y lo decís en el PR. Si no está, lo creás y sumás su entrada en el mismo PR.
 **Si el registro y el código no coinciden, manda el código**, y en tu PR corregís la entrada.
@@ -9,7 +9,7 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 ## Política (decidida por Cristian, 04/11)
 
 1. **Un solo mapa general**: `MapaUbicacionesPage` sobre `MapaBase` (MAPA-01, MAPA-02). Todo lo demás son hojas, modos o capas encima de ese mapa. Un mapa nuevo necesita una decisión §3.
-2. **El permiso de GPS se pide solo desde el mapa.** Ninguna otra pantalla dispara el diálogo del sistema (PERM-01).
+2. **El permiso de GPS se pide solo desde el mapa.** Ninguna otra pantalla (Lista, Alta, Modificar, Precios) dispara el diálogo del sistema (PERM-01).
 3. **Un solo alta de ubicación**: `altaUbicacionProvider` (FLUJO-06). El pin del mapa es otra forma de entrar, no otro alta.
 4. **Mantenimiento**: todo PR que agrega o cambia una capacidad actualiza su fila en el mismo PR. El revisor lo exige.
 
@@ -20,7 +20,7 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 | 5 sitios con `MapaBase(`: pestaña Mapa, alta (03), modificar (07) y 2 mini-mapas (04 y 10) | `mapa_ubicaciones_page`, `mapa_alta`, `mapa_modificar`, `hoja_duplicado_alta`, `hoja_comparar_duplicado` | MAPA-08 |
 | 9 copias privadas de `_Asa` (más `_AsaDeLaLista` en `mostrar_hoja_casa.dart`) | las 9 hojas listadas en HOJA-04 | HOJA-04 |
 | 3 enchufes de la hoja de la casa sin conectar en `main.dart` | `entrevistaDadaDesdeLaCasaProvider`, `fichaDePersonaDesdeLaCasaProvider`, `pestanaHistorialDeLaCasaProvider` | CASA-02 |
-| Precios pide el permiso de GPS (contra la política 2) | `catalogo/presentation/providers/precios_providers.dart:104` | PERM-01 |
+| Lista, Alta, Modificar y Precios piden el permiso de GPS (contra la política 2) | `lista_ubicaciones_notifier.dart:237`, `alta_ubicacion_notifier.dart:322`, `modificar_ubicacion_notifier.dart:601` (por `capturarPosicionGpsUseCaseProvider`) y `catalogo/presentation/providers/precios_providers.dart:104` | PERM-01 |
 
 ---
 
@@ -40,12 +40,12 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 
 ### NAV-03 · Arranque y portones (antes de Inicio)
 - dónde: `lib/app.dart` (`_Principal`, línea ~386 `PedidoPermisoNotificacionesPage`) · `auth/presentation/pages/*` (login, 13, 18) · `respaldo/presentation/pages/recuperacion_page.dart` (34)
-- uso: el orden es login, base local (13), recuperación (34), permiso de notificaciones (24A), esperando asignación (18) e Inicio. La cuenta restringida se avisa con `avisarCuentaRestringida`.
+- uso: el orden es login, base local (13), recuperación (34), `JornadasPorCerrarPage` («¿A qué hora terminaste?», HU-JOR-002, en `jornada/presentation/pages/`), permiso de notificaciones (24A), esperando asignación (18) e Inicio. La cuenta restringida se avisa con `avisarCuentaRestringida`.
 - no duplicar: un pedido de primer ingreso va en esta cadena, nunca en una pestaña.
 - tags: vistas 12-18 24 34 · HU-AUTH-* HU-NOT-001 HU-SYNC-006
 
 ### NAV-04 · Enchufes entre features (`…DesdeLaCasaProvider`)
-- dónde: el enchufe se define en la feature que muestra el botón, con `null` por defecto (ej. `mapa/presentation/providers/hoja_casa_providers.dart`), y se conecta con `overrideWith` en `lib/main.dart` (líneas ~273-380)
+- dónde: el enchufe se define en la feature que muestra el botón, con `null` por defecto (ej. `mapa/presentation/providers/hoja_casa_providers.dart`), y se conecta con `overrideWith` en `lib/main.dart` (líneas ~274-410)
 - uso: `ref.watch(cobrarDesdeLaCasaProvider)`: si es `null`, el botón no se dibuja (HU-UBI-003). Para conectar una acción, el PR agrega el `override` en `main.dart`, que llama al `Flujo…abrir` o `…Page.abrir` del destino.
 - no duplicar: un widget no importa la página de otra feature para abrirla directo, y ningún enchufe queda sin `override` (hoy pasa con 3, ver CASA-02).
 - tags: vistas 23 27 28 31 32 39
@@ -59,7 +59,7 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 - tags: vistas 03 04 06 07 10 39 · HU-UBI-001 HU-UBI-003
 
 ### MAPA-02 · Pestaña Mapa: `MapaUbicacionesPage`, el ÚNICO mapa de trabajo
-- dónde: `lib/features/mapa/presentation/pages/mapa_ubicaciones_page.dart` · estado: `mapaUbicacionesProvider(colportorId)` (`providers/mapa_ubicaciones_notifier.dart`, con `hayVistaPrevia`) · ámbito: `ambitoMapaUbicacionesProvider` (`providers/mapa_ubicaciones_providers.dart`) · hoja de abajo: `HojaMapaUbicaciones` y `AlturaHoja` (`widgets/hoja_mapa_ubicaciones.dart`)
+- dónde: `lib/features/mapa/presentation/pages/mapa_ubicaciones_page.dart` · estado: `mapaUbicacionesProvider(colportorId)` (`providers/mapa_ubicaciones_notifier.dart`; `hayVistaPrevia` está en `providers/mapa_ubicaciones_state.dart`) · ámbito: `ambitoMapaUbicacionesProvider` (`providers/mapa_ubicaciones_providers.dart`) · hoja de abajo: `HojaMapaUbicaciones` y `AlturaHoja` (`widgets/hoja_mapa_ubicaciones.dart`)
 - uso: lo que se agrega «sobre el mapa» (un pin, un aviso fijo, un botón, la hoja de la casa) entra en el `Stack` de esta página o como capa de MAPA-01. El GPS se pide la primera vez que se abre la pestaña. El pin que se arrastra para dar de alta (N·01 a N·03) está en el PR #477 (`widgets/pin_nueva_casa.dart`, seam `alConfirmarPosicion`), todavía no en develop.
 - no duplicar: no se crean pantallas con mapa propio para acciones de la calle. Si una vista nueva «necesita el mapa», usa esta pestaña: se cambia a `PestanaInicio.mapa`, que es lo que hace `JornadaPage(onAbrirMapa:)`.
 - tags: vistas 06 39 · HU-UBI-003 HU-VIS-001 HU-VIS-005
@@ -83,8 +83,8 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 - tags: vistas 06 36 · HU-CAM-006 · #511
 
 ### MAPA-06 · Cámara, proyección y coordenadas
-- dónde: `mapa/domain/services/proyeccion_mercator.dart` (`ProyeccionMercator.zoomDeFlutterMap`, `aPantalla`) · `mapa/domain/value_objects/` (`CamaraMapa`, `AreaMapa`, `Coordenadas`)
-- uso: para poner un widget sobre un punto, `ProyeccionMercator.aPantalla(punto, camara, ancho, alto)`. Los zooms del canvas se pasan con `zoomDeFlutterMap` (las teselas son de 512 px).
+- dónde: `mapa/domain/services/proyeccion_mercator.dart` (`ProyeccionMercator`: `aPixeles`, `aCoordenadas`, `areaVisible`, `camaraQueAjusta`, `distanciaPixeles`, `metrosPorPixel`, `zoomDeFlutterMap`) · `mapa/domain/value_objects/` (`CamaraMapa`, `AreaMapa`, `Coordenadas`)
+- uso: `aPixeles(Coordenadas, zoom)` da `(x, y)` en el mundo; restando el centro de la cámara se ubica un widget sobre un punto. `areaVisible(camara, ancho:, alto:)` da el `AreaMapa`, y `camaraQueAjusta(puntos, ancho:, alto:, margen:)` la cámara que los abarca. Los zooms del canvas (`flutter_map`, 256 px) se pasan con `zoomDeFlutterMap(z)`, que resta 1 nivel.
 - no duplicar: nada de cuentas de Mercator ni de zooms escritos a mano.
 - tags: vistas 03 06 07 39
 
@@ -102,10 +102,10 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 
 ## PERM · Permisos y dispositivo
 
-### PERM-01 · GPS: lectura y permiso (DEUDA CONOCIDA: Precios lo pide)
+### PERM-01 · GPS: lectura y permiso (DEUDA CONOCIDA: lo piden Lista, Alta, Modificar y Precios)
 - dónde: `mapa/presentation/providers/alta_ubicacion_providers.dart` (`plataformaGpsProvider`, `proveedorGpsProvider`, `activadorGpsProvider`, `capturarPosicionGpsUseCaseProvider`) · adaptador: `mapa/data/services/proveedor_gps_plataforma.dart` · puerto: `mapa/domain/services/proveedor_gps.dart`
 - uso: `ref.read(proveedorGpsProvider).posicionActual()` lee la posición y **pide el permiso si está denegado** (línea 36). Para saber si hay permiso sin pedirlo, `ref.read(plataformaGpsProvider).permiso()`. Por política, el permiso se pide solo desde el mapa.
-- no duplicar: nada de `Geolocator` directo (solo `plataforma_gps_geolocator.dart`). Hoy llegan a `posicionActual()` el Mapa, la Lista, el Alta, Modificar (por `capturarPosicionGpsUseCaseProvider`) **y Precios**, directo en `catalogo/presentation/providers/precios_providers.dart:104`: eso contradice la política y se arregla en un issue aparte.
+- no duplicar: nada de `Geolocator` directo (solo `plataforma_gps_geolocator.dart`). Hoy llegan a `posicionActual()` el Mapa (`mapa_ubicaciones_notifier.dart:193`), y también **la Lista, el Alta, Modificar** (por `capturarPosicionGpsUseCaseProvider`) **y Precios** (directo, `catalogo/presentation/providers/precios_providers.dart:104`): estos cuatro contradicen la política y se arreglan en un issue aparte.
 - tags: vistas 03 05 06 26 · HU-UBI-001 HU-UBI-003 HU-CAT-006
 
 ### PERM-02 · Notificaciones: un solo puerto
