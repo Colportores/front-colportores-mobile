@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/logging/app_logger.dart';
@@ -37,11 +38,18 @@ class AvisoPushEnApp extends StatelessWidget {
     required this.aviso,
     required this.onAbrir,
     required this.onCerrar,
+    this.focoAbrir,
+    this.focoCerrar,
   });
 
   final Notificacion aviso;
   final VoidCallback onAbrir;
   final VoidCallback onCerrar;
+
+  /// Los nodos de foco de la tarjeta y de la ✕, si quien la pone necesita llevarles el foco del
+  /// teclado (`AvisoPushEnAppHost`).
+  final FocusNode? focoAbrir;
+  final FocusNode? focoCerrar;
 
   IconData get _icono => switch (aviso.tipo) {
     TipoNotificacion.recordatorioVisita => Icons.event_note_outlined,
@@ -83,6 +91,7 @@ class AvisoPushEnApp extends StatelessWidget {
                   excludeSemantics: true,
                   child: InkWell(
                     key: const Key('aviso_push_en_app_abrir'),
+                    focusNode: focoAbrir,
                     onTap: onAbrir,
                     borderRadius: const BorderRadius.horizontal(left: Radius.circular(14)),
                     child: ConstrainedBox(
@@ -152,6 +161,7 @@ class AvisoPushEnApp extends StatelessWidget {
                 excludeSemantics: true,
                 child: InkResponse(
                   key: const Key('aviso_push_en_app_cerrar'),
+                  focusNode: focoCerrar,
                   onTap: onCerrar,
                   radius: 24,
                   child: const SizedBox(
@@ -174,6 +184,10 @@ class AvisoPushEnApp extends StatelessWidget {
 ///
 /// Un aviso nuevo reemplaza al anterior (el anterior queda en el centro). [activo] es `false` sin
 /// sesión: lo que estuviera a la vista se saca y no sale nada.
+///
+/// Teclado externo (WCAG 2.1.1): el aviso está fuera de la pantalla, así que el Tab de la pantalla no
+/// lo recorre. Mientras está a la vista, el primer Tab lleva el foco a la tarjeta, el siguiente a la
+/// ✕, y el siguiente devuelve el foco a lo que lo tenía (Mayús+Tab recorre al revés).
 ///
 /// Se va solo a los [duracionAvisoPushEnApp], salvo con lector de pantalla encendido o con el foco
 /// adentro: ahí se queda hasta que la persona lo cierre o lo abra.
@@ -199,6 +213,13 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
   /// Pasaron los segundos del aviso mientras tenía el foco: se va apenas lo suelte.
   bool _vencido = false;
 
+  /// El foco del teclado: el ámbito del aviso (su propio recorrido con Tab), sus dos controles y lo
+  /// que tenía el foco antes de entrar, para devolvérselo al salir.
+  final _ambito = FocusScopeNode(debugLabel: 'aviso_push_en_app');
+  final _focoAbrir = FocusNode(debugLabel: 'aviso_push_en_app_abrir');
+  final _focoCerrar = FocusNode(debugLabel: 'aviso_push_en_app_cerrar');
+  FocusNode? _focoPrevio;
+
   @override
   void initState() {
     super.initState();
@@ -215,6 +236,9 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
   void dispose() {
     unawaited(_suscripcion?.cancel());
     _temporizador?.cancel();
+    _ambito.dispose();
+    _focoAbrir.dispose();
+    _focoCerrar.dispose();
     super.dispose();
   }
 
@@ -243,7 +267,43 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
     _temporizador = null;
     _vencido = false;
     _conFoco = false;
+    _devolverElFoco();
     if (mounted) setState(() => _aviso = null);
+  }
+
+  /// Si el foco estaba en el aviso, vuelve a lo que lo tenía antes (el aviso se va y no puede
+  /// llevárselo).
+  void _devolverElFoco() {
+    final previo = _focoPrevio;
+    _focoPrevio = null;
+    if (!_ambito.hasFocus) return;
+    if (previo != null && previo.context != null && previo.canRequestFocus) {
+      previo.requestFocus();
+    } else {
+      _ambito.unfocus();
+    }
+  }
+
+  /// Tab con el aviso a la vista (WCAG 2.1.1). Va en un `Focus` por encima de la pantalla, así que
+  /// ve las teclas antes que el recorrido de la ruta.
+  KeyEventResult _alTeclear(FocusNode nodo, KeyEvent evento) {
+    if (_aviso == null || evento is! KeyDownEvent || evento.logicalKey != LogicalKeyboardKey.tab) {
+      return KeyEventResult.ignored;
+    }
+    final conMayus = HardwareKeyboard.instance.isShiftPressed;
+    if (!_ambito.hasFocus) {
+      if (conMayus) return KeyEventResult.ignored;
+      _focoPrevio = FocusManager.instance.primaryFocus;
+      _focoAbrir.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final primario = FocusManager.instance.primaryFocus;
+    if ((!conMayus && primario == _focoCerrar) || (conMayus && primario == _focoAbrir)) {
+      _devolverElFoco();
+      return KeyEventResult.handled;
+    }
+    // Entre la tarjeta y la ✕ sigue el recorrido normal, dentro del ámbito del aviso.
+    return KeyEventResult.ignored;
   }
 
   void _alCambiarFoco(bool tieneFoco) {
@@ -270,34 +330,40 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
   @override
   Widget build(BuildContext context) {
     final aviso = _aviso;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        widget.child,
-        if (aviso != null)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: Focus(
-                  canRequestFocus: false,
-                  skipTraversal: true,
-                  onFocusChange: _alCambiarFoco,
-                  child: AvisoPushEnApp(
-                    key: ValueKey(aviso.id),
-                    aviso: aviso,
-                    onAbrir: () => unawaited(_abrir(aviso)),
-                    onCerrar: _sacar,
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _alTeclear,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          widget.child,
+          if (aviso != null)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: FocusScope(
+                    node: _ambito,
+                    onFocusChange: _alCambiarFoco,
+                    child: AvisoPushEnApp(
+                      key: ValueKey(aviso.id),
+                      aviso: aviso,
+                      focoAbrir: _focoAbrir,
+                      focoCerrar: _focoCerrar,
+                      onAbrir: () => unawaited(_abrir(aviso)),
+                      onCerrar: _sacar,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -91,8 +91,6 @@ void main() {
   }
 
   group('teclado', () {
-    // skip: QA #187 — el aviso va fuera del Navigator: con un teclado externo Tab solo recorre los
-    // controles de la pantalla y nunca llega al aviso ni a su ✕ (WCAG 2.1.1).
     testWidgets('con Tab se llega al aviso y luego a la ✕, y Enter en la ✕ lo cierra', (
       tester,
     ) async {
@@ -152,6 +150,6 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
       expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsNothing);
-    }, skip: !verHallazgos);
+    });
   });
 }

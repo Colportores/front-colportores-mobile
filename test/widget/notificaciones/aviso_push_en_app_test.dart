@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/notificaciones/domain/entities/tipo_
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -267,10 +268,99 @@ void main() {
       await tester.pump(duracionAvisoPushEnApp * 2);
       expect(_abrir, findsOneWidget);
 
-      FocusManager.instance.primaryFocus?.unfocus();
+      // La persona pasa el foco a otra cosa de la pantalla.
+      Focus.of(tester.element(find.text('Botón del fondo'))).requestFocus();
       await tester.pump();
       await tester.pump();
       expect(_abrir, findsNothing);
+    });
+
+    // Dónde está el foco del teclado: 'abrir', 'cerrar', 'fondo' (el botón de la pantalla) u 'otro'.
+    String dondeEstaElFoco() {
+      final contexto = FocusManager.instance.primaryFocus?.context;
+      if (contexto == null) return 'otro';
+      if (contexto.findAncestorWidgetOfExactType<InkWell>()?.key ==
+          const Key('aviso_push_en_app_abrir')) {
+        return 'abrir';
+      }
+      if (contexto.findAncestorWidgetOfExactType<InkResponse>()?.key ==
+          const Key('aviso_push_en_app_cerrar')) {
+        return 'cerrar';
+      }
+      return contexto.findAncestorWidgetOfExactType<TextButton>() != null ? 'fondo' : 'otro';
+    }
+
+    Future<void> tab(WidgetTester tester, {bool conMayus = false}) async {
+      if (conMayus) await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      if (conMayus) await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+    }
+
+    testWidgets(
+      'teclado: Tab lleva el foco a la tarjeta, luego a la ✕ y después se lo devuelve a la '
+      'pantalla (WCAG 2.1.1)',
+      (tester) async {
+        final c = await montar(tester);
+        Focus.of(tester.element(find.text('Botón del fondo'))).requestFocus();
+        await tester.pump();
+        expect(dondeEstaElFoco(), 'fondo');
+        await llega(tester, c, _aviso('a'));
+
+        await tab(tester);
+        expect(dondeEstaElFoco(), 'abrir');
+        await tab(tester);
+        expect(dondeEstaElFoco(), 'cerrar');
+        await tab(tester);
+        expect(dondeEstaElFoco(), 'fondo', reason: 'el foco vuelve a donde estaba');
+        expect(_abrir, findsOneWidget, reason: 'salir con Tab no cierra el aviso');
+      },
+    );
+
+    testWidgets('teclado: Mayús+Tab desde la tarjeta devuelve el foco; Mayús+Tab desde la pantalla '
+        'sigue su recorrido normal', (tester) async {
+      final c = await montar(tester);
+      Focus.of(tester.element(find.text('Botón del fondo'))).requestFocus();
+      await tester.pump();
+      await llega(tester, c, _aviso('a'));
+
+      await tab(tester, conMayus: true);
+      expect(dondeEstaElFoco(), isNot('abrir'));
+      await tab(tester);
+      expect(dondeEstaElFoco(), 'abrir');
+      await tab(tester, conMayus: true);
+      expect(dondeEstaElFoco(), 'fondo');
+    });
+
+    testWidgets(
+      'teclado: Enter en la tarjeta la abre y Enter en la ✕ la cierra y devuelve el foco',
+      (tester) async {
+        final c = await montar(tester);
+        Focus.of(tester.element(find.text('Botón del fondo'))).requestFocus();
+        await tester.pump();
+        await llega(tester, c, _aviso('a'));
+
+        await tab(tester);
+        await tab(tester);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+
+        expect(_abrir, findsNothing);
+        expect(abridor.abiertos, isEmpty);
+        expect(dondeEstaElFoco(), 'fondo');
+      },
+    );
+
+    testWidgets('teclado: sin aviso a la vista, Tab recorre la pantalla como siempre', (
+      tester,
+    ) async {
+      await montar(tester);
+      Focus.of(tester.element(find.text('Botón del fondo'))).requestFocus();
+      await tester.pump();
+
+      await tab(tester);
+
+      expect(dondeEstaElFoco(), isNot('abrir'));
     });
 
     testWidgets('dado un aviso a la vista, cuando llega otro, entonces el nuevo lo reemplaza y '
