@@ -104,8 +104,8 @@ final saldosDePersonasProvider = Provider<SaldosDePersonas>(
 );
 
 /// De dónde sale el día de la cuota que toca de cada persona que debe (la línea «Debe $ 1.200 · cuota
-/// sáb 26/10» de la hoja de la casa). Los planes de cuotas (vista 30, HU-COB-004) todavía no están en la
-/// rama de integración: sin fuente la fila dice solo lo que debe. Quien los trae lo reemplaza.
+/// sáb 26/10» de la hoja de la casa). `main.dart` lo reemplaza por `CuotasDePersonasLocal` (las citas de
+/// cobranza de los planes, HU-COB-004); sin fuente (los tests) la fila dice solo lo que debe.
 final cuotasDePersonasProvider = Provider<CuotasDePersonas>(
   (ref) => const CuotasDePersonasSinFuente(),
 );

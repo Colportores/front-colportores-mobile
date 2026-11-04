@@ -249,8 +249,13 @@ Future<void> main() async {
         saldosDePersonasProvider.overrideWith(
           (ref) => SaldosDePersonasLocal(ref.watch(cobranzaLocalProvider)),
         ),
-        // La hoja de la casa vuelve a leer lo que debe cada persona cuando cambia una venta o un cobro
-        // (HU-COB-005): el saldo queda al día después de cobrar, sin recargar.
+        // La cuota que toca de cada persona que debe («Debe $ 1.200 · cuota sáb 26/10»): sale de las
+        // citas de cobranza de sus ventas (HU-COB-004).
+        cuotasDePersonasProvider.overrideWith(
+          (ref) => CuotasDePersonasLocal(ref.watch(cobranzaLocalProvider)),
+        ),
+        // La hoja de la casa vuelve a leer lo que debe cada persona cuando cambia una venta, un cobro
+        // o una cuota (HU-COB-005): el saldo y la cuota quedan al día después de cobrar, sin recargar.
         cambiosDeLoQueSeDebeProvider.overrideWith(
           (ref) =>
               () => ref.read(cobranzaLocalProvider).alCambiarLoQueSeDebe(),

@@ -9,8 +9,8 @@ abstract interface class CuotasDePersonas {
   Future<Map<String, DateTime>> proximaCuotaDe(Iterable<String> personaIds);
 }
 
-/// Mientras no haya de dónde leer los planes de cuotas (la vista 30, HU-COB-004, todavía no está en
-/// la rama de integración): no se sabe de nadie y la fila no dice cuota.
+/// Sin de dónde leer los planes de cuotas (los tests; la app usa `CuotasDePersonasLocal`): no se
+/// sabe de nadie y la fila no dice cuota.
 final class CuotasDePersonasSinFuente implements CuotasDePersonas {
   const CuotasDePersonasSinFuente();
 

@@ -153,6 +153,31 @@ final class CobranzaLocalDataSourceDrift {
     return salida;
   }
 
+  /// El día de la cuota que toca de cada una de [personaIds] (la línea «Debe $ 1.200 · cuota sáb 26/10»
+  /// de la hoja de la casa, HU-COB-005): una por persona, sumando las ventas de todos sus vínculos
+  /// vivos. De las cuotas todavía sin cubrir queda la de fecha más temprana: si alguna ya venció, la
+  /// vencida más vieja; si no, la abierta más próxima (decisión P2 de #402). Solo cuentan las ventas
+  /// vivas que todavía se deben (con las devoluciones adentro, la misma fórmula del saldo): la cita
+  /// pendiente de una venta ya saldada no es una cuota que cobrar. Quien no tiene plan, o no tiene
+  /// ninguna cuota abierta, no figura.
+  Future<Map<String, DateTime>> proximaCuotaPorPersona(Iterable<String> personaIds) async {
+    final salida = <String, DateTime>{};
+    for (final personaId in personaIds) {
+      final filas = await _db
+          .customSelect('$_sqlVentas$_cortePersona', variables: [Variable<String>(personaId)])
+          .get();
+      final saldos = await _saldoDeCadaVenta(filas);
+      for (final entrada in saldos.entries) {
+        if (entrada.value <= 0) continue;
+        final fecha = await _cuotas.proximaCuotaAbiertaDe(entrada.key);
+        if (fecha == null) continue;
+        final actual = salida[personaId];
+        if (actual == null || fecha.isBefore(actual)) salida[personaId] = fecha;
+      }
+    }
+    return salida;
+  }
+
   // ---- Saldo pendiente reactivo (HU-COB-005) ----------------------------------------------------
   //
   // `saldo = lo que el cliente se queda − lo que ya pagó`, por venta, nunca negativo, con las
@@ -224,19 +249,26 @@ final class CobranzaLocalDataSourceDrift {
   /// La suma del saldo de las ventas de [filas] (`id`, `monto`, `cobrado`); con [hasta], con las
   /// devoluciones de ese momento.
   Future<int> _sumarSaldos(List<QueryRow> filas, {DateTime? hasta}) async {
+    final saldos = await _saldoDeCadaVenta(filas, hasta: hasta);
+    return saldos.values.fold<int>(0, (suma, saldo) => suma + saldo);
+  }
+
+  /// El saldo de cada venta de [filas] (`id`, `monto`, `cobrado`), por `venta.id`.
+  Future<Map<String, int>> _saldoDeCadaVenta(List<QueryRow> filas, {DateTime? hasta}) async {
     final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
       for (final fila in filas) fila.read<String>('id'),
     ], hasta: hasta);
-    var saldo = 0;
-    for (final fila in filas) {
-      saldo += (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
-          .cuentaDe(
-            montoTotalCentavos: fila.read<int>('monto'),
-            cobradoCentavos: fila.read<int>('cobrado'),
-          )
-          .saldoCentavos;
-    }
-    return saldo;
+    return {
+      for (final fila in filas)
+        fila.read<String>(
+          'id',
+        ): (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
+            .cuentaDe(
+              montoTotalCentavos: fila.read<int>('monto'),
+              cobradoCentavos: fila.read<int>('cobrado'),
+            )
+            .saldoCentavos,
+    };
   }
 
   Stream<int> _observarSaldo(String corte, String id) => _db
@@ -253,11 +285,14 @@ final class CobranzaLocalDataSourceDrift {
       .asyncMap((_) => ventaConSaldo(ventaId))
       .distinct();
 
-  /// Avisa, al suscribirse y cada vez que cambia una venta, un cobro o el vínculo de una persona con una
-  /// casa, que lo que se debe pudo cambiar (Drift avisa por tabla). Es la señal con la que la hoja de la
-  /// casa vuelve a leer lo que debe cada persona sin que nadie recargue (HU-COB-005); no lleva datos.
-  Stream<void> alCambiarLoQueSeDebe() =>
-      _db.customSelect('SELECT 1', readsFrom: _tablasDelSaldo).watch().map((_) {});
+  /// Avisa, al suscribirse y cada vez que cambia una venta, un cobro, el vínculo de una persona con una
+  /// casa o una cita de la agenda (las cuotas del plan lo son), que lo que se debe pudo cambiar (Drift
+  /// avisa por tabla). Es la señal con la que la hoja de la casa vuelve a leer lo que debe cada persona
+  /// y su próxima cuota sin que nadie recargue (HU-COB-005); no lleva datos.
+  Stream<void> alCambiarLoQueSeDebe() => _db
+      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.agendas})
+      .watch()
+      .map((_) {});
 
   /// Lo que debe la persona [personaId], en centavos, sumando sus ventas vivas.
   Stream<int> observarSaldoDePersona(String personaId) => _observarSaldo(_cortePersona, personaId);
