@@ -127,7 +127,9 @@ Future<_Escenario> _hojaEn(
         _Hoja.bloqueadaCobranza ||
         _Hoja.bloqueadaCobranzaSinIr => const PendientesUbicacion(cobranzaPendiente: _cobranza),
         _Hoja.bloqueadaAjena => const PendientesUbicacion(tieneVentas: true),
-        _Hoja.segundaConfirmacion => const PendientesUbicacion(visitasPropiasPendientes: 2),
+        _Hoja.segundaConfirmacion => const PendientesUbicacion(
+          entrevistasAgendadas: ['ag-1', 'ag-2'],
+        ),
         _ => PendientesUbicacion.ninguno,
       });
   final u = ubicacionGuardada();
@@ -464,15 +466,12 @@ void main() {
       );
     });
 
-    testWidgets('HU: la segunda confirmación dice el literal con las visitas pendientes', (
+    testWidgets('HU: la segunda confirmación dice el literal con las entrevistas agendadas', (
       tester,
     ) async {
       await _hojaEn(tester, _Hoja.segundaConfirmacion);
       expect(
-        find.text(
-          'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar '
-          'nuevas visitas, pero el historial se conserva.',
-        ),
+        find.text('Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.'),
         findsOneWidget,
       );
     });

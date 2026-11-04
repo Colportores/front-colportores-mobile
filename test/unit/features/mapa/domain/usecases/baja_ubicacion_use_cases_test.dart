@@ -231,31 +231,6 @@ void main() {
     });
   });
 
-  group('DarDeBajaUbicacionUseCase: visitas pendientes propias', () {
-    test('dado visitas pendientes propias, cuando da de baja sin confirmar, pide la confirmación '
-        'con el resumen y no escribe', () async {
-      pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
-
-      final r = await ok(params());
-
-      expect(r, isA<BajaRequiereConfirmacion>());
-      expect(
-        (r as BajaRequiereConfirmacion).pendientes.resumen.single,
-        startsWith('Esta ubicación tiene 2 visitas pendientes.'),
-      );
-      expect(repositorio.bajas, isEmpty);
-    });
-
-    test('dado visitas pendientes propias, cuando confirma, da de baja', () async {
-      pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
-
-      final r = await ok(params(confirma: true));
-
-      expect(r, isA<UbicacionDadaDeBaja>());
-      expect(repositorio.bajas, hasLength(1));
-    });
-  });
-
   group('DarDeBajaUbicacionUseCase: entrevistas agendadas (Cristian, 21/10)', () {
     const conEntrevistas = PendientesUbicacion(entrevistasAgendadas: ['ag-1', 'ag-2']);
 
@@ -500,11 +475,11 @@ void main() {
     setUp(() => consultar = ConsultarPendientesBajaUseCase(pendientes));
 
     test('dado una ubicación, cuando consulta, devuelve lo que sabe el consultor', () async {
-      pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 1);
+      pendientes.pendientes = const PendientesUbicacion(entrevistasAgendadas: ['ag-1']);
 
       final r = (await consultar('ub-1')).getOrElse(() => throw StateError('era un Left'));
 
-      expect(r.visitasPropiasPendientes, 1);
+      expect(r.entrevistasAgendadas, ['ag-1']);
       expect(pendientes.consultadas, ['ub-1']);
     });
 

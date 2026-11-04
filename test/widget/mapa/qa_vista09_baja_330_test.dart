@@ -54,9 +54,6 @@ import 'lista_ubicaciones_arnes.dart';
 
 const _capturas = bool.fromEnvironment('QA_CAPTURAS');
 
-/// Corre los tests que documentan un hallazgo (decisiones del 04/11 de #330 todavía sin aplicar).
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 final _t0 = DateTime.utc(2026, 10, 23, 13, 45, 10, 123);
 final _hoy = DateTime.utc(2026, 11, 4, 18);
 final _el12 = DateTime.utc(2026, 9, 12, 15);
@@ -586,8 +583,8 @@ void main() {
     );
   });
 
-  group('QA #330 · decisiones del 04/11 sin aplicar en la punta 5831f2ae (con skip)', () {
-    // skip: QA #330 — P1 (04/11): el motivo se busca por el último `ubicacion_baja`, no por igualdad
+  group('QA #330 · decisiones del 04/11 (P1, P2 y P4)', () {
+    // QA #330 — P1 (04/11): el motivo se busca por el último `ubicacion_baja`, no por igualdad
     // exacta con `deleted_at`; hoy una baja con `creado_en` distinto de `deleted_at` pierde el motivo.
     testWidgets(
       'P1 · dado una baja cuyo evento de auditoría lleva otro instante que deleted_at, entonces la '
@@ -635,10 +632,9 @@ void main() {
         expect(find.text('Casa · baja el 12/09 · Ya no existe'), findsOneWidget);
         await cerrar(tester);
       },
-      skip: !_hallazgos,
     );
 
-    // skip: QA #330 — P2 (04/11): «Este edificio tiene…» / «Este negocio tiene…»; hoy dice «Esta casa».
+    // QA #330 — P2 (04/11): «Este edificio tiene…» / «Este negocio tiene…»; hoy dice «Esta casa».
     for (final (tipo, sujeto, texto) in [
       (
         TipoUbicacion.edificio,
@@ -673,11 +669,10 @@ void main() {
           expect(find.text(texto), findsOneWidget);
           await cerrar(tester);
         },
-        skip: !_hallazgos,
       );
     }
 
-    // skip: QA #330 — P4 (04/11): con 2 o más ventas con saldo el aviso dice cuántas son y muestra la más
+    // QA #330 — P4 (04/11): con 2 o más ventas con saldo el aviso dice cuántas son y muestra la más
     // antigua; hoy muestra solo la más antigua como si fuera la única.
     testWidgets(
       'P4 · dado dos ventas con saldo, cuando abre la hoja de baja, entonces el aviso dice cuántas '
@@ -708,7 +703,6 @@ void main() {
         expect(find.textContaining(r'$U 1.450'), findsOneWidget);
         await cerrar(tester);
       },
-      skip: !_hallazgos,
     );
   });
 

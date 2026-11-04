@@ -50,9 +50,8 @@ final _antes = DateTime.utc(2026, 10, 21, 13, 45, 10, 123);
 const _avisoBloqueo =
     'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
     'Si ya no existe, avisale a tu coordinador.';
-const _avisoDosVisitas =
-    'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar nuevas '
-    'visitas, pero el historial se conserva.';
+const _avisoDosEntrevistas =
+    'Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.';
 const _avisoCambioReciente =
     'Esta ubicación cambió recién. Abrila de nuevo y volvé a darla de baja.';
 const _noPudimosRevisar = 'No pudimos revisar la ubicación. Probá de nuevo.';
@@ -370,17 +369,17 @@ void main() {
     });
   });
 
-  group('Escenario: Baja con visitas pendientes propias, doble confirmación', () {
-    prueba('dado 2 visitas pendientes mías, entonces el aviso dice el literal de la HU, solo '
+  group('Escenario: Baja con entrevistas agendadas, doble confirmación', () {
+    prueba('dado 2 entrevistas agendadas, entonces el aviso dice el literal de la decisión, solo '
         'procede tras la segunda confirmación y el historial queda', (tester) async {
       final t = await _montar(tester, conEspacio: true);
-      t.pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
+      t.pendientes.pendientes = const PendientesUbicacion(entrevistasAgendadas: ['ag-1', 'ag-2']);
 
       await _abrirHojaDeBaja(tester);
       await _elegirMotivo(tester, 'No quiere visitas');
       await _tocar(tester, _botonBaja);
 
-      expect(find.text(_avisoDosVisitas), findsOneWidget);
+      expect(find.text(_avisoDosEntrevistas), findsOneWidget);
       await _expectIntacta(tester, t);
       expect(t.salidas, isEmpty);
 
@@ -389,14 +388,14 @@ void main() {
         tester,
         find.descendant(of: find.byType(AlertDialog), matching: find.text('Cancelar')),
       );
-      expect(find.text(_avisoDosVisitas), findsNothing);
+      expect(find.text(_avisoDosEntrevistas), findsNothing);
       expect(_botonBaja, findsOneWidget);
       expect(tester.widget<FilledButton>(_botonBaja).onPressed, isNotNull);
       await _expectIntacta(tester, t);
 
       // Segunda vuelta: ahora sí confirma.
       await _tocar(tester, _botonBaja);
-      expect(find.text(_avisoDosVisitas), findsOneWidget);
+      expect(find.text(_avisoDosEntrevistas), findsOneWidget);
       await _tocar(tester, _enElAviso);
 
       expect(t.salidas.single, isA<UbicacionBajaRealizada>());
@@ -406,17 +405,17 @@ void main() {
       expect((await _espacios(tester, t)).single.deletedAt, isNull);
     });
 
-    prueba('dado una sola visita pendiente, entonces el aviso dice «1 visita pendiente»', (
+    prueba('dado una sola entrevista agendada, entonces el aviso dice «1 entrevista agendada»', (
       tester,
     ) async {
       final t = await _montar(tester);
-      t.pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 1);
+      t.pendientes.pendientes = const PendientesUbicacion(entrevistasAgendadas: ['ag-1']);
 
       await _abrirHojaDeBaja(tester);
       await _elegirMotivo(tester, 'Ya no existe');
       await _tocar(tester, _botonBaja);
 
-      expect(find.textContaining('Esta ubicación tiene 1 visita pendiente.'), findsOneWidget);
+      expect(find.textContaining('Esta casa tiene 1 entrevista agendada.'), findsOneWidget);
       await _expectIntacta(tester, t);
     });
   });

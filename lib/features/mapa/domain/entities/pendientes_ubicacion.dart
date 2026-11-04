@@ -1,10 +1,14 @@
 import 'package:equatable/equatable.dart';
 
+import 'ubicacion.dart' show TipoUbicacion;
+
 /// Una cobranza sin cobrar de una ubicación: lo que el aviso de bloqueo de la baja dice («$U 1.450
-/// (2.ª cuota)», canvas 09·02).
+/// (2.ª cuota)», canvas 09·02). Si la ubicación tiene varias ventas con saldo, es la más antigua y
+/// [cantidad] dice cuántas son (decisión del 04/11, P4).
 final class CobranzaPendiente extends Equatable {
   const CobranzaPendiente({
     required this.montoCentavos,
+    this.cantidad = 1,
     this.numeroCuota,
     this.ventaId,
     this.espacioId,
@@ -13,6 +17,9 @@ final class CobranzaPendiente extends Equatable {
 
   /// En centavos, como `Cobranza.montoCentavos` (flutter-clean-arch.md, regla 6).
   final int montoCentavos;
+
+  /// Cuántas ventas de la ubicación tienen saldo (1 o más). Con 2 o más, el aviso lo dice.
+  final int cantidad;
 
   /// La cuota que se debe, si la venta tiene un plan de cuotas; `null` si se cobra libre (el aviso no
   /// inventa un «N.ª cuota» que la venta no tiene).
@@ -28,7 +35,14 @@ final class CobranzaPendiente extends Equatable {
   bool get tieneDestino => ventaId != null && espacioId != null;
 
   @override
-  List<Object?> get props => [montoCentavos, numeroCuota, ventaId, espacioId, espacioPersonaId];
+  List<Object?> get props => [
+    montoCentavos,
+    cantidad,
+    numeroCuota,
+    ventaId,
+    espacioId,
+    espacioPersonaId,
+  ];
 }
 
 /// Por qué una ubicación no se puede dar de baja (HU-UBI-005, «No se puede dar de baja»).
@@ -62,7 +76,7 @@ final class BloqueoPorVentasOVisitasAjenas extends BloqueoBaja {
 /// El servidor es quien hace valer el bloqueo.
 final class PendientesUbicacion extends Equatable {
   const PendientesUbicacion({
-    this.visitasPropiasPendientes = 0,
+    this.tipo = TipoUbicacion.casa,
     this.cobranzaPendiente,
     this.tieneVentas = false,
     this.tieneVisitasDeOtros = false,
@@ -71,8 +85,9 @@ final class PendientesUbicacion extends Equatable {
 
   static const ninguno = PendientesUbicacion();
 
-  /// Visitas pendientes del propio colportor: no bloquean, piden una segunda confirmación.
-  final int visitasPropiasPendientes;
+  /// De qué tipo es la ubicación: el aviso de las entrevistas dice «Esta casa», «Este edificio» o «Este
+  /// negocio» (decisión del 04/11, P2).
+  final TipoUbicacion tipo;
 
   /// Los `agenda.id` de las entrevistas agendadas (`PROGRAMADA`) de la ubicación, de la réplica de la
   /// agenda del teléfono. No bloquean: piden la segunda confirmación y la baja las cancela en su
@@ -99,29 +114,31 @@ final class PendientesUbicacion extends Equatable {
     return null;
   }
 
-  /// Hay algo que confirmar por segunda vez antes de la baja: visitas pendientes propias o entrevistas
-  /// agendadas.
-  bool get hayPendientes => visitasPropiasPendientes > 0 || entrevistasAgendadas.isNotEmpty;
+  /// Hay algo que confirmar por segunda vez antes de la baja: entrevistas agendadas. En el teléfono una
+  /// «visita pendiente» propia ES una entrevista agendada: no hay otra fuente (decisión del 04/11, P3).
+  bool get hayPendientes => entrevistasAgendadas.isNotEmpty;
 
-  /// El aviso de la segunda confirmación: el literal de la HU («Esta ubicación tiene 2 visitas
-  /// pendientes. Si la das de baja, no podrás registrar nuevas visitas, pero el historial se
-  /// conserva.») y el de la decisión de Cristian del 21/10 («Esta casa tiene 1 entrevista agendada.
-  /// Si la das de baja, se cancela.»). Vacío si no hay pendientes.
-  List<String> get resumen => [
-    if (entrevistasAgendadas.length == 1)
-      'Esta casa tiene 1 entrevista agendada. Si la das de baja, se cancela.'
-    else if (entrevistasAgendadas.length > 1)
-      'Esta casa tiene ${entrevistasAgendadas.length} entrevistas agendadas. '
-          'Si la das de baja, se cancelan.',
-    if (visitasPropiasPendientes > 0)
-      'Esta ubicación tiene $visitasPropiasPendientes '
-          '${visitasPropiasPendientes == 1 ? 'visita pendiente' : 'visitas pendientes'}. '
-          'Si la das de baja, no podrás registrar nuevas visitas, pero el historial se conserva.',
-  ];
+  /// El aviso de la segunda confirmación: el de la decisión de Cristian del 21/10 («Esta casa tiene 1
+  /// entrevista agendada. Si la das de baja, se cancela.»), con «Este edificio» o «Este negocio» según
+  /// el tipo (decisión del 04/11, P2). Vacío si no hay pendientes.
+  List<String> get resumen {
+    final n = entrevistasAgendadas.length;
+    if (n == 0) return const [];
+    final sujeto = switch (tipo) {
+      TipoUbicacion.casa => 'Esta casa',
+      TipoUbicacion.edificio => 'Este edificio',
+      TipoUbicacion.negocio => 'Este negocio',
+    };
+    return [
+      n == 1
+          ? '$sujeto tiene 1 entrevista agendada. Si la das de baja, se cancela.'
+          : '$sujeto tiene $n entrevistas agendadas. Si la das de baja, se cancelan.',
+    ];
+  }
 
   @override
   List<Object?> get props => [
-    visitasPropiasPendientes,
+    tipo,
     cobranzaPendiente,
     tieneVentas,
     tieneVisitasDeOtros,

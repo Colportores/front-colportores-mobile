@@ -607,11 +607,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required String colportorId,
     bool incluirBajas = false,
   }) {
-    // `distinct`: el segundo JOIN (la auditoría) puede repetir la fila de cada espacio.
+    // `distinct`: el JOIN de las agendas puede repetir la fila de cada espacio.
     final cantidad = espacios.id.count(distinct: true);
-    // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
-    // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
-    final motivo = auditLogLocal.motivo.max();
+    // El motivo de la baja: el ÚLTIMO evento `ubicacion_baja` de esta ubicación (por `creado_en`), no el
+    // que coincide con su `deleted_at` al instante: el servidor pone su propio `deleted_at` y el pull
+    // lo traerá de vuelta (#181), y el motivo no tiene que desaparecer de la Lista (decisión del
+    // 04/11, P1). Solo si la ubicación está de baja: una reactivada no tiene motivo.
+    const motivo = CustomExpression<String>(
+      'CASE WHEN ubicacion.deleted_at IS NULL THEN NULL ELSE ('
+      'SELECT a.motivo FROM audit_log a '
+      "WHERE a.evento = '${EventoAuditoriaLocal.ubicacionBaja}' AND a.uuid = ubicacion.id "
+      'ORDER BY a.creado_en DESC, a.id DESC LIMIT 1) END',
+    );
     // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
     // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
     // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
@@ -623,12 +630,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             leftOuterJoin(
               espacios,
               espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
-            ),
-            leftOuterJoin(
-              auditLogLocal,
-              auditLogLocal.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
-                  auditLogLocal.uuid.equalsExp(ubicaciones.id) &
-                  auditLogLocal.creadoEn.equalsExp(ubicaciones.deletedAt),
             ),
             // El color vigente de la casa: una fila por ubicación, y la dada de baja (la casa volvió
             // a «Sin visita») no cuenta. Al estar en la consulta, un cambio de `house_status` hace

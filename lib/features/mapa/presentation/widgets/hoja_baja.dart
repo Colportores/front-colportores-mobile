@@ -33,9 +33,12 @@ abstract final class TextosBaja {
   static const bloqueadaTitulo = 'Todavía no se puede dar de baja';
   static const irALaCobranza = 'Ir a la cobranza';
   static const noPudimosIrALaCobranza = 'No pudimos abrir el cobro. Probá de nuevo.';
-  static String bloqueoCobranza(CobranzaPendiente cobranza) =>
-      'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}. '
-      'Registrá el cobro antes de darla de baja.';
+  static String bloqueoCobranza(CobranzaPendiente cobranza) => cobranza.cantidad > 1
+      ? 'Tiene ${cobranza.cantidad} cobranzas pendientes. '
+            'La más antigua: ${FormatoBaja.cobranza(cobranza)}. '
+            'Registrá los cobros antes de darla de baja.'
+      : 'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}. '
+            'Registrá el cobro antes de darla de baja.';
 
   // La HU (decisión de Cristian, 02/10): ventas o visitas de otro colportor.
   static const bloqueoVentasOVisitasAjenas =
@@ -117,7 +120,7 @@ enum _Fase { revisando, errorRevision, motivo, bloqueada }
 ///
 /// - **Revisando**: «Revisando la ubicación…»; si no se pudo leer, el aviso rojo con «Reintentar».
 /// - **09·01**: cuatro motivos (ninguno viene elegido), «Otro» con texto libre. «Dar de baja» se
-///   habilita recién con un motivo. Con visitas pendientes propias, un segundo aviso pide confirmar.
+///   habilita recién con un motivo. Con entrevistas agendadas, un segundo aviso pide confirmar.
 /// - **09·02**: cobranza pendiente, ventas o visitas de otro colportor: el aviso de la HU, sin escribir
 ///   nada.
 /// - Mientras la baja se escribe, «Dando de baja…» y nada se puede tocar ni cerrar; si falla, el aviso
@@ -212,7 +215,7 @@ class _HojaBajaUbicacionState extends ConsumerState<HojaBajaUbicacion> {
       _falla = null;
     });
     var confirma = false;
-    // Hay una sola segunda confirmación posible (visitas pendientes propias): se pide una vez.
+    // Hay una sola segunda confirmación posible (entrevistas agendadas): se pide una vez.
     for (var ronda = 0; ronda < 2; ronda++) {
       final (:falla, :resultado) = await _pedir(confirma: confirma);
       if (!mounted) return;

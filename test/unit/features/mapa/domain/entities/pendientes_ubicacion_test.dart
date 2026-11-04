@@ -1,5 +1,6 @@
 // Test de dominio: Dart puro. No importa Flutter, Drift ni Supabase (CLAUDE.md §Tests).
 import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -8,29 +9,6 @@ void main() {
       expect(PendientesUbicacion.ninguno.bloqueo, isNull);
       expect(PendientesUbicacion.ninguno.hayPendientes, isFalse);
       expect(PendientesUbicacion.ninguno.resumen, isEmpty);
-    });
-
-    test('dado una visita pendiente propia, cuando arma el resumen, va en singular y es el literal '
-        'de la HU', () {
-      const p = PendientesUbicacion(visitasPropiasPendientes: 1);
-
-      expect(p.hayPendientes, isTrue);
-      expect(p.bloqueo, isNull);
-      expect(p.resumen, [
-        'Esta ubicación tiene 1 visita pendiente. Si la das de baja, no podrás registrar nuevas '
-            'visitas, pero el historial se conserva.',
-      ]);
-    });
-
-    test('dado varias visitas pendientes propias, cuando arma el resumen, va en plural', () {
-      const p = PendientesUbicacion(visitasPropiasPendientes: 2);
-
-      expect(p.resumen, hasLength(1));
-      expect(
-        p.resumen.single,
-        'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar nuevas '
-        'visitas, pero el historial se conserva.',
-      );
     });
 
     test('dado una cobranza pendiente, cuando se pregunta el bloqueo, es el de la cobranza con su '
@@ -65,9 +43,9 @@ void main() {
       expect(p.bloqueo, isA<BloqueoPorCobranza>());
     });
 
-    test('dado visitas propias pendientes y un bloqueo, cuando se pregunta, ambos conviven (el '
+    test('dado entrevistas agendadas y un bloqueo, cuando se pregunta, ambos conviven (el '
         'caso de uso decide el orden)', () {
-      const p = PendientesUbicacion(visitasPropiasPendientes: 1, tieneVentas: true);
+      const p = PendientesUbicacion(entrevistasAgendadas: ['ag-1'], tieneVentas: true);
 
       expect(p.hayPendientes, isTrue);
       expect(p.bloqueo, isNotNull);
@@ -91,18 +69,62 @@ void main() {
       ]);
     });
 
-    test('dado entrevistas y visitas pendientes, el resumen lleva las dos frases', () {
-      const p = PendientesUbicacion(entrevistasAgendadas: ['ag-1'], visitasPropiasPendientes: 2);
+    test('dado un edificio, el sujeto es «Este edificio» (decisión del 04/11, P2)', () {
+      const uno = PendientesUbicacion(tipo: TipoUbicacion.edificio, entrevistasAgendadas: ['a']);
+      const dos = PendientesUbicacion(
+        tipo: TipoUbicacion.edificio,
+        entrevistasAgendadas: ['a', 'b'],
+      );
 
-      expect(p.resumen, hasLength(2));
-      expect(p.resumen.first, startsWith('Esta casa tiene 1 entrevista agendada.'));
-      expect(p.resumen.last, startsWith('Esta ubicación tiene 2 visitas pendientes.'));
+      expect(uno.resumen, [
+        'Este edificio tiene 1 entrevista agendada. Si la das de baja, se cancela.',
+      ]);
+      expect(dos.resumen, [
+        'Este edificio tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.',
+      ]);
+    });
+
+    test('dado un negocio, el sujeto es «Este negocio» (decisión del 04/11, P2)', () {
+      const uno = PendientesUbicacion(tipo: TipoUbicacion.negocio, entrevistasAgendadas: ['a']);
+      const dos = PendientesUbicacion(
+        tipo: TipoUbicacion.negocio,
+        entrevistasAgendadas: ['a', 'b'],
+      );
+
+      expect(uno.resumen, [
+        'Este negocio tiene 1 entrevista agendada. Si la das de baja, se cancela.',
+      ]);
+      expect(dos.resumen, [
+        'Este negocio tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.',
+      ]);
+    });
+
+    test('dado la misma lista en otro tipo, no son iguales', () {
+      expect(
+        const PendientesUbicacion(entrevistasAgendadas: ['ag-1']),
+        isNot(
+          const PendientesUbicacion(tipo: TipoUbicacion.negocio, entrevistasAgendadas: ['ag-1']),
+        ),
+      );
     });
 
     test('dado entrevistas distintas, no son iguales', () {
       expect(
         const PendientesUbicacion(entrevistasAgendadas: ['ag-1']),
         isNot(const PendientesUbicacion(entrevistasAgendadas: ['ag-2'])),
+      );
+    });
+  });
+
+  group('CobranzaPendiente: cuántas', () {
+    test('dado una sola venta con saldo, la cantidad es 1', () {
+      expect(const CobranzaPendiente(montoCentavos: 100).cantidad, 1);
+    });
+
+    test('dado otra cantidad, no son iguales', () {
+      expect(
+        const CobranzaPendiente(montoCentavos: 100, cantidad: 2),
+        isNot(const CobranzaPendiente(montoCentavos: 100)),
       );
     });
   });

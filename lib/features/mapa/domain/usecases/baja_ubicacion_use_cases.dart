@@ -56,7 +56,7 @@ final class DarDeBajaUbicacionParams extends Equatable {
 ///    `Right(BajaBloqueada)` con el motivo; no escribe. **No** vale para la baja por unión de
 ///    duplicados (con [DarDeBajaUbicacionParams.conservadaId]): todo lo que colgaba de la duplicada
 ///    pasa a la que se conserva (HU-UBI-005, «Baja por unión de duplicados»).
-/// 5. Con visitas pendientes propias y sin `confirmaPendientes`: `Right(BajaRequiereConfirmacion)`
+/// 5. Con entrevistas agendadas y sin `confirmaPendientes`: `Right(BajaRequiereConfirmacion)`
 ///    con el resumen; no escribe.
 /// 6. Escribe `deleted_at` = ahora y `updated_at` = ahora, el motivo en la auditoría local y encola
 ///    el tombstone, en una transacción. **No** da de baja los espacios ni las personas (HU: "no se
@@ -105,9 +105,7 @@ final class DarDeBajaUbicacionUseCase
         return Right(BajaBloqueada(bloqueo: bloqueo));
       }
       // En la baja por unión de duplicados las entrevistas no se cancelan: pasan a la que se conserva.
-      final pideConfirmar = params.conservadaId == null
-          ? resumen.hayPendientes
-          : resumen.visitasPropiasPendientes > 0;
+      final pideConfirmar = params.conservadaId == null && resumen.hayPendientes;
       if (pideConfirmar && !params.confirmaPendientes) {
         return Right(BajaRequiereConfirmacion(pendientes: resumen));
       }
@@ -149,7 +147,7 @@ final class DarDeBajaUbicacionUseCase
 
 /// HU-UBI-005 — Lo que el teléfono sabe de la ubicación antes de ofrecer «Dar de baja»: si la baja
 /// está bloqueada (cobranza pendiente, ventas o visitas de otro colportor) y si pide la segunda
-/// confirmación (visitas pendientes propias). No escribe nada. Sin `id`: `Left(FailureValidacion)`.
+/// confirmación (entrevistas agendadas). No escribe nada. Sin `id`: `Left(FailureValidacion)`.
 ///
 /// La baja vuelve a mirar todo esto al escribirse ([DarDeBajaUbicacionUseCase]): entre una cosa y la
 /// otra pudo llegar una venta por el sync.

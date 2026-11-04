@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/cobranzas/data/datasources/cuotas_lo
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/mapa/data/services/pendientes_ubicacion_drift.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -161,7 +162,40 @@ void main() {
 
       expect(r.cobranzaPendiente!.ventaId, 'v-vieja');
       expect(r.cobranzaPendiente!.montoCentavos, 30000);
+      expect(r.cobranzaPendiente!.cantidad, 2, reason: 'el aviso dice cuántas son (P4, 04/11)');
     });
+
+    test('dado una sola venta con saldo, cuando se revisa, la cantidad es 1', () async {
+      await vender('v-1');
+
+      expect((await leer()).cobranzaPendiente!.cantidad, 1);
+    });
+
+    test(
+      'dado dos ventas y una cobrada entera, cuando se revisa, solo cuenta la que debe',
+      () async {
+        await vender('v-1', monto: 150000);
+        await ventas.registrar(
+          ventaDe('v-2', monto: 30000, talonario: 'T-2', fecha: DateTime.utc(2026, 10, 27)),
+          [itemDe('i-2', 'v-2', cantidad: 1, precio: 30000)],
+        );
+        await cobranzas.registrar(
+          Cobranza(
+            id: 'c-1',
+            ventaId: 'v-1',
+            montoCentavos: 150000,
+            medio: MedioCobranza.efectivo,
+            fecha: t0,
+            auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-1'),
+          ),
+        );
+
+        final c = (await leer()).cobranzaPendiente!;
+
+        expect(c.cantidad, 1);
+        expect(c.ventaId, 'v-2');
+      },
+    );
 
     test('dado una venta ya cobrada entera, cuando se revisa, igual bloquea (tiene ventas) pero '
         'sin cobranza ni destino', () async {
@@ -243,6 +277,33 @@ void main() {
 
       expect((await leer()).tieneVisitasDeOtros, isTrue);
     });
+  });
+
+  group('tipo de la ubicación (P2, 04/11)', () {
+    Future<void> comoTipo(String tipo) =>
+        db.customStatement("UPDATE ubicacion SET tipo = '$tipo' WHERE id = 'ub-1'");
+
+    test('dado una casa, un edificio y un negocio, cuando se revisa, trae el tipo', () async {
+      expect((await leer()).tipo, TipoUbicacion.casa);
+
+      await comoTipo('EDIFICIO');
+      expect((await leer()).tipo, TipoUbicacion.edificio);
+
+      await comoTipo('NEGOCIO');
+      expect((await leer()).tipo, TipoUbicacion.negocio);
+    });
+
+    test(
+      'dado un negocio con una entrevista, cuando se revisa, el aviso dice «Este negocio»',
+      () async {
+        await comoTipo('NEGOCIO');
+        await insertarAgenda(db, agendaDe('ag-1'));
+
+        expect((await leer()).resumen, [
+          'Este negocio tiene 1 entrevista agendada. Si la das de baja, se cancela.',
+        ]);
+      },
+    );
   });
 
   group('entrevistas agendadas', () {

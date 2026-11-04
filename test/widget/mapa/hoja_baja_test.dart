@@ -512,21 +512,21 @@ void main() {
       expect(find.textContaining('tiene ventas o visitas de otro colportor'), findsOneWidget);
     });
 
-    testWidgets(
-      'dado un bloqueo y además visitas propias pendientes, entonces gana el bloqueo y no '
-      'se pide la segunda confirmación',
-      (tester) async {
-        await _montar(
-          tester,
-          pendientes: PendientesFalso(
-            const PendientesUbicacion(visitasPropiasPendientes: 3, tieneVisitasDeOtros: true),
+    testWidgets('dado un bloqueo y además entrevistas agendadas, entonces gana el bloqueo y no '
+        'se pide la segunda confirmación', (tester) async {
+      await _montar(
+        tester,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(
+            entrevistasAgendadas: ['a', 'b', 'c'],
+            tieneVisitasDeOtros: true,
           ),
-        );
+        ),
+      );
 
-        expect(find.text('Todavía no se puede dar de baja'), findsOneWidget);
-        expect(find.textContaining('visitas pendientes'), findsNothing);
-      },
-    );
+      expect(find.text('Todavía no se puede dar de baja'), findsOneWidget);
+      expect(find.textContaining('entrevistas agendadas'), findsNothing);
+    });
 
     testWidgets('dado que entre que abrió la hoja y confirmó llegó una venta, cuando da de baja, '
         'entonces pasa al aviso de bloqueo sin escribir', (tester) async {
@@ -610,19 +610,46 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'dado dos cobranzas pendientes, entonces el aviso dice cuántas son y muestra la más '
+      'antigua (decisión del 04/11, P4)',
+      (tester) async {
+        await _montar(
+          tester,
+          pendientes: PendientesFalso(
+            const PendientesUbicacion(
+              tieneVentas: true,
+              cobranzaPendiente: CobranzaPendiente(
+                montoCentavos: 145000,
+                cantidad: 2,
+                numeroCuota: 2,
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.text(
+            r'Tiene 2 cobranzas pendientes. La más antigua: $U 1.450 (2.ª cuota). Registrá los '
+            'cobros antes de darla de baja.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Tiene una cobranza'), findsNothing);
+      },
+    );
   });
 
   group('Segunda confirmación: entrevistas agendadas (decisión de Cristian, 21/10)', () {
     Future<_Escenario> conEntrevistas(
       WidgetTester tester,
       List<String> ids, {
-      int visitas = 0,
+      TipoUbicacion tipo = TipoUbicacion.casa,
     }) async {
       final e = await _montar(
         tester,
-        pendientes: PendientesFalso(
-          PendientesUbicacion(entrevistasAgendadas: ids, visitasPropiasPendientes: visitas),
-        ),
+        pendientes: PendientesFalso(PendientesUbicacion(tipo: tipo, entrevistasAgendadas: ids)),
       );
       await _tocar(tester, _chip('Ya no existe'));
       await _tocar(tester, _boton);
@@ -654,14 +681,29 @@ void main() {
       );
     });
 
-    testWidgets('dado entrevistas y visitas pendientes, entonces el diálogo dice las dos cosas', (
+    testWidgets('dado un edificio con entrevistas, entonces el aviso dice «Este edificio tiene…»', (
       tester,
     ) async {
-      await conEntrevistas(tester, ['ag-1'], visitas: 2);
+      await conEntrevistas(tester, ['ag-1', 'ag-2'], tipo: TipoUbicacion.edificio);
 
-      expect(find.textContaining('Esta casa tiene 1 entrevista agendada.'), findsOneWidget);
-      expect(find.textContaining('Esta ubicación tiene 2 visitas pendientes.'), findsOneWidget);
+      expect(
+        find.text('Este edificio tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Esta casa'), findsNothing);
     });
+
+    testWidgets(
+      'dado un negocio con una entrevista, entonces el aviso dice «Este negocio tiene…»',
+      (tester) async {
+        await conEntrevistas(tester, ['ag-1'], tipo: TipoUbicacion.negocio);
+
+        expect(
+          find.text('Este negocio tiene 1 entrevista agendada. Si la das de baja, se cancela.'),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('dado el aviso, cuando confirma, entonces da de baja una sola vez con el motivo '
         'elegido', (tester) async {
@@ -707,11 +749,15 @@ void main() {
     });
   });
 
-  group('Segunda confirmación: visitas pendientes propias', () {
-    Future<_Escenario> conVisitas(WidgetTester tester, int visitas) async {
+  group('Segunda confirmación: cancelar, reintentar y fallar tras confirmar', () {
+    Future<_Escenario> conEntrevistas2(WidgetTester tester, int entrevistas) async {
       final e = await _montar(
         tester,
-        pendientes: PendientesFalso(PendientesUbicacion(visitasPropiasPendientes: visitas)),
+        pendientes: PendientesFalso(
+          PendientesUbicacion(
+            entrevistasAgendadas: [for (var i = 0; i < entrevistas; i++) 'ag-$i'],
+          ),
+        ),
       );
       await _tocar(tester, _chip('Ya no existe'));
       await _tocar(tester, _boton);
@@ -720,30 +766,10 @@ void main() {
 
     Finder enElDialogo(Finder f) => find.descendant(of: find.byType(AlertDialog), matching: f);
 
-    testWidgets('dado 2 visitas pendientes propias, cuando da de baja, entonces pregunta con el '
-        'literal de la HU y todavía no escribe', (tester) async {
-      final e = await conVisitas(tester, 2);
-
-      expect(
-        find.text(
-          'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar '
-          'nuevas visitas, pero el historial se conserva.',
-        ),
-        findsOneWidget,
-      );
-      expect(e.repo.bajas, isEmpty);
-    });
-
-    testWidgets('dado 1 visita pendiente, entonces el aviso va en singular', (tester) async {
-      await conVisitas(tester, 1);
-
-      expect(find.textContaining('Esta ubicación tiene 1 visita pendiente.'), findsOneWidget);
-    });
-
     testWidgets('dado la pregunta, cuando confirma, entonces da de baja con el motivo elegido', (
       tester,
     ) async {
-      final e = await conVisitas(tester, 2);
+      final e = await conEntrevistas2(tester, 2);
 
       await _tocar(tester, enElDialogo(find.text('Dar de baja')));
 
@@ -755,7 +781,7 @@ void main() {
       'dado la pregunta, cuando cancela, entonces no escribe y la hoja sigue con el motivo '
       'elegido y el botón habilitado',
       (tester) async {
-        final e = await conVisitas(tester, 2);
+        final e = await conEntrevistas2(tester, 2);
 
         await _tocar(tester, enElDialogo(find.text('Cancelar')));
 
@@ -770,7 +796,7 @@ void main() {
 
     testWidgets('dado que canceló la pregunta, cuando vuelve a dar de baja y confirma, entonces '
         'escribe una sola vez', (tester) async {
-      final e = await conVisitas(tester, 2);
+      final e = await conEntrevistas2(tester, 2);
       await _tocar(tester, enElDialogo(find.text('Cancelar')));
 
       await _tocar(tester, _boton);
@@ -781,7 +807,7 @@ void main() {
 
     testWidgets('dado la pregunta abierta, cuando el repositorio falla después de confirmar, '
         'entonces el aviso rojo y el botón vuelve a quedar habilitado', (tester) async {
-      final e = await conVisitas(tester, 2);
+      final e = await conEntrevistas2(tester, 2);
       e.repo.fallaAlDarDeBaja = const FailureInesperado();
 
       await _tocar(tester, enElDialogo(find.text('Dar de baja')));

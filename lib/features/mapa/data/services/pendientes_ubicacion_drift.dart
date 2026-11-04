@@ -10,6 +10,7 @@ import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../../cobranzas/data/datasources/cuotas_local_data_source_drift.dart';
 import '../../../ventas/data/datasources/estado_de_devolucion.dart';
 import '../../domain/entities/pendientes_ubicacion.dart';
+import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../../domain/services/consultor_pendientes_ubicacion.dart';
 
 /// Lo que la baja de una ubicación toca o impide (HU-UBI-005), leído de las tablas locales del
@@ -27,9 +28,10 @@ import '../../domain/services/consultor_pendientes_ubicacion.dart';
 ///
 /// Lo que **no** bloquea: las entrevistas agendadas (`PROGRAMADA`) de la ubicación, que piden la
 /// segunda confirmación y la baja cancela en su misma transacción (decisión de Cristian, 21/10). La
-/// réplica de la agenda del teléfono es la del propio colportor. «Visitas pendientes» propias no
-/// tienen otra fuente en el modelo local (una visita pendiente es una entrevista agendada): quedan
-/// en 0 y la entrevista lleva el aviso.
+/// réplica de la agenda del teléfono es la del propio colportor. Una «visita pendiente» propia ES una
+/// entrevista agendada: no hay otra fuente (decisión del 04/11, P3) y la entrevista lleva el aviso. Con
+/// varias ventas con saldo, la cobranza es la de la más antigua y dice cuántas son (decisión del 04/11,
+/// P4).
 ///
 /// Una falla al leer no se traduce en «no hay nada»: devuelve [FailurePendientesNoDisponibles] y la
 /// hoja ofrece «Reintentar» (mismo criterio que `PendientesUbicacionSinFuente`: ante la duda se
@@ -81,6 +83,13 @@ final class PendientesUbicacionDrift implements ConsultorPendientesUbicacion {
 
     final cobranza = await _primeraCobranza(ventas);
 
+    final tipo = await _db
+        .customSelect(
+          'SELECT tipo FROM ubicacion WHERE id = ?',
+          variables: [Variable<String>(ubicacionId)],
+        )
+        .getSingleOrNull();
+
     final ajenas = await _db
         .customSelect(
           'SELECT 1 AS hay FROM visita vi JOIN espacio e ON e.id = vi.espacio_id '
@@ -103,6 +112,7 @@ final class PendientesUbicacionDrift implements ConsultorPendientesUbicacion {
         .get();
 
     return PendientesUbicacion(
+      tipo: _tipoDe(tipo?.read<String>('tipo')),
       cobranzaPendiente: cobranza,
       tieneVentas: ventas.isNotEmpty,
       tieneVisitasDeOtros: ajenas.isNotEmpty,
@@ -110,7 +120,14 @@ final class PendientesUbicacionDrift implements ConsultorPendientesUbicacion {
     );
   }
 
-  /// La cobranza de la primera venta viva (la más antigua) que todavía debe algo, o `null`.
+  static TipoUbicacion _tipoDe(String? codigo) => switch (codigo) {
+    'EDIFICIO' => TipoUbicacion.edificio,
+    'NEGOCIO' => TipoUbicacion.negocio,
+    _ => TipoUbicacion.casa,
+  };
+
+  /// La cobranza de la primera venta viva (la más antigua) que todavía debe algo, con cuántas ventas
+  /// deben, o `null`.
   Future<CobranzaPendiente?> _primeraCobranza(List<QueryRow> ventas) async {
     final vivas = [
       for (final v in ventas)
@@ -120,6 +137,7 @@ final class PendientesUbicacionDrift implements ConsultorPendientesUbicacion {
     final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
       for (final v in vivas) v.read<String>('id'),
     ]);
+    final conSaldo = <({QueryRow venta, int saldo})>[];
     for (final v in vivas) {
       final id = v.read<String>('id');
       final saldo = (resumenes[id] ?? ResumenDeDevoluciones.ninguna)
@@ -128,18 +146,21 @@ final class PendientesUbicacionDrift implements ConsultorPendientesUbicacion {
             cobradoCentavos: v.read<int>('cobrado'),
           )
           .saldoCentavos;
-      if (saldo <= 0) continue;
-      final proxima = (await _cuotas.leerPlan(id))?.proxima;
-      final falta = proxima?.faltanCentavos ?? 0;
-      final deLaCuota = proxima != null && falta > 0 && falta <= saldo;
-      return CobranzaPendiente(
-        montoCentavos: deLaCuota ? falta : saldo,
-        numeroCuota: deLaCuota ? proxima.numero : null,
-        ventaId: id,
-        espacioId: v.read<String>('espacio'),
-        espacioPersonaId: v.read<String>('ep'),
-      );
+      if (saldo > 0) conSaldo.add((venta: v, saldo: saldo));
     }
-    return null;
+    if (conSaldo.isEmpty) return null;
+    final (:venta, :saldo) = conSaldo.first;
+    final id = venta.read<String>('id');
+    final proxima = (await _cuotas.leerPlan(id))?.proxima;
+    final falta = proxima?.faltanCentavos ?? 0;
+    final deLaCuota = proxima != null && falta > 0 && falta <= saldo;
+    return CobranzaPendiente(
+      montoCentavos: deLaCuota ? falta : saldo,
+      cantidad: conSaldo.length,
+      numeroCuota: deLaCuota ? proxima.numero : null,
+      ventaId: id,
+      espacioId: venta.read<String>('espacio'),
+      espacioPersonaId: venta.read<String>('ep'),
+    );
   }
 }
