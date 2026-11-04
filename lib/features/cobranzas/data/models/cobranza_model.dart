@@ -19,6 +19,7 @@ abstract final class CobranzaModel {
     'numero_aprobacion': cobro.numeroAprobacion,
     'referencia_transferencia': cobro.referenciaTransferencia,
     'banco_origen': cobro.bancoOrigen,
+    'ticket_id': cobro.ticketId,
     ...auditoriaAJson(cobro.auditoria),
   };
 

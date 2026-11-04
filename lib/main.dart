@@ -29,6 +29,7 @@ import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
 import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/flujo_detalle_agenda.dart';
+import 'features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -47,6 +48,7 @@ import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
+import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
@@ -69,6 +71,8 @@ import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
+import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -264,6 +268,10 @@ Future<void> main() async {
         archivoEnvoltorioDekProvider.overrideWithValue(
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
         ),
+        // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
+        almacenDeFotosDeTicketProvider.overrideWithValue(
+          AlmacenDeFotosEnDisco((await getApplicationSupportDirectory()).path),
+        ),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
@@ -342,6 +350,30 @@ Future<void> main() async {
               espacioId: cita.espacioId,
               espacioPersonaId: cita.espacioPersonaId,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «+ Agendar» de la pestaña Agenda (vista 23B, #568): elegir la casa en la lista de ubicaciones y,
+        // con ella, «¿Con quién?» y «Agendar visita» (23A·01). Devuelve `true` si se agendó.
+        agendarDesdeLaAgendaProvider.overrideWith(
+          (ref) => () {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «+ Agendar» del rótulo de un día futuro (23B·01, #568): lo mismo, con ese día ya puesto.
+        agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+          (ref) => (dia) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+              dia: dia,
             );
           },
         ),

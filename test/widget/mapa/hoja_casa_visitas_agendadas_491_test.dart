@@ -478,7 +478,7 @@ void main() {
         await tester.tap(_agendar);
         await tester.pump();
 
-        expect(find.text(TextosRegistrarVisita.edificioSinDepto), findsOneWidget);
+        expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsOneWidget);
         expect(m.citas, isEmpty);
       },
     );

@@ -27,7 +27,15 @@ export 'lista_ubicaciones_state.dart';
 ///   pediría detrás del login) y se refresca cada vez que se vuelve a abrir. Si no hay GPS la lista
 ///   funciona igual: sin cercanía ni proximidad.
 final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
-  ListaUbicacionesNotifier(this.colportorId);
+  /// [clave] es el UUID del colportor, o ese UUID con [sufijoDeSeleccion] cuando la lista es un selector
+  /// (la pestaña Lista y el selector de casa de «+ Agendar» no comparten búsqueda ni filtros).
+  ListaUbicacionesNotifier(String clave) : colportorId = clave.split(sufijoDeSeleccion).first;
+
+  /// Lo que se le agrega al UUID para tener un estado propio, aparte del de la pestaña Lista.
+  static const sufijoDeSeleccion = '#seleccion';
+
+  /// La clave del estado de la lista usada como selector del colportor [colportorId].
+  static String claveDeSeleccion(String colportorId) => '$colportorId$sufijoDeSeleccion';
 
   /// UUID del colportor con la sesión iniciada (`created_by`).
   final String colportorId;

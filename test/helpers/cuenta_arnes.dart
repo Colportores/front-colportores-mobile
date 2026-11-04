@@ -12,6 +12,8 @@ import 'package:colportores_mobile/features/cuenta/presentation/pages/cuenta_pag
 import 'package:colportores_mobile/features/cuenta/presentation/pages/mi_plata_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/widgets/piezas_mi_plata.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/totales_de_depositos.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -139,9 +141,43 @@ Future<void> cambiarActiva(
 /// Un día de octubre a mediodía en la hora del teléfono (así «20/10» no cambia según la zona).
 DateTime dia(int d) => DateTime(2026, 10, d, 12);
 
-/// El detalle del canvas 33C·01 y 33C·02: $ 2.400 en mano en tres cobros y $ 9.700 por cobrar entre
-/// tres clientes.
+/// Un depósito de la lista de «Depositado» (por defecto validado, en el banco, para la casa editora).
+DepositoDeLaLista depositoDe(
+  int pesos,
+  int d, {
+  bool validado = true,
+  DestinoDeDeposito destino = DestinoDeDeposito.banco,
+  ConceptoDeDeposito concepto = ConceptoDeDeposito.casaEditora,
+}) => DepositoDeLaLista(
+  montoCentavos: pesos * 100,
+  fecha: dia(d),
+  destino: destino,
+  concepto: concepto,
+  validado: validado,
+);
+
+/// «Depositado» del canvas 33C·01: $ 26.900 en tres depósitos validados, nada por validar.
+final depositadoDelCanvas = DepositadoEnMiPlata(
+  validados: [
+    depositoDe(10000, 12),
+    depositoDe(9000, 15, destino: DestinoDeDeposito.oficina),
+    depositoDe(7900, 19, concepto: ConceptoDeDeposito.alquiler),
+  ],
+  porValidar: const [],
+);
+
+/// El resumen del canvas 33A·01 completo, con «Depositado» ($ 26.900, +$ 5.300).
+final resumenConDepositado = ResumenDeCuenta(
+  depositado: cifra(26900, variacion: 5300),
+  depositadoAl: DateTime(2026, 10, 23, 9),
+  enMano: cifra(2400, variacion: 1800),
+  porCobrar: cifra(9700, variacion: -1300),
+);
+
+/// El detalle del canvas 33C·01 y 33C·02: $ 26.900 depositados en tres depósitos, $ 2.400 en mano en
+/// tres cobros y $ 9.700 por cobrar entre tres clientes.
 final detalleDelCanvas = DetalleDeMiPlata(
+  depositado: depositadoDelCanvas,
   enManoCentavos: 240000,
   enMano: [
     MovimientoEnMano(cliente: 'María Fernández', fecha: dia(20), centavos: 60000),
