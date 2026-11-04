@@ -31,6 +31,21 @@ class _ArchivoQueSeCae extends FakeArchive {
   }
 }
 
+/// Un cifrado cuya llave no abre lo que hay en Drive: el descifrado falla (un archivo roto o una
+/// llave que no es la de esa cadena) a partir de la llamada [desde] (1 = la base).
+class _CryptoQueNoAbre extends FakeCrypto {
+  _CryptoQueNoAbre({super.llave, this.desde = 1});
+
+  final int desde;
+  int _llamadas = 0;
+
+  @override
+  Future<List<int>> decrypt(List<int> ciphertext) async {
+    if (++_llamadas >= desde) throw const FormatException('no se descifra');
+    return super.decrypt(ciphertext);
+  }
+}
+
 /// Una cadena de [partes] eslabones de la llave [llave] en [drive].
 Future<BackupService> _cadena(
   FakeArchive drive,
@@ -132,6 +147,35 @@ void main() {
 
       expect([r!.applied, r.partial], [2, true]);
       expect(r.tip.id, 'backup-2');
+    });
+
+    test('una base que no se descifra: no hay nada que restaurar y la DB no se toca',
+        () async {
+      await _cadena(drive, origen);
+      final conOtraLlave = BackupService(
+        archive: drive,
+        crypto: _CryptoQueNoAbre(llave: 'a'),
+        snapshot: nuevo,
+      );
+
+      expect(await conOtraLlave.restoreDetailed(), isNull);
+      expect(nuevo.restored, isNull);
+    });
+
+    test('un incremental que no se descifra corta la cadena ahí, con la base aplicada',
+        () async {
+      await _cadena(drive, origen);
+      final conOtraLlave = BackupService(
+        archive: drive,
+        crypto: _CryptoQueNoAbre(llave: 'a', desde: 3),
+        snapshot: nuevo,
+      );
+
+      final r = await conOtraLlave.restoreDetailed();
+
+      expect([r!.applied, r.total, r.partial, r.problem], [2, 4, true, 'unreadable']);
+      expect(nuevo.restored!.keys, containsAll(['1', '2']));
+      expect(nuevo.restored!.keys, isNot(contains('3')));
     });
 
     test('si aplicar la copia falla, no queda registrado nada restaurado', () async {
@@ -434,6 +478,43 @@ void main() {
       expect(nuevo.restored!.keys, containsAll(['b1', 'b2', 'b3']));
       expect(nuevo.restored!.keys, isNot(contains('a1')));
       expect([informe.partsRestored, informe.backupDates.length], [3, 1]);
+    });
+
+    test('una cadena cuya base no se descifra se salta y la otra entra', () async {
+      final informe = await motor.recover(sources: [
+        RecoverySource(
+          backup: BackupService(
+            archive: drive,
+            crypto: _CryptoQueNoAbre(llave: 'a'),
+            snapshot: nuevo,
+          ),
+          keyId: 'id-a',
+        ),
+        RecoverySource(backup: servicioDe('b'), keyId: 'id-b'),
+      ]);
+
+      expect(nuevo.chainsRestored, hasLength(1));
+      expect(nuevo.restored!.keys, containsAll(['b1', 'b2', 'b3']));
+      expect(nuevo.restored!.keys, isNot(contains('a1')));
+      expect([informe.partsRestored, informe.backupDates.length], [3, 1],
+          reason: 'la que no abrió queda fuera de las fechas: la app la cuenta en «sin abrir»');
+    });
+
+    test('si ninguna base se descifra, no hay respaldo y la DB no se toca', () async {
+      final informe = await motor.recover(sources: [
+        for (final k in ['a', 'b'])
+          RecoverySource(
+            backup: BackupService(
+              archive: drive,
+              crypto: _CryptoQueNoAbre(llave: k),
+              snapshot: nuevo,
+            ),
+            keyId: 'id-$k',
+          ),
+      ]);
+
+      expect(informe.hadBackup, isFalse);
+      expect(nuevo.restored, isNull);
     });
 
     test('si ninguna tiene base usable, no hay respaldo y la DB no se toca',

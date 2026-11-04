@@ -450,10 +450,11 @@ class BackupService {
         try {
           payloads.add(await _crypto.decrypt(cifrado));
         } on Object {
-          // La base ilegible es una llave equivocada o un archivo roto: sube
-          // para que quien llama lo vea. Un incremental ilegible corta la
-          // cadena ahí.
-          if (i == 0) rethrow;
+          // Una base que no se descifra con su propia llave es un archivo roto:
+          // igual que la de hash corrupto, esa cadena no tiene base usable y se
+          // salta (devuelve `null`); no frena a las demás (HU-SYNC-006, «Varios
+          // resp.»). Un incremental ilegible corta la cadena ahí.
+          if (i == 0) return null;
           problema = 'unreadable';
           break;
         }
