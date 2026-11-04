@@ -205,6 +205,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
     final plan = notificador.planDeAchicar();
     final ocupa = paquete?.tamanoBytes ?? 0;
     final sinLugar = paquete != null && libres != null && !yaBajado && ocupa > libres;
+    // El departamento y Uruguay los elige ella: si no entran, la app le dice cuánto falta.
+    final lasEligeElla =
+        vigente == NivelCobertura.departamento || vigente == NivelCobertura.uruguay;
     final hayMasChico = [
       for (final n in NivelCobertura.values)
         if (estado.seOfrece(n) && n.index < (vigente?.index ?? 0)) n,
@@ -248,6 +251,7 @@ class _EleccionDeCobertura extends ConsumerWidget {
             TextosMapasOffline.peso(ocupa),
             TextosMapasOffline.pesoLibre(libres),
             haySalida: hayMasChico,
+            falta: lasEligeElla ? TextosMapasOffline.peso(ocupa - libres) : null,
           ),
         ),
       if (estado.falla case final falla? when !sinLugar) _FallaDeAccion(falla: falla),
@@ -364,8 +368,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
       }
       return switch (nivel) {
         NivelCobertura.zona => TextosMapasOffline.zonaSinPaquete,
-        NivelCobertura.ciudad => TextosMapasOffline.sinPaquete,
-        NivelCobertura.departamento || NivelCobertura.uruguay => TextosMapasOffline.llegaConPro,
+        NivelCobertura.ciudad ||
+        NivelCobertura.departamento ||
+        NivelCobertura.uruguay => TextosMapasOffline.sinPaquete,
       };
     }
     final nombre = TextosMapasOffline.nombreDe(paquete, nombreZona: estado.lugar?.zonaNombre);
