@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -5,6 +7,7 @@ import '../../../../datos/drift_sync_meta.dart';
 import '../../../cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../../depositos/data/datasources/totales_de_depositos_drift.dart';
+import '../../../depositos/domain/entities/totales_de_depositos.dart';
 import '../../domain/entities/detalle_de_mi_plata.dart';
 
 /// Lee de las tablas `venta`, `cobranza`, `devolucion`, `deposito` y `persona` de la DB cifrada el
@@ -50,7 +53,7 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     String nombreDe(String espacioPersonaId) =>
         clientes[espacioPersonaId]?.nombre ?? clienteSinNombre;
 
-    // En mano: los cobros en efectivo vivos. Una venta dada de baja no resta: el efectivo que se cobró
+    // En mano: los cobros en efectivo vivos menos lo depositado. Una venta dada de baja no resta: el efectivo que se cobró
     // sigue en la mano. Una devolución tampoco: nunca queda plata a favor del cliente (decisión de
     // Cristian, 03/11, «Devol. saldo»).
     final cobros = await _db
@@ -62,6 +65,9 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
           variables: [Variable<String>(colportorId)],
         )
         .get();
+    // Lo depositado (validado o por validar) sale de la mano, con la misma consulta que Mi Cuenta; el
+    // rechazado no está en la lista y vuelve a la mano.
+    final depositos = await _depositos.listar();
     final enMano = [
       for (final f in cobros)
         MovimientoEnMano(
@@ -69,7 +75,10 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
           fecha: _fecha(f.read<int>('fecha')),
           centavos: f.read<int>('monto'),
         ),
-    ];
+      for (final d in depositos)
+        MovimientoEnMano(cliente: '', fecha: d.fecha, centavos: -d.montoCentavos, deposito: d),
+    ]..sort((a, b) => a.fecha.compareTo(b.fecha));
+    final sumaEnMano = enMano.fold<int>(0, (suma, m) => suma + m.centavos);
 
     // Por cobrar: las cuentas de cada venta viva, sumadas por cliente.
     final ventas = await _cobranzas.cuentasDeLasVentasDe(colportorId);
@@ -81,8 +90,8 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     final saldosPorCobrar = _porCliente(porCobrar, clientes);
 
     return DetalleDeMiPlata(
-      depositado: await _depositado(),
-      enManoCentavos: enMano.fold<int>(0, (suma, m) => suma + m.centavos),
+      depositado: await _depositado(depositos),
+      enManoCentavos: math.max(0, sumaEnMano),
       enMano: enMano,
       porCobrarCentavos: saldosPorCobrar.fold<int>(0, (suma, s) => suma + s.centavos),
       porCobrar: saldosPorCobrar,
@@ -91,9 +100,8 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
 
   /// Lo depositado, de la misma consulta que usa Mi Cuenta ([TotalesDeDepositosDrift]); `null` si el
   /// teléfono todavía no bajó nada del servidor: ahí no hay cifra, ni un cero inventado.
-  Future<DepositadoEnMiPlata?> _depositado() async {
+  Future<DepositadoEnMiPlata?> _depositado(List<DepositoDeLaLista> lista) async {
     if ((await DriftSyncMeta(_db).read()).lastPullAt == null) return null;
-    final lista = await _depositos.listar();
     return DepositadoEnMiPlata(
       validados: [
         for (final d in lista)

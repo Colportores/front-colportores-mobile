@@ -83,6 +83,34 @@ void main() {
       expect(find.textContaining('Próximamente'), findsNothing);
     });
 
+    testWidgets('un depósito sale de la mano: aparece restando, para que la lista sume lo que dice '
+        'la cifra', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: DetalleDeMiPlata(
+            enManoCentavos: 140000,
+            enMano: [
+              MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(20), centavos: 240000),
+              MovimientoEnMano(
+                cliente: '',
+                fecha: dia(21),
+                centavos: -100000,
+                deposito: depositoDe(1000, 21),
+              ),
+            ],
+            porCobrarCentavos: 0,
+            porCobrar: const [],
+          ),
+        ),
+      );
+
+      expect(find.text(r'$ 1.400  ▴'), findsOneWidget);
+      expect(find.text('Pedro Gómez · 20/10'), findsOneWidget);
+      expect(find.text('Depósito · Casa editora · Banco · 21/10'), findsOneWidget);
+      expect(find.text(r'− $ 1.000'), findsOneWidget);
+    });
+
     testWidgets('«Depositado» va primero, plegado, con su total (33C·01)', (tester) async {
       await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
 

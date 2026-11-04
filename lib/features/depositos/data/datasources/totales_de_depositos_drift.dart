@@ -38,6 +38,16 @@ final class TotalesDeDepositosDrift {
   /// Lo registrado que todavía no validó ni rechazó el coordinador, en centavos.
   Future<int> porValidar() => _suma(_condicionPorValidar, null);
 
+  /// Lo que ya salió de la mano: la suma de los depósitos registrados que no se rechazaron, validados o
+  /// por validar, **con las mismas condiciones que [validado] y [porValidar]** (decisión de la QA de
+  /// #431, 04/11: «En mano» = lo cobrado en efectivo menos lo depositado, como `efectivo_en_mano()` del
+  /// servidor). Un rechazado vuelve a estar en la mano. Con [hasta], lo depositado hasta entonces
+  /// (`fecha <= hasta`): la base de «contra la semana pasada».
+  Future<int> sacadoDeLaMano({DateTime? hasta}) => _suma(
+    '(($_condicionValidado) OR ($_condicionPorValidar))${hasta == null ? '' : ' AND fecha <= ?'}',
+    hasta?.toUtc().millisecondsSinceEpoch,
+  );
+
   /// Los depósitos que suman a una de las dos sumas (los validados y los que esperan), del más viejo al
   /// más nuevo: **con las mismas condiciones que [validado] y [porValidar]**, así la lista de Mi plata
   /// suma exactamente lo que dice la cifra. Un depósito rechazado o dado de baja no está.

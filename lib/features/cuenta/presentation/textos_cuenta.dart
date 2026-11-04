@@ -72,6 +72,10 @@ abstract final class TextosMiPlata {
 
   static const desde = 'desde';
 
+  /// Para confirmar: la fila de «En mano» de un depósito, que baja lo que hay en la mano (decisión de
+  /// la QA de #431, 04/11).
+  static const deposito = 'Depósito';
+
   static const desplegado = 'desplegado';
   static const plegado = 'plegado';
 }
@@ -83,6 +87,9 @@ abstract final class FormatoCuenta {
     final local = fecha.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
   }
+
+  /// Un monto que baja, con el signo: «− $ 10.000».
+  static String montoQueBaja(int centavos) => '− ${FormatoPrecios.monto(centavos.abs())}';
 
   /// «$ 18.400», o «$ 1.450,50» si no son pesos justos.
   static String monto(int centavos) => FormatoPrecios.monto(centavos);

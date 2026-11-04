@@ -2,21 +2,31 @@ import 'package:equatable/equatable.dart';
 
 import '../../../depositos/domain/entities/totales_de_depositos.dart';
 
-/// Un cobro en efectivo que sigue en la mano (HU-CTA-003, vista 33C·01).
+/// Un cobro en efectivo que sigue en la mano, o un depósito que lo sacó (HU-CTA-003, vista 33C·01).
 final class MovimientoEnMano extends Equatable {
-  const MovimientoEnMano({required this.cliente, required this.fecha, required this.centavos});
+  const MovimientoEnMano({
+    required this.cliente,
+    required this.fecha,
+    required this.centavos,
+    this.deposito,
+  });
 
-  /// El nombre del cliente, tal como está en la lista de personas.
+  /// El nombre del cliente, tal como está en la lista de personas; vacío en un depósito.
   final String cliente;
 
-  /// Cuándo se cobró.
+  /// Cuándo se cobró o se depositó.
   final DateTime fecha;
 
-  /// Lo cobrado, en centavos.
+  /// Lo cobrado (positivo) o lo depositado (negativo): así la lista suma lo que dice la cifra.
   final int centavos;
 
+  /// El depósito que sacó plata de la mano; `null` en un cobro.
+  final DepositoDeLaLista? deposito;
+
+  bool get esDeposito => deposito != null;
+
   @override
-  List<Object?> get props => [cliente, fecha, centavos];
+  List<Object?> get props => [cliente, fecha, centavos, deposito];
 }
 
 /// Un cliente con lo que debe (HU-CTA-003, vista 33C·02).
@@ -85,7 +95,7 @@ final class DetalleDeMiPlata extends Equatable {
   /// dibuja, ni un cero inventado (igual que en Mi Cuenta).
   final DepositadoEnMiPlata? depositado;
 
-  /// Lo mismo que «En mano» de Mi Cuenta.
+  /// Lo mismo que «En mano» de Mi Cuenta: los cobros en efectivo menos lo depositado, nunca negativo.
   final int enManoCentavos;
   final List<MovimientoEnMano> enMano;
 

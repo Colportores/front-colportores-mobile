@@ -230,6 +230,54 @@ void main() {
       await esperarQueCoincidaConMiCuenta(d);
     });
 
+    test(
+      'lo depositado (por validar o validado) sale de la mano y se ve como una fila que resta; la '
+      'lista suma lo que dice la cifra',
+      () async {
+        await vender('v-1', 500000, _dia20);
+        await cobrar('c-1', 500000, _dia20);
+        await bajada();
+        final dia22 = DateTime.utc(2026, 10, 22, 15);
+        await depositar('d-1', 100000, dia22);
+        await depositar('d-2', 50000, DateTime.utc(2026, 10, 25, 15), validadoEn: dia22);
+
+        final d = await leer();
+
+        expect(d.enManoCentavos, 350000);
+        expect(d.enMano.map((m) => m.centavos), [500000, -100000, -50000]);
+        expect(d.enMano.where((m) => m.esDeposito), hasLength(2));
+        expect(d.enMano.fold<int>(0, (s, m) => s + m.centavos), d.enManoCentavos);
+        await esperarQueCoincidaConMiCuenta(d);
+      },
+    );
+
+    test(
+      'un depósito rechazado o dado de baja no sale de la mano: no figura en la lista',
+      () async {
+        await vender('v-1', 500000, _dia20);
+        await cobrar('c-1', 500000, _dia20);
+        await depositar('d-1', 100000, _dia21, rechazadoEn: _dia23, destino: 'RETIRO_COORDINADOR');
+        await depositar('d-2', 70000, _dia21, baja: _dia23);
+
+        final d = await leer();
+
+        expect(d.enManoCentavos, 500000);
+        expect(d.enMano.where((m) => m.esDeposito), isEmpty);
+        await esperarQueCoincidaConMiCuenta(d);
+      },
+    );
+
+    test('la cifra nunca baja de cero aunque lo depositado supere al efectivo', () async {
+      await vender('v-1', 100000, _dia20);
+      await cobrar('c-1', 100000, _dia20);
+      await depositar('d-1', 250000, _dia21);
+
+      final d = await leer();
+
+      expect(d.enManoCentavos, 0);
+      await esperarQueCoincidaConMiCuenta(d);
+    });
+
     test('una venta dada de baja no se lleva el efectivo que ya se cobró', () async {
       await vender('v-1', 150000, _dia20);
       await cobrar('c-1', 50000, _dia20);

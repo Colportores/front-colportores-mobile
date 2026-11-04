@@ -86,7 +86,10 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
         (i) => FilaDeMiPlata(
           key: Key('mi_plata_fila_enMano_$i'),
           detalle: FilasDeMiPlata.cobro(d.enMano[i]),
-          monto: FormatoCuenta.monto(d.enMano[i].centavos),
+          monto: d.enMano[i].esDeposito
+              ? FormatoCuenta.montoQueBaja(d.enMano[i].centavos)
+              : FormatoCuenta.monto(d.enMano[i].centavos),
+          baja: d.enMano[i].esDeposito,
         ),
       ),
       _categoria(

@@ -219,6 +219,7 @@ class FilaDeMiPlata extends StatelessWidget {
     required this.detalle,
     required this.monto,
     this.apagada = false,
+    this.baja = false,
   });
 
   /// «María Fernández · 20/10».
@@ -229,6 +230,9 @@ class FilaDeMiPlata extends StatelessWidget {
 
   /// Todavía no cuenta (un depósito por validar): el monto va en gris.
   final bool apagada;
+
+  /// Es plata que baja lo que hay (un depósito en «En mano»): el monto va en el color de la baja.
+  final bool baja;
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +257,11 @@ class FilaDeMiPlata extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'JetBrainsMono',
                 fontSize: 13.5,
-                color: apagada ? ColoresCuenta.gris : ColoresCuenta.tinta,
+                color: baja
+                    ? ColoresCuenta.rojo
+                    : apagada
+                    ? ColoresCuenta.gris
+                    : ColoresCuenta.tinta,
               ),
             ),
           ],
@@ -337,7 +345,10 @@ class SeccionPorValidar extends StatelessWidget {
 
 /// Las filas de cada categoría, con el texto que les toca.
 abstract final class FilasDeMiPlata {
-  static String cobro(MovimientoEnMano m) => '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}';
+  static String cobro(MovimientoEnMano m) => switch (m.deposito) {
+    final d? => '${TextosMiPlata.deposito} · ${deposito(d)}',
+    null => '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}',
+  };
 
   static String saldo(SaldoDeCliente s) =>
       '${s.cliente} · ${TextosMiPlata.desde} ${FormatoCuenta.fecha(s.desde)}';

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -97,17 +99,16 @@ final class ResumenDeCuentaLocalDataSourceDrift {
     return fila != null;
   }
 
-  /// El efectivo cobrado que todavía no se depositó: los cobros en efectivo vivos de las ventas del
-  /// colportor. Una devolución no lo resta: no hay reembolsos, porque nunca queda plata a favor del
-  /// cliente (decisión de Cristian, 03/11, «Devol. saldo»; deja sin efecto la resta de #431). Con
-  /// [hasta], como estaba entonces.
+  /// El efectivo que sigue en la mano: los cobros en efectivo vivos de las ventas del colportor menos
+  /// lo que depositó (validado o por validar; el rechazado vuelve a la mano), sin bajar de cero. Una
+  /// devolución no lo resta: no hay reembolsos, porque nunca queda plata a favor del cliente (decisión
+  /// de Cristian, 03/11, «Devol. saldo»). Con [hasta], como estaba entonces.
   ///
-  /// Una venta dada de baja no resta: el efectivo que se cobró sigue en la mano. Hasta que el
-  /// depósito (HU-CTA-004, #442) exista en el teléfono no hay nada que depositar: cuando llegue, lo
-  /// depositado se resta acá.
+  /// El depósito no marca qué cobros incluye («Cobro en dep.»): se resta el monto. Una venta dada de
+  /// baja no resta: el efectivo que se cobró sigue en la mano.
   Future<int> _enMano(String colportorId, {DateTime? hasta}) async {
     final ms = hasta?.toUtc().millisecondsSinceEpoch;
-    return _suma(
+    final cobrado = await _suma(
       'SELECT COALESCE(SUM(c.monto), 0) AS suma FROM cobranza c '
       'JOIN venta v ON v.id = c.venta_id '
       "WHERE v.colportor_id = ? AND c.medio = 'EFECTIVO' AND ${CobroValido.sql}"
@@ -115,6 +116,8 @@ final class ResumenDeCuentaLocalDataSourceDrift {
       colportorId,
       ms,
     );
+    final depositado = await _depositos.sacadoDeLaMano(hasta: hasta);
+    return math.max(0, cobrado - depositado);
   }
 
   Future<int> _suma(String sql, String colportorId, int? ms) async {
