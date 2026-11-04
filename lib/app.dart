@@ -359,6 +359,9 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(cicloDeVidaSyncProvider);
     // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
     ref.watch(respaldoAlVolverProvider);
+    // HU-SYNC-005 (#583): con Drive conectado queda programado el respaldo de la noche con la app
+    // cerrada (03:00, Wi-Fi y cargando); al desconectar se saca.
+    ref.watch(respaldoNocturnoProgramadoProvider);
     // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
