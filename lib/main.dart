@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/arranque/cierre_de_la_raiz.dart';
 import 'core/arranque/reinicio_de_raiz.dart';
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/conectividad/monitor_conectividad_plus.dart';
@@ -165,13 +166,20 @@ Future<void> main() async {
 
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
-  // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo; el anterior se cierra
-  // con su `ProviderScope`): «Recuperar mi respaldo» reinicia la app por dentro (`reiniciarRaizProvider`)
-  // y arranca como la primera vez, sin nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»).
-  // El `ProviderScope` lo arma `ReiniciadorDeRaiz` en cada arranque.
+  // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo): «Recuperar mi
+  // respaldo» reinicia la app por dentro (`reiniciarRaizProvider`) y arranca como la primera vez, sin
+  // nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»). El `ProviderScope` lo arma
+  // `ReiniciadorDeRaiz` en cada arranque.
+  //
+  // Tirar el `ProviderScope` NO cierra la base: el `DatabaseHelper` entra por `overrideWithValue` y
+  // nadie lo suelta por él. Por eso `CierreDeLaRaiz` lo recuerda y `alTirar` lo cierra (esperando antes
+  // al ciclo en curso del motor) después de sacar el árbol viejo y antes de armar el nuevo; si no, la
+  // raíz nueva abriría una segunda conexión al mismo archivo con la clave vieja todavía viva.
+  final cierreDeLaRaiz = CierreDeLaRaiz();
   // ignore: riverpod_lint_plugin/missing_provider_scope
   runApp(
     ReiniciadorDeRaiz(
+      alTirar: cierreDeLaRaiz.alTirar,
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
       // AuthRemoteDataSource: lo elige `authRemoteDataSourceProvider` según `ConfigSupabase`
       // (Supabase real o fake con la cuenta demo@colportores.app / demo1234).
@@ -371,11 +379,15 @@ Future<void> main() async {
         // de la app (default de drift_flutter); nombre y ruta no están fijados por la doc del
         // proyecto.
         databaseHelperProvider.overrideWithValue(
-          DatabaseHelper(
-            directorio: getApplicationDocumentsDirectory,
-            directorioTemporal: getTemporaryDirectory,
+          cierreDeLaRaiz.adoptar(
+            DatabaseHelper(
+              directorio: getApplicationDocumentsDirectory,
+              directorioTemporal: getTemporaryDirectory,
+            ),
           ),
         ),
+        // Los cierres que la raíz vieja deja en vuelo (el ciclo del motor): `alTirar` los espera.
+        cierreDeLaRaizProvider.overrideWithValue(cierreDeLaRaiz),
       ],
       child: const ColportoresApp(),
     ),

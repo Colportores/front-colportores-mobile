@@ -15,6 +15,7 @@ import '../../features/respaldo/presentation/providers/respaldo_drive_providers.
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
 import '../../plataforma/realtime_de_supabase.dart';
+import '../arranque/cierre_de_la_raiz.dart';
 import '../conectividad/conectividad_providers.dart';
 import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
@@ -128,9 +129,38 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
     realtime: ref.watch(realtimeSyncProvider),
   );
-  ref.onDispose(() => unawaited(motor.dispose()));
+  // Al tirarse el motor (cerrar sesión, o la raíz entera al «Recuperar mi respaldo») el ciclo en curso
+  // sigue usando la DB: el cierre queda anotado y `CierreDeLaRaiz.alTirar` lo espera antes de cerrarla.
+  final cierre = ref.read(cierreDeLaRaizProvider);
+  ref.onDispose(() => cierre.registrar(cerrarElMotor(motor)));
   return motor;
 });
+
+/// Cuánto se espera al ciclo en curso de un motor que se tira: más que eso y la raíz nueva arranca igual
+/// (con la red colgada un ciclo puede tardar mucho, y la persona no puede quedar mirando una pantalla
+/// vacía).
+const esperaDelCicloAlCerrarElMotor = Duration(seconds: 30);
+
+/// Da de baja el motor y espera a que termine el ciclo que tenía en curso (un push o un pull a medio
+/// hacer sobre la DB): cerrar la base antes se lo llevaría puesto. `dispose` va primero, así no arranca
+/// otro. No lanza: lo que falle o se pase de [espera] se registra.
+Future<void> cerrarElMotor(
+  SyncEngine motor, {
+  Duration espera = esperaDelCicloAlCerrarElMotor,
+}) async {
+  try {
+    await motor.dispose();
+    await motor.settled.timeout(espera);
+  } on TimeoutException {
+    AppLogger.instance.warn(LogModulo.sync, 'MOTOR_CIERRE_LENTO', 'el ciclo no terminó a tiempo', {
+      'segundos': espera.inSeconds,
+    });
+  } on Object catch (e) {
+    AppLogger.instance.warn(LogModulo.sync, 'MOTOR_CIERRE_FALLO', 'no se pudo cerrar el motor', {
+      'error': e.runtimeType.toString(),
+    });
+  }
+}
 
 /// Por donde la capa `data` encola lo que escribe (contrato §3). Sin DB abierta no hay motor:
 /// [EncoladorSyncSinMotor] falla a propósito y la escritura se revierte, en vez de quedar en el

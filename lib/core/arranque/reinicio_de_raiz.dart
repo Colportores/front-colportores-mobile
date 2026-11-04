@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
+
+import '../logging/app_logger.dart';
 
 /// Reinicia la raíz de la app por dentro: tira el `ProviderScope` entero y arma uno nuevo, como el
 /// primer arranque (sin motor de sync, ni lecturas, ni estado de ninguna pantalla andando).
@@ -17,14 +21,20 @@ final reiniciarRaizProvider = Provider<void Function()>((ref) => () {});
 /// [overrides] y, al reiniciar, lo tira entero y arma otro con `overrides` nuevos (cada arranque tiene su
 /// `DatabaseHelper`, por ejemplo). Ya le pone a `reiniciarRaizProvider` el reinicio de esta raíz.
 ///
-/// El reinicio tiene dos tiempos: primero se saca el árbol viejo (se cierra su `ProviderScope` y con él
-/// la base abierta) y recién en el cuadro siguiente se arma el nuevo, así dos raíces nunca conviven
-/// con la misma base. Pedirlo dos veces seguidas reinicia una sola vez.
+/// El reinicio tiene tres tiempos: primero se saca el árbol viejo (se cierra su `ProviderScope`), luego
+/// se espera [alTirar] (cerrar lo que el `ProviderScope` no cierra: la base) y recién después se arma
+/// el nuevo, así dos raíces nunca conviven con la misma base. Pedirlo dos veces seguidas reinicia una
+/// sola vez.
 class ReiniciadorDeRaiz extends StatefulWidget {
-  const ReiniciadorDeRaiz({required this.overrides, required this.child, super.key});
+  const ReiniciadorDeRaiz({required this.overrides, required this.child, this.alTirar, super.key});
 
   /// Los `overrides` de cada arranque de la raíz.
   final List<Override> Function() overrides;
+
+  /// Se espera después de sacar el árbol viejo y antes de armar el nuevo: acá se cierra la base de la
+  /// raíz que se tiró (un `ProviderScope` no cierra lo que entra por `overrideWithValue`). Si lanza se
+  /// registra y la raíz nueva arranca igual: la app no se queda en blanco por un cierre que falló.
+  final Future<void> Function()? alTirar;
 
   /// Lo que cuelga del `ProviderScope`.
   final Widget child;
@@ -50,13 +60,31 @@ class _ReiniciadorDeRaizState extends State<ReiniciadorDeRaiz> {
   void _reiniciar() {
     if (!mounted || _reiniciando) return;
     setState(() => _reiniciando = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_rearmar()));
+  }
+
+  Future<void> _rearmar() async {
+    if (!mounted) return;
+    final alTirar = widget.alTirar;
+    if (alTirar != null) {
+      try {
+        await alTirar();
+      } on Object catch (e, st) {
+        AppLogger.instance.error(
+          LogModulo.db,
+          'REINICIO_RAIZ',
+          'no se pudo cerrar la base de la raíz que se tiró; la nueva arranca igual',
+          const {},
+          e,
+          st,
+        );
+      }
       if (!mounted) return;
-      setState(() {
-        _generacion++;
-        _raiz = _armar();
-        _reiniciando = false;
-      });
+    }
+    setState(() {
+      _generacion++;
+      _raiz = _armar();
+      _reiniciando = false;
     });
   }
 
