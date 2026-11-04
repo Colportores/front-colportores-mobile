@@ -299,11 +299,17 @@ class EsqueletoCuenta extends StatelessWidget {
   }
 }
 
-/// El error (33A·05): «No pudimos calcular tu cuenta.» y «Reintentar».
+/// El error (33A·05): «No pudimos calcular tu cuenta.» y «Reintentar». [texto] lo cambia para otra
+/// pantalla de Mi Cuenta con el mismo aviso (33B·03: «No pudimos traer tus pedidos.»).
 class BannerErrorCuenta extends StatelessWidget {
-  const BannerErrorCuenta({super.key, required this.alReintentar});
+  const BannerErrorCuenta({
+    super.key,
+    required this.alReintentar,
+    this.texto = TextosCuenta.errorCalculo,
+  });
 
   final VoidCallback alReintentar;
+  final String texto;
 
   @override
   Widget build(BuildContext context) {
@@ -349,11 +355,11 @@ class BannerErrorCuenta extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      TextosCuenta.errorCalculo,
-                      key: Key('cuenta_error_texto'),
-                      style: TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
+                      texto,
+                      key: const Key('cuenta_error_texto'),
+                      style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
                     ),
                   ),
                 ],

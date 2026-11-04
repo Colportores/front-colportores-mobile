@@ -11,6 +11,7 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
+import '../../features/cuenta/data/datasources/deuda_casa_cache_table.dart';
 import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
@@ -93,6 +94,7 @@ part 'app_database.g.dart';
     Entregas,
     Devoluciones,
     Depositos,
+    DeudaCasaCaches,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -148,10 +150,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 26: `devolucion` pierde `dinero_retenido` y `monto_reembolsado` (backend-supabase 0157, decisión
   ///   de Cristian, 03/11, «Devol. saldo»): nunca queda plata a favor del cliente, así que la
   ///   devolución ya no guarda dinero (#609).
+  /// - 27: `deuda_casa_cache`, la última respuesta de la deuda con la casa editora con su hora, solo local:
+  ///   se ve sin conexión (HU-CTA-002, #441; backend-supabase 0164).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 26;
+  static const int versionEsquema = 27;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -414,6 +418,11 @@ class AppDatabase extends _$AppDatabase {
     // encolar al migrar. `alterTable` vuelve a crear los índices que ya tenía la tabla.
     from25To26: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.devolucion));
+    },
+    // Solo crea la tabla de la deuda guardada, vacía: nada de lo guardado cambia. Hasta la primera
+    // lectura con conexión, la pantalla no tiene qué mostrar sin red.
+    from26To27: (m, esquema) async {
+      await m.createTable(esquema.deudaCasaCache);
     },
   );
 }

@@ -132,6 +132,7 @@ void main() {
       expect(tablas, containsAll(['jornada', 'persona', 'audit_log', 'sync_queue']));
       expect(tablas, isNot(contains('producto')), reason: 'el pull la reconstruye');
       expect(tablas, isNot(contains('sesion_usuario')), reason: 'es de la sesión del teléfono');
+      expect(tablas, isNot(contains('deuda_casa_cache')), reason: 'se vuelve a bajar del servidor');
       expect(tablas, isNot(contains('sync_watermark')));
       expect(tablas, isNot(contains('sync_meta')));
       expect(
@@ -155,6 +156,8 @@ void main() {
 
       final sinDecidir = todas.difference(entidadesDelBackup).difference(replicas).difference({
         'sesion_usuario',
+        // La deuda con la casa editora que dijo el servidor: se vuelve a bajar (#441).
+        'deuda_casa_cache',
         ...tablasDelMotor.difference({'sync_queue'}),
       });
 

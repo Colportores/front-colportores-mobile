@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,8 +7,10 @@ import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
+import '../providers/deuda_casa_providers.dart';
 import '../textos_cuenta.dart';
 import '../widgets/piezas_cuenta.dart';
+import '../widgets/tarjeta_de_deuda.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
 /// cambiaron contra la semana pasada.
@@ -17,11 +21,12 @@ import '../widgets/piezas_cuenta.dart';
 /// aviso: no hay nada viejo que decir. Mientras se calcula, un bloque gris por tarjeta
 /// (33A·03); si la base no se puede leer, el error con «Reintentar» (33A·05), nunca ceros.
 ///
-/// En V1 son tres tarjetas, Depositado, En mano y Por cobrar. «Depositado» suma solo lo que el
-/// coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada no se dibuja
-/// (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda con la casa editora llega
-/// con los pedidos (V2), y el toque en cada tarjeta cuando exista su detalle (HU-CTA-003): hasta
-/// entonces no se dibuja lo que no lleva a ningún lado.
+/// Son cuatro tarjetas: la deuda con la casa editora, Depositado, En mano y Por cobrar. «Depositado» suma
+/// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
+/// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
+/// servidor (HU-CTA-002): se muestra lo último que llegó y su toque abre el detalle por pedido (33B). El
+/// toque en las otras tarjetas llega con su detalle (HU-CTA-003): hasta entonces no se dibuja lo que no
+/// lleva a ningún lado.
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -45,7 +50,11 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
     // construcción.
     if (widget.activa && !anterior.activa) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.activa) ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+        if (mounted && widget.activa) {
+          ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+          // La deuda se vuelve a pedir al servidor; la última que llegó sigue a la vista mientras tanto.
+          unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
+        }
       });
     }
   }
@@ -82,6 +91,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                   AvisoSinConexionCuenta(
                     texto: FormatoCuenta.sinConexion(depositadoAl, ref.read(relojCuentaProvider)()),
                   ),
+                TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)
                     TarjetaDeCifra(key: Key('cuenta_${tipo.name}'), tipo: tipo, cifra: cifra),

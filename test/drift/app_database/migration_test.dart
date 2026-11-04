@@ -31,6 +31,7 @@ import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
+import 'generated/schema_v27.dart' as v27;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1604,6 +1605,45 @@ void main() {
           await expectLater(nuevo.customStatement('$insertar$malo'), throwsA(anything));
         }
         expect(await nuevo.select(nuevo.devolucion).get(), hasLength(3));
+      },
+    );
+  });
+
+  test('dado depósitos guardados en la versión 26, cuando migra a la 27, no se pierde '
+      'nada y suma la tabla de la deuda guardada, vacía (#441)', () async {
+    const deposito = v26.DepositoData(
+      id: 'd-1',
+      monto: 180000,
+      fecha: 1,
+      destino: 'BANCO',
+      concepto: 'CASA_EDITORA',
+      ticketId: 't-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 4,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 26,
+      newVersion: 27,
+      createOld: v26.DatabaseAtV26.new,
+      createNew: v27.DatabaseAtV27.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.deposito, deposito),
+      validateItems: (nuevo) async {
+        final guardado = await nuevo.select(nuevo.deposito).getSingle();
+        expect(guardado.id, 'd-1');
+        expect(guardado.monto, 180000);
+        expect(guardado.syncVersion, 4);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nace vacía, con una fila por colportor: guardar de nuevo la pisa.
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), isEmpty);
+        const insertar = 'INSERT INTO deuda_casa_cache (colportor_id, respuesta, leida_en) VALUES ';
+        await nuevo.customStatement("$insertar('col-1', '{}', 1)");
+        await nuevo.customStatement("$insertar('col-2', '{}', 2)");
+        await expectLater(nuevo.customStatement("$insertar('col-1', '{}', 3)"), throwsA(anything));
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), hasLength(2));
       },
     );
   });

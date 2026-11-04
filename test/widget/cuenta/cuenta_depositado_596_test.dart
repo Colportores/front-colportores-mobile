@@ -156,17 +156,29 @@ void main() {
       expect(repo.suscripciones, 1);
     });
 
-    testWidgets('no se puede tocar: sin detalle todavía, ni flecha ni toque', (tester) async {
-      await montarCuenta(
-        tester,
-        RepositorioDeCuentaControlable(inicial: _conDepositado),
-        overrides: _overrides(_Conexion(TipoConexion.wifi)),
-      );
+    testWidgets(
+      'no se puede tocar: sin detalle todavía, ni flecha ni toque (lo único tocable es la '
+      'tarjeta de la deuda, #441)',
+      (tester) async {
+        await montarCuenta(
+          tester,
+          RepositorioDeCuentaControlable(inicial: _conDepositado),
+          overrides: _overrides(_Conexion(TipoConexion.wifi)),
+        );
 
-      expect(find.text('›'), findsNothing);
-      expect(find.byType(InkWell), findsNothing);
-      expect(find.byType(GestureDetector), findsNothing);
-    });
+        final depositado = find.byKey(const Key('cuenta_depositado'));
+        expect(depositado, findsOneWidget);
+        expect(find.descendant(of: depositado, matching: find.text('›')), findsNothing);
+        expect(find.descendant(of: depositado, matching: find.byType(InkWell)), findsNothing);
+        expect(
+          find.descendant(of: depositado, matching: find.byType(GestureDetector)),
+          findsNothing,
+        );
+        // Lo único que se toca en Mi Cuenta es la deuda con la casa editora.
+        expect(find.byType(InkWell), findsOneWidget);
+        expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+      },
+    );
   });
 
   group('33A·02 · Sin conexión', () {
