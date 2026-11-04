@@ -38,7 +38,7 @@ import '../core/database/app_database.dart';
 /// o se borran, así que el restore las reemplaza en vez de sumarles.
 ///
 /// **Restore** (HU-SYNC-006, #186). [restore] aplica una cadena (la base y sus incrementales, en
-/// orden) y [restoreCadenas] fusiona varias, las de cada teléfono que la persona tuvo (decisión de
+/// orden) y [restoreChains] fusiona varias, las de cada teléfono que la persona tuvo (decisión de
 /// Cristian, 03/11, «Varios resp.»). Todo en **una sola transacción**: o entra todo o la DB queda como
 /// estaba. Antes de tocar nada se lee y valida cada payload (formato y esquema), así que un respaldo
 /// ilegible o de una versión más nueva ni empieza.
@@ -124,16 +124,17 @@ final class DriftSnapshot implements SnapshotPort {
   };
 
   @override
-  Future<void> restore(List<List<int>> payloadsInOrder) => restoreCadenas([payloadsInOrder]);
+  Future<void> restore(List<List<int>> payloadsInOrder) => restoreChains([payloadsInOrder]);
 
   /// Fusiona varias cadenas de respaldo en la DB (ver la doc de la clase). Cada cadena va de la base a
   /// la punta; el orden entre cadenas desempata las filas con la misma fecha (gana la posterior), así
   /// que conviene pasarlas de la más vieja a la más nueva.
   ///
-  /// Lanza [RespaldoDeEsquemaPosteriorException] si algún payload viene de una versión más nueva de la
-  /// DB, y [RespaldoIlegibleException] si no se puede leer o no se puede aplicar. En los dos casos la
+  /// Lanza [SnapshotNewerSchemaException] si algún payload viene de una versión más nueva de la
+  /// DB, y [SnapshotUnreadableException] si no se puede leer o no se puede aplicar. En los dos casos la
   /// DB queda como estaba.
-  Future<void> restoreCadenas(List<List<List<int>>> cadenas) async {
+  @override
+  Future<void> restoreChains(List<List<List<int>>> cadenas) async {
     final leidas = [
       for (final cadena in cadenas) [for (final payload in cadena) _leerPayload(payload)],
     ];
@@ -183,7 +184,7 @@ final class DriftSnapshot implements SnapshotPort {
       });
     } on Object catch (e) {
       // Solo el tipo: el mensaje de SQLite puede citar un valor de la fila.
-      throw RespaldoIlegibleException('no se pudo aplicar (${e.runtimeType})');
+      throw SnapshotUnreadableException('no se pudo aplicar (${e.runtimeType})');
     }
   }
 
@@ -192,27 +193,24 @@ final class DriftSnapshot implements SnapshotPort {
     try {
       json = jsonDecode(utf8.decode(bytes));
     } on Object {
-      throw const RespaldoIlegibleException('no es JSON');
+      throw const SnapshotUnreadableException('no es JSON');
     }
-    if (json is! Map<String, Object?>) throw const RespaldoIlegibleException('no es un objeto');
+    if (json is! Map<String, Object?>) throw const SnapshotUnreadableException('no es un objeto');
     final formatoDelPayload = json['formato'];
     final esquema = json['esquema'];
     final tablas = json['tablas'];
     if (formatoDelPayload is! int || esquema is! int || tablas is! Map<String, Object?>) {
-      throw const RespaldoIlegibleException('faltan campos');
+      throw const SnapshotUnreadableException('faltan campos');
     }
-    if (formatoDelPayload > formato) throw const RespaldoIlegibleException('formato más nuevo');
+    if (formatoDelPayload > formato) throw const SnapshotUnreadableException('formato más nuevo');
     if (esquema > _db.schemaVersion) {
-      throw RespaldoDeEsquemaPosteriorException(
-        esquemaDelRespaldo: esquema,
-        esquemaDeLaApp: _db.schemaVersion,
-      );
+      throw SnapshotNewerSchemaException(backupSchema: esquema, appSchema: _db.schemaVersion);
     }
     final resultado = <String, _TablaLeida>{};
     for (final MapEntry(key: nombre, value: tabla) in tablas.entries) {
-      if (tabla is! Map<String, Object?>) throw const RespaldoIlegibleException('tabla rota');
+      if (tabla is! Map<String, Object?>) throw const SnapshotUnreadableException('tabla rota');
       final filas = tabla['filas'];
-      if (filas is! List) throw const RespaldoIlegibleException('tabla sin filas');
+      if (filas is! List) throw const SnapshotUnreadableException('tabla sin filas');
       resultado[nombre] = _TablaLeida(
         modo: tabla['modo'] == 'replace' ? 'replace' : 'upsert',
         filas: [
@@ -220,7 +218,7 @@ final class DriftSnapshot implements SnapshotPort {
             if (f is Map<String, Object?>)
               f
             else
-              throw const RespaldoIlegibleException('fila rota'),
+              throw const SnapshotUnreadableException('fila rota'),
         ],
       );
     }
@@ -295,31 +293,4 @@ final class _TablaLeida {
 
   final String modo;
   final List<Map<String, Object?>> filas;
-}
-
-/// El respaldo es de una versión de la DB más nueva que la de esta app: no se restaura, y la persona
-/// tiene que actualizar la app. La DB no se tocó.
-final class RespaldoDeEsquemaPosteriorException implements Exception {
-  const RespaldoDeEsquemaPosteriorException({
-    required this.esquemaDelRespaldo,
-    required this.esquemaDeLaApp,
-  });
-
-  final int esquemaDelRespaldo;
-  final int esquemaDeLaApp;
-
-  @override
-  String toString() =>
-      'RespaldoDeEsquemaPosteriorException(respaldo $esquemaDelRespaldo, app $esquemaDeLaApp)';
-}
-
-/// El respaldo no se puede leer o aplicar. La DB no se tocó. [motivo] describe qué falló y nunca
-/// lleva datos del respaldo.
-final class RespaldoIlegibleException implements Exception {
-  const RespaldoIlegibleException(this.motivo);
-
-  final String motivo;
-
-  @override
-  String toString() => 'RespaldoIlegibleException($motivo)';
 }

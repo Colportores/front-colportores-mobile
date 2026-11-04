@@ -1,3 +1,4 @@
+import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -15,6 +16,8 @@ import '../../domain/repositories/respaldo_drive_repository.dart';
 import '../../domain/services/respaldo_nocturno.dart';
 import '../../domain/services/servicio_respaldo.dart';
 import '../datasources/auditoria_backup_local.dart';
+import 'crypto_con_dek.dart';
+import 'envoltorio_en_drive.dart';
 import 'nivel_bateria_canal.dart';
 import 'servicio_google.dart';
 import 'servicio_respaldo_motor.dart';
@@ -96,6 +99,15 @@ final class ArmadorDeRespaldoNocturno {
         conectividad: ConectividadDelMotor(_conectividad),
       );
       final auditoria = AuditoriaBackupLocal(db);
+      // La clave envuelta con la contraseña viaja con el respaldo (ADR-006, HU-SYNC-006): también el de
+      // la noche la deja en Drive si no estaba. Nunca lanza.
+      final cripto = CryptoConDek(_custodia.leerDek);
+      final envoltorio = EnvoltorioEnDrive(
+        envoltorios: () async => GoogleDriveArchive(token: _token, digest: cripto.digest),
+        keyId: cripto.keyId,
+        envoltorioLocal: _custodia.leerEnvoltorioCodificado,
+        desactualizado: () async => await _custodia.envoltorioDesactualizadoPara() != null,
+      );
       final servicio = ServicioRespaldoMotor(
         backup: () => motor.backup,
         estadoDrive: () async => (await _drive.estado(usuarioId)).fold((f) => throw f, (e) => e),
@@ -103,7 +115,10 @@ final class ArmadorDeRespaldoNocturno {
         bateria: const NivelBateriaDesconocido(),
         alPermisoRevocado: () => _drive.marcarPermisoRevocado(usuarioId),
         alSinEspacio: () => _drive.marcarSinEspacio(usuarioId),
-        alGuardado: () => _drive.marcarRespaldoGuardado(usuarioId),
+        alGuardado: () async {
+          await _drive.marcarRespaldoGuardado(usuarioId);
+          await envoltorio.sincronizar();
+        },
         alVerificar: (informe) async => auditoria.registrar(
           cuando: informe.checkedAt,
           hayProblema: informe.needsRebase,

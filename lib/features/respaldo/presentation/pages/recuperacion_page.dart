@@ -458,6 +458,12 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
             hasta,
           ),
         ),
+        if (informe != null && informe.respaldosSinAbrir > 0)
+          AvisoDrive(
+            key: const Key('recuperacion_sin_abrir'),
+            clase: ClaseAvisoDrive.advertencia,
+            texto: TextosRecuperacion.respaldosSinAbrir(informe.respaldosSinAbrir),
+          ),
         _Filas(
           filas: [
             (TextosRecuperacion.quedoAfuera, TextosRecuperacion.loPosteriorA(dia)),
@@ -507,6 +513,12 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
               : TextosRecuperacion.comoElDia(TextosRecuperacion.diaYHora(informe.fechaDelRespaldo)),
         ),
         if (resumen != null) _FilasDeResumen(resumen: resumen),
+        if (informe != null && informe.respaldosSinAbrir > 0)
+          AvisoDrive(
+            key: const Key('recuperacion_sin_abrir'),
+            clase: ClaseAvisoDrive.advertencia,
+            texto: TextosRecuperacion.respaldosSinAbrir(informe.respaldosSinAbrir),
+          ),
       ],
       cta: _Accion(
         TextosRecuperacion.irAMiInicio,

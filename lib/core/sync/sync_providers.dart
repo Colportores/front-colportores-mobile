@@ -8,6 +8,9 @@ import 'package:sync_engine/sync_engine.dart';
 
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
+import '../../features/respaldo/data/services/crypto_con_dek.dart';
+import '../../features/respaldo/data/services/envoltorio_en_drive.dart';
+import '../../features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import '../../features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
@@ -65,13 +68,52 @@ final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
   return RealtimeDeSupabase(FuenteDeCambiosSupabase(Supabase.instance.client));
 });
 
+/// El cifrado del backup: gzip y AES-256-GCM con la DEK de la DB. La DEK se pide al almacén en cada
+/// cifrado (no se guarda acá).
+final criptoConDekProvider = Provider<CryptoConDek>(
+  (ref) => CryptoConDek(() => ref.read(custodiaClaveDbProvider).leerDek()),
+);
+
+/// El `appDataFolder` de Drive de la persona (HU-SYNC-004/005/006): el token se pide en cada pedido,
+/// así que sin Drive conectado armar esto no toca nada y los pedidos fallan con `ArchiveSinToken`.
+final archivoDriveProvider = Provider<GoogleDriveArchive>(
+  (ref) => GoogleDriveArchive(
+    token: ref.watch(tokenDriveProvider),
+    digest: ref.watch(criptoConDekProvider).digest,
+  ),
+);
+
+/// La DEK envuelta con la contraseña, en Drive junto al respaldo (ADR-006, HU-SYNC-006): sin ella,
+/// el respaldo no se abre en un teléfono nuevo. Se sube después de cada respaldo y al cambiar la
+/// contraseña.
+final envoltorioEnDriveProvider = Provider<EnvoltorioEnDrive>((ref) {
+  final custodia = ref.watch(custodiaClaveDbProvider);
+  final token = ref.watch(tokenDriveProvider);
+  final archivo = ref.watch(archivoDriveProvider);
+  return EnvoltorioEnDrive(
+    envoltorios: () async => await token() == null ? null : archivo,
+    keyId: ref.watch(criptoConDekProvider).keyId,
+    envoltorioLocal: custodia.leerEnvoltorioCodificado,
+    desactualizado: () async => await custodia.envoltorioDesactualizadoPara() != null,
+  );
+});
+
 /// El motor, mientras la DB local está abierta (`dbLocalProvider`); `null` sin DB.
 ///
 /// La cola vive en esa DB, así que el motor se arma con ella y se tira cuando se cierra (cerrar
 /// sesión, HU-AUTH-010): un motor con la DB cerrada no tiene dónde encolar.
+///
+/// **También `null` mientras el asistente de recuperación está abierto** (decisión de Cristian,
+/// 04/11, «Motor vivo»): la recuperación pasa los datos del respaldo a esta DB y no puede haber un
+/// motor escuchándola, subiendo la cola o bajando el delta a la vez. El asistente trae su propio
+/// motor, que se cierra al terminar; cuando el asistente cierra, este se arma de nuevo.
 final motorSyncProvider = Provider<SyncEngine?>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) return null;
+  if (ref.watch(asistenteDeRecuperacionHabilitadoProvider) &&
+      ref.watch(recuperacionPendienteProvider.select((r) => r.value ?? false))) {
+    return null;
+  }
   // El backup E2E en el Drive de la persona (HU-SYNC-005, ADR-006) se arma con la receta de
   // `armarMotorDeSync`, la misma del respaldo nocturno.
   final motor = armarMotorDeSync(

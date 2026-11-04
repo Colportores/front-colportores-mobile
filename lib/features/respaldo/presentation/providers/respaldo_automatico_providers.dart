@@ -54,7 +54,12 @@ final servicioRespaldoProvider = Provider<ServicioRespaldo>((ref) {
     bateria: bateria,
     alPermisoRevocado: () => estadoDrive().permisoRevocado(),
     alSinEspacio: () => estadoDrive().sinEspacio(),
-    alGuardado: () => estadoDrive().respaldoGuardado(),
+    alGuardado: () async {
+      await estadoDrive().respaldoGuardado();
+      // La clave envuelta viaja con el respaldo (ADR-006): sin ella, el respaldo no se abre en otro
+      // teléfono. No espera: nunca lanza y un fallo se reintenta con el próximo respaldo.
+      unawaited(ref.read(envoltorioEnDriveProvider).sincronizar());
+    },
     alVerificar: (informe) async => auditoria?.registrar(
       cuando: informe.checkedAt,
       hayProblema: informe.needsRebase,

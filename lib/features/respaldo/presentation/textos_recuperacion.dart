@@ -55,6 +55,13 @@ abstract final class TextosRecuperacion {
   static String confirmacionPrevia(String megas) =>
       'Vamos a restaurar $megas. La operación puede tardar varios minutos.';
 
+  /// 34·08 (y 34·07) cuando [n] respaldos de los que había no se pudieron abrir (decisión del
+  /// 04/11, #610 P1): solo se dice lo que es verdad —la recuperación no borra ni pisa ningún
+  /// respaldo—. Propuesta de texto, mapa §2.
+  static String respaldosSinAbrir(int n) => n == 1
+      ? 'No pudimos abrir 1 respaldo con tu contraseña. Sigue en tu Google Drive, sin tocar.'
+      : 'No pudimos abrir $n respaldos con tu contraseña. Siguen en tu Google Drive, sin tocar.';
+
   // 34·05.
   static const infoRestaurando =
       'Lo que había en este teléfono no se toca hasta que termine. Si se corta, no se pierde nada.';
