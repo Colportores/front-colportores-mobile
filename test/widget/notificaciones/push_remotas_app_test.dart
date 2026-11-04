@@ -180,4 +180,41 @@ void main() {
     final barra = tester.getRect(find.byType(AppBar));
     expect(aviso.top, greaterThanOrEqualTo(barra.bottom));
   });
+
+  testWidgets(
+    'dado un aviso a la vista en Hoy, entonces arranca debajo de la fecha y del estado de '
+    'la jornada (decisión del 03/11, «P1 del QA»)',
+    (tester) async {
+      await abrirApp(tester, _telefono(), extra: extra());
+      push.llegaConLaAppAbierta(_pedidoAutorizado());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final aviso = tester.getRect(_aviso);
+      for (final clave in ['jornada_fecha', 'jornada_chip']) {
+        final hallado = find.byKey(Key(clave));
+        if (hallado.evaluate().isEmpty) continue;
+        expect(
+          tester.getRect(hallado).overlaps(aviso),
+          isFalse,
+          reason: '$clave queda tapado por el aviso',
+        );
+      }
+      expect(find.byKey(const Key('jornada_fecha')), findsOneWidget);
+    },
+  );
+
+  testWidgets('dado el centro abierto (otra pantalla, sin encabezado marcado), cuando llega una '
+      'push, entonces el aviso va debajo de su barra superior', (tester) async {
+    await abrirApp(tester, _telefono(), extra: extra());
+    await tester.tap(find.byKey(const Key('inicio_notificaciones')));
+    await tester.pumpAndSettle();
+    expect(find.byType(CentroNotificacionesPage), findsOneWidget);
+
+    push.llegaConLaAppAbierta(_pedidoAutorizado());
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(tester.getRect(_aviso).top, kToolbarHeight + 8);
+  });
 }

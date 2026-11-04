@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/notificacion.dart';
 import '../../domain/entities/tipo_notificacion.dart';
 import '../providers/push_remotas_providers.dart';
+import 'ancla_aviso_push.dart';
 
 /// Los textos del aviso con la app abierta (24C·08). El canvas dibuja «AHORA» y «Tocá para ver el
 /// detalle»; el nombre de la ✕ para el lector de pantalla es propuesta.
@@ -327,8 +329,18 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
     }
   }
 
+  /// Dónde arranca el aviso: debajo de la barra de estado y de una barra superior de altura estándar
+  /// y, si la pantalla marcó su encabezado con `AnclaAvisoPush` (Hoy: la fecha y el estado de la
+  /// jornada), debajo de él. En Hoy queda donde lo dibuja el canvas 24C·08, encima de lo que sigue.
+  double _arriba(BuildContext context) {
+    final barra = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final encabezado = bordeMasBajoDeLosEncabezados(ref.watch(anclasAvisoPushProvider));
+    return math.max(barra, encabezado ?? 0) + 8;
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(anclasAvisoPushProvider);
     final aviso = _aviso;
     return Focus(
       canRequestFocus: false,
@@ -340,11 +352,9 @@ class _AvisoPushEnAppHostState extends ConsumerState<AvisoPushEnAppHost> {
           widget.child,
           if (aviso != null)
             // Debajo del encabezado de la pantalla (decisión del 03/11, «P1 del QA»): nunca tapa la fecha,
-            // el engranaje ni la campana. Arranca bajo la barra de estado y una barra superior de
-            // altura estándar; en Hoy queda donde lo dibuja el canvas 24C·08, encima de la franja de
-            // avisos.
+            // el engranaje ni la campana. Ver [_arriba].
             Positioned(
-              top: MediaQuery.paddingOf(context).top + kToolbarHeight + 8,
+              top: _arriba(context),
               left: 12,
               right: 12,
               child: FocusScope(
