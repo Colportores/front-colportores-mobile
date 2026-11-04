@@ -449,11 +449,17 @@ class BackupService {
         }
         try {
           payloads.add(await _crypto.decrypt(cifrado));
-        } on Object {
+        } on Exception {
           // Una base que no se descifra con su propia llave es un archivo roto:
           // igual que la de hash corrupto, esa cadena no tiene base usable y se
           // salta (devuelve `null`); no frena a las demás (HU-SYNC-006, «Varios
           // resp.»). Un incremental ilegible corta la cadena ahí.
+          //
+          // Solo `Exception`: lo que hace el descifrado con un archivo malo
+          // (`BackupIlegible`, o el `FormatException` del gzip) es un error de
+          // datos. Un `Error` (el `StateError` de una clave que ya no está, un
+          // `ArgumentError`) es un bug de programa: pasa, no se disfraza de
+          // «respaldo roto» ni se lo cuenta a la persona como si lo fuera.
           if (i == 0) return null;
           problema = 'unreadable';
           break;

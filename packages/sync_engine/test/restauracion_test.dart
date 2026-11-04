@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:sync_engine/adapters.dart' show BackupIlegible;
 import 'package:sync_engine/sync_engine.dart';
 import 'package:sync_engine/testing.dart';
 import 'package:test/test.dart';
@@ -34,16 +35,33 @@ class _ArchivoQueSeCae extends FakeArchive {
 /// Un cifrado cuya llave no abre lo que hay en Drive: el descifrado falla (un archivo roto o una
 /// llave que no es la de esa cadena) a partir de la llamada [desde] (1 = la base).
 class _CryptoQueNoAbre extends FakeCrypto {
-  _CryptoQueNoAbre({super.llave, this.desde = 1});
+  _CryptoQueNoAbre({
+    super.llave,
+    this.desde = 1,
+    this.error = const FormatException('no se descifra'),
+  });
 
   final int desde;
+
+  /// Qué lanza: el `FormatException` del gzip o el `BackupIlegible` de AES-GCM.
+  final Exception error;
   int _llamadas = 0;
 
   @override
   Future<List<int>> decrypt(List<int> ciphertext) async {
-    if (++_llamadas >= desde) throw const FormatException('no se descifra');
+    if (++_llamadas >= desde) throw error;
     return super.decrypt(ciphertext);
   }
+}
+
+/// Un cifrado con un bug de programa (no un archivo roto): lanza un `Error`, como el
+/// `StateError` de una clave que ya no está.
+class _CryptoConUnBug extends FakeCrypto {
+  _CryptoConUnBug({super.llave});
+
+  @override
+  Future<List<int>> decrypt(List<int> ciphertext) async =>
+      throw StateError('la clave de la cadena ya no está');
 }
 
 /// Una cadena de [partes] eslabones de la llave [llave] en [drive].
@@ -160,6 +178,31 @@ void main() {
 
       expect(await conOtraLlave.restoreDetailed(), isNull);
       expect(nuevo.restored, isNull);
+    });
+
+    test('un Error al descifrar (un bug, no un archivo roto) no se disfraza de base ilegible',
+        () async {
+      await _cadena(drive, origen);
+      final conUnBug = BackupService(
+        archive: drive,
+        crypto: _CryptoConUnBug(llave: 'a'),
+        snapshot: nuevo,
+      );
+
+      await expectLater(conUnBug.restoreDetailed(), throwsStateError);
+      expect(nuevo.restored, isNull);
+    });
+
+    test('un BackupIlegible al descifrar sí es un archivo roto: la cadena se salta',
+        () async {
+      await _cadena(drive, origen);
+      final roto = BackupService(
+        archive: drive,
+        crypto: _CryptoQueNoAbre(llave: 'a', error: const BackupIlegible('roto')),
+        snapshot: nuevo,
+      );
+
+      expect(await roto.restoreDetailed(), isNull);
     });
 
     test('un incremental que no se descifra corta la cadena ahí, con la base aplicada',
