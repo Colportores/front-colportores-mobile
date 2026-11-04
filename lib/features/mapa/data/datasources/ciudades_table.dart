@@ -8,10 +8,11 @@ import '../../../../core/database/fecha_utc_converter.dart';
 ///
 /// Misma forma que `public.ciudad` (backend-supabase 0001), con las diferencias del motor de siempre
 /// (ver `Ubicaciones`): fechas en epoch ms UTC, sin claves foráneas ni defaults de servidor. **Solo
-/// las columnas que la app lee hoy**: el nombre y el centro (la propuesta de ciudad del alta mide la
-/// distancia al centro). El servidor manda además `pais_id`, el rectángulo (0031), `departamento`
-/// (0066) y `origen` (0109); el motor ignora lo que la tabla local no tiene, y cada una se suma
-/// cuando una pantalla la pida (el rectángulo, con el paquete del mapa por ciudad, #189).
+/// las columnas que la app lee hoy**: el nombre, el centro (la propuesta de ciudad del alta mide la
+/// distancia al centro) y el departamento («Mapas offline» ofrece el mapa de su departamento, #619).
+/// El servidor manda además `pais_id`, el rectángulo (0031) y `origen` (0109); el motor ignora lo que
+/// la tabla local no tiene, y cada una se suma cuando una pantalla la pida (el rectángulo, con el
+/// paquete del mapa por ciudad, #189).
 @DataClassName('CiudadFila')
 class Ciudades extends Table {
   @override
@@ -25,6 +26,11 @@ class Ciudades extends Table {
   RealColumn get latCentro => real()();
 
   RealColumn get lonCentro => real()();
+
+  /// El departamento al que pertenece la ciudad («San José», «Rivera»…), como lo carga el Admin
+  /// (backend-supabase 0066). `null` si el servidor todavía no lo cargó o el teléfono aún no lo bajó:
+  /// sin él no se ofrece «Mi departamento».
+  TextColumn get departamento => text().nullable()();
 
   /// Zoom con el que se abre el mapa de la ciudad (1 a 22).
   IntColumn get zoomInicial => integer().withDefault(const Constant(13))();

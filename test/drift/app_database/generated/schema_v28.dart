@@ -13051,6 +13051,14 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
+  late final GeneratedColumn<String> departamento = GeneratedColumn<String>(
+    'departamento',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> zoomInicial = GeneratedColumn<int>(
     'zoom_inicial',
     aliasedName,
@@ -13107,6 +13115,7 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
     nombre,
     latCentro,
     lonCentro,
+    departamento,
     zoomInicial,
     createdAt,
     updatedAt,
@@ -13141,6 +13150,10 @@ class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
         DriftSqlType.double,
         data['${effectivePrefix}lon_centro'],
       )!,
+      departamento: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}departamento'],
+      ),
       zoomInicial: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}zoom_inicial'],
@@ -13184,6 +13197,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
   final String nombre;
   final double latCentro;
   final double lonCentro;
+  final String? departamento;
   final int zoomInicial;
   final int createdAt;
   final int updatedAt;
@@ -13195,6 +13209,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     required this.nombre,
     required this.latCentro,
     required this.lonCentro,
+    this.departamento,
     required this.zoomInicial,
     required this.createdAt,
     required this.updatedAt,
@@ -13209,6 +13224,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     map['nombre'] = Variable<String>(nombre);
     map['lat_centro'] = Variable<double>(latCentro);
     map['lon_centro'] = Variable<double>(lonCentro);
+    if (!nullToAbsent || departamento != null) {
+      map['departamento'] = Variable<String>(departamento);
+    }
     map['zoom_inicial'] = Variable<int>(zoomInicial);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -13228,6 +13246,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: Value(nombre),
       latCentro: Value(latCentro),
       lonCentro: Value(lonCentro),
+      departamento: departamento == null && nullToAbsent
+          ? const Value.absent()
+          : Value(departamento),
       zoomInicial: Value(zoomInicial),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -13251,6 +13272,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: serializer.fromJson<String>(json['nombre']),
       latCentro: serializer.fromJson<double>(json['latCentro']),
       lonCentro: serializer.fromJson<double>(json['lonCentro']),
+      departamento: serializer.fromJson<String?>(json['departamento']),
       zoomInicial: serializer.fromJson<int>(json['zoomInicial']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -13267,6 +13289,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       'nombre': serializer.toJson<String>(nombre),
       'latCentro': serializer.toJson<double>(latCentro),
       'lonCentro': serializer.toJson<double>(lonCentro),
+      'departamento': serializer.toJson<String?>(departamento),
       'zoomInicial': serializer.toJson<int>(zoomInicial),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -13281,6 +13304,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     String? nombre,
     double? latCentro,
     double? lonCentro,
+    Value<String?> departamento = const Value.absent(),
     int? zoomInicial,
     int? createdAt,
     int? updatedAt,
@@ -13292,6 +13316,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     nombre: nombre ?? this.nombre,
     latCentro: latCentro ?? this.latCentro,
     lonCentro: lonCentro ?? this.lonCentro,
+    departamento: departamento.present ? departamento.value : this.departamento,
     zoomInicial: zoomInicial ?? this.zoomInicial,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -13305,6 +13330,9 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
       nombre: data.nombre.present ? data.nombre.value : this.nombre,
       latCentro: data.latCentro.present ? data.latCentro.value : this.latCentro,
       lonCentro: data.lonCentro.present ? data.lonCentro.value : this.lonCentro,
+      departamento: data.departamento.present
+          ? data.departamento.value
+          : this.departamento,
       zoomInicial: data.zoomInicial.present
           ? data.zoomInicial.value
           : this.zoomInicial,
@@ -13325,6 +13353,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
           ..write('nombre: $nombre, ')
           ..write('latCentro: $latCentro, ')
           ..write('lonCentro: $lonCentro, ')
+          ..write('departamento: $departamento, ')
           ..write('zoomInicial: $zoomInicial, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -13341,6 +13370,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
     nombre,
     latCentro,
     lonCentro,
+    departamento,
     zoomInicial,
     createdAt,
     updatedAt,
@@ -13356,6 +13386,7 @@ class CiudadData extends DataClass implements Insertable<CiudadData> {
           other.nombre == this.nombre &&
           other.latCentro == this.latCentro &&
           other.lonCentro == this.lonCentro &&
+          other.departamento == this.departamento &&
           other.zoomInicial == this.zoomInicial &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -13369,6 +13400,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
   final Value<String> nombre;
   final Value<double> latCentro;
   final Value<double> lonCentro;
+  final Value<String?> departamento;
   final Value<int> zoomInicial;
   final Value<int> createdAt;
   final Value<int> updatedAt;
@@ -13381,6 +13413,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     this.nombre = const Value.absent(),
     this.latCentro = const Value.absent(),
     this.lonCentro = const Value.absent(),
+    this.departamento = const Value.absent(),
     this.zoomInicial = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -13394,6 +13427,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     required String nombre,
     required double latCentro,
     required double lonCentro,
+    this.departamento = const Value.absent(),
     this.zoomInicial = const Value.absent(),
     required int createdAt,
     required int updatedAt,
@@ -13412,6 +13446,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     Expression<String>? nombre,
     Expression<double>? latCentro,
     Expression<double>? lonCentro,
+    Expression<String>? departamento,
     Expression<int>? zoomInicial,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
@@ -13425,6 +13460,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
       if (nombre != null) 'nombre': nombre,
       if (latCentro != null) 'lat_centro': latCentro,
       if (lonCentro != null) 'lon_centro': lonCentro,
+      if (departamento != null) 'departamento': departamento,
       if (zoomInicial != null) 'zoom_inicial': zoomInicial,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -13440,6 +13476,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     Value<String>? nombre,
     Value<double>? latCentro,
     Value<double>? lonCentro,
+    Value<String?>? departamento,
     Value<int>? zoomInicial,
     Value<int>? createdAt,
     Value<int>? updatedAt,
@@ -13453,6 +13490,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
       nombre: nombre ?? this.nombre,
       latCentro: latCentro ?? this.latCentro,
       lonCentro: lonCentro ?? this.lonCentro,
+      departamento: departamento ?? this.departamento,
       zoomInicial: zoomInicial ?? this.zoomInicial,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -13477,6 +13515,9 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
     }
     if (lonCentro.present) {
       map['lon_centro'] = Variable<double>(lonCentro.value);
+    }
+    if (departamento.present) {
+      map['departamento'] = Variable<String>(departamento.value);
     }
     if (zoomInicial.present) {
       map['zoom_inicial'] = Variable<int>(zoomInicial.value);
@@ -13509,6 +13550,7 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
           ..write('nombre: $nombre, ')
           ..write('latCentro: $latCentro, ')
           ..write('lonCentro: $lonCentro, ')
+          ..write('departamento: $departamento, ')
           ..write('zoomInicial: $zoomInicial, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -18406,240 +18448,6 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }
 }
 
-class DeudaCasaCache extends Table
-    with TableInfo<DeudaCasaCache, DeudaCasaCacheData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  DeudaCasaCache(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
-    'colportor_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> respuesta = GeneratedColumn<String>(
-    'respuesta',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> leidaEn = GeneratedColumn<int>(
-    'leida_en',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  @override
-  List<GeneratedColumn> get $columns => [colportorId, respuesta, leidaEn];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'deuda_casa_cache';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {colportorId};
-  @override
-  DeudaCasaCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DeudaCasaCacheData(
-      colportorId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}colportor_id'],
-      )!,
-      respuesta: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}respuesta'],
-      )!,
-      leidaEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}leida_en'],
-      )!,
-    );
-  }
-
-  @override
-  DeudaCasaCache createAlias(String alias) {
-    return DeudaCasaCache(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(colportor_id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class DeudaCasaCacheData extends DataClass
-    implements Insertable<DeudaCasaCacheData> {
-  final String colportorId;
-  final String respuesta;
-  final int leidaEn;
-  const DeudaCasaCacheData({
-    required this.colportorId,
-    required this.respuesta,
-    required this.leidaEn,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['colportor_id'] = Variable<String>(colportorId);
-    map['respuesta'] = Variable<String>(respuesta);
-    map['leida_en'] = Variable<int>(leidaEn);
-    return map;
-  }
-
-  DeudaCasaCacheCompanion toCompanion(bool nullToAbsent) {
-    return DeudaCasaCacheCompanion(
-      colportorId: Value(colportorId),
-      respuesta: Value(respuesta),
-      leidaEn: Value(leidaEn),
-    );
-  }
-
-  factory DeudaCasaCacheData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DeudaCasaCacheData(
-      colportorId: serializer.fromJson<String>(json['colportorId']),
-      respuesta: serializer.fromJson<String>(json['respuesta']),
-      leidaEn: serializer.fromJson<int>(json['leidaEn']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'colportorId': serializer.toJson<String>(colportorId),
-      'respuesta': serializer.toJson<String>(respuesta),
-      'leidaEn': serializer.toJson<int>(leidaEn),
-    };
-  }
-
-  DeudaCasaCacheData copyWith({
-    String? colportorId,
-    String? respuesta,
-    int? leidaEn,
-  }) => DeudaCasaCacheData(
-    colportorId: colportorId ?? this.colportorId,
-    respuesta: respuesta ?? this.respuesta,
-    leidaEn: leidaEn ?? this.leidaEn,
-  );
-  DeudaCasaCacheData copyWithCompanion(DeudaCasaCacheCompanion data) {
-    return DeudaCasaCacheData(
-      colportorId: data.colportorId.present
-          ? data.colportorId.value
-          : this.colportorId,
-      respuesta: data.respuesta.present ? data.respuesta.value : this.respuesta,
-      leidaEn: data.leidaEn.present ? data.leidaEn.value : this.leidaEn,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DeudaCasaCacheData(')
-          ..write('colportorId: $colportorId, ')
-          ..write('respuesta: $respuesta, ')
-          ..write('leidaEn: $leidaEn')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(colportorId, respuesta, leidaEn);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is DeudaCasaCacheData &&
-          other.colportorId == this.colportorId &&
-          other.respuesta == this.respuesta &&
-          other.leidaEn == this.leidaEn);
-}
-
-class DeudaCasaCacheCompanion extends UpdateCompanion<DeudaCasaCacheData> {
-  final Value<String> colportorId;
-  final Value<String> respuesta;
-  final Value<int> leidaEn;
-  final Value<int> rowid;
-  const DeudaCasaCacheCompanion({
-    this.colportorId = const Value.absent(),
-    this.respuesta = const Value.absent(),
-    this.leidaEn = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  DeudaCasaCacheCompanion.insert({
-    required String colportorId,
-    required String respuesta,
-    required int leidaEn,
-    this.rowid = const Value.absent(),
-  }) : colportorId = Value(colportorId),
-       respuesta = Value(respuesta),
-       leidaEn = Value(leidaEn);
-  static Insertable<DeudaCasaCacheData> custom({
-    Expression<String>? colportorId,
-    Expression<String>? respuesta,
-    Expression<int>? leidaEn,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (colportorId != null) 'colportor_id': colportorId,
-      if (respuesta != null) 'respuesta': respuesta,
-      if (leidaEn != null) 'leida_en': leidaEn,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  DeudaCasaCacheCompanion copyWith({
-    Value<String>? colportorId,
-    Value<String>? respuesta,
-    Value<int>? leidaEn,
-    Value<int>? rowid,
-  }) {
-    return DeudaCasaCacheCompanion(
-      colportorId: colportorId ?? this.colportorId,
-      respuesta: respuesta ?? this.respuesta,
-      leidaEn: leidaEn ?? this.leidaEn,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (colportorId.present) {
-      map['colportor_id'] = Variable<String>(colportorId.value);
-    }
-    if (respuesta.present) {
-      map['respuesta'] = Variable<String>(respuesta.value);
-    }
-    if (leidaEn.present) {
-      map['leida_en'] = Variable<int>(leidaEn.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DeudaCasaCacheCompanion(')
-          ..write('colportorId: $colportorId, ')
-          ..write('respuesta: $respuesta, ')
-          ..write('leidaEn: $leidaEn, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class DatabaseAtV28 extends GeneratedDatabase {
   DatabaseAtV28(QueryExecutor e) : super(e);
   late final Jornada jornada = Jornada(this);
@@ -18680,7 +18488,6 @@ class DatabaseAtV28 extends GeneratedDatabase {
   late final Entrega entrega = Entrega(this);
   late final Devolucion devolucion = Devolucion(this);
   late final Deposito deposito = Deposito(this);
-  late final DeudaCasaCache deudaCasaCache = DeudaCasaCache(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -18865,7 +18672,6 @@ class DatabaseAtV28 extends GeneratedDatabase {
     entrega,
     devolucion,
     deposito,
-    deudaCasaCache,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,
