@@ -253,10 +253,15 @@ milisegundo— y en la calle, donde las ventas están separadas por horas, cada 
 sigue saliendo sola. `engine.flush()` la saltea cuando no se puede esperar: al
 pasar la app a segundo plano, al cerrar la jornada.
 
-También quedó medido, sin arreglar, el costo de no compactar la outbox: editar
-la misma fila 51 veces manda 51 jobs, **51× más bytes que mandar solo el
-último**. Compactar cambia lo que el servidor ve, así que es una decisión del
-contrato y no del motor.
+También quedó medido el costo de no compactar la outbox: editar la misma fila
+51 veces mandaba 51 jobs, **51× más bytes que mandar solo el último**. Hoy el
+motor **compacta las escrituras `PENDING` de una misma fila**: en `stage()`, un
+`insert` o `update` nuevo se funde en el job `PENDING` anterior de esa fila (el
+payload fundido tiene el último valor de cada campo, y el job conserva su `op`
+y la `sync_version` esperada), así que las 51 ediciones suben como una. No se
+funde un `delete`, ni nada que ya esté `IN_FLIGHT`, `DONE` o enviado (el
+servidor ya lo vio). Es la decisión de «Fusión cola» (23/10) y la prueba está en
+[`test/version_de_vuelta_test.dart`](test/version_de_vuelta_test.dart).
 
 ## Dependencias entre entidades — un agujero abierto
 

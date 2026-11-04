@@ -4143,16 +4143,6 @@
             "dsl_features": []
           },
           {
-            "name": "ticket_id",
-            "getter_name": "ticketId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -4727,12 +4717,12 @@
       "references": [],
       "type": "table",
       "data": {
-        "name": "ticket",
+        "name": "deuda_casa_cache",
         "was_declared_in_moor": false,
         "columns": [
           {
-            "name": "id",
-            "getter_name": "id",
+            "name": "colportor_id",
+            "getter_name": "colportorId",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -4741,18 +4731,8 @@
             "dsl_features": []
           },
           {
-            "name": "usuario_id",
-            "getter_name": "usuarioId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "tipo",
-            "getter_name": "tipo",
+            "name": "respuesta",
+            "getter_name": "respuesta",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -4761,140 +4741,8 @@
             "dsl_features": []
           },
           {
-            "name": "url_cloud",
-            "getter_name": "urlCloud",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "subido_en",
-            "getter_name": "subidoEn",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "revisado_por",
-            "getter_name": "revisadoPor",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "revisado_en",
-            "getter_name": "revisadoEn",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "monto",
-            "getter_name": "monto",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "fecha",
-            "getter_name": "fecha",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "numero_autorizacion",
-            "getter_name": "numeroAutorizacion",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "tarjeta_tipo",
-            "getter_name": "tarjetaTipo",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "tarjeta_marca",
-            "getter_name": "tarjetaMarca",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "estado",
-            "getter_name": "estado",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('\\'PENDIENTE\\'')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "motivo_rechazo",
-            "getter_name": "motivoRechazo",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "campania_validadora_id",
-            "getter_name": "campaniaValidadoraId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
+            "name": "leida_en",
+            "getter_name": "leidaEn",
             "moor_type": "int",
             "nullable": false,
             "customConstraints": null,
@@ -4905,176 +4753,18 @@
               "dart_expr": "const FechaUtcConverter()",
               "dart_type_name": "DateTime"
             }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
           }
         ],
         "is_virtual": false,
         "without_rowid": false,
-        "constraints": [
-          "CHECK (tipo IN ('COBRO_TARJETA', 'DEPOSITO', 'OTRO'))",
-          "CHECK (estado IN ('PENDIENTE', 'VALIDADO', 'RECHAZADO'))",
-          "CHECK (monto IS NULL OR monto > 0)",
-          "CHECK (tarjeta_tipo IS NULL OR tarjeta_tipo IN ('CREDITO', 'DEBITO'))"
-        ],
+        "constraints": [],
         "explicit_pk": [
-          "id"
+          "colportor_id"
         ]
       }
     },
     {
       "id": 36,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "ticket_foto_local",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "ticket_id",
-            "getter_name": "ticketId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "tipo_de_imagen",
-            "getter_name": "tipoDeImagen",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "bytes",
-            "getter_name": "bytes",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "estado",
-            "getter_name": "estado",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('\\'PENDIENTE\\'')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "ruta_local",
-            "getter_name": "rutaLocal",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "intentos",
-            "getter_name": "intentos",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "ultimo_error",
-            "getter_name": "ultimoError",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "creada_en",
-            "getter_name": "creadaEn",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [
-          "CHECK (bytes > 0)",
-          "CHECK (estado IN ('PENDIENTE', 'SUBIDA', 'RECHAZADA'))",
-          "CHECK (intentos >= 0)"
-        ],
-        "explicit_pk": [
-          "ticket_id"
-        ]
-      }
-    },
-    {
-      "id": 37,
       "references": [
         0
       ],
@@ -5097,7 +4787,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 37,
       "references": [
         1
       ],
@@ -5120,7 +4810,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 38,
       "references": [
         2
       ],
@@ -5139,7 +4829,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 39,
       "references": [
         4
       ],
@@ -5158,7 +4848,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 40,
       "references": [
         5
       ],
@@ -5177,7 +4867,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 41,
       "references": [
         6
       ],
@@ -5200,7 +4890,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 42,
       "references": [
         8
       ],
@@ -5223,7 +4913,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 43,
       "references": [
         9
       ],
@@ -5250,7 +4940,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 44,
       "references": [
         9
       ],
@@ -5273,7 +4963,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 45,
       "references": [
         9
       ],
@@ -5296,7 +4986,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 46,
       "references": [
         13
       ],
@@ -5315,7 +5005,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 47,
       "references": [
         13
       ],
@@ -5334,7 +5024,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 48,
       "references": [
         14
       ],
@@ -5357,7 +5047,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 49,
       "references": [
         15
       ],
@@ -5380,7 +5070,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 50,
       "references": [
         15
       ],
@@ -5399,7 +5089,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 51,
       "references": [
         15
       ],
@@ -5418,7 +5108,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 52,
       "references": [
         15
       ],
@@ -5437,7 +5127,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 53,
       "references": [
         16
       ],
@@ -5460,7 +5150,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 54,
       "references": [
         16
       ],
@@ -5479,7 +5169,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 55,
       "references": [
         16
       ],
@@ -5498,7 +5188,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 56,
       "references": [
         18
       ],
@@ -5517,7 +5207,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 57,
       "references": [
         21
       ],
@@ -5536,7 +5226,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 58,
       "references": [
         22
       ],
@@ -5555,7 +5245,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 59,
       "references": [
         22
       ],
@@ -5574,7 +5264,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 60,
       "references": [
         22
       ],
@@ -5593,7 +5283,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 61,
       "references": [
         23
       ],
@@ -5612,7 +5302,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 62,
       "references": [
         23
       ],
@@ -5631,7 +5321,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 63,
       "references": [
         25
       ],
@@ -5650,7 +5340,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 64,
       "references": [
         28
       ],
@@ -5669,7 +5359,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 65,
       "references": [
         29
       ],
@@ -5692,7 +5382,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 66,
       "references": [
         29
       ],
@@ -5711,7 +5401,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 67,
       "references": [
         30
       ],
@@ -5730,7 +5420,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 68,
       "references": [
         31
       ],
@@ -5749,7 +5439,7 @@
       }
     },
     {
-      "id": 70,
+      "id": 69,
       "references": [
         32
       ],
@@ -5768,7 +5458,7 @@
       }
     },
     {
-      "id": 71,
+      "id": 70,
       "references": [
         33
       ],
@@ -5787,7 +5477,7 @@
       }
     },
     {
-      "id": 72,
+      "id": 71,
       "references": [
         34
       ],
@@ -6091,7 +5781,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"ticket_id\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
         }
       ]
     },
@@ -6123,20 +5813,11 @@
       ]
     },
     {
-      "name": "ticket",
+      "name": "deuda_casa_cache",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"ticket\" (\"id\" TEXT NOT NULL, \"usuario_id\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"url_cloud\" TEXT NULL, \"subido_en\" INTEGER NULL, \"revisado_por\" TEXT NULL, \"revisado_en\" INTEGER NULL, \"monto\" INTEGER NULL, \"fecha\" INTEGER NULL, \"numero_autorizacion\" TEXT NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PENDIENTE', \"motivo_rechazo\" TEXT NULL, \"campania_validadora_id\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo IN ('COBRO_TARJETA', 'DEPOSITO', 'OTRO')), CHECK (estado IN ('PENDIENTE', 'VALIDADO', 'RECHAZADO')), CHECK (monto IS NULL OR monto > 0), CHECK (tarjeta_tipo IS NULL OR tarjeta_tipo IN ('CREDITO', 'DEBITO')));"
-        }
-      ]
-    },
-    {
-      "name": "ticket_foto_local",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"ticket_foto_local\" (\"ticket_id\" TEXT NOT NULL, \"tipo_de_imagen\" TEXT NOT NULL, \"bytes\" INTEGER NOT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PENDIENTE', \"ruta_local\" TEXT NULL, \"intentos\" INTEGER NOT NULL DEFAULT 0, \"ultimo_error\" TEXT NULL, \"creada_en\" INTEGER NOT NULL, PRIMARY KEY (\"ticket_id\"), CHECK (bytes > 0), CHECK (estado IN ('PENDIENTE', 'SUBIDA', 'RECHAZADA')), CHECK (intentos >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"deuda_casa_cache\" (\"colportor_id\" TEXT NOT NULL, \"respuesta\" TEXT NOT NULL, \"leida_en\" INTEGER NOT NULL, PRIMARY KEY (\"colportor_id\"));"
         }
       ]
     },

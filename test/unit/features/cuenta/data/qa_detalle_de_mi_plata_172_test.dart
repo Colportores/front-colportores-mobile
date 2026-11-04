@@ -1,5 +1,5 @@
 // QA de «Mi plata» (HU-CTA-003, #172), el cálculo contra tablas reales: los bordes que el implementador
-// no cubrió. Cada lista tiene que sumar lo que dice su tarjeta de Mi Cuenta.
+// no cubrió.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';

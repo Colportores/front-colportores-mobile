@@ -1,8 +1,11 @@
-// «Mi plata» (vista 33C, HU-CTA-003, #172): un test por artboard (33C·01 a 33C·03), cargando y error
-// (los de Mi Cuenta) y los casos límite
-// de cada flujo: doble toque, ir y volver, la falla a mitad, las listas largas y el texto al 200 %.
+// «Mi plata» (vista 33C, HU-CTA-003, #172 y #431): un test por artboard (33C·01 a 33C·03), «Depositado»
+// con lo validado y, aparte, lo que espera su validación, cargando y error (los de Mi Cuenta) y los
+// casos límite de cada flujo: doble toque, ir y volver, la falla a mitad, las listas largas y el texto
+// al 200 %.
 import 'package:colportores_mobile/features/cuenta/domain/entities/detalle_de_mi_plata.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/widgets/piezas_mi_plata.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/totales_de_depositos.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +35,18 @@ Future<void> _verYTocar(WidgetTester tester, Key llave) async {
   await _tocar(tester, llave);
 }
 
+/// El detalle del canvas con «Depositado» a gusto del test.
+DetalleDeMiPlata _conDepositos({
+  List<DepositoDeLaLista> validados = const [],
+  List<DepositoDeLaLista> porValidar = const [],
+}) => DetalleDeMiPlata(
+  depositado: DepositadoEnMiPlata(validados: validados, porValidar: porValidar),
+  enManoCentavos: detalleDelCanvas.enManoCentavos,
+  enMano: detalleDelCanvas.enMano,
+  porCobrarCentavos: detalleDelCanvas.porCobrarCentavos,
+  porCobrar: detalleDelCanvas.porCobrar,
+);
+
 void main() {
   group('33C·01 · En mano abierto', () {
     testWidgets('dado que toco «En mano» en Mi Cuenta, veo Mi plata con En mano desplegado: cada '
@@ -57,17 +72,54 @@ void main() {
       expect(find.text('Raúl Castro · desde 01/10'), findsNothing);
     });
 
-    testWidgets(
-      '«Depositado» y «Registrar depósito» no se dibujan: esperan su dato y su pantalla',
-      (tester) async {
-        await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
+    testWidgets('«Registrar depósito» y «Mis tickets» no se dibujan: esperan su pantalla', (
+      tester,
+    ) async {
+      await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
 
-        for (final texto in ['Depositado', 'DEPOSITADO', 'Registrar depósito', 'Mis tickets']) {
-          expect(find.textContaining(texto), findsNothing, reason: texto);
-        }
-        expect(find.textContaining('Próximamente'), findsNothing);
-      },
-    );
+      for (final texto in ['Registrar depósito', 'Mis tickets']) {
+        expect(find.textContaining(texto), findsNothing, reason: texto);
+      }
+      expect(find.textContaining('Próximamente'), findsNothing);
+    });
+
+    testWidgets('un depósito sale de la mano: aparece restando, para que la lista sume lo que dice '
+        'la cifra', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: DetalleDeMiPlata(
+            enManoCentavos: 140000,
+            enMano: [
+              MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(20), centavos: 240000),
+              MovimientoEnMano(
+                cliente: '',
+                fecha: dia(21),
+                centavos: -100000,
+                deposito: depositoDe(1000, 21),
+              ),
+            ],
+            porCobrarCentavos: 0,
+            porCobrar: const [],
+          ),
+        ),
+      );
+
+      expect(find.text(r'$ 1.400  ▴'), findsOneWidget);
+      expect(find.text('Pedro Gómez · 20/10'), findsOneWidget);
+      expect(find.text('Depósito · Casa editora · Banco · 21/10'), findsOneWidget);
+      expect(find.text(r'− $ 1.000'), findsOneWidget);
+    });
+
+    testWidgets('«Depositado» va primero, plegado, con su total (33C·01)', (tester) async {
+      await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
+
+      expect(find.text(r'$ 26.900  ▾'), findsOneWidget);
+      final depositado = tester.getTopLeft(find.byKey(const Key('mi_plata_categoria_depositado')));
+      final enMano = tester.getTopLeft(find.byKey(const Key('mi_plata_categoria_enMano')));
+      expect(depositado.dy, lessThan(enMano.dy));
+      expect(find.text('Casa editora · Banco · 12/10'), findsNothing);
+    });
   });
 
   group('33C·02 · Por cobrar abierto', () {
@@ -136,6 +188,197 @@ void main() {
       );
 
       expect(find.text('No tenés nada por cobrar.'), findsOneWidget);
+    });
+  });
+
+  group('33C · Depositado abierto', () {
+    testWidgets('dado que toco «Depositado» en Mi Cuenta, veo Mi plata con Depositado desplegado: '
+        'cada depósito validado con para qué era, dónde, la fecha y el monto', (tester) async {
+      await montarCuentaConDetalle(
+        tester,
+        RepositorioDeCuentaControlable(inicial: resumenConDepositado),
+        RepositorioDeDetalleControlable(inicial: detalleDelCanvas),
+      );
+
+      await _tocar(tester, const Key('cuenta_depositado'));
+
+      expect(find.text('Mi plata'), findsOneWidget);
+      expect(find.text(r'$ 26.900  ▴'), findsOneWidget);
+      expect(find.text('Casa editora · Banco · 12/10'), findsOneWidget);
+      expect(find.text(r'$ 10.000'), findsOneWidget);
+      expect(find.text('Casa editora · Oficina · 15/10'), findsOneWidget);
+      expect(find.text(r'$ 9.000'), findsOneWidget);
+      expect(find.text('Alquiler · Banco · 19/10'), findsOneWidget);
+      expect(find.text(r'$ 7.900'), findsOneWidget);
+      // Nada espera su validación: no hay aparte.
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsNothing);
+      // «En mano» y «Por cobrar» quedan plegadas.
+      expect(find.text(r'$ 2.400  ▾'), findsOneWidget);
+      expect(find.text(r'$ 9.700  ▾'), findsOneWidget);
+    });
+
+    testWidgets('lo que espera su validación va aparte y no suma a la cifra', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: _conDepositos(
+            validados: [depositoDe(10000, 12)],
+            porValidar: [
+              depositoDe(1800, 22, validado: false),
+              depositoDe(
+                500,
+                23,
+                validado: false,
+                destino: DestinoDeDeposito.retiroCoordinador,
+                concepto: ConceptoDeDeposito.alquiler,
+              ),
+            ],
+          ),
+        ),
+        abierta: CategoriaDeMiPlata.depositado,
+      );
+
+      // La cifra es solo lo validado.
+      expect(find.text(r'$ 10.000  ▴'), findsOneWidget);
+      expect(find.text('Casa editora · Banco · 12/10'), findsOneWidget);
+      // Aparte: el total de lo que espera, qué pasa con eso y cada depósito.
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsOneWidget);
+      expect(find.text('Por validar'), findsOneWidget);
+      expect(find.text(r'$ 2.300'), findsOneWidget);
+      expect(find.text('Suman a Depositado cuando tu coordinador los valide.'), findsOneWidget);
+      expect(find.text('Casa editora · Banco · 22/10'), findsOneWidget);
+      expect(find.text(r'$ 1.800'), findsOneWidget);
+      expect(find.text('Alquiler · Retiro · 23/10'), findsOneWidget);
+      expect(find.text(r'$ 500'), findsOneWidget);
+      // Lo que espera va debajo de lo validado.
+      final validado = tester.getTopLeft(find.byKey(const Key('mi_plata_fila_depositado_0')));
+      final aparte = tester.getTopLeft(find.byKey(const Key('mi_plata_por_validar')));
+      expect(aparte.dy, greaterThan(validado.dy));
+    });
+
+    testWidgets('si solo hay depósitos por validar, la cifra es cero y no dice que no hay '
+        'depósitos', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: _conDepositos(porValidar: [depositoDe(1800, 22, validado: false)]),
+        ),
+        abierta: CategoriaDeMiPlata.depositado,
+      );
+
+      expect(find.text(r'$ 0  ▴'), findsOneWidget);
+      expect(find.byKey(const Key('mi_plata_vacio_depositado')), findsNothing);
+      expect(find.text('Casa editora · Banco · 22/10'), findsOneWidget);
+      // El total del aparte y la fila: el mismo monto dos veces.
+      expect(find.text(r'$ 1.800'), findsNWidgets(2));
+    });
+
+    testWidgets('sin ningún depósito, dice que todavía no registró ninguno', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(inicial: _conDepositos()),
+        abierta: CategoriaDeMiPlata.depositado,
+      );
+
+      expect(find.text(r'$ 0  ▴'), findsOneWidget);
+      expect(find.text('Todavía no registraste ningún depósito.'), findsOneWidget);
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsNothing);
+    });
+
+    testWidgets('mientras el teléfono no bajó nada del servidor, «Depositado» no se dibuja: ni un '
+        'cero inventado', (tester) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: DetalleDeMiPlata(
+            enManoCentavos: detalleDelCanvas.enManoCentavos,
+            enMano: detalleDelCanvas.enMano,
+            porCobrarCentavos: detalleDelCanvas.porCobrarCentavos,
+            porCobrar: detalleDelCanvas.porCobrar,
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('mi_plata_categoria_depositado')), findsNothing);
+      expect(find.text('Depositado'), findsNothing);
+      expect(find.text('En mano'), findsOneWidget);
+    });
+
+    testWidgets('cuando baja la validación de un depósito, pasa de «por validar» a lo validado sin '
+        'recargar', (tester) async {
+      final repo = RepositorioDeDetalleControlable(
+        inicial: _conDepositos(
+          validados: [depositoDe(10000, 12)],
+          porValidar: [depositoDe(1800, 22, validado: false)],
+        ),
+      );
+      await montarMiPlata(tester, repo, abierta: CategoriaDeMiPlata.depositado);
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsOneWidget);
+
+      repo.emitir(_conDepositos(validados: [depositoDe(10000, 12), depositoDe(1800, 22)]));
+      await tester.pumpAndSettle();
+
+      expect(find.text(r'$ 11.800  ▴'), findsOneWidget);
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsNothing);
+      expect(find.text('Casa editora · Banco · 22/10'), findsOneWidget);
+    });
+
+    testWidgets('el lector de pantalla lee cada depósito de una vez y el aparte con su aviso', (
+      tester,
+    ) async {
+      final manejador = tester.ensureSemantics();
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: _conDepositos(
+            validados: [depositoDe(10000, 12)],
+            porValidar: [depositoDe(1800, 22, validado: false)],
+          ),
+        ),
+        abierta: CategoriaDeMiPlata.depositado,
+      );
+
+      expect(
+        _etiqueta(tester, const Key('mi_plata_categoria_depositado')),
+        r'Depositado, $ 10.000, desplegado',
+      );
+      expect(
+        _etiqueta(tester, const Key('mi_plata_fila_depositado_0')),
+        r'Casa editora · Banco · 12/10, $ 10.000',
+      );
+      expect(
+        tester.getSemantics(find.text('Por validar')).label,
+        r'Por validar, $ 1.800. Suman a Depositado cuando tu coordinador los valide.',
+      );
+      expect(
+        _etiqueta(tester, const Key('mi_plata_fila_porValidar_0')),
+        r'Casa editora · Banco · 22/10, $ 1.800',
+      );
+      manejador.dispose();
+    });
+
+    testWidgets('una lista larga de depósitos se arma de a poco y se alcanza desplazando', (
+      tester,
+    ) async {
+      await montarMiPlata(
+        tester,
+        RepositorioDeDetalleControlable(
+          inicial: _conDepositos(
+            validados: [for (var i = 0; i < 200; i++) depositoDe(100 + i, 1 + i % 28)],
+            porValidar: [depositoDe(1800, 22, validado: false)],
+          ),
+        ),
+        abierta: CategoriaDeMiPlata.depositado,
+      );
+
+      expect(find.byKey(const Key('mi_plata_fila_depositado_199')), findsNothing);
+      await tester.dragUntilVisible(
+        find.byKey(const Key('mi_plata_fila_porValidar_0')),
+        find.byKey(const Key('mi_plata_lista')),
+        const Offset(0, -600),
+      );
+      expect(find.byKey(const Key('mi_plata_por_validar')), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -305,6 +548,10 @@ void main() {
         r'Por cobrar, $ 9.700, plegado',
       );
       expect(
+        _etiqueta(tester, const Key('mi_plata_categoria_depositado')),
+        r'Depositado, $ 26.900, plegado',
+      );
+      expect(
         tester.getSemantics(find.byKey(const Key('mi_plata_categoria_enMano'))),
         isSemantics(isButton: true, hasTapAction: true, hasExpandedState: true, isExpanded: true),
       );
@@ -393,37 +640,45 @@ void main() {
       '412x915': Size(412, 915),
     }.entries) {
       for (final escala in [1.0, 2.0]) {
-        testWidgets('a ${tam.key}, texto $escala: sin overflow, las dos categorías y las filas se '
-            'alcanzan, y los toques miden 48 dp', (tester) async {
-          final manejador = tester.ensureSemantics();
-          final detalle = DetalleDeMiPlata(
-            enManoCentavos: 240000,
-            enMano: detalleDelCanvas.enMano,
-            porCobrarCentavos: 970000,
-            porCobrar: detalleDelCanvas.porCobrar,
-          );
-          await montarMiPlata(
-            tester,
-            RepositorioDeDetalleControlable(inicial: detalle),
-            tamano: tam.value,
-            escala: escala,
-          );
-          // Con el texto grande las últimas categorías quedan fuera de la pantalla: se llega
-          // desplazando.
-          await _verYTocar(tester, const Key('mi_plata_categoria_porCobrar'));
+        testWidgets(
+          'a ${tam.key}, texto $escala: sin overflow, las tres categorías, el aparte «por validar» y las '
+          'filas se alcanzan, y los toques miden 48 dp',
+          (tester) async {
+            final manejador = tester.ensureSemantics();
+            final detalle = DetalleDeMiPlata(
+              depositado: DepositadoEnMiPlata(
+                validados: detalleDelCanvas.depositado!.validados,
+                porValidar: [depositoDe(1800, 22, validado: false)],
+              ),
+              enManoCentavos: 240000,
+              enMano: detalleDelCanvas.enMano,
+              porCobrarCentavos: 970000,
+              porCobrar: detalleDelCanvas.porCobrar,
+            );
+            await montarMiPlata(
+              tester,
+              RepositorioDeDetalleControlable(inicial: detalle),
+              tamano: tam.value,
+              escala: escala,
+            );
+            // Con el texto grande las últimas categorías quedan fuera de la pantalla: se llega
+            // desplazando.
+            await _verYTocar(tester, const Key('mi_plata_categoria_depositado'));
+            await tester.dragUntilVisible(
+              find.byKey(const Key('mi_plata_fila_porValidar_0')),
+              find.byKey(const Key('mi_plata_lista')),
+              const Offset(0, -200),
+            );
+            expect(find.text('Casa editora · Banco · 22/10'), findsOneWidget);
+            await _verYTocar(tester, const Key('mi_plata_categoria_porCobrar'));
 
-          await tester.dragUntilVisible(
-            find.byKey(const Key('mi_plata_fila_porCobrar_2')),
-            find.byKey(const Key('mi_plata_lista')),
-            const Offset(0, -200),
-          );
-
-          expect(tester.takeException(), isNull);
-          expect(find.text('Raúl Castro · desde 01/10'), findsOneWidget);
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          manejador.dispose();
-        });
+            expect(tester.takeException(), isNull);
+            expect(find.text('Por cobrar'), findsOneWidget);
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            manejador.dispose();
+          },
+        );
       }
     }
   });

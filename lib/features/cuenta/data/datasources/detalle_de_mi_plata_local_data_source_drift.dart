@@ -1,22 +1,29 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../datos/drift_sync_meta.dart';
 import '../../../cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
+import '../../../depositos/data/datasources/totales_de_depositos_drift.dart';
+import '../../../depositos/domain/entities/totales_de_depositos.dart';
 import '../../domain/entities/detalle_de_mi_plata.dart';
 
-/// Lee de las tablas `venta`, `cobranza`, `devolucion` y `persona` de la DB cifrada el detalle de «Mi
-/// plata» (HU-CTA-003): qué clientes, en qué fecha y por cuánto hay detrás de En mano y Por cobrar.
+/// Lee de las tablas `venta`, `cobranza`, `devolucion`, `deposito` y `persona` de la DB cifrada el
+/// detalle de «Mi plata» (HU-CTA-003): qué depósitos y qué clientes, en qué fecha y por cuánto hay
+/// detrás de Depositado, En mano y Por cobrar.
 ///
-/// Las cifras salen de las mismas cuentas que las de Mi Cuenta ([ResumenDeCuentaLocalDataSourceDrift]
-/// y [CobranzaLocalDataSourceDrift]), así que cada lista suma lo que dice su tarjeta. Cada `Stream`
-/// emite el valor de ahora al suscribirse y uno nuevo **solo si cambió**.
+/// Las cifras salen de las mismas cuentas que las de Mi Cuenta ([ResumenDeCuentaLocalDataSourceDrift],
+/// [CobranzaLocalDataSourceDrift] y [TotalesDeDepositosDrift]), así que cada lista suma lo que dice su
+/// tarjeta. Cada `Stream` emite el valor de ahora al suscribirse y uno nuevo **solo si cambió**.
 final class DetalleDeMiPlataLocalDataSourceDrift {
   /// [_cobranzas] se pasa como `cobranzas:`.
   DetalleDeMiPlataLocalDataSourceDrift(this._db, {required this._cobranzas});
 
   final AppDatabase _db;
   final CobranzaLocalDataSourceDrift _cobranzas;
+  late final _depositos = TotalesDeDepositosDrift(_db);
 
   /// Cuando falta el nombre de la persona (todavía no bajó por el pull).
   static const clienteSinNombre = 'Cliente sin nombre';
@@ -25,6 +32,8 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     _db.ventas,
     _db.cobranzas,
     _db.devoluciones,
+    _db.depositos,
+    _db.syncMetas,
     _db.espacioPersonas,
     _db.espacios,
     _db.ventaItems,
@@ -44,9 +53,9 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     String nombreDe(String espacioPersonaId) =>
         clientes[espacioPersonaId]?.nombre ?? clienteSinNombre;
 
-    // En mano: los cobros en efectivo vivos. Una venta dada de baja no resta: el efectivo que se cobró
-    // sigue en la mano. Las devoluciones no tocan «En mano»: nunca queda plata a favor del cliente
-    // (decisión de Cristian, 03/11, «Devol. saldo»).
+    // En mano: los cobros en efectivo vivos menos lo depositado. Una venta dada de baja no resta: el efectivo que se cobró
+    // sigue en la mano. Una devolución tampoco: nunca queda plata a favor del cliente (decisión de
+    // Cristian, 03/11, «Devol. saldo»).
     final cobros = await _db
         .customSelect(
           'SELECT c.monto AS monto, c.fecha AS fecha, v.espacio_persona_id AS ep FROM cobranza c '
@@ -56,32 +65,52 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
           variables: [Variable<String>(colportorId)],
         )
         .get();
-    final movimientos = [
+    // Lo depositado (validado o por validar) sale de la mano, con la misma consulta que Mi Cuenta; el
+    // rechazado no está en la lista y vuelve a la mano.
+    final depositos = await _depositos.listar();
+    final enMano = [
       for (final f in cobros)
         MovimientoEnMano(
           cliente: nombreDe(f.read<String>('ep')),
           fecha: _fecha(f.read<int>('fecha')),
           centavos: f.read<int>('monto'),
         ),
+      for (final d in depositos)
+        MovimientoEnMano(cliente: '', fecha: d.fecha, centavos: -d.montoCentavos, deposito: d),
     ]..sort((a, b) => a.fecha.compareTo(b.fecha));
-    final sumaEnMano = movimientos.fold<int>(0, (suma, m) => suma + m.centavos);
+    final sumaEnMano = enMano.fold<int>(0, (suma, m) => suma + m.centavos);
 
     // Por cobrar: las cuentas de cada venta viva, sumadas por cliente.
     final ventas = await _cobranzas.cuentasDeLasVentasDe(colportorId);
     final porCobrar = <String, _Acumulado>{};
     for (final venta in ventas) {
       final saldo = venta.cuenta.saldoCentavos;
-      if (saldo > 0) {
-        (porCobrar[venta.espacioPersonaId] ??= _Acumulado()).sumar(saldo, venta.fecha);
-      }
+      if (saldo > 0) (porCobrar[venta.espacioPersonaId] ??= _Acumulado()).sumar(saldo, venta.fecha);
     }
     final saldosPorCobrar = _porCliente(porCobrar, clientes);
 
     return DetalleDeMiPlata(
-      enManoCentavos: sumaEnMano,
-      enMano: movimientos,
+      depositado: await _depositado(depositos),
+      enManoCentavos: math.max(0, sumaEnMano),
+      enMano: enMano,
       porCobrarCentavos: saldosPorCobrar.fold<int>(0, (suma, s) => suma + s.centavos),
       porCobrar: saldosPorCobrar,
+    );
+  }
+
+  /// Lo depositado, de la misma consulta que usa Mi Cuenta ([TotalesDeDepositosDrift]); `null` si el
+  /// teléfono todavía no bajó nada del servidor: ahí no hay cifra, ni un cero inventado.
+  Future<DepositadoEnMiPlata?> _depositado(List<DepositoDeLaLista> lista) async {
+    if ((await DriftSyncMeta(_db).read()).lastPullAt == null) return null;
+    return DepositadoEnMiPlata(
+      validados: [
+        for (final d in lista)
+          if (d.validado) d,
+      ],
+      porValidar: [
+        for (final d in lista)
+          if (!d.validado) d,
+      ],
     );
   }
 
@@ -123,16 +152,18 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
       for (final f in filas)
         f.read<String>('ep'): _Cliente(
           id: f.read<String>('persona'),
-          nombre: _nombreDe(f.read<String>('nombre'), f.read<String>('apellido')),
+          nombre: _nombreOSinNombre(
+            [
+              f.read<String>('nombre'),
+              f.read<String>('apellido'),
+            ].where((p) => p.trim().isNotEmpty).join(' '),
+          ),
         ),
     };
   }
 
-  /// Nombre y apellido juntos; «Cliente sin nombre» si los dos están en blanco.
-  static String _nombreDe(String nombre, String apellido) {
-    final completo = [nombre, apellido].where((p) => p.trim().isNotEmpty).join(' ');
-    return completo.isEmpty ? clienteSinNombre : completo;
-  }
+  /// Nombre y apellido en blanco: la fila dice «Cliente sin nombre» y no queda vacía (QA #172).
+  static String _nombreOSinNombre(String nombre) => nombre.isEmpty ? clienteSinNombre : nombre;
 
   DateTime _fecha(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
 }
