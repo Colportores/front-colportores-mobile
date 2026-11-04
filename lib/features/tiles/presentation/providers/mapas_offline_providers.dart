@@ -261,6 +261,13 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
     ref.listen(estadosDescargaTilesProvider, (_, nuevo) {
       if (nuevo case AsyncData(:final value)) unawaited(_alEstado(value));
     });
+    // Sin zona y con varias ciudades no hay botón para reintentar: cuando la fuente cambia (la zona
+    // llega por el sync y la fuente real se reconstruye) se vuelve a leer sola. Una falla de lectura
+    // o un lugar ya conocido no se recargan por esto: la primera tiene su «Reintentar».
+    ref.listen(fuenteLugarDeTrabajoProvider, (_, _) {
+      final falla = state.falloLugar;
+      if (falla != null && falla is! FailureLugarDeTrabajoNoDisponible) unawaited(cargar());
+    });
     ref.onDispose(() => unawaited(_escuchaConexion?.cancel()));
     unawaited(Future<void>.microtask(cargar));
     return const EstadoMapasOffline();

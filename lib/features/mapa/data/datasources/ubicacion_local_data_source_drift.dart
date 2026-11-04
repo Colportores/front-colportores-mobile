@@ -13,6 +13,7 @@ import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
+import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
@@ -714,9 +715,36 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismaDireccion);
       });
     final filas = await consulta.get();
-    return criterio.candidatas(centro.toEntity(), [
+    final candidatas = criterio.candidatas(centro.toEntity(), [
       for (final fila in filas) _aModelo(fila).toEntity(),
     ]);
+    return candidatas.isEmpty ? candidatas : _conResumen(candidatas);
+  }
+
+  /// Le suma a cada candidata lo que la tarjeta de la vista 04 muestra de su casa (#273): el estado de
+  /// visita, que sale de `house_status` (sin fila vigente es «Sin visita», ADR-003), y cuántos
+  /// espacios sin baja tiene. Es el mismo criterio que la lista (`observarListaDelColportor`).
+  Future<List<CandidataDuplicado>> _conResumen(List<CandidataDuplicado> candidatas) async {
+    final ids = [for (final c in candidatas) c.ubicacion.id];
+    final cantidad = espacios.id.count();
+    final conteo = selectOnly(espacios)
+      ..addColumns([espacios.ubicacionId, cantidad])
+      ..where(espacios.ubicacionId.isIn(ids) & espacios.deletedAt.isNull())
+      ..groupBy([espacios.ubicacionId]);
+    final espaciosPorId = {
+      for (final f in await conteo.get()) f.read(espacios.ubicacionId)!: f.read(cantidad) ?? 0,
+    };
+    final colores = await (select(
+      houseStatuses,
+    )..where((h) => h.ubicacionId.isIn(ids) & h.deletedAt.isNull())).get();
+    final colorPorId = {for (final h in colores) h.ubicacionId: _colorDe(h)};
+    return [
+      for (final c in candidatas)
+        c.conResumen(
+          estado: EstadoCasa.desdeColor(colorPorId[c.ubicacion.id]),
+          cantidadEspacios: espaciosPorId[c.ubicacion.id] ?? 0,
+        ),
+    ];
   }
 
   static UbicacionesCompanion _aFila(UbicacionModel u) => UbicacionesCompanion.insert(

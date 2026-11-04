@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
@@ -13,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
+import 'package:colportores_mobile/features/mapa/presentation/formato_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
@@ -21,6 +23,7 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2017,5 +2020,121 @@ void main() {
         handle.dispose();
       },
     );
+  });
+  group('tarjeta de la candidata: estado de visita y espacios (vista 04, #273)', () {
+    Future<void> abrirHoja(
+      WidgetTester tester,
+      List<CandidataDuplicado> candidatas, {
+      double escala = 1,
+      Size tamano = const Size(390, 844),
+    }) async {
+      final repo = RepoAltaFalso()
+        ..comportamiento = (_) async => Right(AltaConDuplicados(candidatas: candidatas));
+      await _montar(tester, repo: repo, escala: escala, tamano: tamano);
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, _registrar);
+    }
+
+    testWidgets('B·01, una candidata: «Entrevista agendada» y «Casa · 2 espacios · Montevideo»', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('c1', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+      ]);
+
+      expect(find.text('Av. Italia 1234'), findsOneWidget);
+      expect(find.text('Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · 2 espacios · Montevideo'), findsOneWidget);
+      expect(find.text('Actualizada hace 3 días'), findsOneWidget);
+    });
+
+    testWidgets('B·02, varias candidatas: cada tarjeta con su estado y sus espacios', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('lejos', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+        candidata('cerca', metros: 4, numero: '1236', estado: EstadoCasa.sinVisita, espacios: 1),
+      ]);
+
+      expect(find.text('Hay 2 ubicaciones cerca'), findsOneWidget);
+      expect(find.text('Sin visita'), findsOneWidget);
+      expect(find.text('Casa · 1 espacio · Montevideo'), findsOneWidget);
+      expect(find.text('Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · 2 espacios · Montevideo'), findsOneWidget);
+    });
+
+    testWidgets('cada estado de la casa se dice con su rótulo', (tester) async {
+      for (final estado in EstadoCasa.values) {
+        await abrirHoja(tester, [candidata('c1', estado: estado, espacios: 1)]);
+
+        expect(
+          find.text(FormatoListaUbicaciones.estado(estado)),
+          findsOneWidget,
+          reason: '$estado',
+        );
+        expect(find.byType(InsigniaEstadoCasa), findsOneWidget, reason: '$estado');
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('un edificio dice «deptos» y una casa sin espacios dice «sin espacios»', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('edif', tipo: TipoUbicacion.edificio, estado: EstadoCasa.noContesto, espacios: 6),
+        candidata('vacia', metros: 4, numero: '1236', estado: EstadoCasa.rechazo, espacios: 0),
+      ]);
+
+      expect(find.text('Edificio · 6 deptos · Montevideo'), findsOneWidget);
+      expect(find.text('Casa · sin espacios · Montevideo'), findsOneWidget);
+    });
+
+    testWidgets(
+      'sin saber el estado ni los espacios no se inventa nada: queda «Casa · Montevideo»',
+      (tester) async {
+        await abrirHoja(tester, [candidata('c1')]);
+
+        expect(find.byType(InsigniaEstadoCasa), findsNothing);
+        expect(find.text('Sin visita'), findsNothing);
+        expect(find.text('Casa · Montevideo'), findsOneWidget);
+      },
+    );
+
+    testWidgets('lector de pantalla: el estado se dice una sola vez', (tester) async {
+      final handle = tester.ensureSemantics();
+      await abrirHoja(tester, [
+        candidata('c1', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+      ]);
+
+      expect(find.bySemanticsLabel('Entrevista agendada'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('textScaler 2.0 en un teléfono chico, con varias candidatas: no desborda', (
+      tester,
+    ) async {
+      await abrirHoja(
+        tester,
+        [
+          for (var i = 0; i < 4; i++)
+            candidata('c$i', metros: 4.0 + i, estado: EstadoCasa.entregaYPago, espacios: 12 + i),
+        ],
+        escala: 2,
+        tamano: const Size(320, 640),
+      );
+
+      expect(find.text('Entrega y pago'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«Reutilizar esta» y «Crear igual» siguen andando con la tarjeta ampliada', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [candidata('c1', estado: EstadoCasa.ventaCompleta, espacios: 3)]);
+
+      expect(find.text('Reutilizar esta'), findsOneWidget);
+      expect(find.text('Crear igual'), findsOneWidget);
+      expect(find.text('Cancelar'), findsOneWidget);
+    });
   });
 }

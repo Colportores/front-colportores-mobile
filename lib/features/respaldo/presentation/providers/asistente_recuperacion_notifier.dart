@@ -35,7 +35,7 @@ enum PantallaAsistente {
   /// La búsqueda falló por otra razón.
   fallaBusqueda,
 
-  /// Hay respaldos de más de un teléfono y no está decidido qué se ofrece (pendiente de Cristian).
+  /// Hay respaldos de más de un teléfono: se recuperan todos juntos (decisión de Cristian, 03/11).
   variosRespaldos,
 
   /// 34·03 y 34·04: la contraseña de la copia.
@@ -70,7 +70,6 @@ enum PantallaAsistente {
 final class EstadoAsistente extends Equatable {
   const EstadoAsistente({
     this.pantalla = PantallaAsistente.buscando,
-    this.respaldo,
     this.respaldos = const [],
     this.progreso,
     this.informe,
@@ -86,11 +85,14 @@ final class EstadoAsistente extends Equatable {
 
   final PantallaAsistente pantalla;
 
-  /// El respaldo que se va a traer (o se trae).
-  final RespaldoEnDrive? respaldo;
-
-  /// Los respaldos que se encontraron cuando hay varios.
+  /// Los respaldos que se van a traer (o se traen): uno, o el de cada teléfono cuando hay varios.
   final List<RespaldoEnDrive> respaldos;
+
+  /// El respaldo, cuando hay uno solo.
+  RespaldoEnDrive? get respaldo => respaldos.length == 1 ? respaldos.first : null;
+
+  /// Hay más de un respaldo para traer: se recuperan todos juntos.
+  bool get hayVarios => respaldos.length > 1;
 
   /// En qué parte va la restauración.
   final ProgresoRecuperacion? progreso;
@@ -126,7 +128,6 @@ final class EstadoAsistente extends Equatable {
 
   EstadoAsistente copyWith({
     PantallaAsistente? pantalla,
-    RespaldoEnDrive? respaldo,
     List<RespaldoEnDrive>? respaldos,
     ProgresoRecuperacion? Function()? progreso,
     InformeRecuperacion? informe,
@@ -140,7 +141,6 @@ final class EstadoAsistente extends Equatable {
     bool? reintentoFallido,
   }) => EstadoAsistente(
     pantalla: pantalla ?? this.pantalla,
-    respaldo: respaldo ?? this.respaldo,
     respaldos: respaldos ?? this.respaldos,
     progreso: progreso != null ? progreso() : this.progreso,
     informe: informe ?? this.informe,
@@ -157,7 +157,6 @@ final class EstadoAsistente extends Equatable {
   @override
   List<Object?> get props => [
     pantalla,
-    respaldo,
     respaldos,
     progreso == null
         ? null
@@ -229,7 +228,7 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
       state = switch (resultado) {
         RespaldoEncontrado(:final respaldo) => state.copyWith(
           pantalla: PantallaAsistente.encontrado,
-          respaldo: respaldo,
+          respaldos: [respaldo],
         ),
         SinRespaldoEnDrive() => state.copyWith(pantalla: PantallaAsistente.sinRespaldo),
         VariosRespaldosEnDrive(:final respaldos) => state.copyWith(
@@ -301,9 +300,14 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
     await conectarDrive();
   }
 
-  /// 34·01: «Recuperar mis datos» lleva a pedir la contraseña.
+  /// 34·01: «Recuperar mis datos» (con varios respaldos, «Recuperar todos») lleva a pedir la
+  /// contraseña.
   void elegirRecuperar() {
-    if (state.pantalla != PantallaAsistente.encontrado || state.respaldo == null) return;
+    final hayQueTraer = state.respaldos.isNotEmpty;
+    final pantallaDeOrigen =
+        state.pantalla == PantallaAsistente.encontrado ||
+        state.pantalla == PantallaAsistente.variosRespaldos;
+    if (!pantallaDeOrigen || !hayQueTraer) return;
     state = state.copyWith(pantalla: PantallaAsistente.contrasena, contrasenaIncorrecta: false);
   }
 
@@ -312,38 +316,35 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
     if (state.contrasenaIncorrecta) state = state.copyWith(contrasenaIncorrecta: false);
   }
 
-  /// 34·03: «Abrir copia». Restaura [respaldo] con [password]; el resultado decide la pantalla que
-  /// sigue. Una sola restauración a la vez.
+  /// 34·03: «Abrir copia». Restaura todos los respaldos con [password]; el resultado decide la
+  /// pantalla que sigue. Una sola restauración a la vez.
   Future<void> abrirCopia(String password) async {
-    final respaldo = state.respaldo;
-    if (password.isEmpty || respaldo == null) return;
+    if (password.isEmpty || state.respaldos.isEmpty) return;
     _password = password;
-    await _restaurar(respaldo);
+    await _restaurar(state.respaldos);
   }
 
   /// 34·06: «Reintentar»: retoma desde donde quedó, con la misma contraseña.
   Future<void> reintentarRestauracion() async {
-    final respaldo = state.respaldo;
     final password = _password;
-    if (respaldo == null || password == null) {
+    if (state.respaldos.isEmpty || password == null) {
       // Sin la contraseña en memoria (no debería pasar) se vuelve a pedirla.
       state = state.copyWith(pantalla: PantallaAsistente.contrasena);
       return;
     }
-    await _restaurar(respaldo);
+    await _restaurar(state.respaldos);
   }
 
   /// 34·07 «Reintentar»: vuelve a correr la recuperación entera con la misma contraseña. Lo ya
   /// recuperado sigue en el teléfono: si el nuevo intento no termina (se corta, se cancela o falla)
   /// se vuelve a 34·07 como estaba; si termina, manda su resultado (34·08 o un nuevo 34·07).
   Future<void> reintentarDesdeParcial() async {
-    final respaldo = state.respaldo;
     if (state.pantalla != PantallaAsistente.parcial || _restaurando || _terminando) return;
-    if (respaldo == null || _password == null) return;
-    await _restaurar(respaldo, volverA: state.copyWith(reintentoFallido: false));
+    if (state.respaldos.isEmpty || _password == null) return;
+    await _restaurar(state.respaldos, volverA: state.copyWith(reintentoFallido: false));
   }
 
-  Future<void> _restaurar(RespaldoEnDrive respaldo, {EstadoAsistente? volverA}) async {
+  Future<void> _restaurar(List<RespaldoEnDrive> respaldos, {EstadoAsistente? volverA}) async {
     final password = _password;
     if (_restaurando || password == null) return;
     _restaurando = true;
@@ -356,12 +357,12 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
       progreso: () => ProgresoRecuperacion(
         PasoRecuperacion.bajando,
         hechas: state.progreso?.hechas ?? 0,
-        total: respaldo.partes,
+        total: respaldos.fold(0, (suma, r) => suma + r.partes),
       ),
     );
     try {
       final resultado = await _servicio.recuperar(
-        respaldo: respaldo,
+        respaldos: respaldos,
         password: password,
         alAvanzar: _alAvanzar,
         cancelar: cancelacion,
@@ -386,6 +387,10 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
       if (identical(_cancelacion, cancelacion)) _cancelacion = null;
     }
   }
+
+  /// A donde se vuelve si la persona cancela: a lo que encontró la búsqueda (uno o varios).
+  PantallaAsistente get _pantallaDeLaBusqueda =>
+      state.hayVarios ? PantallaAsistente.variosRespaldos : PantallaAsistente.encontrado;
 
   void _volverAlParcial(EstadoAsistente parcial) {
     state = parcial.copyWith(
@@ -464,7 +469,7 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
       case RecuperacionCancelada():
         _password = null;
         state = state.copyWith(
-          pantalla: PantallaAsistente.encontrado,
+          pantalla: _pantallaDeLaBusqueda,
           cancelando: false,
           progreso: () => null,
         );
@@ -496,7 +501,7 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
     if (state.pantalla == PantallaAsistente.interrumpida) {
       _password = null;
       state = state.copyWith(
-        pantalla: PantallaAsistente.encontrado,
+        pantalla: _pantallaDeLaBusqueda,
         sinConexionAlCortarse: false,
         progreso: () => null,
       );

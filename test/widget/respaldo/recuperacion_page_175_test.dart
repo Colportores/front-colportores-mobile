@@ -101,7 +101,11 @@ void main() {
       await abrirAsistente(tester, arnes);
 
       await tester.tap(cta2);
-      await tester.tap(cta2);
+      await tester.tap(cta2, warnIfMissed: false);
+      await asentar(tester);
+      expect(hojaEmpezar, findsOneWidget, reason: 'un solo aviso, no dos');
+      await tester.tap(hojaConfirmar);
+      await tester.tap(hojaConfirmar, warnIfMissed: false);
       await asentar(tester);
 
       expect(arnes.resuelta.marcas, 1);
@@ -789,13 +793,15 @@ void main() {
       expect(find.textContaining('Google ya no nos deja abrir tu Drive'), findsOneWidget);
     });
 
-    testWidgets('hay respaldos de más de un teléfono: no se elige por la persona', (tester) async {
+    testWidgets('hay respaldos de más de un teléfono: se ofrecen todos juntos, sin elegir', (
+      tester,
+    ) async {
       arnes.servicio.busqueda = VariosRespaldosEnDrive([respaldoDePrueba, respaldoDePrueba]);
       await abrirAsistente(tester, arnes);
 
       expect(tester.widget<Text>(titulo).data, 'Encontramos más de un respaldo');
-      expect(tarjeta, findsNothing);
-      expect(textoDe(cta), 'Reintentar');
+      expect(tarjeta, findsNWidgets(2));
+      expect(textoDe(cta), 'Recuperar todos mis datos');
       expect(textoDe(cta2), 'Empezar sin recuperar');
     });
 
