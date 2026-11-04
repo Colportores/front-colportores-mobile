@@ -161,8 +161,8 @@ class TarjetaNota extends StatelessWidget {
   /// Con el lápiz «✎» a la izquierda, como las notas del lugar de la hoja (vista 39, C·05).
   final bool conLapiz;
 
-  /// En una nota borrada: dice cuándo se va para siempre («Se borra el 25/01»). Solo las notas de una
-  /// persona tienen ese plazo de 90 días.
+  /// En una nota borrada: dice cuándo se va para siempre («Se borra el 25/01»). Lo tienen las notas de
+  /// una persona y las de un lugar (90 días).
   final bool conPlazo;
 
   /// El aire alrededor de la tarjeta: el de una pantalla entera, o el de la hoja (que ya trae el suyo).

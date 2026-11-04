@@ -226,29 +226,103 @@ void main() {
     });
   });
 
-  group('las notas de un lugar (vista 39) no tienen ese plazo', () {
-    testWidgets('dado un lugar con una nota borrada hace 200 días, sigue y no dice «Se borra»', (
+  group('las notas de un lugar (vista 39) tienen el mismo plazo de 90 días', () {
+    Future<void> abrirBorradasDelLugar(WidgetTester tester, int cantidad) async {
+      await tester.ensureVisible(find.text('Ver borradas ($cantidad)'));
+      await tester.tap(find.text('Ver borradas ($cantidad)'));
+      await asentarLugar(tester);
+    }
+
+    testWidgets('dado un lugar con notas borradas, cuando abro «Ver borradas», cada una dice '
+        'cuándo se va', (tester) async {
+      final repo = NotaUbicacionRepositorioFalso(
+        notas: [
+          notaDeLugar('hoy', 'Portón roto.', creada: borradaHoy, borrada: borradaHoy),
+          notaDeLugar('octubre', 'Perro suelto.', creada: borradaEl0510, borrada: borradaEl0510),
+          notaDeLugar('activa', 'Timbre sin luz.', creada: DateTime(2026, 10, 20, 9)),
+        ],
+      );
+      await montarPestanaLugar(tester, repo: repo);
+      await abrirBorradasDelLugar(tester, 2);
+
+      expect(find.text('Se borra el 20/01'), findsOneWidget);
+      expect(find.text('Se borra el 03/01'), findsOneWidget);
+      expect(find.byKey(ClavesNotas.seBorraEl), findsNWidgets(2));
+      expect(find.text('Restaurar'), findsNWidgets(2));
+    });
+
+    testWidgets('dado un lector de pantalla, la nota del lugar lee su fecha, su texto y cuándo '
+        'se va', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final repo = NotaUbicacionRepositorioFalso(
+        notas: [notaDeLugar('hoy', 'Portón roto.', creada: borradaEl0510, borrada: borradaEl0510)],
+      );
+      await montarPestanaLugar(tester, repo: repo);
+      await abrirBorradasDelLugar(tester, 1);
+
+      expect(
+        find.bySemanticsLabel(RegExp(r'^el 05/10\. Portón roto\.\. Se borra el 03/01\.$')),
+        findsOneWidget,
+      );
+      semantica.dispose();
+    });
+
+    testWidgets('dada una nota del lugar que ya pasó de los 90 días, no se cuenta ni se muestra', (
       tester,
     ) async {
       final repo = NotaUbicacionRepositorioFalso(
         notas: [
-          notaDeLugar(
-            'vieja',
-            'Portón roto.',
-            creada: DateTime(2026, 1, 1),
-            borrada: DateTime(2026, 1, 2),
-          ),
+          notaDeLugar('vencida', 'Pasó el plazo.', creada: borradaSeFue, borrada: borradaSeFue),
+          notaDeLugar('reciente', 'Todavía está.', borrada: borradaHoy),
         ],
       );
       await montarPestanaLugar(tester, repo: repo);
 
       expect(find.text('Ver borradas (1)'), findsOneWidget);
-      await tester.ensureVisible(find.text('Ver borradas (1)'));
-      await tester.tap(find.text('Ver borradas (1)'));
-      await asentarLugar(tester);
+      await abrirBorradasDelLugar(tester, 1);
+      expect(find.text('Todavía está.'), findsOneWidget);
+      expect(find.text('Pasó el plazo.'), findsNothing);
+    });
 
-      expect(find.text('Portón roto.'), findsOneWidget);
-      expect(find.textContaining('Se borra el'), findsNothing);
+    testWidgets('dada una nota del lugar que se va hoy a las 16:00, a las 15:00 todavía está', (
+      tester,
+    ) async {
+      final repo = NotaUbicacionRepositorioFalso(
+        notas: [notaDeLugar('b', 'Última hora.', creada: borradaSeVaHoy, borrada: borradaSeVaHoy)],
+      );
+      await montarPestanaLugar(tester, repo: repo);
+      await abrirBorradasDelLugar(tester, 1);
+
+      expect(find.text('Última hora.'), findsOneWidget);
+      expect(find.text('Se borra el 22/10'), findsOneWidget);
+    });
+
+    testWidgets('dadas solo notas del lugar vencidas, «Ver borradas» no aparece', (tester) async {
+      final repo = NotaUbicacionRepositorioFalso(
+        notas: [notaDeLugar('vencida', 'Pasó el plazo.', borrada: borradaSeFue)],
+      );
+      await montarPestanaLugar(tester, repo: repo);
+
+      expect(find.textContaining('Ver borradas'), findsNothing);
+    });
+
+    testWidgets('dado el texto al 200 % en un teléfono chico, el plazo del lugar se lee y nada '
+        'se desborda', (tester) async {
+      final repo = NotaUbicacionRepositorioFalso(
+        notas: [notaDeLugar('larga', 'palabra ' * 120, borrada: borradaHoy)],
+      );
+      await montarPestanaLugar(tester, repo: repo, escala: 2, tamano: const Size(320, 568));
+      await abrirBorradasDelLugar(tester, 1);
+
+      await tester.scrollUntilVisible(
+        find.text('Se borra el 20/01'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(tester.takeException(), isNull);
+      final texto = tester.getRect(find.textContaining('palabra').first);
+      final plazo = tester.getRect(find.text('Se borra el 20/01'));
+      expect(plazo.top, greaterThanOrEqualTo(texto.bottom));
     });
   });
 }
