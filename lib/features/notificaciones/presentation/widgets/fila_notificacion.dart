@@ -143,7 +143,8 @@ class FilaNotificacion extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right, color: colores.gris),
+                  // Sin pantalla de detalle no hay a dónde ir: sin «›» (P3, 03/11).
+                  if (notificacion.destino != null) Icon(Icons.chevron_right, color: colores.gris),
                 ],
               ),
             ),

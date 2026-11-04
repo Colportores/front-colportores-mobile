@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auditoria_push_en_memoria.dart';
+import '../../helpers/datos_locales_de_push_en_memoria.dart';
 import '../../helpers/historial_notificaciones_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart';
 
@@ -54,6 +55,7 @@ void main() {
     ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
     ...centro.overrides,
     auditoriaPushRepositoryProvider.overrideWithValue(auditoria),
+    datosLocalesDePushRepositoryProvider.overrideWithValue(DatosLocalesDePushEnMemoria()),
   ];
 
   Future<void> abrir(WidgetTester tester) async {
@@ -156,8 +158,6 @@ void main() {
       ('cuota_pendiente', {'type': 'cuota_pendiente', 'agenda_id': _agenda}, null),
       ('agenda_manana', {'type': 'agenda_manana'}, null),
     ]) {
-      // skip: QA #187 — P2 del 03/11 sin aplicar: `TipoPushRemota` solo tiene `pedido_autorizado`;
-      // estos `type` se ignoran sin aviso ni historial.
       testWidgets(
         'P2: el tipo «${caso.$1}» se guarda y se avisa${caso.$3 == null ? '' : ' con «${caso.$3}»'}',
         (tester) async {
@@ -170,32 +170,20 @@ void main() {
             expect(find.text(caso.$3!), findsOneWidget);
           }
         },
-        skip: !verHallazgos,
       );
     }
+    testWidgets('P3: tocar el banner del pedido autorizado abre el centro con el aviso ya leído', (
+      tester,
+    ) async {
+      await abrir(tester);
+      await llega(tester, {'type': 'pedido_autorizado', 'pedido_id': _pedido, 'event_id': _evento});
 
-    // skip: QA #187 — P3 del 03/11 sin aplicar: tocar el banner de un tipo sin destino solo lo marca
-    // leído; la decisión pide abrir el centro de notificaciones con ese aviso, ya leído.
-    testWidgets(
-      'P3: tocar el banner del pedido autorizado abre el centro con el aviso ya leído',
-      (tester) async {
-        await abrir(tester);
-        await llega(tester, {
-          'type': 'pedido_autorizado',
-          'pedido_id': _pedido,
-          'event_id': _evento,
-        });
+      await tester.tap(_banner);
+      await tester.pumpAndSettle();
 
-        await tester.tap(_banner);
-        await tester.pumpAndSettle();
-
-        expect(_centro, findsOneWidget);
-        expect(centro.historial.filas.single.leida, isTrue);
-      },
-      skip: !verHallazgos,
-    );
-
-    // skip: QA #187 — P3 del 03/11 sin aplicar: lo mismo con el toque de la notificación del sistema.
+      expect(_centro, findsOneWidget);
+      expect(centro.historial.filas.single.leida, isTrue);
+    });
     testWidgets(
       'P3: tocar la notificación del sistema (app en segundo plano) abre el centro con el aviso leído',
       (tester) async {
@@ -211,11 +199,7 @@ void main() {
         expect(_centro, findsOneWidget);
         expect(centro.historial.filas.single.leida, isTrue);
       },
-      skip: !verHallazgos,
     );
-
-    // skip: QA #187 — P3 del 03/11 sin aplicar: «la fila del centro no lleva ›» para un tipo sin
-    // destino; `FilaNotificacion` pinta siempre `Icons.chevron_right`.
     testWidgets('P3: la fila del centro de un aviso sin destino no lleva «›»', (tester) async {
       await abrir(tester);
       await llega(tester, {'type': 'pedido_autorizado', 'pedido_id': _pedido, 'event_id': _evento});
@@ -229,7 +213,7 @@ void main() {
       final fila = find.byKey(const Key('centro_aviso_push-$_evento'));
       expect(fila, findsOneWidget);
       expect(find.descendant(of: fila, matching: find.byIcon(Icons.chevron_right)), findsNothing);
-    }, skip: !verHallazgos);
+    });
 
     testWidgets('P3 (parte que sí está): el banner del pedido autorizado no promete «Tocá para ver '
         'el detalle»', (tester) async {
