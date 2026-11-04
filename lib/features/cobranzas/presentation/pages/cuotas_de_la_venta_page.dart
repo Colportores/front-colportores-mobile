@@ -56,7 +56,9 @@ class CuotasDeLaVentaPage extends ConsumerStatefulWidget {
   /// El aviso verde de arriba («Plan creado. Agendamos 3 cobranzas.»), si se llega recién creado.
   final String? avisoInicial;
 
-  /// Abre la pantalla encima de la actual. `true` si se armó o se modificó el plan.
+  /// Abre la pantalla encima de la actual. `true` si se armó o se modificó el plan. Si ya es la
+  /// pantalla de arriba (dos toques seguidos al mismo aviso), no apila otra igual: habría que volver
+  /// dos veces; devuelve `false`.
   static Future<bool> abrir(
     BuildContext context, {
     required String ventaId,
@@ -64,8 +66,18 @@ class CuotasDeLaVentaPage extends ConsumerStatefulWidget {
     required String espacioId,
     String? espacioPersonaId,
   }) async {
-    final cambio = await Navigator.of(context).push<bool>(
+    final navegador = Navigator.of(context);
+    final nombre = 'cuotas_de_la_venta/$ventaId';
+    var yaEstaArriba = false;
+    // El predicado devuelve `true` en la primera ruta: mira la de arriba y no saca ninguna.
+    navegador.popUntil((ruta) {
+      yaEstaArriba = ruta.settings.name == nombre;
+      return true;
+    });
+    if (yaEstaArriba) return false;
+    final cambio = await navegador.push<bool>(
       MaterialPageRoute(
+        settings: RouteSettings(name: nombre),
         builder: (_) => CuotasDeLaVentaPage(
           ventaId: ventaId,
           colportorId: colportorId,
