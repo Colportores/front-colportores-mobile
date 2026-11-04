@@ -2,11 +2,11 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/arranque/reinicio_de_raiz.dart';
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/conectividad/monitor_conectividad_plus.dart';
 import 'core/config/config_google.dart';
@@ -165,13 +165,18 @@ Future<void> main() async {
 
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
+  // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo; el anterior se cierra
+  // con su `ProviderScope`): «Recuperar mi respaldo» reinicia la app por dentro (`reiniciarRaizProvider`)
+  // y arranca como la primera vez, sin nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»).
+  // El `ProviderScope` lo arma `ReiniciadorDeRaiz` en cada arranque.
+  // ignore: riverpod_lint_plugin/missing_provider_scope
   runApp(
-    ProviderScope(
+    ReiniciadorDeRaiz(
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
       // AuthRemoteDataSource: lo elige `authRemoteDataSourceProvider` según `ConfigSupabase`
       // (Supabase real o fake con la cuenta demo@colportores.app / demo1234).
       // Sprint 2: AuthLocalDataSource sobre secure_storage (pendiente; hoy en memoria).
-      overrides: [
+      overrides: () => [
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
         // Keystore/Keychain reales, con las opciones de ADR-006: la misma instancia que guarda la
         // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o

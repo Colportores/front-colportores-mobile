@@ -107,6 +107,10 @@ final envoltorioEnDriveProvider = Provider<EnvoltorioEnDrive>((ref) {
 /// 04/11, «Motor vivo»): la recuperación pasa los datos del respaldo a esta DB y no puede haber un
 /// motor escuchándola, subiendo la cola o bajando el delta a la vez. El asistente trae su propio
 /// motor, que se cierra al terminar; cuando el asistente cierra, este se arma de nuevo.
+///
+/// Es una guarda: desde Configuración la app se reinicia por dentro antes de abrir el asistente
+/// (`reiniciarRaizProvider`), así que en el arranque que lo ofrece nunca hubo un motor andando; esta
+/// compuerta cubre la ventana en que la raíz todavía está resolviendo si lo ofrece.
 final motorSyncProvider = Provider<SyncEngine?>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) return null;

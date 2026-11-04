@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/arranque/reinicio_de_raiz.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
@@ -43,7 +44,7 @@ final recuperacionPendienteProvider = AsyncNotifierProvider<RecuperacionPendient
 
 /// Cómo terminó el intento de volver a abrir el asistente desde Configuración.
 enum ReaperturaDeLaRecuperacion {
-  /// El asistente quedó abierto.
+  /// Se reinició la app, que abre en el asistente.
   abierta,
 
   /// El teléfono ya tiene datos: la recuperación no los pisa.
@@ -87,10 +88,14 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
   /// mientras el teléfono no tenga nada cargado. Dice si lo abrió o por qué no: la recuperación nunca
   /// se ofrece sobre algo que no se pudo mirar ni pisa lo que hay. Nunca lanza.
   ///
-  /// Reemplaza la raíz por el asistente, igual que en el primer arranque: una recuperación cambia la
-  /// base y no puede haber nada escuchándola.
+  /// Abrirlo es **reiniciar la app por dentro** (decisión de Cristian, 04/11, «Motor vivo»): se quita
+  /// la marca de «resuelto» de esta persona y se reinicia la raíz (`reiniciarRaizProvider`); la app
+  /// arranca como la primera vez, sin sync ni lecturas andando, y abre directo en el asistente. La
+  /// marca quitada es lo que hace que el arranque nuevo lo ofrezca; si no se pudo quitar, no se
+  /// reinicia (devuelve [ReaperturaDeLaRecuperacion.noDisponible]).
   Future<ReaperturaDeLaRecuperacion> reabrir() async {
-    if (!ref.read(asistenteDeRecuperacionHabilitadoProvider) || _usuarioId == null) {
+    final usuarioId = _usuarioId;
+    if (!ref.read(asistenteDeRecuperacionHabilitadoProvider) || usuarioId == null) {
       return ReaperturaDeLaRecuperacion.noDisponible;
     }
     try {
@@ -107,7 +112,19 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
       return ReaperturaDeLaRecuperacion.noSePudoMirar;
     }
     if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
-    state = const AsyncData(true);
+    try {
+      await ref.read(recuperacionResueltaRepositoryProvider).desmarcarResuelta(usuarioId);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.backup,
+        'RECUPERACION_REABRIR',
+        'no se pudo quitar la marca de «resuelto»: no se reinicia',
+        {'error': e.runtimeType.toString()},
+      );
+      return ReaperturaDeLaRecuperacion.noDisponible;
+    }
+    if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
+    ref.read(reiniciarRaizProvider)();
     return ReaperturaDeLaRecuperacion.abierta;
   }
 

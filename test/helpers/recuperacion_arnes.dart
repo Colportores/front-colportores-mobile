@@ -152,7 +152,9 @@ final class LectorFalso implements LectorDeLoRecuperado {
 final class ResueltaEnMemoria implements RecuperacionResueltaRepository {
   final Set<String> usuarios = {};
   Object? errorAlLeer;
+  Object? errorAlDesmarcar;
   int marcas = 0;
+  int desmarcas = 0;
 
   /// Si no es `null`, `marcarResuelta` espera a que el test la complete.
   Completer<void>? compuertaMarcar;
@@ -168,6 +170,13 @@ final class ResueltaEnMemoria implements RecuperacionResueltaRepository {
     marcas++;
     await compuertaMarcar?.future;
     usuarios.add(usuarioId);
+  }
+
+  @override
+  Future<void> desmarcarResuelta(String usuarioId) async {
+    desmarcas++;
+    if (errorAlDesmarcar case final e?) throw e;
+    usuarios.remove(usuarioId);
   }
 }
 
