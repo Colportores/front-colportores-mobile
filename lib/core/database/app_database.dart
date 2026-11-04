@@ -145,10 +145,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 25: `deposito` suma `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, que baja el
   ///   pull (backend-supabase#231): con ellas el teléfono sabe si el depósito está por validar,
   ///   validado o rechazado (#596).
+  /// - 26: `producto` suma `categoria` (backend-supabase 0149, «Categorías» de Cristian, 28/10): la
+  ///   etiqueta de cada producto en Precios, en lugar del `tipo` heredado (#561).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 25;
+  static const int versionEsquema = 26;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -403,6 +405,13 @@ class AppDatabase extends _$AppDatabase {
       await m.addColumn(esquema.deposito, esquema.deposito.validadoPor);
       await m.addColumn(esquema.deposito, esquema.deposito.rechazadoEn);
       await m.addColumn(esquema.deposito, esquema.deposito.motivoRechazo);
+    },
+    // Suma a `producto` la categoría que ahora baja el pull (backend-supabase 0149): vacía, ningún
+    // producto que ya estaba cambia. El servidor subió la versión de cada producto al cargar la
+    // categoría, así que el próximo pull la trae; hasta entonces el producto no se ofrece en Precios
+    // (no se deriva de `tipo`: decisión de Cristian, 28/10).
+    from25To26: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.categoria);
     },
   );
 }

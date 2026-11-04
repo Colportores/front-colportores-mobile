@@ -30,6 +30,7 @@ import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v25.dart' as v25;
+import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1522,6 +1523,55 @@ void main() {
           )..where((d) => d.id.equals('d-2'))).getSingle();
           expect(rechazado.rechazadoEn, 3);
           expect(rechazado.motivoRechazo, 'Entregaste 5.000, no 6.000');
+        },
+      );
+    },
+  );
+
+  test(
+    'dado productos guardados en la versión 25, cuando migra a la 26, no se pierde nada, queda sin '
+    'categoría hasta el próximo pull y no se encola nada (#561)',
+    () async {
+      // La categoría baja del servidor (backend-supabase 0149): la fila de antes no se toca ni se deriva
+      // de su `tipo`; hasta que el pull la traiga de nuevo, el producto no se ofrece en Precios.
+      const producto = v25.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 3,
+        codigoEditor: 'CS-01',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 25,
+        newVersion: 26,
+        createOld: v25.DatabaseAtV25.new,
+        createNew: v26.DatabaseAtV26.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.producto, producto),
+        validateItems: (nuevo) async {
+          final guardado = await nuevo.select(nuevo.producto).getSingle();
+          expect(guardado.id, 'pro-1');
+          expect(guardado.nombre, 'El Conflicto de los Siglos');
+          expect(guardado.tipo, 'LIBRO');
+          expect(guardado.esBonificable, 1);
+          expect(guardado.precioBaseCompra, 18000);
+          expect(guardado.codigoEditor, 'CS-01');
+          expect(guardado.syncVersion, 3);
+          expect(guardado.categoria, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE producto SET categoria = 'ESPIRITUALES' WHERE id = 'pro-1'",
+          );
+          expect((await nuevo.select(nuevo.producto).getSingle()).categoria, 'ESPIRITUALES');
         },
       );
     },
