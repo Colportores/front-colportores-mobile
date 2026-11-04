@@ -114,6 +114,11 @@ void main() {
     return r.getOrElse(() => throw StateError('falló: $r'));
   }
 
+  Future<void> esFalla<T extends Failure>([FuenteLugarDeTrabajoLocal? fuente]) async {
+    final r = await (fuente ?? crear()).leer();
+    expect(r.swap().getOrElse(() => throw StateError('debía fallar: $r')), isA<T>());
+  }
+
   Future<void> esNoSe([FuenteLugarDeTrabajoLocal? fuente]) async {
     final r = await (fuente ?? crear()).leer();
     expect(
@@ -229,10 +234,49 @@ void main() {
       },
     );
 
-    test('dado varias ciudades y sin zona, no se sabe: no se adivina entre ellas', () async {
+    test('dado varias ciudades y sin zona, dice que falta la zona: no se adivina', () async {
       await bajar(verano());
 
-      await esNoSe();
+      await esFalla<FailureLugarSinZonaConVariasCiudades>();
+    });
+
+    test(
+      'dado varias ciudades y su única zona dada de baja, también dice que falta la zona',
+      () async {
+        await bajar(verano(zonaAsignada: 'z-centro', zonaDeBaja: true));
+
+        await esFalla<FailureLugarSinZonaConVariasCiudades>();
+      },
+    );
+
+    test('dado zonas en dos ciudades, no dice que le falta la zona: tiene en más de una', () async {
+      final base = verano(zonaAsignada: 'z-centro');
+      await bajar({
+        ...base,
+        'campania': [...base['campania']!, filaCampania('camp-2', 'Pascua')],
+        'campania_ciudad': [
+          ...base['campania_ciudad']!,
+          filaCampaniaCiudad('cc-can-2', campania: 'camp-2', ciudad: 'ciu-can'),
+        ],
+        'zona': [...base['zona']!, zona('z-norte-2', 'Norte 2', 'cc-can-2')],
+        'campania_colportor': [
+          ...base['campania_colportor']!,
+          filaInscripcion('insc-2', campania: 'camp-2', zona: 'z-norte-2'),
+        ],
+      });
+
+      await esFalla<FailureLugarZonasEnVariasCiudades>();
+    });
+
+    test('el texto sin zona dice la causa, qué hacer y que puede bajar Uruguay', () {
+      const falla = FailureLugarSinZonaConVariasCiudades();
+
+      expect(
+        falla.mensaje,
+        'Todavía no tenés zona y tu campaña tiene varias ciudades, así que no sabemos cuál bajar. '
+        'Cuando la coordinación te asigne una zona, vas a poder bajar tu ciudad. Mientras tanto '
+        'podés bajar el mapa de todo Uruguay.',
+      );
     });
 
     test('dado una campaña sin ciudades, no se sabe', () async {

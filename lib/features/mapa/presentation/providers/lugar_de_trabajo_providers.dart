@@ -7,6 +7,7 @@ import '../../data/datasources/campanias_del_colportor_local_data_source.dart';
 import '../../data/datasources/lugar_de_trabajo_local_data_source.dart';
 import '../../data/services/fuente_lugar_de_trabajo_local.dart';
 import 'alta_ubicacion_providers.dart' show ciudadesParaAltaProvider, relojAltaUbicacionProvider;
+import 'mapa_ubicaciones_providers.dart' show replicaDeCampaniasCambioProvider;
 
 /// Dónde trabaja la colportora con la sesión iniciada, leído de las réplicas locales (sin red): su
 /// zona, su ciudad y el departamento de esa ciudad (HU-SYNC-010, #619). La ciudad sale de
@@ -14,10 +15,13 @@ import 'alta_ubicacion_providers.dart' show ciudadesParaAltaProvider, relojAltaU
 ///
 /// `main.dart` lo conecta a `fuenteLugarDeTrabajoProvider` de «Mapas offline». Sin sesión o sin la
 /// base abierta contesta «no sé» ([FuenteLugarDeTrabajoLocal.sinFuente]); se reconstruye solo cuando
-/// cambia la sesión o se abre la base.
+/// cambia la sesión, se abre la base o el pull escribe en las réplicas de las que sale la ciudad
+/// ([replicaDeCampaniasCambioProvider]): así «Mapas offline» se entera de que la zona llegó.
 final fuenteLugarDeTrabajoLocalProvider = Provider<FuenteLugarDeTrabajo>((ref) {
   final db = ref.watch(dbLocalProvider);
   final colportorId = ref.watch(sesionProvider).value?.usuarioId;
+  // La zona asignada llega por el sync: la fuente se reconstruye con cada escritura de las réplicas.
+  ref.watch(replicaDeCampaniasCambioProvider);
   if (db == null || colportorId == null) return FuenteLugarDeTrabajoLocal.sinFuente();
   return FuenteLugarDeTrabajoLocal(
     colportorId: colportorId,

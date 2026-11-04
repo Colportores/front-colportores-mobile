@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/lugar_de_traba
 import 'package:colportores_mobile/features/mapa/data/services/fuente_lugar_de_trabajo_local.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/fuente_lugar_de_trabajo.dart';
 import 'package:colportores_mobile/features/tiles/presentation/pages/mapas_offline_page.dart';
 import 'package:colportores_mobile/features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'package:flutter/material.dart';
@@ -23,14 +24,25 @@ import '../helpers/mapa_descargas_arnes.dart';
 import '../helpers/tiles_falsos.dart';
 
 final class _Campanias implements CampaniasDelColportorLocalDataSource {
-  _Campanias({this.zonaId});
+  _Campanias({this.zonaId, this.inscripciones});
 
   final String? zonaId;
+
+  /// Si se da, reemplaza a la inscripción de [zonaId].
+  final List<InscripcionDeCampania>? inscripciones;
 
   @override
   Future<CampaniasDelColportor?> leer(String usuarioId, {required String hoy}) async =>
       CampaniasDelColportor(
-        inscripciones: [(campaniaId: 'camp-1', zonaId: zonaId, ciudadDeLaZonaId: montevideo.id)],
+        inscripciones:
+            inscripciones ??
+            [
+              (
+                campaniaId: 'camp-1',
+                zonaId: zonaId,
+                ciudadDeLaZonaId: zonaId == null ? null : montevideo.id,
+              ),
+            ],
         ciudades: const [(id: 'ciu-mvd', nombre: 'Montevideo', lat: -34.9, lon: -56.16)],
       );
 }
@@ -43,6 +55,18 @@ final class _Lugares implements LugarDeTrabajoLocalDataSource {
   @override
   Future<DatosDelLugar> leer({required Set<String> zonaIds, required String ciudadId}) async =>
       (nombresDeZonas: {for (final id in zonaIds) id: 'Cerro Norte'}, departamento: departamento);
+}
+
+/// Una fuente que se cambia a mano: lo que hace la fuente real cuando el sync escribe las réplicas.
+final class _FuenteCambiante extends Notifier<FuenteLugarDeTrabajo> {
+  _FuenteCambiante(this._inicial);
+
+  final FuenteLugarDeTrabajo _inicial;
+
+  @override
+  FuenteLugarDeTrabajo build() => _inicial;
+
+  void cambiarA(FuenteLugarDeTrabajo nueva) => state = nueva;
 }
 
 PaqueteTiles _paquete(
@@ -91,6 +115,7 @@ Future<void> _montar(
   String? zonaId,
   String? departamento = 'San José',
   CiudadesFalsas? ciudades,
+  List<InscripcionDeCampania>? inscripciones,
   double escala = 1,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
@@ -101,7 +126,7 @@ Future<void> _montar(
   final fuente = FuenteLugarDeTrabajoLocal(
     colportorId: 'col-1',
     ciudades: ciudades ?? CiudadesFalsas(),
-    campanias: _Campanias(zonaId: zonaId),
+    campanias: _Campanias(zonaId: zonaId, inscripciones: inscripciones),
     lugares: _Lugares(departamento: departamento),
     logger: loggerMudo(),
   );
@@ -183,15 +208,92 @@ void main() {
       expect(find.text('No tenés zona asignada'), findsNothing);
     });
 
-    testWidgets('varias ciudades y sin zona: no adivina, avisa y deja reintentar', (tester) async {
+    testWidgets('varias ciudades y sin zona: dice la causa, sin «Reintentar», y deja Uruguay', (
+      tester,
+    ) async {
       await _montar(
         tester,
         catalogo: [_ciudad86, _uruguay1200],
         ciudades: CiudadesFalsas(propone: (_) => const FaltaElPunto()),
       );
 
-      expect(_clave('mapas_offline_sin_lugar'), findsOneWidget);
+      expect(_clave('mapas_offline_sin_ciudad_elegible'), findsOneWidget);
+      expect(
+        find.textContaining('Todavía no tenés zona y tu campaña tiene varias ciudades'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('podés bajar el mapa de todo Uruguay'), findsOneWidget);
+      // Reintentar no cambiaría nada: no hay botón, ni el aviso de falla de lectura.
+      expect(find.text('Reintentar'), findsNothing);
+      expect(_clave('mapas_offline_sin_lugar'), findsNothing);
       expect(find.text('Montevideo · 86 MB'), findsNothing);
+      expect(find.text('Todo Uruguay'), findsOneWidget);
+    });
+
+    testWidgets('zonas en más de una ciudad: no dice que le falta la zona', (tester) async {
+      await _montar(
+        tester,
+        catalogo: [_ciudad86, _uruguay1200],
+        ciudades: CiudadesFalsas(propone: (_) => const FaltaElPunto()),
+        inscripciones: [
+          (campaniaId: 'camp-1', zonaId: 'z-1', ciudadDeLaZonaId: 'ciu-mvd'),
+          (campaniaId: 'camp-2', zonaId: 'z-2', ciudadDeLaZonaId: 'ciu-can'),
+        ],
+      );
+
+      expect(find.textContaining('Tenés zonas en más de una ciudad'), findsOneWidget);
+      expect(find.textContaining('Todavía no tenés zona'), findsNothing);
+      expect(find.text('Reintentar'), findsNothing);
+    });
+
+    testWidgets('cuando la zona llega por el sync, la pantalla se vuelve a leer sola', (
+      tester,
+    ) async {
+      final sinZona = FuenteLugarDeTrabajoLocal(
+        colportorId: 'col-1',
+        ciudades: CiudadesFalsas(propone: (_) => const FaltaElPunto()),
+        campanias: _Campanias(),
+        lugares: _Lugares(),
+        logger: loggerMudo(),
+      );
+      final conZona = FuenteLugarDeTrabajoLocal(
+        colportorId: 'col-1',
+        ciudades: CiudadesFalsas(),
+        campanias: _Campanias(zonaId: 'z-1'),
+        lugares: _Lugares(),
+        logger: loggerMudo(),
+      );
+      final actual = NotifierProvider<_FuenteCambiante, FuenteLugarDeTrabajo>(
+        () => _FuenteCambiante(sinZona),
+      );
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final arnes = ArnesMapa(catalogo: [_zona14, _ciudad86], servirPaqueteMontevideo: false);
+      addTearDown(() => unawaited(arnes.cerrar()));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...arnes.overrides,
+            fuenteLugarDeTrabajoProvider.overrideWith((ref) => ref.watch(actual)),
+            medidorEspacioDiscoProvider.overrideWithValue(
+              EspacioFalso()..libres = 4000 * 1000 * 1000,
+            ),
+          ],
+          child: MaterialApp(theme: temaClaro(), home: const MapasOfflinePage()),
+        ),
+      );
+      await _asentar(tester);
+      expect(_clave('mapas_offline_sin_ciudad_elegible'), findsOneWidget);
+
+      // El sync trae la zona: la fuente real se reconstruye.
+      final contenedor = ProviderScope.containerOf(tester.element(find.byType(MapasOfflinePage)));
+      contenedor.read(actual.notifier).cambiarA(conZona);
+      await _asentar(tester);
+
+      expect(_clave('mapas_offline_sin_ciudad_elegible'), findsNothing);
+      expect(find.text('Cerro Norte · 14 MB'), findsOneWidget);
+      expect(find.text('Montevideo · 86 MB'), findsOneWidget);
     });
 
     testWidgets('a 2× de letra los tres lugares siguen a la vista de la lista', (tester) async {

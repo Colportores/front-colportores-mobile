@@ -25,9 +25,11 @@ import '../datasources/lugar_de_trabajo_local_data_source.dart';
 ///
 /// **Qué es «no sé».** Una `Left` ([FailureLugarDeTrabajoNoDisponible]) es que no se pudo saber la
 /// ciudad: no hay sesión ni base abierta, el teléfono todavía no bajó el catálogo, la campaña no tiene
-/// ciudades, o tiene varias y ninguna zona asignada que decida entre ellas (sin el punto del GPS no se
-/// elige: no se adivina). Una zona `null` en el [LugarDeTrabajo] es que se leyó y no tiene zona
-/// asignada en esa ciudad: «Mi zona» se muestra apagada y «Mi ciudad» y «Mi departamento», no.
+/// ciudades. Con varias ciudades y nada que decida entre ellas (sin el punto del GPS no se elige: no
+/// se adivina) la `Left` dice por qué: [FailureLugarSinZonaConVariasCiudades] o
+/// [FailureLugarZonasEnVariasCiudades]. Una zona `null` en el [LugarDeTrabajo] es que se leyó y no
+/// tiene zona asignada en esa ciudad: «Mi zona» se muestra apagada y «Mi ciudad» y «Mi departamento»,
+/// no.
 final class FuenteLugarDeTrabajoLocal implements FuenteLugarDeTrabajo {
   FuenteLugarDeTrabajoLocal({
     required this._colportorId,
@@ -67,13 +69,14 @@ final class FuenteLugarDeTrabajoLocal implements FuenteLugarDeTrabajo {
     }
     try {
       final propuesta = await ciudades.proponer(colportorId: colportorId);
-      final ciudad = propuesta.fold<CiudadCatalogo?>(
-        (_) => null,
-        (p) => switch (p) {
-          CiudadPropuesta(:final ciudad) => ciudad,
-          CampaniaSinCiudades() || FaltaElPunto() => null,
-        },
-      );
+      final lectura = propuesta.fold<PropuestaCiudad?>((_) => null, (p) => p);
+      // Varias ciudades y nada que decida entre ellas: no es una falla de lectura, y el aviso dice
+      // por qué (sin zona, o zonas en más de una ciudad) en lugar de ofrecer un «Reintentar» inútil.
+      if (lectura is FaltaElPunto) return Left(await _porQueFaltaElPunto(colportorId, campanias));
+      final ciudad = switch (lectura) {
+        CiudadPropuesta(:final ciudad) => ciudad,
+        _ => null,
+      };
       if (ciudad == null) {
         _log.warn(LogModulo.map, 'LUGAR_SIN_CIUDAD', 'no se pudo saber la ciudad de la colportora');
         return const Left(FailureLugarDeTrabajoNoDisponible());
@@ -112,5 +115,26 @@ final class FuenteLugarDeTrabajoLocal implements FuenteLugarDeTrabajo {
       );
       return const Left(FailureLugarDeTrabajoNoDisponible());
     }
+  }
+
+  /// Por qué el resolvedor no pudo elegir entre varias ciudades: la colportora no tiene zona
+  /// ([FailureLugarSinZonaConVariasCiudades]) o la tiene en más de una ciudad
+  /// ([FailureLugarZonasEnVariasCiudades]). Si no se pueden leer sus inscripciones, no se sabe.
+  Future<Failure> _porQueFaltaElPunto(
+    String colportorId,
+    CampaniasDelColportorLocalDataSource campanias,
+  ) async {
+    final leidas = await campanias.leer(colportorId, hoy: diaDeCalendario(_ahora()));
+    if (leidas == null) return const FailureLugarDeTrabajoNoDisponible();
+    final tieneZona = leidas.inscripciones.any((i) => i.ciudadDeLaZonaId != null);
+    _log.info(
+      LogModulo.map,
+      'LUGAR_VARIAS_CIUDADES',
+      'varias ciudades y nada que decida entre ellas',
+      {'con_zona': tieneZona},
+    );
+    return tieneZona
+        ? const FailureLugarZonasEnVariasCiudades()
+        : const FailureLugarSinZonaConVariasCiudades();
   }
 }
