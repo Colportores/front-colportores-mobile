@@ -93,11 +93,15 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
     final conectada = ref.watch(
       estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada),
     );
-    final ultimo = ref.watch(ultimoRespaldoDriveProvider).value;
-    final desde = ref.watch(conectadaDesdeDriveProvider).value;
+    final ultimoLeido = ref.watch(ultimoRespaldoDriveProvider);
+    // Contar desde la conexión solo cuando ya se sabe que no hubo ningún respaldo: mientras el último
+    // todavía carga, `value` es `null` y quien respaldó ayer vería un aviso falso.
+    final desde = ultimoLeido.hasValue && ultimoLeido.value == null
+        ? ref.watch(conectadaDesdeDriveProvider).value
+        : null;
     final dias = conectada
         ? diasSinRespaldo(
-            ultimo: ultimo,
+            ultimo: ultimoLeido.value,
             conectadaDesde: desde,
             ahora: (widget.ahora ?? DateTime.now)(),
           )

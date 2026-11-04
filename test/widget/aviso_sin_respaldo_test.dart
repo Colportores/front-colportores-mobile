@@ -142,6 +142,24 @@ void main() {
       },
     );
 
+    testWidgets('mientras carga el último respaldo no cuenta desde la conexión (respaldó ayer)', (
+      tester,
+    ) async {
+      final ultimo = StreamController<DateTime?>();
+      addTearDown(ultimo.close);
+      await _montar(
+        tester,
+        servicio: _Servicio(),
+        conectadaDesde: _haceDias(10),
+        ultimoEnVivo: () => ultimo.stream,
+      );
+      expect(_aviso, findsNothing, reason: 'todavía no se sabe si hubo respaldo');
+
+      ultimo.add(_haceDias(1));
+      await tester.pumpAndSettle();
+      expect(_aviso, findsNothing, reason: 'respaldó ayer');
+    });
+
     testWidgets('conectó hace 7 días justos y nunca hubo un respaldo: todavía no avisa', (
       tester,
     ) async {
