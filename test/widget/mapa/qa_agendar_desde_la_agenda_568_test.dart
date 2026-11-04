@@ -244,6 +244,63 @@ void main() {
     });
   });
 
+  group('«+ Agendar» del rótulo de un día (delta 7a2df3b9)', () {
+    probar568('con el primer día futuro, el formulario abre con ESE día a las 10:00', (
+      tester,
+    ) async {
+      final m = await montar568(
+        tester,
+        items: [itemAgenda('a-1', DateTime(2026, 10, 26, 16, 0), ubicacionId: 'u-1')],
+      );
+
+      await _tocarAgendar(tester);
+      await _elegirCasa(tester, 'Mataojo 2044');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await asentarAgendar(tester);
+
+      final cuando = m.agendas.recibidas.single.agenda.fechaProgramada.toLocal();
+      expect((cuando.year, cuando.month, cuando.day, cuando.hour), (2026, 10, 26, 10));
+    });
+
+    probar568('con visitas de hoy, el rótulo sigue con la fecha de siempre (mañana 10:00)', (
+      tester,
+    ) async {
+      final m = await montar568(
+        tester,
+        items: [itemAgenda('a-1', DateTime(2026, 10, 23, 16, 0), ubicacionId: 'u-1')],
+      );
+
+      await _tocarAgendar(tester);
+      await _elegirCasa(tester, 'Mataojo 2044');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await asentarAgendar(tester);
+
+      final cuando = m.agendas.recibidas.single.agenda.fechaProgramada.toLocal();
+      expect((cuando.year, cuando.month, cuando.day, cuando.hour), (2026, 10, 24, 10));
+    });
+
+    probar568(
+      'cancelar la lista desde el rótulo de un día no agenda nada y el botón sirve otra vez',
+      (tester) async {
+        final m = await montar568(
+          tester,
+          items: [itemAgenda('a-1', DateTime(2026, 10, 26, 16, 0), ubicacionId: 'u-1')],
+        );
+        await _tocarAgendar(tester);
+
+        await tester.tap(_atras);
+        await asentarAgendar(tester);
+
+        expect(_seleccion, findsNothing);
+        expect(m.agendas.recibidas, isEmpty);
+        await _tocarAgendar(tester);
+        expect(_seleccion, findsOneWidget);
+      },
+    );
+  });
+
   group('texto grande', () {
     for (final tam in tamanos) {
       // skip: QA #568 — el título «Elegí la casa de la visita» de la barra se corta con puntos

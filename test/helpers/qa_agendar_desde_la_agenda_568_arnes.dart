@@ -152,6 +152,15 @@ Future<Montaje568> montar568(
       ...telefono.overrides,
       personaRepositoryProvider.overrideWithValue(repoPersonas),
       espacioRepositoryProvider.overrideWithValue(repoEspacios),
+      // Igual que en `main.dart`: «+ Agendar» del rótulo de un día futuro.
+      agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+        (ref) => (dia) {
+          m.llamadas += 1;
+          final contexto = llave.currentContext;
+          if (contexto == null) return false;
+          return FlujoAgendarDesdeLaAgenda.abrir(contexto, colportorId: sesion, dia: dia);
+        },
+      ),
       // Igual que en `main.dart`.
       agendarDesdeLaAgendaProvider.overrideWith(
         (ref) => () {
