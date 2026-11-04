@@ -14,13 +14,15 @@ VentaEnFicha _venta(String id, String talonario, int monto) => VentaEnFicha(
   lineas: const [],
 );
 
-CobroEnFicha _cobro(String id, int monto, {String? talonario}) => CobroEnFicha(
-  id: id,
-  fecha: DateTime.utc(2026, 10, 20),
-  montoCentavos: monto,
-  efectivo: true,
-  numeroTalonario: talonario,
-);
+CobroEnFicha _cobro(String id, int monto, {required String venta, String? talonario}) =>
+    CobroEnFicha(
+      id: id,
+      fecha: DateTime.utc(2026, 10, 20),
+      montoCentavos: monto,
+      efectivo: true,
+      ventaId: venta,
+      numeroTalonario: talonario,
+    );
 
 EntregaEnFicha _entrega(String id, {required bool pendiente}) => EntregaEnFicha(
   id: id,
@@ -47,7 +49,7 @@ List<String> _ids(List<MovimientoDeFicha> l) => [for (final m in l) m.id];
 
 void main() {
   final historial = <MovimientoDeFicha>[
-    _cobro('cob-1', 60000, talonario: '0042'),
+    _cobro('cob-1', 60000, venta: 'ven-1', talonario: '0042'),
     _entrega('ent-1', pendiente: true),
     _venta('ven-1', '0042', 120000),
     _entrega('ent-0', pendiente: false),
@@ -80,10 +82,10 @@ void main() {
   test('«Con saldo» no deja la venta cobrada entera (ni la cobrada de más)', () {
     final pagadas = <MovimientoDeFicha>[
       _venta('ven-1', '0042', 120000),
-      _cobro('cob-1', 70000, talonario: '0042'),
-      _cobro('cob-2', 50000, talonario: '0042'),
+      _cobro('cob-1', 70000, venta: 'ven-1', talonario: '0042'),
+      _cobro('cob-2', 50000, venta: 'ven-1', talonario: '0042'),
       _venta('ven-2', '0043', 1000),
-      _cobro('cob-3', 5000, talonario: '0043'),
+      _cobro('cob-3', 5000, venta: 'ven-2', talonario: '0043'),
     ];
 
     final r = FiltroDeHistorialDeFicha.aplicar(
@@ -117,14 +119,28 @@ void main() {
     },
   );
 
-  test('un cobro sin número de venta no se descuenta de ninguna', () {
+  test('un cobro de una venta que no está en el historial no se descuenta de ninguna', () {
     final r = FiltroDeHistorialDeFicha.aplicar(
-      [_venta('ven-1', '0042', 120000), _cobro('cob-1', 120000)],
+      [_venta('ven-1', '0042', 120000), _cobro('cob-1', 120000, venta: 'ven-de-otro-vinculo')],
       FiltroDeHistorial.conSaldo,
       resumen: _cuenta(saldo: 120000),
     );
 
     expect(_ids(r), ['ven-1']);
+  });
+
+  test('«Con saldo» no confunde dos ventas con el mismo talonario de años distintos', () {
+    final r = FiltroDeHistorialDeFicha.aplicar(
+      [
+        _venta('ven-2026', '0042', 50000),
+        _cobro('cob-2025', 50000, venta: 'ven-2025', talonario: '0042'),
+        _venta('ven-2025', '0042', 50000),
+      ],
+      FiltroDeHistorial.conSaldo,
+      resumen: _cuenta(saldo: 50000),
+    );
+
+    expect(_ids(r), ['ven-2026']);
   });
 
   test('un historial vacío queda vacío con cualquier filtro', () {

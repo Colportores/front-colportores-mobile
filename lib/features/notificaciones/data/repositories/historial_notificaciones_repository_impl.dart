@@ -64,8 +64,8 @@ final class HistorialNotificacionesRepositoryImpl implements HistorialNotificaci
       });
 
   @override
-  Future<Either<Failure, int>> borrarTodas({DateTime? hasta}) =>
-      _correr('NOTIF_BORRAR_TODAS', const {}, () => _local.borrarTodas(hasta: hasta));
+  Future<Either<Failure, int>> borrarTodas({Set<String>? ids}) =>
+      _correr('NOTIF_BORRAR_TODAS', const {}, () => _local.borrarTodas(ids: ids));
 
   @override
   Future<Either<Failure, int>> purgarVencidas({required DateTime ahora}) =>

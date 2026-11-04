@@ -594,27 +594,26 @@ void main() {
     });
 
     testWidgets(
-      'sin fuente de cobros la tarjeta de la cuenta no se muestra ni dice «Sin movimientos»',
+      'sin ventas la cuenta dice «Sin movimientos aún» y no muestra la tarjeta (HU-UBI-009)',
       (tester) async {
         await llegarAFicha(tester, EstadoFicha.sinMovimientos);
 
         expect(find.byKey(ClavesFicha.cuenta), findsNothing);
-        expect(find.text('Sin movimientos aún'), findsNothing);
+        expect(find.text('Sin movimientos aún'), findsOneWidget);
         expect(find.byKey(ClavesFicha.fila('ven-1')), findsOneWidget);
       },
     );
 
-    testWidgets(
-      'sin fuente de cobros el filtro no ofrece «Con saldo» y deja Todo y Entrega pendiente',
-      (tester) async {
-        await llegarAFicha(tester, EstadoFicha.sinMovimientos);
-        await llegarA563(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo)));
+    testWidgets('sin ventas el filtro no ofrece «Con saldo» y deja Todo y Entrega pendiente', (
+      tester,
+    ) async {
+      await llegarAFicha(tester, EstadoFicha.sinMovimientos);
+      await llegarA563(tester, find.byKey(ClavesFicha.filtro(FiltroDeHistorial.todo)));
 
-        expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)), findsNothing);
-        expect(find.text('Con saldo'), findsNothing);
-        expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)), findsOneWidget);
-      },
-    );
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.conSaldo)), findsNothing);
+      expect(find.text('Con saldo'), findsNothing);
+      expect(find.byKey(ClavesFicha.filtro(FiltroDeHistorial.entregaPendiente)), findsOneWidget);
+    });
 
     testWidgets('los avisos de solo lectura dicen qué reactivar primero', (tester) async {
       await llegarAFicha(tester, EstadoFicha.ubicacionDeBaja);

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/nota_persona.dart';
+import '../../domain/services/retencion_notas_borradas.dart';
 import '../providers/notas_persona_providers.dart';
 import '../providers/personas_providers.dart';
 import '../textos_notas.dart';
@@ -259,7 +260,10 @@ class _NotasDePersonaPageState extends ConsumerState<NotasDePersonaPage> {
           for (final n in todas)
             if (!n.estaBorrada) n,
         ],
-        cantidadBorradas: todas.where((n) => n.estaBorrada).length,
+        // Las que ya pasaron de los 90 días no cuentan: ya no están en «Ver borradas».
+        cantidadBorradas: todas
+            .where((n) => RetencionNotasBorradas.estaEnBorradas(n, ahora))
+            .length,
         ahora: ahora,
         alAbrirOpciones: soloLectura ? null : (n) => _abrirOpciones(n, ahora),
         alVerBorradas: _verBorradas,

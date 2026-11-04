@@ -7,7 +7,6 @@ import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ficha_persona_repository.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/movimientos_de_cuenta_de_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/ficha_persona_use_cases.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,6 +79,7 @@ void main() {
             fecha: DateTime.utc(2026, 10, 20, 12),
             montoCentavos: 60000,
             efectivo: true,
+            ventaId: 'ven-1',
           ),
           EntregaEnFicha(
             id: 'ent-1',
@@ -212,10 +212,6 @@ void main() {
 
       expect(salidas.length, greaterThan(antes));
       expect(salidas.last!.historial.map((m) => m.id), ['vis-9']);
-    });
-
-    test('sin adaptador de entregas y cobros no hay movimientos de más', () async {
-      expect(await const MovimientosDeCuentaSinFuente().observar('per-1').first, isEmpty);
     });
 
     test('al dejar de escuchar no queda nada suscripto', () async {

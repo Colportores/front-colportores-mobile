@@ -80,6 +80,23 @@ class Cobranza extends Equatable {
 
   bool get estaBorrada => auditoria.estaBorrada;
 
+  /// El mismo cobro con el número de la cuota a la que va (HU-COB-004).
+  Cobranza conNumeroCuota(int? numero) => Cobranza(
+    id: id,
+    ventaId: ventaId,
+    montoCentavos: montoCentavos,
+    medio: medio,
+    fecha: fecha,
+    ticketId: ticketId,
+    numeroCuota: numero,
+    tarjetaTipo: tarjetaTipo,
+    tarjetaMarca: tarjetaMarca,
+    numeroAprobacion: numeroAprobacion,
+    referenciaTransferencia: referenciaTransferencia,
+    bancoOrigen: bancoOrigen,
+    auditoria: auditoria,
+  );
+
   @override
   List<Object?> get props => [
     id,

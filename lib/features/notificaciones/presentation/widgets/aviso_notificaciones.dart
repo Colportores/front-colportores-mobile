@@ -59,6 +59,19 @@ abstract final class TextosNotificaciones {
   static const errorAlLeer = 'No pudimos revisar las notificaciones.';
   static const reintentar = 'Reintentar';
 
+  /// «Aviso exacto» (HU-NOT-002, #510): el permiso «Alarmas y recordatorios» de Android está apagado.
+  /// El texto y «Abrir ajustes» son los propuestos en el issue; el canvas no los dibuja.
+  static const alarmasApagadas =
+      'Los recordatorios pueden llegar tarde. Activá «Alarmas y recordatorios» para que suenen a la '
+      'hora justa.';
+  static const alarmasAbrirAjustes = 'Abrir ajustes';
+
+  /// Cuando el teléfono no pudo abrir esa pantalla. Propuesta: el canvas no la dibuja. Como
+  /// [ajustesNoAbren], sin el nombre de la app.
+  static const alarmasAjustesNoAbren =
+      'No pudimos abrir los ajustes. Abrí los ajustes del teléfono, buscá esta app y activá '
+      '«Alarmas y recordatorios».';
+
   static const filaConfiguracion = 'Notificaciones';
 
   // Vista 24, grupo B (preferencias, HU-NOT-004). Salen del canvas salvo los marcados «propuesta».

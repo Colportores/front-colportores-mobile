@@ -17,6 +17,7 @@ import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notificaciones/notificaciones_providers.dart';
+import 'core/notificaciones/permiso_alarmas_exactas.dart';
 import 'core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
@@ -51,18 +52,22 @@ import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
 import 'features/respaldo/data/services/servicio_google.dart';
 import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
 import 'plataforma/identidad_instalacion.dart';
@@ -139,11 +144,14 @@ Future<void> main() async {
   // Recordatorios locales de las visitas (HU-NOT-002): el plugin se prepara antes de la primera
   // pantalla para recoger el aviso que abrió la app, si lo hubo. Si no arranca, la app sigue.
   final permisoNotificaciones = PermisoNotificacionesCanal();
+  // «Alarmas y recordatorios» (HU-NOT-002, «Aviso exacto»): el motor programa exacto si está prendido
+  // y la vista 24 avisa si no lo está.
+  final permisoAlarmasExactas = PermisoAlarmasExactasCanal();
   // Las preferencias de los recordatorios (HU-NOT-004) viven en el almacén seguro; el mismo objeto
   // las lee al programar cada aviso (si están prendidos y con cuánta anticipación).
   final preferenciasRecordatorios = PreferenciasRecordatoriosRepositoryImpl(almacenSeguro);
   final recordatorios = RecordatoriosLocales(
-    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin()),
+    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin(), alarmas: permisoAlarmasExactas),
     permiso: permisoNotificaciones,
     anticipacion: preferenciasRecordatorios,
     activados: preferenciasRecordatorios,
@@ -189,6 +197,7 @@ Future<void> main() async {
         // El permiso de notificaciones (HU-NOT-001, vista 24): canal nativo propio (MainActivity.kt,
         // AppDelegate.swift) y, en el almacén seguro, si ya se le pidió y si cerró el aviso de Hoy.
         permisoNotificacionesSistemaProvider.overrideWithValue(permisoNotificaciones),
+        permisoAlarmasExactasProvider.overrideWithValue(permisoAlarmasExactas),
         // Los avisos de las visitas agendadas (HU-NOT-002), con el plugin del teléfono.
         recordatoriosProvider.overrideWithValue(recordatorios),
         toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
@@ -199,6 +208,11 @@ Future<void> main() async {
         ),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
+        ),
+        // HU-SYNC-006 (vista 34): el asistente de recuperación del primer arranque.
+        asistenteDeRecuperacionHabilitadoProvider.overrideWithValue(true),
+        recuperacionResueltaRepositoryProvider.overrideWithValue(
+          RecuperacionResueltaRepositoryImpl(almacenSeguro),
         ),
         // Qué cuentas escondieron el aviso de privacidad con «No volver a mostrar» (#445, #447): es
         // por cuenta y se vuelve a encender desde Configuración.
@@ -270,6 +284,22 @@ Future<void> main() async {
             );
           },
         ),
+        // Tocar una venta en la ficha de la persona (vista 32 B → vista 31, HU-VEN-004): la devolución
+        // de esa venta, con la venta, la casa y la persona ya resueltas. Devuelve `true` si se registró.
+        devolverVentaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null || colportorId.trim().isEmpty) return false;
+            return DevolucionPage.abrir(
+              contexto,
+              ventaId: datos.ventaId,
+              colportorId: colportorId,
+              espacioId: datos.espacioId,
+              personaId: datos.personaId,
+            );
+          },
+        ),
         // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
         // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
         // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
@@ -301,6 +331,11 @@ Future<void> main() async {
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
+        // HU-NOT-003: tocar el aviso de una push (el de arriba con la app abierta o el del sistema)
+        // lo marca como leído y lleva a su destino. El adaptador de `firebase_messaging` que las
+        // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
+        // recibe nada hasta entonces.
+        ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
         // el teléfono. La pestaña Historial se engancha con su HU (#446).
         pestanaNotasDeLaCasaProvider.overrideWithValue(

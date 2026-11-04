@@ -34,6 +34,9 @@ abstract final class TextosFicha {
   static const pagado = TextosBajaPersona.pagado;
   static const saldo = TextosBajaPersona.saldo;
 
+  /// HU-UBI-009: la persona todavía no tiene ventas ni pagos que sumar.
+  static const sinMovimientos = 'Sin movimientos aún';
+
   // Menú «⋯» (decisiones del 26/10 en #405: la baja sale de acá, y la edición también).
   static const masOpciones = 'Más opciones';
   static const editarPersona = 'Editar persona';

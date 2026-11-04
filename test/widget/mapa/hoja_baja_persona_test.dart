@@ -195,8 +195,12 @@ void main() {
       await aLaSegunda(tester);
 
       expect(find.text('¿Seguro?'), findsOneWidget);
+      // Con deuda y una entrega pendiente van las dos frases, la deuda primero (#509 P2).
       expect(
-        find.text('La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja.'),
+        find.text(
+          'La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja. '
+          'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+        ),
         findsOneWidget,
       );
       expect(_siDarDeBaja, findsOneWidget);
@@ -254,6 +258,197 @@ void main() {
       expect(resultado.cierres, 1);
       expect(resultado.salida, isNull);
     });
+  });
+
+  group('32D·02 y 32D·03 · con una entrega pendiente y sin deuda (#509)', () {
+    const entregaPendiente = ResumenCuentaPersona(
+      compradoCentavos: 450000,
+      pagadoCentavos: 450000,
+      saldoCentavos: 0,
+      entregasHechas: 1,
+      entregasTotales: 2,
+    );
+
+    testWidgets('dado que no debe nada pero espera una entrega, pide la segunda confirmación', (
+      tester,
+    ) async {
+      final repo = _repoConJorge();
+      await montarHojaBaja(
+        tester,
+        repo: repo,
+        cuentas: CuentasFalsas(cuenta: entregaPendiente),
+      );
+
+      expect(find.text('Jorge tiene 1 entrega pendiente.'), findsOneWidget);
+      expect(find.textContaining('te debe'), findsNothing);
+      expect(_darDeBajaIgual, findsOneWidget);
+      expect(_darDeBaja, findsNothing);
+
+      await tester.tap(_darDeBajaIgual);
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, isEmpty);
+      expect(find.text('¿Seguro?'), findsOneWidget);
+      expect(
+        find.text(
+          'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('La deuda'), findsNothing);
+
+      await tester.tap(_siDarDeBaja);
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, hasLength(1));
+    });
+
+    testWidgets('dadas varias entregas pendientes, el aviso va en plural', (tester) async {
+      await montarHojaBaja(
+        tester,
+        cuentas: CuentasFalsas(
+          cuenta: const ResumenCuentaPersona(
+            compradoCentavos: 450000,
+            pagadoCentavos: 450000,
+            saldoCentavos: 0,
+            entregasHechas: 0,
+            entregasTotales: 3,
+          ),
+        ),
+      );
+
+      expect(find.text('Jorge tiene 3 entregas pendientes.'), findsOneWidget);
+    });
+
+    testWidgets('dada una deuda y una entrega, el aviso dice las dos y la segunda confirmación '
+        'sigue hablando de la deuda', (tester) async {
+      await montarHojaBaja(
+        tester,
+        persona: personaParaBaja(nombre: 'María'),
+        cuentas: CuentasFalsas(cuenta: cuentaConSaldo),
+      );
+
+      expect(find.text('María te debe \$\u00A01.200 y tiene 1 entrega pendiente.'), findsOneWidget);
+      await tester.tap(_darDeBajaIgual);
+      await asentar(tester);
+
+      expect(
+        find.text(
+          'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja. '
+          'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('«No, volver» vuelve al resumen y «Cancelar» cierra sin escribir', (tester) async {
+      final repo = _repoConJorge();
+      final resultado = await montarHojaBaja(
+        tester,
+        repo: repo,
+        cuentas: CuentasFalsas(cuenta: entregaPendiente),
+      );
+      await tester.tap(_darDeBajaIgual);
+      await asentar(tester);
+      await tester.tap(_noVolver);
+      await asentar(tester);
+
+      expect(find.text('Jorge tiene 1 entrega pendiente.'), findsOneWidget);
+      await tester.tap(_cancelar);
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, isEmpty);
+      expect(resultado.salida, isNull);
+    });
+
+    testWidgets('dos toques seguidos en «Sí, dar de baja» piden la baja una sola vez', (
+      tester,
+    ) async {
+      final repo = _repoConJorge()..compuertaBaja = Completer<void>();
+      await montarHojaBaja(
+        tester,
+        repo: repo,
+        cuentas: CuentasFalsas(cuenta: entregaPendiente),
+      );
+      await tester.tap(_darDeBajaIgual);
+      await asentar(tester);
+
+      await tester.tap(_siDarDeBaja);
+      await tester.tap(_siDarDeBaja, warnIfMissed: false);
+      repo.compuertaBaja!.complete();
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, hasLength(1));
+    });
+
+    testWidgets('si falla al escribir, el botón vuelve a habilitarse y el reintento da de baja', (
+      tester,
+    ) async {
+      final repo = _repoConJorge()..resultadosBaja.add(const FailureInesperado());
+      final resultado = await montarHojaBaja(
+        tester,
+        repo: repo,
+        cuentas: CuentasFalsas(cuenta: entregaPendiente),
+      );
+      await tester.tap(_darDeBajaIgual);
+      await asentar(tester);
+
+      await tester.tap(_siDarDeBaja);
+      await asentar(tester);
+
+      expect(find.text('No pudimos dar de baja a Jorge. Probá de nuevo.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(_siDarDeBaja).onPressed, isNotNull);
+      expect(find.text('Dando de baja…'), findsNothing);
+
+      await tester.tap(_siDarDeBaja);
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, hasLength(2));
+      expect(resultado.salida, isA<PersonaBajaRealizada>());
+    });
+
+    testWidgets('si la entrega llega entre que se abre la hoja y se confirma, no escribe: muestra '
+        'el resumen', (tester) async {
+      final repo = _repoConJorge();
+      await montarHojaBaja(
+        tester,
+        repo: repo,
+        cuentas: CuentasFalsas(secuencia: [null, entregaPendiente]),
+      );
+      expect(_darDeBaja, findsOneWidget);
+
+      await tester.tap(_darDeBaja);
+      await asentar(tester);
+
+      expect(repo.bajasRecibidas, isEmpty);
+      expect(find.text('Jorge tiene 1 entrega pendiente.'), findsOneWidget);
+      expect(_darDeBajaIgual, findsOneWidget);
+    });
+
+    for (final fase in ['resumen', 'confirmación']) {
+      testWidgets('con un nombre larguísimo y textScaler 2.0 a 320×568 ($fase) no desborda y las '
+          'acciones se alcanzan', (tester) async {
+        await montarHojaBaja(
+          tester,
+          persona: personaParaBaja(
+            nombre: 'Maximiliano Alejandro Bartolomé',
+            apellido: 'Fernández de la Vega y Altamirano',
+          ),
+          cuentas: CuentasFalsas(cuenta: entregaPendiente),
+          escala: 2,
+          tamano: const Size(320, 568),
+        );
+        if (fase == 'confirmación') {
+          await tester.tap(_darDeBajaIgual);
+          await asentar(tester);
+        }
+
+        expect(tester.takeException(), isNull);
+        final rect = tester.getRect(fase == 'resumen' ? _darDeBajaIgual : _siDarDeBaja);
+        expect(rect.bottom, lessThanOrEqualTo(568));
+        expect(rect.height, greaterThanOrEqualTo(48));
+      });
+    }
   });
 
   group('estados que el canvas no dibuja', () {

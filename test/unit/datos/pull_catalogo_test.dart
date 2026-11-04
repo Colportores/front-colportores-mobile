@@ -61,14 +61,14 @@ Map<String, Object?> _excepcion(String id, {int precio = 42000, int version = 1}
   ..._auditoria(version),
 };
 
-Map<String, Object?> _general(String id, {int precio = 45000}) => {
+Map<String, Object?> _general(String id, {int precio = 45000, int version = 1}) => {
   'id': id,
   'producto_id': 'pro-1',
   'coleccion_id': null,
   'precio_venta': precio,
   'valido_desde': '2026-01-01',
   'valido_hasta': null,
-  ..._auditoria(),
+  ..._auditoria(version),
 };
 
 /// El servidor de verdad entrega el delta en páginas ([porPagina] filas) y se puede caer entre dos.
@@ -293,9 +293,33 @@ void main() {
   });
 
   group('realtime (HU-SYNC-003)', () {
-    test('se suscribe a producto y a los precios de la ciudad, y a nada más', () {
-      expect(realtime.subscriptions.single, unorderedEquals(['producto', 'precio_por_ciudad']));
+    test('se suscribe a producto y a los dos precios (ciudad y general), y a nada más', () {
+      expect(
+        realtime.subscriptions.single,
+        unorderedEquals(['producto', 'precio_por_ciudad', 'precio_general']),
+      );
     });
+
+    test(
+      'un cambio del precio general llega por el evento y la pantalla lo ve sin pull manual',
+      () async {
+        sembrarCatalogo();
+        await motor.syncNow();
+        final precios = <int>[];
+        final suscripcion = db
+            .select(db.preciosGenerales)
+            .watch()
+            .listen((filas) => precios.addAll(filas.map((f) => f.precioVenta)));
+        addTearDown(suscripcion.cancel);
+        await esperarHasta(() async => precios.isNotEmpty);
+
+        servidor.seed('precio_general', [_general('pg-1', precio: 48000, version: 2)]);
+        realtime.emit('precio_general');
+
+        await esperarHasta(() async => precios.contains(48000));
+        expect((await db.select(db.preciosGenerales).getSingle()).precioVenta, 48000);
+      },
+    );
 
     test('un cambio de precio llega por el evento y la pantalla lo ve sin pull manual', () async {
       sembrarCatalogo();

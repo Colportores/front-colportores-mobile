@@ -29,6 +29,14 @@ const _conSaldo = ResumenCuentaPersona(
   entregasTotales: 2,
 );
 
+const _conEntregaPendiente = ResumenCuentaPersona(
+  compradoCentavos: 450000,
+  pagadoCentavos: 450000,
+  saldoCentavos: 0,
+  entregasHechas: 1,
+  entregasTotales: 2,
+);
+
 void main() {
   final ahora = DateTime.utc(2026, 10, 25, 9, 30);
   late PersonaRepositorioFalso repo;
@@ -66,6 +74,46 @@ void main() {
 
       expect(r.getOrElse(() => throw StateError('falló')), isA<PersonaDadaDeBaja>());
     });
+
+    test('dada una persona sin deuda con una entrega pendiente, sin confirmar, no escribe y '
+        'devuelve la cuenta (#509)', () async {
+      cuentas.cuenta = _conEntregaPendiente;
+
+      final r = await darDeBaja(const DarDeBajaPersonaParams(personaId: 'p1'));
+
+      final resultado = r.getOrElse(() => throw StateError('falló'));
+      expect(resultado, isA<BajaPersonaRequiereConfirmacion>());
+      expect((resultado as BajaPersonaRequiereConfirmacion).cuenta, _conEntregaPendiente);
+      expect(repo.bajasRecibidas, isEmpty);
+    });
+
+    test('dada una persona sin deuda con entregas pendientes y la doble confirmación, la da de '
+        'baja sin volver a mirar la cuenta (#509)', () async {
+      cuentas.cuenta = _conEntregaPendiente;
+
+      final r = await darDeBaja(const DarDeBajaPersonaParams(personaId: 'p1', confirmaSaldo: true));
+
+      expect(r.getOrElse(() => throw StateError('falló')), isA<PersonaDadaDeBaja>());
+      expect(cuentas.consultas, 0);
+      expect(repo.bajasRecibidas, hasLength(1));
+    });
+
+    test(
+      'dada una persona que lo recibió todo y no debe nada, la baja es directa (#509)',
+      () async {
+        cuentas.cuenta = const ResumenCuentaPersona(
+          compradoCentavos: 1000,
+          pagadoCentavos: 1000,
+          saldoCentavos: 0,
+          entregasHechas: 2,
+          entregasTotales: 2,
+        );
+
+        final r = await darDeBaja(const DarDeBajaPersonaParams(personaId: 'p1'));
+
+        expect(r.getOrElse(() => throw StateError('falló')), isA<PersonaDadaDeBaja>());
+      },
+    );
 
     test('dada una persona con saldo, sin confirmar, no escribe y devuelve la cuenta', () async {
       cuentas.cuenta = _conSaldo;
@@ -186,8 +234,26 @@ void main() {
       expect(_conSaldo.tieneSaldo, isTrue);
     });
 
-    test('la fuente por defecto no sabe de nadie', () async {
-      expect(await const CuentasDePersonasSinFuente().resumenDe('p1'), isNull);
+    test('la baja pide la doble confirmación con deuda, con entregas pendientes o con las dos', () {
+      expect(_conSaldo.pideConfirmarBaja, isTrue);
+      expect(_conEntregaPendiente.pideConfirmarBaja, isTrue);
+      expect(_conEntregaPendiente.tieneSaldo, isFalse);
+      const soloDeuda = ResumenCuentaPersona(
+        compradoCentavos: 100,
+        pagadoCentavos: 0,
+        saldoCentavos: 100,
+        entregasHechas: 1,
+        entregasTotales: 1,
+      );
+      expect(soloDeuda.pideConfirmarBaja, isTrue);
+      const alDia = ResumenCuentaPersona(
+        compradoCentavos: 100,
+        pagadoCentavos: 100,
+        saldoCentavos: 0,
+        entregasHechas: 1,
+        entregasTotales: 1,
+      );
+      expect(alDia.pideConfirmarBaja, isFalse);
     });
   });
 }
