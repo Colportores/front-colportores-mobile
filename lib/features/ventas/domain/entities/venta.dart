@@ -32,11 +32,9 @@ class Venta extends Equatable {
   /// El esquema no especifica el formato del talonario — se modela como texto libre.
   final String numeroTalonario;
 
-  /// Monto total en centavos (flutter-clean-arch.md, regla 6).
-  ///
-  /// TODO(#8): el nombre del campo (`montoTotalCentavos` vs `montoTotal` del template de
-  /// flutter-clean-arch.md) es decisión pendiente — ver comentario en el issue #8. El tipo no:
-  /// centavos como `int` está decidido.
+  /// Monto total en centavos (flutter-clean-arch.md, regla 6). El nombre lleva la unidad a
+  /// propósito; en el contrato es `monto_total` (`VentaModel.toJson`) y en la tabla local
+  /// `montoTotal` (`monto_total`), siempre en centavos como `int`.
   final int montoTotalCentavos;
 
   /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
