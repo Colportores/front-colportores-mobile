@@ -327,16 +327,28 @@ void main() {
       );
     });
 
-    test('dado que la marca quedó dentro de la tolerancia (el reloj retrocedió minutos), no se '
+    test('dado que la marca quedó 4 minutos por delante (dentro de la tolerancia de 5), no se '
         'revisa ni se mueve', () async {
-      marca.marca = ahora.add(const Duration(minutes: 30));
+      marca.marca = ahora.add(const Duration(minutes: 4));
       await agenda('age-1', DateTime.utc(2026, 10, 27, 15));
 
       final r = await conciliar('col-1');
 
       expect(r.getOrElse(() => -1), 0);
-      expect(marca.marca, ahora.add(const Duration(minutes: 30)));
+      expect(marca.marca, ahora.add(const Duration(minutes: 4)));
       expect(await db.select(db.notificacionesHistorial).get(), isEmpty);
+    });
+
+    test('dado que la marca quedó 6 minutos por delante (pasada la tolerancia de 5), se descarta: '
+        'se revisa desde los 90 días, se guarda el aviso y la marca vuelve a «ahora»', () async {
+      marca.marca = ahora.add(const Duration(minutes: 6));
+      await agenda('age-1', DateTime.utc(2026, 10, 27, 15));
+
+      final r = await conciliar('col-1');
+
+      expect(r.getOrElse(() => -1), 1);
+      expect(await db.select(db.notificacionesHistorial).get(), hasLength(1));
+      expect(marca.marca, ahora);
     });
 
     test(

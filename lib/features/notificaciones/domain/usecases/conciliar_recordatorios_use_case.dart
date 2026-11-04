@@ -52,8 +52,10 @@ class ConciliarRecordatoriosUseCase {
   static const Duration retencion = Duration(days: 90);
 
   /// Cuánto puede quedar la marca por delante de «ahora» y seguir siendo creíble (el reloj retrocede
-  /// unos minutos al sincronizarse con la red). Más que eso, la marca vino de un reloj equivocado.
-  static const Duration toleranciaDelReloj = Duration(hours: 1);
+  /// unos minutos al sincronizarse con la red): 5 minutos, la misma tolerancia del reloj adelantado
+  /// que usa el resto del sistema (decisión del 04/11). Más que eso, la marca vino de un reloj
+  /// equivocado.
+  static const Duration toleranciaDelReloj = Duration(minutes: 5);
 
   /// El id del aviso en el historial: `recordatorio-<agendaId>-<instante>`, con el instante del aviso
   /// en milisegundos UTC desde la época. El mismo aviso guardado dos veces queda una sola vez.
