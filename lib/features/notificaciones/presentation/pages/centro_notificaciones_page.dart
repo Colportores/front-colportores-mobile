@@ -66,12 +66,47 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     }
   }
 
+  /// Lo que el aviso (SnackBar) ocupa abajo mientras está a la vista: la lista se achica esa altura
+  /// para que no tape al último aviso tocado (#156). Vuelve a 0 cuando el aviso se va.
+  double _reservaDelAviso = 0;
+  final ScrollController _scroll = ScrollController();
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _avisoActual;
+
+  static const double _relleno = 14;
+
+  /// Lo que el SnackBar suma alrededor de su contenido además del relleno (medido: ~15 dp).
+  static const double _holgura = 16;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   void _avisar(String texto) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
+    final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+    final aviso = mensajero.showSnackBar(
+      SnackBar(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: _relleno),
+        content: _MideAlto(
+          alAlto: (alto) {
+            if (!mounted || _avisoActual == null) return;
+            // Si la persona había bajado hasta el final, el último aviso quedaría debajo del recorte:
+            // se lo trae. Una lista que entera entra en pantalla no se mueve.
+            final alFinal =
+                _scroll.hasClients &&
+                _scroll.position.extentBefore > 0 &&
+                _scroll.position.extentAfter < 1;
+            setState(() => _reservaDelAviso = alto + 2 * _relleno + _holgura);
+            if (alFinal) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _scroll.hasClients) {
+                  _scroll.jumpTo(_scroll.position.maxScrollExtent);
+                }
+              });
+            }
+          },
+          child: Row(
             spacing: 12,
             children: [
               const ExcludeSemantics(child: Icon(Icons.info_outline, color: Color(0xFFB9D3F2))),
@@ -79,7 +114,17 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
             ],
           ),
         ),
-      );
+      ),
+    );
+    _avisoActual = aviso;
+    unawaited(
+      aviso.closed.whenComplete(() {
+        // El de ahora puede ser otro: `clearSnackBars` cierra el anterior después de abrir este.
+        if (!mounted || !identical(_avisoActual, aviso)) return;
+        _avisoActual = null;
+        setState(() => _reservaDelAviso = 0);
+      }),
+    );
   }
 
   void _anunciar(String texto) {
@@ -149,7 +194,7 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
         case AccionMenuCentro.marcarTodas:
           await _marcarTodas();
         case AccionMenuCentro.borrarTodas:
-          await _confirmarBorrado(avisos.length);
+          await _confirmarBorrado(avisos);
       }
     } finally {
       _conMenu = false;
@@ -165,14 +210,16 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     );
   }
 
-  Future<void> _confirmarBorrado(int cantidad) async {
-    // Lo que llegue mientras la confirmación está abierta no se borra: no estaba en la cuenta.
-    final corte = ref.read(relojHistorialNotificacionesProvider)();
+  Future<void> _confirmarBorrado(List<Notificacion> avisos) async {
+    // Lo que llegue con el menú o la confirmación abiertos no se borra: no estaba en la cuenta. Se
+    // borran los avisos que se contaron, no «todo lo anterior a una hora» (un recordatorio nuevo
+    // se guarda con la hora en que sonó, que puede ser anterior).
+    final ids = {for (final a in avisos) a.id};
     final borrado = await mostrarHojaBorrarTodasLasNotificaciones(
       context,
-      cantidad: cantidad,
+      cantidad: avisos.length,
       borrar: () async {
-        final r = await ref.read(borrarTodasLasNotificacionesUseCaseProvider)(hasta: corte);
+        final r = await ref.read(borrarTodasLasNotificacionesUseCaseProvider)(ids: ids);
         return r.isRight();
       },
     );
@@ -248,7 +295,10 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
             Expanded(
               child: switch (estado) {
                 AsyncData(:final value) when value.isEmpty => _Vacio(colores: colores),
-                AsyncData(:final value) => _Lista(avisos: value, onAbrir: _abrir),
+                AsyncData(:final value) => Padding(
+                  padding: EdgeInsets.only(bottom: _reservaDelAviso),
+                  child: _Lista(avisos: value, onAbrir: _abrir, controlador: _scroll),
+                ),
                 AsyncError() => ListView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                   children: [
@@ -273,8 +323,9 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
 }
 
 class _Lista extends ConsumerWidget {
-  const _Lista({required this.avisos, required this.onAbrir});
+  const _Lista({required this.avisos, required this.onAbrir, required this.controlador});
 
+  final ScrollController controlador;
   final List<Notificacion> avisos;
   final void Function(Notificacion aviso) onAbrir;
 
@@ -294,6 +345,7 @@ class _Lista extends ConsumerWidget {
     }
     return ListView.separated(
       key: const Key('centro_lista'),
+      controller: controlador,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       itemCount: filas.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -394,5 +446,33 @@ class _Cargando extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Avisa la altura que ocupa su [child] una vez dibujado (la del texto del aviso, que depende del
+/// tamaño de letra).
+class _MideAlto extends StatefulWidget {
+  const _MideAlto({required this.alAlto, required this.child});
+
+  final ValueChanged<double> alAlto;
+  final Widget child;
+
+  @override
+  State<_MideAlto> createState() => _MideAltoState();
+}
+
+class _MideAltoState extends State<_MideAlto> {
+  double? _ultimo;
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final alto = context.size?.height;
+      if (alto == null || alto == _ultimo) return;
+      _ultimo = alto;
+      widget.alAlto(alto);
+    });
+    return widget.child;
   }
 }

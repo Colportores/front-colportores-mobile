@@ -8,8 +8,7 @@
 // recorrido y del botón no cambió.
 //
 // Las capturas solo se sacan con `--dart-define=QA_CAPTURAS=true` y van a `.dart_tool/qa_capturas/`
-// (ignorado por git). Los tests con `skip` documentan un hallazgo: `--dart-define=QA_HALLAZGOS=true`
-// los corre.
+// (ignorado por git).
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -29,8 +28,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/notificaciones_arnes.dart';
 import '../helpers/qa_vista24_153_arnes.dart' show cargarFuentes, conCapturas;
-
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 class _SesionFija extends SesionNotifier {
   @override
@@ -133,7 +130,7 @@ double _razon(Color a, Color b) {
 
 String _textoDe(Finder f) => (f.evaluate().single.widget as Text).data!;
 
-void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bool? skip}) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo) {
   testWidgets(descripcion, (tester) async {
     try {
       await cuerpo(tester);
@@ -141,7 +138,7 @@ void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bo
       _handle?.dispose();
       _handle = null;
     }
-  }, skip: skip);
+  });
 }
 
 void main() {
@@ -334,7 +331,7 @@ void main() {
 
       expect(_apagadosAviso, findsOneWidget);
       expect(_toast, findsNothing, reason: 'sigue «te avisamos 35 min antes» con todo apagado');
-    }, skip: !_conHallazgos);
+    });
   });
 
   group('El tramo sin recorrer del control', () {

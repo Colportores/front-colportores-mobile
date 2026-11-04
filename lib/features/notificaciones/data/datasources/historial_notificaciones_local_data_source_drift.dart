@@ -85,13 +85,25 @@ class HistorialNotificacionesLocalDataSourceDrift {
     );
   }
 
-  Future<int> borrarTodas({DateTime? hasta}) {
-    final consulta = _db.delete(_tabla);
-    if (hasta != null) {
-      consulta.where((n) => n.recibidaEn.isSmallerOrEqualValue(hasta.millisecondsSinceEpoch));
-    }
-    return consulta.go();
+  /// Con [ids], solo esas filas (de a [_loteDeIds], por el tope de variables de SQLite); sin [ids],
+  /// todo. Devuelve cuántas borró.
+  Future<int> borrarTodas({Set<String>? ids}) {
+    if (ids == null) return _db.delete(_tabla).go();
+    final lista = ids.toList();
+    return _db.transaction(() async {
+      var borradas = 0;
+      for (var i = 0; i < lista.length; i += _loteDeIds) {
+        final lote = lista.sublist(
+          i,
+          i + _loteDeIds > lista.length ? lista.length : i + _loteDeIds,
+        );
+        borradas += await (_db.delete(_tabla)..where((n) => n.id.isIn(lote))).go();
+      }
+      return borradas;
+    });
   }
+
+  static const int _loteDeIds = 500;
 
   Future<int> purgarVencidas({required DateTime ahora}) => (_db.delete(
     _tabla,
