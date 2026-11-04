@@ -38,4 +38,9 @@ final class AlmacenDeFotosEnDisco implements AlmacenDeFotosDeTicket {
     final archivo = File(ruta);
     if (await archivo.exists()) await archivo.delete();
   }
+
+  @override
+  Future<void> borrarTodo() async {
+    if (await _carpeta.exists()) await _carpeta.delete(recursive: true);
+  }
 }

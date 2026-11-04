@@ -53,6 +53,10 @@ final class _AlmacenSinConfigurar implements AlmacenDeFotosDeTicket {
 
   @override
   Future<void> borrar(String ruta) => throw _error();
+
+  // Sin almacén configurado no se guardó ninguna foto: no hay nada que borrar.
+  @override
+  Future<void> borrarTodo() async {}
 }
 
 /// La subida de la foto por el enlace firmado de `foto-ticket`. Sin Supabase configurado (tests y demo)

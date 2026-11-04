@@ -26,6 +26,9 @@ final class _RepoFalso implements TicketRepository {
   Failure? falla;
   Failure? fallaAlMarcar;
 
+  /// Si no es null, `bytesDeLaFoto` devuelve esta falla (un error pasajero de lectura).
+  Failure? fallaAlLeer;
+
   @override
   Future<Either<Failure, TicketRegistrado>> registrar(
     Ticket ticket, {
@@ -49,7 +52,10 @@ final class _RepoFalso implements TicketRepository {
   Stream<int> cantidadDeFotosPorSubir() => const Stream.empty();
 
   @override
-  Future<Either<Failure, Uint8List?>> bytesDeLaFoto(String ticketId) async => Right(bytes);
+  Future<Either<Failure, Uint8List?>> bytesDeLaFoto(String ticketId) async {
+    final f = fallaAlLeer;
+    return f != null ? Left(f) : Right(bytes);
+  }
 
   @override
   Future<Either<Failure, Ticket>> marcarFotoSubida(String ticketId, String ruta) async {
@@ -313,6 +319,29 @@ void main() {
       expect(resumen, const ResumenDeSubidaDeFotos(rechazadas: 2));
       expect(servidor.pedidos, isEmpty);
       expect(repo.intentos.first, ('t-1', 'copia_local_ausente', true));
+    });
+
+    test('si la lectura de la copia falla (error pasajero), la foto sigue pendiente, no se rechaza '
+        'y la próxima pasada la sube', () async {
+      repo.fallaAlLeer = const FailureTicketNoDisponible();
+      final servidor = ServidorDeFotosGuionado([const FotoSubida('u/x.jpg')]);
+      final caso = SubirFotosDeTicketsUseCase(repo, servidor);
+
+      final primera = (await caso(const NoParams())).getOrElse(() => throw StateError('falló'));
+
+      expect(primera, const ResumenDeSubidaDeFotos(pendientes: 2));
+      expect(servidor.pedidos, isEmpty);
+      expect(repo.intentos, [
+        ('t-1', 'lectura_copia_fallida', false),
+        ('t-2', 'lectura_copia_fallida', false),
+      ]);
+      expect(repo.intentos.any((i) => i.$3), isFalse, reason: 'ninguna quedó rechazada');
+
+      repo.fallaAlLeer = null;
+      final segunda = (await caso(const NoParams())).getOrElse(() => throw StateError('falló'));
+
+      expect(segunda, const ResumenDeSubidaDeFotos(subidas: 2));
+      expect(servidor.pedidos, hasLength(2));
     });
 
     test('si no puede guardar la ruta, la foto cuenta como pendiente (se reintenta; el servidor '

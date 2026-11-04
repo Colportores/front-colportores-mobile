@@ -202,6 +202,25 @@ void main() {
       ]);
     });
 
+    test(
+      'borrarTodo borra la carpeta tickets/ con todas las copias; sin carpeta no falla',
+      () async {
+        await almacen.borrarTodo();
+
+        final ruta = await almacen.guardar('t-1', TipoDeImagen.jpeg, fotoDePrueba(10));
+        await almacen.guardar('t-2', TipoDeImagen.png, fotoDePrueba(20));
+        expect(File(ruta).parent.listSync(), hasLength(2));
+
+        await almacen.borrarTodo();
+
+        expect(File(ruta).parent.existsSync(), isFalse);
+        expect(await almacen.leer(ruta), isNull);
+        // Y se puede volver a guardar después.
+        final otra = await almacen.guardar('t-3', TipoDeImagen.jpeg, fotoDePrueba(5));
+        expect(await almacen.leer(otra), fotoDePrueba(5));
+      },
+    );
+
     test('leer un archivo que no está es null y borrar uno que no está no falla', () async {
       final inexistente =
           '${base.path}${Platform.pathSeparator}tickets${Platform.pathSeparator}x.jpg';

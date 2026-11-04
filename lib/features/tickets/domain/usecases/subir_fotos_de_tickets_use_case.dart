@@ -57,7 +57,20 @@ final class SubirFotosDeTicketsUseCase implements UseCase<ResumenDeSubidaDeFotos
       var rechazadas = 0;
       for (final item in porSubir) {
         final id = item.ticket.id;
-        final bytes = (await _repository.bytesDeLaFoto(id)).getOrElse(() => null);
+        final lectura = await _repository.bytesDeLaFoto(id);
+        if (lectura.isLeft()) {
+          // No se pudo leer la copia (error pasajero del disco o de la DB): no se sabe si la foto
+          // está. Se anota el intento sin cerrarlo y queda pendiente: la próxima pasada la reintenta.
+          // Solo `Right(null)` dice que el archivo ya no está.
+          await _repository.anotarIntentoFallido(
+            id,
+            codigo: 'lectura_copia_fallida',
+            definitivo: false,
+          );
+          pendientes++;
+          continue;
+        }
+        final bytes = lectura.getOrElse(() => null);
         if (bytes == null) {
           // La copia local no está: no hay nada que subir. Se anota para que no quede mudo.
           await _repository.anotarIntentoFallido(
