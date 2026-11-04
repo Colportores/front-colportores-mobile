@@ -8,6 +8,8 @@ final class CobranzaPendiente extends Equatable {
   /// En centavos, como `Cobranza.montoCentavos` (flutter-clean-arch.md, regla 6).
   final int montoCentavos;
 
+  /// El lugar de la cuota en la lista de cuotas del plan (`Cuota.numero`, calculado con
+  /// `RepartoDeCuotas.estadoDe`): el cobro ya no guarda su número de cuota (decisión del 03/11, #608).
   final int numeroCuota;
 
   @override

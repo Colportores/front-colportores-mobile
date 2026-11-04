@@ -77,38 +77,45 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   });
 
   @override
-  Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora}) => _db.transaction(
-    () async {
-      final fila = await _agendaPorId(agendaId);
-      if (fila == null || fila.deletedAt != null) {
-        throw const AgendaRechazadaException(_Motivo.agendaInexistente);
-      }
-      final estado = EstadoAgenda.desdeCodigo(fila.estado);
-      // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
-      // escribir ni a encolar.
-      if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
-      if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+  Future<AgendaCancelada> cancelar(
+    String agendaId, {
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _agendaPorId(agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+    }
+    final estado = EstadoAgenda.desdeCodigo(fila.estado);
+    // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
+    // escribir ni a encolar.
+    if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
+    if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
 
-      // Una cuota del plan de una venta no se pierde al cancelarla: su monto pasa a las que siguen
-      // (HU-COB-004, «Plan cuotas»). Se mide antes de cancelar, con la cuota todavía abierta.
-      if (fila.montoPrevisto != null) {
-        await CuotasLocalDataSourceDrift(
-          _db,
-          encolador: _encolador,
-          estadoDeLasCasas: _estadoDeLasCasas,
-        ).trasladarLaCancelada(agendaId, ahora: ahora);
-      }
-      final guardada = await _escribirAgenda(
-        agendaId,
-        AgendasCompanion(
-          estado: Value(EstadoAgenda.cancelada.codigo),
-          updatedAt: Value(instanteMs(ahora)),
-        ),
+    // Una cuota del plan de una venta no se pierde al cancelarla: su monto pasa a las que siguen
+    // (HU-COB-004, «Plan cuotas»). Se mide antes de cancelar, con la cuota todavía abierta. La
+    // última cuota abierta del plan siempre es lo que falta: no se cancela, se reprograma (decisión
+    // del 03/11, #608).
+    if (fila.montoPrevisto != null) {
+      final cuotas = CuotasLocalDataSourceDrift(
+        _db,
+        encolador: _encolador,
+        estadoDeLasCasas: _estadoDeLasCasas,
       );
-      await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
-      return (agenda: guardada, escribio: true);
-    },
-  );
+      if (await cuotas.esLaUltimaCuotaAbierta(agendaId)) {
+        throw const AgendaRechazadaException(_Motivo.ultimaCuotaDelPlan);
+      }
+      await cuotas.trasladarLaCancelada(agendaId, ahora: ahora);
+    }
+    final guardada = await _escribirAgenda(
+      agendaId,
+      AgendasCompanion(
+        estado: Value(EstadoAgenda.cancelada.codigo),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
+    );
+    await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    return (agenda: guardada, escribio: true);
+  });
 
   @override
   Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
@@ -274,16 +281,23 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     );
     // Una agenda que sirve pasa a `CUMPLIDA` con el resultado que la cumple, o a `NO_CUMPLIDA` con
     // «No contestó» (HU-VIS-005; decisión del 23/10, «No cumplida»): en los dos casos apunta a la
-    // visita. Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
+    // visita. Salvo una cuota del plan (decisión del 03/11, #608): «No contestó» queda en la visita
+    // pero no cierra la cuota, que sigue `PROGRAMADA` (y pasada la fecha se ve «Vencida»). Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
     // a cobrar no es una entrevista que haya quedado hecha, así que queda en el historial sin agenda
     // (decisión del 25/10, «Cobranza sin cita no crea agenda»).
     final noLaCumple = agenda != null && !visita.tipoResultado.cumpleLaAgenda;
+    final esCuota =
+        agenda != null &&
+        agenda.tipo == TipoAgenda.cobranza.codigo &&
+        agenda.ventaId != null &&
+        agenda.montoPrevisto != null;
+    final cuotaSinRespuesta = noLaCumple && esCuota;
     String? agendaCreadaId;
     if (agenda == null) {
       if (visita.tipoResultado != TipoResultadoVisita.cobranza) {
         agendaCreadaId = await _crearAgendaCumplida(visita);
       }
-    } else {
+    } else if (!cuotaSinRespuesta) {
       await _escribirAgenda(
         agenda.id,
         AgendasCompanion(
@@ -315,9 +329,9 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       visita: visita,
       yaEstaba: false,
       agendaIgnorada: ignorada,
-      agendaNoCumplida: noLaCumple,
+      agendaNoCumplida: noLaCumple && !esCuota,
       agendaCreadaId: agendaCreadaId,
-      agendaAfectadaId: agenda?.id,
+      agendaAfectadaId: cuotaSinRespuesta ? null : agenda?.id,
     );
   });
 

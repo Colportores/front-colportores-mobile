@@ -9,7 +9,6 @@ import '../../../ventas/data/models/venta_model.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
-import '../../domain/services/reparto_de_cuotas.dart';
 import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
 import 'cuotas_local_data_source_drift.dart';
@@ -99,20 +98,15 @@ final class CobranzaLocalDataSourceDrift {
       throw const CobroFechaAnteriorException();
     }
 
-    // Con un plan de cuotas, el cobro lleva el número de la primera cuota a la que va (HU-COB-004).
-    final plan = await _cuotas.leerPlanDe(venta);
-    final numeroCuota =
-        cobro.numeroCuota ??
-        RepartoDeCuotas.aplicarPago(plan.cuotas, cobro.montoCentavos).primeraCuota;
-    final guardado = numeroCuota == cobro.numeroCuota ? cobro : cobro.conNumeroCuota(numeroCuota);
-
-    await _db.into(_db.cobranzas).insert(_aFila(guardado));
-    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(guardado));
+    // El cobro no guarda a qué cuota va (decisión del 03/11, #608): qué cuotas cubrió se calcula con
+    // los cobros y las cuotas (`RepartoDeCuotas.estadoDe`).
+    await _db.into(_db.cobranzas).insert(_aFila(cobro));
+    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(cobro));
     // Las cuotas que este cobro cubre pasan a CUMPLIDA y suben por el motor, en la misma transacción.
-    await _cuotas.cerrarLasCubiertas(venta.id, ahora: guardado.auditoria.updatedAt);
-    await _recalcular(venta.espacioPersonaId, guardado);
+    await _cuotas.cerrarLasCubiertas(venta.id, ahora: cobro.auditoria.updatedAt);
+    await _recalcular(venta.espacioPersonaId, cobro);
 
-    return CobroRegistrado(cobranza: guardado, venta: await _conSaldo(venta));
+    return CobroRegistrado(cobranza: cobro, venta: await _conSaldo(venta));
   });
 
   /// Ver [CobranzaRepository.ventaConSaldo].
@@ -347,7 +341,6 @@ final class CobranzaLocalDataSourceDrift {
     montoCentavos: fila.monto,
     medio: CobranzaModel.medioDesdeCodigo(fila.medio),
     fecha: fila.fecha,
-    numeroCuota: fila.numeroCuota,
     tarjetaTipo: CobranzaModel.tipoDeTarjetaDesdeCodigo(fila.tarjetaTipo),
     tarjetaMarca: fila.tarjetaMarca,
     numeroAprobacion: fila.numeroAprobacion,
@@ -368,7 +361,6 @@ final class CobranzaLocalDataSourceDrift {
     monto: c.montoCentavos,
     medio: CobranzaModel.codigoDelMedio(c.medio),
     fecha: c.fecha,
-    numeroCuota: Value(c.numeroCuota),
     tarjetaTipo: Value(
       c.tarjetaTipo == null ? null : CobranzaModel.codigoDelTipoDeTarjeta(c.tarjetaTipo!),
     ),

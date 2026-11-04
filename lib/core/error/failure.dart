@@ -1190,6 +1190,9 @@ enum MotivoPlanDeCuotas {
 
   /// La cuota ya está cubierta, cancelada o no existe: ya no se modifica.
   cuotaCerrada,
+
+  /// La última cuota no es lo que falta del saldo: no se escribe a mano (decisión del 03/11, #608).
+  ultimaCuota,
 }
 
 /// El plan de cuotas no cumple una regla (HU-COB-004; decisiones de Cristian del 23/10, «Plan
@@ -1214,6 +1217,7 @@ final class FailurePlanDeCuotas extends Failure {
     MotivoPlanDeCuotas.sinSaldo => 'SIN_SALDO',
     MotivoPlanDeCuotas.sinVenta => 'SIN_VENTA',
     MotivoPlanDeCuotas.cuotaCerrada => 'CUOTA_CERRADA',
+    MotivoPlanDeCuotas.ultimaCuota => 'ULTIMA_CUOTA',
   };
 
   static String _texto(MotivoPlanDeCuotas m) => switch (m) {
@@ -1229,6 +1233,9 @@ final class FailurePlanDeCuotas extends Failure {
       'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
     MotivoPlanDeCuotas.cuotaCerrada =>
       'Una de las cuotas ya no se puede cambiar. Volvé a la lista y revisá el plan.',
+    MotivoPlanDeCuotas.ultimaCuota =>
+      'La última cuota es lo que falta y no se escribe a mano. Cambiá las cuotas anteriores y se '
+          'calcula sola.',
   };
 
   @override
