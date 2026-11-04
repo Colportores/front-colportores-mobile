@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/notificaciones/fakes/permiso_notificaciones_sistema_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -204,6 +205,7 @@ Future<ArnesAgendar> montarAgendar(
   Size tamano = const Size(390, 844),
   bool abrir = true,
   EntrevistasCercanasRepository? cercanas,
+  AppLogger? logger,
 }) async {
   final arnes = ArnesAgendar(
     repo: repo ?? AgendaRepositorioQueAgenda(),
@@ -225,6 +227,7 @@ Future<ArnesAgendar> montarAgendar(
         relojVisitaProvider.overrideWithValue(() => arnes.ahora),
         ...arnes.telefono.overrides,
         if (cercanas != null) entrevistasCercanasRepositoryProvider.overrideWithValue(cercanas),
+        if (logger != null) entrevistasCercanasLoggerProvider.overrideWithValue(logger),
         personaRepositoryProvider.overrideWithValue(personasRepo),
         espacioRepositoryProvider.overrideWithValue(
           casaDemorada != null

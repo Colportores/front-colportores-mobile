@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_cercana.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/franja_horaria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
@@ -14,8 +15,17 @@ import 'package:colportores_mobile/features/agenda/presentation/widgets/piezas_a
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
+
+/// Un `AppLogger` que guarda lo que escribe, para leer el log de la lectura.
+final class _Salida extends LogOutput {
+  final lineas = <String>[];
+
+  @override
+  void output(OutputEvent event) => lineas.addAll(event.lines);
+}
 
 final _boton = find.byKey(ClavesAgendarVisita.botonAgendar);
 final _campo = find.byKey(ClavesAgendarVisita.campoDiaYHora);
@@ -47,6 +57,7 @@ Future<ArnesAgendar> _montar(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  AppLogger? logger,
 }) => montarAgendar(
   tester,
   cercanas: lectura ?? EntrevistasCercanasFalsas(cercanas ?? _dosEnLaTarde),
@@ -54,6 +65,7 @@ Future<ArnesAgendar> _montar(
   escala: escala,
   tamano: tamano,
   abrir: abrir,
+  logger: logger,
 );
 
 void main() {
@@ -141,6 +153,37 @@ void main() {
         expect(a.resultados, [true]);
       },
     );
+
+    testWidgets(
+      'dada una falla al leer, cuando se abre, entonces deja un log sin datos de la persona ni de la casa',
+      (tester) async {
+        final salida = _Salida();
+        await _montar(
+          tester,
+          lectura: EntrevistasCercanasFalsas(
+            const [],
+            falla: StateError('Av. Italia 1234 de María Fernández'),
+          ),
+          logger: AppLogger(output: salida),
+        );
+        final texto = salida.lineas.join(' | ');
+        expect(texto, contains('[WARN][AGENDA][ENTREVISTAS_CERCANAS]'));
+        expect(texto, contains('"error":"StateError"'));
+        for (final dato in ['Italia', 'María', 'esp-1', 'col-1']) {
+          expect(texto, isNot(contains(dato)));
+        }
+        expect(salida.lineas, hasLength(1));
+      },
+    );
+
+    testWidgets('dada una lectura que sale bien, cuando se abre, entonces no escribe ningún log', (
+      tester,
+    ) async {
+      final salida = _Salida();
+      await _montar(tester, logger: AppLogger(output: salida));
+      expect(find.text('SUGERIDA'), findsOneWidget);
+      expect(salida.lineas, isEmpty);
+    });
 
     testWidgets(
       'dada una lectura lenta, cuando todavía no llegó, entonces el formulario se puede usar y al llegar se sugiere',
