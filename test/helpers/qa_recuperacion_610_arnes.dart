@@ -77,9 +77,7 @@ Future<ArnesRecuperacion> llegarA610(
         Estado610.variosInterrumpida:
       await abrirCopia175(tester);
       if (estado == Estado610.variosInterrumpida) await asentar175(tester);
-    case Estado610.hojaDesdeEncontrado ||
-        Estado610.hojaDesdeVarios ||
-        Estado610.hojaDesdeConectar:
+    case Estado610.hojaDesdeEncontrado || Estado610.hojaDesdeVarios || Estado610.hojaDesdeConectar:
       await tocar175(tester, cta2);
     case Estado610.variosOferta:
       break;
