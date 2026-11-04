@@ -152,4 +152,98 @@ void main() {
       expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsNothing);
     });
   });
+  group('teclado · r2: el foco no se pierde ni queda atrapado', () {
+    late CanalAvisosPush canal;
+    late FocusNode dos;
+
+    Future<void> montar(WidgetTester tester) async {
+      canal = CanalAvisosPush();
+      addTearDown(canal.cerrar);
+      dos = FocusNode(debugLabel: 'dos');
+      addTearDown(dos.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [canalAvisosPushProvider.overrideWithValue(canal)],
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: Scaffold(
+              body: Center(
+                child: Column(
+                  children: [
+                    TextButton(onPressed: () {}, child: const Text('Uno')),
+                    TextButton(focusNode: dos, onPressed: () {}, child: const Text('Dos')),
+                  ],
+                ),
+              ),
+            ),
+            builder: (context, child) =>
+                AvisoPushEnAppHost(activo: true, child: child ?? const SizedBox()),
+          ),
+        ),
+      );
+      dos.requestFocus();
+      await tester.pump();
+      expect(dos.hasPrimaryFocus, isTrue);
+      canal.mostrar(_aviso('Tu pedido fue autorizado'));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    Future<void> tab(WidgetTester tester, {bool mayus = false}) async {
+      if (mayus) await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      if (mayus) await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+    }
+
+    testWidgets('Tab, Tab, Tab: aviso, ✕ y de vuelta al botón que tenía el foco', (tester) async {
+      await montar(tester);
+
+      await tab(tester);
+      expect(dos.hasFocus, isFalse);
+      await tab(tester);
+      await tab(tester);
+
+      expect(dos.hasPrimaryFocus, isTrue);
+      expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsOneWidget);
+    });
+
+    testWidgets('Mayús+Tab recorre al revés: ✕, aviso y de vuelta al botón', (tester) async {
+      await montar(tester);
+
+      await tab(tester);
+      await tab(tester, mayus: true);
+
+      expect(dos.hasPrimaryFocus, isTrue, reason: 'Mayús+Tab desde la tarjeta devuelve el foco');
+    });
+
+    testWidgets('cerrar el aviso con Enter en la ✕ devuelve el foco al botón de antes', (
+      tester,
+    ) async {
+      await montar(tester);
+
+      await tab(tester);
+      await tab(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsNothing);
+      expect(dos.hasPrimaryFocus, isTrue, reason: 'el foco no se pierde al irse el aviso');
+    });
+
+    testWidgets('con el foco en la tarjeta el aviso no se va solo a los 8 s, y al soltarlo se va', (
+      tester,
+    ) async {
+      await montar(tester);
+
+      await tab(tester);
+      await tester.pump(const Duration(seconds: 20));
+      expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsOneWidget);
+
+      await tab(tester);
+      await tab(tester);
+      await tester.pump();
+      expect(find.byKey(const Key('aviso_push_en_app_abrir')), findsNothing);
+      expect(dos.hasPrimaryFocus, isTrue);
+    });
+  });
 }
