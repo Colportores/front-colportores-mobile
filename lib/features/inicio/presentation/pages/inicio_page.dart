@@ -54,8 +54,8 @@ class _InicioPageState extends ConsumerState<InicioPage> {
   /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
   var _abriendoUbicacion = false;
 
-  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
-  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// «›» de una fila de edificio o negocio de la Lista (HU-UBI-007): la hoja de la ubicación con sus
+  /// deptos (vista 11). Una casa abre la hoja de la casa (vista 39, C·01). Si desde la edición el aviso de duplicado
   /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
   /// baja) la Lista lo ve sola al releer.
   Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
@@ -191,6 +191,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
+                      casaAbreSuHoja: true,
                       alAbrirUbicacion: (id, distancia) =>
                           unawaited(_abrirUbicacion(id, distancia)),
                     ),

@@ -1112,6 +1112,32 @@ void main() {
     );
 
     testWidgets(
+      'con «la casa abre su hoja», una casa abre la hoja de la casa y el destino queda para lo que '
+      'tiene deptos',
+      (tester) async {
+        final abiertas = <String>[];
+        await montarLista(
+          tester,
+          repo: RepoListaFalso([
+            filaLista('casa-1', calle: 'Rivadavia', numero: '100'),
+            filaLista('edif-1', tipo: TipoUbicacion.edificio, calle: 'Mataojo', numero: '2044'),
+          ]),
+          alAbrir: (id, _) => abiertas.add(id),
+          casaAbreSuHoja: true,
+        );
+
+        await tester.tap(find.text('Mataojo 2044'));
+        await tester.pump();
+        expect(abiertas, ['edif-1']);
+
+        await tester.tap(find.text('Rivadavia 100'));
+        await asentarLista(tester);
+        expect(abiertas, ['edif-1'], reason: 'la casa no pasa por el destino');
+        expect(find.byType(HojaCasa), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'entrega también la distancia que muestra la fila (el rótulo de la hoja la repite)',
       (tester) async {
         final abiertas = <(String, double?)>[];
