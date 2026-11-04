@@ -73,17 +73,18 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.pull('campania_colportor'),
 
   // pull: el catálogo de ventas (HU-CAT-007, #180). `realtime` solo en lo que HU-SYNC-003 pide
-  // (producto y los precios de la ciudad): un cambio urgente llega sin esperar al próximo ciclo. El
-  // combo (`coleccion`, `producto_coleccion`) cambia poco y entra en el pull siguiente. El evento es
-  // un timbre: lo que entra es siempre el delta, así que cualquiera de los dos baja las cinco.
+  // (producto y los precios, el de la ciudad y el general): un cambio urgente llega sin esperar al
+  // próximo ciclo. El combo (`coleccion`, `producto_coleccion`) cambia poco y entra en el pull
+  // siguiente. El evento es un timbre: lo que entra es siempre el delta, así que cualquiera de los
+  // tres baja las cinco.
   SyncSpec.pull('producto', realtime: true),
   SyncSpec.pull('coleccion'),
   SyncSpec.pull('producto_coleccion'),
   SyncSpec.pull('precio_por_ciudad', realtime: true),
-  // El precio general todavía no lo publica el servidor (backend-supabase 0034: sin registrar en
-  // `sync.entidad`): el pull ignora lo que no conoce, así que baja solo el día que se registre. Su
-  // `realtime` se suma ese día, junto con la publicación del servidor.
-  SyncSpec.pull('precio_general'),
+  // El precio general lo publica el servidor desde backend-supabase 0144 (#205): en `sync.entidad`
+  // y en la publicación `supabase_realtime`. Con `realtime`, el cambio del precio general le llega
+  // a la colportora con la app abierta, igual que el de la ciudad (#525).
+  SyncSpec.pull('precio_general', realtime: true),
   // Los parámetros de toda la aplicación que cambia Administración (backend-supabase 0070): hoy los
   // días del aviso de precios viejos (`dias_antiguedad_precios`, HU-CAT-006, #419). Sin filtro (el
   // valor es el mismo para todos) y sin `realtime`: cambia rara vez y entra en el ciclo siguiente.
