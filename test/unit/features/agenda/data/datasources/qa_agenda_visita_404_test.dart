@@ -539,6 +539,11 @@ void main() {
 
         final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
         expect(falla.campos['ubicacion'], contains('Elegila de nuevo'));
+        expect(
+          falla.mensaje,
+          falla.campos['ubicacion'],
+          reason: 'las pantallas muestran `mensaje`',
+        );
         expect(await db.select(db.agendas).get(), isEmpty);
         expect(encolador.encolados.where((c) => c.entidad == 'agenda'), isEmpty);
       },
@@ -571,6 +576,7 @@ void main() {
 
       final falla = r.fold((f) => f, (_) => null)! as FailureValidacion;
       expect(falla.campos['jornada'], contains('registrá la visita de nuevo'));
+      expect(falla.mensaje, falla.campos['jornada'], reason: 'las pantallas muestran `mensaje`');
       expect(await db.select(db.visitas).get(), isEmpty);
       expect(await db.select(db.agendas).get(), isEmpty);
       expect(encolador.encolados, isEmpty);
