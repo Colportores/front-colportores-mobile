@@ -30,7 +30,10 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
   /// (`mobile-453-impl-p1-aviso-exacto`): mientras tanto, inexacto y sin permiso nuevo.
   static const AndroidScheduleMode modoAndroid = AndroidScheduleMode.inexactAllowWhileIdle;
 
-  static const NotificationDetails _detalles = NotificationDetails(
+  /// Los detalles del aviso de [cuerpo]. En Android el cuerpo va en `BigTextStyleInformation`: sin
+  /// él la notificación muestra una sola línea y una dirección larga corta la hora, que va al final
+  /// del texto («Entrevista en … a las 14:00», #453); desplegada, se lee entera.
+  static NotificationDetails _detalles(String cuerpo) => NotificationDetails(
     android: AndroidNotificationDetails(
       canalId,
       canalNombre,
@@ -38,8 +41,9 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
       importance: Importance.high,
       priority: Priority.high,
       category: AndroidNotificationCategory.reminder,
+      styleInformation: BigTextStyleInformation(cuerpo),
     ),
-    iOS: DarwinNotificationDetails(),
+    iOS: const DarwinNotificationDetails(),
   );
 
   @override
@@ -74,7 +78,7 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
   }) => _plugin.zonedSchedule(
     id: id,
     scheduledDate: tz.TZDateTime.from(instante.toUtc(), tz.UTC),
-    notificationDetails: _detalles,
+    notificationDetails: _detalles(cuerpo),
     androidScheduleMode: modoAndroid,
     title: titulo,
     body: cuerpo,

@@ -579,7 +579,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(arnes.historial.filas.map((n) => n.id), ['nuevo']);
-      expect(arnes.historial.borrados, [ahoraDelCentro]);
+      expect(arnes.historial.borrados, [
+        {'a', 'b', 'c', 'd', 'e'},
+      ]);
       expect(filaDe('nuevo'), findsOneWidget);
       expect(centroVacio, findsNothing);
     });

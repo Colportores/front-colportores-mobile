@@ -52,9 +52,9 @@ final class BorrarTodasLasNotificacionesUseCase {
 
   final HistorialNotificacionesRepository _repositorio;
 
-  /// Borra lo recibido hasta [hasta] (el momento en que se abrió la confirmación) o todo si es
-  /// `null`.
-  Future<Either<Failure, int>> call({DateTime? hasta}) => _repositorio.borrarTodas(hasta: hasta);
+  /// Borra solo los avisos de [ids] (los que estaban en la cuenta que se le mostró a la persona) o
+  /// todo si es `null`.
+  Future<Either<Failure, int>> call({Set<String>? ids}) => _repositorio.borrarTodas(ids: ids);
 }
 
 final class PurgarHistorialNotificacionesUseCase {

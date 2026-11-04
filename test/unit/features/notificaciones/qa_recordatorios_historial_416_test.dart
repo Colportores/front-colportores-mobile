@@ -295,26 +295,22 @@ void main() {
       expect('$n', isNot(contains('Italia')));
     });
 
-    // skip: QA #416 — RecordatorioDeVisita (la visita con su dirección que recorre la conciliación)
-    // no apaga `stringify`: en debug su toString imprime la dirección (convenciones §7.5).
-    test(
-      'toString de la visita a recordar no lleva la dirección',
-      () {
-        final v = RecordatorioDeVisita(
-          agendaId: 'x',
-          tipo: TipoAgenda.entrevista,
-          direccion: 'Av. Italia 1234',
-          fechaProgramada: DateTime.utc(2026, 10, 27, 15),
-        );
-        expect('$v', isNot(contains('Italia')));
-      },
-      skip: 'QA #416: RecordatorioDeVisita.toString() imprime la dirección (stringify en debug)',
-    );
+    // QA #416 — RecordatorioDeVisita (la visita con su dirección que recorre la conciliación) apaga
+    // `stringify`: en debug su toString no imprime la dirección (convenciones §7.5).
+    test('toString de la visita a recordar no lleva la dirección', () {
+      final v = RecordatorioDeVisita(
+        agendaId: 'x',
+        tipo: TipoAgenda.entrevista,
+        direccion: 'Av. Italia 1234',
+        fechaProgramada: DateTime.utc(2026, 10, 27, 15),
+      );
+      expect('$v', isNot(contains('Italia')));
+    });
   });
 
   group('la marca fuera de hora', () {
-    // skip: QA #416 — una marca en el futuro (el reloj se adelantó una vez) congela la conciliación
-    // hasta que el reloj la alcance: «el reloj fue hacia atrás» nunca la baja.
+    // QA #416 — una marca en el futuro (el reloj se adelantó una vez) no congela la conciliación
+    // hasta que el reloj la alcance: pasada la tolerancia, se revisa y la marca vuelve a «ahora».
     test('dado que la marca quedó en el futuro porque el reloj del teléfono se adelantó y se '
         'corrigió, los recordatorios siguientes se guardan igual', () async {
       marca.marca = DateTime.utc(2027, 10, 27);
@@ -324,7 +320,24 @@ void main() {
 
       expect(r.getOrElse(() => -1), 1);
       expect(await db.select(db.notificacionesHistorial).get(), hasLength(1));
-    }, skip: 'QA #416: marca en el futuro congela la conciliación hasta que el reloj la alcance');
+      expect(
+        marca.marca,
+        ahora,
+        reason: 'la marca vuelve a «ahora»: la próxima revisión sigue normal',
+      );
+    });
+
+    test('dado que la marca quedó dentro de la tolerancia (el reloj retrocedió minutos), no se '
+        'revisa ni se mueve', () async {
+      marca.marca = ahora.add(const Duration(minutes: 30));
+      await agenda('age-1', DateTime.utc(2026, 10, 27, 15));
+
+      final r = await conciliar('col-1');
+
+      expect(r.getOrElse(() => -1), 0);
+      expect(marca.marca, ahora.add(const Duration(minutes: 30)));
+      expect(await db.select(db.notificacionesHistorial).get(), isEmpty);
+    });
 
     test(
       'dado que el reloj va hacia atrás unos minutos, no repite ni pierde: al volver el reloj se '

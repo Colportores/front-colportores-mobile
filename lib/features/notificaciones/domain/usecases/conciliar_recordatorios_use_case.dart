@@ -25,6 +25,10 @@ import 'historial_notificaciones_use_cases.dart';
 /// - La marca ([MarcaConciliacionRecordatorios]) sube hasta «ahora» solo si todo se guardó; así lo
 ///   que se borró con «Borrar todas» no vuelve, y lo que falló se reintenta la próxima vez. Dos
 ///   revisiones seguidas dejan lo mismo.
+/// - Una marca que queda más de [toleranciaDelReloj] por delante de «ahora» no se creyó (el reloj
+///   del teléfono se adelantó una vez y se corrigió): no congela la conciliación hasta que el reloj
+///   la alcance. Se revisa desde el tope de [retencion] (el id idempotente evita los repetidos) y la
+///   marca vuelve a «ahora». Un reloj que va unos minutos hacia atrás sigue sin mover nada.
 ///
 /// Nunca lanza. Devuelve cuántos avisos nuevos quedaron en el historial.
 class ConciliarRecordatoriosUseCase {
@@ -47,6 +51,10 @@ class ConciliarRecordatoriosUseCase {
   /// Cuánto se guarda un aviso (HU-NOT-005, supuesto S27): lo más viejo se purgaría al guardarse.
   static const Duration retencion = Duration(days: 90);
 
+  /// Cuánto puede quedar la marca por delante de «ahora» y seguir siendo creíble (el reloj retrocede
+  /// unos minutos al sincronizarse con la red). Más que eso, la marca vino de un reloj equivocado.
+  static const Duration toleranciaDelReloj = Duration(hours: 1);
+
   /// El id del aviso en el historial: `recordatorio-<agendaId>-<instante>`, con el instante del aviso
   /// en milisegundos UTC desde la época. El mismo aviso guardado dos veces queda una sola vez.
   static String idDeRecordatorio(String agendaId, DateTime avisoEn) =>
@@ -55,7 +63,15 @@ class ConciliarRecordatoriosUseCase {
   Future<Either<Failure, int>> call(String colportorId) async {
     try {
       final ahora = _ahora().toUtc();
-      final marca = await _marca.leer();
+      var marca = await _marca.leer();
+      if (marca != null && marca.isAfter(ahora.add(toleranciaDelReloj))) {
+        _log.warn(
+          LogModulo.push,
+          'RECORDATORIOS_CONCILIAR_MARCA_FUTURA',
+          'la marca de la última revisión está en el futuro; se revisa desde el tope de retención',
+        );
+        marca = ahora.subtract(retencion);
+      }
       if (marca == null) {
         // Primera revisión de este teléfono: no hay nada anterior que contar.
         await _marca.guardar(ahora);
