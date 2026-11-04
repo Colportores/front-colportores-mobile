@@ -2,11 +2,12 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/arranque/cierre_de_la_raiz.dart';
+import 'core/arranque/reinicio_de_raiz.dart';
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/conectividad/monitor_conectividad_plus.dart';
 import 'core/config/config_google.dart';
@@ -170,13 +171,29 @@ Future<void> main() async {
 
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
+  // Los `overrides` de cada arranque de la raíz se arman sin esperar nada (son una función síncrona):
+  // lo que se lee de la plataforma va acá, antes.
+  final carpetaDeLaApp = (await getApplicationSupportDirectory()).path;
+
+  // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo): «Recuperar mi
+  // respaldo» reinicia la app por dentro (`reiniciarRaizProvider`) y arranca como la primera vez, sin
+  // nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»). El `ProviderScope` lo arma
+  // `ReiniciadorDeRaiz` en cada arranque.
+  //
+  // Tirar el `ProviderScope` NO cierra la base: el `DatabaseHelper` entra por `overrideWithValue` y
+  // nadie lo suelta por él. Por eso `CierreDeLaRaiz` lo recuerda y `alTirar` lo cierra (esperando antes
+  // al ciclo en curso del motor) después de sacar el árbol viejo y antes de armar el nuevo; si no, la
+  // raíz nueva abriría una segunda conexión al mismo archivo con la clave vieja todavía viva.
+  final cierreDeLaRaiz = CierreDeLaRaiz();
+  // ignore: riverpod_lint_plugin/missing_provider_scope
   runApp(
-    ProviderScope(
+    ReiniciadorDeRaiz(
+      alTirar: cierreDeLaRaiz.alTirar,
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
       // AuthRemoteDataSource: lo elige `authRemoteDataSourceProvider` según `ConfigSupabase`
       // (Supabase real o fake con la cuenta demo@colportores.app / demo1234).
       // Sprint 2: AuthLocalDataSource sobre secure_storage (pendiente; hoy en memoria).
-      overrides: [
+      overrides: () => [
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
         // Keystore/Keychain reales, con las opciones de ADR-006: la misma instancia que guarda la
         // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o
@@ -257,9 +274,7 @@ Future<void> main() async {
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
         ),
         // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
-        almacenDeFotosDeTicketProvider.overrideWithValue(
-          AlmacenDeFotosEnDisco((await getApplicationSupportDirectory()).path),
-        ),
+        almacenDeFotosDeTicketProvider.overrideWithValue(AlmacenDeFotosEnDisco(carpetaDeLaApp)),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
@@ -423,11 +438,15 @@ Future<void> main() async {
         // de la app (default de drift_flutter); nombre y ruta no están fijados por la doc del
         // proyecto.
         databaseHelperProvider.overrideWithValue(
-          DatabaseHelper(
-            directorio: getApplicationDocumentsDirectory,
-            directorioTemporal: getTemporaryDirectory,
+          cierreDeLaRaiz.adoptar(
+            DatabaseHelper(
+              directorio: getApplicationDocumentsDirectory,
+              directorioTemporal: getTemporaryDirectory,
+            ),
           ),
         ),
+        // Los cierres que la raíz vieja deja en vuelo (el ciclo del motor): `alTirar` los espera.
+        cierreDeLaRaizProvider.overrideWithValue(cierreDeLaRaiz),
       ],
       child: const ColportoresApp(),
     ),

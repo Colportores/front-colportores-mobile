@@ -151,4 +151,90 @@ void main() {
       expect(snap.exports.last, isNull, reason: 'export completo otra vez');
     });
   });
+  group('lo restaurable de una cadena (HU-SYNC-006)', () {
+    test('una cadena entera se restaura entera', () {
+      final c = buildRestorableChain([
+        _e('b-3', parent: 'b-2'),
+        _e('b-1'),
+        _e('b-2', parent: 'b-1'),
+      ]);
+      expect(c.ordered.map((e) => e.id), ['b-1', 'b-2', 'b-3']);
+      expect(c.intact, isTrue);
+    });
+
+    test('un eslabón dañado corta ahí y lo anterior se conserva', () {
+      final c = buildRestorableChain([
+        _e('b-1'),
+        _e('b-2', parent: 'b-1'),
+        BackupEntry(
+          id: 'b-3',
+          createdAt: DateTime.utc(2026, 8, 3),
+          contentHash: 'h1',
+          storedHash: 'otro',
+          watermark: 'w-0',
+          parentId: 'b-2',
+        ),
+        _e('b-4', parent: 'b-3'),
+      ]);
+      expect(c.ordered.map((e) => e.id), ['b-1', 'b-2']);
+      expect(c.problem, 'corrupt');
+      expect(c.intact, isFalse);
+    });
+
+    test('un eslabón que falta deja afuera lo que cuelga de él', () {
+      final c = buildRestorableChain([
+        _e('b-1'),
+        _e('b-2', parent: 'b-1'),
+        _e('b-4', parent: 'b-3'),
+      ]);
+      expect(c.ordered.map((e) => e.id), ['b-1', 'b-2']);
+      expect(c.problem, 'brokenLink');
+    });
+
+    test('una bifurcación corta en el punto ambiguo', () {
+      final c = buildRestorableChain([
+        _e('b-1'),
+        _e('b-2', parent: 'b-1'),
+        _e('b-3', parent: 'b-1'),
+      ]);
+      expect(c.ordered.map((e) => e.id), ['b-1']);
+      expect(c.problem, 'fork');
+    });
+
+    test('con una base nueva, las anteriores no cuentan', () {
+      final c = buildRestorableChain([
+        _e('b-1'),
+        _e('b-2', parent: 'b-1'),
+        _e('b-3'),
+        _e('b-4', parent: 'b-3'),
+      ]);
+      expect(c.ordered.map((e) => e.id), ['b-3', 'b-4']);
+    });
+
+    test('sin base no hay nada que restaurar', () {
+      final c = buildRestorableChain([_e('b-2', parent: 'b-1')]);
+      expect(c.ordered, isEmpty);
+      expect(c.problem, 'missingBase');
+    });
+
+    test('chainCandidates separa por llave y resume cada una', () {
+      BackupEntry de(String id, String llave, {String? parent}) => BackupEntry(
+            id: id,
+            createdAt: DateTime.utc(2026, 8, int.parse(id.split('-').last)),
+            contentHash: 'h',
+            watermark: 'w',
+            parentId: parent,
+            keyId: llave,
+            bytes: 10,
+          );
+      final c = chainCandidates([
+        de('b-1', 'a'),
+        de('b-2', 'a', parent: 'b-1'),
+        de('b-3', 'z'),
+      ]);
+      expect(c.map((x) => x.keyId), unorderedEquals(['a', 'z']));
+      final a = c.firstWhere((x) => x.keyId == 'a');
+      expect([a.parts, a.bytes, a.tip.id], [2, 20, 'b-2']);
+    });
+  });
 }

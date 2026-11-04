@@ -104,21 +104,20 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   }
 
   /// «Recuperar mi respaldo» (#610, «Recup. luego»): vuelve a abrir el asistente de recuperación si el
-  /// teléfono sigue sin nada cargado. El asistente reemplaza la raíz (no puede haber nada escuchando
-  /// la base mientras se recupera): recién con él abierto se sacan las pantallas de la pila. Si ya
-  /// hay datos, lo dice y la fila desaparece.
+  /// teléfono sigue sin nada cargado. No puede haber nada escuchando la base mientras se recupera, así
+  /// que la app se reinicia por dentro y abre directo en la vista 34, como en el primer arranque
+  /// (decisión de Cristian, 04/11, «Motor vivo»): con la raíz reiniciada, esta pantalla ya no existe y
+  /// no queda nada que sacar de la pila. Si ya hay datos, lo dice y la fila desaparece.
   Future<void> _recuperarMiRespaldo() async {
     if (_abriendoRecuperacion) return;
     _abriendoRecuperacion = true;
-    final navigator = Navigator.of(context);
     final mensajero = ScaffoldMessenger.of(context);
+    var reiniciando = false;
     try {
       final resultado = await ref.read(recuperacionPendienteProvider.notifier).reabrir();
-      if (resultado == ReaperturaDeLaRecuperacion.abierta) {
-        navigator.popUntil((ruta) => ruta.isFirst);
-        return;
-      }
-      if (!mounted) return;
+      // La app se está reiniciando: esta pantalla se va, y un segundo toque no pide otro reinicio.
+      reiniciando = resultado == ReaperturaDeLaRecuperacion.abierta;
+      if (reiniciando || !mounted) return;
       ref.invalidate(recuperarDespuesDisponibleProvider);
       mensajero.clearSnackBars();
       recordarAviso(
@@ -134,7 +133,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
         ),
       );
     } finally {
-      _abriendoRecuperacion = false;
+      if (!reiniciando) _abriendoRecuperacion = false;
     }
   }
 

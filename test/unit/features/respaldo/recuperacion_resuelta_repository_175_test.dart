@@ -43,10 +43,52 @@ void main() {
     expect(() => repo.estaResuelta('u-1'), throwsA(isA<AlmacenSeguroException>()));
   });
 
+  group('desmarcarResuelta (el reinicio de «Recuperar mi respaldo»)', () {
+    test('quita la marca de ese usuario: el asistente vuelve a ofrecerse', () async {
+      await repo.marcarResuelta('u-1');
+
+      await repo.desmarcarResuelta('u-1');
+
+      expect(await repo.estaResuelta('u-1'), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.recuperacionResuelta), isFalse);
+    });
+
+    test('no toca la marca de otra persona del mismo teléfono', () async {
+      await repo.marcarResuelta('u-2');
+
+      await repo.desmarcarResuelta('u-1');
+
+      expect(await repo.estaResuelta('u-2'), isTrue);
+    });
+
+    test('sin marca no hace nada', () async {
+      await repo.desmarcarResuelta('u-1');
+
+      expect(await repo.estaResuelta('u-1'), isFalse);
+    });
+
+    test('si el almacén no deja borrar, lanza: sin la marca quitada no hay reinicio', () async {
+      await repo.marcarResuelta('u-1');
+      almacen.alBorrar = true;
+
+      await expectLater(repo.desmarcarResuelta('u-1'), throwsA(isA<AlmacenSeguroException>()));
+      almacen.alBorrar = false;
+      expect(await repo.estaResuelta('u-1'), isTrue, reason: 'quedó como estaba');
+    });
+
+    test('si no se puede leer, lanza también', () async {
+      almacen.alLeer = true;
+
+      await expectLater(repo.desmarcarResuelta('u-1'), throwsA(isA<AlmacenSeguroException>()));
+    });
+  });
+
   test('«nunca se ofrece» es el valor por defecto de la app: dice que ya está resuelta', () async {
     const repo = RecuperacionNuncaSeOfrece();
 
     expect(await repo.estaResuelta('u-1'), isTrue);
     await repo.marcarResuelta('u-1');
+    await repo.desmarcarResuelta('u-1');
+    expect(await repo.estaResuelta('u-1'), isTrue);
   });
 }
