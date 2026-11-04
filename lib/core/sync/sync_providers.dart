@@ -61,8 +61,8 @@ final transporteSyncProvider = Provider<SyncTransport>((ref) {
   );
 });
 
-/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto` o de
-/// `precio_por_ciudad`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
+/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto`, de
+/// `precio_por_ciudad` o de `precio_general`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
 /// pull, no lo reemplaza. Sin Supabase configurado (tests, demo) no hay servidor que avise: `null`,
 /// y el motor sigue solo con los triggers del sistema.
 final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
