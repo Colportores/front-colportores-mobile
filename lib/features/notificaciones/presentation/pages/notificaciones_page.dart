@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../../core/notificaciones/permiso_alarmas_exactas.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/estado_notificaciones.dart';
+import '../providers/alarmas_exactas_providers.dart';
 import '../providers/notificaciones_providers.dart';
 import '../providers/preferencias_recordatorios_providers.dart';
 import '../widgets/aviso_notificaciones.dart';
@@ -21,6 +23,11 @@ import '../widgets/preferencias_recordatorios_widgets.dart';
 ///   muestra el diálogo del sistema (24A·02).
 /// - Bloqueadas (24A·06): desde la app ya no se pueden activar; «Abrir ajustes del teléfono» lleva a
 ///   donde sí se puede. Al volver a la app, el estado se vuelve a leer solo.
+/// - Alarmas exactas apagadas («Aviso exacto», #510): un aviso dice que los recordatorios pueden llegar
+///   tarde y «Abrir ajustes» lleva a «Alarmas y recordatorios». Al volver, el aviso se va solo y los
+///   recordatorios ya programados se reprograman exactos (`alarmasExactasProvider`). Se ve aunque el
+///   permiso de notificaciones esté apagado (son dos permisos distintos), pero no con «Recordatorios de
+///   agenda» apagados.
 /// - Con el permiso apagado las preferencias se ven y se pueden cambiar: valen cuando se activen
 ///   (24B·04).
 /// - Apagar «Recordatorios de agenda» deja la anticipación sin tocar (24B·02); cambiar la anticipación
@@ -76,6 +83,24 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     setState(() {
       _abriendoAjustes = false;
       _ajustesNoAbren = !abiertos;
+    });
+  }
+
+  /// Mientras se abre «Alarmas y recordatorios», y si no se pudo abrir.
+  bool _abriendoAlarmas = false;
+  bool _alarmasNoAbren = false;
+
+  Future<void> _abrirAjustesAlarmas() async {
+    if (_abriendoAlarmas) return;
+    setState(() {
+      _abriendoAlarmas = true;
+      _alarmasNoAbren = false;
+    });
+    final abiertos = await ref.read(alarmasExactasProvider.notifier).abrirAjustes();
+    if (!mounted) return;
+    setState(() {
+      _abriendoAlarmas = false;
+      _alarmasNoAbren = !abiertos;
     });
   }
 
@@ -160,6 +185,39 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     _ => const [],
   };
 
+  /// «Aviso exacto» (#510): sin «Alarmas y recordatorios» los recordatorios pueden llegar tarde. Con el
+  /// permiso prendido, sin concepto (iOS) o sin saber, no hay nada que decir.
+  List<Widget> _alarmas(
+    AsyncValue<EstadoAlarmasExactas> alarmas,
+    AsyncValue<EstadoPreferenciasRecordatorios> preferencias,
+  ) {
+    if (alarmas.value != EstadoAlarmasExactas.apagadas) return const [];
+    // Con «Recordatorios de agenda» apagados no hay recordatorios que lleguen tarde (decidido el
+    // 03/11, mapa §2): el aviso vuelve apenas se prenden.
+    if (preferencias.value?.preferencias.activados == false) return const [];
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
+    return [
+      AvisoNotificaciones(
+        tono: TonoAviso.advertencia,
+        texto: TextosNotificaciones.alarmasApagadas,
+        textoKey: const Key('alarmas_exactas_aviso'),
+        textoAccion: TextosNotificaciones.alarmasAbrirAjustes,
+        accionKey: const Key('alarmas_exactas_abrir_ajustes'),
+        onAccion: _abriendoAlarmas ? null : () => unawaited(_abrirAjustesAlarmas()),
+      ),
+      if (_alarmasNoAbren)
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            TextosNotificaciones.alarmasAjustesNoAbren,
+            key: const Key('alarmas_exactas_ajustes_no_abren'),
+            style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+          ),
+        ),
+    ];
+  }
+
   /// El cambio que no se pudo guardar tocaba solo el interruptor (y no la anticipación).
   static bool _soloElInterruptor(EstadoPreferenciasRecordatorios estado) =>
       estado.falla?.anticipacionMinutos == estado.preferencias.anticipacionMinutos;
@@ -225,6 +283,7 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     final theme = Theme.of(context);
     final estado = ref.watch(notificacionesProvider);
     final preferencias = ref.watch(preferenciasRecordatoriosProvider);
+    final alarmas = ref.watch(alarmasExactasProvider);
 
     return Scaffold(
       key: const Key('notificaciones_pagina'),
@@ -280,6 +339,7 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
                       const CargandoPreferencias()
                     else ...[
                       ..._permiso(estado),
+                      ..._alarmas(alarmas, preferencias),
                       ..._preferencias(preferencias),
                     ],
                   ],
