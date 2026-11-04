@@ -20,8 +20,6 @@ import '../../../../helpers/campo_falsos.dart';
 import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/venta_falsos.dart';
 
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 final _ahora = DateTime.utc(2026, 10, 30, 12);
 final _dia20 = DateTime.utc(2026, 10, 20, 15);
 
@@ -95,7 +93,6 @@ void main() {
       expect(await enMano(), (500000, 500000));
     });
 
-    // skip: QA #431 — «En mano» no resta los depósitos por validar ni los validados.
     test(
       'un depósito por validar y uno validado bajan «En mano» en el detalle y en Mi Cuenta',
       () async {
@@ -104,7 +101,6 @@ void main() {
 
         expect(await enMano(), (250000, 250000));
       },
-      skip: !_hallazgos,
     );
 
     test('un depósito rechazado no baja «En mano»: la plata vuelve', () async {
@@ -113,11 +109,10 @@ void main() {
       expect(await enMano(), (500000, 500000));
     });
 
-    // skip: QA #431 — «En mano» no resta los depósitos.
     test('si se depositó más de lo cobrado, «En mano» queda en cero y no negativo', () async {
       await depositar('d-1', 900000, validadoEn: _dia20);
 
       expect(await enMano(), (0, 0));
-    }, skip: !_hallazgos);
+    });
   });
 }
