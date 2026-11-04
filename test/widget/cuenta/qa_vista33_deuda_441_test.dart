@@ -280,14 +280,15 @@ void main() {
       expect(cache.guardada!.respuesta, guardadaAntes);
       expect(find.text(r'$ 18.400'), findsOneWidget);
       expect(
-        tester.widget<Text>(find.byKey(const Key('cuenta_aviso_sin_conexion'))).data,
+        tester.widget<Text>(find.byKey(const Key('cuenta_error_texto'))).data,
         startsWith('No pudimos actualizarla'),
       );
+      expect(find.text('Reintentar'), findsOneWidget);
     });
   });
 
   group('HALLAZGOS', () {
-    // skip: issue #441 — P3 de la decisión del 04/11 sin aplicar (aviso de 33A·02 con las dos horas).
+    // Decisión P3 del 04/11 (aplicada en 541afb76): con horas distintas el aviso nombra la de la deuda.
     testWidgets(
       'Mi Cuenta sin conexión: si la deuda guardada es de otra hora que «Depositado», el aviso '
       'suma «La deuda con la casa editora es de <hora>.»',
@@ -311,11 +312,10 @@ void main() {
         expect(aviso.data, contains('La deuda con la casa editora es de'));
         expect(aviso.data, contains('18:00'));
       },
-      skip: !_verHallazgos,
     );
 
-    // skip: issue #441 — P3 sin aplicar: con las horas iguales el aviso debe ser el del canvas 33A·02
-    // («La deuda y lo depositado son de …»); hoy sigue siendo el de V1 («Lo depositado es …»).
+    // skip: issue #441 — pregunta §2 (QA P3): con las horas iguales el aviso sigue siendo el de V1
+    // («Lo depositado es …»); el canvas 33A·02 dice «La deuda y lo depositado son de …».
     testWidgets(
       'Mi Cuenta sin conexión: con la misma hora, el aviso es el del canvas 33A·02 («La deuda y lo '
       'depositado son de …; en mano y por cobrar están al día.»)',
@@ -342,8 +342,8 @@ void main() {
       skip: !_verHallazgos,
     );
 
-    // skip: issue #441 — sin «Depositado» bajado (depositadoAl null) no hay aviso y la deuda guardada
-    // se ve como si fuera de ahora.
+    // skip: issue #441 — pregunta §2 (QA P4): sin «Depositado» bajado (depositadoAl null) no hay aviso y
+    // la deuda guardada se ve como si fuera de ahora.
     testWidgets(
       'Mi Cuenta sin conexión y sin «Depositado» bajado: la deuda guardada de ayer no se ve '
       'como actual (el aviso nombra su hora)',
