@@ -56,6 +56,12 @@ final specsDeLaApp = <SyncSpec>[
   // como `cobranza` y `devolucion`: mueve plata y no se pierde (decisión del 30/10 sobre #593). El de
   // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola.
   SyncSpec.push('deposito', critical: true, alsoPull: true),
+  // El ticket del cobro con tarjeta o del depósito (HU-COB-007, #426; backend-supabase 0113 y 0146): sube
+  // sin dato del cliente y baja lo propio (`alsoPull`, filtrado por dueña) para ver el estado sin
+  // conexión. `usuario_id`, `subido_en`, `estado`, `revisado_*`, `motivo_rechazo` y
+  // `campania_validadora_id` los pone el servidor y el push los descarta. La foto no viaja por el
+  // motor: va por el enlace firmado de `foto-ticket` y su ruta se completa en `url_cloud`, una vez.
+  SyncSpec.push('ticket', alsoPull: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).
@@ -109,6 +115,9 @@ final specsDeLaApp = <SyncSpec>[
   // La última deuda con la casa editora que dijo el servidor, con su hora (HU-CTA-002): se vuelve a
   // bajar, así que tampoco entra al backup.
   SyncSpec.local('deuda_casa_cache'),
+  // La copia comprimida de la foto de cada ticket y cómo va su subida (HU-COB-007, S41): archivos de este
+  // teléfono, que el colportor puede borrar. No sube por el motor.
+  SyncSpec.local('ticket_foto_local'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).

@@ -31,6 +31,7 @@ import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
+import '../../features/tickets/data/datasources/tickets_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
 import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
@@ -94,6 +95,8 @@ part 'app_database.g.dart';
     Entregas,
     Devoluciones,
     Depositos,
+    Tickets,
+    TicketFotosLocales,
     DeudaCasaCaches,
   ],
 )
@@ -156,10 +159,13 @@ class AppDatabase extends _$AppDatabase {
   ///   con él «Mapas offline» ofrece el mapa del departamento de la colportora (#619).
   /// - 29: `deuda_casa_cache`, la última respuesta de la deuda con la casa editora con su hora, solo local:
   ///   se ve sin conexión (HU-CTA-002, #441; backend-supabase 0164).
+  /// - 30: `ticket`, la foto y los datos del comprobante del cobro con tarjeta o del depósito, que sube
+  ///   y baja lo propio (HU-COB-007, #426); `ticket_foto_local`, la copia de la foto y cómo va su
+  ///   subida, solo del teléfono; y `cobranza.ticket_id`, el ticket del cobro.
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 29;
+  static const int versionEsquema = 30;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -441,6 +447,13 @@ class AppDatabase extends _$AppDatabase {
     // lectura con conexión, la pantalla no tiene qué mostrar sin red.
     from28To29: (m, esquema) async {
       await m.createTable(esquema.deudaCasaCache);
+    },
+    // Crea las tablas de los tickets, vacías, y suma `cobranza.ticket_id` (vacío en los cobros que ya
+    // están): nada de lo guardado cambia ni se encola al migrar.
+    from29To30: (m, esquema) async {
+      await m.createTable(esquema.ticket);
+      await m.createTable(esquema.ticketFotoLocal);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.ticketId);
     },
   );
 }

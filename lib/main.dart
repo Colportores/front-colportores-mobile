@@ -70,6 +70,8 @@ import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
+import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
@@ -252,6 +254,10 @@ Future<void> main() async {
         // el mismo directorio que la DB.
         archivoEnvoltorioDekProvider.overrideWithValue(
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
+        ),
+        // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
+        almacenDeFotosDeTicketProvider.overrideWithValue(
+          AlmacenDeFotosEnDisco((await getApplicationSupportDirectory()).path),
         ),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
