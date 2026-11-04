@@ -59,7 +59,8 @@ abstract final class InterpretadorPushRemota {
   static const _claveTipo = 'type';
   static const _claveEvento = 'event_id';
 
-  static LecturaDePush leer(Map<String, Object?> datos) {
+  /// [ahora] solo se usa para reconocer el evento de un tipo sin id y sin `event_id`.
+  static LecturaDePush leer(Map<String, Object?> datos, {DateTime? ahora}) {
     final sospechosos = <String>{};
     for (final MapEntry(:key, :value) in datos.entries) {
       final valido = switch (key) {
@@ -79,15 +80,43 @@ abstract final class InterpretadorPushRemota {
     if (codigo is! String) return const PushIgnorada(MotivoPushIgnorada.sinTipo);
     final tipo = TipoPushRemota.desdeCodigo(codigo);
     if (tipo == null) return const PushIgnorada(MotivoPushIgnorada.tipoDesconocido);
-    final entidad = datos[tipo.claveId];
-    if (entidad is! String) return const PushIgnorada(MotivoPushIgnorada.sinEntidad);
 
-    final entidadId = entidad.toLowerCase();
-    // El ejemplo de la HU no trae `event_id`: sin él, el mismo evento se reconoce por su tipo y la
-    // fila a la que apunta.
+    String? entidadId;
+    final claveId = tipo.claveId;
+    if (claveId != null) {
+      final entidad = datos[claveId];
+      if (entidad is! String) return const PushIgnorada(MotivoPushIgnorada.sinEntidad);
+      entidadId = entidad.toLowerCase();
+    }
+    final claveOpcional = tipo.claveIdOpcional;
+    final opcional = claveOpcional == null ? null : datos[claveOpcional];
+    final entidadOpcionalId = opcional is String ? opcional.toLowerCase() : null;
+
+    // El ejemplo de la HU no trae `event_id`: sin él, el mismo evento se reconoce por su tipo y las
+    // filas a las que apunta; un tipo sin id (`agenda_manana`), por el día en que llegó.
     final evento = datos[_claveEvento];
-    final eventoId = evento is String ? evento.toLowerCase() : '${tipo.codigo}:$entidadId';
-    return PushLeida(PushRemota(tipo: tipo, eventoId: eventoId, entidadId: entidadId));
+    final eventoId = evento is String
+        ? evento.toLowerCase()
+        : [
+            tipo.codigo,
+            ?entidadId,
+            ?entidadOpcionalId,
+            if (entidadId == null) _dia(ahora ?? DateTime.now()),
+          ].join(':');
+    return PushLeida(
+      PushRemota(
+        tipo: tipo,
+        eventoId: eventoId,
+        entidadId: entidadId,
+        entidadOpcionalId: entidadOpcionalId,
+      ),
+    );
+  }
+
+  static String _dia(DateTime t) {
+    final d = t.toLocal();
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
   }
 
   static bool _esUuid(Object? valor) => valor is String && _uuid.hasMatch(valor);

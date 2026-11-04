@@ -187,4 +187,108 @@ void main() {
       expect(InterpretadorPushRemota.leer({}), isA<PushIgnorada>());
     });
   });
+
+  group('los tipos del contrato (backend-supabase#237)', () {
+    const campania = '9b2e7f1a-3c4d-4e5f-8a6b-7c8d9e0f1a2b';
+
+    for (final (tipo, clave) in [
+      ('ticket_validado', 'ticket_id'),
+      ('ticket_rechazado', 'ticket_id'),
+      ('cuota_pendiente', 'agenda_id'),
+    ]) {
+      test('dado `$tipo` con `$clave`, entonces es una push válida del tipo', () {
+        final lectura = InterpretadorPushRemota.leer({
+          'type': tipo,
+          clave: _pedido,
+          'event_id': _evento,
+        });
+
+        final push = (lectura as PushLeida).push;
+        expect(push.tipo.codigo, tipo);
+        expect(push.entidadId, _pedido);
+        expect(push.eventoId, _evento);
+      });
+
+      test('dado `$tipo` sin `$clave`, entonces se ignora', () {
+        final lectura = InterpretadorPushRemota.leer({'type': tipo});
+
+        expect(
+          lectura,
+          isA<PushIgnorada>().having((l) => l.motivo, 'motivo', MotivoPushIgnorada.sinEntidad),
+        );
+      });
+    }
+
+    test(
+      'dado `cuota_pendiente` con `cuota_id` y sin `agenda_id` (la clave descartada), entonces se '
+      'ignora',
+      () {
+        final lectura = InterpretadorPushRemota.leer({
+          'type': 'cuota_pendiente',
+          'cuota_id': _pedido,
+        });
+
+        expect(lectura, isA<PushIgnorada>());
+      },
+    );
+
+    test('dado `asignacion_campania` con campaña y zona, entonces trae los dos ids', () {
+      final lectura = InterpretadorPushRemota.leer({
+        'type': 'asignacion_campania',
+        'campania_id': campania,
+        'zona_id': _pedido,
+      });
+
+      final push = (lectura as PushLeida).push;
+      expect(push.entidadId, campania);
+      expect(push.entidadOpcionalId, _pedido);
+      expect(push.eventoId, 'asignacion_campania:$campania:$_pedido');
+    });
+
+    test('dado `asignacion_campania` sin zona, entonces la zona queda en null', () {
+      final lectura = InterpretadorPushRemota.leer({
+        'type': 'asignacion_campania',
+        'campania_id': campania,
+      });
+
+      final push = (lectura as PushLeida).push;
+      expect(push.entidadOpcionalId, isNull);
+      expect(push.eventoId, 'asignacion_campania:$campania');
+    });
+
+    test(
+      'dado `asignacion_campania` con una zona que no es un UUID, entonces es un dato personal',
+      () {
+        final lectura = InterpretadorPushRemota.leer({
+          'type': 'asignacion_campania',
+          'campania_id': campania,
+          'zona_id': 'Cerro Norte',
+        });
+
+        expect((lectura as PushConDatosPersonales).campos, ['zona_id']);
+      },
+    );
+
+    test('dado `agenda_manana` sin ningún id, entonces es válida (no pide entidad)', () {
+      final lectura = InterpretadorPushRemota.leer({'type': 'agenda_manana', 'event_id': _evento});
+
+      final push = (lectura as PushLeida).push;
+      expect(push.entidadId, isNull);
+      expect(push.eventoId, _evento);
+    });
+
+    test('dado `agenda_manana` sin `event_id`, entonces el evento es del día en que llegó', () {
+      final lectura = InterpretadorPushRemota.leer({
+        'type': 'agenda_manana',
+      }, ahora: DateTime(2026, 11, 9, 21));
+
+      expect((lectura as PushLeida).push.eventoId, 'agenda_manana:2026-11-09');
+    });
+
+    test('dado `agenda_manana` con un campo de más, entonces es un dato personal', () {
+      final lectura = InterpretadorPushRemota.leer({'type': 'agenda_manana', 'visitas': '3'});
+
+      expect((lectura as PushConDatosPersonales).campos, ['visitas']);
+    });
+  });
 }

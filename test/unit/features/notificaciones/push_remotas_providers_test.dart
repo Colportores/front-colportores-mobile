@@ -374,4 +374,43 @@ void main() {
       expect(await historial(), isEmpty);
     });
   });
+
+  group('los textos salen de la base local', () {
+    test('dado un aviso de asignación y la campaña en el teléfono, entonces el título lleva su '
+        'nombre', () async {
+      final t = DateTime.utc(2026, 11, 1);
+      await db
+          .into(db.campanias)
+          .insert(
+            CampaniasCompanion.insert(
+              id: _pedido,
+              nombre: 'Verano 2027',
+              fechaInicio: '2026-11-01',
+              createdAt: t,
+              updatedAt: t,
+            ),
+          );
+      final a = armar();
+      await asentar();
+
+      push.llegaConLaAppAbierta({'type': 'asignacion_campania', 'campania_id': _pedido});
+      await asentar();
+
+      expect(a.mostrados.single.titulo, 'Te asignaron a la campaña Verano 2027.');
+      expect((await historial()).single.titulo, 'Te asignaron a la campaña Verano 2027.');
+    });
+
+    test(
+      'dado el aviso nocturno sin visitas en el teléfono, entonces no inventa la cantidad',
+      () async {
+        final a = armar();
+        await asentar();
+
+        push.llegaConLaAppAbierta({'type': 'agenda_manana'});
+        await asentar();
+
+        expect(a.mostrados.single.titulo, 'Mañana tenés visitas agendadas');
+      },
+    );
+  });
 }

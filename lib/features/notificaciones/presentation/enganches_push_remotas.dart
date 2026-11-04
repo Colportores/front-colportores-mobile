@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -6,6 +8,7 @@ import '../../../core/logging/app_logger.dart';
 import '../domain/entities/destino_notificacion.dart';
 import '../domain/entities/notificacion.dart';
 import '../domain/usecases/historial_notificaciones_use_cases.dart';
+import 'pages/centro_notificaciones_page.dart';
 import 'providers/historial_notificaciones_providers.dart';
 import 'providers/push_remotas_providers.dart';
 import 'widgets/textos_centro_notificaciones.dart';
@@ -25,11 +28,23 @@ abstract final class EnganchesPushRemotas {
   ];
 }
 
+/// Abre el centro de notificaciones si no es la pantalla que ya se está viendo.
+void abrirCentroDeNotificaciones(BuildContext context) {
+  final navegador = Navigator.of(context);
+  var yaEsta = false;
+  navegador.popUntil((ruta) {
+    yaEsta = ruta.settings.name == CentroNotificacionesPage.nombreDeRuta;
+    return true;
+  });
+  if (!yaEsta) unawaited(navegador.push(CentroNotificacionesPage.ruta()));
+}
+
 /// Tocar el aviso de una push (el aviso sutil de arriba o la notificación del sistema): lo marca como
 /// leído, comprueba que su destino exista y lo abre. Lo mismo que hace tocar un aviso en el centro de
 /// notificaciones, con los mismos textos.
 ///
-/// Sin destino (el pedido autorizado no tiene pantalla todavía) solo lo marca como leído. Nunca
+/// Sin destino (el pedido, el ticket, la asignación, la cuota y la agenda de mañana no tienen
+/// pantalla de detalle todavía) abre el centro de notificaciones con el aviso ya leído. Nunca
 /// lanza: lo que falla se explica con un aviso de qué hacer.
 Future<void> abrirAvisoDePush(Ref ref, BuildContext context, Notificacion aviso) async {
   void avisar(String texto) {
@@ -59,7 +74,9 @@ Future<void> abrirAvisoDePush(Ref ref, BuildContext context, Notificacion aviso)
       (r) async {
         switch (r) {
           case SinDestino():
-            break;
+            // Sin pantalla de detalle no hay a dónde ir: se abre el centro con el aviso ya leído
+            // (nunca un callejón sin salida), salvo que ya esté arriba.
+            abrirCentroDeNotificaciones(context);
           case DestinoYaNoExiste(:final destino):
             avisar(switch (destino) {
               DestinoAgenda() => TextosCentroNotificaciones.agendaYaNoEsta,

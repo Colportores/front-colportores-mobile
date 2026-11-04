@@ -45,7 +45,11 @@ class AvisoPushEnApp extends StatelessWidget {
 
   IconData get _icono => switch (aviso.tipo) {
     TipoNotificacion.recordatorioVisita => Icons.event_note_outlined,
-    TipoNotificacion.pedidoAutorizado => Icons.check,
+    TipoNotificacion.pedidoAutorizado || TipoNotificacion.ticketValidado => Icons.check,
+    TipoNotificacion.ticketRechazado => Icons.close,
+    TipoNotificacion.asignacionCampania => Icons.place_outlined,
+    TipoNotificacion.cuotaPendiente => Icons.payments_outlined,
+    TipoNotificacion.agendaManana => Icons.event_note_outlined,
   };
 
   @override

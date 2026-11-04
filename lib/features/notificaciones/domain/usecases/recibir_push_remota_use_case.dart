@@ -6,16 +6,29 @@ import '../../../../core/notificaciones/push_remotas.dart';
 import '../entities/notificacion.dart';
 import '../entities/push_remota.dart';
 import '../repositories/auditoria_push_repository.dart';
+import '../repositories/datos_locales_de_push_repository.dart';
 import '../services/interpretador_push_remota.dart';
 import 'historial_notificaciones_use_cases.dart';
 
 /// Los textos de los avisos que nacen de una push remota (HU-NOT-003: «la app traduce al idioma
-/// local»; el payload no trae texto).
+/// local»; el payload no trae texto). Los de ticket, pedido y cuota son fijos; los de asignación y
+/// agenda llevan un dato de la base local (el canvas 24 gana sobre la HU; los que el canvas no dibuja
+/// siguen su voz). Cuando el dato todavía no bajó con el sync, el texto lo dice sin inventarlo.
 abstract final class TextosPushRemota {
-  /// El título del aviso de [tipo].
-  static String titulo(TipoPushRemota tipo) => switch (tipo) {
-    TipoPushRemota.pedidoAutorizado => 'Tu pedido fue autorizado',
-  };
+  static const pedidoAutorizado = 'Tu pedido fue autorizado';
+  static const ticketValidado = 'Tu ticket fue validado';
+  static const ticketRechazado = 'Tu ticket fue rechazado';
+  static const cuotaPendiente = 'Tenés una cuota pendiente de cobro';
+  static const asignacionSinNombre = 'Te asignaron a una campaña.';
+  static const agendaMananaSinCuenta = 'Mañana tenés visitas agendadas';
+
+  static String asignacionConZona(String zona, String campania) =>
+      'Te asignaron la zona $zona en $campania.';
+
+  static String asignacionSinZona(String campania) => 'Te asignaron a la campaña $campania.';
+
+  static String agendaManana(int visitas) =>
+      visitas == 1 ? 'Mañana tenés 1 visita agendada' : 'Mañana tenés $visitas visitas agendadas';
 }
 
 /// Qué pasó con una push recibida.
@@ -53,14 +66,20 @@ final class PushDescartada extends ResultadoPush {
 /// **Nunca lanza.** El mensaje llega de afuera y no es confiable: lo que no se pueda usar se descarta
 /// y queda en el log (sin valores).
 final class RecibirPushRemotaUseCase {
-  const RecibirPushRemotaUseCase(this._registrar, this._auditoria, {required this._ahora});
+  const RecibirPushRemotaUseCase(
+    this._registrar,
+    this._auditoria,
+    this._datosLocales, {
+    required this._ahora,
+  });
 
   final RegistrarNotificacionUseCase _registrar;
   final AuditoriaPushRepository _auditoria;
+  final DatosLocalesDePushRepository _datosLocales;
   final DateTime Function() _ahora;
 
   Future<Either<Failure, ResultadoPush>> call(MensajePush mensaje) async {
-    switch (InterpretadorPushRemota.leer(mensaje.datos)) {
+    switch (InterpretadorPushRemota.leer(mensaje.datos, ahora: _ahora())) {
       case PushConDatosPersonales(:final campos):
         await _dejarConstancia(campos);
         return const Right(PushDescartada(porDatosPersonales: true));
@@ -73,11 +92,52 @@ final class RecibirPushRemotaUseCase {
         final aviso = Notificacion(
           id: 'push-${push.eventoId}',
           tipo: push.tipo.tipoDeAviso,
-          titulo: TextosPushRemota.titulo(push.tipo),
+          titulo: await _titulo(push),
           recibidaEn: _ahora(),
         );
         final guardada = await _registrar(aviso);
         return guardada.map((esNueva) => esNueva ? PushNueva(aviso) : PushYaRecibida(aviso));
+    }
+  }
+
+  /// El título del aviso. Si la base local no se deja leer, queda el texto sin el dato: la push no
+  /// se pierde por eso.
+  Future<String> _titulo(PushRemota push) async {
+    try {
+      switch (push.tipo) {
+        case TipoPushRemota.pedidoAutorizado:
+          return TextosPushRemota.pedidoAutorizado;
+        case TipoPushRemota.ticketValidado:
+          return TextosPushRemota.ticketValidado;
+        case TipoPushRemota.ticketRechazado:
+          return TextosPushRemota.ticketRechazado;
+        case TipoPushRemota.cuotaPendiente:
+          return TextosPushRemota.cuotaPendiente;
+        case TipoPushRemota.asignacionCampania:
+          final campania = await _datosLocales.nombreDeCampania(push.entidadId!);
+          if (campania == null) return TextosPushRemota.asignacionSinNombre;
+          final zonaId = push.entidadOpcionalId;
+          final zona = zonaId == null ? null : await _datosLocales.nombreDeZona(zonaId);
+          return zona == null
+              ? TextosPushRemota.asignacionSinZona(campania)
+              : TextosPushRemota.asignacionConZona(zona, campania);
+        case TipoPushRemota.agendaManana:
+          final visitas = await _datosLocales.visitasProgramadasParaManana(_ahora());
+          return visitas <= 0
+              ? TextosPushRemota.agendaMananaSinCuenta
+              : TextosPushRemota.agendaManana(visitas);
+      }
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.db,
+        'PUSH_TEXTO_FAIL',
+        'no se pudo leer el dato del aviso',
+        {'tipo': e.runtimeType.toString()},
+      );
+      return switch (push.tipo) {
+        TipoPushRemota.asignacionCampania => TextosPushRemota.asignacionSinNombre,
+        _ => TextosPushRemota.agendaMananaSinCuenta,
+      };
     }
   }
 

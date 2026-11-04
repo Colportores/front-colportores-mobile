@@ -7,8 +7,10 @@ import '../../../../core/logging/app_logger.dart';
 import '../../../../core/notificaciones/notificaciones_providers.dart';
 import '../../../../core/notificaciones/push_remotas.dart';
 import '../../data/repositories/auditoria_push_repository_drift.dart';
+import '../../data/repositories/datos_locales_de_push_repository_drift.dart';
 import '../../domain/entities/notificacion.dart';
 import '../../domain/repositories/auditoria_push_repository.dart';
+import '../../domain/repositories/datos_locales_de_push_repository.dart';
 import '../../domain/usecases/recibir_push_remota_use_case.dart';
 import 'historial_notificaciones_providers.dart';
 
@@ -21,10 +23,18 @@ final auditoriaPushRepositoryProvider = Provider<AuditoriaPushRepository>((ref) 
   return AuditoriaPushRepositoryDrift(db);
 });
 
+/// Lo que la base local sabe para armar el texto de una push. Sin DB abierta lanza.
+final datosLocalesDePushRepositoryProvider = Provider<DatosLocalesDePushRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return DatosLocalesDePushRepositoryDrift(db);
+});
+
 final recibirPushRemotaUseCaseProvider = Provider<RecibirPushRemotaUseCase>(
   (ref) => RecibirPushRemotaUseCase(
     ref.watch(registrarNotificacionUseCaseProvider),
     ref.watch(auditoriaPushRepositoryProvider),
+    ref.watch(datosLocalesDePushRepositoryProvider),
     ahora: ref.watch(relojHistorialNotificacionesProvider),
   ),
 );

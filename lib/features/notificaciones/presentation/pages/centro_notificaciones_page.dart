@@ -28,8 +28,13 @@ import '../widgets/textos_centro_notificaciones.dart';
 class CentroNotificacionesPage extends ConsumerStatefulWidget {
   const CentroNotificacionesPage({super.key});
 
-  static Route<void> ruta() =>
-      MaterialPageRoute<void>(builder: (_) => const CentroNotificacionesPage());
+  /// El nombre de la ruta: quien lo abre desde una push mira si ya está arriba.
+  static const nombreDeRuta = 'centro_notificaciones';
+
+  static Route<void> ruta() => MaterialPageRoute<void>(
+    settings: const RouteSettings(name: nombreDeRuta),
+    builder: (_) => const CentroNotificacionesPage(),
+  );
 
   @override
   ConsumerState<CentroNotificacionesPage> createState() => _CentroNotificacionesPageState();

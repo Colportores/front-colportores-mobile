@@ -6,12 +6,14 @@ import 'package:colportores_mobile/core/notificaciones/fakes/push_remotas_en_mem
 import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/enganches_push_remotas.dart';
+import 'package:colportores_mobile/features/notificaciones/presentation/pages/centro_notificaciones_page.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auditoria_push_en_memoria.dart';
+import '../../helpers/datos_locales_de_push_en_memoria.dart';
 import '../../helpers/historial_notificaciones_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart';
 
@@ -45,6 +47,7 @@ void main() {
     ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
     ...centro.overrides,
     auditoriaPushRepositoryProvider.overrideWithValue(auditoria),
+    datosLocalesDePushRepositoryProvider.overrideWithValue(DatosLocalesDePushEnMemoria()),
   ];
 
   int sinLeer() => centro.historial.filas.where((n) => !n.leida).length;
@@ -84,9 +87,16 @@ void main() {
     await tester.tap(_aviso);
     await tester.pump(const Duration(milliseconds: 50));
 
+    await tester.pumpAndSettle();
+
     expect(_aviso, findsNothing);
     expect(sinLeer(), 0);
     expect(centro.historial.marcadas, ['push-$_evento']);
+    expect(
+      find.byType(CentroNotificacionesPage),
+      findsOneWidget,
+      reason: 'sin detalle abre el centro',
+    );
   });
 
   testWidgets('dado que no hay sesión (pantalla de ingreso), cuando llega una push, entonces no se '
@@ -124,8 +134,11 @@ void main() {
     await abrirApp(tester, _telefono(), extra: extra());
     await tester.pump(const Duration(milliseconds: 50));
 
+    await tester.pumpAndSettle();
+
     expect(centro.historial.filas.map((n) => n.titulo), ['Tu pedido fue autorizado']);
     expect(sinLeer(), 0);
+    expect(find.byType(CentroNotificacionesPage), findsOneWidget);
     expect(_aviso, findsNothing, reason: 'el toque ya abrió el aviso: no se avisa dos veces');
   });
 }
