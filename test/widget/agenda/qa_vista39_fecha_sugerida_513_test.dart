@@ -400,8 +400,7 @@ void main() {
         expect(partidas, isEmpty, reason: 'palabras partidas: $partidas');
       }, skip: !conHallazgos513);
     }
-    // skip: issue #513 — P5 (decisión 03/11): si la lectura de las entrevistas cercanas falla, tiene
-    // que dejar un log sin PII; hoy la falla se descarta sin dejar rastro.
+    // P5 (decisión 03/11): si la lectura de las entrevistas cercanas falla, deja un log sin PII.
     testWidgets(
       'dada una falla al leer las entrevistas cercanas, cuando se abre, entonces queda un log sin PII',
       (tester) async {
@@ -419,7 +418,6 @@ void main() {
         expect(lineas.where((l) => l.contains('AGENDA') || l.contains('agenda')), isNotEmpty);
         expect(lineas.join('\n'), isNot(contains('Grecia')));
       },
-      skip: !conHallazgos513,
     );
 
     // skip: issue #513 — con la estricta, «Cambiar la hora» de la hoja «Esa hora ya pasó» abre la hoja
