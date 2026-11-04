@@ -72,6 +72,7 @@ Future<_Escenario> _montar(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  FutureOr<Object?> Function(CobranzaPendiente)? irALaCobranza,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -87,6 +88,8 @@ Future<_Escenario> _montar(
         ubicacionRepositoryProvider.overrideWithValue(e.repo),
         relojAltaUbicacionProvider.overrideWithValue(() => _hoy),
         if (!consultorReal) consultorPendientesUbicacionProvider.overrideWithValue(e.pendientes),
+        if (irALaCobranza != null)
+          irALaCobranzaDesdeLaBajaProvider.overrideWithValue(irALaCobranza),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -537,6 +540,170 @@ void main() {
       expect(find.text('Entendido'), findsOneWidget);
       expect(e.repo.bajas, isEmpty);
       expect(_botonEnCurso, findsNothing);
+    });
+  });
+
+  group('09·02 · «Ir a la cobranza» con el destino de la app (#330)', () {
+    const conDestino = CobranzaPendiente(
+      montoCentavos: 145000,
+      numeroCuota: 2,
+      ventaId: 'v-1',
+      espacioId: 'esp-1',
+      espacioPersonaId: 'ep-1',
+    );
+
+    testWidgets('dado una cobranza con destino y una app que sabe abrir el cobro, entonces ofrece '
+        '«Ir a la cobranza» sin que la pantalla lo pida, y la salida lleva la cobranza', (
+      tester,
+    ) async {
+      final e = await _montar(
+        tester,
+        irALaCobranza: (_) => true,
+        pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+      );
+
+      expect(find.text('Entendido'), findsNothing);
+      await _tocar(tester, find.text('Ir a la cobranza'));
+
+      final salida = e.salidas.single! as IrALaCobranzaElegido;
+      expect(salida.ubicacionId, 'ubi-1');
+      expect(salida.cobranza, conDestino);
+      expect(e.repo.bajas, isEmpty);
+    });
+
+    testWidgets('dado una cobranza con destino pero una app sin destino, entonces no se dibuja el '
+        'botón: solo «Entendido»', (tester) async {
+      await _montar(
+        tester,
+        pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+      );
+
+      expect(find.text('Ir a la cobranza'), findsNothing);
+      expect(find.text('Entendido'), findsOneWidget);
+    });
+
+    testWidgets('dado una cobranza sin saber a qué venta va, entonces no se dibuja el botón aunque '
+        'la app tenga destino', (tester) async {
+      await _montar(
+        tester,
+        irALaCobranza: (_) => true,
+        pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: _cobranza)),
+      );
+
+      expect(find.text('Ir a la cobranza'), findsNothing);
+      expect(find.text('Entendido'), findsOneWidget);
+    });
+
+    testWidgets('dado una cobranza de una venta sin plan de cuotas, entonces el aviso dice solo el '
+        'monto: no inventa «N.ª cuota»', (tester) async {
+      await _montar(
+        tester,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(cobranzaPendiente: CobranzaPendiente(montoCentavos: 145000)),
+        ),
+      );
+
+      expect(
+        find.text(
+          r'Tiene una cobranza pendiente de $U 1.450. Registrá el cobro antes de darla de baja.',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('Segunda confirmación: entrevistas agendadas (decisión de Cristian, 21/10)', () {
+    Future<_Escenario> conEntrevistas(
+      WidgetTester tester,
+      List<String> ids, {
+      int visitas = 0,
+    }) async {
+      final e = await _montar(
+        tester,
+        pendientes: PendientesFalso(
+          PendientesUbicacion(entrevistasAgendadas: ids, visitasPropiasPendientes: visitas),
+        ),
+      );
+      await _tocar(tester, _chip('Ya no existe'));
+      await _tocar(tester, _boton);
+      return e;
+    }
+
+    Finder enElDialogo(Finder f) => find.descendant(of: find.byType(AlertDialog), matching: f);
+
+    testWidgets(
+      'dado 1 entrevista agendada, cuando da de baja, entonces avisa con el literal de la '
+      'decisión y todavía no escribe',
+      (tester) async {
+        final e = await conEntrevistas(tester, ['ag-1']);
+
+        expect(
+          find.text('Esta casa tiene 1 entrevista agendada. Si la das de baja, se cancela.'),
+          findsOneWidget,
+        );
+        expect(e.repo.bajas, isEmpty);
+      },
+    );
+
+    testWidgets('dado 2 entrevistas agendadas, entonces el aviso va en plural', (tester) async {
+      await conEntrevistas(tester, ['ag-1', 'ag-2']);
+
+      expect(
+        find.text('Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('dado entrevistas y visitas pendientes, entonces el diálogo dice las dos cosas', (
+      tester,
+    ) async {
+      await conEntrevistas(tester, ['ag-1'], visitas: 2);
+
+      expect(find.textContaining('Esta casa tiene 1 entrevista agendada.'), findsOneWidget);
+      expect(find.textContaining('Esta ubicación tiene 2 visitas pendientes.'), findsOneWidget);
+    });
+
+    testWidgets('dado el aviso, cuando confirma, entonces da de baja una sola vez con el motivo '
+        'elegido', (tester) async {
+      final e = await conEntrevistas(tester, ['ag-1']);
+
+      await _tocar(tester, enElDialogo(find.text('Dar de baja')));
+
+      expect(e.repo.bajas.single.motivo, 'Ya no existe');
+      expect(e.salidas.single, isA<BajaRealizada>());
+    });
+
+    testWidgets('dado el aviso, cuando cancela, entonces no escribe y el botón sigue habilitado', (
+      tester,
+    ) async {
+      final e = await conEntrevistas(tester, ['ag-1']);
+
+      await _tocar(tester, enElDialogo(find.text('Cancelar')));
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(e.repo.bajas, isEmpty);
+      expect(_habilitado(tester, _boton), isTrue);
+      expect(_botonEnCurso, findsNothing);
+    });
+
+    testWidgets('dado muchas entrevistas y texto a 200 %, entonces el aviso se lee entero', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        escala: 2,
+        pendientes: PendientesFalso(
+          PendientesUbicacion(entrevistasAgendadas: [for (var i = 0; i < 12; i++) 'ag-$i']),
+        ),
+      );
+      await _tocar(tester, _chip('Ya no existe'));
+      await _tocar(tester, _boton);
+
+      expect(
+        find.text('Esta casa tiene 12 entrevistas agendadas. Si la das de baja, se cancelan.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 

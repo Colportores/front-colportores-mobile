@@ -73,4 +73,51 @@ void main() {
       expect(p.bloqueo, isNotNull);
     });
   });
+
+  group('PendientesUbicacion: entrevistas agendadas (Cristian, 21/10)', () {
+    test('dado una entrevista agendada, cuando se pregunta, hay que confirmar pero no bloquea', () {
+      const p = PendientesUbicacion(entrevistasAgendadas: ['ag-1']);
+
+      expect(p.hayPendientes, isTrue);
+      expect(p.bloqueo, isNull);
+      expect(p.resumen, ['Esta casa tiene 1 entrevista agendada. Si la das de baja, se cancela.']);
+    });
+
+    test('dado varias, el aviso va en plural', () {
+      const p = PendientesUbicacion(entrevistasAgendadas: ['ag-1', 'ag-2', 'ag-3']);
+
+      expect(p.resumen, [
+        'Esta casa tiene 3 entrevistas agendadas. Si la das de baja, se cancelan.',
+      ]);
+    });
+
+    test('dado entrevistas y visitas pendientes, el resumen lleva las dos frases', () {
+      const p = PendientesUbicacion(entrevistasAgendadas: ['ag-1'], visitasPropiasPendientes: 2);
+
+      expect(p.resumen, hasLength(2));
+      expect(p.resumen.first, startsWith('Esta casa tiene 1 entrevista agendada.'));
+      expect(p.resumen.last, startsWith('Esta ubicación tiene 2 visitas pendientes.'));
+    });
+
+    test('dado entrevistas distintas, no son iguales', () {
+      expect(
+        const PendientesUbicacion(entrevistasAgendadas: ['ag-1']),
+        isNot(const PendientesUbicacion(entrevistasAgendadas: ['ag-2'])),
+      );
+    });
+  });
+
+  group('CobranzaPendiente: destino', () {
+    test('dado la venta y la casa, cuando se pregunta, tiene destino', () {
+      const c = CobranzaPendiente(montoCentavos: 100, ventaId: 'v-1', espacioId: 'esp-1');
+
+      expect(c.tieneDestino, isTrue);
+    });
+
+    test('dado que falta la venta o la casa, no tiene destino', () {
+      expect(const CobranzaPendiente(montoCentavos: 100).tieneDestino, isFalse);
+      expect(const CobranzaPendiente(montoCentavos: 100, ventaId: 'v-1').tieneDestino, isFalse);
+      expect(const CobranzaPendiente(montoCentavos: 100, espacioId: 'e').tieneDestino, isFalse);
+    });
+  });
 }

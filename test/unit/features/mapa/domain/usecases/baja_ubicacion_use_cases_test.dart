@@ -2,6 +2,8 @@
 // contra las tablas reales está en ubicacion_baja_drift_test.dart.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/recordatorio_de_visita.dart';
+import 'package:colportores_mobile/features/agenda/domain/services/recordatorios.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
@@ -86,6 +88,27 @@ final class _Repositorio with UbicacionRepositorySinModificar implements Ubicaci
   }) => throw UnimplementedError();
 }
 
+/// Anota los pedidos de cancelar; [lanza] simula un plugin caído.
+final class _Recordatorios implements Recordatorios {
+  final cancelados = <String>[];
+  Object? lanza;
+
+  @override
+  Future<bool> cancelar(String agendaId) async {
+    cancelados.add(agendaId);
+    final roto = lanza;
+    if (roto != null) throw roto;
+    return true;
+  }
+
+  @override
+  Future<ResultadoRecordatorio> programar(RecordatorioDeVisita visita) =>
+      throw UnimplementedError();
+
+  @override
+  Future<bool> puedeAvisar() async => true;
+}
+
 final class _Pendientes implements ConsultorPendientesUbicacion {
   PendientesUbicacion pendientes = PendientesUbicacion.ninguno;
   Failure? falla;
@@ -101,12 +124,19 @@ final class _Pendientes implements ConsultorPendientesUbicacion {
 void main() {
   late _Repositorio repositorio;
   late _Pendientes pendientes;
+  late _Recordatorios recordatorios;
   late DarDeBajaUbicacionUseCase darDeBaja;
 
   setUp(() {
     repositorio = _Repositorio()..porId['ub-1'] = _ubicacion();
     pendientes = _Pendientes();
-    darDeBaja = DarDeBajaUbicacionUseCase(repositorio, pendientes, ahora: () => _t1);
+    recordatorios = _Recordatorios();
+    darDeBaja = DarDeBajaUbicacionUseCase(
+      repositorio,
+      pendientes,
+      ahora: () => _t1,
+      recordatorios: recordatorios,
+    );
   });
 
   DarDeBajaUbicacionParams params({
@@ -223,6 +253,92 @@ void main() {
 
       expect(r, isA<UbicacionDadaDeBaja>());
       expect(repositorio.bajas, hasLength(1));
+    });
+  });
+
+  group('DarDeBajaUbicacionUseCase: entrevistas agendadas (Cristian, 21/10)', () {
+    const conEntrevistas = PendientesUbicacion(entrevistasAgendadas: ['ag-1', 'ag-2']);
+
+    test('dado entrevistas agendadas, cuando da de baja sin confirmar, pide la confirmación con el '
+        'aviso y no escribe ni cancela recordatorios', () async {
+      pendientes.pendientes = conEntrevistas;
+
+      final r = await ok(params());
+
+      expect(r, isA<BajaRequiereConfirmacion>());
+      expect(
+        (r as BajaRequiereConfirmacion).pendientes.resumen.single,
+        'Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.',
+      );
+      expect(repositorio.bajas, isEmpty);
+      expect(recordatorios.cancelados, isEmpty);
+    });
+
+    test('dado entrevistas agendadas, cuando confirma, da de baja y cancela el recordatorio de '
+        'cada una', () async {
+      pendientes.pendientes = conEntrevistas;
+
+      final r = await ok(params(confirma: true));
+
+      expect(r, isA<UbicacionDadaDeBaja>());
+      expect(repositorio.bajas, hasLength(1));
+      expect(recordatorios.cancelados, ['ag-1', 'ag-2']);
+    });
+
+    test('dado que la baja falla, cuando confirma, no cancela ningún recordatorio', () async {
+      pendientes.pendientes = conEntrevistas;
+      repositorio.fallaAlCambiarBaja = const FailureBajaCambioReciente();
+
+      final r = await darDeBaja(params(confirma: true));
+
+      expect(r.isLeft(), isTrue);
+      expect(recordatorios.cancelados, isEmpty);
+    });
+
+    test(
+      'dado que el plugin de recordatorios se cae, cuando confirma, la baja igual se hace',
+      () async {
+        pendientes.pendientes = conEntrevistas;
+        recordatorios.lanza = StateError('plugin caído');
+
+        final r = await ok(params(confirma: true));
+
+        expect(r, isA<UbicacionDadaDeBaja>());
+        expect(recordatorios.cancelados, ['ag-1', 'ag-2']);
+      },
+    );
+
+    test('dado una baja por unión de duplicados, cuando hay entrevistas, no pide confirmar ni las '
+        'cancela: pasan a la que se conserva', () async {
+      repositorio.porId['ub-2'] = _ubicacion(id: 'ub-2');
+      pendientes.pendientes = conEntrevistas;
+
+      final r = await ok(params(conservadaId: 'ub-2', motivo: 'duplicado_de_ub-2'));
+
+      expect(r, isA<UbicacionDadaDeBaja>());
+      expect(recordatorios.cancelados, isEmpty);
+    });
+
+    test(
+      'dado que ya estaba de baja (doble toque), cuando llega la segunda, no cancela nada',
+      () async {
+        repositorio.porId['ub-1'] = _ubicacion(deletedAt: _t1);
+        pendientes.pendientes = conEntrevistas;
+
+        final r = await ok(params(confirma: true));
+
+        expect(r, isA<BajaSinCambios>());
+        expect(recordatorios.cancelados, isEmpty);
+      },
+    );
+
+    test('dado un caso de uso sin recordatorios, cuando confirma, da de baja igual', () async {
+      final sin = DarDeBajaUbicacionUseCase(repositorio, pendientes, ahora: () => _t1);
+      pendientes.pendientes = conEntrevistas;
+
+      final r = (await sin(params(confirma: true))).getOrElse(() => throw StateError('Left'));
+
+      expect(r, isA<UbicacionDadaDeBaja>());
     });
   });
 

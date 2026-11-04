@@ -32,6 +32,7 @@ abstract final class TextosBaja {
   // Canvas 09·02.
   static const bloqueadaTitulo = 'Todavía no se puede dar de baja';
   static const irALaCobranza = 'Ir a la cobranza';
+  static const noPudimosIrALaCobranza = 'No pudimos abrir el cobro. Probá de nuevo.';
   static String bloqueoCobranza(CobranzaPendiente cobranza) =>
       'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}. '
       'Registrá el cobro antes de darla de baja.';
@@ -70,9 +71,12 @@ final class BajaRealizada extends SalidaHojaBaja {
 
 /// La baja estaba bloqueada por una cobranza y el colportor eligió «Ir a la cobranza».
 final class IrALaCobranzaElegido extends SalidaHojaBaja {
-  const IrALaCobranzaElegido(this.ubicacionId);
+  const IrALaCobranzaElegido(this.ubicacionId, {this.cobranza});
 
   final String ubicacionId;
+
+  /// La cobranza que bloqueaba la baja: a dónde hay que ir a cobrar.
+  final CobranzaPendiente? cobranza;
 }
 
 /// El texto del aviso rojo cuando no se pudo dar de baja: la falla inesperada dice qué pasó y qué
@@ -85,8 +89,9 @@ String mensajeFallaBaja(Failure falla) => switch (falla) {
 /// Abre la hoja de «Dar de baja» de [ubicacion] (vista 09, artboards 01 y 02). Devuelve cómo terminó,
 /// o `null` si el colportor cerró sin hacer nada.
 ///
-/// Con [alIrALaCobranza] la hoja bloqueada por una cobranza ofrece «Ir a la cobranza»; sin él, solo
-/// el aviso y «Entendido» (la pantalla de cobranzas todavía no existe).
+/// La hoja bloqueada por una cobranza ofrece «Ir a la cobranza» con [ofreceIrALaCobranza] o cuando
+/// `irALaCobranzaDesdeLaBajaProvider` tiene destino y la cobranza se sabe a dónde ir; si no, solo el
+/// aviso y «Entendido».
 Future<SalidaHojaBaja?> mostrarHojaBaja(
   BuildContext context, {
   required Ubicacion ubicacion,
@@ -492,12 +497,19 @@ class _HojaBajaUbicacionState extends ConsumerState<HojaBajaUbicacion> {
   }
 
   List<Widget> _accionesBloqueada() {
-    final aCobranza = _bloqueo is BloqueoPorCobranza && widget.ofreceIrALaCobranza;
+    final bloqueo = _bloqueo;
+    final cobranza = bloqueo is BloqueoPorCobranza ? bloqueo.cobranza : null;
+    // El botón solo existe si hay a dónde ir (HU-UBI-005): lo pide quien abrió la hoja, o el destino
+    // de la app y una venta que se sabe cuál es.
+    final hayDestino =
+        ref.watch(irALaCobranzaDesdeLaBajaProvider) != null && (cobranza?.tieneDestino ?? false);
+    final aCobranza = cobranza != null && (widget.ofreceIrALaCobranza || hayDestino);
     if (aCobranza) {
       return [
         FilledButton(
-          onPressed: () =>
-              Navigator.of(context).pop<SalidaHojaBaja>(IrALaCobranzaElegido(widget.ubicacion.id)),
+          onPressed: () => Navigator.of(
+            context,
+          ).pop<SalidaHojaBaja>(IrALaCobranzaElegido(widget.ubicacion.id, cobranza: cobranza)),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           child: const Text(TextosBaja.irALaCobranza, textAlign: TextAlign.center),
         ),

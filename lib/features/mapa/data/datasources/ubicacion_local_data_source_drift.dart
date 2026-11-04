@@ -7,6 +7,8 @@ import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../agenda/data/datasources/agenda_local_data_source_drift.dart';
+import '../../../agenda/data/models/agenda_model.dart';
 import '../../../agenda/domain/entities/estado_agenda.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
@@ -273,6 +275,12 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         ),
       );
     }
+    // Las entrevistas agendadas de la casa se cancelan con la baja, en la misma transacción (decisión
+    // de Cristian, 21/10): no se borra nada y siguen canceladas si se reactiva. Con
+    // [conservadaId] (unión de duplicados) no se tocan: `unirDuplicada` las pasa a la que se conserva.
+    if (deletedAt != null && conservadaId == null) {
+      await _cancelarEntrevistasDe(id, updatedAt);
+    }
     await _encolador.encolar(
       'ubicacion',
       deletedAt == null ? OperacionSync.update : OperacionSync.delete,
@@ -280,6 +288,35 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     );
     return (ubicacion: guardada, escribio: true);
   });
+
+  /// Pasa a `CANCELADA` las entrevistas `PROGRAMADA` de [ubicacionId] y las encola como `update`. Las
+  /// cobranzas (cuotas) no se tocan: una ubicación con ventas no se puede dar de baja.
+  Future<void> _cancelarEntrevistasDe(String ubicacionId, DateTime cuando) async {
+    final delLugar = selectOnly(espacios)
+      ..addColumns([espacios.id])
+      ..where(espacios.ubicacionId.equals(ubicacionId));
+    final agendas = attachedDatabase.agendas;
+    final aCancelar =
+        await (select(agendas)..where(
+              (a) =>
+                  a.espacioId.isInQuery(delLugar) &
+                  a.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  a.estado.equals(EstadoAgenda.programada.codigo) &
+                  a.deletedAt.isNull(),
+            ))
+            .get();
+    for (final fila in aCancelar) {
+      await (update(agendas)..where((a) => a.id.equals(fila.id))).write(
+        AgendasCompanion(estado: Value(EstadoAgenda.cancelada.codigo), updatedAt: Value(cuando)),
+      );
+      final guardada = await (select(agendas)..where((a) => a.id.equals(fila.id))).getSingle();
+      await _encolador.encolar(
+        'agenda',
+        OperacionSync.update,
+        AgendaModel.fromEntity(AgendaLocalDataSourceDrift.desdeFila(guardada)).toJson(),
+      );
+    }
+  }
 
   /// El motivo `duplicado_de_<A>` de la baja vigente de [fila] si nació de unir duplicados
   /// (HU-UBI-006), o `null` si no: su evento `ubicacion_baja` en la auditoría local, con la misma marca
@@ -520,8 +557,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).
   /// Las filas siguen con su vínculo y su persona; solo cambia el espacio al que pertenecen. No se
   /// encola nada por fila: el servidor repite la unión cuando le llega el trabajo «marcar como
-  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, entregas y
-  /// cobranzas todavía no están en el teléfono.
+  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, las entregas y
+  /// los cobros cuelgan del vínculo (`venta.espacio_persona_id`), que se pasa entero: se mudan de
+  /// espacio con él sin tocar ninguna fila suya (#208 P4). Quien llama recalcula después el color de A
+  /// en la misma transacción.
   Future<void> _pasarLoQueCuelgaDe(
     String deB, {
     required String a,
