@@ -20,7 +20,7 @@ const _camino = PrecioDeProducto(
   nombre: 'El camino a Cristo',
   centavos: 15000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.misionero,
+  categoriaDelProducto: CategoriaDeProducto.misioneros,
   esMisionero: true,
 );
 const _deseado = PrecioDeProducto(
@@ -28,28 +28,28 @@ const _deseado = PrecioDeProducto(
   nombre: 'El Deseado de todas las gentes',
   centavos: 15000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _vidaFeliz = PrecioDeProducto(
   id: 'p-vf',
   nombre: 'Vida Feliz',
   centavos: 12000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.revista,
+  categoriaDelProducto: CategoriaDeProducto.revistas,
 );
 const _saludYHogar = PrecioDeProducto(
   id: 'p-l0',
   nombre: 'Salud y Hogar',
   centavos: 200000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _nuestrosHijos = PrecioDeProducto(
   id: 'p-l1',
   nombre: 'Nuestros Hijos',
   centavos: 200001,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _combo2 = PrecioDeCombo(
   id: 'k-2',

@@ -148,10 +148,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 26: `devolucion` pierde `dinero_retenido` y `monto_reembolsado` (backend-supabase 0157, decisión
   ///   de Cristian, 03/11, «Devol. saldo»): nunca queda plata a favor del cliente, así que la
   ///   devolución ya no guarda dinero (#609).
+  /// - 27: `producto` suma `categoria` (backend-supabase 0149, «Categorías» de Cristian, 28/10): la
+  ///   etiqueta de cada producto en Precios, en lugar del `tipo` heredado (#561).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 26;
+  static const int versionEsquema = 27;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -414,6 +416,13 @@ class AppDatabase extends _$AppDatabase {
     // encolar al migrar. `alterTable` vuelve a crear los índices que ya tenía la tabla.
     from25To26: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.devolucion));
+    },
+    // Suma a `producto` la categoría que ahora baja el pull (backend-supabase 0149): vacía, ningún
+    // producto que ya estaba cambia. El servidor subió la versión de cada producto al cargar la
+    // categoría, así que el próximo pull la trae; hasta entonces el producto no se ofrece en Precios
+    // (no se deriva de `tipo`: decisión de Cristian, 28/10).
+    from26To27: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.categoria);
     },
   );
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
-import '../../domain/entities/catalogo_local.dart' show TipoDeProducto;
+import '../../domain/entities/catalogo_local.dart' show CategoriaDeProducto;
 import '../../domain/entities/item_de_precio.dart';
 import '../formato_precios.dart';
 
@@ -16,6 +16,8 @@ abstract final class ColoresPrecios {
   static const ambarBorde = Color(0xFFA98330);
   static const verdeFondo = Color(0xFFDDE8D3);
   static const verdeTinta = Color(0xFF1F6E3A);
+  static const espiritualFondo = Color(0xFFF3F1EA);
+  static const espiritualTinta = Color(0xFF2A3A52);
   static const rojo = ColoresAgenda.rojo;
   static const tinta = ColoresAgenda.tinta;
   static const gris = ColoresAgenda.gris;
@@ -436,28 +438,38 @@ class _Precio extends StatelessWidget {
   );
 }
 
+/// La pastilla de una etiqueta de producto, con los colores del canvas (26·02).
 class _Etiqueta extends StatelessWidget {
-  const _Etiqueta(this.texto, this.fondo, this.tinta);
+  const _Etiqueta(this.etiqueta);
 
-  final String texto;
-  final Color fondo;
-  final Color tinta;
+  final EtiquetaDeProducto etiqueta;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(top: 3),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(color: fondo, borderRadius: BorderRadius.circular(99)),
-    child: Text(
-      texto,
-      style: TextStyle(
-        fontFamily: 'Inter',
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        color: tinta,
+  Widget build(BuildContext context) {
+    final (Color fondo, Color tinta) = switch (etiqueta) {
+      EtiquetaDeProducto.bonificable => (ColoresPrecios.azulFondo, ColoresPrecios.azul),
+      EtiquetaDeProducto.misionero => (ColoresPrecios.verdeFondo, ColoresPrecios.verdeTinta),
+      EtiquetaDeProducto.revista => (ColoresPrecios.ambarFondo, ColoresPrecios.ambarTinta),
+      EtiquetaDeProducto.espiritual => (
+        ColoresPrecios.espiritualFondo,
+        ColoresPrecios.espiritualTinta,
       ),
-    ),
-  );
+    };
+    return Container(
+      margin: const EdgeInsets.only(top: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: fondo, borderRadius: BorderRadius.circular(99)),
+      child: Text(
+        etiqueta.texto,
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: tinta,
+        ),
+      ),
+    );
+  }
 }
 
 /// Una fila de producto (26·02): glifo, nombre, código, etiqueta (◆ Bonificable, ✦ Misionero,
@@ -470,11 +482,12 @@ class FilaDeProducto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grande = textoGrandePrecios(context);
-    final glifo = producto.esMisionero || producto.tipo == TipoDeProducto.misionero
-        ? '✦'
-        : producto.tipo == TipoDeProducto.revista
-        ? '▤'
-        : '▥';
+    final glifo = switch (producto.categoriaDelProducto) {
+      CategoriaDeProducto.misioneros => '✦',
+      CategoriaDeProducto.revistas => '▤',
+      CategoriaDeProducto.espirituales => '✝',
+      _ => '▥',
+    };
     final contenido = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -491,24 +504,7 @@ class FilaDeProducto extends StatelessWidget {
         Wrap(
           spacing: 6,
           children: [
-            if (producto.esBonificable)
-              const _Etiqueta(
-                TextosPrecios.bonificable,
-                ColoresPrecios.azulFondo,
-                ColoresPrecios.azul,
-              ),
-            if (producto.esMisionero || producto.tipo == TipoDeProducto.misionero)
-              const _Etiqueta(
-                TextosPrecios.misionero,
-                ColoresPrecios.verdeFondo,
-                ColoresPrecios.verdeTinta,
-              ),
-            if (producto.tipo == TipoDeProducto.revista)
-              const _Etiqueta(
-                TextosPrecios.revista,
-                ColoresPrecios.ambarFondo,
-                ColoresPrecios.ambarTinta,
-              ),
+            for (final etiqueta in FormatoPrecios.etiquetasDe(producto)) _Etiqueta(etiqueta),
           ],
         ),
         if (grande)
