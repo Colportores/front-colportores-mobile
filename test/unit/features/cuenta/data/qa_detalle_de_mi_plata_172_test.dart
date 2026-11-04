@@ -72,7 +72,7 @@ void main() {
 
         final d = await local.leer('col-1');
 
-        expect(d.porCobrar.single.cliente.trim(), isNotEmpty);
+        expect(d.porCobrar.single.cliente, 'Cliente sin nombre');
       },
     );
 
