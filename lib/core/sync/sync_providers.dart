@@ -25,6 +25,7 @@ import '../logging/app_logger.dart';
 import '../secure_storage/secure_storage_providers.dart';
 import 'encolador_sync.dart';
 import 'hora_del_servidor.dart';
+import 'purga_de_la_cola.dart';
 import 'transporte_que_anota_la_hora.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
@@ -149,6 +150,22 @@ final cicloDeVidaSyncProvider = Provider<void>((ref) {
         ),
       );
   ref.onDispose(() => unawaited(refresco.cancel()));
+
+  // La cola no guarda para siempre los envíos ya confirmados (#188): al arrancar y cada vez que
+  // termina un ciclo bien (`lastSuccessAt` cambia: lo dispare un resume, la red, el botón o el
+  // realtime) se sacan los `DONE` de hace más de 7 días. Sin esperarla: ni el arranque ni el
+  // sync dependen de esto, y un fallo no se propaga.
+  final purga = PurgaDeLaCola(motor.purge);
+  unawaited(purga.correr());
+  DateTime? ultimoCicloVisto;
+  final vigiaDelEstado = motor.status.listen((estado) {
+    final termino = estado.lastSuccessAt;
+    if (termino == null || termino == ultimoCicloVisto) return;
+    ultimoCicloVisto = termino;
+    unawaited(purga.correr());
+  });
+  ref.onDispose(() => unawaited(vigiaDelEstado.cancel()));
+
   _disparar(motor, SyncTrigger.appResumed);
 });
 
