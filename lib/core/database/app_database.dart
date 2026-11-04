@@ -142,10 +142,13 @@ class AppDatabase extends _$AppDatabase {
   ///   que sube (HU-CTA-004, #442).
   /// - 24: `agenda` suma `venta_id` y `monto_previsto` (backend-supabase 0068): una cuota del plan de
   ///   una venta es una cita de cobranza con su venta y su monto (HU-COB-004, #166).
+  /// - 25: `deposito` suma `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, que baja el
+  ///   pull (backend-supabase#231): con ellas el teléfono sabe si el depósito está por validar,
+  ///   validado o rechazado (#596).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 24;
+  static const int versionEsquema = 25;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -391,6 +394,15 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
       await m.createIndex(esquema.agendaVentaIdx);
+    },
+    // Suma a `deposito` las cuatro columnas que pone el servidor y ahora bajan por el pull (la
+    // validación y el rechazo con su motivo, backend-supabase#231): vacías, ningún depósito que ya
+    // estaba cambia ni se vuelve a encolar al migrar; el próximo pull las completa.
+    from24To25: (m, esquema) async {
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoPor);
+      await m.addColumn(esquema.deposito, esquema.deposito.rechazadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.motivoRechazo);
     },
   );
 }

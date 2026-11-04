@@ -49,10 +49,13 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.push('devolucion', critical: true),
   // El depósito de efectivo (HU-CTA-004, #442): sube sin dato de ninguna persona (no marca qué cobros
   // incluye, decisión «Cobro en dep.»). Solo de alta: el servidor rechaza un update o una baja con
-  // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor. Sin `alsoPull`: que el
-  // teléfono vea la validación o el rechazo del retiro está pendiente de decisión (contrato §2). El de
+  // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor y el push los descarta.
+  // `alsoPull` (decisión del 30/10, backend-supabase#231, #596): el servidor publica en el pull los
+  // depósitos propios con `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, y de ahí
+  // salen «Depositado» (solo lo validado) y el retiro rechazado con su motivo. Es una escritura crítica,
+  // como `cobranza` y `devolucion`: mueve plata y no se pierde (decisión del 30/10 sobre #593). El de
   // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola.
-  SyncSpec.push('deposito'),
+  SyncSpec.push('deposito', critical: true, alsoPull: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).

@@ -11,6 +11,7 @@ abstract final class ColoresCuenta {
   static const ambarFondo = Color(0xFFFBF1DA);
   static const ambarTinta = Color(0xFF6E5212);
   static const verde = Color(0xFF1F6E3A);
+  static const verdeFondo = Color(0xFFDDE8D3);
   static const rojo = Color(0xFFA8312A);
   static const tinta = Color(0xFF0E1A2B);
   static const gris = Color(0xFF5B6B82);
@@ -60,6 +61,13 @@ class CabeceraCuenta extends StatelessWidget {
 
 /// Qué cifra es: su rótulo, su glifo y sus colores (33A·01).
 enum TipoDeCifra {
+  depositado(
+    rotulo: TextosCuenta.depositado,
+    hablado: 'Depositado',
+    glifo: '⇣',
+    fondo: ColoresCuenta.verdeFondo,
+    tinta: ColoresCuenta.verde,
+  ),
   enMano(
     rotulo: TextosCuenta.enMano,
     hablado: 'En mano',
@@ -94,12 +102,17 @@ enum TipoDeCifra {
   /// «En mano» que creció cierra con «depositalo pronto» (33A·01).
   bool get aconsejaDepositar => this == TipoDeCifra.enMano;
 
-  /// El color de la línea de abajo: verde si lo que se movió es buena noticia, ámbar si hay más
-  /// efectivo para depositar, gris si no hay qué comparar, no se movió o subió lo que falta cobrar.
+  /// El color de la línea de abajo: verde si lo que se movió es buena noticia (más depositado, menos
+  /// por cobrar o menos efectivo encima), ámbar si hay más efectivo para depositar, gris si no hay qué
+  /// comparar, no se movió o fue para el lado que el canvas no dibuja (subió lo que falta cobrar,
+  /// bajó lo depositado).
   Color colorDeLaVariacion(int? variacionCentavos) {
     if (variacionCentavos == null || variacionCentavos == 0) return ColoresCuenta.gris;
-    if (variacionCentavos < 0) return ColoresCuenta.verde;
-    return this == TipoDeCifra.enMano ? ColoresCuenta.ambarTinta : ColoresCuenta.gris;
+    return switch (this) {
+      TipoDeCifra.depositado => variacionCentavos > 0 ? ColoresCuenta.verde : ColoresCuenta.gris,
+      TipoDeCifra.enMano => variacionCentavos < 0 ? ColoresCuenta.verde : ColoresCuenta.ambarTinta,
+      TipoDeCifra.porCobrar => variacionCentavos < 0 ? ColoresCuenta.verde : ColoresCuenta.gris,
+    };
   }
 }
 
@@ -187,6 +200,62 @@ class TarjetaDeCifra extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El aviso de sin conexión (33A·02): lo depositado viene del servidor y puede estar viejo, así que dice
+/// de cuándo es; en mano y por cobrar salen del teléfono y están al día. Aspecto neutro (borde gris y
+/// «✕»), el mismo de los otros avisos de sin conexión.
+class AvisoSinConexionCuenta extends StatelessWidget {
+  const AvisoSinConexionCuenta({super.key, required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: ColoresCuenta.gris, width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: ColoresCuenta.gris, shape: BoxShape.circle),
+                child: const Text(
+                  '✕',
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                texto,
+                key: const Key('cuenta_aviso_sin_conexion'),
+                style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
               ),
             ),
           ],

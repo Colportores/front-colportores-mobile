@@ -2,6 +2,7 @@
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/totales_de_depositos.dart';
 import 'package:colportores_mobile/features/depositos/domain/repositories/deposito_repository.dart';
 import 'package:colportores_mobile/features/depositos/domain/usecases/registrar_deposito_use_case.dart';
 import 'package:dartz/dartz.dart';
@@ -20,6 +21,13 @@ final class _Repo implements DepositoRepository {
 
   @override
   Future<Either<Failure, List<Deposito>>> todos() async => const Right([]);
+
+  @override
+  Stream<List<Deposito>> observar() => const Stream.empty();
+
+  @override
+  Future<Either<Failure, TotalesDeDepositos>> totales() async =>
+      const Right(TotalesDeDepositos(validadoCentavos: 0, porValidarCentavos: 0));
 }
 
 void main() {
