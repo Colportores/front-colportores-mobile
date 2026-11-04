@@ -2507,16 +2507,6 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
-          },
-          {
-            "name": "categoria",
-            "getter_name": "categoria",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -4398,26 +4388,6 @@
             }
           },
           {
-            "name": "dinero_retenido",
-            "getter_name": "dineroRetenido",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "monto_reembolsado",
-            "getter_name": "montoReembolsado",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "motivo",
             "getter_name": "motivo",
             "moor_type": "string",
@@ -4507,8 +4477,6 @@
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [
-          "CHECK (dinero_retenido >= 0)",
-          "CHECK (monto_reembolsado IS NULL OR monto_reembolsado >= 0)",
           "CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)"
         ],
         "explicit_pk": [
@@ -5634,7 +5602,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
         }
       ]
     },
@@ -5760,7 +5728,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"devolucion\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"productos_devueltos\" TEXT NOT NULL, \"dinero_retenido\" INTEGER NOT NULL DEFAULT 0, \"monto_reembolsado\" INTEGER NULL, \"motivo\" TEXT NULL, \"fecha_devolucion\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (dinero_retenido >= 0), CHECK (monto_reembolsado IS NULL OR monto_reembolsado >= 0), CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"devolucion\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"productos_devueltos\" TEXT NOT NULL, \"motivo\" TEXT NULL, \"fecha_devolucion\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500));"
         }
       ]
     },

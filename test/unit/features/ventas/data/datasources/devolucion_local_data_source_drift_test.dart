@@ -1,6 +1,8 @@
 // Registrar una devolución contra las tablas reales (HU-VEN-004, #161): AppDatabase en memoria, mismo
 // esquema y mismos CHECK que en el dispositivo, con el servicio real de `house_status`. Los números son
 // los del canvas 31: una venta de $ 4.500 con «Salud y Hogar» ($ 2.600) y «Nuestros Hijos» ($ 1.900).
+// Nunca queda plata a favor del cliente (decisión de Cristian, 03/11): una venta saldada no acepta
+// devoluciones y lo devuelto se descuenta de la deuda hasta el saldo.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
@@ -60,8 +62,9 @@ void main() {
     );
   }
 
-  /// La venta del canvas: dos renglones de un libro, $ 4.500, con lo [cobrado] ya cobrado.
-  Future<void> venderElCanvas({int cobrado = 450000, DateTime? fecha}) async {
+  /// La venta del canvas: dos renglones de un libro, $ 4.500, con lo [cobrado] ya cobrado (por defecto
+  /// $ 1.000: con saldo, que es lo único que acepta devoluciones).
+  Future<void> venderElCanvas({int cobrado = 100000, DateTime? fecha}) async {
     await ventas.registrar(ventaDe('v-1', monto: 450000, fecha: fecha ?? _venta), [
       itemDe('i-salud', 'v-1', productoId: 'p-salud', cantidad: 1, precio: 260000),
       itemDe('i-hijos', 'v-1', productoId: 'p-hijos', cantidad: 1, precio: 190000),
@@ -73,7 +76,6 @@ void main() {
   PedidoDeDevolucion pedido(
     Map<String, int> unidades, {
     String id = 'd-1',
-    QueHacerConLaDiferencia? queHacer,
     String? motivo,
     DateTime? ahora,
     String ventaId = 'v-1',
@@ -82,7 +84,6 @@ void main() {
     ventaId: ventaId,
     colportorId: 'col-1',
     unidadesPorRenglon: unidades,
-    queHacer: queHacer,
     motivo: motivo,
     ahora: ahora ?? _ahora,
   );
@@ -95,78 +96,70 @@ void main() {
   Future<int> saldoDeLaVenta() async => (await cobranzas.ventaConSaldo('v-1'))!.saldoCentavos;
 
   group('registrar', () {
-    test('31-03: dado que pagó de más y elige «Se lo devuelvo ahora», guarda lo devuelto como '
-        'reembolsado y encola la devolución', () async {
-      await venderElCanvas();
-
-      final r = await local.registrar(
-        pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverAhora),
-      );
-
-      final fila = (await filas()).single;
-      expect(fila.ventaId, 'v-1');
-      expect(fila.productosDevueltos, [
-        {'producto_id': 'p-hijos', 'cantidad': 1, 'venta_item_id': 'i-hijos'},
-      ]);
-      expect(fila.montoReembolsado, 190000);
-      expect(fila.dineroRetenido, 0);
-      expect(fila.fechaDevolucion, _ahora);
-      expect(fila.createdBy, 'col-1');
-      expect(r.totalCentavos, 260000);
-      expect(r.saldoCentavos, 0);
-      expect(r.deboAlClienteCentavos, 0);
-      expect(r.eraTotal, isFalse);
-      expect(r.yaEstaba, isFalse);
-      expect(cola().first, 'devolucion:insert');
-    });
-
     test(
-      'dado «Lo retengo», guarda la diferencia como dinero retenido y el saldo queda en cero',
+      '31-06: dado que debía más, guarda la devolución sin dinero, baja el saldo y la encola',
       () async {
         await venderElCanvas();
-
-        final r = await local.registrar(
-          pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener),
-        );
-
-        final fila = (await filas()).single;
-        expect(fila.dineroRetenido, 190000);
-        expect(fila.montoReembolsado, isNull);
-        expect(r.saldoCentavos, 0);
-        expect(r.deboAlClienteCentavos, 0);
-      },
-    );
-
-    test(
-      '31-04: dado «Se lo devuelvo después», no guarda monto y queda «Debo al cliente»',
-      () async {
-        await venderElCanvas();
-
-        final r = await local.registrar(
-          pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverDespues),
-        );
-
-        final fila = (await filas()).single;
-        expect(fila.dineroRetenido, 0);
-        expect(fila.montoReembolsado, isNull);
-        expect(r.deboAlClienteCentavos, 190000);
-        expect(r.totalCentavos, 260000);
-      },
-    );
-
-    test(
-      '31-06: dado que debía más, la devolución solo ajusta el saldo y no pide elegir',
-      () async {
-        await venderElCanvas(cobrado: 100000);
 
         final r = await local.registrar(pedido({'i-hijos': 1}));
 
+        final fila = (await filas()).single;
+        expect(fila.ventaId, 'v-1');
+        expect(fila.productosDevueltos, [
+          {'producto_id': 'p-hijos', 'cantidad': 1, 'venta_item_id': 'i-hijos'},
+        ]);
+        expect(fila.fechaDevolucion, _ahora);
+        expect(fila.createdBy, 'col-1');
+        expect(r.totalCentavos, 260000);
         expect(r.saldoCentavos, 160000);
-        expect(r.deboAlClienteCentavos, 0);
-        expect((await filas()).single.montoReembolsado, isNull);
+        expect(r.eraTotal, isFalse);
+        expect(r.yaEstaba, isFalse);
         expect(await saldoDeLaVenta(), 160000);
+        expect(cola().first, 'devolucion:insert');
       },
     );
+
+    test('dado que la tabla ya no guarda dinero, no tiene las columnas de retenido ni de '
+        'reembolsado', () {
+      final columnas = {for (final c in db.devoluciones.$columns) c.name};
+
+      expect(columnas, {
+        'id',
+        'venta_id',
+        'productos_devueltos',
+        'motivo',
+        'fecha_devolucion',
+        'created_at',
+        'updated_at',
+        'created_by',
+        'deleted_at',
+        'sync_version',
+      });
+    });
+
+    test('dado que lo devuelto vale más que el saldo, el saldo queda en 0 y no queda plata a favor '
+        'del cliente', () async {
+      // Debía 1.200 (pagó 3.300 de 4.500) y devuelve un libro de 1.900.
+      await venderElCanvas(cobrado: 330000);
+
+      final r = await local.registrar(pedido({'i-hijos': 1}));
+
+      expect(r.saldoCentavos, 0);
+      expect(r.totalCentavos, 260000);
+      final v = (await cobranzas.ventaConSaldo('v-1'))!;
+      expect(v.saldoCentavos, 0);
+      expect(v.tieneSaldo, isFalse);
+      expect(v.yaPagoCentavos, 330000);
+    });
+
+    test('dado que lo devuelto cabe justo en el saldo, la venta queda saldada', () async {
+      await venderElCanvas(cobrado: 260000);
+
+      final r = await local.registrar(pedido({'i-hijos': 1}));
+
+      expect(r.saldoCentavos, 0);
+      expect(await saldoDeLaVenta(), 0);
+    });
 
     test('dado el motivo, lo guarda limpio y sube con la devolución', () async {
       await venderElCanvas(cobrado: 0);
@@ -182,17 +175,13 @@ void main() {
       () async {
         await venderElCanvas();
 
-        await local.registrar(
-          pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverAhora, motivo: 'x'),
-        );
+        await local.registrar(pedido({'i-hijos': 1}, motivo: 'x'));
 
         final payload = encolador.encolados.first.payload;
         expect(payload.keys.toSet(), {
           'id',
           'venta_id',
           'productos_devueltos',
-          'dinero_retenido',
-          'monto_reembolsado',
           'motivo',
           'fecha_devolucion',
           'created_at',
@@ -204,7 +193,8 @@ void main() {
         expect(payload['productos_devueltos'], [
           {'producto_id': 'p-hijos', 'cantidad': 1, 'venta_item_id': 'i-hijos'},
         ]);
-        expect(payload['monto_reembolsado'], 190000);
+        expect(payload.containsKey('dinero_retenido'), isFalse);
+        expect(payload.containsKey('monto_reembolsado'), isFalse);
         expect(payload['fecha_devolucion'], _ahora.toIso8601String());
         expect(payload.containsKey('colportor_id'), isFalse);
       },
@@ -222,9 +212,7 @@ void main() {
         );
         encolador.encolados.clear();
 
-        await local.registrar(
-          pedido({'i-salud': 1, 'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener),
-        );
+        await local.registrar(pedido({'i-salud': 1, 'i-hijos': 1}));
 
         expect(cola().first, 'devolucion:insert');
         expect(cola().skip(1).every((c) => c.startsWith('house_status')), isTrue);
@@ -290,18 +278,17 @@ void main() {
       await venderElCanvas();
 
       await expectLater(
-        local.registrar(pedido({'i-hijos': 1})),
+        local.registrar(pedido({'i-hijos': 2})),
         throwsA(isA<DevolucionInvalidaException>()),
       );
       await expectLater(
-        local.registrar(
-          pedido(
-            {'i-hijos': 1},
-            queHacer: QueHacerConLaDiferencia.retener,
-            ahora: _venta.add(const Duration(hours: 73)),
-          ),
-        ),
+        local.registrar(pedido({'i-hijos': 1}, ahora: _venta.add(const Duration(hours: 73)))),
         throwsA(isA<DevolucionFueraDePlazoException>()),
+      );
+      await cobrar(350000, id: 'c-2');
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1})),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
       );
 
       expect(await auditoria(), isEmpty);
@@ -377,17 +364,77 @@ void main() {
   });
 
   group('rechazos', () {
-    test('31-02: dado que pagó de más y no eligió, lanza sin_eleccion y no escribe nada', () async {
+    test(
+      'dado que la venta está saldada, lanza DevolucionVentaSaldadaException y no escribe nada',
+      () async {
+        await venderElCanvas(cobrado: 450000);
+
+        await expectLater(
+          local.registrar(pedido({'i-hijos': 1})),
+          throwsA(isA<DevolucionVentaSaldadaException>()),
+        );
+
+        expect(await filas(), isEmpty);
+        expect(encolador.encolados, isEmpty);
+        expect(await (db.select(db.auditLogLocal)).get(), isEmpty);
+      },
+    );
+
+    test('dado que la venta quedó saldada con una devolución anterior, no acepta otra', () async {
+      // Pagó 2.600 de 4.500: devolver el libro de 1.900 la deja saldada, aunque quede un libro.
+      await venderElCanvas(cobrado: 260000);
+      await local.registrar(pedido({'i-hijos': 1}));
+
+      await expectLater(
+        local.registrar(pedido({'i-salud': 1}, id: 'd-2')),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
+      );
+
+      expect(await filas(), hasLength(1));
+    });
+
+    test('dado que la venta quedó saldada por el último cobro, no acepta devoluciones', () async {
       await venderElCanvas();
+      await cobrar(350000, id: 'c-2');
 
       await expectLater(
         local.registrar(pedido({'i-hijos': 1})),
-        throwsA(isA<DevolucionInvalidaException>().having((e) => e.causa, 'causa', 'sin_eleccion')),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
       );
-
-      expect(await filas(), isEmpty);
-      expect(encolador.encolados, isEmpty);
     });
+
+    test('dado que la venta está saldada y pasaron más de 72 h, dice que está saldada', () async {
+      await venderElCanvas(cobrado: 450000);
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1}, ahora: _venta.add(const Duration(hours: 80)))),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
+      );
+    });
+
+    test('dado una venta de \$ 0, está saldada y no acepta devoluciones', () async {
+      await ventas.registrar(ventaDe('v-1', monto: 0, fecha: _venta), [
+        itemDe('i-hijos', 'v-1', productoId: 'p-hijos', cantidad: 1, precio: 0),
+      ]);
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1})),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
+      );
+    });
+
+    test(
+      'dado el mismo pedido ya registrado y una venta que quedó saldada, responde que ya estaba',
+      () async {
+        await venderElCanvas(cobrado: 260000);
+        await local.registrar(pedido({'i-hijos': 1}));
+
+        final otra = await local.registrar(pedido({'i-hijos': 1}));
+
+        expect(otra.yaEstaba, isTrue);
+        expect(await filas(), hasLength(1));
+      },
+    );
 
     test('31-09: dado nada elegido, lanza sin_productos', () async {
       await venderElCanvas();
@@ -548,31 +595,31 @@ void main() {
 
   group('lectura de la venta', () {
     test('dado una venta sin devoluciones, lee sus renglones con el precio de la foto', () async {
-      await venderElCanvas();
+      await venderElCanvas(cobrado: 450000);
 
       final v = (await local.ventaParaDevolver('v-1'))!;
 
       expect(v.numeroTalonario, 'T-100');
       expect(v.montoTotalCentavos, 450000);
       expect(v.cobradoCentavos, 450000);
+      expect(v.estaSaldada, isTrue);
       expect([
         for (final r in v.renglones) (r.ventaItemId, r.cantidad, r.unidadesDevueltas),
       ], unorderedEquals([('i-salud', 1, 0), ('i-hijos', 1, 0)]));
       expect(v.renglones.first.titulo, isNotEmpty);
     });
 
-    test('dado una venta con una devolución, lee lo ya devuelto, reembolsado y retenido', () async {
+    test('dado una venta con una devolución, lee lo ya devuelto y lo que debe', () async {
       await venderElCanvas();
-      await local.registrar(
-        pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverAhora),
-      );
+      await local.registrar(pedido({'i-hijos': 1}));
 
       final v = (await local.ventaParaDevolver('v-1'))!;
 
       expect(v.renglones.singleWhere((r) => r.ventaItemId == 'i-hijos').unidadesDevueltas, 1);
-      expect(v.reembolsadoCentavos, 190000);
+      expect(v.yaPagoCentavos, 100000);
       expect(v.seQuedaConCentavos, 260000);
-      expect(v.saldoCentavos, 0);
+      expect(v.saldoCentavos, 160000);
+      expect(v.estaSaldada, isFalse);
       expect(v.estaTodoDevuelto, isFalse);
     });
 
@@ -612,9 +659,7 @@ void main() {
     test('dado una devolución total, la persona deja de deber', () async {
       await venderElCanvas(cobrado: 100000);
 
-      await local.registrar(
-        pedido({'i-salud': 1, 'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener),
-      );
+      await local.registrar(pedido({'i-salud': 1, 'i-hijos': 1}));
 
       expect(await saldoDeLaVenta(), 0);
       expect(await cobranzas.saldosPorPersona(['per-1']), isEmpty);
@@ -635,19 +680,18 @@ void main() {
     });
 
     test(
-      'dado que pagó de más y quedó «Debo al cliente», la venta lo dice y no hay saldo',
+      'dado que lo devuelto pasa del saldo, la venta no debe nada y no hay plata a favor',
       () async {
-        await venderElCanvas();
-        await local.registrar(
-          pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverDespues),
-        );
+        await venderElCanvas(cobrado: 330000);
+        await local.registrar(pedido({'i-hijos': 1}));
 
         final v = (await cobranzas.ventaConSaldo('v-1'))!;
 
         expect(v.saldoCentavos, 0);
-        expect(v.deboAlClienteCentavos, 190000);
         expect(v.seQuedaConCentavos, 260000);
+        expect(v.yaPagoCentavos, 330000);
         expect(v.tieneSaldo, isFalse);
+        expect(await cobranzas.observarSaldoTotal('col-1').first, 0);
       },
     );
 
@@ -666,27 +710,26 @@ void main() {
     test('dado una devolución parcial, la casa sigue pendiente de entrega y cobranza', () async {
       await venderElCanvas();
 
-      await local.registrar(pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener));
+      await local.registrar(pedido({'i-hijos': 1}));
 
       expect(await colorDeLaCasa(), 'ENTREGA_Y_COBRANZA_PENDIENTE');
     });
 
-    test('dado una devolución parcial de lo que faltaba entregar, la venta pagada y entregada '
-        'queda completa', () async {
-      await venderElCanvas();
+    test('dado una devolución parcial que salda la deuda de una venta entregada, la casa queda '
+        'completa', () async {
+      // Pagó 2.600 de 4.500 y se entregó todo: con deuda la casa sigue pendiente (decisión del 28/10)
+      // hasta que devolver el de 1.900 salda la venta.
+      await venderElCanvas(cobrado: 260000);
       await entregas.entregarAhora(
         'v-1',
         colportorId: 'col-1',
         ahora: _ahora,
         generarId: () => 'e-${DateTime.now().microsecondsSinceEpoch}',
       );
-      expect(await colorDeLaCasa(), 'VENTA_COMPLETA');
+      expect(await colorDeLaCasa(), 'ENTREGA_Y_COBRANZA_PENDIENTE');
 
-      await local.registrar(
-        pedido({'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.devolverAhora),
-      );
+      await local.registrar(pedido({'i-hijos': 1}));
 
-      // Lo vendido neto sigue entregado y pagado: la casa no cambia.
       expect(await colorDeLaCasa(), 'VENTA_COMPLETA');
     });
 
@@ -696,9 +739,7 @@ void main() {
         await venderElCanvas();
         expect(await colorDeLaCasa(), 'ENTREGA_Y_COBRANZA_PENDIENTE');
 
-        final r = await local.registrar(
-          pedido({'i-salud': 1, 'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener),
-        );
+        final r = await local.registrar(pedido({'i-salud': 1, 'i-hijos': 1}));
 
         expect(await colorDeLaCasa(), 'ENTREVISTA_SIN_VENTA');
         expect(r.colorDeLaCasa?.codigo, 'ENTREVISTA_SIN_VENTA');
@@ -709,9 +750,7 @@ void main() {
     test('dado una devolución total, la casa en la cola cambia con un house_status', () async {
       await venderElCanvas();
 
-      await local.registrar(
-        pedido({'i-salud': 1, 'i-hijos': 1}, queHacer: QueHacerConLaDiferencia.retener),
-      );
+      await local.registrar(pedido({'i-salud': 1, 'i-hijos': 1}));
 
       expect(cola(), ['devolucion:insert', 'house_status:update']);
     });

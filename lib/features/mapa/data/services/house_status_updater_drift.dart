@@ -157,7 +157,7 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
 
   /// Cada venta viva de la casa con lo que el cliente se queda y lo que lleva pagado (HU-VEN-001,
   /// HU-COB-001, HU-VEN-004): son las cuentas de [CuentaDeLaVenta], la misma fórmula del saldo —lo
-  /// devuelto baja lo que se queda y lo reembolsado baja lo pagado—. Los cobros dados de baja no
+  /// devuelto baja lo que se queda—. Los cobros dados de baja no
   /// cuentan (`CobroValido`). Una venta devuelta por completo no pinta por sí sola (queda en 0).
   Future<List<({int montoCentavos, int cobradoCentavos, bool entregada})>> _ventas(
     String ubicacionId,

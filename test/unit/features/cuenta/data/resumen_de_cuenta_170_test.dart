@@ -1,5 +1,5 @@
 // El resumen de Mi Cuenta (HU-CTA-001, #170) contra las tablas reales: AppDatabase en memoria, con
-// «En mano» (efectivo cobrado menos lo reembolsado al devolver), «Por cobrar» (el saldo de las
+// «En mano» (el efectivo cobrado: una devolución no lo resta, nunca hay reembolsos), «Por cobrar» (el saldo de las
 // ventas vivas) y la diferencia contra la semana pasada, que sale de lo que ya había hace 7 días.
 import 'dart:async';
 
@@ -104,19 +104,13 @@ void main() {
     );
   }
 
-  Future<void> devolver(
-    String id,
-    DateTime fecha, {
-    String venta = 'v-1',
-    QueHacerConLaDiferencia queHacer = QueHacerConLaDiferencia.devolverAhora,
-  }) async {
+  Future<void> devolver(String id, DateTime fecha, {String venta = 'v-1'}) async {
     await devoluciones.registrar(
       PedidoDeDevolucion(
         id: id,
         ventaId: venta,
         colportorId: 'col-1',
         unidadesPorRenglon: {'i-$venta': 1},
-        queHacer: queHacer,
         ahora: fecha,
       ),
     );
@@ -253,41 +247,32 @@ void main() {
       expect(r.porCobrar.totalCentavos, 150000);
     });
 
-    test('dado que devolvió plata al cliente en el momento, se resta de «En mano» (decisión del '
-        '30/10)', () async {
+    test('dado que devolvió un libro de una venta con saldo, «En mano» no cambia: no hay reembolso '
+        '(decisión del 03/11)', () async {
       await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
+      await cobrar('c-1', 50000, _ventaReciente);
       await devolver('d-1', _devolucion);
 
       final r = await leer();
 
-      // Devolvió el único libro de la venta: los $ 1.500 que le había cobrado en efectivo vuelven al
-      // cliente.
-      expect(r.enMano.totalCentavos, 0);
+      // Lo devuelto se descuenta de la deuda, no del efectivo: los $ 500 siguen en la mano.
+      expect(r.enMano.totalCentavos, 50000);
+      expect(r.porCobrar.totalCentavos, 0);
     });
 
-    test('la devolución de esta semana no cambia cómo estaba «En mano» hace 7 días', () async {
+    test('la devolución de esta semana no cambia «En mano» ni contra hace 7 días', () async {
       await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
+      await cobrar('c-1', 50000, _ventaReciente);
       await devolver('d-1', _devolucion);
 
       final r = await leer();
 
-      // Hace 7 días tenía $ 1.500 en mano; ahora 0: bajó $ 1.500.
-      expect(r.enMano.variacionCentavos, -150000);
+      // Hace 7 días tenía $ 500 en mano y ahora también: la diferencia es 0.
+      expect(r.enMano.variacionCentavos, 0);
     });
 
-    test('«Se lo devuelvo después» no saca plata de la mano: todavía no se devolvió', () async {
-      await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
-      await devolver('d-1', _devolucion, queHacer: QueHacerConLaDiferencia.devolverDespues);
-
-      final r = await leer();
-
-      expect(r.enMano.totalCentavos, 150000);
-    });
-
-    test('nunca queda negativa: un reembolso mayor al efectivo cobrado deja cero', () async {
+    test('dado que lo cobrado fue con tarjeta y lo demás efectivo, la devolución no toca el '
+        'efectivo', () async {
       await vender('v-1', 150000, _ventaReciente);
       await cobrar('c-1', 50000, _ventaReciente, medio: MedioCobranza.tarjeta);
       await cobrar('c-2', 20000, _ventaReciente);
@@ -295,7 +280,7 @@ void main() {
 
       final r = await leer();
 
-      expect(r.enMano.totalCentavos, 0);
+      expect(r.enMano.totalCentavos, 20000);
     });
 
     test('una venta dada de baja no se lleva el efectivo ya cobrado: sigue en mano', () async {

@@ -100,7 +100,12 @@ const textoBloqueadas =
 /// Abre la app entera con la sesión de `ana@example.com` ya iniciada (o la inicia la primera vez) y
 /// la DB local lista. Un `ProviderScope` nuevo cada vez: «cerrar y volver a abrir la app» con el
 /// mismo [telefono].
-Future<void> abrirApp(WidgetTester tester, Telefono telefono, {bool iniciarSesion = true}) async {
+Future<void> abrirApp(
+  WidgetTester tester,
+  Telefono telefono, {
+  bool iniciarSesion = true,
+  List<Override> extra = const [],
+}) async {
   _tamanoDeTelefonoSiNoSeFijo(tester);
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
@@ -113,6 +118,7 @@ Future<void> abrirApp(WidgetTester tester, Telefono telefono, {bool iniciarSesio
         ),
         authLocalDataSourceProvider.overrideWithValue(telefono.sesionGuardada),
         ...telefono.overrides,
+        ...extra,
       ],
       child: const ColportoresApp(),
     ),

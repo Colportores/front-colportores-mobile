@@ -105,9 +105,18 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
   }
 
   Future<void> _cambiarActivados({required bool activados}) async {
+    final mensajero = ScaffoldMessenger.of(context);
     await ref
         .read(preferenciasRecordatoriosProvider.notifier)
         .cambiarActivados(activados: activados);
+    // Con los recordatorios apagados no se avisa nada: el aviso de la anticipación («te avisamos 35
+    // min antes») que sigue a la vista contradiría al aviso fijo de 24B·02 (#155).
+    // Si la persona salió de la pantalla mientras se guardaba no se puede leer el estado (`ref`): vale
+    // lo que pidió. Si sigue acá, vale lo guardado (otro cambio pudo volver a prender mientras tanto).
+    final apagados = mounted
+        ? ref.read(preferenciasRecordatoriosProvider).value?.preferencias.activados == false
+        : !activados;
+    if (apagados) mensajero.clearSnackBars();
   }
 
   /// Guarda la anticipación y, si se guardó, avisa a cuántos recordatorios les tocó la hora nueva.

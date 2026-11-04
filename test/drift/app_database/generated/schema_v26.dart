@@ -9344,14 +9344,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<String> categoria = GeneratedColumn<String>(
-    'categoria',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -9369,7 +9361,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
-    categoria,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9442,10 +9433,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
         DriftSqlType.string,
         data['${effectivePrefix}codigo_editor'],
       ),
-      categoria: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}categoria'],
-      ),
     );
   }
 
@@ -9479,7 +9466,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
   final int? deletedAt;
   final int syncVersion;
   final String? codigoEditor;
-  final String? categoria;
   const ProductoData({
     required this.id,
     required this.nombre,
@@ -9496,7 +9482,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     this.deletedAt,
     required this.syncVersion,
     this.codigoEditor,
-    this.categoria,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9529,9 +9514,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     map['sync_version'] = Variable<int>(syncVersion);
     if (!nullToAbsent || codigoEditor != null) {
       map['codigo_editor'] = Variable<String>(codigoEditor);
-    }
-    if (!nullToAbsent || categoria != null) {
-      map['categoria'] = Variable<String>(categoria);
     }
     return map;
   }
@@ -9567,9 +9549,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: codigoEditor == null && nullToAbsent
           ? const Value.absent()
           : Value(codigoEditor),
-      categoria: categoria == null && nullToAbsent
-          ? const Value.absent()
-          : Value(categoria),
     );
   }
 
@@ -9594,7 +9573,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
       codigoEditor: serializer.fromJson<String?>(json['codigoEditor']),
-      categoria: serializer.fromJson<String?>(json['categoria']),
     );
   }
   @override
@@ -9616,7 +9594,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'syncVersion': serializer.toJson<int>(syncVersion),
       'codigoEditor': serializer.toJson<String?>(codigoEditor),
-      'categoria': serializer.toJson<String?>(categoria),
     };
   }
 
@@ -9636,7 +9613,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
     Value<String?> codigoEditor = const Value.absent(),
-    Value<String?> categoria = const Value.absent(),
   }) => ProductoData(
     id: id ?? this.id,
     nombre: nombre ?? this.nombre,
@@ -9655,7 +9631,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
     codigoEditor: codigoEditor.present ? codigoEditor.value : this.codigoEditor,
-    categoria: categoria.present ? categoria.value : this.categoria,
   );
   ProductoData copyWithCompanion(ProductoCompanion data) {
     return ProductoData(
@@ -9688,7 +9663,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: data.codigoEditor.present
           ? data.codigoEditor.value
           : this.codigoEditor,
-      categoria: data.categoria.present ? data.categoria.value : this.categoria,
     );
   }
 
@@ -9709,8 +9683,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           ..write('createdBy: $createdBy, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
-          ..write('codigoEditor: $codigoEditor, ')
-          ..write('categoria: $categoria')
+          ..write('codigoEditor: $codigoEditor')
           ..write(')'))
         .toString();
   }
@@ -9732,7 +9705,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
-    categoria,
   );
   @override
   bool operator ==(Object other) =>
@@ -9752,8 +9724,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           other.createdBy == this.createdBy &&
           other.deletedAt == this.deletedAt &&
           other.syncVersion == this.syncVersion &&
-          other.codigoEditor == this.codigoEditor &&
-          other.categoria == this.categoria);
+          other.codigoEditor == this.codigoEditor);
 }
 
 class ProductoCompanion extends UpdateCompanion<ProductoData> {
@@ -9772,7 +9743,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<String?> codigoEditor;
-  final Value<String?> categoria;
   final Value<int> rowid;
   const ProductoCompanion({
     this.id = const Value.absent(),
@@ -9790,7 +9760,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
-    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductoCompanion.insert({
@@ -9809,7 +9778,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
-    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nombre = Value(nombre),
@@ -9832,7 +9800,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Expression<int>? deletedAt,
     Expression<int>? syncVersion,
     Expression<String>? codigoEditor,
-    Expression<String>? categoria,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -9851,7 +9818,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncVersion != null) 'sync_version': syncVersion,
       if (codigoEditor != null) 'codigo_editor': codigoEditor,
-      if (categoria != null) 'categoria': categoria,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -9872,7 +9838,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Value<int?>? deletedAt,
     Value<int>? syncVersion,
     Value<String?>? codigoEditor,
-    Value<String?>? categoria,
     Value<int>? rowid,
   }) {
     return ProductoCompanion(
@@ -9891,7 +9856,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       deletedAt: deletedAt ?? this.deletedAt,
       syncVersion: syncVersion ?? this.syncVersion,
       codigoEditor: codigoEditor ?? this.codigoEditor,
-      categoria: categoria ?? this.categoria,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9944,9 +9908,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     if (codigoEditor.present) {
       map['codigo_editor'] = Variable<String>(codigoEditor.value);
     }
-    if (categoria.present) {
-      map['categoria'] = Variable<String>(categoria.value);
-    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9971,7 +9932,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
           ..write('codigoEditor: $codigoEditor, ')
-          ..write('categoria: $categoria, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -17153,23 +17113,6 @@ class Devolucion extends Table with TableInfo<Devolucion, DevolucionData> {
         requiredDuringInsert: true,
         $customConstraints: 'NOT NULL',
       );
-  late final GeneratedColumn<int> dineroRetenido = GeneratedColumn<int>(
-    'dinero_retenido',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> montoReembolsado = GeneratedColumn<int>(
-    'monto_reembolsado',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
   late final GeneratedColumn<String> motivo = GeneratedColumn<String>(
     'motivo',
     aliasedName,
@@ -17232,8 +17175,6 @@ class Devolucion extends Table with TableInfo<Devolucion, DevolucionData> {
     id,
     ventaId,
     productosDevueltos,
-    dineroRetenido,
-    montoReembolsado,
     motivo,
     fechaDevolucion,
     createdAt,
@@ -17265,14 +17206,6 @@ class Devolucion extends Table with TableInfo<Devolucion, DevolucionData> {
         DriftSqlType.string,
         data['${effectivePrefix}productos_devueltos'],
       )!,
-      dineroRetenido: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}dinero_retenido'],
-      )!,
-      montoReembolsado: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}monto_reembolsado'],
-      ),
       motivo: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}motivo'],
@@ -17312,8 +17245,6 @@ class Devolucion extends Table with TableInfo<Devolucion, DevolucionData> {
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(id)',
-    'CHECK(dinero_retenido >= 0)',
-    'CHECK(monto_reembolsado IS NULL OR monto_reembolsado >= 0)',
     'CHECK(motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)',
   ];
   @override
@@ -17324,8 +17255,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
   final String id;
   final String ventaId;
   final String productosDevueltos;
-  final int dineroRetenido;
-  final int? montoReembolsado;
   final String? motivo;
   final int fechaDevolucion;
   final int createdAt;
@@ -17337,8 +17266,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
     required this.id,
     required this.ventaId,
     required this.productosDevueltos,
-    required this.dineroRetenido,
-    this.montoReembolsado,
     this.motivo,
     required this.fechaDevolucion,
     required this.createdAt,
@@ -17353,10 +17280,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
     map['id'] = Variable<String>(id);
     map['venta_id'] = Variable<String>(ventaId);
     map['productos_devueltos'] = Variable<String>(productosDevueltos);
-    map['dinero_retenido'] = Variable<int>(dineroRetenido);
-    if (!nullToAbsent || montoReembolsado != null) {
-      map['monto_reembolsado'] = Variable<int>(montoReembolsado);
-    }
     if (!nullToAbsent || motivo != null) {
       map['motivo'] = Variable<String>(motivo);
     }
@@ -17378,10 +17301,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
       id: Value(id),
       ventaId: Value(ventaId),
       productosDevueltos: Value(productosDevueltos),
-      dineroRetenido: Value(dineroRetenido),
-      montoReembolsado: montoReembolsado == null && nullToAbsent
-          ? const Value.absent()
-          : Value(montoReembolsado),
       motivo: motivo == null && nullToAbsent
           ? const Value.absent()
           : Value(motivo),
@@ -17409,8 +17328,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
       productosDevueltos: serializer.fromJson<String>(
         json['productosDevueltos'],
       ),
-      dineroRetenido: serializer.fromJson<int>(json['dineroRetenido']),
-      montoReembolsado: serializer.fromJson<int?>(json['montoReembolsado']),
       motivo: serializer.fromJson<String?>(json['motivo']),
       fechaDevolucion: serializer.fromJson<int>(json['fechaDevolucion']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
@@ -17427,8 +17344,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
       'id': serializer.toJson<String>(id),
       'ventaId': serializer.toJson<String>(ventaId),
       'productosDevueltos': serializer.toJson<String>(productosDevueltos),
-      'dineroRetenido': serializer.toJson<int>(dineroRetenido),
-      'montoReembolsado': serializer.toJson<int?>(montoReembolsado),
       'motivo': serializer.toJson<String?>(motivo),
       'fechaDevolucion': serializer.toJson<int>(fechaDevolucion),
       'createdAt': serializer.toJson<int>(createdAt),
@@ -17443,8 +17358,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
     String? id,
     String? ventaId,
     String? productosDevueltos,
-    int? dineroRetenido,
-    Value<int?> montoReembolsado = const Value.absent(),
     Value<String?> motivo = const Value.absent(),
     int? fechaDevolucion,
     int? createdAt,
@@ -17456,10 +17369,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
     id: id ?? this.id,
     ventaId: ventaId ?? this.ventaId,
     productosDevueltos: productosDevueltos ?? this.productosDevueltos,
-    dineroRetenido: dineroRetenido ?? this.dineroRetenido,
-    montoReembolsado: montoReembolsado.present
-        ? montoReembolsado.value
-        : this.montoReembolsado,
     motivo: motivo.present ? motivo.value : this.motivo,
     fechaDevolucion: fechaDevolucion ?? this.fechaDevolucion,
     createdAt: createdAt ?? this.createdAt,
@@ -17475,12 +17384,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
       productosDevueltos: data.productosDevueltos.present
           ? data.productosDevueltos.value
           : this.productosDevueltos,
-      dineroRetenido: data.dineroRetenido.present
-          ? data.dineroRetenido.value
-          : this.dineroRetenido,
-      montoReembolsado: data.montoReembolsado.present
-          ? data.montoReembolsado.value
-          : this.montoReembolsado,
       motivo: data.motivo.present ? data.motivo.value : this.motivo,
       fechaDevolucion: data.fechaDevolucion.present
           ? data.fechaDevolucion.value
@@ -17501,8 +17404,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
           ..write('id: $id, ')
           ..write('ventaId: $ventaId, ')
           ..write('productosDevueltos: $productosDevueltos, ')
-          ..write('dineroRetenido: $dineroRetenido, ')
-          ..write('montoReembolsado: $montoReembolsado, ')
           ..write('motivo: $motivo, ')
           ..write('fechaDevolucion: $fechaDevolucion, ')
           ..write('createdAt: $createdAt, ')
@@ -17519,8 +17420,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
     id,
     ventaId,
     productosDevueltos,
-    dineroRetenido,
-    montoReembolsado,
     motivo,
     fechaDevolucion,
     createdAt,
@@ -17536,8 +17435,6 @@ class DevolucionData extends DataClass implements Insertable<DevolucionData> {
           other.id == this.id &&
           other.ventaId == this.ventaId &&
           other.productosDevueltos == this.productosDevueltos &&
-          other.dineroRetenido == this.dineroRetenido &&
-          other.montoReembolsado == this.montoReembolsado &&
           other.motivo == this.motivo &&
           other.fechaDevolucion == this.fechaDevolucion &&
           other.createdAt == this.createdAt &&
@@ -17551,8 +17448,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
   final Value<String> id;
   final Value<String> ventaId;
   final Value<String> productosDevueltos;
-  final Value<int> dineroRetenido;
-  final Value<int?> montoReembolsado;
   final Value<String?> motivo;
   final Value<int> fechaDevolucion;
   final Value<int> createdAt;
@@ -17565,8 +17460,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
     this.id = const Value.absent(),
     this.ventaId = const Value.absent(),
     this.productosDevueltos = const Value.absent(),
-    this.dineroRetenido = const Value.absent(),
-    this.montoReembolsado = const Value.absent(),
     this.motivo = const Value.absent(),
     this.fechaDevolucion = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -17580,8 +17473,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
     required String id,
     required String ventaId,
     required String productosDevueltos,
-    this.dineroRetenido = const Value.absent(),
-    this.montoReembolsado = const Value.absent(),
     this.motivo = const Value.absent(),
     required int fechaDevolucion,
     required int createdAt,
@@ -17600,8 +17491,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
     Expression<String>? id,
     Expression<String>? ventaId,
     Expression<String>? productosDevueltos,
-    Expression<int>? dineroRetenido,
-    Expression<int>? montoReembolsado,
     Expression<String>? motivo,
     Expression<int>? fechaDevolucion,
     Expression<int>? createdAt,
@@ -17615,8 +17504,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
       if (id != null) 'id': id,
       if (ventaId != null) 'venta_id': ventaId,
       if (productosDevueltos != null) 'productos_devueltos': productosDevueltos,
-      if (dineroRetenido != null) 'dinero_retenido': dineroRetenido,
-      if (montoReembolsado != null) 'monto_reembolsado': montoReembolsado,
       if (motivo != null) 'motivo': motivo,
       if (fechaDevolucion != null) 'fecha_devolucion': fechaDevolucion,
       if (createdAt != null) 'created_at': createdAt,
@@ -17632,8 +17519,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
     Value<String>? id,
     Value<String>? ventaId,
     Value<String>? productosDevueltos,
-    Value<int>? dineroRetenido,
-    Value<int?>? montoReembolsado,
     Value<String?>? motivo,
     Value<int>? fechaDevolucion,
     Value<int>? createdAt,
@@ -17647,8 +17532,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
       id: id ?? this.id,
       ventaId: ventaId ?? this.ventaId,
       productosDevueltos: productosDevueltos ?? this.productosDevueltos,
-      dineroRetenido: dineroRetenido ?? this.dineroRetenido,
-      montoReembolsado: montoReembolsado ?? this.montoReembolsado,
       motivo: motivo ?? this.motivo,
       fechaDevolucion: fechaDevolucion ?? this.fechaDevolucion,
       createdAt: createdAt ?? this.createdAt,
@@ -17671,12 +17554,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
     }
     if (productosDevueltos.present) {
       map['productos_devueltos'] = Variable<String>(productosDevueltos.value);
-    }
-    if (dineroRetenido.present) {
-      map['dinero_retenido'] = Variable<int>(dineroRetenido.value);
-    }
-    if (montoReembolsado.present) {
-      map['monto_reembolsado'] = Variable<int>(montoReembolsado.value);
     }
     if (motivo.present) {
       map['motivo'] = Variable<String>(motivo.value);
@@ -17711,8 +17588,6 @@ class DevolucionCompanion extends UpdateCompanion<DevolucionData> {
           ..write('id: $id, ')
           ..write('ventaId: $ventaId, ')
           ..write('productosDevueltos: $productosDevueltos, ')
-          ..write('dineroRetenido: $dineroRetenido, ')
-          ..write('montoReembolsado: $montoReembolsado, ')
           ..write('motivo: $motivo, ')
           ..write('fechaDevolucion: $fechaDevolucion, ')
           ..write('createdAt: $createdAt, ')

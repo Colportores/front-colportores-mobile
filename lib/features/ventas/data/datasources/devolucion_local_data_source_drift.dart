@@ -35,8 +35,17 @@ final class DevolucionFueraDePlazoException extends DevolucionRechazadaException
   String toString() => 'DevolucionFueraDePlazoException';
 }
 
-/// Lo pedido no se puede registrar: nada elegido (`sin_productos`), más de lo que queda por devolver
-/// (`de_mas`) o plata de más sin decir qué hacer con ella (`sin_eleccion`).
+/// La venta ya está saldada (el cliente pagó todo lo que se queda comprando): no acepta devoluciones,
+/// nunca queda plata a favor del cliente (decisión de Cristian, 03/11, «Devol. saldo»).
+final class DevolucionVentaSaldadaException extends DevolucionRechazadaException {
+  const DevolucionVentaSaldadaException();
+
+  @override
+  String toString() => 'DevolucionVentaSaldadaException';
+}
+
+/// Lo pedido no se puede registrar: nada elegido (`sin_productos`) o más de lo que queda por devolver
+/// (`de_mas`).
 final class DevolucionInvalidaException extends DevolucionRechazadaException {
   const DevolucionInvalidaException(this.causa);
 
@@ -88,17 +97,19 @@ final class DevolucionLocalDataSourceDrift {
         devolucion: _aDevolucion(existente),
         totalCentavos: ahora.seQuedaConCentavos,
         saldoCentavos: ahora.saldoCentavos,
-        deboAlClienteCentavos: ahora.deboAlClienteCentavos,
         eraTotal: ahora.estaTodoDevuelto,
         colorDeLaCasa: await _colorActual(venta.espacioPersonaId),
         yaEstaba: true,
       );
     }
 
+    final antes = await _leer(venta);
+    // Una venta saldada no acepta devoluciones (la misma regla que el servidor, 0157), pasen o no las
+    // 72 h. Una que ya volvió entera tampoco, pero esa la dice `de_mas`.
+    if (antes.estaSaldada && !antes.estaTodoDevuelto) throw const DevolucionVentaSaldadaException();
     if (ReglasDeDevolucion.estaFueraDePlazo(venta.fecha, pedido.ahora)) {
       throw const DevolucionFueraDePlazoException();
     }
-    final antes = await _leer(venta);
     if (!pedido.unidadesPorRenglon.values.any((n) => n > 0)) {
       throw const DevolucionInvalidaException('sin_productos');
     }
@@ -106,18 +117,11 @@ final class DevolucionLocalDataSourceDrift {
       throw const DevolucionInvalidaException('de_mas');
     }
     final cuenta = ReglasDeDevolucion.cuenta(antes, pedido.unidadesPorRenglon);
-    final destino = ReglasDeDevolucion.destinoDeLaDiferencia(
-      cuenta.pagoDeMasCentavos,
-      pedido.queHacer,
-    );
-    if (destino == null) throw const DevolucionInvalidaException('sin_eleccion');
 
     final devolucion = Devolucion(
       id: pedido.id,
       ventaId: pedido.ventaId,
       productos: ReglasDeDevolucion.productosDe(antes, pedido.unidadesPorRenglon),
-      dineroRetenidoCentavos: destino.retenido,
-      montoReembolsadoCentavos: destino.reembolsado,
       motivo: pedido.motivo,
       fechaDevolucion: pedido.ahora,
       auditoria: Auditoria(
@@ -155,7 +159,6 @@ final class DevolucionLocalDataSourceDrift {
       devolucion: devolucion,
       totalCentavos: despues.seQuedaConCentavos,
       saldoCentavos: despues.saldoCentavos,
-      deboAlClienteCentavos: despues.deboAlClienteCentavos,
       eraTotal: cuenta.esTotal,
       colorDeLaCasa: color,
     );
@@ -226,8 +229,6 @@ final class DevolucionLocalDataSourceDrift {
       fecha: venta.fecha,
       montoTotalCentavos: venta.montoTotal,
       cobradoCentavos: await CobroValido.cobradoDe(_db, venta.id),
-      reembolsadoCentavos: previas.reembolsadoCentavos,
-      retenidoCentavos: previas.retenidoCentavos,
       renglones: renglones,
     );
   }
@@ -275,8 +276,6 @@ final class DevolucionLocalDataSourceDrift {
     id: fila.id,
     ventaId: fila.ventaId,
     productos: EstadoDeDevolucion.productosDe(fila),
-    dineroRetenidoCentavos: fila.dineroRetenido,
-    montoReembolsadoCentavos: fila.montoReembolsado,
     motivo: fila.motivo,
     fechaDevolucion: fila.fechaDevolucion,
     auditoria: Auditoria(
@@ -292,8 +291,6 @@ final class DevolucionLocalDataSourceDrift {
     id: d.id,
     ventaId: d.ventaId,
     productosDevueltos: DevolucionModel.productosAJson(d.productos),
-    dineroRetenido: Value(d.dineroRetenidoCentavos),
-    montoReembolsado: Value(d.montoReembolsadoCentavos),
     motivo: Value(d.motivo),
     fechaDevolucion: d.fechaDevolucion,
     createdAt: d.auditoria.createdAt,
