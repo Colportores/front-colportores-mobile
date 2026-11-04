@@ -117,6 +117,20 @@ void main() {
     expect(r.single.direccion, 'Mataojo 2044');
   });
 
+  test('dado una alternativa dada de baja, el recordatorio sigue y la dirección sale marcada '
+      '(#608, «Alt. de baja»)', () async {
+    await sembrarUbicacion(db, id: 'ub-2');
+    await direccion('ub-2', calle: 'Mataojo', numero: '2044');
+    await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-2'))).write(
+      UbicacionesCompanion(deletedAt: Value(DateTime.utc(2026, 10, 24))),
+    );
+    await insertarAgenda(db, agenda('age-1', tipo: TipoAgenda.cobranza, ubicacionAlt: 'ub-2'));
+
+    final r = await agendas.pendientes(colportorId: 'col-1', desde: desde);
+
+    expect(r.single.direccion, 'Mataojo 2044 (dirección dada de baja)');
+  });
+
   test('dado que la ubicación alternativa no llegó al teléfono, usa la de la casa', () async {
     await insertarAgenda(
       db,
