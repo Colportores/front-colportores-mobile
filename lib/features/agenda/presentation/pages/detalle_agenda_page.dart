@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../cobranzas/presentation/pages/cuotas_de_la_venta_page.dart';
+import '../../../cobranzas/presentation/textos_cuotas.dart' show TextosCuotas;
 import '../../../mapa/domain/entities/persona_del_espacio.dart';
 import '../../../mapa/domain/repositories/espacio_repository.dart';
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
@@ -33,6 +35,8 @@ import 'modificar_agenda_page.dart';
 ///   («Guardado. El recordatorio pasó a las 10:00.») queda en pantalla.
 /// - **Cumplida o no cumplida** (23C·06): el aviso «Esta visita ya tiene resultado…» y ninguna salida.
 /// - **Cancelada**: el mismo criterio con su propio aviso (el canvas no la dibuja).
+/// - **Cobranza de una cuota** (HU-COB-004, #580): «Ver las cuotas» abre las cuotas de esa venta
+///   (30A-06), en cualquier estado de la agenda.
 /// - Cargando, error al leer («Reintentar») y agenda que ya no está en el teléfono.
 ///
 /// Todo se lee del teléfono: sin conexión funciona igual.
@@ -100,6 +104,27 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     }
   }
 
+  Future<void> _verLasCuotas(DetalleDeAgenda detalle) async {
+    final agenda = detalle.agenda;
+    final ventaId = agenda.ventaId;
+    if (ventaId == null || _abriendo) return;
+    _abriendo = true;
+    ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    try {
+      await CuotasDeLaVentaPage.abrir(
+        context,
+        ventaId: ventaId,
+        colportorId: widget.colportorId,
+        espacioId: agenda.espacioId,
+        espacioPersonaId: agenda.espacioPersonaId,
+      );
+    } finally {
+      _abriendo = false;
+    }
+    // Armar o modificar el plan puede mover la cita (fecha, monto): se vuelve a leer de la base.
+    if (mounted) ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
+  }
+
   Future<void> _registrar(DetalleDeAgenda detalle, String ubicacionId) async {
     final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
     if (destino == null || _abriendo) return;
@@ -165,6 +190,7 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
                     : _Cuerpo(
                         detalle: d,
                         alModificar: () => unawaited(_modificar(d)),
+                        alVerLasCuotas: () => unawaited(_verLasCuotas(d)),
                         alRegistrar: (ubicacionId) => unawaited(_registrar(d, ubicacionId)),
                         alCancelar: _alCancelar,
                         alVolverSinCancelar: _alVolverSinCancelar,
@@ -194,6 +220,7 @@ abstract final class ClavesDetalleAgenda {
   static const franja = Key('detalle_agenda_franja');
   static const recordatorio = Key('detalle_agenda_recordatorio');
   static const nota = Key('detalle_agenda_nota');
+  static const verLasCuotas = Key('detalle_agenda_ver_cuotas');
 }
 
 class _Cargando extends StatelessWidget {
@@ -253,6 +280,7 @@ class _Cuerpo extends ConsumerWidget {
   const _Cuerpo({
     required this.detalle,
     required this.alModificar,
+    required this.alVerLasCuotas,
     required this.alRegistrar,
     required this.alCancelar,
     required this.alVolverSinCancelar,
@@ -260,6 +288,7 @@ class _Cuerpo extends ConsumerWidget {
 
   final DetalleDeAgenda detalle;
   final VoidCallback alModificar;
+  final VoidCallback alVerLasCuotas;
   final ValueChanged<String> alRegistrar;
   final ValueChanged<ResultadoCancelarAgenda> alCancelar;
   final VoidCallback alVolverSinCancelar;
@@ -358,6 +387,19 @@ class _Cuerpo extends ConsumerWidget {
             valor: _nota(detalle.nota),
             ultima: true,
           ),
+          if (agenda.esCuota)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                key: ClavesDetalleAgenda.verLasCuotas,
+                onPressed: alVerLasCuotas,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: const Text(
+                  TextosCuotas.verLasCuotas,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAlta.azul),
+                ),
+              ),
+            ),
           if (programada) ...[
             const SizedBox(height: 24),
             // Sin la casa «Registrar resultado» queda apagado: se dice por qué y, si se puede, se
