@@ -217,7 +217,7 @@ void main() {
       expect(find.byKey(const Key('mi_plata_por_validar')), findsOneWidget);
       expect(find.text('Por validar'), findsOneWidget);
       expect(find.text(r'$ 2.300'), findsOneWidget);
-      expect(find.text('Suman a «Depositado» cuando tu coordinador los valide.'), findsOneWidget);
+      expect(find.text('Suman a Depositado cuando tu coordinador los valide.'), findsOneWidget);
       expect(find.text('Casa editora · Banco · 22/10'), findsOneWidget);
       expect(find.text(r'$ 1.800'), findsOneWidget);
       expect(find.text('Alquiler · Retiro · 23/10'), findsOneWidget);
@@ -320,7 +320,7 @@ void main() {
       );
       expect(
         tester.getSemantics(find.text('Por validar')).label,
-        r'Por validar, $ 1.800. Suman a «Depositado» cuando tu coordinador los valide.',
+        r'Por validar, $ 1.800. Suman a Depositado cuando tu coordinador los valide.',
       );
       expect(
         _etiqueta(tester, const Key('mi_plata_fila_porValidar_0')),

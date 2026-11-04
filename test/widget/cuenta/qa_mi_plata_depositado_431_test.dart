@@ -244,7 +244,6 @@ void main() {
 
         expect(find.text('Suman a Depositado cuando tu coordinador los valide.'), findsOneWidget);
       },
-      skip: !_hallazgos,
     );
 
     // QA #431: la decisión P1 manda sacar «Para confirmar» de `TextosMiPlata`.

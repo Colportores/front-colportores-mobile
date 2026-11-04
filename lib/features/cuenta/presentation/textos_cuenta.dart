@@ -61,7 +61,7 @@ abstract final class TextosMiPlata {
   static const porValidar = 'Por validar';
 
   /// Para confirmar: qué pasa con lo «por validar» y qué esperar.
-  static const avisoPorValidar = 'Suman a «Depositado» cuando tu coordinador los valide.';
+  static const avisoPorValidar = 'Suman a Depositado cuando tu coordinador los valide.';
 
   /// Para confirmar: la fila de un depósito dice para qué era y dónde se hizo (los rótulos de 33D).
   static const casaEditora = 'Casa editora';
