@@ -1,5 +1,7 @@
-// HU-VEN-001 (vista 27, «Registrar venta»): un test por artboard (27A·01 a 27A·13; el 27A·09 no se
-// implementa, decisión P4 de #158; el 27A·14 está en venta_registrada_page_test.dart), por los
+// HU-VEN-001 (vista 27, «Registrar venta»): un test por artboard (27A·01 a 27A·13; el 27A·09 («Sin
+// ubicación: precios de tu zona») ya no es parte de la vista: Cristian lo sacó del inventario el
+// 03/11 («27A·09 GPS») y queda anotado en «Diferencias con el canvas» de disenio-vistas, porque el
+// precio sale de la casa del cliente y nunca del GPS; el 27A·14 está en venta_registrada_page_test.dart), por los
 // estados que el canvas no dibuja (cargando, error de precios, sin catálogo, sin conexión) y por cada
 // caso límite: doble toque, falla a mitad del guardado, acciones seguidas, volver y reentrar, datos
 // límite y texto al 200 %.

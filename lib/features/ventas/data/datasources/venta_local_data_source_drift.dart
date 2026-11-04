@@ -92,7 +92,11 @@ final class VentaLocalDataSourceDrift {
     await antesDeGuardar?.call();
 
     await _db.into(_db.ventas).insert(_aFilaVenta(venta));
-    await _encolador.encolar('venta', OperacionSync.insert, VentaModel.toJson(venta));
+    await _encolador.encolar(
+      'venta',
+      OperacionSync.insert,
+      VentaModel.toJson(venta, itemsEsperados: items.length),
+    );
     for (final item in items) {
       await _db.into(_db.ventaItems).insert(_aFilaItem(item));
       await _encolador.encolar('venta_item', OperacionSync.insert, VentaItemModel.toJson(item));
@@ -130,17 +134,16 @@ final class VentaLocalDataSourceDrift {
     DateTime fecha,
   ) async {
     final anio = ReglasDeVenta.anioDeMontevideo(fecha);
+    // Sin distinguir mayúsculas ni espacios de los bordes (decisión de Cristian, 03/11, «Talonario =»):
+    // se compara en Dart y no con `=` de SQL, que sí las distingue, ni con `lower()` de SQLite, que
+    // solo conoce las letras ASCII.
     final filas =
         await (_db.select(_db.ventas)
-              ..where(
-                (v) =>
-                    v.colportorId.equals(colportorId) &
-                    v.numeroTalonario.equals(numero) &
-                    v.deletedAt.isNull(),
-              )
+              ..where((v) => v.colportorId.equals(colportorId) & v.deletedAt.isNull())
               ..orderBy([(v) => OrderingTerm.desc(v.fecha)]))
             .get();
     for (final fila in filas) {
+      if (!ReglasDeVenta.mismoTalonario(fila.numeroTalonario, numero)) continue;
       if (ReglasDeVenta.anioDeMontevideo(fila.fecha) == anio) {
         return VentaDelTalonario(ventaId: fila.id, fecha: fila.fecha);
       }
