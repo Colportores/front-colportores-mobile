@@ -49,10 +49,13 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.push('devolucion', critical: true),
   // El depósito de efectivo (HU-CTA-004, #442): sube sin dato de ninguna persona (no marca qué cobros
   // incluye, decisión «Cobro en dep.»). Solo de alta: el servidor rechaza un update o una baja con
-  // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor. Sin `alsoPull`: que el
-  // teléfono vea la validación o el rechazo del retiro está pendiente de decisión (contrato §2). El de
+  // `42501`; `colportor_id`, la validación y el rechazo los pone el servidor y el push los descarta.
+  // `alsoPull` (decisión del 30/10, backend-supabase#231, #596): el servidor publica en el pull los
+  // depósitos propios con `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, y de ahí
+  // salen «Depositado» (solo lo validado) y el retiro rechazado con su motivo. Es una escritura crítica,
+  // como `cobranza` y `devolucion`: mueve plata y no se pierde (decisión del 30/10 sobre #593). El de
   // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola.
-  SyncSpec.push('deposito'),
+  SyncSpec.push('deposito', critical: true, alsoPull: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
   // casas (#181).
@@ -70,17 +73,18 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.pull('campania_colportor'),
 
   // pull: el catálogo de ventas (HU-CAT-007, #180). `realtime` solo en lo que HU-SYNC-003 pide
-  // (producto y los precios de la ciudad): un cambio urgente llega sin esperar al próximo ciclo. El
-  // combo (`coleccion`, `producto_coleccion`) cambia poco y entra en el pull siguiente. El evento es
-  // un timbre: lo que entra es siempre el delta, así que cualquiera de los dos baja las cinco.
+  // (producto y los precios, el de la ciudad y el general): un cambio urgente llega sin esperar al
+  // próximo ciclo. El combo (`coleccion`, `producto_coleccion`) cambia poco y entra en el pull
+  // siguiente. El evento es un timbre: lo que entra es siempre el delta, así que cualquiera de los
+  // tres baja las cinco.
   SyncSpec.pull('producto', realtime: true),
   SyncSpec.pull('coleccion'),
   SyncSpec.pull('producto_coleccion'),
   SyncSpec.pull('precio_por_ciudad', realtime: true),
-  // El precio general todavía no lo publica el servidor (backend-supabase 0034: sin registrar en
-  // `sync.entidad`): el pull ignora lo que no conoce, así que baja solo el día que se registre. Su
-  // `realtime` se suma ese día, junto con la publicación del servidor.
-  SyncSpec.pull('precio_general'),
+  // El precio general lo publica el servidor desde backend-supabase 0144 (#205): en `sync.entidad`
+  // y en la publicación `supabase_realtime`. Con `realtime`, el cambio del precio general le llega
+  // a la colportora con la app abierta, igual que el de la ciudad (#525).
+  SyncSpec.pull('precio_general', realtime: true),
   // Los parámetros de toda la aplicación que cambia Administración (backend-supabase 0070): hoy los
   // días del aviso de precios viejos (`dias_antiguedad_precios`, HU-CAT-006, #419). Sin filtro (el
   // valor es el mismo para todos) y sin `realtime`: cambia rara vez y entra en el ciclo siguiente.

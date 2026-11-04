@@ -114,6 +114,7 @@ void main() {
         logger: logger ?? AppLogger(output: salida),
       ),
       ahora: () async => en ?? ahora,
+      horaDelServidor: () async => en ?? ahora,
     );
     await tester.runAsync(() => caso(const NoParams()));
     await asentar(tester);

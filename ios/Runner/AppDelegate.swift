@@ -57,6 +57,8 @@ import UserNotifications
   /// - `pedir`: muestra el diálogo del sistema y responde cuando la persona contesta, con si
   ///   quedaron activadas. Si iOS ya no puede preguntar, responde enseguida con lo que hay.
   /// - `abrirAjustes`: abre los ajustes de la app (de ahí se llega a Notificaciones).
+  /// - `alarmasExactas`: `"noAplica"` (iOS no tiene el permiso «Alarmas y recordatorios» de Android).
+  /// - `abrirAjustesAlarmas`: `false`, no hay a dónde ir.
   private func registrarCanalNotificaciones(_ registry: FlutterPluginRegistry) {
     guard let registrar = registry.registrar(forPlugin: "PermisoNotificaciones") else { return }
     let canal = FlutterMethodChannel(
@@ -88,6 +90,10 @@ import UserNotifications
         DispatchQueue.main.async {
           UIApplication.shared.open(url, options: [:]) { abierta in result(abierta) }
         }
+      case "alarmasExactas":
+        result("noAplica")
+      case "abrirAjustesAlarmas":
+        result(false)
       default:
         result(FlutterMethodNotImplemented)
       }

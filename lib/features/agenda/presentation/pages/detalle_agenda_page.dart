@@ -19,6 +19,7 @@ import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_detalle_agenda.dart';
 import '../providers/agenda_providers.dart';
 import '../providers/detalle_agenda_providers.dart';
+import '../textos_agendar_visita.dart';
 import '../textos_detalle_agenda.dart';
 import '../widgets/enlace_cancelar_agenda.dart';
 import 'modificar_agenda_page.dart';
@@ -44,16 +45,29 @@ class DetalleAgendaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada.
   final String colportorId;
 
-  /// Abre el detalle encima de la pantalla actual.
+  /// Abre el detalle encima de la pantalla actual. Si ya es la pantalla de arriba (tocar el aviso de
+  /// la agenda que se está mirando), no apila otro igual: habría que volver dos veces.
   static Future<void> abrir(
     BuildContext context, {
     required String agendaId,
     required String colportorId,
-  }) => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => DetalleAgendaPage(agendaId: agendaId, colportorId: colportorId),
-    ),
-  );
+  }) {
+    final navegador = Navigator.of(context);
+    final nombre = 'detalle_agenda/$agendaId';
+    var yaEstaArriba = false;
+    // El predicado devuelve `true` en la primera ruta: mira la de arriba y no saca ninguna.
+    navegador.popUntil((ruta) {
+      yaEstaArriba = ruta.settings.name == nombre;
+      return true;
+    });
+    if (yaEstaArriba) return Future<void>.value();
+    return navegador.push<void>(
+      MaterialPageRoute(
+        settings: RouteSettings(name: nombre),
+        builder: (_) => DetalleAgendaPage(agendaId: agendaId, colportorId: colportorId),
+      ),
+    );
+  }
 
   @override
   ConsumerState<DetalleAgendaPage> createState() => _DetalleAgendaPageState();
@@ -172,6 +186,7 @@ abstract final class ClavesDetalleAgenda {
   static const aviso = Key('detalle_agenda_aviso');
   static const reintentar = Key('detalle_agenda_reintentar');
   static const registrar = Key('detalle_agenda_registrar');
+  static const avisoCasa = Key('detalle_agenda_aviso_casa');
   static const modificar = Key('detalle_agenda_modificar');
   static const avisoCerrada = Key('detalle_agenda_aviso_cerrada');
   static const estado = Key('detalle_agenda_estado');
@@ -254,7 +269,8 @@ class _Cuerpo extends ConsumerWidget {
     final theme = Theme.of(context);
     final agenda = detalle.agenda;
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
-    final contexto = ref.watch(contextoEspacioProvider(agenda.espacioId)).asData?.value;
+    final casa = ref.watch(contextoEspacioProvider(agenda.espacioId));
+    final contexto = casa.asData?.value;
     final personas = agenda.espacioPersonaId == null
         ? null
         : ref.watch(personasDelEspacioProvider(agenda.espacioId)).asData?.value;
@@ -344,6 +360,32 @@ class _Cuerpo extends ConsumerWidget {
           ),
           if (programada) ...[
             const SizedBox(height: 24),
+            // Sin la casa «Registrar resultado» queda apagado: se dice por qué y, si se puede, se
+            // ofrece volver a leerla (QA #409).
+            if (registrar != null && (casa.hasError || (casa.hasValue && contexto == null))) ...[
+              KeyedSubtree(
+                key: ClavesDetalleAgenda.avisoCasa,
+                child: AvisoAlta(
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: casa.hasError
+                      ? TextosDetalleAgenda.noPudimosLeerLaCasa
+                      : TextosAgendarVisita.casaNoEstaMas,
+                  acciones: casa.hasError
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: EnlaceAlta(
+                            key: ClavesDetalleAgenda.reintentar,
+                            texto: TextosDetalleAgenda.reintentar,
+                            alPresionar: () =>
+                                ref.invalidate(contextoEspacioProvider(agenda.espacioId)),
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             if (registrar != null)
               FilledButton(
                 key: ClavesDetalleAgenda.registrar,

@@ -7,6 +7,7 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_sync_meta.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/cuenta/data/datasources/resumen_de_cuenta_local_data_source_drift.dart';
@@ -16,7 +17,7 @@ import 'package:colportores_mobile/features/mapa/data/services/house_status_upda
 import 'package:colportores_mobile/features/ventas/data/datasources/devolucion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
-import 'package:drift/drift.dart' show Variable, driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, Variable, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -395,6 +396,162 @@ void main() {
         const ResumenDeCuentaSinBase().observar('col-1'),
         emitsError(isA<FailureCuentaNoDisponible>()),
       );
+    });
+  });
+
+  group('«Depositado» (#596): solo lo que el coordinador validó, de lo último que bajó', () {
+    Future<void> bajada(DateTime cuando) => DriftSyncMeta(db).write(lastPullAt: cuando);
+
+    Future<void> deposito(
+      String id,
+      int monto, {
+      DateTime? validadoEn,
+      DateTime? rechazadoEn,
+      DateTime? baja,
+    }) => db.customStatement(
+      'INSERT INTO deposito (id, monto, fecha, destino, concepto, ticket_id, validado_en, '
+      'rechazado_en, motivo_rechazo, created_at, updated_at, deleted_at) '
+      "VALUES ('$id', $monto, 1, 'BANCO', 'CASA_EDITORA', 't-$id', "
+      '${validadoEn == null ? 'NULL' : validadoEn.millisecondsSinceEpoch}, '
+      '${rechazadoEn == null ? 'NULL' : rechazadoEn.millisecondsSinceEpoch}, '
+      "${rechazadoEn == null ? 'NULL' : "'no coincide'"}, 1, 1, "
+      '${baja == null ? 'NULL' : baja.millisecondsSinceEpoch})',
+    );
+
+    test('dado que el teléfono todavía no bajó nada del servidor, cuando abre Mi Cuenta, no hay '
+        'cifra de «Depositado»: ni un cero inventado', () async {
+      await vender('v-1', 150000, _antes);
+      await deposito('d-1', 100000);
+
+      final r = await leer();
+
+      expect(r.depositado, isNull);
+      expect(r.depositadoAl, isNull);
+    });
+
+    test(
+      'dado que ya bajó, y sin depósitos, «Depositado» es cero, de la hora de la bajada',
+      () async {
+        await bajada(_ahora.subtract(const Duration(hours: 15)));
+
+        final r = await leer();
+
+        expect(r.depositado, const CifraDeCuenta(totalCentavos: 0));
+        expect(r.depositadoAl, _ahora.subtract(const Duration(hours: 15)));
+      },
+    );
+
+    test(
+      'suma solo lo validado: lo por validar, lo rechazado y lo dado de baja no entran',
+      () async {
+        await vender('v-1', 150000, _antes);
+        await bajada(_ahora);
+        await deposito('d-1', 100000, validadoEn: _despues);
+        await deposito('d-2', 40000, validadoEn: _antes);
+        await deposito('d-3', 30000);
+        await deposito('d-4', 600000, rechazadoEn: _despues);
+        await deposito('d-5', 70000, validadoEn: _despues, baja: _despues);
+
+        final r = await leer();
+
+        expect(r.depositado!.totalCentavos, 140000);
+      },
+    );
+
+    test('«contra la semana pasada»: compara con lo que ya estaba validado hace 7 días', () async {
+      await vender('v-1', 150000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 40000, validadoEn: _antes);
+      await deposito('d-2', 100000, validadoEn: _despues);
+
+      final r = await leer();
+
+      expect(r.depositado, const CifraDeCuenta(totalCentavos: 140000, variacionCentavos: 100000));
+    });
+
+    test(
+      'sin ventas de la semana anterior la diferencia no se inventa, igual que las otras dos',
+      () async {
+        await vender('v-1', 150000, _despues);
+        await bajada(_ahora);
+        await deposito('d-1', 100000, validadoEn: _despues);
+
+        final r = await leer();
+
+        expect(r.depositado!.totalCentavos, 100000);
+        expect(r.depositado!.variacionCentavos, isNull);
+      },
+    );
+
+    test('lo que se validó justo hace 7 días a esa hora ya estaba (borde inclusivo)', () async {
+      await vender('v-1', 150000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 25000, validadoEn: _haceUnaSemana);
+
+      final r = await leer();
+
+      expect(r.depositado, const CifraDeCuenta(totalCentavos: 25000, variacionCentavos: 0));
+    });
+
+    test('«En mano» y «Por cobrar» no cambian por los depósitos (los calcula #431)', () async {
+      await vender('v-1', 150000, _antes);
+      await cobrar('c-1', 50000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 50000, validadoEn: _despues);
+
+      final r = await leer();
+
+      expect(r.enMano.totalCentavos, 50000);
+      expect(r.porCobrar.totalCentavos, 100000);
+    });
+
+    test(
+      'al día solo: cuando baja la validación de un depósito, el resumen se actualiza',
+      () async {
+        await vender('v-1', 150000, _antes);
+        await bajada(_ahora);
+        await deposito('d-1', 100000);
+        final vistos = <ResumenDeCuenta>[];
+        final sub = local.observar('col-1').listen(vistos.add);
+        Future<void> hasta(bool Function() condicion) async {
+          for (var i = 0; i < 400 && !condicion(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+          }
+          expect(condicion(), isTrue, reason: 'no llegó lo esperado: $vistos');
+        }
+
+        await hasta(() => vistos.isNotEmpty);
+        expect(vistos.last.depositado!.totalCentavos, 0);
+
+        // Lo que hace el pull: la misma fila con su validación.
+        await (db.update(
+          db.depositos,
+        )..where((d) => d.id.equals('d-1'))).write(DepositosCompanion(validadoEn: Value(_despues)));
+
+        await hasta(() => vistos.last.depositado!.totalCentavos == 100000);
+        await sub.cancel();
+      },
+    );
+
+    test('la primera bajada hace aparecer la cifra y cada bajada nueva mueve la hora', () async {
+      await vender('v-1', 150000, _antes);
+      final vistos = <ResumenDeCuenta>[];
+      final sub = local.observar('col-1').listen(vistos.add);
+      Future<void> hasta(bool Function() condicion) async {
+        for (var i = 0; i < 400 && !condicion(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+        expect(condicion(), isTrue, reason: 'no llegó lo esperado: $vistos');
+      }
+
+      await hasta(() => vistos.isNotEmpty);
+      expect(vistos.last.depositado, isNull);
+
+      await bajada(_ahora.subtract(const Duration(hours: 3)));
+      await hasta(() => vistos.last.depositado != null);
+      await bajada(_ahora);
+      await hasta(() => vistos.last.depositadoAl == _ahora);
+      await sub.cancel();
     });
   });
 }

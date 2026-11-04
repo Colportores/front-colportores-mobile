@@ -8,6 +8,7 @@ abstract final class TextosCuenta {
   static const eyebrow = 'CUENTA';
   static const titulo = 'Mi Cuenta';
 
+  static const depositado = 'DEPOSITADO';
   static const enMano = 'EN MANO';
   static const porCobrar = 'POR COBRAR';
 
@@ -29,6 +30,9 @@ abstract final class TextosCuenta {
 
   /// «contra la semana pasada», sin la flecha ni el monto.
   static const contraLaSemanaPasada = 'contra la semana pasada';
+
+  /// 33A·02: cómo empieza el aviso de sin conexión.
+  static const avisoSinConexion = 'Sin conexión';
 }
 
 /// Cómo se escriben las cifras de Mi Cuenta.
@@ -55,6 +59,25 @@ abstract final class FormatoCuenta {
 
   static bool _aconseja(CifraDeCuenta cifra, bool aconsejaDepositar) =>
       aconsejaDepositar && (cifra.variacionCentavos ?? 0) > 0 && cifra.totalCentavos > 0;
+
+  /// 33A·02, el aviso de sin conexión: «Sin conexión. Lo depositado es de ayer a las 21:00; en mano y
+  /// por cobrar están al día.» El canvas nombra también la deuda con la casa editora; sin ella (V2)
+  /// queda lo depositado. [bajadoEn] es la última bajada del servidor; [ahora], el reloj de la
+  /// pantalla. Para confirmar (mapa §2: texto): el canvas solo dibuja «ayer»; «hoy» y la fecha son
+  /// los otros dos días posibles.
+  static String sinConexion(DateTime bajadoEn, DateTime ahora) {
+    final momento = bajadoEn.toLocal();
+    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
+    final dia = DateTime(momento.year, momento.month, momento.day);
+    String dos(int n) => n.toString().padLeft(2, '0');
+    final cuando = switch (hoy.difference(dia).inDays) {
+      0 => 'de hoy',
+      1 => 'de ayer',
+      _ => 'del ${dos(dia.day)}/${dos(dia.month)}',
+    };
+    return '${TextosCuenta.avisoSinConexion}. Lo depositado es $cuando a las '
+        '${dos(momento.hour)}:${dos(momento.minute)}; en mano y por cobrar están al día.';
+  }
 
   /// Lo mismo para el lector de pantalla, que lee mal las flechas: «Subió $ 1.800 contra la semana
   /// pasada».

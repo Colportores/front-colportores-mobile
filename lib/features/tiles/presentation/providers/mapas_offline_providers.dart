@@ -551,6 +551,9 @@ class MapasOfflineNotifier extends Notifier<EstadoMapasOffline> {
         _sobrantes.remove(paquete.id);
         if (ref.mounted) state = state.copiar(falla: resultado.fold((f) => f, (_) => null));
       } else {
+        // Ya arrancó (o quedó en cola): desde «Cambiar cobertura» se pasa a la lista, que es donde
+        // se ve el avance; si falló, se queda en la elección con el aviso.
+        if (ref.mounted) state = state.copiar(cambiando: false);
         _marcarArrancando(paquete);
       }
     } on Object {

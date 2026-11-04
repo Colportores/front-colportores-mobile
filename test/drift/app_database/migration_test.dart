@@ -29,6 +29,7 @@ import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v24.dart' as v24;
+import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1463,6 +1464,64 @@ void main() {
             nuevo.customStatement("UPDATE agenda SET tipo = 'ENTREVISTA' WHERE id = 'a-1'"),
             throwsA(anything),
           );
+        },
+      );
+    },
+  );
+
+  test(
+    'dado depósitos guardados en la versión 24, cuando migra a la 25, no se pierde nada, suman la '
+    'validación y el rechazo vacíos y no se encola nada (#596)',
+    () async {
+      // El depósito registrado antes sigue «por validar»: el pull le trae su validación después.
+      const deposito = v24.DepositoData(
+        id: 'd-1',
+        monto: 180000,
+        fecha: 1,
+        destino: 'BANCO',
+        concepto: 'CASA_EDITORA',
+        ticketId: 't-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 24,
+        newVersion: 25,
+        createOld: v24.DatabaseAtV24.new,
+        createNew: v25.DatabaseAtV25.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.deposito, deposito),
+        validateItems: (nuevo) async {
+          final guardado = await nuevo.select(nuevo.deposito).getSingle();
+          expect(guardado.id, 'd-1');
+          expect(guardado.monto, 180000);
+          expect(guardado.ticketId, 't-1');
+          expect(guardado.syncVersion, 4);
+          expect(guardado.validadoEn, isNull);
+          expect(guardado.validadoPor, isNull);
+          expect(guardado.rechazadoEn, isNull);
+          expect(guardado.motivoRechazo, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Las cuatro columnas aceptan lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE deposito SET validado_en = 2, validado_por = 'coord-1' WHERE id = 'd-1'",
+          );
+          final validado = await nuevo.select(nuevo.deposito).getSingle();
+          expect(validado.validadoEn, 2);
+          expect(validado.validadoPor, 'coord-1');
+          await nuevo.customStatement(
+            'INSERT INTO deposito (id, monto, fecha, destino, concepto, created_at, updated_at, '
+            "rechazado_en, motivo_rechazo) VALUES ('d-2', 500000, 1, 'RETIRO_COORDINADOR', "
+            "'CASA_EDITORA', 1, 1, 3, 'Entregaste 5.000, no 6.000')",
+          );
+          final rechazado = await (nuevo.select(
+            nuevo.deposito,
+          )..where((d) => d.id.equals('d-2'))).getSingle();
+          expect(rechazado.rechazadoEn, 3);
+          expect(rechazado.motivoRechazo, 'Entregaste 5.000, no 6.000');
         },
       );
     },
