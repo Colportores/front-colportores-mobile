@@ -79,7 +79,10 @@ final class ServicioRecuperacionFalso implements ServicioRecuperacion {
   int recuperaciones = 0;
   String? ultimaContrasena;
   CancelacionRecuperacion? ultimaCancelacion;
-  RespaldoEnDrive? ultimoRespaldo;
+  List<RespaldoEnDrive> ultimosRespaldos = const [];
+
+  /// El primer respaldo que recibió `recuperar` (con uno solo, ese).
+  RespaldoEnDrive? get ultimoRespaldo => ultimosRespaldos.firstOrNull;
 
   /// Si es `true`, `recuperar` termina con [RecuperacionCancelada] cuando la persona cancela (como
   /// el motor), en vez de devolver [resultado].
@@ -95,7 +98,7 @@ final class ServicioRecuperacionFalso implements ServicioRecuperacion {
 
   @override
   Future<ResultadoRecuperacion> recuperar({
-    required RespaldoEnDrive respaldo,
+    required List<RespaldoEnDrive> respaldos,
     required String password,
     void Function(ProgresoRecuperacion progreso)? alAvanzar,
     CancelacionRecuperacion? cancelar,
@@ -103,7 +106,7 @@ final class ServicioRecuperacionFalso implements ServicioRecuperacion {
     recuperaciones++;
     ultimaContrasena = password;
     ultimaCancelacion = cancelar;
-    ultimoRespaldo = respaldo;
+    ultimosRespaldos = respaldos;
     alAvanzarActual = alAvanzar;
     progresos.forEach(alAvanzar ?? (_) {});
     if (frenarRecuperar) compuertaRecuperar ??= Completer<void>();
@@ -211,13 +214,16 @@ final class ArnesRecuperacion {
   final resuelta = ResueltaEnMemoria();
   final conexion = ConexionControlable();
 
+  /// Si la app ofrece el asistente (`main.dart` lo enciende; por defecto está apagado).
+  bool habilitado = true;
+
   /// Perezoso a propósito: el repositorio arma una cola de `Future`s, y si se creara en un `setUp`
   /// (fuera del reloj falso de `testWidgets`) sus pasos no avanzarían con `tester.pump`.
   late final RespaldoDriveArmado drive = RespaldoDriveArmado();
 
   /// Lo del asistente solo: sirve para armar la app entera, que trae su propia sesión y conexión.
   List<Override> get overridesDelAsistente => [
-    asistenteDeRecuperacionHabilitadoProvider.overrideWithValue(true),
+    asistenteDeRecuperacionHabilitadoProvider.overrideWithValue(habilitado),
     servicioRecuperacionProvider.overrideWithValue(servicio),
     lectorDeLoRecuperadoProvider.overrideWithValue(lector),
     recuperacionResueltaRepositoryProvider.overrideWithValue(resuelta),
@@ -247,6 +253,28 @@ final verContrasena = find.byKey(const Key('recuperacion_contrasena_ver'));
 final progresoValor = find.byKey(const Key('recuperacion_progreso_valor'));
 final progresoBarra = find.byKey(const Key('recuperacion_progreso_barra'));
 final heroTexto = find.byKey(const Key('recuperacion_hero_texto'));
+
+/// Una hoja «¿Empezar sin recuperar?» abierta (#610).
+final hojaEmpezar = find.byKey(const Key('recuperacion_hoja_empezar'));
+final hojaVolver = find.byKey(const Key('recuperacion_hoja_volver'));
+final hojaConfirmar = find.byKey(const Key('recuperacion_hoja_confirmar'));
+
+/// «Empezar sin recuperar» de la pantalla: abre la hoja y confirma. Los tests que no son de la hoja
+/// pasan por acá para llegar al mismo lugar de siempre.
+Future<void> empezarSinRecuperar(WidgetTester tester, Finder boton) async {
+  await tester.ensureVisible(boton);
+  await tester.tap(boton);
+  await _cuadros(tester);
+  await tester.ensureVisible(hojaConfirmar);
+  await tester.tap(hojaConfirmar);
+  await _cuadros(tester);
+}
+
+Future<void> _cuadros(WidgetTester tester) async {
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
 
 /// El texto del botón principal o del secundario.
 String textoDe(Finder boton) => find
