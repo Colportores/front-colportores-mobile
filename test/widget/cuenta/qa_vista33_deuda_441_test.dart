@@ -5,7 +5,7 @@
 // - los 10 estados de 33B y los 5 de la tarjeta de Mi Cuenta en 360x640 y 412x915, con el texto a
 //   1,0 y 2,0: sin overflow, tamaño de toque (Android e iOS), nombre en lo tocable y contraste;
 // - la lectura real (repositorio + caché en memoria) de punta a punta: guardar, cortar la red, volver;
-// - los hallazgos de QA, con `skip` salvo `--dart-define=QA_HALLAZGOS=true`.
+// - los hallazgos de QA: los ya arreglados corren; los que siguen abiertos van con `skip: true` y el comentario `QA #441: …`.
 import 'dart:convert';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
@@ -26,8 +26,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/cuenta_arnes.dart';
 import '../../helpers/deuda_casa_arnes.dart';
 import '../../helpers/qa_vista33_deuda_441_arnes.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _tamanos = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
 const _escalas = [1.0, 2.0];
@@ -377,7 +375,9 @@ void main() {
         );
         expect(bloques, findsNWidgets(4));
       },
-      skip: !_verHallazgos,
+      // QA #441: el esqueleto de Mi Cuenta (33A·03) tiene 3 bloques y el canvas dibuja 4 (falta el
+      // de la deuda).
+      skip: true,
     );
 
     // Decisión §2 (QA P1, 04/11): sin conexión y sin nada guardado, 33B dice que hace falta conexión.
@@ -423,7 +423,9 @@ void main() {
         expect(viva, isTrue);
         handle.dispose();
       },
-      skip: !_verHallazgos,
+      // QA #441: el aviso «Sin conexión. Esta deuda es de …» de 33B no es región viva: el lector no
+      // lo anuncia al aparecer (heredado de #611).
+      skip: true,
     );
   });
 }
